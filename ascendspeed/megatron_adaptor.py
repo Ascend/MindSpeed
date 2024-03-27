@@ -131,7 +131,7 @@ def exe_adaptation():
 
 
     import megatron.initialize
-    from .initialize import _compile_dependencies, set_jit_fusion_options, coc_registration_wrapper
+    from .initialize import _compile_dependencies, set_jit_fusion_options, coc_registration_wrapper, mc2_wrapper
     from .optimizer.optimizer import mixed_precision_optimizer_step, fp32_optimizer_step, reuse_fp32_param_init_wrapper
     from .core.tensor_parallel.layers import row_parallel_nocomm_optimizer_wrapper
     from .core.transformer.transformer import parallel_transformer_layer_forward_wrapper, parallel_transformer_checkpointed_forward_wrapper

@@ -9,7 +9,6 @@ import pytest
 
 
 def pytest_configure(config):
-    config.option.color = "yes"
     config.option.durations = 0
     config.option.durations_min = 1
     config.option.verbose = True
