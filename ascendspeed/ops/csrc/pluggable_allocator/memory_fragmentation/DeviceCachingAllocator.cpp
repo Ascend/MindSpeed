@@ -283,8 +283,6 @@ Block* DeviceCachingAllocator::malloc_internal(int device, size_t orig_size, acl
                     format_size(stats.reserved_bytes[static_cast<size_t>(StatType::AGGREGATE)].current),
                     " reserved in total by PyTorch)",
                     " If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.");
-        } else {
-            NPU_CHECK_ERROR(params.err);
         }
     }
 
@@ -1358,7 +1356,7 @@ void DeviceCachingAllocator::synchronize_and_free_events(bool check_error) {
             Block* block = e.second;
 
             if (check_error) {
-                NPU_CHECK_ERROR(aclrtSynchronizeEvent(*event));
+                aclrtSynchronizeEvent(*event);
             } else {
                 aclrtSynchronizeEvent(*event);
             }
@@ -1381,7 +1379,7 @@ void DeviceCachingAllocator::insert_events(Block* block) {
     stream_set streams(std::move(block->stream_uses));
     AT_ASSERT(block->stream_uses.empty());
     for (auto& stream : streams) {
-        NPU_CHECK_ERROR(c10_npu::SetDevice(stream.device_index()));
+        c10_npu::SetDevice(stream.device_index());
 
         EventPool::Event event = create_event_internal(stream.device_index());
         event->record(stream);
@@ -1391,7 +1389,7 @@ void DeviceCachingAllocator::insert_events(Block* block) {
         npu_events[stream].emplace_back(std::move(event), block);
     }
     if (ret_ctx == ACL_ERROR_NONE) {
-        NPU_CHECK_ERROR(aclrtSetCurrentContext(compiler_ctx));
+        aclrtSetCurrentContext(compiler_ctx);
     }
 }
 
