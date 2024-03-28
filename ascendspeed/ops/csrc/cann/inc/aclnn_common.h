@@ -94,12 +94,12 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 
 #define GET_OP_API_FUNC(apiName) reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
 
-#define MEMCPY_TO_BUF(data_expression, size_expression)                 \
-    if (g_hashOffset + (size_expression) > kHashBufSize) {              \
-        g_hashOffset = kHashBufMaxSize;                                 \
-        return;                                                         \
-    }                                                                   \
-    memcpy(g_hashBuf + g_hashOffset, data_expression, size_expression); \
+#define MEMCPY_TO_BUF(data_expression, size_expression)                                    \
+    if (g_hashOffset + (size_expression) > kHashBufSize) {                                 \
+        g_hashOffset = kHashBufMaxSize;                                                    \
+        return;                                                                            \
+    }                                                                                      \
+    memcpy_s(g_hashBuf + g_hashOffset, size_expression, data_expression, size_expression); \
     g_hashOffset += size_expression;
 
 inline const char *GetOpApiLibName(void)
