@@ -13,16 +13,17 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
 
 ### 1. 安装依赖
 
-| 依赖软件      | [验证版本](https://www.hiascend.com/zh/) |
-|-----------|--------------------------------------|
-| Python    | 3.8                                  |
-| driver    | Ascend HDK 23.0.0                    |
-| firmware  | Ascend HDK 23.0.0                    |
-| CANN      | CANN 7.0.0                           |
-| kernel    | CANN 7.0.0                           |
-| PyTorch   | 2.1.0                                |
-| torch_npu | release v5.0.0                       |
-| apex      | v5.0.rc3                             |
+请安装最新昇腾软件栈：[https://www.hiascend.com/zh/](https://www.hiascend.com/zh/)
+
+| 依赖软件      |
+|-----------|
+| Driver    | 
+| Firmware  | 
+| CANN      | 
+| Kernel    | 
+| PyTorch   | 
+| torch_npu | 
+| apex      | 
 
 ### 2. 安装 AscendSpeed
 
@@ -51,20 +52,6 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
  ```
 
 # 快速上手
-
-### Megatron-LM NPU 适配
-
-AscendSpeed 对 Megatron-LM
-的基本功能进行了适配，已适配如下特性（特性使用请查看[官方文档](https://github.com/NVIDIA/Megatron-LM)）：
-
-- 张量并行
-- 流水线并行
-- 序列并行
-- 重计算
-- 分布式优化器
-- 异步分布式数据并行
-
-使用方式：
 
 1. 在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行`import ascendspeed.megatron_adaptor`
 
@@ -97,27 +84,26 @@ AscendSpeed 对 Megatron-LM
     ```
 
 # 特性介绍
+| 特性 | 介绍 |
+| ----- | ----- |
+| Megatron 数据并行 | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Megatron 张量并行 | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Megatron 流水并行  | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Megatron 虚拟流水并行  | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Megatron 序列并行  | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Megatron 重计算  | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Megatron 分布式优化器  | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Megatron 异步DDP  | [link](https://github.com/NVIDIA/Megatron-LM) |
+| Ascend TP 重计算通信优化 | [link](docs/features/recomputation-communication.md) |
+| Ascend 内存碎片优化 | [link](docs/features/memory-fragmentation.md) |
+| Ascend 自适应选择重计算 | [link](docs/features/adaptive-recompute.md) |
+| Ascend 计算通信并行优化 | [link](docs/features/communication-over-computation.md) |
+| 【Prototype】Ulysses 长序列并行 | [link](docs/features/ulysses-context-parallel.md) |
+| 【Prototype】Ascend MC2 | 暂无 |
+| 【Prototype】alibi | 暂无 |
+| 【Prototype】其他昇腾亲和优化 | 暂无 |
 
-### TP重计算通信优化
-
-优化重计算中通信算子，提升模型性能。  
-具体信息请查看：[link](docs/features/recomputation-communication.md)
-
-### 内存碎片优化
-
-通过对不同生命周期的 tensor 进行分别管理，以减少显存碎片。  
-具体信息请查看：[link](docs/features/memory-fragmentation.md)
-
-### 自适应选择重计算
-
-自动调整训练显存大小，选择重计算策略，提高模型训练的性能。  
-具体信息请查看：[link](docs/features/adaptive-recompute.md)
-
-### 计算通信并行优化
-自动将LinearParallel结构中存在相互依赖且相邻的矩阵乘计算与集合通信并行掩盖执行，提高模型训练的性能。
-具体信息请查看：[link](docs/features/communication-over-computation.md)
-
-### ATB算子
+# 自定义算子
 
 | 算子                         | 介绍                                             |
 |----------------------------|------------------------------------------------|
