@@ -11,7 +11,7 @@ class TestSwapTensor(DistributedTest):
     world_size = 1
 
     def test_trans_to_cpu(self):
-        tensor_npu = torch.rand((2, 1, 5), dtype=torch.float16, requires_grad=True, device="npu:0")
+        tensor_npu = torch.rand((2, 1, 5), dtype=torch.float16, requires_grad=True, device="npu")
         wrapped_tensor = SwappableTensor(tensor_npu)
         key = time.time()
         wrapped_tensor.set_tensor(key, tensor_npu)
@@ -28,7 +28,7 @@ class TestSwapTensor(DistributedTest):
         assert wrapped_tensor.get_location() == "cpu"
 
     def test_trans_back_to_device(self):
-        tensor_npu = torch.rand((2, 2, 5), dtype=torch.float16, requires_grad=True, device="npu:0")
+        tensor_npu = torch.rand((2, 2, 5), dtype=torch.float16, requires_grad=True, device="npu")
         wrapped_tensor = SwappableTensor(tensor_npu)
         key = time.time()
         wrapped_tensor.set_tensor(key, tensor_npu)
@@ -47,7 +47,7 @@ class TestSwapTensor(DistributedTest):
         assert wrapped_tensor.get_location() == "device"
 
     def test_swap_out_by_size(self):
-        origin_tensor = torch.rand((3, 1, 5), dtype=torch.float16, requires_grad=True, device="npu:1")
+        origin_tensor = torch.rand((3, 1, 5), dtype=torch.float16, requires_grad=True, device="npu")
         wrapped_tensor = SwappableTensor(origin_tensor)
         key = time.time()
         wrapped_tensor.set_tensor(key, origin_tensor)
@@ -63,7 +63,7 @@ class TestSwapTensor(DistributedTest):
         assert wrapped_tensor.get_location() == "cpu"
 
     def test_same_tensor_before_and_after_swapping(self):
-        origin_tensor = torch.rand((10, 10, 10), dtype=torch.float16, requires_grad=True, device="npu:3")
+        origin_tensor = torch.rand((10, 10, 10), dtype=torch.float16, requires_grad=True, device="npu")
         tmp_tensor = origin_tensor.clone()
 
         wrapped_tensor = SwappableTensor(origin_tensor)
