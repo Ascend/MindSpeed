@@ -39,7 +39,7 @@
 |  开源引入  | https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/moe/sharded_moe.py |   AscendSpeed/ascendspeed/components/moe/gate.py    |          https://arxiv.org/pdf/2006.16668.pdf       | 开源引入TopKGate类实现 |
 |  开源引入  | https://github.com/tensorflow/mesh/blob/master/mesh_tensorflow/transformer/moe.py |   AscendSpeed/ascendspeed/components/moe/gate.py    |          https://arxiv.org/pdf/2202.08906.pdf       | 开源引入apply_z_loss实现 |
 |  开源引入  | https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/moe/sharded_moe.py | AscendSpeed/ascendspeed/components/moe/moe_layer.py |          https://arxiv.org/pdf/2006.16668.pdf       | 开源引入MOELayer类实现 |
-
+|  开源引入  | https://github.com/pytorch/pytorch/pull/40762/files | AscendSpeed/ascendspeed/components/moe/utils.py |    https://github.com/pytorch/pytorch/pull/40762/files    | 开源引入_AllToAll类实现 |
 
 
 ## 公开接口声明
