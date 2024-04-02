@@ -105,6 +105,8 @@ def _add_training_args(parser):
                             'The default is False.')
     group.add_argument('--context-parallel-algo', type=str, default='ulysses_cp_algo',
                        choices=['ulysses_cp_algo', 'megatron_cp_algo'], help='context parallel algorithm')
+    group.add_argument('--key-sizes-cache', action="store_true", default=False,
+                       help='Cache key sizes for getting batch which only works on fixed length dataset.')
     return parser
 
 

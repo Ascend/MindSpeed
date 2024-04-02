@@ -99,6 +99,7 @@ def exe_adaptation():
     from .core.tensor_parallel.random import _set_cuda_rng_state, backward
     from .core.tensor_parallel.layers import VocabParallelEmbeddingForward
     from .core.tensor_parallel.cross_entropy import _VocabParallelCrossEntropyForward
+    from .core.tensor_parallel.data import build_key_sizes_wrapper
     from .core.fusions.fused_layer_norm import FusedLayerNormAffineFunction, FastLayerNormFN, fused_layer_norm_affine
     from .core.fusions.fused_softmax import is_kernel_available, ScaledUpperTriangMaskedSoftmax, ScaledMaskedSoftmax, \
         ScaledSoftmax, forward_fused_softmax
@@ -115,6 +116,7 @@ def exe_adaptation():
     megatron.core.tensor_parallel.random.CheckpointFunction.backward = backward
     megatron.core.tensor_parallel.layers.VocabParallelEmbedding.forward = VocabParallelEmbeddingForward
     megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.forward = _VocabParallelCrossEntropyForward
+    megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries = build_key_sizes_wrapper(megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries)
     megatron.core.fusions.fused_layer_norm.FusedLayerNormAffineFunction = FusedLayerNormAffineFunction
     megatron.core.fusions.fused_layer_norm.FastLayerNormFN = FastLayerNormFN
     megatron.core.fusions.fused_softmax.ScaledUpperTriangMaskedSoftmax = ScaledUpperTriangMaskedSoftmax
