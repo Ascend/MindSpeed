@@ -357,7 +357,10 @@ def ParallelAttention_wrapper(fn):
         # qkv bias
         bias = _args.add_qkv_bias or _args.add_bias_linear
         if args[0].context_parallel_size > 1 and args[0].context_parallel_algo == 'ulysses_cp_algo':
-            self.core_attention = UlyssesContextAttention(self.core_attention, mpu.get_context_parallel_group())
+            if self.use_flash_attn:
+                self.core_attention_flash = UlyssesContextAttention(self.core_attention_flash, mpu.get_context_parallel_group())
+            else:
+                self.core_attention = UlyssesContextAttention(self.core_attention, mpu.get_context_parallel_group())
         self.query_key_value = tensor_parallel.ColumnParallelLinear(
             config.hidden_size,
             query_projection_size + 2 * kv_projection_size,
