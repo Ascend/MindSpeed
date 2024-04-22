@@ -9,5 +9,4 @@ class LcalOpBuilder(AtbOpBuilder):
 
     def sources(self):
         return ['ops/csrc/atb/lcal_coc.cpp',
-                'ops/csrc/atb/utils/atb_adapter.cpp',
-                'ops/csrc/atb/utils/adapter.cpp']
+                'ops/csrc/atb/utils/atb_adapter.cpp']

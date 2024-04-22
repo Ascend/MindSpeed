@@ -5,7 +5,7 @@
 AscendSpeed 是针对华为昇腾设备的大模型加速库。
 
 大模型训练是一种非常复杂的过程，涉及到许多技术和挑战，其中大模型训练需要大量的显存资源是一个难题，对计算卡提出了不小的挑战。
-为了在单个计算卡显存资源不足时，可以通过多张计算卡进行计算，业界出现了类似 Megatron、DeepSpeed 等第三方大模型加速库，对模型、输入数据等进行切分并分配到不同的计算卡上，最后在通过集合通信对结果进行汇总。
+为了在单个计算卡显存资源不足时，可以通过多张计算卡进行计算，业界出现了类似 Megatron、DeepSpeed 等第三方大模型加速库，对模型、输入数据等进行切分并分配到不同的计算卡上，最后再通过集合通信对结果进行汇总。
 
 昇腾提供 AscendSpeed 加速库，使能客户大模型业务快速迁移至昇腾设备，并且支持昇腾专有算法，确保开箱可用。
 
@@ -64,7 +64,9 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
      from typing import Union
     ```
 
-2. 在 Megatron-LM 目录下修改`pretrain_gpt`文件，在model_provider函数中删除`assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"`。
+2. 在 Megatron-LM 目录下修改`pretrain_gpt`
+   文件，在model_provider函数中删除`assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"`
+   。
     ```diff
     else:
     -   assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"
@@ -84,6 +86,7 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
     ```
 
 # 特性介绍
+
 | 特性 | 介绍 |
 | ----- | ----- |
 | Megatron 数据并行 | [link](https://github.com/NVIDIA/Megatron-LM) |
@@ -108,14 +111,8 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
 | 算子                         | 介绍                                             |
 |----------------------------|------------------------------------------------|
 | npu_dropout_add_layer_norm | [link](docs/ops/npu_dropout_add_layer_norm.md) |
-| 【Prototype】pad_seqlen                 | [link](docs/ops/pad_seqlen.md)                 |
 | 【Prototype】rms_norm                   | [link](docs/ops/rms_norm.md)                   |
 | 【Prototype】swiglu                     | [link](docs/ops/swiglu.md)                     |
-| 【Prototype】unpad_gen_attention_mask   | [link](docs/ops/unpad_gen_attention_mask.md)   |
-| 【Prototype】unpad_rope                 | [link](docs/ops/unpad_rope.md)                 |
-| 【Prototype】unpad_seqlen               | [link](docs/ops/unpad_seqlen.md)               |
-| 【Prototype】unpad_softmax              | [link](docs/ops/unpad_softmax.md)              |
-| 【Prototype】unpad_strided_batch_matmul | [link](docs/ops/unpad_strided_batch_matmul.md) |
 | 【Prototype】lcal_coc                   | [link](docs/ops/lcal_coc.md)                   |
 
 # 安全声明
