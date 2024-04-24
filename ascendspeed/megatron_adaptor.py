@@ -108,7 +108,11 @@ def exe_adaptation():
     from .core.fusions.rotary_pos_embedding import apply_fused_rotary_pos_emb
     from .core.fusions.rotary_pos_embedding import RotaryEmbedding_wrapper
     from .model.transformer import core_attention_wrapper, core_attention_forward, ParallelAttention_wrapper
+    from .model.module import shared_embedding_or_output_weight_wrapper
 
+    megatron.model.module.MegatronModule.shared_embedding_or_output_weight = shared_embedding_or_output_weight_wrapper(
+        megatron.model.module.MegatronModule.shared_embedding_or_output_weight
+    )
     megatron.core.pipeline_parallel.p2p_communication._batched_p2p_ops = _batched_p2p_ops  # send recv bug
     megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_with_interleaving = forward_backward_pipelining_with_interleaving # context parallel bug
     megatron.core.pipeline_parallel.schedules.get_tensor_shapes = get_tensor_shapes # context parallel bug
