@@ -99,6 +99,7 @@ def top1gating(logits: Tensor, config: Config) -> Tuple[Tensor, Tensor, Tensor, 
 
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
+
 def apply_aux_loss(config, gates, mask1):
     num_experts = int(gates.shape[1])
     me = torch.mean(gates, dim=0)
@@ -110,7 +111,7 @@ def apply_aux_loss(config, gates, mask1):
     return gates, l_aux
 
 def apply_z_loss(config, logits):
-        """Encourages the router's logits to remain small to enhance stability.
+    """Encourages the router's logits to remain small to enhance stability.
         Please refer to the ST-MoE paper (https://arxiv.org/pdf/2202.08906.pdf) for details.
 
         Args:
@@ -118,11 +119,12 @@ def apply_z_loss(config, logits):
 
         Returns:
             torch.Tensor: The logits after applying the z-loss.
-        """
+    """
         if config.z_loss_coef > 0:
             z_loss = torch.mean(torch.square(torch.logsumexp(logits, dim=-1))) * config.z_loss_coef
             logits = MoEAuxLossAutoScaler.apply(logits, z_loss)
         return logits
+
 
 def top2gating(logits: Tensor, config: Config) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     """Implements Top2Gating on logits."""

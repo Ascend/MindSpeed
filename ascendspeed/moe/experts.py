@@ -5,8 +5,8 @@
 
 # copied from https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/moe/experts.py
 # reworked/refactored some parts to make it run.
-import torch
 import copy
+import torch
 
 
 class Experts(torch.nn.Module):
