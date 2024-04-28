@@ -64,7 +64,7 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
      from typing import Union
     ```
 
-2. 在 Megatron-LM 目录下修改`pretrain_gpt`
+2. 在 Megatron-LM 目录下修改`pretrain_gpt.py`
    文件，在model_provider函数中删除`assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"`
    。
     ```diff
