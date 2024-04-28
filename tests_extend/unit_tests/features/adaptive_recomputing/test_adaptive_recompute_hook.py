@@ -1,3 +1,4 @@
+import torch
 from ascendspeed import megatron_adaptor
 import torch.nn as nn
 from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute import get_adaptive_recomputing
@@ -127,5 +128,7 @@ class TestRecursiveHook(DistributedTest):
             recomputing.pre_hook_func(current_ctx, prefix_name, name)
 
             assert 'peak_memory' not in current_ctx
-            recomputing.post_hook_func(current_ctx, prefix_name, name)
+            args_tensor = torch.rand((10, 10, 10), dtype=torch.float16, requires_grad=True, device=torch.npu.current_device())
+            output_tensor = torch.rand((10, 10, 10), dtype=torch.float16, requires_grad=True, device=torch.npu.current_device())
+            recomputing.post_hook_func(current_ctx, prefix_name, name, args_tensor, output_tensor)
             assert current_ctx['peak_memory'] is not None

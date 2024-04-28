@@ -2,6 +2,7 @@ import sys
 import time
 from copy import deepcopy
 from functools import wraps
+from collections.abc import Iterable
 
 import acl
 import numpy as np
@@ -376,20 +377,12 @@ class AdaptiveRecompute:
         torch.npu.reset_max_memory_allocated()
         state['memory'] = memory_info['used_memory']
         state['time'] = time.time()
-        size = 0
-        for arg in args:
-            if isinstance(arg, torch.Tensor):
-                size += self._cal_tensor_size(arg)
-            elif isinstance(arg, tuple) or isinstance(arg, list):
-                for t in arg:
-                    if isinstance(t, torch.Tensor):
-                        size += self._cal_tensor_size(t)
-        state['input'] = size
+        state['input'] = self._cal_input_output_size(args)
         if self.profiling_step >= self.solve_graph_at_step \
                 and not get_adaptive_recomputing_policy().is_find_target_device_memory:
             get_memory_peak_prediction().check_forward_mem_info(state, layer_name, memory_info)
 
-    def post_hook_func(self, state, prefix, name, *args, **kargs):
+    def post_hook_func(self, state, prefix, name, args, output):
         torch.npu.synchronize()
         layer_name = prefix + "." + name if prefix != "" else name
         SwapManager().cur_pre_hook_layer_name = ""
@@ -401,7 +394,9 @@ class AdaptiveRecompute:
         memory_info['memory'] = state['memory']
         state['peak_memory'] = get_memory_peak_prediction().get_peak_memory(layer_name, memory_info,
                                                                             self.profiling_step <= self.solve_graph_at_step)
-        state['memory_bytes'] = (memory_info['used_memory'] - state['memory'])
+        output_memory = self._cal_input_output_size(output)
+        state['memory_bytes'] = memory_info['used_memory'] - state['memory'] - output_memory
+        state['input'] += output_memory
         state['memory'] = state['memory_bytes'] // self.unit_mb
         if 'pre_total_time' in state:
             state['forward_cnt'] += 1
@@ -436,8 +431,8 @@ class AdaptiveRecompute:
         return hook
 
     def forward_post_hook(self, prefix, name, ctx):
-        def hook(module, *args, **kargs):
-            self.post_hook_func(ctx, prefix, name, *args, **kargs)
+        def hook(module, args, output):
+            self.post_hook_func(ctx, prefix, name, args, output)
             if 'module' in self.context:
                 self.context['module'].pop()
 
@@ -616,11 +611,27 @@ class AdaptiveRecompute:
         if module not in self.allowed_recomputing_module:
             self.allowed_recomputing_module.append(module)
 
-    def _cal_tensor_size(self, tensor):
-        try:
-            return get_tensor_mem_size(tensor) / self.unit_mb
-        except ZeroDivisionError:
-            return 0
+    def _cal_input_output_size(self, args):
+        size = 0
+        if isinstance(args, torch.Tensor):
+            size += get_tensor_mem_size(args)
+            return size // self.unit_mb
+        for arg in args:
+            if isinstance(arg, torch.Tensor):
+                size += get_tensor_mem_size(arg)
+            elif isinstance(arg, Iterable):
+                for t in arg:
+                    if isinstance(t, torch.Tensor):
+                        size += get_tensor_mem_size(t)
+                    elif t is None:
+                        pass
+                    else:
+                        print_rank_0(f"[WARNING]: unknown input/output type {str(type(t))}")
+            elif arg is None:
+                pass
+            else:
+                print_rank_0(f"[WARNING]: unknown input/output type {str(type(t))}")
+        return size // self.unit_mb
 
 
 def get_adaptive_recomputing():

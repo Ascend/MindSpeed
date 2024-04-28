@@ -334,6 +334,8 @@ class GraphSolver:
             full_recompute = True
         last_parent_layer_name = layer_module[-1]["name"]
         for layer in layer_module:
+            if "peak_memory" not in layer:
+                continue
             name = layer["name"]
             peak_memory = layer["peak_memory"]
             parent_recompute = False
