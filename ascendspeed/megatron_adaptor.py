@@ -93,7 +93,7 @@ def exe_adaptation():
     import megatron.core.tensor_parallel
     import megatron.core.pipeline_parallel
     from .arguments import parse_args_decorator, validate_args_decorator, core_transformer_config_from_args_wrapper
-    from .core.pipeline_parallel.p2p_communication import _batched_p2p_ops
+    from .yaml_arguments import core_transformer_config_from_yaml_wrapper
     from .core.pipeline_parallel.schedules import forward_backward_pipelining_with_interleaving
     from .core.pipeline_parallel.schedules import get_tensor_shapes
     from .core.tensor_parallel.random import _set_cuda_rng_state, backward
@@ -113,7 +113,6 @@ def exe_adaptation():
     megatron.model.module.MegatronModule.shared_embedding_or_output_weight = shared_embedding_or_output_weight_wrapper(
         megatron.model.module.MegatronModule.shared_embedding_or_output_weight
     )
-    megatron.core.pipeline_parallel.p2p_communication._batched_p2p_ops = _batched_p2p_ops  # send recv bug
     megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_with_interleaving = forward_backward_pipelining_with_interleaving # context parallel bug
     megatron.core.pipeline_parallel.schedules.get_tensor_shapes = get_tensor_shapes # context parallel bug
     megatron.core.tensor_parallel.random._set_cuda_rng_state = _set_cuda_rng_state  # default_generators need replace after set_device
@@ -177,6 +176,8 @@ def exe_adaptation():
     megatron.arguments.parse_args = parse_args_decorator(megatron.arguments.parse_args)
     megatron.initialize.validate_args = validate_args_decorator(megatron.initialize.validate_args)
     megatron.arguments.core_transformer_config_from_args = core_transformer_config_from_args_wrapper(megatron.arguments.core_transformer_config_from_args)
+    megatron.training.yaml_arguments.core_transformer_config_from_yaml = core_transformer_config_from_yaml_wrapper(
+        megatron.training.yaml_arguments.core_transformer_config_from_yaml)
     megatron.core.tensor_parallel.layers.RowParallelLinear.forward = row_parallel_nocomm_optimizer_wrapper(
         megatron.core.tensor_parallel.layers.RowParallelLinear.forward)
     megatron.model.transformer.ParallelTransformerLayer.forward = parallel_transformer_layer_forward_wrapper(
