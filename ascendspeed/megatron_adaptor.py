@@ -121,6 +121,9 @@ def exe_adaptation():
     megatron.core.tensor_parallel.layers.VocabParallelEmbedding.forward = VocabParallelEmbeddingForward
     megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.forward = _VocabParallelCrossEntropyForward
     megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries = build_key_sizes_wrapper(megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries)
+    import megatron.core.fusions
+    import megatron.core.fusions.fused_layer_norm
+    import megatron.core.fusions.fused_softmax
     megatron.core.fusions.fused_layer_norm.FusedLayerNormAffineFunction = FusedLayerNormAffineFunction
     megatron.core.fusions.fused_layer_norm.FastLayerNormFN = FastLayerNormFN
     megatron.core.fusions.fused_softmax.ScaledUpperTriangMaskedSoftmax = ScaledUpperTriangMaskedSoftmax
@@ -128,6 +131,7 @@ def exe_adaptation():
     megatron.core.fusions.fused_softmax.ScaledSoftmax = ScaledSoftmax
     megatron.core.fusions.fused_softmax.FusedScaleMaskSoftmax.is_kernel_available = is_kernel_available  # replace kernel check
     megatron.core.fusions.fused_softmax.FusedScaleMaskSoftmax.forward_fused_softmax = forward_fused_softmax
+    import megatron.core.transformer.attention
     megatron.core.transformer.attention.apply_rotary_pos_emb = apply_fused_rotary_pos_emb
     megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__ = RotaryEmbedding_wrapper(
         megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__
