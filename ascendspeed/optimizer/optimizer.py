@@ -77,47 +77,6 @@ def mixed_precision_optimizer_step(self, args, timers):
     return True, grad_norm, num_zeros_in_grad
 
 
-@torch.no_grad()
-def fp32_optimizer_step(self, args, timers):
-    """Clip gradients (if needed) and step the base optimizer.
-    Always return successful since there is no overflow."""
-
-    # Copy main_grads to grads.
-    timers('optimizer-copy-to-main-grad', log_level=1).start(
-        barrier=args.barrier_with_L1_time)
-    if self.params_have_main_grad:
-        for param_group in self.optimizer.param_groups:
-            for param in param_group['params']:
-                param.grad = param.main_grad
-
-    timers('optimizer-copy-to-main-grad').stop()
-
-    # Clip gradients.
-    timers('optimizer-clip-main-grad', log_level=1).start(
-        barrier=args.barrier_with_L1_time)
-    grad_norm = None
-    if self.clip_grad > 0.0:
-        grad_norm = self.clip_grad_norm(self.clip_grad,
-                                        self.check_for_nan_in_grad)
-    timers('optimizer-clip-main-grad').stop()
-
-    # count the zeros in the grads
-    timers('optimizer-count-zeros', log_level=1).start(
-        barrier=args.barrier_with_L1_time)
-    num_zeros_in_grad = self.count_zeros() if \
-        self.log_num_zeros_in_grad else None
-    timers('optimizer-count-zeros').stop()
-
-    # Update parameters.
-    timers('optimizer-inner-step', log_level=1).start(
-        barrier=args.barrier_with_L1_time)
-    self.optimizer.step()
-    timers('optimizer-inner-step').stop()
-
-    # No overflow for FP32 optimizer.
-    return True, grad_norm, num_zeros_in_grad
-
-
 def reuse_fp32_param_init_wrapper(init_func):
     @wraps(init_func)
     def reuse_fp32_param_init(*args, **kwargs):
