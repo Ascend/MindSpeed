@@ -93,7 +93,6 @@ def exe_adaptation():
     import megatron.core.tensor_parallel
     import megatron.core.pipeline_parallel
     from .arguments import parse_args_decorator, validate_args_decorator, core_transformer_config_from_args_wrapper
-    from .yaml_arguments import core_transformer_config_from_yaml_wrapper
     from .core.pipeline_parallel.schedules import forward_backward_pipelining_with_interleaving
     from .core.pipeline_parallel.schedules import get_tensor_shapes
     from .core.tensor_parallel.random import _set_cuda_rng_state, backward
@@ -176,8 +175,6 @@ def exe_adaptation():
     megatron.arguments.parse_args = parse_args_decorator(megatron.arguments.parse_args)
     megatron.initialize.validate_args = validate_args_decorator(megatron.initialize.validate_args)
     megatron.arguments.core_transformer_config_from_args = core_transformer_config_from_args_wrapper(megatron.arguments.core_transformer_config_from_args)
-    megatron.training.yaml_arguments.core_transformer_config_from_yaml = core_transformer_config_from_yaml_wrapper(
-        megatron.training.yaml_arguments.core_transformer_config_from_yaml)
     megatron.core.tensor_parallel.layers.RowParallelLinear.forward = row_parallel_nocomm_optimizer_wrapper(
         megatron.core.tensor_parallel.layers.RowParallelLinear.forward)
     megatron.model.transformer.ParallelTransformerLayer.forward = parallel_transformer_layer_forward_wrapper(
