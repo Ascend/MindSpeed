@@ -1,3 +1,8 @@
+# coding=utf-8
+# Copyright (c) 2024, HUAWEI CORPORATION. All rights reserved.
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
 from typing import Any, Tuple
 import torch
 from torch import Tensor
@@ -24,8 +29,9 @@ def single_all_to_all(input_, scatter_idx, gather_idx, group):
     torch.distributed.all_to_all_single(output, input_t, group=group)
 
     # if scattering the seq-dim, transpose the heads back to the original dimension
+    # e.g., [cp, s/cp, b, n/cp, d] -> [s/cp, b, cp, n/cp, d]
     if scatter_idx < 2:
-        output = output.transpose(0, 1).contiguous()
+        output = output.transpose(0, 1).transpose(1, 2).contiguous()
 
     return output.reshape(
         inp_shape[: gather_idx] + [inp_shape[gather_idx] * seq_world_size, ] + inp_shape[gather_idx + 1:]).contiguous()

@@ -17,11 +17,13 @@ def initialize_model_parallel(
     pipeline_model_parallel_size=1,
     virtual_pipeline_model_parallel_size=None,
     pipeline_model_parallel_split_rank=None,
+    context_parallel_size=1,
 ):
     ps.destroy_model_parallel()
     ps.initialize_model_parallel(
-        tensor_model_parallel_size,
-        pipeline_model_parallel_size,
-        virtual_pipeline_model_parallel_size,
-        pipeline_model_parallel_split_rank,
+        tensor_model_parallel_size=tensor_model_parallel_size,
+        pipeline_model_parallel_size=pipeline_model_parallel_size,
+        virtual_pipeline_model_parallel_size=virtual_pipeline_model_parallel_size,
+        pipeline_model_parallel_split_rank=pipeline_model_parallel_split_rank,
+        context_parallel_size=context_parallel_size,
     )
