@@ -648,9 +648,10 @@ def is_activate_adaptive_recompute():
                      "\"adaptive-recompute-device-swap\", or set param: \"adaptive-recompute-device-size\".")
         return False, profiling_step
     if all_args.recompute_granularity is not None or all_args.recompute_method is not None:
-        print_rank_0("[ERROR] failed to activate adaptive selective recompute train, please check whether the "
-                     "recomputing args switch is turned on: \"recompute_granularity\", \"recompute_method\".")
-        return False, profiling_step
+        print_rank_0("[WARNING] if activate adaptive selective recompute, recomputing args switch "
+                     "\"recompute_granularity\" and \"recompute_method\" will be turned off.")
+        all_args.recompute_granularity = None
+        all_args.recompute_method = None
     max_profiling_step = all_args.train_iters // 10
     profiling_step = all_args.adaptive_recompute_profiling_step
     if profiling_step < 5 or profiling_step > max_profiling_step:

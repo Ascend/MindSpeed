@@ -27,7 +27,7 @@ SwapManager 能需要内存管理适配 PTA 的 NPUPluggableAllocator 接口拦�
 
 ## 使用方法
 
-1. 启用自适应选择重计算，请首先打开设置环境变量`export ADAPTIVE_RECOMPUTING=1`，并且脚本中添加`--adaptive-recompute-device-swap`标志开启自适应选择重计算策略。由于自适应选择性重计算与全重计算参数冲突，使用自适应选择性重计算请移除全重计算相关的三个参数：`--recompute-method`、`--recompute-granularity`以及`--recompute-num-layers`。
+1. 设置环境变量`export ADAPTIVE_RECOMPUTING=1`，并在训练脚本中添加`--adaptive-recompute-device-swap`。注意：若同时开启了自适应选择性重计算和全重计算，全重计算开关`--recompute-method`和`--recompute-granularity`将会失效。
 2. （可选）支持手动调整训练内存大小来自动选择重计算策略，请使用`--adaptive-recompute-device-size`进行设置来指定自适应选择重计算策略的训练内存大小（单位：MB）。内存>0为有效内存，最大内存限度为device最大内存。在该范围内自适应重计算才可以进行最优策略搜寻，不在有效内存范围内会使用读取到的device最大内存信息作为默认值。需要注意的是内存设定较小时，性能会与全重计算一致。该方式如果发生OOM，您需要重新选择一个新的内存值来重启模型训练。您也可以通过二分法的方式获得最优解，对该特性不熟悉请勿使用此选项。使用此选项请参考[自适应选择重计算Wiki](https://gitee.com/ascend/ModelLink/wikis/Algorithm%20Introduction/Auto%20Selective%20Recomputing)。
 3. （可选）支持设置停止profiling的训练step，请使用`--adaptive-recompute-profiling-step`进行设置。该参数需要设置为>0的整数。默认在第10步停止profiling。若该值<=0，则采用默认值10，推荐设置该值>5。当step<5或者>总步数的1/10时，会有告警信息，但不影响正常训练，不会对性能和精度有任何影响。
 
