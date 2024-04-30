@@ -152,7 +152,7 @@ def fp32_tensors_to_bf16_tensors(int32_tensors, bf16_fp32_tensors):
         if bf16_fp32_tensor.numel() == 0:
             return  
         int32_tensor.add_(32768)
-        bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(-1,2).transpose(1,0).contiguous())
+        bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(-1, 2).transpose(1, 0).reshape(-1).contiguous())
 
 
 def bf16_tensors_to_fp32_tensors(int32_tensors, bf16_fp32_tensors):
@@ -168,5 +168,5 @@ def bf16_tensors_to_fp32_tensors(int32_tensors, bf16_fp32_tensors):
     for int32_tensor, bf16_fp32_tensor in zip(int32_tensors, bf16_fp32_tensors):
         if bf16_fp32_tensor.numel() == 0:
             return
-        bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(2, -1).transpose(1,0).contiguous())
+        bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(2, -1).transpose(1, 0).reshape(-1).contiguous())
         int32_tensor.sub_(32768)
