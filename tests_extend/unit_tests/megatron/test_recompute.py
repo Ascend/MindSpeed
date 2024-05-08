@@ -1,7 +1,7 @@
 import pytest
 import torch
 import torch_npu
-from ascendspeed import megatron_adaptor
+from mindspeed import megatron_adaptor
 
 from commons import set_random_seed, initialize_model_parallel
 from unit_tests.common import DistributedTest

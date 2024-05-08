@@ -52,5 +52,5 @@ Tried to allocated 3384.00 MiB (NPU 2; 61.22 GiB total capacity; 53.87 GiB alrea
 由于该特性在内存充足时倾向于新申请内存，而非将已申请的内存空间碎片化，因此在少量情况下可能和hccl抢占内存，hccl在内存不足时无法通过torch释放额外预留的空闲空间，<br />
 从而报hccl内存不足的错误。此问题可以通过设置torch_npu.npu.set_per_process_memory_fraction接口来设置允许torch占用的内存上限来解决该问题 <br />
 **接口设置**：<br />
-位置：AscendSpeed/ascendspeed/core/memory/memory_fragmentation/memory_recorder.py <br />
+位置：MindSpeed/mindspeed/core/memory/memory_fragmentation/memory_recorder.py <br />
 添加：torch_npu.npu.set_per_process_memory_fraction(x)，其中x为想要限制torch占用内存的最高比例，例如x设置为0.94，表示torch最多占用"单卡内存*0.94"的内存 <br />

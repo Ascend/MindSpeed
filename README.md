@@ -1,13 +1,11 @@
-<p align="center"> <img src="sources/images/logo.png" height="90px" width="400px"></p>
-
 # 简介
 
-AscendSpeed 是针对华为昇腾设备的大模型加速库。
+MindSpeed 是针对华为昇腾设备的大模型加速库。
 
 大模型训练是一种非常复杂的过程，涉及到许多技术和挑战，其中大模型训练需要大量的显存资源是一个难题，对计算卡提出了不小的挑战。
 为了在单个计算卡显存资源不足时，可以通过多张计算卡进行计算，业界出现了类似 Megatron、DeepSpeed 等第三方大模型加速库，对模型、输入数据等进行切分并分配到不同的计算卡上，最后再通过集合通信对结果进行汇总。
 
-昇腾提供 AscendSpeed 加速库，使能客户大模型业务快速迁移至昇腾设备，并且支持昇腾专有算法，确保开箱可用。
+昇腾提供 MindSpeed 加速库，使能客户大模型业务快速迁移至昇腾设备，并且支持昇腾专有算法，确保开箱可用。
 
 # 安装
 
@@ -25,21 +23,21 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
 | torch_npu | 
 | apex      | 
 
-### 2. 安装 AscendSpeed
+### 2. 安装 MindSpeed
 
-如有旧版本 AscendSpeed 请先卸载，再进行安装操作。
+如有旧版本 MindSpeed 请先卸载，再进行安装操作。
 
 方式一：从 git 直接安装
 
  ```shell
- pip install git+https://gitee.com/ascend/AscendSpeed.git
+ pip install git+https://gitee.com/ascend/MindSpeed.git
  ```
 
 方式二：下载源码安装
 
  ```shell
- git clone https://gitee.com/ascend/AscendSpeed.git
- cd AscendSpeed
+ git clone https://gitee.com/ascend/MindSpeed.git
+ cd MindSpeed
  pip install -e .
  ```
 
@@ -53,12 +51,12 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
 
 # 快速上手
 
-1. 在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行`import ascendspeed.megatron_adaptor`
+1. 在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行`import mindspeed.megatron_adaptor`
 
     ```diff
      import os
      import torch
-    +import ascendspeed.megatron_adaptor
+    +import mindspeed.megatron_adaptor
      from torch import Tensor
      from functools import partial
      from typing import Union
@@ -117,4 +115,4 @@ AscendSpeed 是针对华为昇腾设备的大模型加速库。
 
 # 安全声明
 
-[AscendSpeed 安全声明](SECURITYNOTE.md)
+[MindSpeed 安全声明](SECURITYNOTE.md)

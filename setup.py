@@ -6,17 +6,17 @@ import subprocess
 import setuptools
 
 if sys.version_info < (3,):
-    raise Exception("Python 2 is not supported by AscendSpeed.")
+    raise Exception("Python 2 is not supported by MindSpeed.")
 
-__description__ = 'AscendSpeed for LLMs of Ascend'
+__description__ = 'MindSpeed for LLMs of Ascend'
 __version__ = '0.0.1'
 __author__ = 'Ascend'
-__long_description__ = 'AscendSpeed for LLMs of Ascend'
-__url__ = 'https://gitee.com/ascend/AscendSpeed'
-__download_url__ = 'https://gitee.com/ascend/AscendSpeed/release'
+__long_description__ = 'MindSpeed for LLMs of Ascend'
+__url__ = 'https://gitee.com/ascend/MindSpeed'
+__download_url__ = 'https://gitee.com/ascend/MindSpeed/release'
 __keywords__ = 'Ascend, langauge, deep learning, NLP'
-__license__ = 'See https://gitee.com/ascend/AscendSpeed'
-__package_name__ = 'ascendspeed'
+__license__ = 'See https://gitee.com/ascend/MindSpeed'
+__package_name__ = 'mindspeed'
 __contact_names__ = 'Ascend'
 
 try:
@@ -104,7 +104,7 @@ def atb_package():
         raise Exception("Download Failed")
 
     print("Extracting ATB package...")
-    extract_path = os.path.join(os.getcwd(), "ascendspeed", "atb")
+    extract_path = os.path.join(os.getcwd(), "mindspeed", "atb")
     os.makedirs(extract_path, exist_ok=True)
     absolute_atb_path = os.path.join(os.getcwd(), atb_name)
     subprocess.run(['./' + atb_name, '--noexec', '--extract=' + extract_path])
@@ -113,7 +113,7 @@ def atb_package():
     with os.fdopen(os.open(init_file_path, flags, modes), 'w') as f:
         pass
         
-    manifest_content = "recursive-include ascendspeed/atb *"
+    manifest_content = "recursive-include mindspeed/atb *"
     with os.fdopen(os.open('MANIFEST.in', flags, modes), 'w') as f:
         f.write(manifest_content)
 
@@ -160,7 +160,7 @@ setuptools.setup(
     include_package_data=True,
     install_package_data=True,
     exclude_package_data={'': ['**/*.md']},
-    package_data={'ascendspeed': ['**/*.h', '**/*.cpp']},
+    package_data={'mindspeed': ['**/*.h', '**/*.cpp']},
     zip_safe=False,
     # PyPI package information.
     keywords=__keywords__,

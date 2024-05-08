@@ -21,20 +21,21 @@
 - dgammma：必选输出，数据类型float32
 
 ## 案例
+
 ```python
     import os
-    import torch
-    import torch_npu
-    import numpy as np
-    import math
-	from ascendspeed.op_builder import RmsNormOpBuilder
-    
-    x = torch.rand([2,4]).to(torch.float).npu()
-    gamma = torch.rand([4]).to(torch.float).npu()
-    // 正向接口案例
-    ascendspeed_ops = RmsNormOpBuilder.load()
-    out = ascendspeed_ops.rms_norm(x, gamma) 
-    // 反向接口案例
-    out.backward(torch.ones(out.shape).npu())
+import torch
+import torch_npu
+import numpy as np
+import math
+from mindspeed.op_builder import RmsNormOpBuilder
+
+x = torch.rand([2, 4]).to(torch.float).npu()
+gamma = torch.rand([4]).to(torch.float).npu()
+// 正向接口案例
+mindspeed_ops = RmsNormOpBuilder.load()
+out = mindspeed_ops.rms_norm(x, gamma)
+// 反向接口案例
+out.backward(torch.ones(out.shape).npu())
 
 ```
