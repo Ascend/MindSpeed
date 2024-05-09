@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from functools import wraps
 import argparse
 
@@ -171,9 +172,18 @@ def validate_args_decorator(validate_args):
             if not hasattr(args, "optimize_recomp_communication_status"):
                 args.optimize_recomp_communication_status = 0
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'ulysses_cp_algo':
-            head, remainder = divmod(args.num_attention_heads, args.context_parallel_size)
-            assert head >= 1 and remainder == 0, f"num_attention_heads must be divisible by context_parallel_size"
+            head, remainder = divmod(args.num_attention_heads, args.context_parallel_size * args.tensor_model_parallel_size)
+            assert head >= 1 and remainder == 0, f"num_attention_heads must be divisible by context_parallel_size*tensor_model_parallel_size"
             args.use_flash_attn = True
+        if args.context_parallel_size > 1 and args.context_parallel_algo == 'megatron_cp_algo':
+            raise AssertionError('NPU not supported megatron_cp_algo in version 1.0.')
+        if args.transformer_impl == 'transformer_engine':
+            args.transformer_impl = 'local'
+        if args.fp8:
+            raise AssertionError('NPU not supported FP8.')
+        if args.tp_comm_overlap:
+            args.tp_comm_overlap = False
+
     return wrapper
 
 

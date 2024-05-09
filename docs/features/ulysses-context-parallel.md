@@ -14,7 +14,7 @@ Ulysses 将各个样本在序列维度上分割给参与的GPU。然后，在 at
 
 ## 使用场景
 
-num_head 既要能被 tp_size 整除，也要能被 cp_size 整除。
+num_head 要能被 tp_size * cp_size 整除。
 
 ## 使用方法
 
