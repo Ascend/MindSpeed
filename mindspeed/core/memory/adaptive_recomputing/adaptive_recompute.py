@@ -55,6 +55,7 @@ class AdaptiveRecomputePolicy:
         self.hccl_memory = 0
 
         self.remove_swap_manager_hook_step = 0
+        torch_npu.npu.init()
         self.last_num_alloc_retries = torch.npu.memory_stats()["num_alloc_retries"]
         self.change_num_alloc_retries_times = 0
         self.first_non_oom_device_memory = 0
@@ -647,11 +648,6 @@ def is_activate_adaptive_recompute():
         print_rank_0("[ERROR] failed to activate adaptive selective recompute train, please add param: "
                      "\"adaptive-recompute-device-swap\", or set param: \"adaptive-recompute-device-size\".")
         return False, profiling_step
-    if all_args.recompute_granularity is not None or all_args.recompute_method is not None:
-        print_rank_0("[WARNING] if activate adaptive selective recompute, recomputing args switch "
-                     "\"recompute_granularity\" and \"recompute_method\" will be turned off.")
-        all_args.recompute_granularity = None
-        all_args.recompute_method = None
     max_profiling_step = all_args.train_iters // 10
     profiling_step = all_args.adaptive_recompute_profiling_step
     if profiling_step < 5 or profiling_step > max_profiling_step:

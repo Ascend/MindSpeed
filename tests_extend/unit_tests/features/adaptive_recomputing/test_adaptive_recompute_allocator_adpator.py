@@ -29,6 +29,7 @@ class TestPluggableAllocator:
         get_device_stats_fn = ctypes.cast(getattr(myallocator, "my_get_device_stats"), ctypes.c_void_p).value
 
         TestPluggableAllocator.new_alloc.allocator().set_get_device_stats_fn(get_device_stats_fn)
+        torch_npu.npu.init()
         assert torch.npu.memory_stats_as_nested_dict()["num_alloc_retries"] == 0
 
     def test_set_reset_peak_stats_fn(self):
