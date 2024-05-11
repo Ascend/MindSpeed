@@ -118,9 +118,6 @@ def atb_package():
         f.write(manifest_content)
 
 
-if os.getenv('ENABLE_ATB', '0') == '1':
-    atb_package()
-
 setuptools.setup(
     name=__package_name__,
     # Versions should comply with PEP440.  For a discussion on single-sourcing
@@ -167,3 +164,6 @@ setuptools.setup(
     cmdclass={},
     ext_modules=exts
 )
+
+if os.getenv('ENABLE_ATB', '0') == '1':
+    atb_package()
