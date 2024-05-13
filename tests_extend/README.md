@@ -1,6 +1,6 @@
 # Tests Usage
 
-1. Install `mindspeed`
+1. Install `ascendspeed`
     ```shell
     pip install -e .
     ```

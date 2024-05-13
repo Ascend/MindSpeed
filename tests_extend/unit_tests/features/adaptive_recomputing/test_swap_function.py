@@ -1,8 +1,8 @@
 import time
 import torch
-from mindspeed import megatron_adaptor
-from mindspeed.core.memory.adaptive_recomputing.swappable_tensor import SwappableTensor
-from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager
+from ascendspeed import megatron_adaptor
+from ascendspeed.core.memory.adaptive_recomputing.swappable_tensor import SwappableTensor
+from ascendspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager
 
 from unit_tests.common import DistributedTest
 

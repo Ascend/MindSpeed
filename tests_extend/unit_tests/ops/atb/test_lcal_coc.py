@@ -67,7 +67,7 @@ class TestCoC(DistributedTest):
     # @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.skip(reason='this UT need update for new cann version')
     def test_coc_matmul_all_reduce(self):
-        from mindspeed.ops.lcal_functional import coc_ops
+        from ascendspeed.ops.lcal_functional import coc_ops
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]
@@ -94,7 +94,7 @@ class TestCoC(DistributedTest):
     # @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.skip(reason='this UT need update for new cann version')
     def test_coc_all_gather_matmul(self):
-        from mindspeed.ops.lcal_functional import coc_ops
+        from ascendspeed.ops.lcal_functional import coc_ops
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]
@@ -121,7 +121,7 @@ class TestCoC(DistributedTest):
     # @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.skip(reason='this UT need update for new cann version')
     def test_coc_all_gather_matmul_v2(self):
-        from mindspeed.ops.lcal_functional import coc_ops
+        from ascendspeed.ops.lcal_functional import coc_ops
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]
@@ -151,7 +151,7 @@ class TestCoC(DistributedTest):
     # @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.skip(reason='this UT need update for new cann version')
     def test_coc_matmul_reduce_scatter(self):
-        from mindspeed.ops.lcal_functional import coc_ops
+        from ascendspeed.ops.lcal_functional import coc_ops
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]

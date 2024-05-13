@@ -30,9 +30,9 @@
 
 ## 使用方法 —— 在ModelLink中进行整网训练
 
-计算通信并行优化算法通过在ModelLink的训练脚本中配置环境变量来进行使能，需要安装mindspeed。
+计算通信并行优化算法通过在ModelLink的训练脚本中配置环境变量来进行使能，需要安装ascendspeed。
 
-当前计算通信并行有两种实现方法：python脚本使能、融合算子使能，两者选其一即可。两个方式都需要替换原Megatron框架中的ColumnParallelLinear和RowParallelLinear这两个class的forward函数，替换脚本已经根据MindSpeed指定Megatron版本进行编码和适配，位于mindspeed/core/tensor_parallel/lcal_coc/目录下。
+当前计算通信并行有两种实现方法：python脚本使能、融合算子使能，两者选其一即可。两个方式都需要替换原Megatron框架中的ColumnParallelLinear和RowParallelLinear这两个class的forward函数，替换脚本已经根据AscendSpeed指定Megatron版本进行编码和适配，位于ascendspeed/core/tensor_parallel/lcal_coc/目录下。
 
 请根据需要选择下列三种场景中的一个进行使用。（注意：计算通信并行融合算子需要安装ATB后才能使用！）
 
@@ -63,7 +63,7 @@ export USE_COC_FUSED_KERNEL=1
 
 ## CFG自定义方法
 
-用户可以自定义mindspeed/core/tensor_parallel/lcal_coc/user_config.py中的coc_cfgs字典，来达到自定义COC的部分配置。
+用户可以自定义ascendspeed/core/tensor_parallel/lcal_coc/user_config.py中的coc_cfgs字典，来达到自定义COC的部分配置。
 
 【只对通过Python脚本使能的计算通信并行实现适用】
 'matmul_soc_friendly'：是否对输入matmul的张量做transpose/padding操作，使其以NPU亲和的shape进入Matmul算子从而获得一定性能提升，默认为True；

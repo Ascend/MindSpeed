@@ -15,8 +15,8 @@
 
 import json
 import unittest
-from mindspeed import megatron_adaptor
-from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_solver import GraphSolver
+from ascendspeed import megatron_adaptor
+from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute_solver import GraphSolver
 
 from unit_tests.common import DistributedTest
 

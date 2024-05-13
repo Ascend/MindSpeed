@@ -1,7 +1,7 @@
 import os
 import pytest
 import torch
-import mindspeed.megatron_adaptor
+import ascendspeed.megatron_adaptor
 from megatron.core.distributed.grad_buffer import Bucket
 from megatron.core import parallel_state
 from unit_tests.common import DistributedTest

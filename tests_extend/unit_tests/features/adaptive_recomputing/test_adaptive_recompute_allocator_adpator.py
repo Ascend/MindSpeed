@@ -2,7 +2,7 @@ import ctypes
 import torch
 
 import torch_npu
-from mindspeed.op_builder import AdaptiveRecomputingPluggableAllocatorBuilder
+from ascendspeed.op_builder import AdaptiveRecomputingPluggableAllocatorBuilder
 
 
 class TestPluggableAllocator:
