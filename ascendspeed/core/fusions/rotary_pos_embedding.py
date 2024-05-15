@@ -10,9 +10,12 @@ def apply_fused_rotary_pos_emb(t, freqs):
     args = get_args()
 
     if args.use_fused_rotary_pos_emb:
-        cos = torch.cos(freqs)
-        sin = torch.sin(freqs)
-        return torch_npu.npu_rotary_mul(t, cos, sin).to(t.dtype)
+        rot_dim = freqs.shape[-1]
+        t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
+        cos_ = torch.cos(freqs).to(t.dtype)
+        sin_ = torch.sin(freqs).to(t.dtype)
+        t = torch_npu.npu_rotary_mul(t, cos_, sin_).to(t.dtype)
+        return torch.cat((t, t_pass), dim=-1)
 
     rot_dim = freqs.shape[-1]
     t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
