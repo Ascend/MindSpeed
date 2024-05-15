@@ -1,3 +1,13 @@
 pybind11
 ninja
 wheel
+numpy
+six
+regex
+torchvision==0.16.0
+decorator
+attrs
+psutil
+einops
+scipy
+pytest
