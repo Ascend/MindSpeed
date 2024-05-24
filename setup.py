@@ -92,7 +92,7 @@ def atb_package():
         raise Exception("Unsupported architecture.")
 
     abi_version = get_abi_version()
-    
+
     # atb蓝区下载链接，后续会依据版本号变动
     atb_url = f"https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/cache/test/Ascend-mindie-atb_1.0.RC1_linux-{arch}_abi{abi_version}.run"
     atb_name = atb_url.split('/')[-1]
@@ -108,15 +108,25 @@ def atb_package():
     os.makedirs(extract_path, exist_ok=True)
     absolute_atb_path = os.path.join(os.getcwd(), atb_name)
     subprocess.run(['./' + atb_name, '--noexec', '--extract=' + extract_path])
-    
+
     init_file_path = os.path.join(extract_path, '__init__.py')
     with os.fdopen(os.open(init_file_path, flags, modes), 'w') as f:
         pass
-        
+
     manifest_content = "recursive-include ascendspeed/atb *"
     with os.fdopen(os.open('MANIFEST.in', flags, modes), 'w') as f:
         f.write(manifest_content)
 
+
+def package_files(directory):
+    paths = []
+    for path, directories, filenames in os.walk(directory):
+        for filename in filenames:
+            paths.append(os.path.join(path, filename))
+    return paths
+
+
+src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ascendspeed')
 
 setuptools.setup(
     name=__package_name__,
@@ -157,7 +167,7 @@ setuptools.setup(
     include_package_data=True,
     install_package_data=True,
     exclude_package_data={'': ['**/*.md']},
-    package_data={'ascendspeed': ['**/*.h', '**/*.cpp']},
+    package_data={'': package_files(src_path)},
     zip_safe=False,
     # PyPI package information.
     keywords=__keywords__,
