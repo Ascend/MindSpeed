@@ -15,8 +15,8 @@
  * limitations under the License.
  ******************************************************************************/
 
-#ifndef ASCENDSPEED_OPS_CSRC_CANN_INC_ACL_COMMON_H
-#define ASCENDSPEED_OPS_CSRC_CANN_INC_ACL_COMMON_H
+#ifndef MINDSPEED_OPS_CSRC_CANN_INC_ACL_COMMON_H
+#define MINDSPEED_OPS_CSRC_CANN_INC_ACL_COMMON_H
 
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
@@ -590,4 +590,4 @@ using ReleaseHugeMem = void (*)(void *, bool);
         }                                                                                                   \
     } while (false)
 
-#endif  // ASCENDSPEED_OPS_CSRC_CANN_INC_ACL_COMMON_H
+#endif  // MINDSPEED_OPS_CSRC_CANN_INC_ACL_COMMON_H

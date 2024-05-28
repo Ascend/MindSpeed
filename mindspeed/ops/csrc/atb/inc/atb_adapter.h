@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef ASCENDSPEED_OPS_CSRC_ATB_INC_ATB_ADAPTER_H
-#define ASCENDSPEED_OPS_CSRC_ATB_INC_ATB_ADAPTER_H
+#ifndef MINDSPEED_OPS_CSRC_ATB_INC_ATB_ADAPTER_H
+#define MINDSPEED_OPS_CSRC_ATB_INC_ATB_ADAPTER_H
 #include <vector>
 #include <string>
 #include <torch/script.h>
