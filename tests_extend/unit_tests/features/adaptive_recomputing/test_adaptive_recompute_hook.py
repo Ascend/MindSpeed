@@ -1,9 +1,9 @@
 import torch
-from ascendspeed import megatron_adaptor
+from mindspeed import megatron_adaptor
 import torch.nn as nn
-from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute import get_adaptive_recomputing
-from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import get_recompute_hook
-from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute import allowed_recomputing_module_wrapper
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute import get_adaptive_recomputing
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import get_recompute_hook
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute import allowed_recomputing_module_wrapper
 
 from unit_tests.common import DistributedTest
 

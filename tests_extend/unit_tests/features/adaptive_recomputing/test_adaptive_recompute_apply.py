@@ -1,10 +1,10 @@
-from ascendspeed import megatron_adaptor
+from mindspeed import megatron_adaptor
 from unittest import mock
-import ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute
+import mindspeed.core.memory.adaptive_recomputing.adaptive_recompute
 from megatron.core import parallel_state
-from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute import get_adaptive_recomputing
-from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute import is_activate_adaptive_recompute
-from ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute import get_adaptive_recomputing_policy
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute import get_adaptive_recomputing
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute import is_activate_adaptive_recompute
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute import get_adaptive_recomputing_policy
 
 from unit_tests.common import DistributedTest
 
@@ -44,19 +44,19 @@ class TestRecomputing(DistributedTest):
         recomputing = get_adaptive_recomputing()
 
         set_mock_args(True, False, -1, 10)
-        with mock.patch.object(ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute, 'get_args',
+        with mock.patch.object(mindspeed.core.memory.adaptive_recomputing.adaptive_recompute, 'get_args',
                                return_value=MockArgs.mock_args):
             result, profile_step = is_activate_adaptive_recompute()
             assert result is False
         set_mock_args(False, True, 10, 0)
-        with mock.patch.object(ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute, 'get_args',
+        with mock.patch.object(mindspeed.core.memory.adaptive_recomputing.adaptive_recompute, 'get_args',
                                return_value=MockArgs.mock_args):
             result, profile_step = is_activate_adaptive_recompute()
             assert result is True
         set_mock_args()
 
     def test_step_hook(self):
-        with mock.patch.object(ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute, 'get_args',
+        with mock.patch.object(mindspeed.core.memory.adaptive_recomputing.adaptive_recompute, 'get_args',
                                return_value=MockArgs()):
             with mock.patch.object(parallel_state, 'get_tensor_model_parallel_world_size',
                                    return_value=0):
@@ -85,12 +85,12 @@ class TestRecomputing(DistributedTest):
 
                     recomputing.profiling_step = 11
                     with mock.patch.object(
-                            ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute.AdaptiveRecomputePolicy,
+                            mindspeed.core.memory.adaptive_recomputing.adaptive_recompute.AdaptiveRecomputePolicy,
                             'solve_recompute_policy', return_value=recomputing.context):
-                        with mock.patch.object(ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute,
+                        with mock.patch.object(mindspeed.core.memory.adaptive_recomputing.adaptive_recompute,
                                                'apply_adaptive_recompute', return_value=None):
                             with mock.patch.object(
-                                    ascendspeed.core.memory.adaptive_recomputing.adaptive_recompute_solver.GraphSolver,
+                                    mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_solver.GraphSolver,
                                     'build_solver_info', return_value=None):
                                 recomputing.step_hook(models)
                                 assert get_adaptive_recomputing_policy().context_copy is not None

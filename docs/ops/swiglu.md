@@ -27,7 +27,7 @@
     import torch_npu
     import numpy as np
     import math
-    from ascendspeed.op_builder import SwigluOpBuilder
+    from mindspeed.op_builder import SwigluOpBuilder
 
     x = np.random.uniform(-2, 2, (8192,1,3904))
     x = torch.from_numpy(x).float().npu()
@@ -36,7 +36,7 @@
 
     x.requires_grad = True
     // 正向接口案例
-    ascendspeed_ops = SwigluOpBuilder.load()
-    result = ascendspeed_ops.swiglu(x, dim=-1)
+    mindspeed_ops = SwigluOpBuilder.load()
+    result = mindspeed_ops.swiglu(x, dim=-1)
     // 反向接口案例
     result.backward(y_grad)

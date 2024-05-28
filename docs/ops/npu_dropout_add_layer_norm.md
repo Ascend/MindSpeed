@@ -32,7 +32,7 @@ norm_result = RMSNorm(Dropout(x0 x rowscale x layerscale) + residual)
 
 ***
 
-ascendspeed_te_ops.npu_dropout_add_layer_norm(x0, weight, residual=None, bias=None, rowscale=None, layerscale=None, p=0., eps=1e-5, prenorm=False, residual_in_fp32=False, is_rms_norm=False, return_dropout_mask=False)
+mindspeed_te_ops.npu_dropout_add_layer_norm(x0, weight, residual=None, bias=None, rowscale=None, layerscale=None, p=0., eps=1e-5, prenorm=False, residual_in_fp32=False, is_rms_norm=False, return_dropout_mask=False)
 
 ```
 计算逻辑：
@@ -84,7 +84,7 @@ bf16     bf16      bf16      bf16
 ```python
 import torch
 import torch_npu
-from ascendspeed.te.ops.dropout_add_layer_norm import NPUDropoutAddLayerNorm
+from mindspeed.te.ops.dropout_add_layer_norm import NPUDropoutAddLayerNorm
 
 batch_size = 8
 seqlen = 512
@@ -118,7 +118,7 @@ bias_grad = model.bias.grad
 ```python
 import torch
 import torch_npu
-from ascendspeed.te.ops.dropout_add_rms_norm import NPUDropoutAddRMSNorm
+from mindspeed.te.ops.dropout_add_rms_norm import NPUDropoutAddRMSNorm
 
 batch_size = 8
 seqlen = 512
@@ -148,7 +148,7 @@ weight_grad = model.weight.grad
 ```python
 import torch
 import torch_npu
-import ascendspeed_te_ops
+import mindspeed_te_ops
 
 batch_size = 8
 seqlen = 512
@@ -164,7 +164,7 @@ survival_rate = 0.87
 rowscale = rowscale.bernoulli_(survival_rate) / survival_rate
 layerscale = torch.randn(hidden_size, dtype=torch.float, requires_grad=True)
 
-norm_result, pre_norm_result, mask_result = ascendspeed_te_ops.npu_dropout_add_layer_norm(
+norm_result, pre_norm_result, mask_result = mindspeed_te_ops.npu_dropout_add_layer_norm(
     x0.npu(),
     weight.npu(),
     residual.npu(),
@@ -195,9 +195,9 @@ layerscale_grad = layerscale.grad
 ```python
 import torch
 import torch_npu
-import ascendspeed_te_ops
-from ascendspeed_te_ops import npu_dropout_add_layer_norm
-from ascendspeed.te.ops.dropout_add_layer_norm import NPUDropoutAddLayerNorm
+import mindspeed_te_ops
+from mindspeed_te_ops import npu_dropout_add_layer_norm
+from mindspeed.te.ops.dropout_add_layer_norm import NPUDropoutAddLayerNorm
 
 batch_size = 8
 seqlen = 512

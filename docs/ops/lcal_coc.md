@@ -25,7 +25,7 @@
 ### 使用方法
 
 ```python
-from ascendspeed.ops.lcal_functional import coc_ops
+from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.matmul_all_reduce(input1, input2, output, bias)
 ```
@@ -53,7 +53,7 @@ coc_ops.matmul_all_reduce(input1, input2, output, bias)
 ### 使用方法
 
 ```python
-from ascendspeed.ops.lcal_functional import coc_ops
+from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.all_gather_matmul(input1, input2, output, bias)
 ```
@@ -82,7 +82,7 @@ coc_ops.all_gather_matmul(input1, input2, output, bias)
 ### 使用方法
 
 ```python
-from ascendspeed.ops.lcal_functional import coc_ops
+from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.all_gather_matmul_v2(input1, input2, output, comm_output, bias)
 ```
@@ -110,7 +110,7 @@ coc_ops.all_gather_matmul_v2(input1, input2, output, comm_output, bias)
 ### 使用方法
 
 ```python
-from ascendspeed.ops.lcal_functional import coc_ops
+from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.matmul_reduce_scatter(input1, input2, output, bias)
 ```
@@ -138,7 +138,7 @@ coc_ops.matmul_reduce_scatter(input1, input2, output, bias)
 ### 使用方法
 
 ```python
-from ascendspeed.ops.lcal_functional import coc_ops
+from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.pure_matmul(input1, input2, output, bias)
 ```
