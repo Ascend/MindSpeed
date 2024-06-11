@@ -99,7 +99,7 @@ class DistributedExec(ABC):
         # Verify we have enough accelerator devices to run this test
         if torch.cuda.is_available() and torch.cuda.device_count() < num_procs:
             pytest.skip(
-                f"Skipping test because not enough GPUs are available: {num_procs} required, {torch.cuda.device_count()} available"
+                f"Skipping test because not enough NPUs are available: {num_procs} required, {torch.cuda.device_count()} available"
             )
 
         # Set start method to `forkserver` (or `fork`)

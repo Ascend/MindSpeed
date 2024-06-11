@@ -40,7 +40,7 @@ class FlashSelfAttention(torch.nn.Module):
 
 def get_data_on_this_cp_rank(data, cp_size, cp_rank, dim=0):
     """ Slice data along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a context parallel group.
+        which are parallelized across NPUs in a context parallel group.
         Dispatch data in a striped way for load-balance.
     """
     old_seq_len = data.shape[dim]
