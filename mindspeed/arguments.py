@@ -148,7 +148,9 @@ def core_transformer_config_from_args_wrapper(fn):
 
 def validate_args_decorator(validate_args):
     @wraps(validate_args)
-    def wrapper(args, defaults):
+    def wrapper(args, defaults=None):
+        if defaults is None:
+            defaults = {}
         validate_args(args, defaults)
         if args.use_fused_rmsnorm:
             if args.normalization != "RMSNorm":
@@ -190,6 +192,9 @@ def validate_args_decorator(validate_args):
                         "\"recompute_granularity\" and \"recompute_method\" will be turned off.")
             args.recompute_granularity = None
             args.recompute_method = None
+
+        return args
+
     return wrapper
 
 
