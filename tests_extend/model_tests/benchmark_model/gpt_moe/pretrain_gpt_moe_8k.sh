@@ -47,7 +47,7 @@ GPT_ARGS="
     --micro-batch-size 1 \
     --global-batch-size 16 \
     --num-experts 4 \
-    --train-iters 10 \
+    --train-iters 5000 \
     --lr-decay-iters 320000 \
     --lr 5.0e-7 \
     --lr-decay-style cosine \

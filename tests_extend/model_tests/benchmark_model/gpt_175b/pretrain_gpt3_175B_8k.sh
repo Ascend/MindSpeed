@@ -44,7 +44,7 @@ GPT_ARGS="
     --max-position-embeddings 8192 \
     --micro-batch-size 1 \
     --global-batch-size 16 \
-    --train-iters 1000 \
+    --train-iters 5000 \
     --lr-decay-iters 320000 \
     --lr 5.0e-7 \
     --min-lr 5.0e-8 \
