@@ -1,13 +1,23 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
+import functools
+
 import torch
-from megatron.training import get_args
 from megatron.core import mpu
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
                                              get_context_parallel_for_hybrid_ulysses_rank,
                                              get_context_parallel_for_hybrid_ring_world_size,
                                              get_context_parallel_for_hybrid_ring_rank)
+
+
+@functools.lru_cache(4096)
+def print_rank_0_once(message):
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0:
+            print(message, flush=True)
+    else:
+        print(message, flush=True)
 
 
 def get_batch_on_this_cp_rank(batch):
@@ -21,6 +31,8 @@ def get_batch_on_this_cp_rank(batch):
     # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
     # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
     # that we can get balanced workload among GPUs in a context parallel group.
+    from megatron.training import get_args
+
     args = get_args()
     cp_size = args.context_parallel_size
     if not cp_size > 1:

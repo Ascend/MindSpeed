@@ -29,6 +29,7 @@ def set_mc2_args(args):
 class TestMC2(DistributedTest):
     world_size = 8
 
+    @pytest.mark.skip(reason='K-axis should be in range [256, 65535) in latest CANN')
     def test_MC2RowParallelLinear(self):
         args = parse_args(None, True)
         args = set_mc2_args(args)

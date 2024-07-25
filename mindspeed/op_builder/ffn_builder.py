@@ -1,17 +1,4 @@
 # Copyright (c) 2024, Huawei Technologies.
-# All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 from typing import (
     Any,
@@ -31,13 +18,22 @@ from typing import (
 
 import torch
 from torch.library import Library, impl
-from torchair.ge_concrete_graph import ge_apis as ge
-from torchair.ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
-from torchair.ge_concrete_graph.ge_graph import Tensor, TensorSpec, DataType
-from torchair.ge_concrete_graph.ge_graph import get_default_ge_graph, next_unique_name
-from torchair.ge_concrete_graph.ge_graph import compat_as_bytes
-from torchair.ge_concrete_graph.ge_graph import get_invalid_desc
+
+from mindspeed.utils import print_rank_0_once
 from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
+
+_graph_mode_available = True
+try:
+    from torchair.ge_concrete_graph import ge_apis as ge
+    from torchair.ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
+    from torchair.ge_concrete_graph.ge_graph import Tensor, TensorSpec, DataType
+    from torchair.ge_concrete_graph.ge_graph import get_default_ge_graph, next_unique_name
+    from torchair.ge_concrete_graph.ge_graph import compat_as_bytes
+    from torchair.ge_concrete_graph.ge_graph import get_invalid_desc
+except ImportError:
+    _graph_mode_available = False
+    Tensor, TensorSpec, DataType = None, None, None
+    print_rank_0_once("[WARNING] Custom ops not supported for graph mode due to mismatch of torch_npu version.")
 
 
 class FFNOpBuilder(MindSpeedOpBuilder):
@@ -88,6 +84,9 @@ class FFNOpBuilder(MindSpeedOpBuilder):
                     return x.new_empty(tuple(dim_list), dtype=torch.float16)
             else:
                 return x.new_empty(tuple(dim_list))
+
+        if not _graph_mode_available:
+            return
         
         @register_fx_node_ge_converter(torch.ops.mindspeed.npu_ffn.default)
         def convert_npu_ffn(
