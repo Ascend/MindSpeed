@@ -24,6 +24,16 @@ class GMMFunction(torch.autograd.Function):
         ctx.save_for_backward(x, weight)
         ctx.group_list = group_list
 
+        # A workaround to fix the kernel bug, should be removed after kernel fixed.
+        if group_type == 2:
+            for i, _ in enumerate(group_list):
+                if i == 0:
+                    if group_list[0] == 0:
+                        outputs[0][0].fill_(0)
+                    continue
+                if group_list[i] == group_list[i - 1]:
+                    outputs[0][i].fill_(0)
+
         return outputs[0]
 
     @staticmethod
