@@ -25,7 +25,7 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
-
+from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton, get_slopes
 
 try:
     from einops import rearrange
@@ -57,53 +57,6 @@ def _get_inverted_mask(attention_mask, alibi):
         inverted_mask.to(torch.bool), float("-inf")
     )
     return inverted_mask.to(alibi.device) + alibi.unsqueeze(0)
-
-
-def get_slopes(n):
-    def get_slopes_power_of_2(n):
-        start = (2 ** (-2 ** -(math.log2(n) - 3)))
-        ratio = start
-        return [start * ratio ** i for i in range(n)]
-
-    if math.log2(n).is_integer():
-        return get_slopes_power_of_2(n)
-    else:
-        closest_power_of_2 = 2 ** math.floor(math.log2(n))
-        return get_slopes_power_of_2(closest_power_of_2) + get_slopes(2 * closest_power_of_2)[0::2][
-                                                           :n - closest_power_of_2]
-
-
-def get_alibi_slopes_for_fusion_attn(n):
-    slopes = get_slopes(n)
-
-    tp_world_size = parallel_state.get_tensor_model_parallel_world_size()
-    tp_index = parallel_state.get_tensor_model_parallel_rank()
-
-    current_head_num = n // tp_world_size
-    slopes = torch.Tensor(slopes[tp_index * current_head_num: tp_index * current_head_num + current_head_num]).npu()
-    return slopes
-
-
-def get_alibi_tensor_for_fusion_attn(max_seq_len, num_attention_heads, neg_diagonal_opposite=False, last_k=1024):
-    if last_k > max_seq_len:
-        last_k = max_seq_len
-
-    tp_world_size = parallel_state.get_tensor_model_parallel_world_size()
-    current_head_num = num_attention_heads // tp_world_size
-    slopes = get_alibi_slopes_for_fusion_attn(num_attention_heads)
-
-    position_point = torch.arange(max_seq_len) - max_seq_len + 1
-    diag = torch.diag(torch.diag(position_point)).unsqueeze(0).unsqueeze(0)
-
-    position_point = position_point.unsqueeze(0).unsqueeze(0).expand(current_head_num, last_k, -1)
-    position_point = position_point - diag.transpose(-1, -2)[:, -last_k:, :].expand(current_head_num, last_k, max_seq_len)
-
-    alibi = slopes.unsqueeze(1).unsqueeze(1) * position_point.npu()
-
-    if not neg_diagonal_opposite:
-        alibi = -torch.abs(alibi)
-
-    return alibi.unsqueeze(0)
 
 
 def _build_alibi_tensor(max_seq_len, num_attention_heads, square_alibi_mask, fill_neg_inf):
@@ -471,22 +424,18 @@ def flash_self_attention_init_wrapper(fn):
         self.pse = None
         self.pse_type = args.alibi_fusion_attn_type
 
-        if args.context_parallel_algo == 'ulysses_cp_algo' or self.pse_type is None:
-            self.pse_type = 1 # not use pse
+        if self.pse_type is None:
+            self.pse_type = 1  # not use pse
         elif self.pse_type == 0:
-            alibi = get_alibi_tensor_for_fusion_attn(args.seq_length,
-                                                    args.num_attention_heads,
-                                                    args.alibi_diagonal_opposite,
-                                                    1024)
-            alibi = torch.Tensor(alibi).npu()
-            if args.params_dtype == torch.float16:
-                alibi = alibi.to(torch.float16)
-            elif args.params_dtype == torch.bfloat16:
-                alibi = alibi.to(torch.bfloat16)
+            alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(args.seq_length,
+                                                                                 args.num_attention_heads,
+                                                                                 args.params_dtype,
+                                                                                 args.alibi_diagonal_opposite,
+                                                                                 1024)
             self.pse = alibi
 
         elif self.pse_type == 2 or self.pse_type == 3:
-            self.pse = get_alibi_slopes_for_fusion_attn(args.num_attention_heads)
+            self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(args.num_attention_heads)
 
     return wrapper
 

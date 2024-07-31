@@ -12,7 +12,7 @@ from megatron.training import get_args
 from megatron.core import mpu
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
-from mindspeed.model.transformer import get_alibi_tensor_for_fusion_attn, get_alibi_slopes_for_fusion_attn
+from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ring,
                                            get_context_parallel_for_hybrid_ring_world_size,
                                            get_context_parallel_for_hybrid_ring_rank,
@@ -39,22 +39,17 @@ def dot_product_attention_init_wrapper(fn):
         self.pse = None
         self.pse_type = args.alibi_fusion_attn_type
 
-        if args.context_parallel_algo == 'ulysses_cp_algo' or self.pse_type is None:
+        if self.pse_type is None:
             self.pse_type = 1 # not use pse
         elif self.pse_type == 0:
-            alibi = get_alibi_tensor_for_fusion_attn(args.seq_length,
+            alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(args.seq_length,
                                                     args.num_attention_heads,
+                                                    args.params_dtype,
                                                     args.alibi_diagonal_opposite,
                                                     1024)
-            alibi = torch.Tensor(alibi).npu()
-            if args.params_dtype == torch.float16:
-                alibi = alibi.to(torch.float16)
-            elif args.params_dtype == torch.bfloat16:
-                alibi = alibi.to(torch.bfloat16)
             self.pse = alibi
-
         elif self.pse_type == 2 or self.pse_type == 3:
-            self.pse = get_alibi_slopes_for_fusion_attn(args.num_attention_heads)
+            self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(args.num_attention_heads)
 
     return wrapper
 
