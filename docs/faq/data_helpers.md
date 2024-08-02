@@ -45,5 +45,10 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 1. 【临时规避】减小模型训练步数
 2. 将相关变量修改为 int64 数据类型，具体可查看：[PR](https://github.com/NVIDIA/Megatron-LM/pull/598)
 
+    可以在 Megatron-LM 目录下，运行`mindspeed -P`命令。
+    ```shell
+     mindspeed -P
+    ```
+
 ## 备注
 此问题为 Megatron-LM 原生问题，CPP 代码难以通过 monkey patch 的方式进行修改。已多次提交修复 PR，但似乎 Megatron-LM 较为封闭，无人管理且不接受来自社区的代码提交。
