@@ -20,7 +20,7 @@ class MockArgs:
         self.train_iters = 10
         self.recompute_granularity = None
         self.recompute_method = None
-        self.prefetch = False
+        self.swap_attention = False
 
 
 def set_mock_args(arg_checkpoint: bool = True,

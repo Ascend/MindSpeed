@@ -33,6 +33,32 @@ using c10_npu::NPUCachingAllocator::StatType;
 using c10_npu::NPUCachingAllocator::TraceEntry;
 
 using stream_set = ska::flat_hash_set<c10_npu::NPUStream>;
+
+#define NPU_CHECK_SUPPORT_OR_ERROR(err_code, ...)                              \
+    do {                                                                         \
+        auto Error = err_code;                                                   \
+        static c10_npu::acl::AclErrorCode err_map;                               \
+        if ((Error) != ACL_ERROR_NONE) {                                         \
+            if ((Error) == ACL_ERROR_RT_FEATURE_NOT_SUPPORT) {                   \
+                static auto feature_not_support_warn_once = []() {               \
+                    printf("[WARN]%s,%s:%u:%s\n",                                \
+                           __FUNCTION__, __FILENAME__, __LINE__,                 \
+                           "Feature is not supportted and the possible cause is" \
+                           " that driver and firmware packages do not match.");  \
+                    return true;                                                 \
+                }();                                                             \
+            } else {                                                             \
+                TORCH_CHECK(                                                     \
+                    false,                                                       \
+                    __func__,                                                    \
+                    ":",                                                         \
+                    __FILE__,                                                    \
+                    ":",                                                         \
+                    __LINE__,                                                    \
+                    "\n", c10_npu::c10_npu_get_error_message());                 \
+            }                                                                    \
+        }                                                                        \
+    } while (0)
 typedef std::shared_ptr<c10::GatheredContext> (*CreateContextFn)(void);
 
 constexpr size_t kMinBlockSize = 512;        // all sizes are rounded to at least 512 bytes

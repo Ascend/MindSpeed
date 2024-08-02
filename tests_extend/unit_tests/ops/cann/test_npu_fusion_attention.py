@@ -22,7 +22,6 @@ class TestNPUFusionAttention(DistributedTest):
         return tensor
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.skip(reason='The opp package is too older, It needed the new opp package')
     def test_npu_flash_attention(self):
         query = torch.randn(1, 32, 128, 128, dtype=torch.float16)
         key = torch.randn(1, 32, 128, 128, dtype=torch.float16)

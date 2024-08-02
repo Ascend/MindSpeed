@@ -374,9 +374,9 @@ def ascend_adaptation(aspm, args):
         from .core.memory.adaptive_recomputing.adaptive_recompute import setup_model_and_optimizer_wrapper
         aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
     adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or args.adaptive_recompute_device_swap
-    if (adaptive_recompute_enable and not args.memory_fragmentation) or args.prefetch:
+    if (adaptive_recompute_enable and not args.memory_fragmentation) or args.swap_attention:
         from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
-        if not args.prefetch:
+        if not args.swap_attention:
             change_allocator()
         from .core.memory.adaptive_recomputing.adaptive_recompute import allowed_recomputing_module_wrapper
         allowed_recomputing_module_wrapper(ParallelTransformerLayer)
@@ -390,15 +390,6 @@ def ascend_adaptation(aspm, args):
 
 def mcore_moe_adaptation(pm, args):
     if args.moe_permutation_async_comm:
-        if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'allgather':
-            from .core.transformer.moe.router import aux_loss_load_balancing
-            from .core.transformer.moe.token_dispatcher import allgather_token_permutation, allgather_token_unpermutation
-            from .core.transformer.moe.moe_layer import moe_layer_init_wrapper
-            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation', allgather_token_permutation)
-            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_unpermutation', allgather_token_unpermutation)
-            pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.aux_loss_load_balancing', aux_loss_load_balancing)
-            pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
-
         if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall':
             from .core.transformer.moe.token_dispatcher import preprocess, alltoall_token_permutation
             from .core.transformer.moe.experts import sequential_mlp_forward
@@ -409,8 +400,16 @@ def mcore_moe_adaptation(pm, args):
             pm.register_patch('megatron.core.transformer.moe.experts.SequentialMLP.forward', sequential_mlp_forward)
             pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute)
             pm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute)
+        else:
+            from .core.transformer.moe.router import aux_loss_load_balancing
+            from .core.transformer.moe.token_dispatcher import allgather_token_permutation, allgather_token_unpermutation
+            from .core.transformer.moe.moe_layer import moe_layer_init_wrapper
+            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation', allgather_token_permutation)
+            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_unpermutation', allgather_token_unpermutation)
+            pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.aux_loss_load_balancing', aux_loss_load_balancing)
+            pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
 
-    if args.use_ascend_mc2:
+    if args.use_ascend_mc2 and not hasattr(args, 'moe_grouped_gemm'):
         # MoE MLP not use mc2 linear
         from .core.models.gpt.gpt_layer_specs import build_layers_wrapper
         from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear

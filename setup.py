@@ -9,14 +9,14 @@ if sys.version_info < (3,):
     raise Exception("Python 2 is not supported by MindSpeed.")
 
 __description__ = 'MindSpeed for LLMs of Ascend'
-__version__ = '1.1.0'
+__version__ = '0.6.0'
 __author__ = 'Ascend'
 __long_description__ = 'MindSpeed for LLMs of Ascend'
 __url__ = 'https://gitee.com/ascend/MindSpeed'
 __download_url__ = 'https://gitee.com/ascend/MindSpeed/release'
 __keywords__ = 'Ascend, langauge, deep learning, NLP'
 __license__ = 'See https://gitee.com/ascend/MindSpeed'
-__package_name__ = 'mindspeed'
+__package_name__ = 'mindspeed_core'
 __contact_names__ = 'Ascend'
 
 try:

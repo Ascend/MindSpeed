@@ -1,27 +1,25 @@
 # Copyright (c) 2024, Huawei Technologies.
-# All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+
 
 from typing import List, Optional
-import torch
-import torchair
-from torchair import ge
-from torch.library import Library, impl
-from torchair import register_fx_node_ge_converter
-from torchair.ge import Tensor, TensorSpec
+
+from mindspeed.utils import print_rank_0_once
 from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
 from mindspeed.op_builder.npu_mm_all_reduce_add_rms_norm_builder import MatmulAllReduceAddRmsNorm, CheckDtype
+
+import torch
+import torchair
+from torch.library import Library, impl
+
+_graph_mode_available = True
+try:
+    from torchair import ge
+    from torchair.ge import Tensor, TensorSpec, DataType
+    from torchair import register_fx_node_ge_converter
+except ImportError:
+    _graph_mode_available = False
+    Tensor, TensorSpec, DataType = None, None, None
+    print_rank_0_once("[WARNING] Custom ops not supported for graph mode due to mismatch of torch_npu version.")
 
 
 class InplaceMatmulAllReduceAddRmsNormOpBuilder(MindSpeedOpBuilder):
@@ -62,7 +60,10 @@ class InplaceMatmulAllReduceAddRmsNormOpBuilder(MindSpeedOpBuilder):
                 dequant_scale=None, antiquant_group_size=0, comm_turn=0):
             return (torch.empty_like(residual, dtype=residual.dtype),
                     torch.empty_like(residual, dtype=residual.dtype))
-        
+
+        if not _graph_mode_available:
+            return
+
         @register_fx_node_ge_converter(torch.ops.mindspeed.npu_mm_all_reduce_add_rms_norm_.default)
         def convert_npu_mm_all_reduce_add_rms_norm_(
             x1: Tensor,

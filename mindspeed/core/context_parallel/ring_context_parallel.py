@@ -4,6 +4,7 @@ import torch
 import torch_npu
 from einops import rearrange
 from megatron.core import mpu
+from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
 
 
 def flash_attn_p2p_communicate(rank, send_tensor, send_dst,
@@ -64,6 +65,107 @@ def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
     return attn_out, softmax_max, softmax_sum
 
 
+def cal_row(cur_q, cur_k, cur_v, s, attn_info):
+    # q: [s, b, h], kv: [2s, b, h]
+    # attn_info: [head_num, pse(alibi_mask), pse_type, attn_mask, scale, keep_prob, q_index_list, kv_index_list]
+
+    # r1c0
+    cur_attn_mask = None
+    attn_outs_r1c0 = npu_fusion_attention(
+                    cur_q, cur_k[:s], cur_v[:s], attn_info[0], 'SBH',
+                    pse=attn_info[1],
+                    pse_type=attn_info[2],
+                    padding_mask=None,
+                    atten_mask=cur_attn_mask,
+                    scale=attn_info[4],
+                    pre_tokens=s,
+                    next_tokens=0 if cur_attn_mask is not None else s,
+                    keep_prob=attn_info[5],
+                    sparse_mode=3 if cur_attn_mask is not None else 0,
+                    q_start_idx=[attn_info[6][1] * s, ] if attn_info[6] is not None else attn_info[6],
+                    kv_start_idx=[attn_info[7][0] * s, ] if attn_info[7] is not None else attn_info[7]
+                )
+    # r1c1
+    cur_attn_mask = attn_info[3]
+    attn_outs_r1c1 = npu_fusion_attention(
+        cur_q, cur_k[s:], cur_v[s:], attn_info[0], 'SBH',
+        pse=attn_info[1],
+        pse_type=attn_info[2],
+        padding_mask=None,
+        atten_mask=cur_attn_mask,
+        scale=attn_info[4],
+        pre_tokens=s,
+        next_tokens=0 if cur_attn_mask is not None else s,
+        keep_prob=attn_info[5],
+        sparse_mode=3 if cur_attn_mask is not None else 0,
+        q_start_idx=[attn_info[6][1] * s, ] if attn_info[6] is not None else attn_info[6],
+        kv_start_idx=[attn_info[7][1] * s, ] if attn_info[7] is not None else attn_info[7]
+    )
+
+    # update row1
+    attn_out = attn_outs_r1c0[0]
+    softmax_max = attn_outs_r1c0[1]
+    softmax_sum = attn_outs_r1c0[2]
+    curr_attn_out = attn_outs_r1c1[0]
+    curr_softmax_max = attn_outs_r1c1[1]
+    curr_softmax_sum = attn_outs_r1c1[2]
+    attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(attn_out, softmax_max, softmax_sum,
+                                                                                curr_attn_out, curr_softmax_max,
+                                                                                curr_softmax_sum)
+    return [attn_out_updated, softmax_max_updated, softmax_sum_updated]
+
+
+def cal_row_grad(cur_q, cur_k, cur_v, cur_dout, cur_softmax_max, cur_softmax_sum, cur_attn_out, s, cp_size, i, attn_grad_info):
+    # attn_grad_info: [head_num, pse(alibi_mask), pse_type, attn_mask, scale, keep_prob,
+    #                  rng_states, q_index_list, kv_index_list]
+
+    cur_attn_mask = None
+    attn_grad_outs_r1c0 = npu_fusion_attention_grad(
+        cur_q, cur_k[:s], cur_v[:s], cur_dout, attn_grad_info[0], 'SBH',
+        pse=attn_grad_info[1],
+        pse_type=attn_grad_info[2],
+        padding_mask=None,
+        softmax_max=cur_softmax_max,
+        softmax_sum=cur_softmax_sum,
+        attention_in=cur_attn_out,
+        atten_mask=cur_attn_mask,
+        scale=attn_grad_info[4],
+        pre_tokens=s,
+        next_tokens=0 if cur_attn_mask is not None else s,
+        keep_prob=attn_grad_info[5],
+        seed=attn_grad_info[6][cp_size - i - 1][0],
+        offset=attn_grad_info[6][cp_size - i - 1][1],
+        numels=attn_grad_info[6][cp_size - i - 1][2],
+        sparse_mode=3 if cur_attn_mask is not None else 0,
+        q_start_idx=[attn_grad_info[7][1] * s, ] if attn_grad_info[7] is not None else attn_grad_info[7],
+        kv_start_idx=[attn_grad_info[8][0] * s, ] if attn_grad_info[8] is not None else attn_grad_info[8]
+    )
+
+    cur_attn_mask = attn_grad_info[3]
+    attn_grad_outs_r1c1 = npu_fusion_attention_grad(
+        cur_q, cur_k[s:], cur_v[s:], cur_dout, attn_grad_info[0], 'SBH',
+        pse=attn_grad_info[1],
+        pse_type=attn_grad_info[2],
+        padding_mask=None,
+        softmax_max=cur_softmax_max,
+        softmax_sum=cur_softmax_sum,
+        attention_in=cur_attn_out,
+        atten_mask=cur_attn_mask,
+        scale=attn_grad_info[4],
+        pre_tokens=s,
+        next_tokens=0 if cur_attn_mask is not None else s,
+        keep_prob=attn_grad_info[5],
+        seed=attn_grad_info[6][cp_size - i - 1][0],
+        offset=attn_grad_info[6][cp_size - i - 1][1],
+        numels=attn_grad_info[6][cp_size - i - 1][2],
+        sparse_mode=3 if cur_attn_mask is not None else 0,
+        q_start_idx=[attn_grad_info[7][1] * s, ] if attn_grad_info[7] is not None else attn_grad_info[7],
+        kv_start_idx=[attn_grad_info[8][1] * s, ] if attn_grad_info[8] is not None else attn_grad_info[8]
+    )
+
+    return attn_grad_outs_r1c0, attn_grad_outs_r1c1
+
+
 class AttentionWithCp(torch.autograd.Function):
     """Attention implementation with context parallelism"""
 
@@ -76,6 +178,8 @@ class AttentionWithCp(torch.autograd.Function):
         rank = cp_para.get("rank")
         cp_global_ranks = cp_para.get("cp_global_ranks")
         cp_group_for_send_recv_overlap = cp_para.get("cp_group_for_send_recv_overlap")
+        pse = cp_para.get("pse")
+        pse_type = cp_para.get("pse_type")
 
         send_dst = cp_global_ranks[(rank + 1) % cp_size]
         recv_src = cp_global_ranks[(rank + cp_size - 1) % cp_size]
@@ -97,8 +201,22 @@ class AttentionWithCp(torch.autograd.Function):
         # (seed, offset, numels) for dropout mask
         rng_states = [[0, 0, 0] for _ in range(cp_size)]
 
+        # create q_index_list idx
+
+        q_index_list = None
+        kv_grad = []
+        s = q.shape[1]
+        if pse is not None:
+            q_index_list = [rank, cp_size * 2 - 1 - rank]
+
         for i in range(cp_size):
             # wait until KV is received from recv_src
+
+            # create kv_index_list_idx
+            if pse is not None:
+                kv_index_list = [(rank - i) % cp_size, cp_size * 2 - 1 - (rank - i) % cp_size]
+                kv_grad.append(kv_index_list)
+
             if len(send_recv_ops) > 0:
                 for send_recv_op in send_recv_ops:
                     send_recv_op.wait()
@@ -130,17 +248,84 @@ class AttentionWithCp(torch.autograd.Function):
                     cur_k, cur_v = [x.view(-1, *x.shape[2:]) for x in [cur_k, cur_v]]
 
                 # flash attention forward
-                attn_outs = torch_npu.npu_fusion_attention(
-                    cur_q, cur_k, cur_v, n, "SBH",
-                    pse=None,
-                    padding_mask=None,
-                    atten_mask=cur_attn_mask,
-                    scale=softmax_scale,
-                    pre_tockens=cur_k.shape[0],
-                    next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
-                    keep_prob=keep_prob,
-                    sparse_mode=3 if cur_attn_mask is not None else 0
-                )
+                if pse is None:
+                    attn_outs = torch_npu.npu_fusion_attention(
+                        cur_q, cur_k, cur_v, n, "SBH",
+                        pse=None,
+                        padding_mask=None,
+                        atten_mask=cur_attn_mask,
+                        scale=softmax_scale,
+                        pre_tockens=cur_k.shape[0],
+                        next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                        keep_prob=keep_prob,
+                        sparse_mode=3 if cur_attn_mask is not None else 0
+                    )
+                else:
+                    if i == 0:
+                        # r0c0
+                        cur_attn_mask = attn_mask
+                        attn_outs_r0c0 = npu_fusion_attention(
+                            cur_q[:s], cur_k[:s], cur_v[:s], n, 'SBH',
+                            pse=pse,
+                            pse_type=pse_type,
+                            padding_mask=None,
+                            atten_mask=cur_attn_mask,
+                            scale=softmax_scale,
+                            pre_tokens=s,
+                            next_tokens=0 if cur_attn_mask is not None else s,
+                            keep_prob=keep_prob,
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            q_start_idx=[q_index_list[0] * s, ] if q_index_list is not None else None,
+                            kv_start_idx=[kv_index_list[0] * s, ] if kv_index_list is not None else None,
+                        )
+                        attn_info = [n, pse, pse_type, cur_attn_mask, softmax_scale, keep_prob,
+                                     q_index_list, kv_index_list]
+                        attn_outs_r1 = cal_row(cur_q[s:], cur_k, cur_v, s, attn_info)
+                        # get output
+                        attn_outs = []
+                        attn_outs.append(torch.cat([attn_outs_r0c0[0], attn_outs_r1[0]]))
+                        attn_outs.append(torch.cat([attn_outs_r0c0[1], attn_outs_r1[1]], dim=2))
+                        attn_outs.append(torch.cat([attn_outs_r0c0[2], attn_outs_r1[2]], dim=2))
+                    elif i <= rank:
+                        cur_attn_mask = None
+                        attn_outs_r0c0 = npu_fusion_attention(
+                            cur_q[:s], cur_k, cur_v, n, 'SBH',
+                            pse=pse,
+                            pse_type=pse_type,
+                            padding_mask=None,
+                            atten_mask=cur_attn_mask,
+                            scale=softmax_scale,
+                            pre_tokens=s,
+                            next_tokens=0 if cur_attn_mask is not None else s,
+                            keep_prob=keep_prob,
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            q_start_idx=[q_index_list[0] * s, ] if q_index_list is not None else None,
+                            kv_start_idx=[kv_index_list[0] * s, ] if kv_index_list is not None else None,
+                        )
+                        attn_outs_r1c0 = npu_fusion_attention(
+                            cur_q[s:], cur_k, cur_v, n, 'SBH',
+                            pse=pse,
+                            pse_type=pse_type,
+                            padding_mask=None,
+                            atten_mask=cur_attn_mask,
+                            scale=softmax_scale,
+                            pre_tokens=s,
+                            next_tokens=0 if cur_attn_mask is not None else s,
+                            keep_prob=keep_prob,
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            q_start_idx=[q_index_list[1] * s, ] if q_index_list is not None else None,
+                            kv_start_idx=[kv_index_list[0] * s, ] if kv_index_list is not None else None,
+                        )
+                        # get output
+                        attn_outs = []
+                        attn_outs.append(torch.cat([attn_outs_r0c0[0], attn_outs_r1c0[0]]))
+                        attn_outs.append(torch.cat([attn_outs_r0c0[1], attn_outs_r1c0[1]], dim=2))
+                        attn_outs.append(torch.cat([attn_outs_r0c0[2], attn_outs_r1c0[2]], dim=2))
+                    else:
+                        cur_attn_mask = None
+                        attn_info = [n, pse, pse_type, cur_attn_mask, softmax_scale, keep_prob,
+                                     q_index_list, kv_index_list]
+                        attn_outs = cal_row(cur_q, cur_k, cur_v, s, attn_info)
 
                 # if i <= rank: [2s, b, h], [b, n, 2s, 8], [b, n, 2s, 8]
                 # else: [s, b, h], [b, n, s, 8], [b, n, s, 8]
@@ -148,7 +333,8 @@ class AttentionWithCp(torch.autograd.Function):
                 cur_softmax_max = attn_outs[1]
                 cur_softmax_sum = attn_outs[2]
                 # (seed, offset, numels)
-                rng_states[i] = (attn_outs[4], attn_outs[5], attn_outs[6])
+                if pse is None:
+                    rng_states[i] = (attn_outs[4], attn_outs[5], attn_outs[6])
 
                 if i == 0:
                     attn_out = cur_attn_out
@@ -225,6 +411,10 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.cp_rank = rank
         ctx.cp_global_ranks = cp_global_ranks
         ctx.keep_prob = keep_prob
+        ctx.pse = pse
+        ctx.q_index_list = q_index_list
+        ctx.kv_grad = kv_grad
+        ctx.pse_type = pse_type
         ctx.rng_states = rng_states
         ctx.cp_group_for_send_recv_overlap = cp_group_for_send_recv_overlap
 
@@ -236,6 +426,7 @@ class AttentionWithCp(torch.autograd.Function):
         if len(attn_mask) == 1:
             attn_mask = attn_mask[0]
 
+        s = q.shape[0] // 2
         n = ctx.n
         causal = ctx.causal
         softmax_scale = ctx.softmax_scale
@@ -244,6 +435,14 @@ class AttentionWithCp(torch.autograd.Function):
         rank = ctx.cp_rank
         keep_prob = ctx.keep_prob
         rng_states = ctx.rng_states
+        pse = ctx.pse
+        q_index_list = ctx.q_index_list
+        kv_grad = ctx.kv_grad
+        pse_type = ctx.pse_type
+
+        if kv_grad:
+            kv_grad.reverse()
+
         # Reversed order of forward
         send_dst = ctx.cp_global_ranks[(rank + cp_size - 1) % cp_size]
         recv_src = ctx.cp_global_ranks[(rank + 1) % cp_size]
@@ -267,6 +466,10 @@ class AttentionWithCp(torch.autograd.Function):
         dk = torch.zeros_like(k)
         dv = torch.zeros_like(v)
         for i in range(cp_size):
+            if kv_grad:
+                kv_index_list = kv_grad[i]
+            else:
+                kv_index_list = None
             # wait until KV is received from recv_src
             if len(send_recv_ops) > 0:
                 for send_recv_op in send_recv_ops:
@@ -324,24 +527,120 @@ class AttentionWithCp(torch.autograd.Function):
                     cur_softmax_max, cur_softmax_sum = [x[:, :, 1, :, :] for x in [softmax_max, softmax_sum]]
 
                 # flash attention backward
-                attn_grad_outs = torch_npu.npu_fusion_attention_grad(
-                    cur_q, cur_k, cur_v, cur_dout, n,
-                    "SBH",
-                    pse=None,
-                    padding_mask=None,
-                    atten_mask=cur_attn_mask,
-                    softmax_max=cur_softmax_max,
-                    softmax_sum=cur_softmax_sum,
-                    attention_in=cur_attn_out,
-                    scale_value=softmax_scale,
-                    pre_tockens=cur_k.shape[0],
-                    next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
-                    sparse_mode=3 if cur_attn_mask is not None else 0,
-                    keep_prob=keep_prob,
-                    seed=rng_states[cp_size - i - 1][0],
-                    offset=rng_states[cp_size - i - 1][1],
-                    numels=rng_states[cp_size - i - 1][2],
-                )
+                if pse is None:
+                    attn_grad_outs = torch_npu.npu_fusion_attention_grad(
+                        cur_q, cur_k, cur_v, cur_dout, n,
+                        "SBH",
+                        pse=None,
+                        padding_mask=None,
+                        atten_mask=cur_attn_mask,
+                        softmax_max=cur_softmax_max,
+                        softmax_sum=cur_softmax_sum,
+                        attention_in=cur_attn_out,
+                        scale_value=softmax_scale,
+                        pre_tockens=cur_k.shape[0],
+                        next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                        sparse_mode=3 if cur_attn_mask is not None else 0,
+                        keep_prob=keep_prob,
+                        seed=rng_states[cp_size - i - 1][0],
+                        offset=rng_states[cp_size - i - 1][1],
+                        numels=rng_states[cp_size - i - 1][2],
+                    )
+                else:
+                    if i < cp_size - rank - 1:
+                        cur_attn_mask = None
+                        attn_grad_info = [n, pse, pse_type, cur_attn_mask, softmax_scale, keep_prob, rng_states,
+                                          q_index_list, kv_index_list]
+                        attn_grad_outs_r1c0, attn_grad_outs_r1c1 = cal_row_grad(
+                            cur_q, cur_k, cur_v, cur_dout, cur_softmax_max, cur_softmax_sum, cur_attn_out, s, cp_size,
+                            i, attn_grad_info
+                        )
+                        attn_grad_outs = []
+                        attn_grad_outs.append(attn_grad_outs_r1c0[0] + attn_grad_outs_r1c1[0])
+                        attn_grad_outs.append(torch.cat([attn_grad_outs_r1c0[1], attn_grad_outs_r1c1[1]]))
+                        attn_grad_outs.append(torch.cat([attn_grad_outs_r1c0[2], attn_grad_outs_r1c1[2]]))
+                    elif i == cp_size - 1:
+                        # r0c0
+                        cur_attn_mask = attn_mask
+                        attn_grad_outs_r0c0 = npu_fusion_attention_grad(
+                            cur_q[:s], cur_k[:s], cur_v[:s], cur_dout[:s], n, 'SBH',
+                            pse=pse,
+                            pse_type=pse_type,
+                            padding_mask=None,
+                            softmax_max=cur_softmax_max[:, :, :s],
+                            softmax_sum=cur_softmax_sum[:, :, :s],
+                            attention_in=cur_attn_out[:s],
+                            atten_mask=cur_attn_mask,
+                            scale=softmax_scale,
+                            pre_tokens=s,
+                            next_tokens=0 if cur_attn_mask is not None else s,
+                            keep_prob=keep_prob,
+                            seed=rng_states[cp_size - i - 1][0],
+                            offset=rng_states[cp_size - i - 1][1],
+                            numels=rng_states[cp_size - i - 1][2],
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            q_start_idx=[q_index_list[0] * s, ] if q_index_list is not None else q_index_list,
+                            kv_start_idx=[kv_index_list[0] * s, ] if kv_index_list is not None else kv_index_list
+                        )
+                        attn_grad_info = [n, pse, pse_type, cur_attn_mask, softmax_scale, keep_prob, rng_states,
+                                          q_index_list, kv_index_list]
+                        attn_grad_outs_r1c0, attn_grad_outs_r1c1 = cal_row_grad(
+                            cur_q[s:], cur_k, cur_v, cur_dout[s:], cur_softmax_max[:, :, s:], cur_softmax_sum[:, :, s:],
+                            cur_attn_out[s:], s, cp_size, i, attn_grad_info
+                        )
+                        attn_grad_outs = []
+                        attn_grad_outs.append(torch.cat(
+                            [attn_grad_outs_r0c0[0], attn_grad_outs_r1c0[0] + attn_grad_outs_r1c1[0]]))
+                        attn_grad_outs.append(torch.cat(
+                            [attn_grad_outs_r0c0[1] + attn_grad_outs_r1c0[1], attn_grad_outs_r1c1[1]]))
+                        attn_grad_outs.append(torch.cat(
+                            [attn_grad_outs_r0c0[2] + attn_grad_outs_r1c0[2], attn_grad_outs_r1c1[2]]))
+                    else:
+                        cur_attn_mask = None
+                        attn_grad_outs_r0c0 = npu_fusion_attention_grad(
+                            cur_q[:s], cur_k, cur_v, cur_dout[:s], n, 'SBH',
+                            pse=pse,
+                            pse_type=pse_type,
+                            padding_mask=None,
+                            softmax_max=cur_softmax_max[:, :, :s],
+                            softmax_sum=cur_softmax_sum[:, :, :s],
+                            attention_in=cur_attn_out[:s],
+                            atten_mask=cur_attn_mask,
+                            scale=softmax_scale,
+                            pre_tokens=s,
+                            next_tokens=0 if cur_attn_mask is not None else s,
+                            keep_prob=keep_prob,
+                            seed=rng_states[cp_size - i - 1][0],
+                            offset=rng_states[cp_size - i - 1][1],
+                            numels=rng_states[cp_size - i - 1][2],
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            q_start_idx=[q_index_list[0] * s, ] if q_index_list is not None else q_index_list,
+                            kv_start_idx=[kv_index_list[0] * s, ] if kv_index_list is not None else kv_index_list
+                        )
+                        attn_grad_outs_r1c0 = npu_fusion_attention_grad(
+                            cur_q[s:], cur_k, cur_v, cur_dout[s:], n, 'SBH',
+                            pse=pse,
+                            pse_type=pse_type,
+                            padding_mask=None,
+                            softmax_max=cur_softmax_max[:, :, s:],
+                            softmax_sum=cur_softmax_sum[:, :, s:],
+                            attention_in=cur_attn_out[s:],
+                            atten_mask=cur_attn_mask,
+                            scale=softmax_scale,
+                            pre_tokens=s,
+                            next_tokens=0 if cur_attn_mask is not None else s,
+                            keep_prob=keep_prob,
+                            seed=rng_states[cp_size - i - 1][0],
+                            offset=rng_states[cp_size - i - 1][1],
+                            numels=rng_states[cp_size - i - 1][2],
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            q_start_idx=[q_index_list[1] * s, ] if q_index_list is not None else q_index_list,
+                            kv_start_idx=[kv_index_list[0] * s, ] if kv_index_list is not None else kv_index_list
+                        )
+                        attn_grad_outs = []
+                        attn_grad_outs.append(torch.cat([attn_grad_outs_r0c0[0], attn_grad_outs_r1c0[0]]))
+                        attn_grad_outs.append(attn_grad_outs_r0c0[1] + attn_grad_outs_r1c0[1])
+                        attn_grad_outs.append(attn_grad_outs_r0c0[2] + attn_grad_outs_r1c0[2])
 
                 cur_dq, cur_dk, cur_dv = attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]
                 if i == 0:
@@ -428,7 +727,7 @@ class AttentionWithCp(torch.autograd.Function):
         # [2, s, b, h] -> [2s, b, h]
         if causal:
             dq, dk, dv = [x.view(-1, *x.shape[2:]) for x in [dq, dk, dv]]
-        return dq, dk, dv, None, None, None, None, None
+        return dq, dk, dv, None, None, None, None, None, None, None
 
 
 def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.):

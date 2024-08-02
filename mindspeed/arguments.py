@@ -216,8 +216,8 @@ def _add_training_args(parser):
                        help='recompute early to reduce bubble and improve training.')
     group.add_argument('--jit-compile', action='store_true', default=False,
                        help='Setting jit compile mode to True')
-    group.add_argument('--prefetch', action='store_true', default=False,
-                       help='switch to open prefetch feature.'
+    group.add_argument('--swap-attention', action='store_true', default=False,
+                       help='switch to open swap-attention feature.'
                             'The default is False.')
     group.add_argument('--use-fusion-attn-v2', action='store_true', default=False,
                        help='use fusion_attention ops version 2')
@@ -328,6 +328,10 @@ def validate_args_wrapper(validate_args):
             args.use_mcore_models = True
             overlap_param_gather_without_mcore_models = True
 
+        # alibi type [2, 3] is only support FA2
+        if args.alibi_fusion_attn_type in [2, 3]:
+            args.use_fusion_attn_v2 = True
+
         # for vpp assert pp should > 2
         flag_num_layers_per_virtual_pipeline_stage = None
         flag_overlap_p2p_comm = False
@@ -368,11 +372,6 @@ def validate_args_wrapper(validate_args):
         if int(os.getenv('ADAPTIVE_RECOMPUTING', '0')) and int(os.getenv('MEMORY_FRAGMENTATION', '0')):
             raise AssertionError('ADAPTIVE_RECOMPUTING and MEMORY_FRAGMENTATION all open is not supported')
 
-        if args.use_fused_rotary_pos_emb and int(os.getenv('MEMORY_FRAGMENTATION', '0')):
-            raise AssertionError(
-                'use_fused_rotary_pos_emb and MEMORY_FRAGMENTATION all open is not supported yet.'
-                'It is recommended to set MEMORY_FRAGMENTATION to 0 when using fused rotary position embedding.'
-            )
 
         if args.use_fused_rmsnorm:
             if args.normalization != "RMSNorm":
@@ -422,6 +421,8 @@ def validate_args_wrapper(validate_args):
         if args.moe_permutation_async_comm and args.moe_model_type != 'megatron_moe':
             raise AssertionError('`--moe-permutation-async-comm` only support for megatron core moe.')
 
+        if args.context_parallel_size > 1 and args.position_embedding_type == 'alibi':
+            assert args.context_parallel_algo == 'megatron_cp_algo', f"alibi only support megatron_cp_algo"
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'ulysses_cp_algo':
             assert args.seq_length % args.context_parallel_size == 0, f"sequence length must be divisible by context_parallel_size"
             head, remainder = divmod(args.num_attention_heads, args.context_parallel_size * args.tensor_model_parallel_size)
@@ -429,6 +430,8 @@ def validate_args_wrapper(validate_args):
             args.use_flash_attn = True
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'megatron_cp_algo':
             assert args.seq_length % (2 * args.context_parallel_size) == 0, f"sequence length must be divisible by 2 * context_parallel_size"
+            if args.position_embedding_type == 'alibi':
+                assert args.alibi_fusion_attn_type in [2, 3] and args.cp_attention_mask_type == 'causal', f"megatron_cp_algo only support alibi type in [2, 3] and cp_attention_mask_type is causal"
             args.use_flash_attn = True
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'hybrid_cp_algo':
             assert args.ulysses_degree_in_cp is not None, "--ulysses-degree-in-cp must be specified in hybrid_cp_algo"
@@ -467,7 +470,7 @@ def validate_args_wrapper(validate_args):
             assert not args.recompute_activation_function, \
                 'adaptive selective recompute is not compatible ' \
                 'with activation function recomputation '
-            assert not args.prefetch, 'adaptive selective recompute is not compatible with prefetch feature'
+            assert not args.swap_attention, 'adaptive selective recompute is not compatible with swap_attention feature'
             assert not args.recompute_in_advance and not args.recompute_in_bubble, 'adaptive selective recompute ' \
                 'is not compatible with ripipe schedule'
             assert not args.memory_fragmentation, \
@@ -523,7 +526,7 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('recompute_num_layers must be None or 0 when using recompute_in_bubble')
             if args.pipeline_model_parallel_size <= 1 or args.num_layers_per_virtual_pipeline_stage is None:
                 raise AssertionError('recompute_in_bubble only support pipelining with interleaving')
-            if not args.prefetch:
+            if not args.swap_attention:
                 # Following is a trick to realize bubble recomputation. We first enable all recomputation,
                 # and then disable recomputation for all layers except the ones chosen for bubble recomputation.
                 args.recompute_granularity = "full"

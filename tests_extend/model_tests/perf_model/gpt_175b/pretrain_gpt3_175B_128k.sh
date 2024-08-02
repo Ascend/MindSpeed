@@ -36,7 +36,7 @@ GPT_ARGS="
     --context-parallel-algo megatron_cp_algo \
     --enable-recompute-layers-per-pp-rank \
     --recompute-activation-function \
-    --prefetch \
+    --swap-attention \
     --recompute-num-layers 5 \
     --num-layers-per-virtual-pipeline-stage 2 \
     --use-distributed-optimizer \

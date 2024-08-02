@@ -3,12 +3,11 @@
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 source "tests_extend/system_tests/env_npu.sh"
 
-# Change for multinode config
-NPUS_PER_NODE=16
-MASTER_ADDR=<master_ip_address>
-MASTER_PORT=6000
-NNODES=8
-NODE_RANK=<local_rank>
+NPUS_PER_NODE=8
+MASTER_ADDR=localhost
+MASTER_PORT=6001
+NNODES=1
+NODE_RANK=0
 WORLD_SIZE=$(($NPUS_PER_NODE*$NNODES))
 
 CHECKPOINT_PATH=./ckpt_gpt
@@ -16,10 +15,10 @@ VOCAB_FILE=/home/dataset/enwiki/gpt2-vocab.json
 MERGE_FILE=/home/dataset/enwiki/gpt2-merges.txt
 DATA_PATH=/home/dataset/enwiki/my-t5_text_sentence
 
-TP=8
-PP=2
-EP=4
-CP=8
+TP=2
+PP=1
+CP=1
+EP=2
 
 DISTRIBUTED_ARGS="
     --nproc_per_node $NPUS_PER_NODE \
@@ -29,36 +28,58 @@ DISTRIBUTED_ARGS="
     --master_port $MASTER_PORT
 "
 
-GPT_ARGS="
-    --reuse-fp32-param \
-    --enable-token-rearrange-opt \
-    --use-pipe-experts \
-    --pipe-experts-multi-stream \
-    --pipe-experts-multi-data 4 \
-    --enable-recompute-layers-per-pp-rank \
+MOE_ARGS_1="
+    --expert-model-parallel-size ${EP} \
+    --moe-model-type megatron_moe \
+    --num-experts 4 \
+    --moe-permutation-async-comm \
+    --moe-token-dispatcher-type alltoall \
+    --moe-router-topk 2 \
+"
+
+MOE_ARGS_2="
+    --expert-model-parallel-size ${EP} \
+    --moe-model-type megatron_moe \
+    --num-experts 4 \
+    --moe-permutation-async-comm \
+    --moe-token-dispatcher-type allgather \
+    --moe-router-topk 2 \
+"
+
+MOE_ARGS_3="
+    --expert-model-parallel-size ${EP} \
+    --moe-model-type megatron_moe \
+    --num-experts 4 \
+    --moe-grouped-gemm \
+    --moe-router-topk 2 \
+"
+
+RECOMPUTE_ARGS="
     --recompute-activation-function \
     --swap-attention \
-    --recompute-num-layers 0 \
+    --recompute-num-layers 1 \
+"
+
+GPT_ARGS="
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
-    --context-parallel-size ${CP} \
-    --context-parallel-algo megatron_cp_algo \
+    --disable-bias-linear \
+    --reuse-fp32-param \
+    --use-mcore-models \
     --use-distributed-optimizer \
-    --num-layers-per-virtual-pipeline-stage 2 \
-    --use-fused-rotary-pos-emb \
-    --use-cp-send-recv-overlap \
     --overlap-grad-reduce \
     --overlap-param-gather \
+    --use-fused-rotary-pos-emb \
+    --use-ascend-mc2 \
     --sequence-parallel \
-    --num-layers 24 \
+    --num-layers 2 \
     --hidden-size 12288 \
     --num-attention-heads 96 \
-    --seq-length 131072 \
-    --max-position-embeddings 131072 \
+    --seq-length 8192 \
+    --max-position-embeddings 8192 \
     --micro-batch-size 1 \
     --global-batch-size 4 \
-    --num-experts 4 \
-    --train-iters 5000 \
+    --train-iters 1000 \
     --lr-decay-iters 320000 \
     --lr 5.0e-7 \
     --lr-decay-style cosine \
@@ -72,10 +93,6 @@ GPT_ARGS="
     --position-embedding-type rope \
     --no-bias-gelu-fusion \
     --no-bias-dropout-fusion \
-    --expert-model-parallel-size ${EP} \
-    --moe-model-type deepspeed_moe \
-    --moe-router-topk 2 \
-    --moe-train-capacity-factor 1.1 \
     --attention-dropout 0.0 \
     --hidden-dropout 0.0 \
     --bf16
@@ -103,13 +120,32 @@ OUTPUT_ARGS="
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
+    $MOE_ARGS_1 \
+    $RECOMPUTE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --distributed-timeout-minutes 10 \
-    --seed 1234 \
-    --save $CHECKPOINT_PATH \
-    --no-save-optim \
-    --no-save-rng
+    --seed 1234 | tee pretrain_gpt_megatron_moe_alltoall.log
+
+torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
+    $GPT_ARGS \
+    $MOE_ARGS_2 \
+    $RECOMPUTE_ARGS \
+    $DATA_ARGS \
+    $OUTPUT_ARGS \
+    --distributed-backend nccl \
+    --distributed-timeout-minutes 10 \
+    --seed 1234 | tee pretrain_gpt_megatron_moe_allgather.log
+
+torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
+    $GPT_ARGS \
+    $MOE_ARGS_3 \
+    $RECOMPUTE_ARGS \
+    $DATA_ARGS \
+    $OUTPUT_ARGS \
+    --distributed-backend nccl \
+    --distributed-timeout-minutes 10 \
+    --seed 1234 | tee pretrain_gpt_megatron_moe_grouped_gemm.log
 
 set +x

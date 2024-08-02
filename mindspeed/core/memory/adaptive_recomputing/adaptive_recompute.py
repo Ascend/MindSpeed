@@ -65,7 +65,7 @@ class AdaptiveRecomputePolicy:
         self.first_non_oom_device_memory = 0
         self.check_non_oom_times = 0
 
-        # prefetch
+        # swap_attention
         self.interval = 0
         self.threshold_prefetch = 0
         self.num_prefetch = 0
@@ -693,7 +693,7 @@ def record_time(context, remaining_event_list):
 def is_activate_adaptive_recompute():
     all_args = get_args()
     profiling_step = 0
-    if all_args.adaptive_recompute_device_size < 0 and not all_args.adaptive_recompute_device_swap and not all_args.prefetch:
+    if all_args.adaptive_recompute_device_size < 0 and not all_args.adaptive_recompute_device_swap and not all_args.swap_attention:
         print_rank_0("[ERROR] failed to activate adaptive selective recompute train, please add param: "
                      "\"adaptive-recompute-device-swap\", or set param: \"adaptive-recompute-device-size\".")
         return False, profiling_step
@@ -723,20 +723,20 @@ def setup_model_and_optimizer_wrapper(setup_model_and_optimizer):
         recomputing.set_profiling_step(profile_step)
         recomputing.get_num_warmup_micro_batches(len(models))
         args = get_args()
-        if not args.prefetch:
+        if not args.swap_attention:
             optimizer.step = recomputing.hook_step_func(optimizer.step, models)
         if isinstance(models, list):
             for index, model in enumerate(models):
                 recomputing.construct_context_recursive("module" + str(index), model, recomputing.context, True)
-                if not args.prefetch:
+                if not args.swap_attention:
                     recomputing.register_recursive_hook(model, recomputing.context, recomputing.profiling_prefix,
-                                                        index == 0, index, prefetch=args.prefetch)
+                                                        index == 0, index, prefetch=args.swap_attention)
         else:
             recomputing.construct_context_recursive("module", models, recomputing.context, True)
-            if not args.prefetch:
+            if not args.swap_attention:
                 recomputing.register_recursive_hook(models, recomputing.context, recomputing.profiling_prefix, \
-                                                    True, prefetch=args.prefetch)
-        if args.prefetch:
+                                                    True, prefetch=args.swap_attention)
+        if args.swap_attention:
             recomputing.prefetch_hook(models)
         print_rank_0("ADAPTIVE-RECOMPUTE: successfully hooking module")
         return models, optimizer, opt_param_scheduler

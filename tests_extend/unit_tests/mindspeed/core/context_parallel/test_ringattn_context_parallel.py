@@ -13,7 +13,8 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                              get_context_parallel_for_hybrid_ring_world_size,
                                              get_context_parallel_for_hybrid_ring_rank,
                                              get_context_parallel_for_hybrid_ring_global_ranks)
-
+from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
+from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from commons import set_random_seed, initialize_model_parallel
 from unit_tests.common import DistributedTest
 
@@ -48,7 +49,7 @@ def get_data_on_all_cp_ranks(data, cp_size, dim=0):
 
 def run_ringattn_cp(cp_size, bs, seq_len, dtype, cp_args):
     from megatron.core import mpu
-    causal, send_recv_overlap = cp_args
+    causal, send_recv_overlap, pse_type = cp_args
     args = parse_args(None, True)
     args.use_cp_send_recv_overlap = send_recv_overlap
     set_args(args)
@@ -64,23 +65,44 @@ def run_ringattn_cp(cp_size, bs, seq_len, dtype, cp_args):
     v = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
     dout = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
 
+    pse = None
+    if pse_type == 2 or pse_type == 3:
+        pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(n)
+
     if causal:
         attn_mask = ~torch.tril(torch.ones((2048, 2048), dtype=torch.bool, device=q.device))
     else:
         attn_mask = None
-    out = torch_npu.npu_fusion_attention( \
-        q, k, v, n, 'SBH', \
-        pse=None, \
-        padding_mask=None, \
-        atten_mask=attn_mask, \
-        scale=scale, \
-        pre_tockens=seq_len, \
-        next_tockens=0, \
-        keep_prob=1., \
-        inner_precise=0, \
-        sparse_mode=3 if attn_mask is not None else 0
-    )[0]
-    out.backward(dout)
+
+    if pse is None:
+        out = torch_npu.npu_fusion_attention( \
+            q, k, v, n, 'SBH', \
+            pse=None, \
+            padding_mask=None, \
+            atten_mask=attn_mask, \
+            scale=scale, \
+            pre_tockens=seq_len, \
+            next_tockens=0, \
+            keep_prob=1., \
+            inner_precise=0, \
+            sparse_mode=3 if attn_mask is not None else 0
+        )[0]
+        out.backward(dout)
+    else:
+        out = npu_fusion_attention( \
+            q, k, v, n, 'SBH', \
+            pse=pse, \
+            pse_type=pse_type, \
+            padding_mask=None, \
+            atten_mask=attn_mask, \
+            scale=scale, \
+            pre_tokens=seq_len, \
+            next_tokens=0, \
+            keep_prob=1., \
+            inner_precise=0, \
+            sparse_mode=3 if attn_mask is not None else 0
+        )[0]
+        out.backward(dout)
 
     q_ = get_data_on_this_cp_rank(q.clone().detach(), cp_size, rank)
     k_ = get_data_on_this_cp_rank(k.clone().detach(), cp_size, rank)
@@ -113,6 +135,8 @@ def run_ringattn_cp(cp_size, bs, seq_len, dtype, cp_args):
     cp_para['cp_global_ranks'] = cp_global_ranks
     cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
             if args.use_cp_send_recv_overlap else None
+    cp_para['pse'] = pse
+    cp_para['pse_type'] = pse_type
 
     out_ = ringattn_context_parallel(q_, k_, v_, n, cp_para, softmax_scale=scale, attn_mask=None)
     out_.backward(dout_)
@@ -147,6 +171,6 @@ class TestRingAttnCP(DistributedTest):
     world_size = 8
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.parametrize("cp_args", [(True, True), (False, False)])
+    @pytest.mark.parametrize("cp_args", [(True, True, 1), (True, True, 2), (True, True, 3), (False, False, 1)])
     def test_ringattn_context_parallel_seq8192_bs2_bf16(self, cp_args):
         run_ringattn_cp(self.world_size, 2, 8192, torch.bfloat16, cp_args)

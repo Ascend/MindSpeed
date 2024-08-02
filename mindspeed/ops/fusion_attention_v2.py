@@ -91,3 +91,22 @@ def npu_fusion_attention(query, key, value, head_num,
                                            sparse_mode, gen_mask_parallel,
                                            sync, pse_type, q_start_idx,
                                            kv_start_idx)
+
+
+def npu_fusion_attention_grad(query, key, value, grad_outputs,
+                              head_num, input_layout, *, pse=None,
+                              padding_mask=None, atten_mask=None,
+                              softmax_max=None, softmax_sum=None, softmax_in=None, attention_in=None,
+                              scale=1., keep_prob=1., pre_tokens=2147483647,
+                              next_tokens=2147483647, inner_precise=0,
+                              seed=1234, offset=0, numels=0, prefix=None,
+                              actual_seq_qlen=None, actual_seq_kvlen=None, sparse_mode=0,
+                              gen_mask_parallel=True, sync=False, pse_type=1, q_start_idx=None,
+                              kv_start_idx=None):
+    mindspeed_ops = FusionAttentionV2OpBuilder().load()
+    return mindspeed_ops.npu_fusion_attention_grad_v2(query, key, value, grad_outputs, head_num, input_layout, pse,
+                                                      padding_mask, atten_mask, softmax_max, softmax_sum, softmax_in,
+                                                      attention_in, scale, keep_prob, pre_tokens, next_tokens,
+                                                      inner_precise, seed, offset, numels, prefix, actual_seq_qlen,
+                                                      actual_seq_kvlen, sparse_mode, gen_mask_parallel, sync,
+                                                      pse_type, q_start_idx, kv_start_idx)

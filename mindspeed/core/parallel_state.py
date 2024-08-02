@@ -1,18 +1,8 @@
 # coding=utf-8
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+
+
 """Expert parallel groups."""
 
 from functools import wraps
@@ -55,11 +45,15 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
     ):
         from megatron.training.utils import print_rank_0
 
+        if virtual_pipeline_model_parallel_size is not None:
+            megatron.core.parallel_state._VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
+            megatron.core.parallel_state._VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = virtual_pipeline_model_parallel_size
+
         # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
         initialize_model_parallel(
             tensor_model_parallel_size,
             pipeline_model_parallel_size,
-            virtual_pipeline_model_parallel_size,
+            None,
             pipeline_model_parallel_split_rank,
             use_sharp,
             context_parallel_size,

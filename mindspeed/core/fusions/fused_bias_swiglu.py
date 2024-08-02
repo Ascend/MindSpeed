@@ -7,11 +7,11 @@ def fused_swiglu(x):
 
 class SwiGLUFunction:
     @staticmethod
-    def apply(x):
+    def apply(x, *args):
         return fused_swiglu(x)
 
 
 class BiasSwiGLUFunction:
     @staticmethod
-    def apply(x, bias):
+    def apply(x, bias, *args):
         return fused_swiglu(x + bias)

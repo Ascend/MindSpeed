@@ -35,7 +35,7 @@ GPT_ARGS="
     --use-ascend-mc2 \
     --enable-recompute-layers-per-pp-rank \
     --recompute-activation-function \
-    --prefetch \
+    --swap-attention \
     --recompute-num-layers 1 \
     --reuse-fp32-param \
     --use-fused-rotary-pos-emb \

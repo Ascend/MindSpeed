@@ -9,7 +9,6 @@ from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 
 
-@pytest.mark.skip(reason='skip because of megatron ep group bug')
 class TestParallelStateEPCP(DistributedTest):
     world_size = 8
 

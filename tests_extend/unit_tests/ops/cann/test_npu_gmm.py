@@ -43,7 +43,6 @@ class TestNPUGMM:
         assert torch.allclose(y, output, rtol=0.005, atol=0.005)
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.skip(reason='aclnnGroupedMatmulV3 is not in this cann.')
     def test_npu_gmm_2(self):
         x = torch.randn(32, 64, dtype=torch.float16)
         weight = torch.randn(8, 64, 32, dtype=torch.float16)

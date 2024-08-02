@@ -173,7 +173,7 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
         return custom_forward
     
     args = get_args()
-    if self.recompute_method == 'block' and not args.prefetch:
+    if self.recompute_method == 'block':
         # Checkpoint the input activation of only a set number of individual
         # Transformer layers and skip the rest.
         # A method fully use the device memory removing redundant re-computation.
@@ -203,7 +203,7 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
                 else:
                     return (l * vpp_size + vpp_rank) < self.recompute_num_layers
 
-            if should_recompute():
+            if should_recompute() and not args.swap_attention:
                 hidden_states = tensor_parallel.checkpoint(
                     custom(l, l + 1),
                     self.distribute_saved_activations,

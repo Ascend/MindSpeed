@@ -8,11 +8,11 @@ DEBUG_PRINT = True
 
 def get_layer_id(name):
     if name:
-        matches = re.findall(r'\.(\d+)\.?', name)
+        matches = re.findall(r'\.(\d+)\.?', str(name))
         if matches:
             return matches[0]
-        return ''
-    return ''
+        return -1
+    return -1
 
 
 class SwapTensor:
@@ -203,7 +203,7 @@ class SwapPrefetch:
             return
 
         for swap_tensor in self.swap_tensors:
-            if self.swap_tensors[0].layer_id != 0:
+            if self.swap_tensors[0].layer_id > 0 and self.prefetch_list:
                 swap_tensor.layer_index = len(self.prefetch_list[-1])
             if swap_tensor.layer_id + self.interval == int(get_layer_id(module_name)) \
                     and swap_tensor.stat == "d2h":
@@ -217,7 +217,7 @@ class SwapPrefetch:
                 swap_tensor.wait_d2h_finished(swap_tensor.stream, swap_tensor.first_tensor)
 
         if self.swap_tensors[-1].stat == 'host':
-            if self.swap_tensors[0].layer_id != 0 and self.prefetch_list:
+            if self.swap_tensors[0].layer_id > 0 and self.prefetch_list:
                 self.prefetch_list[-1].append(self.swap_tensors)
                 self.prefetch_data_ptr_list[-1].append(self.data_ptr)
                 self.slice_tensor_storage_ptr_list[-1].append(self.slice_tensor_storage_ptr)

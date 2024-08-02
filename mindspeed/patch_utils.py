@@ -64,7 +64,7 @@ class Patch:
 
         if self.orig_func_name is not None:
             setattr(self.orig_module, self.orig_func_name, self.patch_func)
-        for key, value in sys.modules.items():
+        for key, value in sys.modules.copy().items():
             if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
                     and id(getattr(value, self.orig_func_name)) == self.orig_func_id:
                 setattr(value, self.orig_func_name, self.patch_func)

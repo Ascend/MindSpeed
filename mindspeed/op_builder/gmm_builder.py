@@ -1,11 +1,22 @@
 from typing import List, Optional
+
+from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
+from mindspeed.utils import print_rank_0_once
+
 import torch
 import torchair
-from torchair import ge
 from torch.library import Library, impl
-from torchair.ge import Tensor, TensorSpec, DataType
-from torchair import register_fx_node_ge_converter
-from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
+
+_graph_mode_available = True
+try:
+    from torchair import ge
+    from torchair.ge import Tensor, TensorSpec, DataType
+    from torchair import register_fx_node_ge_converter
+except ImportError:
+    _graph_mode_available = False
+    Tensor, TensorSpec, DataType = None, None, None
+    print_rank_0_once("[WARNING] Custom ops not supported for graph mode due to mismatch of torch_npu version.")
+
 
 
 class GMMOpBuilder(MindSpeedOpBuilder):
@@ -51,6 +62,9 @@ class GMMOpBuilder(MindSpeedOpBuilder):
             N = weight.shape[-1]
             y = x.new_empty((BM, N), dtype=x.dtype)
             return y
+
+        if not _graph_mode_available:
+            return
 
         @register_fx_node_ge_converter(torch.ops.mindspeed.npu_gmm.Tensor)
         def conveter_npu_gmm(

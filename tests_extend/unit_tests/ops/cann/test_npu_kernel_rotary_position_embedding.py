@@ -7,7 +7,7 @@ from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embe
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 
-class TestNPURotaryPositionEmbedding:
+class TestNPUKernelRotaryPositionEmbedding:
     def expect_op_exec(self, x, cos, sin, mode=0):
         x_dtype = x.dtype
         if x_dtype != torch.float:
@@ -33,7 +33,7 @@ class TestNPURotaryPositionEmbedding:
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize('dtype', [torch.float, torch.half, torch.bfloat16])
-    def test_npu_rotary_position_embedding_mode_0(self, dtype):
+    def test_npu_kernel_rotary_position_embedding_mode_0(self, dtype):
         x = torch.randn(2, 4096, 5, 128, dtype=dtype)
         cos = torch.randn(1, 4096, 1, 128, dtype=dtype)
         sin = torch.randn(1, 4096, 1, 128, dtype=dtype)
@@ -48,7 +48,7 @@ class TestNPURotaryPositionEmbedding:
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize('dtype', [torch.float, torch.half, torch.bfloat16])
-    def test_npu_rotary_position_embedding_mode_1(self, dtype):
+    def test_npu_kernel_rotary_position_embedding_mode_1(self, dtype):
         x = torch.randn(2, 4096, 5, 128, dtype=dtype)
         cos = torch.randn(1, 4096, 1, 128, dtype=dtype)
         sin = torch.randn(1, 4096, 1, 128, dtype=dtype)
