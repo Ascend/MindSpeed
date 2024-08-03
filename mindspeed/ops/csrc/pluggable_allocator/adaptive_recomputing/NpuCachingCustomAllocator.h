@@ -354,7 +354,7 @@ static bool BlockComparatorAddress(const Block *a, const Block *b) {
   return reinterpret_cast<uintptr_t>(a->ptr) < reinterpret_cast<uintptr_t>(b->ptr);
 }
 
-static std::string format_size(uint64_t size) {
+inline std::string format_size(uint64_t size) {
   std::ostringstream os;
   os.precision(2);
   os << std::fixed;
