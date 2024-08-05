@@ -76,6 +76,25 @@ def allgather_token_permutation(self, hidden_states: torch.Tensor, max_prob: tor
     )
 
 
+class NewIndePut(torch.autograd.Function):
+    @staticmethod
+    def forward(self, tensor, map_, value_):
+        self.map_ = map_
+        ori_dtype = None
+        if value_.dtype != torch.float32:
+            ori_dtype = value_.dtype
+            value_ = value_.float()
+        output = tensor.index_put_(map_, value_, accumulate=True)
+        if ori_dtype:
+            return output.to(ori_dtype)
+        return output
+
+    def backward(self, grad_input):
+        map_ = self.map_
+        grad_output = grad_input.index_select(0, map_[0])
+        return None, None, grad_output
+
+
 def allgather_token_unpermutation(self, hidden_states: torch.Tensor, bias: torch.Tensor = None, ):
     # Stage1: unpermute the tokens and bias locally respectively.w
     scores = self.local_probs.to(dtype=hidden_states.dtype)
@@ -107,10 +126,9 @@ def allgather_token_unpermutation(self, hidden_states: torch.Tensor, bias: torch
         # hidden_shape: [SeqLen/TP, MBS, HiddenSize], glboal_num_tokens = SeqLen/TP*MBS*(TP*EP)
         global_num_tokens = self.hidden_shape[0] * self.hidden_shape[1] * ep_group_size
         global_hidden_shape = [global_num_tokens, hidden_states.shape[-1]]
-        unpermuted_global_hidden = torch.zeros(global_hidden_shape, dtype=hidden_states.dtype, device=torch.cuda.current_device())
-        unpermuted_global_hidden.index_put_((self.global_local_map,),
-                                            unpermuted_local_hidden[:self.global_local_map.shape[0], :],
-                                            accumulate=True)
+        unpermuted_global_hidden = torch.zeros(global_hidden_shape, dtype=torch.float, device=torch.cuda.current_device())
+        unpermuted_global_hidden = NewIndePut.apply(unpermuted_global_hidden, (self.global_local_map,),
+                                            unpermuted_local_hidden[:self.global_local_map.shape[0], :])
 
         output_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(unpermuted_global_hidden)
         if self.add_bias:
