@@ -160,7 +160,8 @@ def megatron_core_adaptation(aspm):
         ScaledSoftmax, forward_fused_softmax
     from .core.fusions.rotary_pos_embedding import apply_fused_rotary_pos_emb_bshd_wrapper, rotary_embedding_init_wrapper
     from .core.fusions.fused_bias_swiglu import SwiGLUFunction, BiasSwiGLUFunction
-    from .core.transformer.attention import attention_init_wrapper
+    from .core.transformer.attention import attention_init_wrapper, self_attention_init_wrapper
+    from .core.transformer.module import megatron_module_init_wrapper
     from .core.tensor_parallel.layers import row_parallel_nocomm_optimizer_wrapper
     from .core.transformer.custom_layers.transformer_engine import PTNorm
     from .core.transformer.dot_product_attention import dot_product_attention_forward_wrapper, dot_product_attention_init_wrapper
@@ -207,6 +208,8 @@ def megatron_core_adaptation(aspm):
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__',
                         rotary_embedding_init_wrapper)
     aspm.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
+    aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
+    aspm.register_patch('megatron.core.transformer.module.MegatronModule.__init__', megatron_module_init_wrapper)
     aspm.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear.forward',
                         row_parallel_nocomm_optimizer_wrapper)
     aspm.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear.__init__',

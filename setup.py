@@ -16,7 +16,7 @@ __url__ = 'https://gitee.com/ascend/MindSpeed'
 __download_url__ = 'https://gitee.com/ascend/MindSpeed/release'
 __keywords__ = 'Ascend, langauge, deep learning, NLP'
 __license__ = 'See https://gitee.com/ascend/MindSpeed'
-__package_name__ = 'mindspeed_core'
+__package_name__ = 'mindspeed'
 __contact_names__ = 'Ascend'
 
 try:

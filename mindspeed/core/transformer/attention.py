@@ -18,3 +18,14 @@ def attention_init_wrapper(fn):
             self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
 
     return wrapper
+
+
+def self_attention_init_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, config, *arg, **kwargs):
+        args = get_args()
+        if args.overlap_param_gather:
+            config.reset_attention_order = True           
+        fn(self, config, *arg, **kwargs)
+
+    return wrapper

@@ -15,9 +15,9 @@ VOCAB_FILE=/home/dataset/enwiki/gpt2-vocab.json
 MERGE_FILE=/home/dataset/enwiki/gpt2-merges.txt
 DATA_PATH=/home/dataset/enwiki/my-t5_text_sentence
 
-TP=2
+TP=4
 PP=1
-CP=4
+CP=2
 EP=2
 
 DISTRIBUTED_ARGS="

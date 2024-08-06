@@ -19,6 +19,7 @@ def unpermute(
     probs: torch.Tensor = None,
     padded_mode: bool = False,
     restore_shape: torch.Size = None,
+    topk: int = 1
 ):
     if padded_mode:
         return unpermute_with_padded_tokens(

@@ -33,6 +33,7 @@ MOE_ARGS_1="
     --moe-model-type megatron_moe \
     --num-experts 4 \
     --moe-permutation-async-comm \
+    --moe-grouped-gemm \
     --moe-token-dispatcher-type alltoall \
     --moe-router-topk 2 \
 "
@@ -42,15 +43,8 @@ MOE_ARGS_2="
     --moe-model-type megatron_moe \
     --num-experts 4 \
     --moe-permutation-async-comm \
-    --moe-token-dispatcher-type allgather \
-    --moe-router-topk 2 \
-"
-
-MOE_ARGS_3="
-    --expert-model-parallel-size ${EP} \
-    --moe-model-type megatron_moe \
-    --num-experts 4 \
     --moe-grouped-gemm \
+    --moe-token-dispatcher-type allgather \
     --moe-router-topk 2 \
 "
 
@@ -80,8 +74,8 @@ GPT_ARGS="
     --micro-batch-size 1 \
     --global-batch-size 4 \
     --train-iters 1000 \
-    --lr-decay-iters 320000 \
     --lr 5.0e-7 \
+    --lr-warmup-fraction 0.05 \
     --lr-decay-style cosine \
     --clip-grad 1.0 \
     --weight-decay 0.1 \
@@ -137,15 +131,5 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     --distributed-backend nccl \
     --distributed-timeout-minutes 10 \
     --seed 1234 | tee pretrain_gpt_megatron_moe_allgather.log
-
-torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
-    $GPT_ARGS \
-    $MOE_ARGS_3 \
-    $RECOMPUTE_ARGS \
-    $DATA_ARGS \
-    $OUTPUT_ARGS \
-    --distributed-backend nccl \
-    --distributed-timeout-minutes 10 \
-    --seed 1234 | tee pretrain_gpt_megatron_moe_grouped_gemm.log
 
 set +x
