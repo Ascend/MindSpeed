@@ -3,23 +3,27 @@
 
 from typing import List, Optional
 
-from mindspeed.utils import print_rank_0_once
 from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
 
 import torch
 import torchair
 from torch.library import Library, impl
 
-_graph_mode_available = True
+torch_npu_api_version = None
 try:
     from torchair import ge
     from torchair.ge import Tensor, TensorSpec, DataType
     from torchair import register_fx_node_ge_converter
 except ImportError:
-    _graph_mode_available = False
-    Tensor, TensorSpec, DataType = None, None, None
-    print_rank_0_once("[WARNING] Custom ops not supported for graph mode due to mismatch of torch_npu version.")
-
+    torch_npu_api_version = 1
+    from torchair.ge_concrete_graph import ge_apis as ge
+    from torchair.ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair.ge_concrete_graph.ge_graph import Tensor, TensorSpec
+    from torchair.ge_concrete_graph.ge_graph import get_default_ge_graph, next_unique_name
+    from torchair.ge_concrete_graph.ge_graph import compat_as_bytes
+    from torchair.ge_concrete_graph.ge_graph import get_invalid_desc
+else:
+    torch_npu_api_version = 2
 
 DataType = dict(
     DT_FLOAT16=1,
@@ -68,9 +72,6 @@ class MatmulAllReduceAddRmsNormOpBuilder(MindSpeedOpBuilder):
                                                    dequant_scale=None, antiquant_group_size=0, comm_turn=0):
             return (torch.empty_like(residual, dtype=residual.dtype),
                     torch.empty_like(residual, dtype=residual.dtype))
-
-        if not _graph_mode_available:
-            return
 
         @register_fx_node_ge_converter(torch.ops.mindspeed.npu_mm_all_reduce_add_rms_norm.default)
         def convert_npu_mm_all_reduce_add_rms_norm(
@@ -158,8 +159,75 @@ def CheckDtype(x1: Tensor, x2: Tensor, bias: Optional[Tensor], residual: Tensor,
         raise AssertionError("the type of x1 and x2 should be suit the not quant scenario, "\
                     "dequant scenario, antiquant scenario.")
 
+MatmulAllReduceAddRmsNorm = None
+if torch_npu_api_version == 2:
+    def MatmulAllReduceAddRmsNormV2(x1: Tensor,
+                                x2: Tensor,
+                                bias: Optional[Tensor],
+                                residual: Tensor,
+                                gamma: Tensor,
+                                antiquant_scale: Optional[Tensor],
+                                antiquant_offset: Optional[Tensor],
+                                dequant_scale: Optional[Tensor],
+                                *,
+                                group: str,
+                                reduce_op: str = "sum",
+                                is_trans_a: bool = False,
+                                is_trans_b: bool = False,
+                                comm_turn: int = 0,
+                                antiquant_group_size: int = 0,
+                                epsilon: float = 0.000001):
+        """REG_OP(MatmulAllReduceAddRmsNorm)\n
+        .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .INPUT(x2, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_INT8, DT_INT8, DT_INT4, DT_INT4}))\n
+        .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT16, DT_BF16, DT_INT32, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .INPUT(residual, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .INPUT(gamma, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .OPTIONAL_INPUT(antiquant_scale, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .OPTIONAL_INPUT(antiquant_offset, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .OPTIONAL_INPUT(dequant_scale, TensorType({DT_FLOAT16, DT_BF16, DT_UINT64, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .OUTPUT(norm_out, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
+        .REQUIRED_ATTR(group, String)\n
+        .ATTR(reduce_op, String, "sum")\n
+        .ATTR(is_trans_a, Bool, false)\n
+        .ATTR(is_trans_b, Bool, false)\n
+        .ATTR(comm_turn, Int, 0)\n
+        .ATTR(antiquant_group_size, Int, 0)\n
+        .ATTR(epsilon, Float, 1e-6)\n
+        .OP_END_FACTORY_REG(MatmulAllReduceAddRmsNorm)
+        """
 
-def MatmulAllReduceAddRmsNorm(x1: Tensor,
+        y, norm_out = torchair.ge.custom_op(
+            "MatmulAllReduceAddRmsNorm",
+            inputs={
+                "x1" : x1,
+                "x2" : x2,
+                "bias" : bias,
+                "residual" : residual,
+                "gamma" : gamma,
+                "antiquant_scale" : antiquant_scale,
+                "antiquant_offset" : antiquant_offset,
+                "dequant_scale" : dequant_scale,
+                },
+            attrs={
+                "group" : ge.attr.Str(group),
+                "reduce_op" : ge.attr.Str(reduce_op),
+                "is_trans_a" : ge.attr.Bool(is_trans_a),
+                "is_trans_b" : ge.attr.Bool(is_trans_b),
+                "comm_turn" : ge.attr.Int(comm_turn),
+                "antiquant_group_size" : ge.attr.Int(antiquant_group_size),
+                "epsilon" : ge.attr.Float(epsilon),
+            },
+            outputs=[
+                "y",
+                "norm_out"
+            ]
+        )
+        return y, norm_out
+    MatmulAllReduceAddRmsNorm = MatmulAllReduceAddRmsNormV2
+elif torch_npu_api_version == 1:
+    def MatmulAllReduceAddRmsNormV1(x1: Tensor,
                               x2: Tensor,
                               bias: Optional[Tensor],
                               residual: Tensor,
@@ -174,52 +242,84 @@ def MatmulAllReduceAddRmsNorm(x1: Tensor,
                               is_trans_b: bool = False,
                               comm_turn: int = 0,
                               antiquant_group_size: int = 0,
-                              epsilon: float = 0.000001):
-    """REG_OP(MatmulAllReduceAddRmsNorm)\n
-    .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .INPUT(x2, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_INT8, DT_INT8, DT_INT4, DT_INT4}))\n
-    .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT16, DT_BF16, DT_INT32, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .INPUT(residual, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .INPUT(gamma, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .OPTIONAL_INPUT(antiquant_scale, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .OPTIONAL_INPUT(antiquant_offset, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .OPTIONAL_INPUT(dequant_scale, TensorType({DT_FLOAT16, DT_BF16, DT_UINT64, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .OUTPUT(norm_out, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_FLOAT16, DT_BF16, DT_FLOAT16, DT_BF16}))\n
-    .REQUIRED_ATTR(group, String)\n
-    .ATTR(reduce_op, String, "sum")\n
-    .ATTR(is_trans_a, Bool, false)\n
-    .ATTR(is_trans_b, Bool, false)\n
-    .ATTR(comm_turn, Int, 0)\n
-    .ATTR(antiquant_group_size, Int, 0)\n
-    .ATTR(epsilon, Float, 1e-6)\n
-    .OP_END_FACTORY_REG(MatmulAllReduceAddRmsNorm)
-    """
+                              epsilon: float = 0.000001,
+                              dependencies=None,
+                              node_name=None):
+        op = get_default_ge_graph().op.add()
+        op.type = "MatmulAllReduceAddRmsNorm"
+        op.name = next_unique_name(node_name, "MatmulAllReduceAddRmsNorm")
 
-    y, norm_out = torchair.ge.custom_op(
-        "MatmulAllReduceAddRmsNorm",
-        inputs={
-            "x1" : x1,
-            "x2" : x2,
-            "bias" : bias,
-            "residual" : residual,
-            "gamma" : gamma,
-            "antiquant_scale" : antiquant_scale,
-            "antiquant_offset" : antiquant_offset,
-            "dequant_scale" : dequant_scale,
-            },
-        attrs={
-            "group" : ge.attr.Str(group),
-            "reduce_op" : ge.attr.Str(reduce_op),
-            "is_trans_a" : ge.attr.Bool(is_trans_a),
-            "is_trans_b" : ge.attr.Bool(is_trans_b),
-            "comm_turn" : ge.attr.Int(comm_turn),
-            "antiquant_group_size" : ge.attr.Int(antiquant_group_size),
-            "epsilon" : ge.attr.Float(epsilon),
-        },
-        outputs=[
-            "y",
-            "norm_out"
-        ]
-    )
-    return y, norm_out
+        # process dependices
+        if dependencies is not None:
+            for dependency in dependencies:
+                op.input.append(dependency.controller)
+
+        # process inputs
+        op.input.append(x1.tensor)
+        op.input_desc.add().CopyFrom(x1.desc)
+        op.input_desc[-1].name = "x1"
+        op.input.append(x2.tensor)
+        op.input_desc.add().CopyFrom(x2.desc)
+        op.input_desc[-1].name = "x2"
+        if bias is not None:
+            op.input.append(bias.tensor)
+            op.input_desc.add().CopyFrom(bias.desc)
+            op.input_desc[-1].name = "bias"
+        else:
+            op.input.append('')
+            op.input_desc.add().CopyFrom(get_invalid_desc())
+            op.input_desc[-1].name = "bias"
+        op.input.append(residual.tensor)
+        op.input_desc.add().CopyFrom(residual.desc)
+        op.input_desc[-1].name = "residual"
+        op.input.append(gamma.tensor)
+        op.input_desc.add().CopyFrom(gamma.desc)
+        op.input_desc[-1].name = "gamma"
+        if antiquant_scale is not None:
+            op.input.append(antiquant_scale.tensor)
+            op.input_desc.add().CopyFrom(antiquant_scale.desc)
+            op.input_desc[-1].name = "antiquant_scale"
+        else:
+            op.input.append('')
+            op.input_desc.add().CopyFrom(get_invalid_desc())
+            op.input_desc[-1].name = "antiquant_scale"
+        if antiquant_offset is not None:
+            op.input.append(antiquant_offset.tensor)
+            op.input_desc.add().CopyFrom(antiquant_offset.desc)
+            op.input_desc[-1].name = "antiquant_offset"
+        else:
+            op.input.append('')
+            op.input_desc.add().CopyFrom(get_invalid_desc())
+            op.input_desc[-1].name = "antiquant_offset"
+        if dequant_scale is not None:
+            op.input.append(dequant_scale.tensor)
+            op.input_desc.add().CopyFrom(dequant_scale.desc)
+            op.input_desc[-1].name = "dequant_scale"
+        else:
+            op.input.append('')
+            op.input_desc.add().CopyFrom(get_invalid_desc())
+            op.input_desc[-1].name = "dequant_scale"
+
+        # process attrs
+        op.attr["group"].s = compat_as_bytes(group)
+        op.attr["reduce_op"].s = compat_as_bytes(reduce_op)
+        op.attr["is_trans_a"].b = is_trans_a
+        op.attr["is_trans_b"].b = is_trans_b
+        op.attr["comm_turn"].i = comm_turn
+        op.attr["antiquant_group_size"].i = antiquant_group_size
+        op.attr["epsilon"].f = epsilon
+
+        # process outputs
+        output_index = 0
+        op.output_desc.add().name = "y"
+        y = Tensor(op, output_index)
+        output_index += 1
+        op.output_desc.add().name = "norm_out"
+        norm_out = Tensor(op, output_index)
+        output_index += 1
+
+        # return outputs
+        return y, norm_out
+    MatmulAllReduceAddRmsNorm = MatmulAllReduceAddRmsNormV1
+else:
+    raise ValueError("torch_npu_api_version unsupport")
