@@ -14,6 +14,19 @@ from megatron.legacy.model.transformer import bias_dropout_add_fused_train, get_
 from megatron.legacy.model.enums import AttnMaskType, LayerType, AttnType
 
 
+def parallel_transformer_layer_init_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        from megatron.core.transformer.moe.moe_layer import MoELayer
+        fn(self, *args, **kwargs)
+        if self.mlp.__class__ is MoELayer:
+            self.mlp.experts.layer_number = self.layer_number
+        else:
+            self.mlp.layer_number = self.layer_number
+
+    return wrapper
+
+
 def parallel_transformer_layer_forward_wrapper(forward_func):
     @wraps(forward_func)
     def row_parallel_forward(*args, **kwargs):

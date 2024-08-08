@@ -467,7 +467,7 @@ def parallel_mlp_forward_wrapper(fn):
                 assert self.activation_func == F.gelu
                 intermediate = bias_gelu_impl(intermediate, bias)
             else:
-                if bias_parallel is not None:
+                if bias is not None:
                     intermediate = intermediate + bias
                 intermediate = self.activation_func(intermediate)
             return intermediate

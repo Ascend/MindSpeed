@@ -180,6 +180,7 @@ def megatron_core_adaptation(aspm):
     from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
     from .core.models.common.embeddings.rotary_pos_embedding import get_pos_emb_on_this_cp_rank
     from .core.tensor_parallel.layers import parallel_linear_init_wrapper
+    from .core.transformer.transformer import parallel_transformer_layer_init_wrapper
 
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.get_pos_emb_on_this_cp_rank',
                         get_pos_emb_on_this_cp_rank)
@@ -235,6 +236,8 @@ def megatron_core_adaptation(aspm):
                         forward_step_decorator)
     aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._communicate_shapes',
                         _communicate_shapes)
+    aspm.register_patch('megatron.core.transformer.transformer_layer.TransformerLayer.__init__', \
+                        parallel_transformer_layer_init_wrapper)
 
     # Bugfix for Megatron-LM core 0.6.0, to be removed for next version.
     aspm.register_patch('megatron.core.parallel_state.initialize_model_parallel', initialize_model_parallel)
@@ -411,7 +414,11 @@ def mcore_moe_adaptation(pm, args):
             pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_unpermutation', allgather_token_unpermutation)
             pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.aux_loss_load_balancing', aux_loss_load_balancing)
             pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
-
+    
+    from .core.transformer.moe.experts import groupedmlp_init_wrapper, groupedmlp_forward_wrapper
+    pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.__init__', groupedmlp_init_wrapper)
+    pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', groupedmlp_forward_wrapper)
+    
     if args.use_ascend_mc2 and not hasattr(args, 'moe_grouped_gemm'):
         # MoE MLP not use mc2 linear
         from .core.models.gpt.gpt_layer_specs import build_layers_wrapper
