@@ -26,8 +26,8 @@ else:
 class GMMOpBuilder(MindSpeedOpBuilder):
     OP_NAME = "grouped_matmul"
     OP_PROTO = (
-        "npu_gmm.List(Tensor x, Tensor weight, *, Tensor? bias, int[]? group_list, int? group_type) -> Tensor",
-        "npu_gmm.Tensor(Tensor x, Tensor weight, *, Tensor? bias, Tensor? group_list, int? group_type) -> Tensor"
+        "npu_gmm.List(Tensor x, Tensor weight, *, Tensor? bias=None, int[]? group_list=None, int? group_type=0) -> Tensor",
+        "npu_gmm.Tensor(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor"
     )
     TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
 
