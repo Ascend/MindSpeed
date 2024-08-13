@@ -65,7 +65,7 @@ def fused_rotary_position_embedding(x, cos, sin, interleaved=False):
 
 | 输入 | RotateHalf(mode: 0) | RotateInterleaved(mode: 1) |
 | :-: | :- | :- |
-| x | layout支持: BNSD、BSND、SBND; <br> D < 896，且为2的倍数; <br> B, N < 1000;  <br> 当需要计算cos/sin的反向梯度时，B*N <= 1024 | layout支持: BNSD、BSND、SBND; <br> B * N <=20; <br> D <= 256, 且D为32的倍数; |
+| x | layout支持: BNSD、BSND、SBND; <br> D < 896，且为2的倍数; <br> B, N < 1000;  <br> 当需要计算cos/sin的反向梯度时，B*N <= 1024 | layout支持: BNSD、BSND、SBND; <br> B * N < 1000; <br> D < 896, 且D为2的倍数; |
 | cos | 数据范围：[-1, 1]; <br>对应x layout的支持情况：<br> x为BNSD: 11SD、B1SD、BNSD; <br> x为BSND: 1S1D、BS1D、BSND; <br> x为SBND: S11D、SB1D、SBND. | 数据范围：[-1, 1]; <br>对应x layout的支持情况：<br> x为BNSD: 11SD; <br> x为BSND: 1S1D; <br> x为SBND: S11D.|
 | sin | 同cos | 同cos |
 
