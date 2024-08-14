@@ -9,7 +9,8 @@
 支持Ring Attention长序列并行方案，以此解决序列维度扩展问题。具体细节参见原文：
 > Ring Attention with Blockwise Transformers for Near-Infinite Context (https://arxiv.org/pdf/2310.01889)
 
-在原始Ring Attention基础上设计了新的计算块切分方案，解决负载不均衡问题。
+支持Double Ring Attention算法，进一步加速原始Ring Attention实现。算法细节参见原文：
+> LoongTrain: Efficient Training of Long-Sequence LLMs with Head-Context Parallelism (https://arxiv.org/pdf/2406.18485)
 
 ### 解决思路:
 
@@ -37,6 +38,7 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 |--use-cp-send-recv-overlap |建议开启，开启后支持send receive overlap功能|
 |--cp-attention-mask-type [full/causal] |可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置full代表全量计算|
 |--context-parallel-algo megatron_cp_algo |可选项为`ulysses_cp_algo`或者`megatron_cp_algo`，默认项为`ulysses_cp_algo`，当设置为`megatron_cp_algo`时开启Ring Attention|
+|--cp-window-size [int] | 可选，默认为`1`，即使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。|
 
 ## 使用效果
 

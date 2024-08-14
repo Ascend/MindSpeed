@@ -16,7 +16,12 @@ from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ring,
                                            get_context_parallel_for_hybrid_ring_world_size,
                                            get_context_parallel_for_hybrid_ring_rank,
-                                           get_context_parallel_for_hybrid_ring_global_ranks)
+                                           get_context_parallel_for_hybrid_ring_global_ranks,
+                                           get_ring_ranks_for_intra_window,
+                                           get_ring_ranks_for_inter_window_kv,
+                                           get_ring_ranks_for_inter_window_dkv,
+                                           get_ring_group_for_intra_window,
+                                           get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.model.transformer import get_attention_mask
 
 try:
@@ -117,7 +122,15 @@ def dot_product_attention_forward(
             if args.use_cp_send_recv_overlap else None
         cp_para['pse'] = self.pse
         cp_para['pse_type'] = self.pse_type
+
+        cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
+        cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
+        cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
+        cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
+        cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
+
         output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p)
+
     else:
         if args.use_fusion_attn_v2:
             output = npu_fusion_attention(
@@ -129,7 +142,7 @@ def dot_product_attention_forward(
                 pse_type=self.pse_type,
                 pre_tokens=args.pre_tockens,
                 next_tokens=args.next_tockens,
-                keep_prob=1 - self.dropout_p,
+                keep_prob=1 - self.attention_dropout.p,
                 inner_precise=0,
                 sparse_mode=args.sparse_mode
             )[0]

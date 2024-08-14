@@ -34,10 +34,15 @@ from megatron.legacy.model.fused_bias_gelu import bias_gelu_impl
 from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ulysses,
-                                             get_context_parallel_group_for_hybrid_ring,
-                                             get_context_parallel_for_hybrid_ring_world_size,
-                                             get_context_parallel_for_hybrid_ring_rank,
-                                             get_context_parallel_for_hybrid_ring_global_ranks)
+                                           get_context_parallel_group_for_hybrid_ring,
+                                           get_context_parallel_for_hybrid_ring_world_size,
+                                           get_context_parallel_for_hybrid_ring_rank,
+                                           get_context_parallel_for_hybrid_ring_global_ranks,
+                                           get_ring_ranks_for_intra_window,
+                                           get_ring_ranks_for_inter_window_kv,
+                                           get_ring_ranks_for_inter_window_dkv,
+                                           get_ring_group_for_intra_window,
+                                           get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
@@ -564,6 +569,12 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
             if args.use_cp_send_recv_overlap else None
         cp_para['pse'] = self.pse
         cp_para['pse_type'] = self.pse_type
+
+        cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
+        cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
+        cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
+        cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
+        cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
 
         output = ringattn_context_parallel(q, k, v, head_num, cp_para, scale, attention_mask, self.dropout_p)
     else:

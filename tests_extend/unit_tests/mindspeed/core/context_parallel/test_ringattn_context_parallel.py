@@ -9,10 +9,15 @@ from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ulysses,
-                                             get_context_parallel_group_for_hybrid_ring,
-                                             get_context_parallel_for_hybrid_ring_world_size,
-                                             get_context_parallel_for_hybrid_ring_rank,
-                                             get_context_parallel_for_hybrid_ring_global_ranks)
+                                           get_context_parallel_group_for_hybrid_ring,
+                                           get_context_parallel_for_hybrid_ring_world_size,
+                                           get_context_parallel_for_hybrid_ring_rank,
+                                           get_context_parallel_for_hybrid_ring_global_ranks,
+                                           get_ring_ranks_for_intra_window,
+                                           get_ring_ranks_for_inter_window_kv,
+                                           get_ring_ranks_for_inter_window_dkv,
+                                           get_ring_group_for_intra_window,
+                                           get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from commons import set_random_seed, initialize_model_parallel
@@ -49,9 +54,11 @@ def get_data_on_all_cp_ranks(data, cp_size, dim=0):
 
 def run_ringattn_cp(cp_size, bs, seq_len, dtype, cp_args):
     from megatron.core import mpu
-    causal, send_recv_overlap, pse_type = cp_args
+    causal, send_recv_overlap, cp_window_size, pse_type = cp_args
     args = parse_args(None, True)
     args.use_cp_send_recv_overlap = send_recv_overlap
+    args.cp_window_size = cp_window_size
+    args.context_parallel_algo = 'megatron_cp_algo'
     set_args(args)
     initialize_model_parallel(context_parallel_size=cp_size)
     set_random_seed(1234)
@@ -138,6 +145,14 @@ def run_ringattn_cp(cp_size, bs, seq_len, dtype, cp_args):
     cp_para['pse'] = pse
     cp_para['pse_type'] = pse_type
 
+
+    cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
+    cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
+    cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
+    cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
+    cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
+
+
     out_ = ringattn_context_parallel(q_, k_, v_, n, cp_para, softmax_scale=scale, attn_mask=None)
     out_.backward(dout_)
 
@@ -171,6 +186,16 @@ class TestRingAttnCP(DistributedTest):
     world_size = 8
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.parametrize("cp_args", [(True, True, 1), (True, True, 2), (True, True, 3), (False, False, 1)])
+    @pytest.mark.parametrize("cp_args", [(True, True, 1, 1), (True, True, 2, 1), (True, True, 4, 1), (False, False, 1, 1)])
     def test_ringattn_context_parallel_seq8192_bs2_bf16(self, cp_args):
+        run_ringattn_cp(self.world_size, 2, 8192, torch.bfloat16, cp_args)
+
+    @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
+    @pytest.mark.parametrize("cp_args", [(True, True, 1, 2), (True, True, 2, 2), ((True, True, 4, 2))])
+    def test_ringattn_context_parallel_seq8192_bs2_bf16_pse2(self, cp_args):
+        run_ringattn_cp(self.world_size, 2, 8192, torch.bfloat16, cp_args)
+
+    @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
+    @pytest.mark.parametrize("cp_args", [(True, True, 1, 3), (True, True, 2, 3), ((True, True, 4, 3))])
+    def test_ringattn_context_parallel_seq8192_bs2_bf16_pse3(self, cp_args):
         run_ringattn_cp(self.world_size, 2, 8192, torch.bfloat16, cp_args)

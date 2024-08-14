@@ -121,6 +121,7 @@ def _add_cp_args(parser):
     group.add_argument('--ulysses-degree-in-cp', type=int, default=None)
     group.add_argument('--cp-attention-mask-type', type=str, default='causal',
                        choices=['causal', 'general'], help='context parallel attention mask type')
+    group.add_argument('--cp-window-size', type=int, default=1)
     group.add_argument('--use-cp-send-recv-overlap', action='store_true',
                        help='use this flag to enable cp send-recv-overlap.')
     return parser
@@ -432,6 +433,10 @@ def validate_args_wrapper(validate_args):
             assert args.seq_length % (2 * args.context_parallel_size) == 0, f"sequence length must be divisible by 2 * context_parallel_size"
             if args.position_embedding_type == 'alibi':
                 assert args.alibi_fusion_attn_type in [2, 3] and args.cp_attention_mask_type == 'causal', f"megatron_cp_algo only support alibi type in [2, 3] and cp_attention_mask_type is causal"
+            
+            assert args.cp_window_size >= 1 and args.cp_window_size < args.context_parallel_size, f'cp_window_size should in range [1, context_parallel_size) when using double_ring_attention.'
+            n_window, remainder = divmod(args.context_parallel_size, args.cp_window_size)
+            assert n_window >= 1 and remainder == 0, f'context parallel size must be divisible by cp_window_size when using double ring attention.'
             args.use_flash_attn = True
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'hybrid_cp_algo':
             assert args.ulysses_degree_in_cp is not None, "--ulysses-degree-in-cp must be specified in hybrid_cp_algo"
@@ -442,6 +447,10 @@ def validate_args_wrapper(validate_args):
             assert head >= 1 and remainder == 0, f"num_attention_heads must be divisible by ulysse-degree-in-cp * tensor_model_parallel_size in hybrid cp"
 
             assert args.seq_length % (2 * args.context_parallel_size) == 0, f"sequence length must be divisible by 2 * context_parallel_size in hybrid cp"
+            
+            assert args.cp_window_size >= 1 and args.cp_window_size < ring_degree, f'cp_window_size should be in range [1, ring_degree) when using double ring attention with hybrid context parallelism.'
+            n_window, remainder = divmod(ring_degree, args.cp_window_size)
+            assert n_window >= 1 and remainder == 0, f'ring_degree should be divisible by cp_window_size when using double ring with hybrid context parallelism.'
             args.use_flash_attn = True
             
             

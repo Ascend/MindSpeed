@@ -20,6 +20,14 @@ _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = None
 _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_ULYSSES = None
 _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_RING = None
 
+_CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW = None
+_CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_KV = None
+_CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV = None
+_CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW = None
+_CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP = None
+
+
+
 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1 = None
 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2 = None
 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM1 = None
@@ -44,6 +52,8 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             distributed_timeout_minutes: int = 30,
     ):
         from megatron.training.utils import print_rank_0
+        from megatron.training import get_args
+        args = get_args()
 
         if virtual_pipeline_model_parallel_size is not None:
             megatron.core.parallel_state._VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
@@ -152,7 +162,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         for i in range(num_tensor_model_parallel_groups):
             ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
             all_tp_groups.append(list(ranks))
-
+        
         initialize_context_parallel_group_for_send_recv_overlap(
             tensor_model_parallel_size,
             pipeline_model_parallel_size,
@@ -166,6 +176,14 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             context_parallel_size,
             nccl_comm_cfgs
         )
+
+        initialize_context_parallel_group_for_double_ring(
+            tensor_model_parallel_size,
+            pipeline_model_parallel_size,
+            context_parallel_size,
+            nccl_comm_cfgs
+        )
+
 
         print_rank_0(f"all tp gourps {all_tp_groups}")
         print_rank_0(f"all ep groups {all_ep_groups}")
@@ -186,8 +204,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             if rank in ranks:
                 _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
 
-        from megatron.training import get_args
-        args = get_args()
+
         initialize_ndmm_parallel_group(
             nccl_comm_cfgs,
             tensor_model_parallel_size=tensor_model_parallel_size,
@@ -196,6 +213,34 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         )
 
     return wrapper
+
+
+def get_ring_group_for_intra_window():
+    global _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW
+    return _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW
+
+
+def get_ring_group_for_intra_window_send_recv_overlap():
+    global _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP
+    return _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP
+
+
+def get_ring_ranks_for_intra_window():
+    global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW
+    assert _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW is not None
+    return _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW
+
+
+def get_ring_ranks_for_inter_window_kv():
+    global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_KV
+    assert _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_KV is not None
+    return _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_KV
+
+
+def get_ring_ranks_for_inter_window_dkv():
+    global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV
+    assert _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV is not None
+    return _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV
 
 
 def initialize_context_parallel_group_for_send_recv_overlap(
@@ -234,21 +279,6 @@ def initialize_context_parallel_group_for_send_recv_overlap(
                     _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP = group_send_recv_overlap
 
 
-def get_context_parallel_group_for_send_recv_overlap(check_initialized=True):
-    """Get the context parallel group for send-recv overlap the caller rank belongs to."""
-    if check_initialized:
-        assert (
-            _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP is not None
-        ), 'context parallel group for send-recv overlap is not initialized'
-    return _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP
-
-
-def get_pipeline_parallel_group_for_new_stream():
-    if _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM is None:
-        raise AttributeError('Pipeline parallel group of backward is not initialized')
-    return _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM
-
-
 def initialize_context_parallel_group_for_hybrid_cp(
     tensor_model_parallel_size,
     pipeline_model_parallel_size,
@@ -256,8 +286,8 @@ def initialize_context_parallel_group_for_hybrid_cp(
     nccl_comm_cfgs
 ):
     from megatron.training import get_args
-    if (not hasattr(get_args(), 'context_parallel_algo') or 
-        get_args().context_parallel_algo != 'hybrid_cp_algo'):
+    if (not hasattr(get_args(), 'context_parallel_algo') or
+            get_args().context_parallel_algo != 'hybrid_cp_algo'):
         return
 
     rank = torch.distributed.get_rank()
@@ -294,12 +324,13 @@ def initialize_context_parallel_group_for_hybrid_cp(
                 for m in range(ring_degree):
                     ulysses_ranks = [ranks[idx] for idx in range(m * ulysses_degree, (m + 1) * ulysses_degree)]
                     ulysses_group = torch.distributed.new_group(
-                        ulysses_ranks, pg_options=megatron.core.parallel_state.get_nccl_options('cp_ulysses', nccl_comm_cfgs)
+                        ulysses_ranks,
+                        pg_options=megatron.core.parallel_state.get_nccl_options('cp_ulysses', nccl_comm_cfgs)
                     )
                     if rank in ulysses_ranks:
                         _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_ULYSSES = ulysses_group
                         _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_ULYSSES = ulysses_ranks
-                
+
                 # ring cp ranks
                 for m in range(ulysses_degree):
                     ring_ranks = [ranks[idx] for idx in range(m, len(ranks), ulysses_degree)]
@@ -309,7 +340,116 @@ def initialize_context_parallel_group_for_hybrid_cp(
                     if rank in ring_ranks:
                         _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_RING = ring_group
                         _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_RING = ring_ranks
-                    
+
+
+def initialize_context_parallel_group_for_double_ring(
+    tensor_model_parallel_size,
+    pipeline_model_parallel_size,
+    context_parallel_size,
+    nccl_comm_cfgs,
+):
+    from megatron.training import get_args
+    args = get_args()
+    if context_parallel_size == 1 or args.context_parallel_algo not in ['megatron_cp_algo', 'hybrid_cp_algo']:
+        return
+        
+    use_hybrid_cp = args.context_parallel_algo == 'hybrid_cp_algo' and args.ulysses_degree_in_cp > 1
+
+    rank = torch.distributed.get_rank()
+    world_size: int = torch.distributed.get_world_size()
+    num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
+    data_parallel_size: int = world_size // (
+            tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
+    )
+
+    def _initialize_helper(
+        rank,
+        ring_global_ranks,
+        window_size
+    ):
+        from megatron.training import get_args
+        global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW
+        global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_KV
+        global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV
+        global _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW
+        global _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP
+
+        ring_size = len(ring_global_ranks)
+        inter_size = ring_size // window_size
+        for wid in range(inter_size):
+            intra_ranks = [ring_global_ranks[idx] for idx in range(wid * window_size, (wid + 1) * window_size)]
+            intra_group = torch.distributed.new_group(intra_ranks)
+            intra_group_for_send_recv_overlap = None
+            if args.use_cp_send_recv_overlap:
+                intra_group_for_send_recv_overlap = torch.distributed.new_group(intra_ranks)
+
+            if rank in intra_ranks:
+                _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW = intra_ranks
+                _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW = intra_group
+                _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP = intra_group_for_send_recv_overlap
+
+        for inner_id in range(window_size):
+            inter_ranks = [ring_global_ranks[idx] for idx in range(inner_id, ring_size, window_size)]
+            if rank in inter_ranks:
+                _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_KV = inter_ranks
+                break
+
+        for inner_id in range(window_size):
+            inter_dkv_ranks = []
+            cur_rank = ring_global_ranks[inner_id]
+            cur_idx = inner_id
+            cur_window = 0
+            while cur_rank not in inter_dkv_ranks:
+                inter_dkv_ranks.append(cur_rank)
+                cur_window = (cur_window + 1) % inter_size
+                window_start = cur_window * window_size
+                cur_idx = window_start + (cur_idx + 1) % window_size
+                cur_rank = ring_global_ranks[cur_idx]
+
+            if rank in inter_dkv_ranks:
+                _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV = inter_dkv_ranks
+                break
+
+
+    for i in range(pipeline_model_parallel_size):
+        for j in range(data_parallel_size):
+            start_rank = (
+                    i * num_pipeline_model_parallel_groups
+                    + j * tensor_model_parallel_size * context_parallel_size
+            )
+            end_rank = (
+                    i * num_pipeline_model_parallel_groups
+                    + (j + 1) * tensor_model_parallel_size * context_parallel_size
+            )
+            for k in range(tensor_model_parallel_size):
+                cp_ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
+
+                if use_hybrid_cp:
+                    ulysses_degree = get_args().ulysses_degree_in_cp
+                    assert (context_parallel_size > ulysses_degree and context_parallel_size % ulysses_degree == 0)
+                    # ring cp ranks
+                    for m in range(ulysses_degree):
+                        ring_ranks = [cp_ranks[idx] for idx in range(m, len(cp_ranks), ulysses_degree)]
+
+                        _initialize_helper(rank, ring_ranks, args.cp_window_size)
+                else:
+                    _initialize_helper(rank, cp_ranks, args.cp_window_size)
+
+
+def get_context_parallel_group_for_send_recv_overlap(check_initialized=True):
+    """Get the context parallel group for send-recv overlap the caller rank belongs to."""
+    if check_initialized:
+        assert (
+            _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP is not None
+        ), 'context parallel group for send-recv overlap is not initialized'
+    return _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP
+
+
+def get_pipeline_parallel_group_for_new_stream():
+    if _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM is None:
+        raise AttributeError('Pipeline parallel group of backward is not initialized')
+    return _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM
+
 
 def get_context_parallel_group_for_hybrid_ulysses(check_initialized=True):
     """Get the context parallel group for hybrid ulysses the caller rank belongs to."""
@@ -794,6 +934,7 @@ def initialize_model_parallel(
     # put this. If we end up with a more generic initialization of megatron-core
     # we could stick it there
     ps._set_global_memory_buffer()
+
 
 
 def get_tensor_model_parallel_group_for_nd1_dim1(check_initialized=True):
