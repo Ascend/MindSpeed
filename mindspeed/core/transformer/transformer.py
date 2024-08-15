@@ -12,15 +12,23 @@ from megatron.training import get_args, get_num_microbatches
 from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.legacy.model.transformer import bias_dropout_add_fused_train, get_bias_dropout_add, bias_dropout_add_fused_inference
 from megatron.legacy.model.enums import AttnMaskType, LayerType, AttnType
+from mindspeed.model.transformer import should_recompute_activation
+from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
+from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 
 
 def parallel_transformer_layer_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         from megatron.core.transformer.moe.moe_layer import MoELayer
+        from megatron.core.transformer.moe.experts import GroupedMLP, SequentialMLP
         fn(self, *args, **kwargs)
         if self.mlp.__class__ is MoELayer:
-            self.mlp.experts.layer_number = self.layer_number
+            if self.mlp.experts.__class__ is GroupedMLP:
+                self.mlp.experts.layer_number = self.layer_number
+            if self.mlp.experts.__class__ is SequentialMLP:
+                for expert in self.mlp.experts.local_experts:
+                    expert.layer_number = self.layer_number
         else:
             self.mlp.layer_number = self.layer_number
 
@@ -326,3 +334,54 @@ def parallel_transformer_checkpointed_forward_tp_optimized(self, hidden_states, 
         raise ValueError("Invalid activation recompute method.")
 
     return hidden_states
+
+
+def core_mlp_forward_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        is_recompute_activation = should_recompute_activation(self)
+
+        def activation_function(*function_args):
+            intermediate, bias = function_args
+            if bias is not None:
+                intermediate = intermediate + bias
+            if self.config.gated_linear_unit:
+                global_args = get_args()
+                if global_args.use_fused_swiglu:
+                    assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
+                    self.activation_func = fused_swiglu
+                    intermediate = self.activation_func(intermediate)
+                else:
+                    def glu(x):
+                        x = torch.chunk(x, 2, dim=-1)
+                        return self.config.activation_func(x[0]) * x[1]
+
+                    intermediate = glu(intermediate)
+            else:
+                intermediate = self.activation_func(intermediate)
+
+            return intermediate
+
+        if not is_recompute_activation:
+            output, output_bias = fn(self, *args, **kwargs)
+        else:
+            hidden_states = args[0]
+            intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)
+            self.activation_checkpoint_manager = CheckpointWithoutOutput()
+            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(activation_function,
+                                                                                  False,
+                                                                                  intermediate_parallel,
+                                                                                  bias_parallel)
+            # [s, b, h]
+            output, output_bias = self.linear_fc2(intermediate_parallel)
+
+            # discard the output of the activation function,
+            # which will be restored by recomputation during backward.
+            self.activation_checkpoint_manager.discard_output()
+
+            # when backward to output of dense_4h_to_h,
+            # recompute and restore the output of activation function.
+            if output.requires_grad:
+                output.register_hook(self.activation_checkpoint_manager.recompute)
+        return output, output_bias
+    return wrapper
