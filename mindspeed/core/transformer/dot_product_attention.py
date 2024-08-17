@@ -82,14 +82,6 @@ def dot_product_attention_forward(
     assert packed_seq_params is None
     args = get_args()
 
-    if self.num_attention_heads_per_partition // self.num_query_groups_per_partition > 1:
-        key = key.repeat_interleave(
-            self.num_attention_heads_per_partition // self.num_query_groups_per_partition, dim=2
-        )
-        value = value.repeat_interleave(
-            self.num_attention_heads_per_partition // self.num_query_groups_per_partition, dim=2
-        )
-
     seq_length, _, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
     
     query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
