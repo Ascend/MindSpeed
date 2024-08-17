@@ -111,6 +111,8 @@ def _add_moe_args(parser):
                        help="MoE adaptive recompute, avoiding memory imbalance in the early stage.")
     group.add_argument('--moe-adaptive-recompute-activation-scale', type=float, default=2.0,
                        help='MoE adaptive recompute threshold factor.')
+    group.add_argument("--use-fused-moe-token-permute-and-unpermute", action='store_true',
+                       help="Use fused moe permute and unpermute.")
     return parser
 
 

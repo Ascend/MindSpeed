@@ -131,25 +131,26 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
 | 【Prototype】lcal_coc                        | [link](docs/ops/lcal_coc.md)                        |
 | 【Prototype】npu_mm_all_reduce_add_rms_norm  | [link](docs/ops/npu_mm_all_reduce_add_rms_norm.md)  |
 | 【Prototype】npu_mm_all_reduce_add_rms_norm_ | [link](docs/ops/npu_mm_all_reduce_add_rms_norm_.md) |
-| 【Prototype】npu_grouped_mat_mul             | [link](docs/ops/gmm.md)  |
+| 【Prototype】npu_grouped_mat_mul             | [link](docs/ops/gmm.md)                             |
 | 【Prototype】npu_grouped_mat_mul_all_reduce  | [link](docs/ops/npu_grouped_mat_mul_all_reduce.md)  |
-
+| 【Prototype】npu_fused_moe_token_permute     | [link](docs/ops/npu_fused_moe_token_permute.md)     |
+| 【Prototype】npu_fused_moe_token_unpermute   | [link](docs/ops/npu_fused_moe_token_unpermute.md)    |
 # MindSpeed中采集Profile数据
 
 MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 
-| 配置命令                      | 默认值                                  | 命令含义           | 
-|---------------------------|--------------------------------------|----------------|
-| --profile                 | False                                | profile数据采集开关  |
-| --profile-step-start      | 10                                   | 开始采集步骤         |
-| --profile-step-end        | 12                                   | 结束采集步骤         |
-| --profile-level           | level0 (可选：level0, level1, level2)   | 数据信息采集等级       |
-| --profile-with-cpu        | False                                | 是否采集cpu信息      |
-| --profile-with-stack      | False                                | 是否采集stack信息    |
-| --profile-with-memory     | False                                | 是否采集memory信息   |
-| --profile-record-shapes   | False                                | 是否采集shapes信息   |
-| --profile-save-path       | ./profile_dir                        | 采集信息保存路径       |
-| --profile-ranks           | 0 (可选配置举例：0 1 2 3 4 5 6 7)           | 被采集的ranks      |
+| 配置命令                    | 命令含义                                                                              | 
+|-------------------------|-----------------------------------------------------------------------------------|
+| --profile               | 打开profile开关                                                                       |
+| --profile-step-start    | 配置开始采集步, 未配置时默认为10, 配置举例: --profile-step-start 30                                 |
+| --profile-step-end      | 配置结束采集步, 未配置时默认为12, 配置举例: --profile-step-end 35                                   |
+| --profile-level         | 配置采集等级, 未配置时默认为level0, 可选配置: level0, level1, level2, 配置举例: --profile-level level1 |
+| --profile-with-cpu      | 打开cpu信息采集开关                                                                       |
+| --profile-with-stack    | 打开stack信息采集开关                                                                     |
+| --profile-with-memory   | 打开memory信息采集开关, 配置本开关时需打开--profile-with-cpu                                       |
+| --profile-record-shapes | 打开shapes信息采集开关                                                                    |
+| --profile-save-path     | 配置采集信息保存路径, 未配置时默认为./profile_dir, 配置举例: --profile-save-path ./result_dir          |
+| --profile-ranks         | 配置待采集的ranks，未配置时默认为0，配置举例: --profile-ranks 0 1 2 3, 需注意: 该配置值为每个rank在单机/集群中的全局值   |
 
 # 版本配套表
 
