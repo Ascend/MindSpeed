@@ -106,7 +106,7 @@ def pretrain_decorator(pretrain):
         global DATA_PARALLEL_SIZE
         global ENABLE_SCHEDULER
         new_parse_args = parse_args_wrapper(parse_args)
-        argument = new_parse_args(None, False)
+        argument = new_parse_args(kwargs.get('extra_args_provider'), False)
         if argument.automated_pipeline and not argument.num_layer_list:
             context, POLICY = autopipeline_profiling(args[1], args[2], args[3],
                                                      args[0], None, argument)
