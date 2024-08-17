@@ -24,7 +24,7 @@ def pretrain_decorator(pretrain):
     @wraps(pretrain)
     def wrapper(*args, **kwargs):
         new_parse_args = parse_args_wrapper(parse_args)
-        argument = new_parse_args(None, False)
+        argument = new_parse_args(kwargs.get('extra_args_provider'), False)
         if argument.automated_pipeline and not argument.num_layer_list:
             global policy
             context, policy = autopipeline_profiling(args[1], args[2], args[3],
