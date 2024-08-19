@@ -136,7 +136,7 @@ class NoopTransformerLayer(MegatronModule):
         self.layer_number = layer_number
 
     def forward(self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, inference_params, packed_seq_params):
-        return hidden_states, context
+        return hidden_states.clone(), context
 
     def backward(self, grad_output):
         return grad_output, None, None, None, None, None, None 
