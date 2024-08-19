@@ -1,7 +1,6 @@
 from functools import wraps
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.transformer.custom_layers.transformer_engine import TENorm
-from megatron.training import get_args
 import types
 
 
@@ -23,9 +22,6 @@ def build_layers_wrapper(fn, column_forward, row_forward):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
-        args = get_args()
-        if args.moe_grouped_gemm:
-            return
         for layer in self.layers:
             if isinstance(layer.mlp, MoELayer):
                 for local_expert in layer.mlp.experts.local_experts:
