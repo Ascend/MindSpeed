@@ -149,7 +149,7 @@ def torch_adaptation(aspm):
     aspm.register_patch('torch.Tensor.repeat_interleave', repeat_interleave)
 
 
-def megatron_core_adaptation(aspm):
+def megatron_core_adaptation(aspm, mindspeed_args):
     import megatron.core
     megatron.core.jit.jit_fuser = dummy_jit
     from .core.tensor_parallel.random import _set_cuda_rng_state, checkpoint_function_backward, checkpoint_wrapper
@@ -271,6 +271,11 @@ def megatron_core_adaptation(aspm):
 
     # ripipe relative.
     aspm.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
+
+    if mindspeed_args.noop_layers:
+        from .core.transformer.transformer_block import _build_layers
+        from megatron.core.transformer.transformer_block import TransformerBlock
+        TransformerBlock._build_layers = _build_layers
 
 
 def megatron_legacy_adaptation(aspm):
@@ -515,7 +520,7 @@ def exe_adaptation():
     apex_adaptation(aspm)
     torch_adaptation(aspm)
     aspm.apply_patches()
-    megatron_core_adaptation(aspm)
+    megatron_core_adaptation(aspm, mindspeed_args)
     megatron_legacy_adaptation(aspm)
     megatron_training_adaptation(aspm)
     ascend_adaptation(aspm, mindspeed_args)

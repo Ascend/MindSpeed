@@ -242,6 +242,8 @@ def _add_network_args(parser):
                        help='Configuration for the dense bias.')
     group.add_argument("--skip-bias-add", action="store_false", default=True,
                        help='Configuration for the skip bias.')
+    group.add_argument("--noop-layers", type=str,
+                       help='Specity the noop layers.')
     return parser
 
 
@@ -546,6 +548,8 @@ def validate_args_wrapper(validate_args):
                 args.recompute_num_layers = args.num_layers // args.pipeline_model_parallel_size
             else:
                 args.recompute_num_layers = args.num_layers_per_virtual_pipeline_stage
+        if args.noop_layers:
+            args.noop_layers = set([int(x) for x in args.noop_layers.split(',')])
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)

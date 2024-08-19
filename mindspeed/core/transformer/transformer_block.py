@@ -4,7 +4,10 @@ from torch import Tensor
 
 from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.transformer.module import MegatronModule
+from megatron.core.transformer.spec_utils import build_module
 from megatron.training import get_args
+from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 
 
 def transformer_block_checkpointed_forward_wrapper(forward_func):
@@ -125,3 +128,67 @@ def transformer_block_checkpointed_forward(
             )
 
     return hidden_states
+
+
+class NoopTransformerLayer(MegatronModule):
+    def __init__(self, layer_number):
+        super().__init__(None)
+        self.layer_number = layer_number
+
+    def forward(self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, inference_params, packed_seq_params):
+        return hidden_states, context
+
+    def backward(self, grad_output):
+        return grad_output, None, None, None, None, None, None 
+
+
+def _get_layer_offset(args):
+    num_layers = args.num_layers
+    pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
+
+    num_layers_per_pipeline_rank = (
+        num_layers // parallel_state.get_pipeline_model_parallel_world_size()
+    )
+
+    if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+        vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
+        vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
+
+        total_num_layers = num_layers
+        num_layers_per_virtual_rank = num_layers_per_pipeline_rank // vp_size
+        total_virtual_chunks = total_num_layers // vp_size
+        offset = vp_rank * total_virtual_chunks + (pipeline_rank * num_layers_per_virtual_rank)
+
+    else:
+        # Each stage gets a contiguous set of layers.
+        if parallel_state.get_pipeline_model_parallel_world_size() > 1:
+            offset = pipeline_rank * num_layers_per_pipeline_rank
+        else:
+            offset = 0
+    return offset
+
+
+def _build_layers(self):
+    args = get_args()
+
+    def build_layer(layer_spec, layer_number):
+        noop_layers = args.noop_layers
+        global_layer_number = _get_layer_offset(args) + layer_number
+        if global_layer_number - 1 in noop_layers:
+            return NoopTransformerLayer(global_layer_number)
+        return build_module(layer_spec, config=self.config, layer_number=layer_number,)
+
+    self.layers = torch.nn.ModuleList(
+        [
+            build_layer(layer_spec, i + 1)
+            for i, layer_spec in enumerate(self.submodules.layer_specs)
+        ]
+    )
+
+    if self.post_process and self.post_layer_norm:
+        # Final layer norm before output.
+        self.final_layernorm = TENorm(
+            config=self.config,
+            hidden_size=self.config.hidden_size,
+            eps=self.config.layernorm_epsilon,
+        )
