@@ -571,7 +571,7 @@ class AttentionWithCp(torch.autograd.Function):
 
 
             else:
-                this_mask = attn_mask[(rank + i + 1) % cp_size] if attn_mask else None
+                this_mask = attn_mask[kv_block_id] if attn_mask else None
                 attn_grad_outs = torch_npu.npu_fusion_attention_grad(
                     q, cur_k, cur_v, dout, n,
                     "SBH",
