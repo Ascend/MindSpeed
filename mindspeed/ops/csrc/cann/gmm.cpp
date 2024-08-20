@@ -89,7 +89,8 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
                                 const std::vector<at::Tensor>& weight,
                                 const std::vector<at::Tensor>& bias,
                                 c10::optional<std::vector<int64_t>> group_list,
-                                c10::optional<int64_t> group_type)
+                                c10::optional<int64_t> group_type,
+                                c10::optional<int64_t> group_list_type)
 {
     auto num_x = x.size();
     auto num_w = weight.size();
@@ -128,7 +129,8 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
                                 const std::vector<at::Tensor>& weight,
                                 const std::vector<at::Tensor>& bias,
                                 const c10::optional<at::Tensor>& group_list,
-                                c10::optional<int64_t> group_type)
+                                c10::optional<int64_t> group_type,
+                                c10::optional<int64_t> group_list_type)
 {
     auto num_x = x.size();
     auto num_w = weight.size();
@@ -136,7 +138,9 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
     auto num_group_list = group_list_real.sizes()[0];
     int64_t split_item_value = 3;
     int64_t group_type_value = group_type.value_or(-1);
+    int64_t group_list_type_value = group_list_type.value_or(0);
     int64_t sum_group_list = num_group_list > 0 ? group_list_real[num_group_list - 1].item<int>() : 0;
+    int64_t act_type_value = 0;
 
     const at::TensorList x_(x);
     const at::TensorList weight_(weight);
@@ -156,8 +160,17 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
     auto offset_real = at::TensorList();
     auto antiquant_scale_real = at::TensorList();
     auto antiquant_offset_real = at::TensorList();
-    ACLNN_CMD(aclnnGroupedMatmulV3, x_, weight_, bias_, scale_real, offset_real, antiquant_scale_real,
-              antiquant_offset_real, group_list_real, split_item_value, group_type_value, result);
+    auto perToken_scale_real = at::TensorList();
+    auto activation_input_real = at::TensorList();
+    auto activation_quant_scale_real = at::TensorList();
+    auto activation_quant_offset_real = at::TensorList();
+    auto activation_feature_out_real = at::TensorList();
+    auto dynQuant_scale_out_real = at::TensorList();
+
+    ACLNN_CMD(aclnnGroupedMatmulV4, x_, weight_, bias_, scale_real, offset_real, antiquant_scale_real,
+              antiquant_offset_real, perToken_scale_real, group_list_real, activation_input_real,
+              activation_quant_scale_real, activation_quant_offset_real, split_item_value, group_type_value,
+              group_list_type_value, act_type_value, result, activation_feature_out_real, dynQuant_scale_out_real);
 
     return y;
 }
@@ -166,7 +179,8 @@ std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Ten
     const std::vector<at::Tensor>& grad,
     const std::vector<at::Tensor>& x,
     const std::vector<at::Tensor>& weight,
-    const c10::optional<std::vector<int64_t>> group_list)
+    const c10::optional<std::vector<int64_t>> group_list,
+    c10::optional<int64_t> group_list_type)
 {
     auto num_w = weight.size();
     auto group_list_real = group_list.value_or(std::vector<int64_t>{});
@@ -182,8 +196,8 @@ std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Ten
 
     std::vector<at::Tensor> bias_real;
 
-    std::vector<at::Tensor> dx = npu_gmm(grad, wt, bias_real, group_list_real, 0);
-    std::vector<at::Tensor> dw = npu_gmm(xt, grad, bias_real, group_list_real, 2);
+    std::vector<at::Tensor> dx = npu_gmm(grad, wt, bias_real, group_list_real, 0, group_list_type);
+    std::vector<at::Tensor> dw = npu_gmm(xt, grad, bias_real, group_list_real, 2, group_list_type);
     std::vector<at::Tensor> dbias;
 
     std::vector<at::Tensor> dw_output;
@@ -199,7 +213,8 @@ std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Ten
     const std::vector<at::Tensor>& grad,
     const std::vector<at::Tensor>& x,
     const std::vector<at::Tensor>& weight,
-    const c10::optional<at::Tensor>& group_list)
+    const c10::optional<at::Tensor>& group_list,
+    c10::optional<int64_t> group_list_type)
 {
     auto num_w = weight.size();
     auto group_list_real = group_list.value_or(at::Tensor());
@@ -208,7 +223,7 @@ std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Ten
     at::TensorList weight_(weight);
     std::vector<at::Tensor> wt;
     _foreach_transpose(weight_, wt);
-    std::vector<at::Tensor> dx = npu_gmm(grad, wt, bias_real, group_list_real, 0);
+    std::vector<at::Tensor> dx = npu_gmm(grad, wt, bias_real, group_list_real, 0, group_list_type);
 
     at::Tensor weight_tensor = weight.at(0);
     bool is_weight_transposed = _is_transposed(weight_tensor);
@@ -219,14 +234,14 @@ std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Ten
         at::TensorList grad_(grad_tensor);
         std::vector<at::Tensor> gradt;
         _foreach_transpose(grad_, gradt);
-        std::vector<at::Tensor> dwt = npu_gmm(gradt, x, bias_real, group_list_real, 2);
+        std::vector<at::Tensor> dwt = npu_gmm(gradt, x, bias_real, group_list_real, 2, group_list_type);
         at::TensorList dwt_(dwt);
         _foreach_transpose(dwt_, dw);
     } else {
         at::TensorList x_(x);
         std::vector<at::Tensor> xt;
         _foreach_transpose(x_, xt);
-        dw = npu_gmm(xt, grad, bias_real, group_list_real, 2);
+        dw = npu_gmm(xt, grad, bias_real, group_list_real, 2, group_list_type);
     }
 
     std::vector<at::Tensor> dbias;
@@ -240,10 +255,10 @@ std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Ten
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    using gmmv1 = std::vector<at::Tensor>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, c10::optional<std::vector<int64_t>>, c10::optional<int64_t>);
-    using gmmv2 = std::vector<at::Tensor>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const c10::optional<at::Tensor>&, c10::optional<int64_t>);
-    using gmmv1_backward = std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Tensor>>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const c10::optional<std::vector<int64_t>>);
-    using gmmv2_backward = std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Tensor>>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const c10::optional<at::Tensor>&);
+    using gmmv1 = std::vector<at::Tensor>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, c10::optional<std::vector<int64_t>>, c10::optional<int64_t>, c10::optional<int64_t>);
+    using gmmv2 = std::vector<at::Tensor>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const c10::optional<at::Tensor>&, c10::optional<int64_t>, c10::optional<int64_t>);
+    using gmmv1_backward = std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Tensor>>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const c10::optional<std::vector<int64_t>>, c10::optional<int64_t>);
+    using gmmv2_backward = std::tuple<std::vector<at::Tensor>, std::vector<at::Tensor>, std::vector<at::Tensor>>(*)(const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const std::vector<at::Tensor>&, const c10::optional<at::Tensor>&, c10::optional<int64_t>);
 
     m.def("npu_gmm", (gmmv1)&npu_gmm, "grouped matmul forward with group_list type List[int]");
     m.def("npu_gmm_backward", (gmmv1_backward)&npu_gmm_backward, "grouped matmul backward with group_list type List[int]");

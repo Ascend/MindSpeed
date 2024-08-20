@@ -1,4 +1,5 @@
 from typing import List, Optional
+from collections import namedtuple
 
 from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
 
@@ -23,19 +24,52 @@ else:
     torch_npu_api_version = 2
 
 
-class GMMOpBuilder(MindSpeedOpBuilder):
-    OP_NAME = "grouped_matmul"
-    OP_PROTO = (
-        "npu_gmm.List(Tensor x, Tensor weight, *, Tensor? bias=None, int[]? group_list=None, int? group_type=0) -> Tensor",
-        "npu_gmm.Tensor(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor"
-    )
-    TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
+gmm_param = namedtuple('gmm_param', ['bias', 'scale', 'offset', 'antiquant_scale', 'antiquant_offset'])
 
-    def __init__(self):
-        super(GMMOpBuilder, self).__init__(self.OP_NAME)
-        self.register_op_proto(self.OP_PROTO)
-        self.register_op_ir()
 
+def conveter_npu_gmm_param(
+    x: Tensor,
+    bias: Tensor,
+):
+    x_dtype = x.dtype
+
+    if torch_npu_api_version == 2:
+        if bias is None:
+            if x_dtype == DataType.DT_BF16:
+                bias = Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT))
+            elif x_dtype == DataType.DT_UINT8:
+                bias = Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_INT32))
+            else:
+                bias = Fill(ge.Const(0), ge.Cast(0., dst_type=x_dtype))
+
+        scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_UINT64))]
+        offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT))]
+        antiquant_scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
+        antiquant_offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
+        if x_dtype == DataType.DT_BF16:
+            antiquant_scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_BF16))]
+            antiquant_offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_BF16))]
+    elif torch_npu_api_version == 1:
+        if bias is None:
+            if x_dtype == DataType.DT_BF16:
+                bias = ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT))
+            elif x_dtype == DataType.DT_UINT8:
+                bias = ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_INT32))
+            else:
+                bias = ge.Fill([0], ge.Cast(0., dst_type=x_dtype))
+
+        scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_UINT64))]
+        offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT))]
+        antiquant_scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
+        antiquant_offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
+        if x_dtype == DataType.DT_BF16:
+            antiquant_scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_BF16))]
+            antiquant_offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_BF16))]
+
+    return gmm_param(bias, scale, offset, antiquant_scale, antiquant_offset)
+
+
+class GMMOpBuilderPublic(MindSpeedOpBuilder):
     def sources(self):
         return ['ops/csrc/cann/gmm.cpp']
 
@@ -59,6 +93,20 @@ class GMMOpBuilder(MindSpeedOpBuilder):
         args.append(cpp_std)
         return args
 
+
+class GMMOpBuilder(GMMOpBuilderPublic):
+    OP_NAME = "grouped_matmul"
+    OP_PROTO = (
+        "npu_gmm.List(Tensor x, Tensor weight, *, Tensor? bias=None, int[]? group_list=None, int? group_type=0) -> Tensor",
+        "npu_gmm.Tensor(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor"
+    )
+    TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
+
+    def __init__(self):
+        super(GMMOpBuilder, self).__init__(self.OP_NAME)
+        self.register_op_proto(self.OP_PROTO)
+        self.register_op_ir()
+
     def register_op_ir(self):
         @impl(AS_LIBRARY, "npu_gmm.Tensor", "Meta")
         def npu_gmm_forward(x, weight, *, bias=None, group_list=None, group_type=0):
@@ -79,43 +127,50 @@ class GMMOpBuilder(MindSpeedOpBuilder):
         ):
             """npu_gmm(Tensor x, Tensor weight, Tensor group_list, *, Tensor? bias=None, int? group_type=0) -> Tensor
             """
-            x_dtype = x.dtype
+            result = conveter_npu_gmm_param(x, bias)
 
-            if torch_npu_api_version == 2:
-                if bias is None:
-                    if x_dtype == DataType.DT_BF16:
-                        bias = Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT))
-                    elif x_dtype == DataType.DT_UINT8:
-                        bias = Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_INT32))
-                    else:
-                        bias = Fill(ge.Const(0), ge.Cast(0., dst_type=x_dtype))
+            return GroupedMatmul([x], [weight], [result.bias], result.scale, result.offset, result.antiquant_scale,
+                                 result.antiquant_offset, group_list, size_of_y=1, split_item=3, group_type=group_type,
+                                 dtype=-1, transpose_weight=False, group_list_type=0)[0]
 
-                scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_UINT64))]
-                offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT))]
-                antiquant_scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
-                antiquant_offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
-                if x_dtype == DataType.DT_BF16:
-                    antiquant_scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_BF16))]
-                    antiquant_offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_BF16))]
-            elif torch_npu_api_version == 1:
-                if bias is None:
-                    if x_dtype == DataType.DT_BF16:
-                        bias = ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT))
-                    elif x_dtype == DataType.DT_UINT8:
-                        bias = ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_INT32))
-                    else:
-                        bias = ge.Fill([0], ge.Cast(0., dst_type=x_dtype))
 
-                scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_UINT64))]
-                offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT))]
-                antiquant_scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
-                antiquant_offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
-                if x_dtype == DataType.DT_BF16:
-                    antiquant_scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_BF16))]
-                    antiquant_offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_BF16))]
+class GMMV2OpBuilder(GMMOpBuilderPublic):
+    OP_NAME = "grouped_matmul_v2"
+    OP_PROTO = (
+        "npu_gmm_v2.Tensor(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor"
+    )
+    TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
 
-            return GroupedMatmul([x], [weight], [bias], scale, offset, antiquant_scale, antiquant_offset, group_list,
-                                 size_of_y=1, split_item=3, group_type=group_type, dtype=-1, transpose_weight=False)[0]
+    def __init__(self):
+        super(GMMV2OpBuilder, self).__init__(self.OP_NAME)
+        self.register_op_proto(self.OP_PROTO)
+        self.register_op_ir()
+
+    def register_op_ir(self):
+        @impl(AS_LIBRARY, "npu_gmm_v2.Tensor", "Meta")
+        def npu_gmm_v2_forward(x, weight, *, bias=None, group_list=None, group_type=0):
+            BM = x.shape[0]
+            N = weight.shape[-1]
+            y = x.new_empty((BM, N), dtype=x.dtype)
+            return y
+
+        @register_fx_node_ge_converter(torch.ops.mindspeed.npu_gmm_v2.Tensor)
+        def conveter_npu_gmm_v2(
+            x: Tensor,
+            weight: Tensor,
+            group_list: Tensor,
+            *,
+            bias: Optional[Tensor] = None,
+            group_type: Optional[int] = 0,
+            meta_outputs: TensorSpec = None,
+        ):
+            """npu_gmm_v2(Tensor x, Tensor weight, Tensor group_list, *, Tensor? bias=None, int? group_type=0) -> Tensor
+            """
+            result = conveter_npu_gmm_param(x, bias)
+
+            return GroupedMatmul([x], [weight], [result.bias], result.scale, result.offset, result.antiquant_scale,
+                                 result.antiquant_offset, group_list, size_of_y=1, split_item=3, group_type=group_type,
+                                 dtype=-1, transpose_weight=False, group_list_type=1)[0]
 
 if torch_npu_api_version == 2:
     def Fill(dims: Tensor, value: Tensor):
@@ -141,7 +196,7 @@ if torch_npu_api_version == 2:
     def GroupedMatmulV2(x: List[Tensor], weight: List[Tensor], bias: List[Tensor], scale: List[Tensor],
                         offset: List[Tensor], antiquant_scale: List[Tensor], antiquant_offset: List[Tensor],
                         group_list: Optional[Tensor], *, size_of_y: int, split_item: int = 0, group_type: int = -1,
-                        dtype: int = 0, transpose_weight: bool = False):
+                        dtype: int = 0, transpose_weight: bool = False, group_list_type: int = 0):
         """REG_OP(GroupedMatmul)\n
         .DYNAMIC_INPUT(x, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))\n
         .DYNAMIC_INPUT(weight, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))\n
@@ -153,9 +208,10 @@ if torch_npu_api_version == 2:
         .OPTIONAL_INPUT(group_list, TensorType({DT_INT64}))\n
         .DYNAMIC_OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))\n
         .ATTR(split_item, Int, 0)\n
-        .ATTR(group_type, Int, -1)
+        .ATTR(group_type, Int, -1)\n
         .ATTR(dtype, Int, 0)\n
         .ATTR(transpose_weight, Bool, false)\n
+        .ATTR(group_list_type, Int, 0)\n
         """
 
         y = torchair.ge.custom_op("GroupedMatmul",
@@ -173,7 +229,8 @@ if torch_npu_api_version == 2:
                 "split_item":ge.attr.Int(split_item),
                 "group_type":ge.attr.Int(group_type),
                 "dtype":ge.attr.Int(dtype),
-                "transpose_weight":ge.attr.Bool(transpose_weight)
+                "transpose_weight":ge.attr.Bool(transpose_weight),
+                "group_list_type":ge.attr.Int(group_list_type)
             },
             outputs=[("y", 1)]
         )
@@ -185,7 +242,8 @@ elif torch_npu_api_version == 1:
     def GroupedMatmulV1(x: List[Tensor], weight: List[Tensor], bias: List[Tensor], scale: List[Tensor],
                         offset: List[Tensor], antiquant_scale: List[Tensor], antiquant_offset: List[Tensor],
                         group_list: Optional[Tensor], *, size_of_y: int, split_item: int = 0, group_type: int = -1,
-                        dtype: int = 0, transpose_weight: bool = False, dependencies=[], node_name=None):
+                        dtype: int = 0, transpose_weight: bool = False, group_list_type: int = 0, dependencies=[],
+                        node_name=None):
         """REG_OP(GroupedMatmul)\n
         .DYNAMIC_INPUT(x, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))\n
         .DYNAMIC_INPUT(weight, TensorType({DT_FLOAT16, DT_BF16, DT_INT8}))\n
@@ -197,9 +255,10 @@ elif torch_npu_api_version == 1:
         .OPTIONAL_INPUT(group_list, TensorType({DT_INT64}))\n
         .DYNAMIC_OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))\n
         .ATTR(split_item, Int, 0)\n
-        .ATTR(group_type, Int, -1)
+        .ATTR(group_type, Int, -1)\n
         .ATTR(dtype, Int, 0)\n
         .ATTR(transpose_weight, Bool, false)\n
+        .ATTR(group_list_type, Int, 0)\n
         """
 
         op = get_default_ge_graph().op.add()
@@ -267,6 +326,7 @@ elif torch_npu_api_version == 1:
         op.attr["group_type"].i = group_type
         op.attr["dtype"].i = dtype
         op.attr["transpose_weight"].b = transpose_weight
+        op.attr["group_list_type"].i = group_list_type
 
         # process outputs
         output_index = 0
