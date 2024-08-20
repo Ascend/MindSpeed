@@ -383,7 +383,7 @@ def mcore_moe_adaptation(pm, args):
             pm.register_patch('megatron.core.transformer.moe.experts.SequentialMLP.forward', sequential_mlp_forward)
             pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute)
 
-    if args.use_ascend_mc2:
+    if args.use_ascend_mc2 and not hasattr(args, 'moe_grouped_gemm'):
         # MoE MLP not use mc2 linear
         from .core.models.gpt.gpt_layer_specs import build_layers_wrapper
         from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
