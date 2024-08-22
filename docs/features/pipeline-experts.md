@@ -27,7 +27,7 @@
 
 在 local_experts 等于 1 时，即 ep = num_expert 时，可以考虑使用多副本间的计算通信流水实现通信隐藏的目的。
 
-在使用910C进行训练时，推荐开启多流水线`--pipe-experts-multi-stream`规避集合通信上出现的链路冲突。
+可开启多流水线`--pipe-experts-multi-stream`规避集合通信上出现的链路冲突。
 
 ## 使用方法
 
