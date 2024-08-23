@@ -83,6 +83,7 @@ $$
 - ``gamma`` 仅支持一维，其维度为 ``(n)``，``gamma`` 的最后一维与 ``residual`` 的最后一维相等
 - ``reduce_op`` 仅支持 ``sum``
 - 昇腾910B AI处理器支持1、2、4、8卡
+- 昇腾910B AI处理器支持``(b * s)``，``n``为0的空tensor，不支持``k``为0的空tensor
 - 非量化场景下，``x1``、``x2``、``bias``（若支持）、``residual``、``gamma`` 计算输入的数据类型要一致
 - 全量化场景下，若输出 ``residual`` 类型为 ``FLOAT16``，``dequant_scale`` 的类型为 ``INT64``、``UINT64``（需通过 ``torch_npu.npu_trans_quant_param()`` 接口对 ``dequant_scale`` 进行处理）；若输出 ``residual`` 类型为 ``BFLOAT16``，``dequant_scale`` 的类型为 ``BFLOAT16``。``dequant_scale`` 满足两种模式：
     - ``per_tensor`` 模式：``(1,)``
