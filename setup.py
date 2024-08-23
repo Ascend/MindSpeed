@@ -158,9 +158,15 @@ setuptools.setup(
     install_package_data=True,
     exclude_package_data={'': ['**/*.md']},
     package_data={'': package_files(src_path)},
+    bug_data={'mindspeed': ['**/*.h', '**/*.cpp', '*/*.sh', '**/*.patch']},
     zip_safe=False,
     # PyPI package information.
     keywords=__keywords__,
     cmdclass={},
+    entry_points={
+        "console_scripts": [
+            "mindspeed = mindspeed.run.run:main",
+        ]
+    },
     ext_modules=exts
 )

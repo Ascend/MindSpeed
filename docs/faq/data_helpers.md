@@ -1,6 +1,6 @@
 # Data helpers overflow bug
 ## 问题现象
-在模型预处理数据集的阶段报如下错误：
+在增大 gbs、iteration 等理论上不影响模型内存的参数后，出现OOM现象，或者在模型预处理数据集的阶段报如下错误：
 ```shell
 Traceback (most recent call last):
   File "pretrain_gpt.py", line 121, in <module>
@@ -42,8 +42,21 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 在数据集中的句子较短，而要求训练的步数 * Global Batch Size * Sequence Length 较大的情况下就会出现 `doc_idx_index` 超过 int32 的表达范围而导致最终的 index 溢出。
 
 ## 解决方案
-1. 【临时规避】减小模型训练步数
-2. 将相关变量修改为 int64 数据类型，具体可查看：[PR](https://github.com/NVIDIA/Megatron-LM/pull/598)
+
+#### 规避方案
+1. 减小模型训练步数
+
+
+#### 推荐方案
+1. 将相关变量修改为 int64 数据类型，具体可查看：[PR](https://github.com/NVIDIA/Megatron-LM/pull/598)
+
+   > 可以在 Megatron-LM 目录下，运行`mindspeed -P`命令，自动完成修改。
+   >```shell
+   > mindspeed -P
+   >```
+2. 删除 `megatron/core/datasets/` 下面的 `helpers.cpython-xx-xxx-linux-gnu.so` 文件。
+3. 删除已生成的数据集缓存文件夹，例如 `enwiki/my-t5_text_sentence/cache/GPTDataset_indices`。
+
 
 ## 备注
 此问题为 Megatron-LM 原生问题，CPP 代码难以通过 monkey patch 的方式进行修改。已多次提交修复 PR，但似乎 Megatron-LM 较为封闭，无人管理且不接受来自社区的代码提交。
