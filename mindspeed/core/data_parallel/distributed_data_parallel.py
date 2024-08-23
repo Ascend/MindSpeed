@@ -137,7 +137,7 @@ def distributed_data_parallel_init_zero3(
     accumulate_allreduce_grads_in_fp32: bool,
     overlap_grad_reduce: bool,
     use_distributed_optimizer: bool,
-    expert_data_parallel_group,
+    expert_data_parallel_group = None,
     disable_bucketing: bool = False,
     check_for_nan_in_grad: bool = False,
     bucket_size: int = 40000000,
@@ -281,3 +281,37 @@ def distributed_data_parallel_zero_grad_wrapper(function):
         for p in self.zero3_param:
             p.main_grad.data.zero_()
     return distributed_data_parallel_zero_grad
+
+
+def distributed_data_parallel_init_wrapper(function):
+    @wraps(function)
+    def wrapper(
+        self,
+        config,
+        module,
+        data_parallel_group,
+        accumulate_allreduce_grads_in_fp32: bool,
+        overlap_grad_reduce: bool,
+        use_distributed_optimizer: bool,
+        expert_data_parallel_group = None,
+        disable_bucketing: bool = False,
+        check_for_nan_in_grad: bool = False,
+        bucket_size: int = 40000000,
+    ):
+        args = get_args()
+        if args.ddp_bucket_size is not None:
+            bucket_size = args.ddp_bucket_size
+        function(
+            self,
+            config,
+            module,
+            data_parallel_group,
+            accumulate_allreduce_grads_in_fp32,
+            overlap_grad_reduce,
+            use_distributed_optimizer,
+            expert_data_parallel_group,
+            disable_bucketing,
+            check_for_nan_in_grad,
+            bucket_size,
+        )
+    return wrapper

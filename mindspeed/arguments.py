@@ -169,6 +169,8 @@ def _add_distributed_args(parser):
                        default=False, help='use nano pipeline parallelism for reduce bubble.')
     group.add_argument('--use-pipe-experts', action='store_true',
                        help='Use this flag to enable pipe moe, overlap all2all and expert')
+    group.add_argument('--ddp-bucket-size', type=int, default=None,
+                       help='Bucket size for data-parallel communication.')
     return parser
 
 

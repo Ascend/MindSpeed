@@ -183,7 +183,8 @@ def megatron_core_adaptation(aspm, mindspeed_args):
     from .core.transformer.transformer import parallel_transformer_layer_init_wrapper
     from .core.transformer.transformer import core_mlp_forward_wrapper
     from .core.transformer.transformer_block import transformer_block_checkpointed_forward_wrapper
-    
+    from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_wrapper
+
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.get_pos_emb_on_this_cp_rank',
                         get_pos_emb_on_this_cp_rank)
     aspm.register_patch('megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.forward',
@@ -268,6 +269,8 @@ def megatron_core_adaptation(aspm, mindspeed_args):
                         optimizer_config_init_wrapper)
     aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
                         reuse_fp32_param_distrib_optimizer_init_wrapper)
+    aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
+                        distributed_data_parallel_init_wrapper)
 
     # ripipe relative.
     aspm.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
