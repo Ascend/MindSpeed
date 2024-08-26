@@ -35,25 +35,13 @@ c10::SmallVector<int64_t, SIZE> array_to_small_vector(c10::IntArrayRef shape)
 }
 }
 
-void _check_dims(size_t num_x, const at::TensorList &weight, size_t num_group_list,
-                 size_t sum_group_list)
+void _check_dims(size_t num_x, const at::TensorList &weight, size_t num_group_list)
 {
     size_t num_w = weight.size();
     TORCH_CHECK(num_x > 0 && num_w > 0,
         "Neither x nor weight could be empty.");
     size_t dim_num_w = weight[0].sizes().size();
     size_t dim_0_w = weight[0].sizes()[0];
-}
-
-void _create_new_tensor_multi_dim(std::vector<at::Tensor> &y, const at::Tensor &x_i, const at::Tensor &w_i,
-                                  c10::TensorOptions options)
-{
-    auto x_sizes = x_i.sizes();
-    std::vector<int64_t> y_sizes(x_sizes.begin(), x_sizes.end());
-    y_sizes.at(x_sizes.size() - 1) = w_i.sizes()[1];
-
-    auto output_size = op_infer::array_to_small_vector(y_sizes);
-    y.emplace_back(at::empty(output_size, options));
 }
 
 void _create_new_tensor(std::vector<at::Tensor> &y, int64_t dim_m, int64_t dim_n, c10::TensorOptions options,
@@ -99,13 +87,12 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
     auto num_group_list = group_list_real.size();
     int64_t split_item_value = 3;
     int64_t group_type_value = group_type.value_or(-1);
-    int64_t sum_group_list = num_group_list > 0 ? group_list_real[num_group_list - 1] : 0;
 
     const at::TensorList x_(x);
     const at::TensorList weight_(weight);
     const at::TensorList bias_(bias);
 
-    _check_dims(num_x, weight_, num_group_list, sum_group_list);
+    _check_dims(num_x, weight_, num_group_list);
 
     std::vector<at::Tensor> y;
     c10::TensorOptions options = x_[0].options().dtype(x_[0].scalar_type());
@@ -139,14 +126,13 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
     int64_t split_item_value = 3;
     int64_t group_type_value = group_type.value_or(-1);
     int64_t group_list_type_value = group_list_type.value_or(0);
-    int64_t sum_group_list = num_group_list > 0 ? group_list_real[num_group_list - 1].item<int>() : 0;
     int64_t act_type_value = 0;
 
     const at::TensorList x_(x);
     const at::TensorList weight_(weight);
     const at::TensorList bias_(bias);
 
-    _check_dims(num_x, weight_, num_group_list, sum_group_list);
+    _check_dims(num_x, weight_, num_group_list);
 
     std::vector<at::Tensor> y;
     c10::TensorOptions options = x_[0].options().dtype(x_[0].scalar_type());
