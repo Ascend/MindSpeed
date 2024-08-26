@@ -104,9 +104,11 @@ def permute(tokens, indices, num_out_tokens: int = None, padded_mode: bool = Fal
 ```python
 import torch
 import torch_npu
+
 from mindspeed.ops.npu_moe_token_permute import npu_moe_token_permute
+
 dtype = torch.bfloat16
-tokens = torch.tensor([[1, 1, 1], [2, 2, 2], [3, 3, 3], [0, 0, 0]]).npu().to(dtype)
+tokens = torch.tensor([[1, 1, 1], [2, 2, 2], [3, 3, 3], [0, 0, 0]]).npu().to(dtype).requires_grad_(True)
 indices = torch.tensor([[0, 4], [4, 3], [4, 2], [1, 1]]).npu()
 num_out_tokens = indices.numel()
 probs = torch.ones_like(indices) / 2

@@ -84,8 +84,8 @@ namespace {
             // current version sorted_indices only support dtype(at::kInt)
             at::Tensor sorted_indices = at::empty({flatten_size}, indices.options().dtype(at::kInt));
             at::Tensor permuted_tokens = at::empty({actual_num_out_tokens, tokens.size(1)}, tokens.options());
-            at::Tensor unsqueeze_indices = (indices.dim() == 1) ? at::unsqueeze(indices, 1) : indices;
-            ACLNN_CMD(aclnnMoeTokenPermute, tokens, unsqueeze_indices, actual_num_out_tokens, padded_mode_vale, permuted_tokens, sorted_indices);
+
+            ACLNN_CMD(aclnnMoeTokenPermute, tokens, indices, actual_num_out_tokens, padded_mode_vale, permuted_tokens, sorted_indices);
 
             ctx->save_for_backward({sorted_indices});
 

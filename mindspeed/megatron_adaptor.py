@@ -448,10 +448,11 @@ def mcore_moe_adaptation(pm, args):
     pm.register_patch('megatron.core.transformer.moe.grouped_gemm_util.ops', Ops)
     pm.register_patch('megatron.core.transformer.moe.grouped_gemm_util.grouped_gemm_is_available', grouped_gemm_is_available)
     pm.register_patch('torch.cuda.get_device_capability', get_device_capability)
-    from .core.fusions.npu_moe_token_permute import permute_wrapper
-    from .core.fusions.npu_moe_token_unpermute import unpermute_wrapper
-    pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute_wrapper)
-    pm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute_wrapper)
+    if hasattr(args, 'use_fused_moe_token_permute_and_unpermute') and args.use_fused_moe_token_permute_and_unpermute:
+        from .core.fusions.npu_moe_token_permute import permute_wrapper
+        from .core.fusions.npu_moe_token_unpermute import unpermute_wrapper
+        pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute_wrapper)
+        pm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute_wrapper)
 
 
 def deepspeed_moe_adaptation(pm, args):
