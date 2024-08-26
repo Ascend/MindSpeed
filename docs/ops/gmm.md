@@ -1,8 +1,8 @@
 # gmm对外接口
 
-npu_gmm(x, weight, bias=None, group_list=None, group_type=0)
+npu_gmm(x, weight, *, bias=None, group_list=None, group_type=0)
 
-npu_gmm_v2(x, weight, bias=None, group_list=None, group_type=0)
+npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0)
 
 [npu_gmm_v2]相较于[npu_gmm]接口, group_list的含义不同, 在npu_gmm接口中group_list中数值为分组轴大小的cumsum结果（累积和），npu_gmm_v2接口中group_list中数值为分组轴上每组大小。
 

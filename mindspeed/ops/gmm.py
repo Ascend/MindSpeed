@@ -86,7 +86,7 @@ def _npu_gmm(x, weight, *, bias=None, group_list=None, group_type=0):
     return GMMFunction.apply(x, weight, bias, group_list, group_type, 0, group_list_data_type)
 
 
-def npu_gmm(x, weight, bias=None, group_list=None, group_type=0):
+def npu_gmm(x, weight, *, bias=None, group_list=None, group_type=0):
     npu_gmm_param_verification(x, weight, bias=bias, group_list=group_list, group_type=group_type, group_list_type=0)
     return torch.ops.mindspeed.npu_gmm(x, weight, bias=bias, group_list=group_list, group_type=group_type)
 
@@ -96,6 +96,6 @@ def _npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0):
     return GMMFunction.apply(x, weight, bias, group_list, group_type, 1, 1)
 
 
-def npu_gmm_v2(x, weight, bias=None, group_list=None, group_type=0):
+def npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0):
     npu_gmm_param_verification(x, weight, bias=bias, group_list=group_list, group_type=group_type, group_list_type=1)
     return torch.ops.mindspeed.npu_gmm_v2(x, weight, bias=bias, group_list=group_list, group_type=group_type)

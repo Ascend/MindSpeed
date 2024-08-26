@@ -119,13 +119,13 @@ class GMMOpBuilder(GMMOpBuilderPublic):
         def conveter_npu_gmm(
             x: Tensor,
             weight: Tensor,
-            group_list: Tensor,
             *,
             bias: Optional[Tensor] = None,
+            group_list: Optional[Tensor] = None,
             group_type: Optional[int] = 0,
             meta_outputs: TensorSpec = None,
         ):
-            """npu_gmm(Tensor x, Tensor weight, Tensor group_list, *, Tensor? bias=None, int? group_type=0) -> Tensor
+            """npu_gmm(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor
             """
             result = conveter_npu_gmm_param(x, bias)
 
@@ -158,13 +158,13 @@ class GMMV2OpBuilder(GMMOpBuilderPublic):
         def conveter_npu_gmm_v2(
             x: Tensor,
             weight: Tensor,
-            group_list: Tensor,
             *,
             bias: Optional[Tensor] = None,
+            group_list: Optional[Tensor] = None,
             group_type: Optional[int] = 0,
             meta_outputs: TensorSpec = None,
         ):
-            """npu_gmm_v2(Tensor x, Tensor weight, Tensor group_list, *, Tensor? bias=None, int? group_type=0) -> Tensor
+            """npu_gmm_v2(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor
             """
             result = conveter_npu_gmm_param(x, bias)
 
