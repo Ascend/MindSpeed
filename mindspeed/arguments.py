@@ -1,6 +1,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from functools import wraps
 import argparse
+import os
 
 
 def extra_args_provider_decorator(extra_args_provider):
@@ -186,6 +187,9 @@ def validate_args_decorator(validate_args):
             raise AssertionError('NPU not supported FP8.')
         if args.tp_comm_overlap:
             args.tp_comm_overlap = False
+        if int(os.getenv('ASCEND_MC2', '0')):
+            if args.add_bias_linear or args.add_qkv_bias:
+                raise AssertionError('--mc2 currently does not support linear and attention with bias.')
 
         adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or args.adaptive_recompute_device_swap
         if adaptive_recompute_enable and (args.recompute_granularity is not None or args.recompute_method is not None):
