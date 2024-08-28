@@ -15,3 +15,4 @@ from .npu_inplace_mm_all_reduce_add_rms_norm_builder import InplaceMatmulAllRedu
 from .npu_rotary_position_embedding_builder import RotaryPositionEmbeddingOpBuilder
 from .npu_moe_token_permute_builder import MoeTokenPermuteOpBuilder
 from .npu_moe_token_unpermute_builder import MoeTokenUnpermuteOpBuilder
+from .npu_ring_attention_update_builder import RingAttentionUpdateOpBuilder

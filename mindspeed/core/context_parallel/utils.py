@@ -3,6 +3,9 @@
 import torch
 import torch.distributed as dist
 from einops import rearrange
+from megatron.training import get_args
+
+from mindspeed.ops.npu_ring_attention_update import npu_ring_attention_update
 
 
 class RingP2P:
@@ -45,8 +48,8 @@ class RingP2P:
             return 0
 
 
-def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
-                   cur_attn_out, cur_softmax_max, cur_softmax_sum, layout='SBH'):
+def forward_update_without_fused(prev_attn_out, prev_softmax_max, prev_softmax_sum,
+                                 cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=None, layout='SBH'):
     # update softmax_max
     origin_dtype = prev_attn_out.dtype
     softmax_max = torch.maximum(prev_softmax_max, cur_softmax_max)
@@ -78,6 +81,49 @@ def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
     return attn_out, softmax_max, softmax_sum
 
 
+def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
+                   cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=None, layout='SBH'):
+    """
+    Updates the attention output and softmax statistics for the ring attention mechanism,
+    with added parameters for enhanced flexibility and extensibility.
+
+    This function is designed to update the attention output and related softmax statistics
+    for a given sequence length in a ring attention mechanism. It handles the merging of
+    previous and current attention outputs and their corresponding softmax statistics.
+    The introduction of `actual_seq_qlen` and `layout` parameters allows for greater flexibility
+    in handling variable sequence lengths and different tensor layouts, respectively.
+
+    Parameters:
+    - prev_attn_out (Tensor): The attention output from the previous process.
+    - prev_softmax_max (Tensor): The maximum value of the softmax distribution from the previous process.
+    - prev_softmax_sum (Tensor): The sum of the softmax distribution from the previous process.
+    - cur_attn_out (Tensor): The attention output from the current process.
+    - cur_softmax_max (Tensor): The maximum value of the softmax distribution from the current process.
+    - cur_softmax_sum (Tensor): The sum of the softmax distribution from the current process.
+    - actual_seq_qlen (Tensor, optional): The actual sequence length for the query. This parameter
+                                      is crucial for handling variable-length sequences and ensuring
+                                      that the attention mechanism operates correctly under such conditions.
+                                      If not provided, it defaults to the length of the current attention output.
+    - layout (str, optional): The layout format of the input tensors. This parameter allows for the specification
+                              of different tensor layouts, enhancing the function's versatility across various
+                              model architectures. Default is 'SBH', where:
+        - S: Sequence length
+        - B: Batch size
+        - H: Hidden size (number of attention heads)
+
+    Returns:
+    - updated_attn_out (Tensor): The updated attention output after merging previous and current process.
+    - updated_softmax_max (Tensor): The updated maximum value of the softmax distribution.
+    - updated_softmax_sum (Tensor): The updated sum of the softmax distribution.
+    """
+    _args = get_args()
+    if hasattr(_args, 'use_fused_ring_attention_update') and _args.use_fused_ring_attention_update:
+        return npu_ring_attention_update(prev_attn_out, prev_softmax_max, prev_softmax_sum, cur_attn_out,
+                                         cur_softmax_max, cur_softmax_sum, actual_seq_qlen, layout)
+    return forward_update_without_fused(prev_attn_out, prev_softmax_max, prev_softmax_sum, cur_attn_out,
+                                    cur_softmax_max, cur_softmax_sum, actual_seq_qlen, layout)
+
+
 def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
                                    q_index=None, cur_sub_out_seq_len=None):
     cur_attn_out, cur_softmax_max, cur_softmax_sum = cur_attn_outs[0], cur_attn_outs[1], cur_attn_outs[2]
@@ -94,7 +140,7 @@ def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
     elif kv_block_id <= q_block_id:
         attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
             attn_out, softmax_max, softmax_sum,
-            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout
+            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout=layout
         )
         attn_out, softmax_max, softmax_sum = attn_out_updated, softmax_max_updated, softmax_sum_updated
     else:
@@ -107,7 +153,7 @@ def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
                                         2, softmax_sum.shape[2] // 2, softmax_sum.shape[-1])
         attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
             attn_out[1], softmax_max[:, :, 1, :, :], softmax_sum[:, :, 1, :, :],
-            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout
+            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout=layout
         )
         attn_out[1].copy_(attn_out_updated)
         softmax_max[:, :, 1, :, :].copy_(softmax_max_updated)
@@ -136,7 +182,7 @@ def general_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
     else:
         attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
             attn_out, softmax_max, softmax_sum,
-            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout
+            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout=layout
         )
         attn_out, softmax_max, softmax_sum = attn_out_updated, softmax_max_updated, softmax_sum_updated
     

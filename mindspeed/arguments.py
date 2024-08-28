@@ -126,6 +126,8 @@ def _add_cp_args(parser):
     group.add_argument('--cp-window-size', type=int, default=1)
     group.add_argument('--use-cp-send-recv-overlap', action='store_true',
                        help='use this flag to enable cp send-recv-overlap.')
+    group.add_argument("--use-fused-ring-attention-update", action='store_true',
+                       help="Use fused ring attention update.")
     return parser
 
 
