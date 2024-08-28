@@ -1,0 +1,16 @@
+diff --git a/megatron/core/datasets/gpt_dataset.py b/megatron/core/datasets/gpt_dataset.py
+index cac60ce..ec97ff9 100644
+--- a/megatron/core/datasets/gpt_dataset.py
++++ b/megatron/core/datasets/gpt_dataset.py
+@@ -390,8 +390,10 @@ class GPTDataset(MegatronDataset):
+             )
+         )
+ 
++        from megatron.training import get_args
++        args = get_args()
+         if not cache_hit and (
+-            not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
++            not torch.distributed.is_initialized() or torch.distributed.get_rank() % args.tensor_model_parallel_size == 0
+         ):
+ 
+             log_single_rank(
