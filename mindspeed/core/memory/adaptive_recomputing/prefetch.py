@@ -292,7 +292,7 @@ def prefetch_tensor(module, name, prefetch_args):
 
 # register prefetch before backward, prefetch h2d
 def prefetch_register_post_backward_hook(module, name, prefetch_args):
-    module.register_full_backward_hook(post_backward_hook_func(name, prefetch_args))
+    module.register_backward_hook(post_backward_hook_func(name, prefetch_args))
 
 
 # register prefetch after forward, sync d2h
