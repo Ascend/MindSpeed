@@ -5,8 +5,8 @@ from mindspeed.op_builder.builder import AS_LIBRARY
 
 
 class GMMFunction(torch.autograd.Function):
-    mindspeed_ops = GMMOpBuilder().load()
-    mindspeed_ops = GMMV2OpBuilder().load()
+    builder = GMMOpBuilder()
+    builder2 = GMMV2OpBuilder()
 
     @staticmethod
     def forward(ctx, x, weight, bias, group_list, group_type, group_list_type, group_list_data_type):
@@ -15,7 +15,10 @@ class GMMFunction(torch.autograd.Function):
         if (x.requires_grad or weight.requires_grad) and group_type != 0:
             raise ValueError("group_type must be zero to compute gradients of x and weight!")
         bias = [] if bias is None else [bias]
-        outputs = GMMFunction.mindspeed_ops.npu_gmm([x], [weight], bias, group_list, group_type, group_list_type)
+        if group_list_type == 0:
+            outputs = GMMFunction.builder.load().npu_gmm([x], [weight], bias, group_list, group_type, group_list_type)
+        elif group_list_type == 1:
+            outputs = GMMFunction.builder2.load().npu_gmm([x], [weight], bias, group_list, group_type, group_list_type)
         if group_list_data_type == 0:
             ctx.save_for_backward(x, weight)
             ctx.group_list = group_list
@@ -33,8 +36,13 @@ class GMMFunction(torch.autograd.Function):
             group_list = ctx.group_list
         else:
             x, weight, group_list = ctx.saved_tensors
-        dx, dw, dbias = GMMFunction.mindspeed_ops.npu_gmm_backward([grad_outputs], [x], [weight], group_list,
+        if ctx.group_list_type == 0:
+            dx, dw, dbias = GMMFunction.builder.load().npu_gmm_backward([grad_outputs], [x], [weight], group_list,
                                                                    ctx.group_list_type)
+        elif ctx.group_list_type == 1:
+            dx, dw, dbias = GMMFunction.builder2.load().npu_gmm_backward([grad_outputs], [x], [weight], group_list,
+                                                                   ctx.group_list_type)
+
         dbias = None if len(dbias) == 0 else dbias[0]
 
         return dx[0], dw[0], dbias, None, None, None, None
