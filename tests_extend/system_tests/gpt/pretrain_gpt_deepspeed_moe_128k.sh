@@ -82,6 +82,7 @@ GPT_ARGS="
     --moe-train-capacity-factor 1.1 \
     --attention-dropout 0.0 \
     --hidden-dropout 0.0 \
+    --disable-bias-linear \
     --bf16
 "
 
