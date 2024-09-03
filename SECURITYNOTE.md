@@ -58,7 +58,10 @@
 |  开源引入  |                               https://github.com/NVIDIA/Megatron-LM/pull/598                                |     docs/faq/data_helpers.md            |            https://github.com/NVIDIA/Megatron-LM/pull/598                 |          data_helpers说明文档         |
 |  开源引入  |                              https://pytorch.org/docs/stable/distributed.html                               |        mindspeed/core/parallel_state.py         |                       https://pytorch.org/docs/stable/distributed.html                       |      torch.distributed相关接口注意事项    |
 |  开源引入  |                              https://github.com/pytorch/pytorch/pull/40762                               |        mindspeed/moe/utils.py        |                    https://github.com/pytorch/pytorch/pull/40762                      |           _AllToAll自动反向参考         |
-
+|  开源引入  |                           https://github.com/NVIDIA/Megatron-LM                            |     mindspeed/optimizer/distrib_optimizer.py     |      https://github.com/NVIDIA/Megatron-LM/blob/main/docs/source/distrib_optimizer.md      | distributed_optimizer_zero3_init文档字符串参数说明 |
+|  开源引入  |                           https://github.com/InternLM/InternEvo                            |   mindspeed/docs/features/ring-attention-context-parallel.md   |                           https://arxiv.org/pdf/2406.18485                   | ring-attention-context-parallel说明文档 |
+|  开源引入  |                           https://github.com/sail-sg/zero-bubble-pipeline-parallelism                            |   mindspeed/docs/features/nanopipe-pipeline-parallel.md   |                           https://arxiv.org/abs/2401.10241                   | nanopipe-pipeline-parallel说明文档 |
+|  开源引入  |                           https://github.com/iclr24-3434/AMPipe.git                            |   mindspeed/docs/features/ampipe.md   |                           https://openreview.net/pdf?id=yLgr02IsXY                   | ampipe说明文档 |
 
 ## 公开接口声明
 
