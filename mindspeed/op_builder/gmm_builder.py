@@ -30,7 +30,10 @@ gmm_param = namedtuple('gmm_param', ['bias', 'scale', 'offset', 'antiquant_scale
 def conveter_npu_gmm_param(
     x: Tensor,
     bias: Tensor,
+    group_type: int
 ):
+    if group_type == 2:
+        raise ValueError(f"GMM: graph mode does not support group_type 2!")
     x_dtype = x.dtype
 
     if torch_npu_api_version == 2:
@@ -127,7 +130,7 @@ class GMMOpBuilder(GMMOpBuilderPublic):
         ):
             """npu_gmm(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor
             """
-            result = conveter_npu_gmm_param(x, bias)
+            result = conveter_npu_gmm_param(x, bias, group_type)
 
             return GroupedMatmul([x], [weight], [result.bias], result.scale, result.offset, result.antiquant_scale,
                                  result.antiquant_offset, group_list, size_of_y=1, split_item=3, group_type=group_type,
@@ -166,7 +169,7 @@ class GMMV2OpBuilder(GMMOpBuilderPublic):
         ):
             """npu_gmm_v2(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor
             """
-            result = conveter_npu_gmm_param(x, bias)
+            result = conveter_npu_gmm_param(x, bias, group_type)
 
             return GroupedMatmul([x], [weight], [result.bias], result.scale, result.offset, result.antiquant_scale,
                                  result.antiquant_offset, group_list, size_of_y=1, split_item=3, group_type=group_type,

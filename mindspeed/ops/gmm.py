@@ -55,6 +55,11 @@ def npu_gmm_param_verification(x, weight, *, bias=None, group_list=None, group_t
         raise TypeError(f"arg1 must be a torch.Tensor, got {type(weight)}.")
     if not isinstance(bias, (torch.Tensor, type(None))):
         raise TypeError(f"bias must be a torch.Tensor or None, got {type(bias)}.")
+    is_supported_dtype = ((weight.dtype == torch.float16) or
+                          (weight.dtype == torch.bfloat16) or
+                          (weight.dtype == torch.float32))
+    if not is_supported_dtype:
+        raise TypeError(f"Only support non quant case, but got weight dtype {weight.dtype}.")
     if (group_list_type == 0):
         if not (
             isinstance(group_list, (torch.Tensor, type(None)))
