@@ -82,22 +82,22 @@ class PipeExpertUtil:
                 input_data_list[index], handle = async_fw_all_gather(input_data_list[index])
                 cls.fw_ag_event.append(handle)
             else:
-                if get_args().use_nanopipe and not is_pipeline_first_stage(True):
+                if get_args().use_nanopipe and WeightGradStore.is_decoupleBlock:
                     WeightGradStore.save_grad_output(input_data_list[num_local_experts_index * cls.multi_data + multi_data_index].clone().detach())
                 input_data_list[index], handle = async_bw_all_gather(input_data_list[index])
                 cls.bw_ag_event.append(handle)
         if index < (cls.num_local_experts * cls.multi_data - 1):
             cls.first_a2a_event[index + 1].wait()
             if is_fw_ag:
-                if index == 0:
+                if index == 0 and not get_args().use_nanopipe:
                     input_data_list[index + 1], handle = async_fw_all_gather(input_data_list[index + 1], None, True)
                 else:
                     input_data_list[index + 1], handle = async_fw_all_gather(input_data_list[index + 1])
                 cls.fw_ag_event.append(handle)
             else:
-                if get_args().use_nanopipe and not is_pipeline_first_stage(True):
+                if get_args().use_nanopipe and WeightGradStore.is_decoupleBlock:
                     WeightGradStore.save_grad_output(input_data_list[num_local_experts_index * cls.multi_data + multi_data_index + 1].clone().detach())
-                if index == 0:
+                if index == 0 and not get_args().use_nanopipe:
                     input_data_list[index + 1], handle = async_bw_all_gather(input_data_list[index + 1], None, True)
                 else:
                     input_data_list[index + 1], handle = async_bw_all_gather(input_data_list[index + 1])
@@ -115,8 +115,6 @@ class PipeExpertUtil:
                     input_data_list[index], cls.first_a2a_event[index])
                 cls.fw_ag_event.append(handle)
             else:
-                if get_args().use_nanopipe and not is_pipeline_first_stage(True):
-                    WeightGradStore.save_grad_output(input_data_list[num_local_experts_index * cls.multi_data + multi_data_index].clone().detach())
                 input_data_list[index], handle = async_bw_all_gather(
                     input_data_list[index], cls.first_a2a_event[index])
                 cls.bw_ag_event.append(handle)
@@ -125,7 +123,7 @@ class PipeExpertUtil:
                 input_data_list[index + 1], handle = async_all_to_all(
                     input_data_list[index + 1], cls.fw_ag_event[index])
                 cls.first_a2a_event.append(handle)
-                if index == 0:
+                if index == 0 and not get_args().use_nanopipe:
                     input_data_list[index + 1], handle = async_fw_all_gather(
                         input_data_list[index + 1], cls.first_a2a_event[index + 1], True)
                 else:
@@ -133,12 +131,10 @@ class PipeExpertUtil:
                         input_data_list[index + 1], cls.first_a2a_event[index + 1])
                 cls.fw_ag_event.append(handle)
             else:
-                if get_args().use_nanopipe and not is_pipeline_first_stage(True):
-                    WeightGradStore.save_grad_output(input_data_list[num_local_experts_index * cls.multi_data + multi_data_index + 1].clone().detach())
                 input_data_list[index + 1], handle = async_all_to_all(
                     input_data_list[index + 1], cls.bw_ag_event[index])
                 cls.first_a2a_event.append(handle)
-                if index == 0:
+                if index == 0 and not get_args().use_nanopipe:
                     input_data_list[index + 1], handle = async_bw_all_gather(
                         input_data_list[index + 1], cls.first_a2a_event[index + 1], True)
                 else:

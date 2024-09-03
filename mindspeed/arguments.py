@@ -169,6 +169,8 @@ def _add_distributed_args(parser):
                        help='Local rank passed from distributed launcher for torch2.x.')
     group.add_argument('--use-nanopipe', action='store_true',
                        default=False, help='use nano pipeline parallelism for reduce bubble.')
+    group.add_argument('--use-nanopipe-swap', action='store_true',
+                       default=False, help='use nano pipeline parallelism with swap for reduce bubble.')
     group.add_argument('--use-pipe-experts', action='store_true',
                        help='Use this flag to enable pipe moe, overlap all2all and expert')
     group.add_argument('--ddp-bucket-size', type=int, default=None,
@@ -177,6 +179,7 @@ def _add_distributed_args(parser):
 
 
 def _add_training_args(parser):
+
     group = parser.add_argument_group(title='training')
     # gradient_accumulation_fusion保持常闭
     group.add_argument('--no-gradient-accumulation-fusion',

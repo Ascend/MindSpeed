@@ -3,80 +3,152 @@ import operator
 import queue
 from functools import reduce
 import torch
+import torch_npu
 
 from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_world_size,
     is_pipeline_first_stage
 )
+from megatron.training import get_args
 
 
-def gather(input_slice):
+def gather(input_slice, stream):
     world_size = get_tensor_model_parallel_world_size()
     dim_size = list(input_slice.size())
     dim_size[0] = dim_size[0] * world_size
 
-    required_len = reduce(operator.mul, dim_size, 1)
     all_gather_buffer = torch.empty(
-        required_len, dtype=input_slice.dtype, device=torch.cuda.current_device(), requires_grad=False
+        dim_size, dtype=input_slice.dtype, device=torch.cuda.current_device(), requires_grad=False
     )
-    all_gather_buffer = all_gather_buffer[0:required_len].view(*dim_size)
-
-    handle = torch.distributed._all_gather_base(
-        all_gather_buffer, input_slice, group=get_tensor_model_parallel_group(), async_op=True
-    )
+    handle = None
+    forward_event = torch.npu.Event()
+    forward_event.record()
+    if get_args().use_nanopipe_swap:
+        swap_event = WeightGradStore.swap_event.pop(0)
+    with torch.no_grad():
+        with torch_npu.npu.stream(stream):
+            stream.wait_event(forward_event)
+            if get_args().use_nanopipe_swap:
+                stream.wait_event(swap_event)
+            handle = torch.distributed._all_gather_base(
+                all_gather_buffer, input_slice, group=get_tensor_model_parallel_group(), async_op=True
+            )
 
     # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
     # gather is scheduled before the input gradient computation
-    total_input = all_gather_buffer
-    return total_input, handle
+    return all_gather_buffer, handle
+
+
+def swap_d2h(ori_tensor, stream):
+    storage_size = ori_tensor.storage().size()
+    tensor_cpu = torch.empty(ori_tensor.shape, dtype=ori_tensor.dtype, pin_memory=True, device='cpu')
+    forward_event = torch.npu.Event()
+    forward_event.record()
+    with torch.no_grad():
+        with torch_npu.npu.stream(stream):
+            stream.wait_event(forward_event)
+            tensor_cpu.storage().copy_(ori_tensor.storage(), non_blocking=True)
+            WeightGradStore.ori_storage.append(ori_tensor)
+
+    return storage_size, tensor_cpu
+
+
+def swap_h2d(ori_tensor, tensor_cpu, storage_size, stream):
+    with torch.no_grad():
+        with torch_npu.npu.stream(stream):
+            ori_tensor.storage().resize_(storage_size)
+            ori_tensor.storage().copy_(tensor_cpu.storage(), non_blocking=True)
 
 
 class WeightGradStore:
-
     cache = []
     weight_grad_queue = queue.Queue()
-    stored_grads = None
     store_grad_cache = []
     grad_store = []
-    sequence_parallel = False
+    swap_event = []
+    prefetch_stream = None
+    gather_stream = None
+    host_tensors_gradoutput = []
+    host_pipe_experts_grad = []
+    host_tensors_input = []
+    ori_storage = []
+    is_decoupleBlock = False
 
     @classmethod
     def put(cls, total_input, grad_output, weight, sequence_parallel, in_row=False, pipe_experts=False):
+        if get_args().use_nanopipe_swap:
+            if cls.prefetch_stream is None:
+                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+            if grad_output is not None:
+                cls.host_tensors_gradoutput.append(swap_d2h(grad_output, cls.prefetch_stream))
+            cls.host_tensors_input.append(swap_d2h(total_input, cls.prefetch_stream))
+
         cls.cache.append((total_input, grad_output, weight, sequence_parallel, in_row, pipe_experts))
 
     @classmethod
     def flush(cls):
-        if not is_pipeline_first_stage(True):
-            cls.weight_grad_queue.put(cls.cache)
-            cls.cache = []
+        cls.weight_grad_queue.put(cls.cache)
+        cls.cache = []
 
     @classmethod
     def save_grad_output(cls, grad):
+        if get_args().use_nanopipe_swap:
+            if cls.prefetch_stream is None:
+                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+            cls.host_pipe_experts_grad.append(swap_d2h(grad, cls.prefetch_stream))
         cls.grad_store.append(grad)
 
     @classmethod
+    def start_decouple(cls):
+        cls.is_decoupleBlock = True
+
+    @classmethod
+    def end_decouple(cls):
+        cls.is_decoupleBlock = False
+
+    @classmethod
     def overlap_all_gather(cls):
-        # Used for grad_output all gather in RowParallel and input all gather in ColumnParallel.
-        if len(cls.stored_grads) > 0:
-            (input_slice, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts) = cls.stored_grads.pop(0)
+        # used for grad_output all gather in RowParallel and input all gather in ColumnParallel.
+        if len(cls.cache) > 0:
+            [input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts] = cls.cache.pop(0)
             if not sequence_parallel:
-                return (input_slice, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts), None
+                return (input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts), None
             if not in_row:
-                total_input, handle = gather(input_slice)
+                total_input, handle = gather(input, cls.gather_stream)
                 grad_output = grad_output_slice
             else:
-                if pipe_experts:
+                if pipe_experts and not get_args().use_nanopipe_swap:
                     grad_output_slice = cls.grad_store.pop(0)
-                grad_output, handle = gather(grad_output_slice)
-                total_input = input_slice
-            return (total_input, grad_output, weight, sequence_parallel, in_row, pipe_experts), handle
+                grad_output, handle = gather(grad_output_slice, cls.gather_stream)
+                total_input = input
+            return [total_input, grad_output, weight, sequence_parallel, in_row, pipe_experts], handle
         else:
             raise Exception("All Gather empty queue.")
 
     @classmethod
+    def swap_tensors(cls):
+        if get_args().use_nanopipe_swap:
+            if cls.prefetch_stream is None:
+                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+            cls.prefetch_stream.wait_stream(torch.npu.current_stream())
+            for cache_id in range(len(cls.cache)):
+                cls.cache[cache_id] = list(cls.cache[cache_id])
+                if cls.cache[cache_id][-1] and cls.cache[cache_id][1] is None:
+                    cls.cache[cache_id][1] = cls.grad_store.pop(0)
+                input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.cache[cache_id]
+                if pipe_experts:
+                    storage_size_g, tensor_cpu_g = cls.host_pipe_experts_grad.pop(0)
+                else:
+                    storage_size_g, tensor_cpu_g = cls.host_tensors_gradoutput.pop(0)
+                storage_size_i, tensor_cpu_i = cls.host_tensors_input.pop(0)
+                swap_h2d(grad_output_slice, tensor_cpu_g, storage_size_g, cls.prefetch_stream)
+                swap_h2d(input, tensor_cpu_i, storage_size_i, cls.prefetch_stream)
+                cls.swap_event.append((cls.prefetch_stream.record_event()))
+
+    @classmethod
     def overlap_matmul(cls, grad_store_cache):
-        total_input, grad_output, weight, _, _, _ = grad_store_cache
+        total_input, grad_output, weight, sequence_parallel, in_row, pipe_experts = grad_store_cache
         grad_output = grad_output.contiguous()
         # Convert the tensor shapes to 2D for execution compatibility
         grad_output = grad_output.view(
@@ -85,40 +157,45 @@ class WeightGradStore:
         total_input = total_input.view(
             total_input.shape[0] * total_input.shape[1], total_input.shape[2]
         )
-        weight.main_grad.data.add_(grad_output.t().matmul(total_input))
+
+        grad_weight = grad_output.t().matmul(total_input)
+        weight.main_grad.data.add_(grad_weight)
 
     @classmethod
     def pop(cls):
-        if is_pipeline_first_stage(True):
+        if len(cls.cache) == 0:
             return
-        if cls.stored_grads is None:
-            cls.stored_grads = cls.weight_grad_queue.get()
-            input_slice, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.stored_grads.pop(0)
-            cls.sequence_parallel = sequence_parallel
-            if not cls.sequence_parallel:
-                grad_output = grad_output_slice
-            else:
-                if pipe_experts:
-                    grad_output_slice = cls.grad_store.pop(0)
-                grad_output, handle = gather(grad_output_slice)
-                handle.wait()
-            cls.store_grad_cache = (input_slice, grad_output, weight, sequence_parallel, in_row, pipe_experts)
-
-        while len(cls.stored_grads) > 0:
-            next_grad_cache, handle = cls.overlap_all_gather()
-            cls.overlap_matmul(cls.store_grad_cache)
-            if handle is not None:
-                handle.wait()
-            cls.store_grad_cache = next_grad_cache
-        if cls.sequence_parallel and cls.weight_grad_queue.qsize() > 0:
-            cls.stored_grads = cls.weight_grad_queue.get()
-            next_grad_cache, handle = cls.overlap_all_gather()
-            cls.overlap_matmul(cls.store_grad_cache)
-            if handle is not None:
-                handle.wait()
-            cls.store_grad_cache = next_grad_cache
+        if cls.gather_stream is None:
+            cls.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+        input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.cache.pop(0)
+        if not sequence_parallel:
+            grad_output = grad_output_slice
+            handle = None
         else:
+            if pipe_experts and not get_args().use_nanopipe_swap:
+                grad_output_slice = cls.grad_store.pop(0)
+            grad_output, handle = gather(grad_output_slice, cls.gather_stream)
+
+        cls.store_grad_cache = (input, grad_output, weight, sequence_parallel, in_row, pipe_experts)
+        while len(cls.cache) > 0:
+            if handle is not None:
+                handle.wait()
+            next_grad_cache, handle = cls.overlap_all_gather()
             cls.overlap_matmul(cls.store_grad_cache)
-            cls.stored_grads = None
-            cls.store_grad_cache = None
-        return
+            cls.store_grad_cache = next_grad_cache
+        if handle is not None:
+            handle.wait()
+        cls.overlap_matmul(cls.store_grad_cache)
+        cls.stored_grads = None
+        cls.store_grad_cache = None
+        cls.swap_event = []
+        cls.grad_store = []
+        cls.host_pipe_experts_grad = []
+
+    @classmethod
+    def resize_ori_storage(cls, use_nano_swap):
+        if use_nano_swap and len(cls.ori_storage) > 0:
+            torch.npu.current_stream().wait_stream(cls.prefetch_stream)
+            for ori_storage_ in cls.ori_storage:
+                ori_storage_.storage().resize_(0)
+            cls.ori_storage = []

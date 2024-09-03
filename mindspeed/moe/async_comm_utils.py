@@ -1,6 +1,18 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
+# coding=utf-8
+# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
 import torch_npu
@@ -12,6 +24,9 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size,
     get_expert_model_parallel_group,
 )
+from megatron.training import get_args
+from megatron.core.parallel_state import is_pipeline_first_stage
+from mindspeed.core.weight_grad_store import WeightGradStore
 
 
 class AsyncCommUtilsData:
@@ -32,7 +47,7 @@ def get_fw_ag_output():
     return AsyncCommUtilsData.fw_ag_output
 
 
-def async_all_gather(input_, event=None, is_use_get_global_memory_buffer=False):
+def async_all_gather(input_, event=None, is_use_get_global_memory_buffer=False, is_save_input=False):
     world_size = get_tensor_model_parallel_world_size()
     dim_size = list(input_.size())
     new_dim_size = dim_size[0] * world_size
@@ -49,6 +64,8 @@ def async_all_gather(input_, event=None, is_use_get_global_memory_buffer=False):
             AsyncCommUtilsData.tp_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
         with torch_npu.npu.stream(AsyncCommUtilsData.tp_stream):
             event.wait()
+            if is_save_input and get_args().use_nanopipe and WeightGradStore.is_decoupleBlock:
+                WeightGradStore.save_grad_output(input_.clone().detach())
             handle = torch.distributed._all_gather_base(
                 ag_out, input_, group=get_tensor_model_parallel_group(), async_op=True
             )
@@ -66,7 +83,7 @@ def async_fw_all_gather(input_, event=None, is_use_get_global_memory_buffer=Fals
 
 
 def async_bw_all_gather(input_, event=None, is_use_get_global_memory_buffer=False):
-    input_, ag_out, handle = async_all_gather(input_, event, is_use_get_global_memory_buffer)
+    input_, ag_out, handle = async_all_gather(input_, event, is_use_get_global_memory_buffer, is_save_input=True)
     return ag_out, handle
 
 
