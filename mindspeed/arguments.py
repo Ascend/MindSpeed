@@ -181,12 +181,6 @@ def _add_distributed_args(parser):
 def _add_training_args(parser):
 
     group = parser.add_argument_group(title='training')
-    # gradient_accumulation_fusion保持常闭
-    group.add_argument('--no-gradient-accumulation-fusion',
-                       action='store_false', default=False,
-                       help='Disable fusing gradient accumulation to weight '
-                            'gradient computation of linear layers',
-                       dest='gradient_accumulation_fusion')
     group.add_argument('--pre-tockens', type=int, default=65536,
                        help='pre-tockens is used by Flash attention')
     group.add_argument('--next-tockens', type=int, default=0,

@@ -138,6 +138,7 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
 | 【Prototype】npu_fused_moe_token_permute     | [link](docs/ops/npu_fused_moe_token_permute.md)     |
 | 【Prototype】npu_fused_moe_token_unpermute   | [link](docs/ops/npu_fused_moe_token_unpermute.md)    |
 | 【Prototype】npu_ring_attention_update  | [link](docs/ops/npu_ring_attention_update.md)  |
+| 【Prototype】npu_matmul_add  | [link](docs/ops/npu_matmul_add.md)  |
 # MindSpeed中采集Profile数据
 
 MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：

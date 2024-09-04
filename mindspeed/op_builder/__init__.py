@@ -16,3 +16,4 @@ from .npu_rotary_position_embedding_builder import RotaryPositionEmbeddingOpBuil
 from .npu_moe_token_permute_builder import MoeTokenPermuteOpBuilder
 from .npu_moe_token_unpermute_builder import MoeTokenUnpermuteOpBuilder
 from .npu_ring_attention_update_builder import RingAttentionUpdateOpBuilder
+from .matmul_add_builder import MatmulAddOpBuilder
