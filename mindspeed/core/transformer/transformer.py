@@ -29,6 +29,9 @@ def parallel_transformer_layer_init_wrapper(fn):
             if self.mlp.experts.__class__ is SequentialMLP:
                 for expert in self.mlp.experts.local_experts:
                     expert.layer_number = self.layer_number
+            global_args = get_args()
+            if global_args.n_shared_experts:
+                self.mlp.shared_experts.layer_number = self.layer_number
         else:
             self.mlp.layer_number = self.layer_number
 
