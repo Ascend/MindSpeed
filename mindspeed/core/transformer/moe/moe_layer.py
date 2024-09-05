@@ -9,6 +9,28 @@ from megatron.core.transformer.mlp import MLPSubmodules, MLP
 from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
 
 
+def base_moe_init_wrapper(init_func):
+    @wraps(init_func)
+    def base_moe_init(*args, **kwargs):
+        init_func(*args, **kwargs)
+        self = args[0]
+        global_args = get_args()
+        if global_args.moe_tp_extend_ep:
+            tp_size = parallel_state.get_tensor_model_parallel_world_size()
+            assert self.config.num_moe_experts % (self.expert_parallel_size * tp_size) == 0
+            self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size // tp_size
+            local_expert_indices_offset = (
+                    parallel_state.get_expert_model_parallel_rank() * self.num_local_experts * tp_size + \
+                    parallel_state.get_tensor_model_parallel_rank() * self.num_local_experts
+            )
+            self.local_expert_indices = [
+                local_expert_indices_offset + i for i in range(self.num_local_experts)
+            ]
+            assert all(map(lambda x: x < self.config.num_moe_experts, self.local_expert_indices))
+
+    return base_moe_init
+
+
 def moe_layer_init_wrapper(init_func):
     @wraps(init_func)
     def moe_layer_init(*args, **kwargs):

@@ -55,8 +55,14 @@ def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert
 def groupedmlp_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        fn(self, *args, **kwargs)
         args_ = get_args()
+        tp_size = parallel_state.get_tensor_model_parallel_world_size()
+        # set tp size to 1 before GMM init to aviod weight sharding
+        if args_.moe_tp_extend_ep:
+            parallel_state._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = 1
+        fn(self, *args, **kwargs)
+        if args_.moe_tp_extend_ep:
+            parallel_state._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = tp_size
         if self.config.gated_linear_unit and args_.use_fused_swiglu:
             assert (self.config.activation_func == F.silu
                 ), 'Activation function must be silu when using fused_swiglu.'

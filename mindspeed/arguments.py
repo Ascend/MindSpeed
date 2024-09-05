@@ -113,6 +113,8 @@ def _add_moe_args(parser):
                        help="Use sinkhorn load balancing in the gate.")
 
     # megatron mcore moe arguments
+    group.add_argument("--moe-tp-extend-ep", action='store_true',
+                       help="use tp group to extend experts parallism instead of sharding weight tensor of experts in tp group")
     group.add_argument("--moe-permutation-async-comm", action='store_true',
                        help="overlap moe permutation 3 all gather communications")
     group.add_argument("--moe-adaptive-recompute-activation", action='store_true',
