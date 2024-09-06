@@ -323,7 +323,10 @@ def generate_attention_mask():
 def get_attention_mask():
     global _GLOBAL_ATTN_MASK
     args = get_args()
-    if args.cp_attention_mask_type == 'causal' and _GLOBAL_ATTN_MASK is None:
+    if args.reset_attention_mask:
+        args.sparse_mode = 2
+        _GLOBAL_ATTN_MASK = torch.triu(torch.ones([2048, 2048], dtype=bool, device=torch.cuda.current_device()), diagonal=1)
+    elif args.cp_attention_mask_type == 'causal' and _GLOBAL_ATTN_MASK is None:    
         generate_attention_mask()
     return _GLOBAL_ATTN_MASK
 

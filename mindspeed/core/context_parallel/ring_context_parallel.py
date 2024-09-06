@@ -351,7 +351,8 @@ class AttentionWithCp(torch.autograd.Function):
 
     
     @staticmethod
-    def forward(ctx, q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.):
+    def forward(ctx, q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
+                actual_seq_qlen=None, actual_seq_kvlen=None):    
         keep_prob = 1. - dropout_p
         causal = cp_para['causal']
         cp_group = cp_para.get("cp_group")
@@ -437,7 +438,12 @@ class AttentionWithCp(torch.autograd.Function):
 
                 else:
                     # [2s, b, h], [b, n, 2s, 8], [b, n, 2s, 8]
-                    this_mask = attn_mask[kv_block_id] if isinstance(attn_mask, list) else None
+                    this_mask = AttentionWithCp.compute_mask(
+                        actual_seq_qlen, actual_seq_kvlen,
+                        q_block_id, kv_block_id, 
+                        attn_mask
+                    )
+
                     attn_outs = torch_npu.npu_fusion_attention(
                         q, cur_k, cur_v, n, "SBH",
                         pse=None,
@@ -447,7 +453,7 @@ class AttentionWithCp(torch.autograd.Function):
                         pre_tockens=cur_k.shape[0],
                         next_tockens=cur_k.shape[0],
                         keep_prob=keep_prob,
-                        sparse_mode=0
+                        sparse_mode=1
                     )
 
                     global_attn_outs = general_out_update(q_block_id, kv_block_id, attn_outs, global_attn_outs)
@@ -488,6 +494,8 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.cp_group_for_send_recv_overlap = cp_group_for_send_recv_overlap
         ctx.cp_group_for_intra_window = cp_group_for_intra_window
         ctx.cp_group_for_intra_window_send_recv_overlap = cp_group_for_intra_window_send_recv_overlap
+        ctx.actual_seq_qlen = actual_seq_qlen
+        ctx.actual_seq_kvlen = actual_seq_kvlen
 
         return attn_out
 
@@ -571,7 +579,11 @@ class AttentionWithCp(torch.autograd.Function):
 
 
             else:
-                this_mask = attn_mask[kv_block_id] if attn_mask else None
+                this_mask = AttentionWithCp.compute_mask(
+                    ctx.actual_seq_qlen, ctx.actual_seq_kvlen,
+                    q_block_id, kv_block_id, 
+                    attn_mask
+                )                
                 attn_grad_outs = torch_npu.npu_fusion_attention_grad(
                     q, cur_k, cur_v, dout, n,
                     "SBH",
@@ -584,7 +596,7 @@ class AttentionWithCp(torch.autograd.Function):
                     scale_value=softmax_scale,
                     pre_tockens=cur_k.shape[0],
                     next_tockens=cur_k.shape[0],
-                    sparse_mode=0,
+                    sparse_mode=1,
                     keep_prob=keep_prob,
                     seed=rng_states[kv_block_id][0],
                     offset=rng_states[kv_block_id][1],
@@ -669,11 +681,54 @@ class AttentionWithCp(torch.autograd.Function):
         # [2, s, b, h] -> [2s, b, h]
         if causal:
             dq, dk, dv = [x.view(-1, *x.shape[2:]) for x in [dq, dk, dv]]
-        return dq, dk, dv, None, None, None, None, None
+        return dq, dk, dv, None, None, None, None, None, None, None
+
+    @classmethod
+    def compute_mask(cls, actual_seq_qlen, actual_seq_kvlen, q_block_id, kv_block_id, attn_mask):
+        from bisect import bisect_right
+
+        def batch_index(seq1d):
+            seq_len = seq1d[-1] // AttentionWithCp.batch_size
+            end_points = list(range(seq_len, seq1d[-1] + 1, seq_len))
+            indexes = [0] + [bisect_right(seq1d, p) for p in end_points]
+            seq_batch = [seq1d[indexes[i]:indexes[i + 1]] for i in range(len(indexes) - 1)]
+            return [[elem - i * seq_len for elem in seq] for i, seq in enumerate(seq_batch)]
+
+        if actual_seq_qlen:  
+            actual_seq_qlen = batch_index(actual_seq_qlen)
+            actual_seq_kvlen = batch_index(actual_seq_kvlen)
+            block_size = cls.block_size
+            actual_seq_qlen = [[0] + lst for lst in actual_seq_qlen]
+            sub_seq_qlen = [torch.tensor(x[1:]) - torch.tensor(x[:-1]) for x in actual_seq_qlen]
+            sub_seq_qid = torch.stack([torch.arange(len(lst)).repeat_interleave(lst) for lst in sub_seq_qlen]).npu() # B S
+
+            this_ids = sub_seq_qid[:, q_block_id * block_size:(q_block_id + 1) * block_size].npu()
+            this_tile = this_ids.unsqueeze(dim=2) # B S 1
+
+            actual_seq_kvlen = [[0] + lst for lst in actual_seq_kvlen]
+            sub_seq_kvlen = [torch.tensor(x[1:]) - torch.tensor(x[:-1]) for x in actual_seq_kvlen]
+            sub_seq_kvid = torch.stack([torch.arange(len(lst)).repeat_interleave(lst) for lst in sub_seq_kvlen]).npu() # B S
+            other_ids = sub_seq_kvid[:, kv_block_id * block_size:(kv_block_id + 1) * block_size].npu()
+            other_tile = other_ids.unsqueeze(dim=1) # B 1 S
+
+            mask = this_tile == other_tile # B S S
+            if kv_block_id > q_block_id:
+                mask = torch.zeros_like(mask)
+            elif kv_block_id == q_block_id:
+                mask = torch.tril(mask)
+            
+            return torch.logical_not(mask).unsqueeze(dim=1).npu()  # B 1 S S
+        else:
+            return attn_mask[kv_block_id] if isinstance(attn_mask, list) else None  
+            
 
 
-def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.):
+def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
+                              actual_seq_qlen=None, actual_seq_kvlen=None):
+    AttentionWithCp.block_size = q.shape[0]
+    AttentionWithCp.batch_size = q.shape[1]
     out = AttentionWithCp.apply(
-        q, k, v, n, cp_para, softmax_scale, attn_mask, dropout_p
+        q, k, v, n, cp_para, softmax_scale, attn_mask, dropout_p,
+        actual_seq_qlen, actual_seq_kvlen
     )
     return out

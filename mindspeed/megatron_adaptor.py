@@ -116,13 +116,6 @@ def multi_tensor_scale(overflow_buf, tensor_lists, scale):
             tensor_lists[1][i].copy_(tensor_lists[0][i] * scale)
 
 
-def repeat_interleave(inputs, repeats, dim):
-    shape = inputs.shape
-    new_shape = shape[:dim + 1] + (repeats,) + shape[dim + 1:]
-    out_shape = shape[:dim] + (shape[dim] * repeats,) + shape[dim + 1:]
-    return inputs.unsqueeze(dim + 1).expand(new_shape).reshape(out_shape)
-
-
 def te_adaptation(aspm):
     # Need replace modules before import megatron
     aspm.register_patch('importlib.metadata.version', version_wrapper)
@@ -150,7 +143,6 @@ def torch_adaptation(aspm):
     aspm.register_patch('torch.nn.parameter.Parameter.type', type_wrapper)
     aspm.register_patch('torch.Tensor.type', type_wrapper)
     aspm.register_patch('torch.Tensor.view', ensure_contiguous_wrapper)
-    aspm.register_patch('torch.Tensor.repeat_interleave', repeat_interleave)
     aspm.register_patch('torch.distributed._all_gather_base', all_gather_into_tensor)
     aspm.register_patch('torch.distributed._reduce_scatter_base', reduce_scatter_tensor)
 
@@ -351,7 +343,7 @@ def megatron_legacy_adaptation(aspm):
 def megatron_training_adaptation(aspm):
     from .core.performance.auto_pipeline_perf.global_vars import get_num_microbatches_wrapper
     from .initialize import _compile_dependencies, set_jit_fusion_options_wrapper
-    from .utils import get_batch_on_this_cp_rank
+    from .utils import get_batch_on_this_cp_rank, get_batch_on_this_tp_rank
     from .training import pretrain
     from .arguments import parse_args_wrapper, validate_args_wrapper, core_transformer_config_from_args_wrapper
     from .tokenizer import build_tokenizer_wrapper
@@ -368,6 +360,7 @@ def megatron_training_adaptation(aspm):
                         core_transformer_config_from_yaml_wrapper)
     aspm.register_patch('megatron.training.initialize._compile_dependencies', _compile_dependencies)
     aspm.register_patch('megatron.training.utils.get_batch_on_this_cp_rank', get_batch_on_this_cp_rank)
+    aspm.register_patch('megatron.training.utils.get_batch_on_this_tp_rank', get_batch_on_this_tp_rank)
     aspm.register_patch('megatron.training.arguments.parse_args', parse_args_wrapper)
     aspm.register_patch('megatron.training.arguments.validate_args', validate_args_wrapper)
     aspm.register_patch('megatron.training.arguments._print_args', print_args_wrapper)

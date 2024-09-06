@@ -10,6 +10,34 @@ from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulyss
                                              get_context_parallel_for_hybrid_ring_world_size,
                                              get_context_parallel_for_hybrid_ring_rank)
 
+_ACTUAL_SEQ_LEN = None
+_POSITION_IDS = None
+
+
+def get_actual_seq_len():
+    return _ACTUAL_SEQ_LEN
+
+
+def set_actual_seq_len(actual_seq_len):
+    global _ACTUAL_SEQ_LEN
+    _ACTUAL_SEQ_LEN = actual_seq_len
+
+
+def get_position_ids():
+    return _POSITION_IDS
+
+
+def set_position_ids(position_ids):
+    global _POSITION_IDS
+    _POSITION_IDS = position_ids
+
+
+def compute_actual_seq_len(seq):
+    zero_pos = (seq == 0).nonzero()[1:].squeeze(dim=1)
+    res = zero_pos.tolist()
+    res.append(len(seq))
+    return res
+
 
 @functools.lru_cache(4096)
 def print_rank_0_once(message):
@@ -34,6 +62,18 @@ def get_batch_on_this_cp_rank(batch):
     from megatron.training import get_args
 
     args = get_args()
+
+    if args.reset_attention_mask:
+        import itertools
+        position_ids = batch['position_ids']
+        actual_seq_len = [compute_actual_seq_len(seq) for seq in position_ids]
+        length = actual_seq_len[0][-1]
+        seq_len_1d = [[elem + i * length for elem in seq] for i, seq in enumerate(actual_seq_len)]
+        actual_seq_len = list(itertools.chain(*seq_len_1d))
+        set_actual_seq_len(actual_seq_len)
+        position_ids = position_ids.transpose(0, 1).contiguous()
+        set_position_ids(position_ids)    
+ 
     cp_size = args.context_parallel_size
     if not cp_size > 1:
         return batch
@@ -158,5 +198,101 @@ def _get_batch_on_this_cp_rank_in_hybrid_cp_general(batch):
             val = val.chunk(r_size, dim=seq_dim)[r_rank].contiguous()
             val = val.chunk(u_size, dim=seq_dim)[u_rank].contiguous()
             batch[key] = val
+
+    return batch
+
+
+def get_batch_on_this_tp_rank(data_iterator):
+    from megatron.training import get_args
+    args = get_args()
+
+    def _broadcast(item):
+        if item is not None:
+            torch.distributed.broadcast(item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
+
+    if mpu.get_tensor_model_parallel_rank() == 0:
+        if data_iterator is not None:
+            data = next(data_iterator)
+        else:
+            data = None
+
+        batch = {
+            'tokens': data["tokens"].cuda(non_blocking=True),
+            'labels': data["labels"].cuda(non_blocking=True),
+            'loss_mask': data["loss_mask"].cuda(non_blocking=True),
+            'attention_mask': None if "attention_mask" not in data else data["attention_mask"].cuda(non_blocking=True),
+            'position_ids': data["position_ids"].cuda(non_blocking=True)
+        }
+
+        if args.pipeline_model_parallel_size == 1:
+            _broadcast(batch['tokens'])
+            _broadcast(batch['labels'])
+            _broadcast(batch['loss_mask'])
+            _broadcast(batch['attention_mask'])
+            _broadcast(batch['position_ids'])
+
+        elif mpu.is_pipeline_first_stage():
+            _broadcast(batch['tokens'])
+            _broadcast(batch['attention_mask'])
+            _broadcast(batch['position_ids'])
+
+        elif mpu.is_pipeline_last_stage():
+            _broadcast(batch['labels'])
+            _broadcast(batch['loss_mask'])
+            _broadcast(batch['attention_mask'])
+            if args.reset_attention_mask:
+                _broadcast(batch['position_ids'])
+
+        elif args.reset_attention_mask:
+            _broadcast(batch['position_ids'])
+
+    else:
+        tokens = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+        labels = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+        loss_mask = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.float32, device=torch.cuda.current_device())
+        if args.create_attention_mask_in_dataloader:
+            attention_mask = torch.empty(
+                (args.micro_batch_size, 1, args.seq_length, args.seq_length), dtype=torch.bool, device=torch.cuda.current_device()
+            )
+        else:
+            attention_mask = None
+        position_ids = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+
+        if args.pipeline_model_parallel_size == 1:
+            _broadcast(tokens)
+            _broadcast(labels)
+            _broadcast(loss_mask)
+            _broadcast(attention_mask)
+            _broadcast(position_ids)
+
+        elif mpu.is_pipeline_first_stage():
+            labels = None
+            loss_mask = None
+         
+            _broadcast(tokens)
+            _broadcast(attention_mask)
+            _broadcast(position_ids)
+
+        elif mpu.is_pipeline_last_stage():
+            tokens = None
+
+            _broadcast(labels)
+            _broadcast(loss_mask)
+            _broadcast(attention_mask)
+            if args.reset_attention_mask:
+                _broadcast(position_ids)
+            else:
+                position_ids = None
+
+        elif args.reset_attention_mask:
+            _broadcast(position_ids)
+ 
+        batch = {
+            'tokens': tokens,
+            'labels': labels,
+            'loss_mask': loss_mask,
+            'attention_mask': attention_mask,
+            'position_ids': position_ids
+        }
 
     return batch

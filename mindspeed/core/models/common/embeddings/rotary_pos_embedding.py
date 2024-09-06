@@ -4,6 +4,7 @@ import torch
 
 from megatron.training import get_args
 from megatron.core import parallel_state
+from mindspeed.utils import get_position_ids
 
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
                                              get_context_parallel_for_hybrid_ulysses_rank,
@@ -13,6 +14,11 @@ from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulyss
 
 def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
     args = get_args()
+    if args.reset_attention_mask:
+        position_ids = get_position_ids()
+        s, b = position_ids.shape
+        pos_emb = pos_emb[position_ids.view(-1)].squeeze(1).reshape(s, b, 1, -1)
+    
     if args.context_parallel_algo == 'megatron_cp_algo':
         if args.cp_attention_mask_type == 'general':
             pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)

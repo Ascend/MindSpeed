@@ -23,6 +23,7 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                            get_ring_group_for_intra_window,
                                            get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.model.transformer import get_attention_mask
+from mindspeed.utils import get_actual_seq_len
 
 try:
     from einops import rearrange
@@ -81,11 +82,10 @@ def dot_product_attention_forward(
 ):
     assert packed_seq_params is None
     args = get_args()
+    actual_seq_len = get_actual_seq_len()
 
-    seq_length, _, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+    seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
     
-    query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
-
     scale = 1.0 / math.sqrt(self.hidden_size_per_attention_head) if self.scale_mask_softmax.scale is None else self.softmax_scale
 
     if args.context_parallel_size > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
@@ -121,12 +121,20 @@ def dot_product_attention_forward(
         cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
         cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
 
-        output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p)
+        query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
+        output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p,
+                                           actual_seq_len, actual_seq_len)
 
     else:
+        if actual_seq_len is not None: # TND
+            query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
+            shape_order = 'TND'
+        else: # SBH
+            query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
+            shape_order = 'SBH'        
         if args.use_fusion_attn_v2:
             output = npu_fusion_attention(
-                query, key, value, n_head, 'SBH',
+                query, key, value, n_head, shape_order,
                 pse=self.pse,
                 padding_mask=None,
                 atten_mask=attention_mask,
@@ -136,11 +144,13 @@ def dot_product_attention_forward(
                 next_tokens=args.next_tockens,
                 keep_prob=1 - self.attention_dropout.p,
                 inner_precise=0,
-                sparse_mode=args.sparse_mode
+                sparse_mode=args.sparse_mode,
+                actual_seq_qlen=actual_seq_len,
+                actual_seq_kvlen=actual_seq_len                
             )[0]
         else:
             output = torch_npu.npu_fusion_attention(
-                query, key, value, n_head, 'SBH',
+                query, key, value, n_head, shape_order,
                 pse=None,
                 padding_mask=None,
                 atten_mask=attention_mask,
@@ -149,6 +159,10 @@ def dot_product_attention_forward(
                 next_tockens=args.next_tockens,
                 keep_prob=1 - self.attention_dropout.p,
                 inner_precise=0,
-                sparse_mode=args.sparse_mode
+                sparse_mode=args.sparse_mode,
+                actual_seq_qlen=actual_seq_len,
+                actual_seq_kvlen=actual_seq_len                
                 )[0]
+        if actual_seq_len is not None:
+            output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_length, b=bsz)                
     return output

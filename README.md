@@ -112,6 +112,7 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
 | Ascend 重计算流水线独立调度                               | [link](docs/features/recompute_independent_pipelining.md) |
 | Ulysses 长序列并行                                   | [link](docs/features/ulysses-context-parallel.md)         |
 | Ring Attention 长序列并行                            | [link](docs/features/ring-attention-context-parallel.md)  |
+| EOD Reset训练场景                 | [link](docs/features/eod-reset.md)  |
 | 【Prototype】混合长序列并行                              | [link](docs/features/hybrid-context-parallel.md)          |
 | 【Prototype】Ascend MC2                           | [link](docs/features/mc2.md)                              |
 | 【Prototype】alibi                                | [link](docs/features/alibi.md)                            |
