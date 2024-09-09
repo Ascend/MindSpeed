@@ -273,19 +273,21 @@ def megatron_core_adaptation(aspm, mindspeed_args):
     # ripipe relative.
     aspm.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
 
-    if mindspeed_args.noop_layers:
+    if not mindspeed_args.automated_pipeline and mindspeed_args.noop_layers:
         from .core.transformer.transformer_block import _build_layers
         from megatron.core.transformer.transformer_block import TransformerBlock
+        from mindspeed.training import num_floating_point_wrapper
         TransformerBlock._build_layers = _build_layers
+        aspm.register_patch('megatron.training.training.num_floating_point_operations', num_floating_point_wrapper)
 
 
-def megatron_legacy_adaptation(aspm):
+def megatron_legacy_adaptation(aspm, args):
     from .core.fusions.fused_layer_norm import FusedLayerNormAffineFunction, FastLayerNormFN, fused_layer_norm_affine
     from .core.fusions.fused_softmax import is_kernel_available, ScaledUpperTriangMaskedSoftmax, ScaledMaskedSoftmax, \
         ScaledSoftmax, forward_fused_softmax
     from .core.fusions.rms_norm import rms_norm_init_wrapper, rms_norm_forward_wrapper, rms_norm_norm_wrapper
     from .model.transformer import parallel_mlp_init_wrapper, flash_self_attention_forward, flash_self_attention_init_wrapper, parallel_mlp_forward_wrapper, parallel_transformer_init_wrapper, \
-        parallel_transformer_forward_wrapper
+        parallel_transformer_forward_wrapper, parallel_transformer_init
     from .model.transformer import core_attention_init_wrapper, core_attention_forward, parallel_attention_init_wrapper, \
         parallel_attention_forward
     from .core.transformer.transformer import parallel_transformer_layer_forward_wrapper, \
@@ -300,6 +302,8 @@ def megatron_legacy_adaptation(aspm):
     aspm.register_patch('megatron.legacy.model.language_model.parallel_lm_logits', parallel_lm_logits)
     aspm.register_patch('megatron.legacy.model.language_model.Embedding.forward', embedding_forward_wrapper)
     from .model.gpt_model import post_language_model_processing_wrapper
+    if not args.automated_pipeline and args.noop_layers:
+        aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.__init__', parallel_transformer_init)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.__init__', parallel_transformer_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.forward', parallel_transformer_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.fused_layer_norm.FusedLayerNormAffineFunction',
@@ -545,7 +549,7 @@ def exe_adaptation():
     torch_adaptation(aspm)
     aspm.apply_patches()
     megatron_core_adaptation(aspm, mindspeed_args)
-    megatron_legacy_adaptation(aspm)
+    megatron_legacy_adaptation(aspm, mindspeed_args)
     megatron_training_adaptation(aspm)
     ascend_adaptation(aspm, mindspeed_args)
     coc_adaptation(aspm, mindspeed_args)

@@ -1,6 +1,7 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import time
+from functools import wraps
 import torch
 
 from megatron.core import mpu
@@ -156,3 +157,14 @@ def pretrain(train_valid_test_dataset_provider,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
                                    verbose=True, write_to_tensorboard=not args.skip_train)
+
+
+def num_floating_point_wrapper(fn):
+    @wraps(fn)
+    def wrapper(args, batch_size):
+        args.num_layers -= len(args.noop_layers) if isinstance(args.noop_layers, set) else 0
+        res = fn(args, batch_size)
+        args.num_layers += len(args.noop_layers) if isinstance(args.noop_layers, set) else 0
+        return res
+
+    return wrapper
