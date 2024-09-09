@@ -41,12 +41,14 @@ def moe_layer_init_wrapper(init_func):
             self.config.ffn_hidden_size = global_args.n_shared_experts * self.config.ffn_hidden_size
             self.shared_experts = MLP(self.config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
                                                                  linear_fc2=RowParallelLinear,))
-        self.moe_adaptive_recompute_activation = global_args.moe_adaptive_recompute_activation
-        self.moe_adaptive_recompute_activation_scale = global_args.moe_adaptive_recompute_activation_scale
-        self.recompute_threshold = parallel_state.get_tensor_model_parallel_world_size() * parallel_state.get_data_parallel_world_size() * \
-            self.config.moe_router_topk * self.moe_adaptive_recompute_activation_scale / self.config.num_moe_experts
-        self.token_dispatcher.all_tokens_per_expert = None
-        self.forward = types.MethodType(moe_adaptive_forward, self)
+        if hasattr(global_args, 'moe_token_dispatcher_type') and global_args.moe_token_dispatcher_type == 'allgather':
+            self.moe_adaptive_recompute_activation = global_args.moe_adaptive_recompute_activation
+            self.moe_adaptive_recompute_activation_scale = global_args.moe_adaptive_recompute_activation_scale
+            self.recompute_threshold = parallel_state.get_tensor_model_parallel_world_size() * parallel_state.get_data_parallel_world_size() * \
+                self.config.moe_router_topk * self.moe_adaptive_recompute_activation_scale / self.config.num_moe_experts
+            self.token_dispatcher.all_tokens_per_expert = None
+            self.forward = types.MethodType(moe_adaptive_forward, self)
+
     return moe_layer_init
 
 
