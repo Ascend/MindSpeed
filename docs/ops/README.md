@@ -2,16 +2,20 @@
 
 ## previous installation
 + CANN
-+ Transformer-Boost 
-https://support.huawei.com/enterprise/zh/ascend-computing/cann-pid-251168373/software/260809541?idAbsPath=fixnode01%7C23710424%7C251366513%7C22892968%7C251168373
++ CANN-NNAL(Ascend-Transformer-Boost)
 + torch_npu
 
 ## compile and install
 ### 1. set the environment variables
-
-+ export ASCEND_TOOLKIT_HOME = /usr/local/Ascend/latest/
-#### if use Transformer-Boost
-+ export ATB_HOME_PATH = atb/home/path
+ ```shell
+# Default path, change it if needed.
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+ ```
+#### if use Ascend-Transformer-Boost
+ ```shell
+# Default path, change it if needed.
+source /usr/local/Ascend/nnal/atb/set_env.sh 
+ ```
 
 ### 2. include head files
 
@@ -22,11 +26,5 @@ https://support.huawei.com/enterprise/zh/ascend-computing/cann-pid-251168373/sof
 ```shell
 python3 setup.py build
 python3 setup.py bdist_wheel
-pip3 install dist/*.whl --force-reinstall
-```
-#### if use Transformer-Boost
-```shell
-ENABLE_ATB=1 python3 setup.py build
-ENABLE_ATB=1 python3 setup.py bdist_wheel
 pip3 install dist/*.whl --force-reinstall
 ```

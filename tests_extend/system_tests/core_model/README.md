@@ -6,7 +6,7 @@
 
 **注意**：
 - 将MindSpeed放在Megatron-LM目录下（方便代码覆盖统计）
-- 安装MindSpeed前添加ENABLE_ATB=1（计算通信并行COC用例需要）
+- 安装CANN-NNAL（计算通信并行COC用例需要）
 
 ## 代码覆盖统计执行
 

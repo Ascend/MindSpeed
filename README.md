@@ -33,10 +33,10 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
  pip install -e MindSpeed
  ```
 
-如需使用ATB算子，请在安装前添加环境变量`ENABLE_ATB=1`，例如：
+如需使用ATB算子，请先安装CANN-NNAL并初始化添加环境，例如：
  ```shell
- git clone https://gitee.com/ascend/MindSpeed.git
- ENABLE_ATB=1 pip install -e MindSpeed
+#CANN-NNAL默认安装路径
+source /usr/local/Ascend/nnal/atb/set_env.sh 
  ```
 
 ### 3. 获取 Megatron-LM 并指定 commit id

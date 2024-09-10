@@ -12,10 +12,7 @@ class AtbOpBuilder(MindSpeedOpBuilder):
         if os.getenv('ATB_HOME_PATH') is not None:
             return os.environ['ATB_HOME_PATH']
         else:
-            import mindspeed
-            mindspeed_path = mindspeed.__file__
-            full_path = os.path.join(os.path.dirname(mindspeed_path), 'atb', 'atb')
-            return full_path
+            raise RuntimeError("please install cann-nnal package first")
 
     def include_paths(self):
         paths = super().include_paths()
@@ -47,11 +44,7 @@ class AtbOpBuilder(MindSpeedOpBuilder):
         return flags
 
     def load(self, verbose=True):
-        if os.getenv('ATB_HOME_PATH') is None or \
-                os.getenv('ASDOPS_HOME_PATH') is None or \
-                os.getenv('ASDOPS_OPS_PATH') is None:
-            env_vars = os.environ
-            env_vars['ATB_HOME_PATH'] = self.get_atb_path()
-            env_vars['ASDOPS_HOME_PATH'] = self.get_atb_path()
-            env_vars['ASDOPS_OPS_PATH'] = os.path.join(self.get_atb_path(), 'ops')
+        if os.getenv('ASDOPS_HOME_PATH') is None or os.getenv('ASDOPS_OPS_PATH') is None:
+            os.environ['ASDOPS_HOME_PATH'] = self.get_atb_path()
+            os.environ['ASDOPS_OPS_PATH'] = os.path.join(self.get_atb_path(), 'ops')
         return super().load()
