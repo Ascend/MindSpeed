@@ -6,7 +6,8 @@ import torch
 from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
-from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
+from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import MoELayerOverlapAll2All
+from mindspeed.core.transformer.moe.moe_layer_overlap_allgather import MoELayerOverlapAllGather
 
 
 def base_moe_init_wrapper(init_func):
@@ -37,22 +38,38 @@ def moe_layer_init_wrapper(init_func):
         init_func(*args, **kwargs)
         self = args[0]
         global_args = get_args()
+        self.moe_alltoall_overlap_comm = global_args.moe_alltoall_overlap_comm
+        self.moe_allgather_overlap_comm = global_args.moe_allgather_overlap_comm
+
         if global_args.n_shared_experts:
             self.config.ffn_hidden_size = global_args.n_shared_experts * self.config.ffn_hidden_size
-            self.shared_experts = MLP(self.config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
-                                                                 linear_fc2=RowParallelLinear,))
+            if self.moe_allgather_overlap_comm:
+                from mindspeed.core.transformer.moe.layers import ColumnParallelLinear, RowParallelLinear
+                self.shared_experts = MLP(self.config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
+                                                                     linear_fc2=RowParallelLinear, ),
+                                          shared_expert=self.moe_allgather_overlap_comm)
+            else:
+                from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
+                self.shared_experts = MLP(self.config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
+                                                                     linear_fc2=RowParallelLinear, ))
+
+        self.moe_adaptive_recompute_activation = global_args.moe_adaptive_recompute_activation
         if hasattr(global_args, 'moe_token_dispatcher_type') and global_args.moe_token_dispatcher_type == 'allgather':
-            self.moe_adaptive_recompute_activation = global_args.moe_adaptive_recompute_activation
             self.moe_adaptive_recompute_activation_scale = global_args.moe_adaptive_recompute_activation_scale
             self.recompute_threshold = parallel_state.get_tensor_model_parallel_world_size() * parallel_state.get_data_parallel_world_size() * \
                 self.config.moe_router_topk * self.moe_adaptive_recompute_activation_scale / self.config.num_moe_experts
             self.token_dispatcher.all_tokens_per_expert = None
-            self.forward = types.MethodType(moe_adaptive_forward, self)
+        self.forward = types.MethodType(moe_adaptive_forward, self)
 
     return moe_layer_init
 
 
 def moe_adaptive_forward(self, hidden_states: torch.Tensor):
+    if self.moe_alltoall_overlap_comm:
+        return MoELayerOverlapAll2All.apply(hidden_states, self)
+    if self.moe_allgather_overlap_comm:
+        return MoELayerOverlapAllGather.apply(hidden_states, self)
+
     def custom_forward(hidden_states):
         args = get_args()
         scores, indices = self.router(hidden_states)
@@ -73,11 +90,12 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
             if self.token_dispatcher.add_bias:
                 mlp_bias = mlp_bias + share_experts_bias
         return output, mlp_bias
-   
-    threshold = hidden_states.shape[0] * hidden_states.shape[1] * self.recompute_threshold
-    if self.moe_adaptive_recompute_activation and \
-        (self.token_dispatcher.all_tokens_per_expert is None or torch.max(self.token_dispatcher.all_tokens_per_expert) > threshold):
-        output, mlp_bias = tensor_parallel.checkpoint(custom_forward, False, hidden_states)
+
+    if self.moe_adaptive_recompute_activation:
+        threshold = hidden_states.shape[0] * hidden_states.shape[1] * self.recompute_threshold
+        if self.token_dispatcher.all_tokens_per_expert is None or torch.max(
+                self.token_dispatcher.all_tokens_per_expert) > threshold:
+            output, mlp_bias = tensor_parallel.checkpoint(custom_forward, False, hidden_states)
     else:
         output, mlp_bias = custom_forward(hidden_states)
     return output, mlp_bias

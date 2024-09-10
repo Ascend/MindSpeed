@@ -48,7 +48,12 @@ def process_args(parser):
 def _add_deepseek_args(parser):
     group = parser.add_argument_group(title='deepseek')
     group.add_argument('--n-shared-experts', type=int, default=None)
-
+    group.add_argument('--moe-alltoall-overlap-comm', action='store_true', default=False,
+                       help='moe_alltoall_overlap_comm')
+    group.add_argument('--moe-allgather-overlap-comm', action='store_true', default=False,
+                       help='moe_allgather_overlap_comm')
+    group.add_argument('--moe-without-activation', action='store_true', default=False,
+                       help='save all the memory occupied by activations in moe layer.')
     return parser
 
 
@@ -431,6 +436,10 @@ def validate_args_wrapper(validate_args):
                       "and --pipe-experts-multi-data is set to 1, "
                       "--use-pipe-experts will be turned off.")
                 args.use_pipe_experts = False
+        if not args.moe_permutation_async_comm and (args.moe_alltoall_overlap_comm or args.moe_allgather_overlap_comm):
+            raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
+        if args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
+            raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now.')
         if args.moe_dynamic_padding and not args.moe_no_drop:
             raise AssertionError('`--moe-dynamic-padding` only support for `--moe-no-drop`.')
         if args.moe_permutation_async_comm and args.moe_model_type != 'megatron_moe':

@@ -407,7 +407,7 @@ class AdaptiveRecompute:
 
     def post_hook_func(self, state, prefix, name, args, output):
         if self.profiling_step < self.skip_profiling_step:
-            return        
+            return
         if self.profiling_step < self.stop_profiling_step:
             end_event = torch.npu.Event(enable_timing=True)
             end_event.record()
@@ -545,7 +545,7 @@ class AdaptiveRecompute:
         if self.profiling_step >= self.solve_graph_at_step:
             for hook_handle in self.modules_hooks:
                 hook_handle.remove()
-            self.modules_hooks.clear()            
+            self.modules_hooks.clear()
         if not get_adaptive_recomputing_policy().is_find_target_device_memory or self.profiling_step > step + 1:
             return
         if self.profiling_step == step + 1:
@@ -612,7 +612,7 @@ class AdaptiveRecompute:
         def custom_step_func(*args, **kargs):
             result = step_func(*args, **kargs)
             if (self.profiling_step > self.solve_graph_at_step and \
-                get_adaptive_recomputing_policy().is_stable_policy(self.profiling_step)):
+                    get_adaptive_recomputing_policy().is_stable_policy(self.profiling_step)):
                 return result
             memory_info = self.get_memory_status()
             try:

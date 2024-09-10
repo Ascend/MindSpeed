@@ -8,11 +8,13 @@ from megatron.training import get_args
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
+from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_all2all import grouped_mlp_with_comp_and_comm_overlap_all2all
+from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_allgather import grouped_mlp_with_comp_and_comm_overlap_allgather
 
 
 def get_zeros_with_tp(input_):
     world_size = parallel_state.get_tensor_model_parallel_world_size()
-    zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size, )
+    zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size,)
     return torch.zeros(zeros_shape, dtype=input_.dtype, layout=input_.layout, device=input_.device)
 
 
@@ -50,6 +52,18 @@ def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert
             output_bias_local[start:end, :] = output_bias
 
     return output_local, output_bias_local
+
+
+def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx=None):
+    group_list = torch.cumsum(tokens_per_expert, dim=0)
+    w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
+    w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
+    if get_args().moe_alltoall_overlap_comm:
+        return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
+                                                              self.activation_func, group_list, ctx=ctx)
+    else:  # get_args().moe_allgather_overlap_comm
+        return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
+                                                                self.activation_func, group_list)
 
 
 def groupedmlp_init_wrapper(fn):
