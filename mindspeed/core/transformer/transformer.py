@@ -342,7 +342,7 @@ def parallel_transformer_checkpointed_forward_tp_optimized(self, hidden_states, 
 def core_mlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        is_recompute_activation = should_recompute_activation(self)
+        is_recompute_activation = should_recompute_activation(self.layer_number)
 
         def activation_function(*function_args):
             intermediate, bias = function_args

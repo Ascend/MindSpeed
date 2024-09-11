@@ -642,9 +642,9 @@ def parallel_mlp_init_wrapper(fn):
     return wrapper
 
 
-def should_recompute_activation(self):
+def should_recompute_activation(layer_number):
     args = get_args()
-    if not args.recompute_activation_function or self.layer_number is None:
+    if not args.recompute_activation_function or layer_number is None:
         return False
 
     activation_recompute_layers = args.recompute_activation_function_num_layers
@@ -670,7 +670,7 @@ def should_recompute_activation(self):
         vpp_rank = 0
     if vpp_size is None or not args.enable_recompute_layers_per_pp_rank:
         vpp_size = 1
-    recompute_priority = ((self.layer_number - 1) % layer_per_chunk) * vpp_size + vpp_rank
+    recompute_priority = ((layer_number - 1) % layer_per_chunk) * vpp_size + vpp_rank
     full_recompute_layers = args.recompute_num_layers
 
     if full_recompute_layers:
@@ -697,7 +697,7 @@ def should_recompute_activation(self):
 def parallel_mlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        is_recompute_activation = should_recompute_activation(self)
+        is_recompute_activation = should_recompute_activation(self.layer_number)
 
         def activation_function(*function_args):
             intermediate, bias = function_args

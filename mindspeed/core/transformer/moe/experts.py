@@ -60,10 +60,11 @@ def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx
     w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
     if get_args().moe_alltoall_overlap_comm:
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                              self.activation_func, group_list, ctx=ctx)
+                                                              (self.activation_func, group_list, self.layer_number),
+                                                              ctx=ctx)
     else:  # get_args().moe_allgather_overlap_comm
         return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                self.activation_func, group_list)
+                                                                (self.activation_func, group_list, self.layer_number))
 
 
 def groupedmlp_init_wrapper(fn):
@@ -90,7 +91,8 @@ def groupedmlp_init_wrapper(fn):
 def groupedmlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        self.should_recompute_activation = should_recompute_activation(self)
+        self.should_recompute_activation = should_recompute_activation(
+            self.layer_number) and not get_args().moe_alltoall_overlap_comm and not get_args().moe_allgather_overlap_comm
         if self.should_recompute_activation and not self.set_recompute_activation_func:
             self.activation_checkpoint_manager = CheckpointWithoutOutput()
             self.local_activation_func = self.activation_func
