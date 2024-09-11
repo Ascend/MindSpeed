@@ -42,15 +42,16 @@ def gather_from_sequence_parallel_region_to_moe_async(input_):
 
 def aux_loss_load_balancing(self, logits: torch.Tensor):
     top_logits, indices = torch.topk(logits, k=self.topk, dim=1)
+    global_indices = indices
     if self.config.sequence_parallel or (self.config.expert_model_parallel_size > 1):
         with torch.no_grad():
-            global_indices, gi_handle = gather_from_sequence_parallel_region_to_moe_async(indices)
+            global_indices = gather_from_sequence_parallel_region_to_moe_async(indices)
 
     scores = torch.softmax(top_logits, dim=-1, dtype=torch.float32).type_as(logits)
     # Apply load balancing loss
     probs = torch.softmax(logits, dim=-1, dtype=torch.float32)
     scores = self.apply_load_balancing_loss(probs, indices, activation=scores)
-    return scores, (global_indices, gi_handle)
+    return scores, global_indices
 
 
 def routing_tp_extend_ep(self, logits: torch.Tensor):
