@@ -10,6 +10,7 @@ import torch_npu
 from torch import Tensor
 from megatron.training import get_args
 from megatron.core import mpu
+from mindspeed.core.models.common.embeddings.rotary_pos_embedding import yarn_get_mscale
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
@@ -44,6 +45,22 @@ def dot_product_attention_init_wrapper(fn):
         args = get_args()
         self.pse = None
         self.pse_type = args.alibi_fusion_attn_type
+
+        if args.multi_head_latent_attention:
+            self.scale_mask_softmax.scale = True
+            self.hidden_size_per_partition = args.num_attention_heads * args.v_head_dim
+            self.q_head_dim = args.qk_nope_head_dim + args.qk_rope_head_dim
+            self.softmax_scale = self.q_head_dim ** (-0.5)
+
+            if args.rope_scaling_type is not None:
+                mscale_all_dim = args.rope_scaling_mscale_all_dim if args.rope_scaling_mscale_all_dim else 0
+                scaling_factor = args.rope_scaling_factor
+
+                if mscale_all_dim:
+                    mscale = yarn_get_mscale(scaling_factor, mscale_all_dim)
+                    self.softmax_scale = self.softmax_scale * mscale * mscale
+
+            self.norm_factor = 1.0 / self.softmax_scale
 
         if self.pse_type is None:
             self.pse_type = 1 # not use pse

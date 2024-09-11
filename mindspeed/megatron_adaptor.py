@@ -156,7 +156,6 @@ def megatron_core_adaptation(aspm, mindspeed_args):
     from .core.fusions.fused_layer_norm import FusedLayerNormAffineFunction, FastLayerNormFN
     from .core.fusions.fused_softmax import is_kernel_available, ScaledUpperTriangMaskedSoftmax, ScaledMaskedSoftmax, \
         ScaledSoftmax, forward_fused_softmax
-    from .core.fusions.rotary_pos_embedding import apply_fused_rotary_pos_emb_bshd_wrapper, rotary_embedding_init_wrapper
     from .core.fusions.fused_bias_swiglu import SwiGLUFunction, BiasSwiGLUFunction
     from .core.transformer.attention import attention_init_wrapper, self_attention_init_wrapper
     from .core.transformer.module import megatron_module_init_wrapper
@@ -176,12 +175,15 @@ def megatron_core_adaptation(aspm, mindspeed_args):
     from .core.performance.auto_pipeline_perf.schedules import get_forward_backward_func_decorator, backward_step_decorator, forward_step_decorator
     from .core.pipeline_parallel.p2p_communication import _communicate_shapes
     from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
-    from .core.models.common.embeddings.rotary_pos_embedding import get_pos_emb_on_this_cp_rank
     from .core.tensor_parallel.layers import parallel_linear_init_wrapper
     from .core.transformer.transformer import parallel_transformer_layer_init_wrapper
     from .core.transformer.transformer import core_mlp_forward_wrapper
     from .core.transformer.transformer_block import transformer_block_checkpointed_forward_wrapper
     from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_wrapper
+    from .core.models.common.embeddings.rotary_pos_embedding import get_pos_emb_on_this_cp_rank, \
+        rotary_embedding_init_wrapper, apply_rotary_pos_emb_bshd
+    from .core.transformer.attention import SelfAttentionSubmodules, self_attention_init_wrapper, \
+        attention_forward_wrapper
 
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.get_pos_emb_on_this_cp_rank',
                         get_pos_emb_on_this_cp_rank)
@@ -205,10 +207,6 @@ def megatron_core_adaptation(aspm, mindspeed_args):
                         forward_fused_softmax)
     aspm.register_patch('megatron.core.fusions.fused_bias_swiglu.SwiGLUFunction', SwiGLUFunction)
     aspm.register_patch('megatron.core.fusions.fused_bias_swiglu.BiasSwiGLUFunction', BiasSwiGLUFunction)
-    aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_bshd',
-                        apply_fused_rotary_pos_emb_bshd_wrapper)
-    aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__',
-                        rotary_embedding_init_wrapper)
     aspm.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
     aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
     aspm.register_patch('megatron.core.transformer.module.MegatronModule.__init__', megatron_module_init_wrapper)
@@ -246,6 +244,15 @@ def megatron_core_adaptation(aspm, mindspeed_args):
 
     # Bugfix for Megatron-LM core 0.6.0, to be removed for next version.
     aspm.register_patch('megatron.core.parallel_state.initialize_model_parallel', initialize_model_parallel)
+
+    # deepseek mla yarn relative.
+    aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__',
+                        rotary_embedding_init_wrapper)
+    aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_bshd',
+                        apply_rotary_pos_emb_bshd)
+    aspm.register_patch('megatron.core.transformer.attention.SelfAttentionSubmodules', SelfAttentionSubmodules)
+    aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
+    aspm.register_patch("megatron.core.transformer.attention.Attention.forward", attention_forward_wrapper)
 
     # MoE relative.
     aspm.register_patch('megatron.core.parallel_state.initialize_model_parallel',

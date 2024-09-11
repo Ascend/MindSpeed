@@ -47,7 +47,27 @@ def process_args(parser):
 
 def _add_deepseek_args(parser):
     group = parser.add_argument_group(title='deepseek')
+    # deepseek moe arguments
     group.add_argument('--n-shared-experts', type=int, default=None)
+    # mla arguments
+    group.add_argument('--multi-head-latent-attention', action='store_true', default=False,
+                       help='Use Multi-head Latent Attention(MLA)')
+    group.add_argument('--q-lora-rank', type=int, default=None, help='The low rank of q')
+    group.add_argument('--kv-lora-rank', type=int, default=None, help='The low rank of k and v')
+    group.add_argument('--v-head-dim', type=int, default=None, help='The head dim of v')
+    group.add_argument('--qk-rope-head-dim', type=int, default=None, help='The qk head dim for rope')
+    group.add_argument('--qk-nope-head-dim', type=int, default=None, help='The qk head dim for only self-attn')
+    # yarn arguments
+    group.add_argument('--rope-scaling-type', type=str, default=None, choices=['yarn', ],
+                       help='Set the rope scaling type, only support "yarn" type now')
+    group.add_argument('--rope-scaling-beta-fast', type=int, default=32, help='Yarn rope: rope beta fast')
+    group.add_argument('--rope-scaling-beta-slow', type=int, default=1, help='Yarn rope: rope beta slow')
+    group.add_argument('--rope-scaling-factor', type=float, default=1.0, help='Yarn rope: rope factor')
+    group.add_argument('--rope-scaling-mscale', type=float, default=1.0, help='Yarn rope: rope mscale')
+    group.add_argument('--rope-scaling-mscale-all-dim', type=float, default=0.0, help='Yarn rope: rope mscale all dim')
+    group.add_argument('--rope-scaling-original-max-position-embeddings', type=int, default=None,
+                       help='Yarn rope: rope original max position embeddings')
+    # moe optimization arguments
     group.add_argument('--moe-alltoall-overlap-comm', action='store_true', default=False,
                        help='moe_alltoall_overlap_comm')
     group.add_argument('--moe-allgather-overlap-comm', action='store_true', default=False,
@@ -347,6 +367,25 @@ def validate_args_wrapper(validate_args):
         if args.overlap_param_gather and not args.use_mcore_models:
             args.use_mcore_models = True
             overlap_param_gather_without_mcore_models = True
+
+        # validate mla
+        if args.multi_head_latent_attention:
+            if args.kv_lora_rank is None:
+                raise AssertionError('The parameter kv-lora-rank should be set when use multi_head_latent_attention.')
+            elif args.v_head_dim is None:
+                raise AssertionError('The parameter v-head-dim should be set when use multi_head_latent_attention.')
+            elif args.qk_rope_head_dim is None:
+                raise AssertionError(
+                    'The parameter qk-rope-head-dim should be set when use multi_head_latent_attention.')
+            elif args.qk_nope_head_dim is None:
+                raise AssertionError(
+                    'The parameter qk-nope-head-dim should be set when use multi_head_latent_attention.')
+
+        # validate yarn
+        if args.rope_scaling_type == "yarn":
+            if args.rope_scaling_original_max_position_embeddings is None:
+                raise AssertionError('The parameter rope_scaling_original_max_position_embeddings should be set '
+                                     'when use yarn.')
 
         # alibi type [2, 3] is only support FA2
         if args.alibi_fusion_attn_type in [2, 3]:
