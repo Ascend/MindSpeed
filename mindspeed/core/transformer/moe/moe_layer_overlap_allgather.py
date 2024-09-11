@@ -1,4 +1,5 @@
 import torch
+import torch_npu
 
 from megatron.core.parallel_state import (get_expert_model_parallel_group, get_tensor_and_expert_parallel_group,
                                           get_tensor_model_parallel_group, get_tensor_model_parallel_world_size)
@@ -10,10 +11,13 @@ from mindspeed.core.transformer.moe.moe_utils import (forward_func, backward_fun
 
 AG_SHARED_EXPERTS_INPUTS = []
 
+SHARED_EXPERTS_STREAM = None
+
 
 class MoELayerOverlapAllGather(torch.autograd.Function):
     @staticmethod
     def forward(ctx, hidden_states, moe_layer: MoELayer):
+        global SHARED_EXPERTS_STREAM
         args = get_args()
         save_tensors = []
         ctx.input_shape = hidden_states.shape
@@ -70,20 +74,18 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         if args.n_shared_experts:
             if shared_experts_allgather_handle is not None:
                 shared_experts_allgather_handle.wait()
-
-            if args.n_shared_experts:
-                if not hasattr(moe_layer, 'comm_stream'):
-                    moe_layer.comm_stream = torch.cuda.Stream()
-                moe_layer.comm_stream.wait_stream(torch.cuda.current_stream())
-                with torch.cuda.stream(moe_layer.comm_stream):
-                    (share_experts_output, share_experts_bias), _ = forward_func(
-                        moe_layer.shared_experts, hidden_states
-                    )
+            if SHARED_EXPERTS_STREAM is None:
+                SHARED_EXPERTS_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
+            SHARED_EXPERTS_STREAM.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(SHARED_EXPERTS_STREAM):
+                (share_experts_output, share_experts_bias), _ = forward_func(
+                    moe_layer.shared_experts, hidden_states
+                )
 
             if get_tensor_model_parallel_world_size() > 1:
                 # reduce scatter
                 _, rs_share_experts_output, shared_experts_rs_handle = async_reduce_scatter(
-                    share_experts_output, get_tensor_model_parallel_group()
+                    share_experts_output, get_tensor_model_parallel_group(), stream=SHARED_EXPERTS_STREAM
                 )
             else:
                 rs_share_experts_output = share_experts_output
@@ -143,9 +145,10 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         ctx.save_for_backward(*save_tensors)
 
         if args.n_shared_experts:
+            torch.cuda.current_stream().wait_stream(SHARED_EXPERTS_STREAM)
             if shared_experts_rs_handle is not None:
                 shared_experts_rs_handle.wait()
-            torch.cuda.current_stream().wait_stream(moe_layer.comm_stream)
+
             output_rs = output_rs + rs_share_experts_output
             if moe_layer.token_dispatcher.add_bias:
                 mlp_bias = mlp_bias + share_experts_bias
@@ -171,7 +174,9 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             ag_share_experts_handle = None
         args = None
         _, ag_experts_grad_input, ag_experts_handle = async_all_gather(
-            ag_share_experts_grad_input, get_tensor_and_expert_parallel_group() if share_experts_graph is None else get_expert_model_parallel_group(), ag_share_experts_handle
+            ag_share_experts_grad_input,
+            get_tensor_and_expert_parallel_group() if share_experts_graph is None else get_expert_model_parallel_group(),
+            ag_share_experts_handle
         )
         if ag_share_experts_handle is not None:
             ag_share_experts_handle.wait()

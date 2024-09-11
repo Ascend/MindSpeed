@@ -35,7 +35,7 @@ def async_all_gather(input_, group, event=None, is_use_get_global_memory_buffer=
     return input_, ag_out, handle
 
 
-def async_reduce_scatter(input_, group, event=None, is_use_get_global_memory_buffer=False):
+def async_reduce_scatter(input_, group, event=None, stream=None, is_use_get_global_memory_buffer=False):
     world_size = dist.get_world_size(group)
     dim_size = list(input_.size())
     dim_size[0] = dim_size[0] // world_size
@@ -44,13 +44,16 @@ def async_reduce_scatter(input_, group, event=None, is_use_get_global_memory_buf
         rs_out = get_global_memory_buffer().get_tensor(dim_size, input_.dtype, "mpu")
     else:
         rs_out = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
-    if event:
+    if event or stream:
         # multi stream wait event
         global COMM_STREAM
         if COMM_STREAM is None:
             COMM_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
         with torch_npu.npu.stream(COMM_STREAM):
-            event.wait()
+            if event:
+                event.wait()
+            if stream:
+                torch.cuda.current_stream().wait_stream(stream)
             handle = torch.distributed._reduce_scatter_base(
                 rs_out, input_.contiguous(), group=group, async_op=True
             )
