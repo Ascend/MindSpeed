@@ -477,7 +477,7 @@ def validate_args_wrapper(validate_args):
                 args.use_pipe_experts = False
         if not args.moe_permutation_async_comm and (args.moe_alltoall_overlap_comm or args.moe_allgather_overlap_comm):
             raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
-        if args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
+        if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
             raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now.')
         if args.moe_dynamic_padding and not args.moe_no_drop:
             raise AssertionError('`--moe-dynamic-padding` only support for `--moe-no-drop`.')

@@ -457,11 +457,14 @@ def allgather_token_permutation_new(self, global_indices_2_tuple, global_probs_2
             # masked_select -> reshape
             local_indices = global_indices.reshape(-1)[global_local_mask.reshape(-1)]
             self.indices = torch.argsort(local_indices.float(), dim=0)
+            num_global_experts = self.num_local_experts * parallel_state.get_expert_model_parallel_world_size()
+            if get_args().moe_tp_extend_ep:
+                num_global_experts *= parallel_state.get_tensor_model_parallel_world_size()
             all_tokens_per_expert = torch.histc(
                 global_indices,
-                bins=self.num_local_experts * parallel_state.get_expert_model_parallel_world_size(),
+                bins=num_global_experts,
                 min=0,
-                max=self.num_local_experts * parallel_state.get_expert_model_parallel_world_size() - 1
+                max=num_global_experts
             )
         self.all_tokens_per_expert = all_tokens_per_expert.cpu().to(torch.long)
         tokens_per_expert = self.all_tokens_per_expert[self.local_expert_indices[0]: self.local_expert_indices[-1] + 1]
@@ -582,7 +585,7 @@ def alltoall_token_permutation_new(
 
         # Perform tensor parallel AlltoAll communication
         # hidden_states: [S*B/TP, H] -> [S*B, H/TP]
-        if parallel_state.get_tensor_model_parallel_world_size() > 1:
+        if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
             hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
 
         # Permutation 1: input to AlltoAll input
@@ -599,11 +602,14 @@ def alltoall_token_permutation_new(
     save_tensors.append(permutated_local_input_tokens)
 
     # Perform expert parallel AlltoAll communication
+    ep_group = parallel_state.get_expert_model_parallel_group()
+    if get_args().moe_tp_extend_ep:
+        ep_group = parallel_state.get_tensor_and_expert_parallel_group()
     _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
         permutated_local_input_tokens,
         self.output_splits,
         self.input_splits,
-        parallel_state.get_expert_model_parallel_group(),
+        ep_group,
     )
 
     # shared experts
@@ -625,7 +631,9 @@ def alltoall_token_permutation_new(
             )
             # Perform tensor parallel All-Gather
             # global_input_tokens: [SEQL, H/TP] -> [SEQL, H]
-            if parallel_state.get_tensor_model_parallel_world_size() > 1 and self.config.moe_grouped_gemm:
+            if (not get_args().moe_tp_extend_ep and
+                parallel_state.get_tensor_model_parallel_world_size() > 1 and
+                self.config.moe_grouped_gemm):
                 global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
                     global_input_tokens
                 )
@@ -650,7 +658,7 @@ def alltoall_token_unpermutation_new(
 
         # Perform tensor parallel Reduce-Scatter
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
-        if parallel_state.get_tensor_model_parallel_world_size() > 1:
+        if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
             hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(hidden_states)
 
         # Unpermutation 2: expert output to AlltoAll input
@@ -667,11 +675,14 @@ def alltoall_token_unpermutation_new(
     save_tensors_for_grad.append(unpermute1_input_detach)
     unpermute1_input_detach.untyped_storage().resize_(0)
 
+    ep_group = parallel_state.get_expert_model_parallel_group()
+    if get_args().moe_tp_extend_ep:
+        ep_group = parallel_state.get_tensor_and_expert_parallel_group()
     _, permutated_local_input_tokens, handle = async_all_to_all(
         hidden_states,
         self.input_splits,
         self.output_splits,
-        parallel_state.get_expert_model_parallel_group()
+        ep_group
     )
     handle.wait()
     hidden_states.untyped_storage().resize_(0)
@@ -686,7 +697,7 @@ def alltoall_token_unpermutation_new(
         )
 
         # Perform tensor parallel AlltoAll communication
-        if parallel_state.get_tensor_model_parallel_world_size() > 1:
+        if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
             # output: [S*B, H/TP] -> [S*B/TP, H]
             output = tensor_parallel.all_to_all_hp2sp(output)
 

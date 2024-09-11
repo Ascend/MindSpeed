@@ -16,7 +16,7 @@
 import torch
 from einops import rearrange
 from megatron.training import get_args
-from megatron.core.parallel_state import get_expert_model_parallel_group
+from megatron.core.parallel_state import get_expert_model_parallel_group, get_tensor_and_expert_parallel_group
 from megatron.core.transformer.moe.moe_utils import permute
 from mindspeed.ops.gmm import GMMFunction
 from mindspeed.model.transformer import should_recompute_activation
@@ -104,11 +104,14 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             permutated_local_input_tokens = alltoall_token_permutation1(detach_input, indices, router_topk)
         detach_input.untyped_storage().resize_(0)
         if not moe_without_activation:
+            ep_group = get_expert_model_parallel_group()
+            if get_args().moe_tp_extend_ep:
+                ep_group = get_tensor_and_expert_parallel_group()
             _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
                 permutated_local_input_tokens,
                 output_splits,
                 input_splits,
-                get_expert_model_parallel_group(),
+                ep_group,
             )
         weights1 = rearrange(weights1, 'n h f -> n f h')
         mm1_inputs_grad = GMMFunction.builder.load().npu_gmm([act_inputs.grad], [weights1], [], group_list.tolist(), 0,
@@ -116,11 +119,14 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
 
         # 峰值
         backward_func(permute2_graph, mm1_inputs_grad)
+        ep_group = get_expert_model_parallel_group()
+        if get_args().moe_tp_extend_ep:
+            ep_group = get_tensor_and_expert_parallel_group()
         _, permute1_backward_input, bw_permute1_ep_all2all_handle = async_all_to_all(
             permute2_input_detach.grad,
             input_splits,
             output_splits,
-            get_expert_model_parallel_group(),
+            ep_group,
         )
 
         set_all2all_experts_output((permute1_backward_input, bw_permute1_ep_all2all_handle))

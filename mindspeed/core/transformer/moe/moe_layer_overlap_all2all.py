@@ -1,7 +1,7 @@
 import torch
 
 from megatron.core.parallel_state import get_expert_model_parallel_group, get_tensor_model_parallel_world_size
-from megatron.core import tensor_parallel
+from megatron.core import tensor_parallel, parallel_state
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
@@ -117,11 +117,14 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 )
 
                 # Recompute expert parallel AlltoAll communication
+                ep_group = parallel_state.get_expert_model_parallel_group()
+                if get_args().moe_tp_extend_ep:
+                    ep_group = parallel_state.get_tensor_and_expert_parallel_group()
                 _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
                     permutated_local_input_tokens,
                     ctx.output_splits,
                     ctx.input_splits,
-                    get_expert_model_parallel_group(),
+                    ep_group,
                 )
 
         unpermute2_graph.backward(args[0])
@@ -130,11 +133,14 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             permute1_ep_all_to_all_handle.wait()
             permutated_local_input_tokens.untyped_storage().resize_(0)
 
+        ep_group = parallel_state.get_expert_model_parallel_group()
+        if get_args().moe_tp_extend_ep:
+            ep_group = parallel_state.get_tensor_and_expert_parallel_group()
         _, unpermute1_backward_input, handle = async_all_to_all(
             unpermute2_input_detach.grad,
             output_splits,
             input_splits,
-            get_expert_model_parallel_group(),
+            ep_group,
         )
 
         if moe_without_activation:
