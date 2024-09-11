@@ -3,6 +3,8 @@ import re
 import torch
 import torch_npu
 from megatron.training import print_rank_0
+from megatron.training import get_args
+from megatron.core import parallel_state
 DEBUG_PRINT = True
 
 
@@ -92,9 +94,15 @@ class SwapPrefetch:
 
     def __init__(self, prefetch_args):
         pp, vpp, interval, num_prefetch = prefetch_args
+        all_args = get_args()
         self.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
         self.pp = pp
         self.vpp = min(vpp, num_prefetch)
+        if (isinstance(all_args.noop_layers, set) and 0 in all_args.noop_layers and
+                parallel_state.get_pipeline_model_parallel_rank() == 0):
+            self.first_layer_id = 1
+        else:
+            self.first_layer_id = 0
  
         self.swap_tensors = []
         self.layer_name = ""
@@ -201,23 +209,25 @@ class SwapPrefetch:
     def sync_d2h(self, module_name):
         if not self.swap_tensors:
             return
-
+        if self.swap_tensors[0].layer_id <= self.first_layer_id:
+            self.first_layer_id = self.swap_tensors[0].layer_id
+        elif self.prefetch_list and self.swap_tensors[0].layer_id <= self.prefetch_list[-1][-1][-1].layer_id:
+            self.first_layer_id = self.swap_tensors[0].layer_id
         for swap_tensor in self.swap_tensors:
-            if self.swap_tensors[0].layer_id > 0 and self.prefetch_list:
+            if self.swap_tensors[0].layer_id > self.first_layer_id and self.prefetch_list:
                 swap_tensor.layer_index = len(self.prefetch_list[-1])
             if swap_tensor.layer_id + self.interval == int(get_layer_id(module_name)) \
                     and swap_tensor.stat == "d2h":
                 if not self.update_slice_tensor_stat(swap_tensor):
                     continue
-                if swap_tensor == self.swap_tensors[-1]:
+                if swap_tensor == self.swap_tensors[-1] or swap_tensor == self.swap_tensors[len(self.swap_tensors) // 2]:
                     swap_tensor.last_tensor = True
                 elif swap_tensor == self.swap_tensors[0]:
                     swap_tensor.first_tensor = True
                 # During synchronization, let the first tensor wait for d2h
                 swap_tensor.wait_d2h_finished(swap_tensor.stream, swap_tensor.first_tensor)
-
         if self.swap_tensors[-1].stat == 'host':
-            if self.swap_tensors[0].layer_id > 0 and self.prefetch_list:
+            if self.swap_tensors[0].layer_id > self.first_layer_id and self.prefetch_list:
                 self.prefetch_list[-1].append(self.swap_tensors)
                 self.prefetch_data_ptr_list[-1].append(self.data_ptr)
                 self.slice_tensor_storage_ptr_list[-1].append(self.slice_tensor_storage_ptr)

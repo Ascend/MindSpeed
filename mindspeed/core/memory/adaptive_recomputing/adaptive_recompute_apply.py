@@ -2,6 +2,7 @@
 import torch
 from megatron.core import tensor_parallel
 from megatron.training import print_rank_0
+from megatron.training import get_args
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager
 from mindspeed.core.memory.adaptive_recomputing.prefetch import prefetch_tensor, prefetch_register_post_backward_hook, prefetch_register_pre_forward_hook, get_swap_prefetch, get_layer_id
 
@@ -123,6 +124,7 @@ def is_recompute_layer(ctx, prefetch_list):
 
 
 def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_group, prefetch_args):
+    args = get_args()
     prefetch_list, hook_list, recompute_list = prefetch_recompute_group
     if not isinstance(prefetch_list[0], list):
         prefetch_layer = prefetch_list
@@ -139,7 +141,7 @@ def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_gr
             hook_layer = hook_list[idx] if isinstance(hook_list[0], list) else hook_list
             recompute_layer = recompute_list[idx] if isinstance(recompute_list[0], list) else recompute_list
             print_rank_0(f'prefetch_layer: {prefetch_layer}---{hook_layer}')
-            if prefetch_layer[0]:
+            if any(filter(None, prefetch_layer)):
                 prefetch_recompute_group = [prefetch_layer, hook_layer, recompute_layer]
                 register_recursive_apply_prefetch(config, model, get_list_layers_context(ctx, idx),
                                                   prefetch_recompute_group, prefetch_args)
@@ -151,7 +153,11 @@ def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_gr
         prefetch_register_post_backward_hook(models, pre_layer_full_name + '.' + cur_layer_name, prefetch_args)
         prefetch_register_pre_forward_hook(models, pre_layer_full_name + '.' + cur_layer_name, prefetch_args)
     if hook_list == prefetch_list and prefetch_list != ['']:
-        if "name" in ctx and ctx["name"] in ["input_norm", "self_attention", "post_attention_norm"] and \
+        if args.use_mcore_models:
+            swap_modules = ["core_attention", "linear_proj", "linear_qkv"]
+        else:
+            swap_modules = ["input_norm", "self_attention", "post_attention_norm"]
+        if "name" in ctx and ctx["name"] in swap_modules and \
                 get_layer_id(ctx["prefix_name"]) in prefetch_list:
             print_rank_0(f"prefetch swap hook success: {pre_layer_full_name + '.' + cur_layer_name}")
             models.no_checkpoint_adaptive_recompute_forward = models.forward
