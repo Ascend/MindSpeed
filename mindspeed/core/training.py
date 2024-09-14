@@ -195,6 +195,8 @@ def setup_model_and_optimizer_decorator(setup_model_and_optimizer):
         elif argument.automated_pipeline_perf and OPTIMIZED_MBS_LIST:
             broadcast_mbs_in_ranks(0, OPTIMIZED_MBS_LIST)
         model, optimizer, opt_param_scheduler = setup_model_and_optimizer(*args, **kwargs)
+        if argument.enable_high_availability and hasattr(optimizer, "set_current_step"):
+            optimizer.set_current_step(argument.iteration)
         if argument.recompute_module_list:
             apply_autopipeline(model)
         return model, optimizer, opt_param_scheduler

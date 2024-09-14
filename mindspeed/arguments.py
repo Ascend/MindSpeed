@@ -41,6 +41,7 @@ def process_args(parser):
     parser = _add_coc_args(parser)
     parser = _add_profile_args(parser)
     parser = _add_deepseek_args(parser)
+    parser = _add_high_availability_args(parser)
 
     return parser
 
@@ -74,6 +75,20 @@ def _add_deepseek_args(parser):
                        help='moe_allgather_overlap_comm')
     group.add_argument('--moe-without-activation', action='store_true', default=False,
                        help='save all the memory occupied by activations in moe layer.')
+    return parser
+
+
+def _add_high_availability_args(parser):
+    group = parser.add_argument_group(title='high_availability')
+
+    group.add_argument('--enable-high-availability',
+                       action='store_true',
+                       help='switch of the high availability feature')
+
+    group.add_argument('--enable-optimizer-state-local-copy',
+                       action='store_true',
+                       help='high availability feature, enable parameter state local copy of distributed optimizer')
+
     return parser
 
 
@@ -401,6 +416,12 @@ def validate_args_wrapper(validate_args):
                 flag_overlap_p2p_comm = True
 
         args = validate_args(args, defaults)
+        if args.enable_optimizer_state_local_copy and not args.enable_high_availability:
+            raise AssertionError('switch of the high availability feature is unenabled.')
+        if args.enable_high_availability and args.enable_zero3:
+            raise AssertionError('zero3 and enable_high_availability do not support enabling together.')
+        if args.enable_high_availability and args.reuse_fp32_param:
+            raise AssertionError('reuse_fp32_param and enable_high_availability do not support enabling together.')
         if args.enable_zero3:
             print("[WARNING] zero3 currently does not support model save and load")
             if args.use_ascend_mc2 or args.reuse_fp32_param or args.recompute_granularity is not None or args.use_pipe_experts:

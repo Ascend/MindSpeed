@@ -211,7 +211,16 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             nd1_dim1_size=args.nd1_dim1_size,
             nd2_dim1_size=args.nd2_dim1_size,
         )
+        if args.enable_high_availability:
+            from mindio_ttp.adaptor import ttp_initialize_replica_dp_group
 
+            ttp_initialize_replica_dp_group(
+                pipeline_model_parallel_size,
+                tensor_model_parallel_size,
+                context_parallel_size,
+                expert_model_parallel_size,
+                world_size
+            )
     return wrapper
 
 

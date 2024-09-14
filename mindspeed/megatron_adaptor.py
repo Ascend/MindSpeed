@@ -351,7 +351,7 @@ def megatron_legacy_adaptation(aspm, args):
     aspm.register_patch('megatron.legacy.model.gpt_model.post_language_model_processing', post_language_model_processing_wrapper)
 
 
-def megatron_training_adaptation(aspm):
+def megatron_training_adaptation(aspm, args):
     from .core.performance.auto_pipeline_perf.global_vars import get_num_microbatches_wrapper
     from .initialize import _compile_dependencies, set_jit_fusion_options_wrapper
     from .utils import get_batch_on_this_cp_rank, get_batch_on_this_tp_rank
@@ -363,7 +363,10 @@ def megatron_training_adaptation(aspm):
                                setup_model_and_optimizer_decorator, save_checkpoint_and_time_decorator
     aspm.register_patch('megatron.training.global_vars.get_num_microbatches', get_num_microbatches_wrapper)
     aspm.register_patch('megatron.training.training.pretrain', pretrain_decorator)
-    aspm.register_patch('megatron.training.training.train', train_decorator)
+    if args.enable_high_availability:
+        aspm.register_patch('mindspeed.training.train_uce', train_decorator)
+    else:
+        aspm.register_patch('megatron.training.training.train', train_decorator)
     aspm.register_patch('megatron.training.training.train_step', train_step_decorator)
     aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_decorator)
     aspm.register_patch('megatron.training.training.save_checkpoint_and_time', save_checkpoint_and_time_decorator)
@@ -594,8 +597,27 @@ def zero3_adaptation(aspm, args):
                             distributed_data_parallel_init_zero3)
         aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.zero_grad_buffer',
                             distributed_data_parallel_zero_grad_wrapper)
-                                       
-        
+
+
+def high_availability_adaptation(aspm, args):
+    if args.enable_high_availability:
+        from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_uce
+        from .core.distributed.param_and_grad_buffer import start_grad_sync
+        from .optimizer.optimizer_init import get_megatron_optimizer, get_megatron_optimizer_based_on_param_groups
+        from .optimizer.clip_grads import clip_grad_norm_fp32_uce
+        from .optimizer.distrib_optimizer import distributed_optimizer_uce_init
+        from .training import train_uce
+        aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
+                            distributed_optimizer_uce_init)
+        aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.Bucket.start_grad_sync',
+                            start_grad_sync)
+        aspm.register_patch('megatron.core.optimizer.get_megatron_optimizer', get_megatron_optimizer)
+        aspm.register_patch('megatron.core.optimizer.get_megatron_optimizer_based_on_param_groups', get_megatron_optimizer_based_on_param_groups)
+        aspm.register_patch('megatron.core.optimizer.clip_grad_norm_fp32', clip_grad_norm_fp32_uce)
+        aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__', distributed_optimizer_uce_init)
+        aspm.register_patch('megatron.training.training.train', train_uce)
+
+
 def exe_adaptation():
     mindspeed_args = get_mindspeed_args()
     from .patch_utils import MindSpeedPatchesManager as aspm
@@ -605,12 +627,13 @@ def exe_adaptation():
     aspm.apply_patches()
     megatron_core_adaptation(aspm, mindspeed_args)
     megatron_legacy_adaptation(aspm, mindspeed_args)
-    megatron_training_adaptation(aspm)
+    megatron_training_adaptation(aspm, mindspeed_args)
     ascend_adaptation(aspm, mindspeed_args)
     coc_adaptation(aspm, mindspeed_args)
     mcore_moe_adaptation(aspm, mindspeed_args)
     deepspeed_moe_adaptation(aspm, mindspeed_args)
     zero3_adaptation(aspm, mindspeed_args)
+    high_availability_adaptation(aspm, mindspeed_args)
     aspm.apply_patches()
 
     # accelerate package will check TE on sys.modules，so we need remove this patch
