@@ -70,10 +70,9 @@ def fused_rotary_position_embedding(x, cos, sin, interleaved=False):
 | sin | 同cos | 同cos |
 
 **备注**：
-1. 反向算子暂不支持确定性计算；
-2. 输入不支持为None;
-3. cos, sin如需计算反向梯度需要同时设置`requires_grad = True`, 若仅设置一个则均不计算;
-4. *RotateInterleaved模式会随后续泛化支持逐步放宽输入约束限制。*
+1. 输入不支持为None;
+2. cos, sin如需计算反向梯度需要同时设置`requires_grad = True`, 若仅设置一个则均不计算;
+3. RotaryHalf（mode=0）模式下，当输入layout是BNSD，且D为非32Bytes对齐时，建议不使用该融合算子（模型启动脚本中不开启`--use-fused-rotary-pos-emb`选项），否则可能出现性能下降。
 
 
 ## 案例
