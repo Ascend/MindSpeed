@@ -42,15 +42,16 @@ def moe_layer_init_wrapper(init_func):
         self.moe_allgather_overlap_comm = global_args.moe_allgather_overlap_comm
 
         if global_args.n_shared_experts:
-            self.config.ffn_hidden_size = global_args.n_shared_experts * self.config.ffn_hidden_size
+            config = deepcopy(self.config)
+            config.ffn_hidden_size = global_args.n_shared_experts * self.config.ffn_hidden_size
             if self.moe_allgather_overlap_comm:
                 from mindspeed.core.transformer.moe.layers import ColumnParallelLinear, RowParallelLinear
-                self.shared_experts = MLP(self.config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
+                self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
                                                                      linear_fc2=RowParallelLinear, ),
                                           shared_expert=self.moe_allgather_overlap_comm)
             else:
                 from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
-                self.shared_experts = MLP(self.config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
+                self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
                                                                      linear_fc2=RowParallelLinear, ))
 
         self.moe_adaptive_recompute_activation = global_args.moe_adaptive_recompute_activation
