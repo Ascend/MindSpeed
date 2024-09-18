@@ -1,6 +1,7 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import types
+from copy import deepcopy
 from functools import wraps
 import torch
 from megatron.training import get_args
