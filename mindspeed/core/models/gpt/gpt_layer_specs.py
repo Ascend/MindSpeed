@@ -6,6 +6,9 @@ from megatron.core.transformer.identity_op import IdentityOp
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.transformer.custom_layers.transformer_engine import TENorm
+from mindspeed.core.transformer.transformer import norm_recompute_forward
+from mindspeed.core.transformer.transformer_block import NoopTransformerLayer
+from mindspeed.model.transformer import should_recompute_norm
 import types
 
 
@@ -44,4 +47,16 @@ def build_layers_wrapper(fn, column_forward, row_forward):
                 for local_expert in layer.mlp.experts.local_experts:
                     local_expert.linear_fc1.forward = types.MethodType(column_forward, local_expert.linear_fc1)
                     local_expert.linear_fc2.forward = types.MethodType(row_forward, local_expert.linear_fc2)
+    return wrapper
+
+
+def build_norm_recompute_layer_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        fn(self, *args, **kwargs)
+        for layer in self.layers:
+            if isinstance(layer, NoopTransformerLayer):
+                continue
+            if should_recompute_norm(layer.layer_number):
+                layer.forward = types.MethodType(norm_recompute_forward, layer)
     return wrapper

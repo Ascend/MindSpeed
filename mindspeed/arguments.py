@@ -263,6 +263,10 @@ def _add_training_args(parser):
     group.add_argument('--recompute-activation-function-num-layers', type=int, default=None,
                        help='Can be used together with "--recompute-method block." '
                        'and "--recompute-num-layers". ')
+    group.add_argument('--recompute-norm', action='store_true',
+                       help='Recompute norm in Transformer Layers')
+    group.add_argument('--recompute-norm-num-layers', type=int, default=None,
+                       help='Recompute norm num layers, can be used together with activation function recompute. ')
     group.add_argument('--recompute-in-bubble', action='store_true',
                        help='use bubble to do recompute to reduce memory')
     group.add_argument('--recompute-in-advance', action='store_true',
@@ -552,9 +556,16 @@ def validate_args_wrapper(validate_args):
             assert not args.recompute_activation_function, \
                 'uniform recomputation is not compatible ' \
                 'with activation function recomputation '
+            assert not args.recompute_norm, \
+                'uniform recomputation is not compatible ' \
+                'with norm recomputation '            
         if args.recompute_activation_function and args.recompute_granularity == "selective":
             raise AssertionError('--recompute-activation-function is not compatible with selective recomputation')
         adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or args.adaptive_recompute_device_swap
+        if args.recompute_norm and args.recompute_granularity == "selective":
+            raise AssertionError('--recompute-norm is not compatible with selective recomputation')
+        if args.recompute_norm and not args.use_mcore_models:
+            raise AssertionError('--recompute-norm is only supported with mcore models')        
         if adaptive_recompute_enable:
             assert args.recompute_granularity is None and args.recompute_method is None, \
                 'adaptive selective recompute is not compatible with ' \

@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from megatron import core
 from megatron.training import get_args, get_num_microbatches
 from megatron.core import tensor_parallel, parallel_state, mpu
+from megatron.core.utils import make_viewless_tensor
 from megatron.legacy.model.transformer import bias_dropout_add_fused_train, get_bias_dropout_add, bias_dropout_add_fused_inference
 from megatron.legacy.model.enums import AttnMaskType, LayerType, AttnType
 from mindspeed.model.transformer import should_recompute_activation
@@ -388,3 +389,86 @@ def core_mlp_forward_wrapper(fn):
                 output.register_hook(self.activation_checkpoint_manager.recompute)
         return output, output_bias
     return wrapper
+
+
+def norm_recompute_forward(
+    self,
+    hidden_states,
+    attention_mask,
+    context=None,
+    context_mask=None,
+    rotary_pos_emb=None,
+    inference_params=None,
+    packed_seq_params=None,
+):
+    # hidden_states: [s, b, h]
+
+    # Residual connection.
+    residual = hidden_states
+
+    # Optional Input Layer norm
+    self.norm_ckpt1 = CheckpointWithoutOutput()
+    input_layernorm_output = self.norm_ckpt1.checkpoint(self.input_layernorm, False, hidden_states)
+
+    # Self attention.
+    attention_output_with_bias = self.self_attention(
+        input_layernorm_output,
+        attention_mask=attention_mask,
+        inference_params=inference_params,
+        rotary_pos_emb=rotary_pos_emb,
+        packed_seq_params=packed_seq_params,
+    )
+
+    self.norm_ckpt1.discard_output()
+    attention_output_with_bias[0].register_hook(self.norm_ckpt1.recompute)
+
+    with self.bias_dropout_add_exec_handler():
+        hidden_states = self.self_attn_bda(self.training, self.config.bias_dropout_fusion)(
+            attention_output_with_bias, residual, self.hidden_dropout
+        )
+
+    # Residual connection.
+    residual = hidden_states
+
+    # Optional Layer norm after self-attention
+    pre_cross_attn_layernorm_output = self.pre_cross_attn_layernorm(hidden_states)
+
+    # Cross attention.
+    attention_output_with_bias = self.cross_attention(
+        pre_cross_attn_layernorm_output,
+        attention_mask=context_mask,
+        key_value_states=context,
+        inference_params=inference_params,
+    )
+
+    if isinstance(attention_output_with_bias, dict) and "context" in attention_output_with_bias:
+        context = attention_output_with_bias["context"]
+
+    with self.bias_dropout_add_exec_handler():
+        hidden_states = self.cross_attn_bda(self.training, self.config.bias_dropout_fusion)(
+            attention_output_with_bias, residual, self.hidden_dropout
+        )
+
+    # Residual connection.
+    residual = hidden_states
+
+    # Optional Layer norm post the cross-attention.
+    self.norm_ckpt2 = CheckpointWithoutOutput()
+    pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, hidden_states)
+
+    # MLP.
+    mlp_output_with_bias = self.mlp(pre_mlp_layernorm_output)
+
+    self.norm_ckpt2.discard_output()
+    mlp_output_with_bias[0].register_hook(self.norm_ckpt2.recompute)
+
+    with self.bias_dropout_add_exec_handler():
+        hidden_states = self.mlp_bda(self.training, self.config.bias_dropout_fusion)(
+            mlp_output_with_bias, residual, self.hidden_dropout
+        )
+
+    output = make_viewless_tensor(
+        inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
+    )
+
+    return output, context
