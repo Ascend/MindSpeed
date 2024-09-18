@@ -35,7 +35,7 @@ using torch::autograd::Function;
 namespace {
 
 
-void matmul_add(const at::Tensor &x, const at::Tensor &weight, at::Tensor & C)
+void matmul_add_fp32(const at::Tensor &x, const at::Tensor &weight, at::Tensor & C)
 {
 #ifndef ENABLE_ATB
         TORCH_CHECK(false, "ATB MatmulAdd not implemented");
@@ -63,6 +63,6 @@ void matmul_add(const at::Tensor &x, const at::Tensor &weight, at::Tensor & C)
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("npu_matmul_add", &matmul_add, "matmul_add on ascend device",
+    m.def("npu_matmul_add_fp32", &matmul_add_fp32, "matmul_add on ascend device",
             pybind11::arg("x"), pybind11::arg("weight"), pybind11::arg("C"));
 }

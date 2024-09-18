@@ -128,15 +128,15 @@ def te_adaptation(aspm):
 def apex_adaptation(aspm):
     from .optimizer.adamw import AdamW
     from .core.fusions.fused_layer_norm import fused_layer_norm_affine
-    from .ops.npu_matmul_add import npu_matmul_add
+    from .ops.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
     aspm.register_patch('apex.optimizers.FusedAdam', AdamW, create_dummy=True)
     aspm.register_patch('amp_C.multi_tensor_l2norm', multi_tensor_l2norm, create_dummy=True)
     aspm.register_patch('amp_C.multi_tensor_scale', multi_tensor_scale, create_dummy=True)
     aspm.register_patch('fused_layer_norm_cuda', create_dummy=True)
     aspm.register_patch('apex.multi_tensor_apply.multi_tensor_applier', multi_tensor_applier, create_dummy=True)
     aspm.register_patch('apex.normalization.fused_layer_norm.fused_layer_norm_affine', fused_layer_norm_affine, create_dummy=True)
-    aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add, create_dummy=True)
-    aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16', npu_matmul_add, create_dummy=True)
+    aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, create_dummy=True)
+    aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16', npu_matmul_add_fp16, create_dummy=True)
 
 
 def torch_adaptation(aspm):

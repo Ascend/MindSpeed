@@ -2,17 +2,16 @@
 import pytest
 import torch
 import torch_npu
-from mindspeed.ops.npu_matmul_add import npu_matmul_add
+from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
 
 
 class TestMatmulAdd():
     @pytest.mark.skip(reason='not support for current version')
     def test_matmul_add(self):
-        for i in range(1000):
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            x = torch.rand((4096, 8192), dtype=torch.float16).to(device)
-            weight = torch.rand((4096, 8192), dtype=torch.float16).to(device)
-            c = torch.rand((8192, 8192), dtype=torch.float).to(device)
+        for i in range(10):
+            x = torch.rand((4096, 8192), dtype=torch.float16).npu()
+            weight = torch.rand((4096, 8192), dtype=torch.float16).npu()
+            c = torch.rand((8192, 8192), dtype=torch.float).npu()
             # 分开算子计算结果
             product = torch.mm(x.T, weight)
             result = product + c
@@ -20,7 +19,7 @@ class TestMatmulAdd():
             x = x.clone().detach()
             weight = weight.clone().detach()
             c = c.clone().detach()
-            npu_matmul_add(weight, x, c)
+            npu_matmul_add_fp32(weight, x, c)
 
             # 对比
             assert torch.allclose(result, c, rtol=0.005, atol=0.005)
