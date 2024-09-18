@@ -150,7 +150,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                     global_input_tokens, _ = permute(
                         global_input_tokens, global_input_tokens_local_experts_indices
                     )
-                    if get_tensor_model_parallel_world_size() > 1 and ctx.moe_grouped_gemm:
+                    if not global_args.moe_tp_extend_ep and get_tensor_model_parallel_world_size() > 1 and ctx.moe_grouped_gemm:
                         global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
                             global_input_tokens
                         )
