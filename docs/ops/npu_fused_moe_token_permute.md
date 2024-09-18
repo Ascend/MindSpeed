@@ -1,11 +1,10 @@
 # npu_moe_token_permute对外接口
 
-npu_moe_token_unpermute(
-        permuted_tokens: torch.Tensor,
-        sorted_indices: torch.Tensor,
-        probs: torch.Tensor = None,
-        padded_mode: bool = False,
-        restore_shape: torch.Size = None,
+npu_moe_token_permute(
+        tokens: torch.Tensor,
+        indices: torch.Tensor,
+        num_out_tokens: int = None,
+        padded_mode: bool = False
 )
 
 小算子等价计算逻辑：
