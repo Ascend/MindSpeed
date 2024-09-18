@@ -208,6 +208,65 @@ class RngStateContext:
         self.fwd_cuda_rng_state_tracker = cuda_rng_state_tracker
 
 
+class CheckpointFunctionRipipe(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, run_function, distribute_saved_activations, *args):
+        fwd_rng_state = RngStateContext(torch.get_rng_state(), torch.cuda.get_rng_state(), get_cuda_rng_tracker().get_states())
+        with torch.no_grad():
+            outputs = run_function(*args)
+
+        # Store everything.
+        ctx.detached_inputs = detach_variable(args)
+
+        def recompute():
+            # Store the current states.
+            bwd_cpu_rng_state = torch.get_rng_state()
+            bwd_cuda_rng_state = torch.cuda.get_rng_state()
+            bwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
+
+            # Set the states to what it used to be before the forward pass.
+            torch.set_rng_state(fwd_rng_state.fwd_cpu_rng_state)
+            _set_cuda_rng_state(fwd_rng_state.fwd_cuda_rng_state)
+            get_cuda_rng_tracker().set_states(fwd_rng_state.fwd_cuda_rng_state_tracker)
+
+            with torch.enable_grad():
+                outputs = run_function(*ctx.detached_inputs)
+            ctx.outputs = outputs
+
+            # Set the states back to what it was at the start of this function.
+            torch.set_rng_state(bwd_cpu_rng_state)
+            _set_cuda_rng_state(bwd_cuda_rng_state)
+            get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
+        if get_pipeline_checkpoint_manager().do_pre_recompute:
+            get_pipeline_checkpoint_manager().add_recompute(recompute)
+        ctx.recompute_func = recompute
+
+        return outputs
+
+    @staticmethod
+    def backward(ctx, *args):
+        if not torch.autograd._is_checkpoint_valid():
+            raise RuntimeError(
+                "Checkpointing is not compatible with .grad(), "
+                "please use .backward() if possible"
+            )
+        if not hasattr(ctx, 'outputs'):
+            if get_pipeline_checkpoint_manager().do_pre_recompute:
+                raise RuntimeError(f"rank-{torch.distributed.get_rank()}: recompute is not done")
+            ctx.recompute_func()
+
+        outputs = ctx.outputs
+
+        if isinstance(outputs, torch.Tensor):
+            outputs = (outputs,)
+
+        # filter out non tensor outputs for backward pass
+        outputs, args = zip(*filter(lambda x: torch.is_tensor(x[0]), zip(outputs, args)))
+        torch.autograd.backward(outputs, args)
+        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else inp for inp in ctx.detached_inputs)
+        return (None, None) + grads
+
+
 def checkpoint_wrapper(checkpoint):
     @wraps(checkpoint)
     def wrapper(function, distribute_saved_activations, *args):
@@ -219,89 +278,6 @@ def checkpoint_wrapper(checkpoint):
         if distribute_saved_activations:
             raise RuntimeError("no distributed")
 
-        # Accommodates the (remote) possibility that autocast is enabled for cpu AND gpu.
-        device_autocast_kwargs, cpu_autocast_kwargs = _get_autocast_kwargs(device='npu')
-
-        fwd_rng_state = RngStateContext(torch.get_rng_state(), torch.cuda.get_rng_state(), get_cuda_rng_tracker().get_states())
-
-        storage: List[Union[torch.Tensor, None]] = []
-        counter = 0
-
-        def pack(x):
-            nonlocal counter
-            counter += 1
-            return counter - 1
-
-        def early_unpack():
-            def inner_pack(inner):
-                storage.append(inner.detach())
-                return None
-
-            def inner_unpack(packed):
-                raise RuntimeError("You are calling backwards on a tensor that is never exposed. Please open an issue.")
-
-            # store the current states
-            bwd_cpu_rng_state = torch.get_rng_state()
-            bwd_cuda_rng_state = torch.cuda.get_rng_state()
-            bwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
-
-            # Set the states to what it used to be before the forward pass.
-            torch.set_rng_state(fwd_rng_state.fwd_cpu_rng_state)
-            _set_cuda_rng_state(fwd_rng_state.fwd_cuda_rng_state)
-            get_cuda_rng_tracker().set_states(fwd_rng_state.fwd_cuda_rng_state_tracker)
-
-            with torch.enable_grad(), \
-                    torch.cuda.amp.autocast(**device_autocast_kwargs), \
-                    torch.cpu.amp.autocast(**cpu_autocast_kwargs), \
-                    torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
-                _unused = function(*args)
-
-            torch.set_rng_state(bwd_cpu_rng_state)
-            _set_cuda_rng_state(bwd_cuda_rng_state)
-            get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
-
-        if get_pipeline_checkpoint_manager().do_pre_recompute:
-            get_pipeline_checkpoint_manager().add_recompute(early_unpack)
-
-        def unpack(x):
-            if len(storage) == 0:
-                if get_pipeline_checkpoint_manager().do_pre_recompute:
-                    raise RuntimeError(f"rank-{torch.distributed.get_rank()}: recompute is not done")
-
-                def inner_pack(inner):
-                    storage.append(inner.detach())
-                    return None
-
-                def inner_unpack(packed):
-                    raise RuntimeError(
-                        "You are calling backwards on a tensor that is never exposed. Please open an issue.")
-
-                # store the current states
-                bwd_cpu_rng_state = torch.get_rng_state()
-                bwd_cuda_rng_state = torch.cuda.get_rng_state()
-                bwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
-
-                # Set the states to what it used to be before the forward pass.
-                torch.set_rng_state(fwd_rng_state.fwd_cpu_rng_state)
-                _set_cuda_rng_state(fwd_rng_state.fwd_cuda_rng_state)
-                get_cuda_rng_tracker().set_states(fwd_rng_state.fwd_cuda_rng_state_tracker)
-
-                with torch.enable_grad(), \
-                        torch.cuda.amp.autocast(**device_autocast_kwargs), \
-                        torch.cpu.amp.autocast(**cpu_autocast_kwargs), \
-                        torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
-                    _unused = function(*args)
-
-                torch.set_rng_state(bwd_cpu_rng_state)
-                _set_cuda_rng_state(bwd_cuda_rng_state)
-                get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
-
-            r = storage[x]
-            storage[x] = None
-            return r
-
-        with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
-            output = function(*args)
-        return output
+        return CheckpointFunctionRipipe.apply(function, distribute_saved_activations, *args)
 
     return wrapper
