@@ -121,6 +121,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 | 【Prototype】ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)               |
 | 【Prototype】自定义空操作层                              | [link](docs/features/noop-layers.md)                      |
 | 【Prototype】Ascend Norm重计算                                     | [link](docs/features/norm-recompute.md)                   |
+| 【Prototype】高可用特性                                | [link](docs/features/high_availability.md)                |
 | 【Prototype】其他昇腾亲和优化                             | 暂无                                                        |
 
 # 自定义算子
