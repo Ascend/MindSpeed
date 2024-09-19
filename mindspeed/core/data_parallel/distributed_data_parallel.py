@@ -399,7 +399,7 @@ def distributed_data_parallel_init_uce(
     # Accumulation function for the gradients need to be stored so they
     # don't go out of scope.
     self.grad_accs = []
-    self.removeablehandles = []
+    self.removablehandles = []
     for param in self.module.parameters():
         if param.requires_grad:
             # Expand so we get access to grad_fn.
@@ -407,7 +407,7 @@ def distributed_data_parallel_init_uce(
             # Get the gradient accumulator function.
             grad_acc = param_tmp.grad_fn.next_functions[0][0]
             handle = grad_acc.register_hook(self._make_param_hook(param, self.param_to_buffer))
-            self.removeablehandles.append(handle)
+            self.removablehandles.append(handle)
             self.grad_accs.append(grad_acc)
 
 

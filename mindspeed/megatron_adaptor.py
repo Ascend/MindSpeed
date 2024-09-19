@@ -606,15 +606,15 @@ def zero3_adaptation(aspm, args):
 def high_availability_adaptation(aspm, args):
     if args.enable_high_availability:
         from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_uce
-        from .core.distributed.param_and_grad_buffer import start_grad_sync
+        from .core.distributed.param_and_grad_buffer import start_grad_sync_wrapper
         from .optimizer.optimizer_init import get_megatron_optimizer, get_megatron_optimizer_based_on_param_groups
         from .optimizer.clip_grads import clip_grad_norm_fp32_uce
         from .optimizer.distrib_optimizer import distributed_optimizer_uce_init
         from .training import train_uce
         aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
-                            distributed_optimizer_uce_init)
+                            distributed_data_parallel_init_uce)
         aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.Bucket.start_grad_sync',
-                            start_grad_sync)
+                            start_grad_sync_wrapper)
         aspm.register_patch('megatron.core.optimizer.get_megatron_optimizer', get_megatron_optimizer)
         aspm.register_patch('megatron.core.optimizer.get_megatron_optimizer_based_on_param_groups', get_megatron_optimizer_based_on_param_groups)
         aspm.register_patch('megatron.core.optimizer.clip_grad_norm_fp32', clip_grad_norm_fp32_uce)

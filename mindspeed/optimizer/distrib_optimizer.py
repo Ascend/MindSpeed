@@ -219,9 +219,10 @@ def distributed_optimizer_uce_init(
     from megatron.core.optimizer.distrib_optimizer import DistributedOptimizer
     from apex.optimizers import FusedAdam as Adam
     import itertools
+    from megatron.core.optimizer.optimizer import MixedPrecisionOptimizer
 
-    super(self.__class__, self).__init__(
-        optimizer, config, grad_scaler, init_state_fn,
+    MixedPrecisionOptimizer.__init__(
+        self, optimizer, config, grad_scaler, init_state_fn
     )
 
     assert isinstance(
