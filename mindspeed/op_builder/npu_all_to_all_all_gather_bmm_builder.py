@@ -16,11 +16,19 @@
 from typing import List, Optional
 import torch
 import torchair
-from torchair import ge
 from torch.library import Library, impl
-from torchair import register_fx_node_ge_converter
-from torchair.ge import Tensor, TensorSpec
 from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
+torch_npu_api_version = None
+try:
+    from torchair import ge
+    from torchair import register_fx_node_ge_converter
+    from torchair.ge import Tensor, TensorSpec, DataType
+except ImportError:
+    ge, Tensor, TensorSpec, DataType = None, None, None, None
+    from torchair.ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
+    torch_npu_api_version = 1
+else:
+    torch_npu_api_version = 2
 
 
 class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
@@ -90,6 +98,8 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
             '''"npu_alltoall_allgather_bmm(Tensor x, Tensor weight, str group_ep, str group_tp,
                 int ep_world_size, int tp_world_size, *, Tensor? bias=None, int x_shard_type=0, int act_type=0,
                 bool need_allgather_out=False, bool need_activation_feature=False) -> (Tensor, Tensor, Tensor)"'''
+            if torch_npu_api_version != 2:
+                raise ValueError(f"torch_npu_api_version {torch_npu_api_version} unsupport")
             return AllToAllAllGatherBatchMatmul(x,
                                                 weight,
                                                 bias=bias,

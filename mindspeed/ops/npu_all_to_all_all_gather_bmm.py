@@ -5,7 +5,7 @@ from torch.library import impl
 from mindspeed.op_builder import AllToAllAllGatherBatchMatMulOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 
-mindspeed_ops = AllToAllAllGatherBatchMatMulOpBuilder().load()
+mindspeed_ops_builder = AllToAllAllGatherBatchMatMulOpBuilder()
 SUPPORTED_ACT_TYPE = ["None", "GeLu", "SiLu", "ReLu", "FastGeLu", "GegLu", "SwigLu", "RegLu"]
 ACT_TYPE_DICT = {"none": 0,
                 "gelu": 1,
@@ -31,6 +31,7 @@ def npu_alltoall_allgather_bmm_single(x,
                                   act_type=0,
                                   need_allgather_out=False,
                                   need_activation_feature=False):
+    mindspeed_ops = mindspeed_ops_builder.load()
     outputs = mindspeed_ops.npu_alltoall_allgather_bmm(x, weight, bias,
                                                        group_ep, group_ep_worldsize,
                                                        group_tp, group_tp_worldsize,

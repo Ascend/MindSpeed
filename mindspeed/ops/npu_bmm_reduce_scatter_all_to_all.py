@@ -19,7 +19,7 @@ from torch.library import impl
 from mindspeed.op_builder.npu_bmm_reduce_scatter_all_to_all_builder import BatchMatMulReduceScatterAlltoAllOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 
-mindspeed_ops = BatchMatMulReduceScatterAlltoAllOpBuilder().load()
+mindspeed_ops_builder = BatchMatMulReduceScatterAlltoAllOpBuilder()
 
 
 @impl(AS_LIBRARY, "npu_bmm_reducescatter_alltoall", "PrivateUse1")
@@ -36,6 +36,7 @@ def npu_bmm_reducescatter_alltoall_single(x,
         raise AssertionError('x must not be None.')
     if weight is None:
         raise AssertionError('weight must not be None.')
+    mindspeed_ops = mindspeed_ops_builder.load()
     y = mindspeed_ops.npu_bmm_reducescatter_alltoall(x,
                                                      weight,
                                                      bias,
