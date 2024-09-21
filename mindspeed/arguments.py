@@ -352,6 +352,10 @@ def _add_automated_pipeline_args(parser):
 
 def _add_algorithm_args(parser):
     group = parser.add_argument_group(title='training')
+    group.add_argument('--optimization-level', type=int, choices=[0, 1, 2], default=2,
+                       help='0: The minimum patch set for megatron to adapt to NPU,'
+                            '1: Affinity optimization (fusion operator, etc.), '
+                            '2: Advanced acceleration algorithm')
     group.add_argument('--reuse-fp32-param', action='store_true',
                        help='The distributed training optimizer frees up '
                             'param copies of FP32 to save memory.')
