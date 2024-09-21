@@ -272,10 +272,13 @@ class AdaptiveRecomputePolicy:
             print_rank_0(f"[^?^?^] this is a unstable policy, try select another one.")
             self.swap_size = 1
 
-    def granular_module_allocation(self, vpp_size, recompute_num_layers, swap_noop_layers):
+    def granular_module_allocation(self, vpp_size, recompute_num_layers, cur_pp_noop_layers):
         swap_list = []
         recompute_list = []
         args = get_args()
+        cur_pp_rank = parallel_state.get_pipeline_model_parallel_rank()
+        pp_size = args.pipeline_model_parallel_size or 1
+        vpp_layer = args.num_layers_per_virtual_pipeline_stage
         if self.num_prefetch <= vpp_size:
             swap_list = [['0'] if i < self.num_prefetch else [''] for i in range(vpp_size)]
             recompute_list = [['0'] if i < recompute_num_layers else [''] for i in range(vpp_size)]
@@ -288,38 +291,46 @@ class AdaptiveRecomputePolicy:
                     if layer_id % vpp_size == chunk:
                         chunk_swap_layer.append(f'{layer_id // vpp_size}')
                 swap_list.append(chunk_swap_layer)
-                chunk_recompute_layer = []
+                chunk_recompute_layer = ['' for _ in range(vpp_layer)]
                 for layer_id in range(recompute_num_layers):
+                    cur_layer_idx = layer_id % (vpp_layer * pp_size)
                     if layer_id % vpp_size == chunk:
-                        chunk_recompute_layer.append(f'{layer_id // vpp_size}')
+                        chunk_recompute_layer[cur_layer_idx] = str(layer_id // vpp_size)
                 recompute_list.append(chunk_recompute_layer)
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and args.reduce_recompute_for_last_chunk:
                 if recompute_list[-1][-1] == str(args.num_layers_per_virtual_pipeline_stage - 1):
                     recompute_list[-1].pop()
                     if len(recompute_list[-1]) == 0:
                         recompute_list[-1].append('')
-        if 0 in swap_noop_layers and parallel_state.get_pipeline_model_parallel_rank() == 0:
-            swap_list[0][0] = ''
-            if recompute_num_layers:
-                recompute_list[0][0] = ''
-        elif args.num_layers - 1 in swap_noop_layers and \
-                parallel_state.get_pipeline_model_parallel_rank() == args.pipeline_model_parallel_size - 1:
-            swap_list[-1][-1] = ''
-            if recompute_num_layers:
-                recompute_list[-1][-1] = ''
+        for vpp in range(vpp_size):
+            vpp_layers = swap_list[vpp]
+            for i in range(len(vpp_layers)):
+                layer_id = vpp * vpp_layer * pp_size + i + vpp_layer * cur_pp_rank
+                if layer_id in cur_pp_noop_layers:
+                    swap_list[vpp][i] = ''
+                    recompute_list[vpp][i] = ''
+
         prefetch_list = swap_list
         interval = 0
         prefetch_recompute_group = [swap_list, prefetch_list, recompute_list]
-        return [prefetch_recompute_group, interval, self.num_prefetch, swap_noop_layers]
+        return [prefetch_recompute_group, interval, self.num_prefetch, cur_pp_noop_layers]
+
+    def get_cur_stage_noop_layers(self, noop_layers):
+        all_args = get_args()
+        cur_pp_noop_layers = []
+        cur_pp_rank = parallel_state.get_pipeline_model_parallel_rank()
+        pp_size = all_args.pipeline_model_parallel_size or 1
+        layers_per_pp = all_args.num_layers // pp_size
+        for i in noop_layers:
+            pp_id = i // layers_per_pp
+            if pp_id == cur_pp_rank:
+                cur_pp_noop_layers.append(i)
+        return cur_pp_noop_layers
 
     def solve_prefetch_policy(self):
         all_args = get_args()
         noop_layers = list(all_args.noop_layers) if isinstance(all_args.noop_layers, set) else []
-        swap_noop_layers = []
-        for i in noop_layers:
-            if i + 1 > all_args.num_layers:
-                continue
-            swap_noop_layers.append(i)
+        cur_pp_noop_layers = self.get_cur_stage_noop_layers(noop_layers)
         recompute_num_layers = all_args.recompute_num_layers or 0
         pp_size = all_args.pipeline_model_parallel_size or 1
         vpp_size = all_args.virtual_pipeline_model_parallel_size or 1
@@ -327,26 +338,21 @@ class AdaptiveRecomputePolicy:
             recompute_num_layers *= vpp_size
         if all_args.recompute_method == 'block':
             self.num_prefetch = recompute_num_layers
+        elif all_args.recompute_method == 'uniform':
+            recompute_num_layers = all_args.num_layers // pp_size
+            self.num_prefetch = recompute_num_layers
         else:
             self.num_prefetch = all_args.num_layers // pp_size
         self.interval = 0
         if vpp_size > 1:
-            return self.granular_module_allocation(vpp_size, recompute_num_layers, swap_noop_layers)
+            return self.granular_module_allocation(vpp_size, recompute_num_layers, cur_pp_noop_layers)
         else:
-            swap_list = [str(i) if i not in swap_noop_layers else '' for i in range(self.num_prefetch)]
-            recompute_list = [str(i) if i not in swap_noop_layers else '' for i in range(recompute_num_layers)]
-            if 0 in swap_noop_layers and parallel_state.get_pipeline_model_parallel_rank == 0:
-                swap_list[0] = ''
-                if recompute_num_layers:
-                    recompute_list[0] = ''
-            elif all_args.num_layers - 1 in swap_noop_layers and \
-                    parallel_state.get_pipeline_model_parallel_rank() == pp_size - 1:
-                swap_list[-1] = ''
-                if recompute_num_layers:
-                    recompute_list[-1] = ''
+            swap_list = [str(i) if i not in cur_pp_noop_layers else '' for i in range(self.num_prefetch)]
+            recompute_list = [str(i) if i not in cur_pp_noop_layers else '' for i in range(recompute_num_layers)]
+
             prefetch_list = swap_list
             prefetch_recompute_group = [[swap_list], [prefetch_list], [recompute_list]]
-            return [prefetch_recompute_group, 0, len(prefetch_list), swap_noop_layers]
+            return [prefetch_recompute_group, 0, len(prefetch_list), cur_pp_noop_layers]
 
 
 def get_adaptive_recomputing_policy():
@@ -596,13 +602,10 @@ class AdaptiveRecompute:
         print(f"[DEBUG] swap_list： {prefetch_recompute_group[0]},"
               f" prefetch_list： {prefetch_recompute_group[1]},"
               f" recompute_list： {prefetch_recompute_group[2]}")
-        if all_args.num_layers_per_virtual_pipeline_stage == 1:
-            if 0 in swap_noop_layers and parallel_state.get_pipeline_model_parallel_rank() == 0:
+        for i in prefetch_recompute_group[0]:
+            if not any(filter(None, i)):
                 vpp -= 1
-            elif all_args.num_layers - 1 in swap_noop_layers and \
-                    parallel_state.get_pipeline_model_parallel_rank() == pp - 1:
-                vpp -= 1
-        prefetch_args = [pp, vpp, interval, num_prefetch]
+        prefetch_args = [prefetch_recompute_group[0], vpp, interval, num_prefetch]
         apply_prefetch_strategy(config, models, self.context, prefetch_recompute_group, prefetch_args)
 
 

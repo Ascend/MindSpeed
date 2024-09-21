@@ -276,6 +276,8 @@ def _add_training_args(parser):
     group.add_argument('--swap-attention', action='store_true', default=False,
                        help='switch to open swap-attention feature.'
                             'The default is False.')
+    group.add_argument('--swap-modules', type=str, default="input_norm,self_attention,post_attention_norm",
+                       help='Swap modules for model. Can be used together with "--swap-attention."')
     group.add_argument('--use-fusion-attn-v2', action='store_true', default=False,
                        help='use fusion_attention ops version 2')
     group.add_argument('--pipe-experts-multi-data', type=int, default=1,

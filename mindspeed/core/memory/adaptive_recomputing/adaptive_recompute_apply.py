@@ -153,11 +153,7 @@ def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_gr
         prefetch_register_post_backward_hook(models, pre_layer_full_name + '.' + cur_layer_name, prefetch_args)
         prefetch_register_pre_forward_hook(models, pre_layer_full_name + '.' + cur_layer_name, prefetch_args)
     if hook_list == prefetch_list and prefetch_list != ['']:
-        if args.use_mcore_models:
-            swap_modules = ["core_attention", "linear_proj", "linear_qkv"]
-        else:
-            swap_modules = ["input_norm", "self_attention", "post_attention_norm"]
-        if "name" in ctx and ctx["name"] in swap_modules and \
+        if "name" in ctx and ctx["name"] in args.swap_modules and \
                 get_layer_id(ctx["prefix_name"]) in prefetch_list:
             print_rank_0(f"prefetch swap hook success: {pre_layer_full_name + '.' + cur_layer_name}")
             models.no_checkpoint_adaptive_recompute_forward = models.forward

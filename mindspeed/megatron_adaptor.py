@@ -430,6 +430,9 @@ def ascend_adaptation(aspm, args):
 
 
 def mcore_moe_adaptation(pm, args):
+    from .core.pipeline_parallel.schedules import forward_step
+    pm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step',
+                        forward_step)
     if args.moe_permutation_async_comm:
         if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall':
             from .core.transformer.moe.experts import sequential_mlp_forward

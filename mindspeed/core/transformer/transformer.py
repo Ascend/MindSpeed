@@ -172,7 +172,7 @@ def parallel_transformer_checkpointed_forward_wrapper(forward_func):
     def row_parallel_forward(*args, **kwargs):
         global_args = get_args()
         if global_args.optimize_recomp_communication_level == 0:
-            if global_args.recompute_method != 'block':
+            if global_args.recompute_method != 'block' and not global_args.swap_attention:
                 output = forward_func(*args, **kwargs)
             else:
                 output = parallel_transformer_checkpointed_forward(*args, **kwargs)
@@ -196,13 +196,34 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
             return x_
 
         return custom_forward
-    
-    args = get_args()
-    if self.recompute_method == 'block':
+
+    global_args = get_args()
+    num_layers_per_pipeline_rank = global_args.num_layers // global_args.pipeline_model_parallel_size
+    if self.recompute_method == 'uniform':
+        # Uniformly divide the total number of Transformer layers and
+        # checkpoint the input activation of each divided chunk.
+        # A method to further reduce memory usage reducing checkpoints.
+        if not global_args.swap_attention:
+            l = 0
+            while l < num_layers_per_pipeline_rank:
+                hidden_states = tensor_parallel.checkpoint(
+                    custom(l, l + self.recompute_num_layers),
+                    self.distribute_saved_activations,
+                    hidden_states, attention_mask,
+                    encoder_output, enc_dec_attn_mask,
+                    None, None, None, None, rotary_pos_emb)
+
+                l += self.recompute_num_layers
+        else:
+            for l in range(num_layers_per_pipeline_rank):
+                hidden_states = custom(l, l + 1)(
+                    hidden_states, attention_mask,
+                    encoder_output, enc_dec_attn_mask,
+                    None, None, None, None, rotary_pos_emb)
+    elif self.recompute_method == 'block':
         # Checkpoint the input activation of only a set number of individual
         # Transformer layers and skip the rest.
         # A method fully use the device memory removing redundant re-computation.
-        global_args = get_args()
         vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
         vpp_size = global_args.virtual_pipeline_model_parallel_size
         if vpp_rank is None or not global_args.enable_recompute_layers_per_pp_rank:
@@ -228,7 +249,7 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
                 else:
                     return (l * vpp_size + vpp_rank) < self.recompute_num_layers
 
-            if should_recompute() and not args.swap_attention:
+            if should_recompute() and not global_args.swap_attention:
                 hidden_states = tensor_parallel.checkpoint(
                     custom(l, l + 1),
                     self.distribute_saved_activations,

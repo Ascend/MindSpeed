@@ -5,6 +5,7 @@ import torch_npu
 from megatron.training import print_rank_0
 from megatron.training import get_args
 from megatron.core import parallel_state
+
 DEBUG_PRINT = True
 
 
@@ -23,13 +24,13 @@ class SwapTensor:
         self.size = tensor.size()
         self.storage_size = tensor.storage().size()
         self.tensor_cpu = torch.empty(tensor.shape, dtype=tensor.dtype, pin_memory=True, device='cpu')
- 
+
         self.d2h_event = None
-        self.h2d_event = None
- 
+        self.h2d_event = torch.npu.Event()
+
         self.stat = "device"
         self.layer_name = layer_name
- 
+
         self.prefetch_data_ptr = tensor.data_ptr()
         self.storage_data_ptr = tensor.storage().data_ptr()
         self.layer_id = None
@@ -60,9 +61,10 @@ class SwapTensor:
             return
         if flag:
             torch.npu.current_stream().wait_stream(stream)
+            torch.npu.default_stream().wait_stream(stream)
         self.tensor.storage().resize_(0)
         self.stat = "host"
- 
+
     # resize storage_size and host to device
     def launch_h2d(self, stream, flag):
         if self.stat != "host":
@@ -78,14 +80,16 @@ class SwapTensor:
                     self.tensor.copy_(self.tensor_cpu, non_blocking=True)
                 else:
                     self.tensor.storage().copy_(self.tensor_cpu.storage(), non_blocking=True)
+                self.h2d_event.record()
                 self.stat = "h2d"
- 
+
     # synchronize h2d
-    def wait_h2d_finished(self, stream, flag):
+    def wait_h2d_finished(self):
         if self.stat != "h2d":
             return
-        if flag:
-            torch.npu.current_stream().wait_stream(stream)
+        if self.h2d_event:
+            torch.npu.current_stream().wait_event(self.h2d_event)
+            torch.npu.default_stream().wait_event(self.h2d_event)
         self.stat = "device"
 
 
@@ -93,20 +97,21 @@ class SwapPrefetch:
     swap_prefetch = None
 
     def __init__(self, prefetch_args):
-        pp, vpp, interval, num_prefetch = prefetch_args
+        swap_list, vpp, interval, num_prefetch = prefetch_args
         all_args = get_args()
-        self.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
-        self.pp = pp
+        self.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
+        self.pp = all_args.pipeline_model_parallel_size
         self.vpp = min(vpp, num_prefetch)
-        if (isinstance(all_args.noop_layers, set) and 0 in all_args.noop_layers and
-                parallel_state.get_pipeline_model_parallel_rank() == 0):
-            self.first_layer_id = 1
-        else:
-            self.first_layer_id = 0
- 
+        self.first_layer_id = 0
+        if isinstance(all_args.noop_layers, set):
+            for layer_id in swap_list[0]:
+                if layer_id != '':
+                    self.first_layer_id = int(layer_id)
+                    break
+
         self.swap_tensors = []
         self.layer_name = ""
- 
+
         self.data_ptr = {}
         self.prefetch_list = []
         self.prefetch_data_ptr_list = []
@@ -116,7 +121,8 @@ class SwapPrefetch:
         self.interval = interval
         self.slice_tensor_storage_ptr = {}
         self.slice_tensor_storage_ptr_list = []
- 
+        self.eval_end_flag = False
+
     @staticmethod
     def no_swap_tensor(ori_tensor):
         if ori_tensor.numel() * ori_tensor.element_size() * 2 < 1024 * 1024:
@@ -129,10 +135,20 @@ class SwapPrefetch:
             return True
         if ori_tensor.storage().size() == 0:
             return True
- 
+
         return False
- 
+
     def pack_hook(self, ori_tensor):
+        args = get_args()
+        if args.eval_interval:
+            if args.curr_iteration % args.eval_interval != 0:
+                self.eval_end_flag = False
+            if args.curr_iteration and args.curr_iteration % args.eval_interval == 0 and not self.eval_end_flag:
+                self.prefetch_data_ptr_list = []
+                self.prefetch_list = []
+                self.slice_tensor_storage_ptr_list = []
+                self.eval_end_flag = True
+
         if self.no_swap_tensor(ori_tensor):
             return ori_tensor
         swap_tensor = SwapTensor(ori_tensor, self.layer_name)
@@ -157,11 +173,13 @@ class SwapPrefetch:
                         f'{len(self.prefetch_list)}_{len(self.swap_tensors)}')
 
         # Records the same data_ptr tensor status.
-        if ori_tensor.data_ptr() in self.data_ptr:
+        if ori_tensor.storage().data_ptr() in self.data_ptr:
+            self.swap_tensors[self.data_ptr[ori_tensor.storage().data_ptr()]].stat = 'h2d'
             swap_tensor.stat = 'host'
-            self.data_ptr[ori_tensor.data_ptr()] += 1
+            swap_tensor.tensor_cpu = self.swap_tensors[self.data_ptr[ori_tensor.storage().data_ptr()]].tensor_cpu
+            self.data_ptr[ori_tensor.storage().data_ptr()] = len(self.swap_tensors)
         else:
-            self.data_ptr[ori_tensor.data_ptr()] = 1
+            self.data_ptr[ori_tensor.storage().data_ptr()] = len(self.swap_tensors)
 
         swap_tensor.launch_d2h(self.prefetch_stream)
         swap_tensor.stream = self.prefetch_stream
@@ -169,17 +187,20 @@ class SwapPrefetch:
         self.swap_tensors.append(swap_tensor)
         self.forward_flag = True
         return swap_tensor
- 
+
     def unpack_hook(self, swap_tensor):
         if isinstance(swap_tensor, torch.Tensor):
             return swap_tensor
-        swap_tensor.wait_h2d_finished(swap_tensor.stream, swap_tensor.last_tensor)
+        swap_tensor.wait_h2d_finished()
         self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index].remove(swap_tensor)
         # Remove prefetch completed list
         if len(self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index]) == 0:
-            self.prefetch_list[self.cur_micro_num].remove(self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index])
-            self.prefetch_data_ptr_list[self.cur_micro_num].remove(self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index])
-            self.slice_tensor_storage_ptr_list[self.cur_micro_num].remove(self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index])
+            self.prefetch_list[self.cur_micro_num].remove(
+                self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index])
+            self.prefetch_data_ptr_list[self.cur_micro_num].remove(
+                self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index])
+            self.slice_tensor_storage_ptr_list[self.cur_micro_num].remove(
+                self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index])
             if len(self.prefetch_list[self.cur_micro_num]) == 0:
                 self.prefetch_list.remove(self.prefetch_list[self.cur_micro_num])
                 self.prefetch_data_ptr_list.remove(self.prefetch_data_ptr_list[self.cur_micro_num])
@@ -189,15 +210,15 @@ class SwapPrefetch:
                     self.remove_num = 0
         self.forward_flag = False
         return swap_tensor.tensor
- 
+
     def hook_swap_manager_forward(self, forward_func, layer_name):
         def custom_forward(*args, **kargs):
             self.layer_name = layer_name
             with torch.autograd.graph.saved_tensors_hooks(self.pack_hook, self.unpack_hook):
                 return forward_func(*args, **kargs)
- 
+
         return custom_forward
- 
+
     def update_slice_tensor_stat(self, swap_tensor):
         if swap_tensor.is_slice_tensor and swap_tensor.storage_data_ptr in self.slice_tensor_storage_ptr:
             _, index = self.slice_tensor_storage_ptr[swap_tensor.storage_data_ptr][0].split('_')
@@ -205,7 +226,7 @@ class SwapPrefetch:
                 swap_tensor.stat = 'host'
                 return False
         return True
- 
+
     def sync_d2h(self, module_name):
         if not self.swap_tensors:
             return
@@ -220,12 +241,10 @@ class SwapPrefetch:
                     and swap_tensor.stat == "d2h":
                 if not self.update_slice_tensor_stat(swap_tensor):
                     continue
-                if swap_tensor == self.swap_tensors[-1] or swap_tensor == self.swap_tensors[len(self.swap_tensors) // 2]:
-                    swap_tensor.last_tensor = True
-                elif swap_tensor == self.swap_tensors[0]:
-                    swap_tensor.first_tensor = True
                 # During synchronization, let the first tensor wait for d2h
                 swap_tensor.wait_d2h_finished(swap_tensor.stream, swap_tensor.first_tensor)
+        self.swap_tensors[-1].last_tensor = True
+        self.swap_tensors[0].first_tensor = True
         if self.swap_tensors[-1].stat == 'host':
             if self.swap_tensors[0].layer_id > self.first_layer_id and self.prefetch_list:
                 self.prefetch_list[-1].append(self.swap_tensors)
@@ -265,11 +284,11 @@ class SwapPrefetch:
         if self.vpp != 1 and not self.forward_flag:
             self.cur_micro_num = self.pp * (self.vpp - 1 - self.remove_num // self.pp)
         for swap_tensor_list in self.prefetch_list[self.cur_micro_num]:
-            for swap_tensor in swap_tensor_list:
+            for swap_tensor in reversed(swap_tensor_list):
                 if swap_tensor.layer_id + self.interval == int(get_layer_id(module_name)) \
                         and swap_tensor.stat == "host" \
-                        and swap_tensor.prefetch_data_ptr in self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index]:
-                    del self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index][swap_tensor.prefetch_data_ptr]
+                        and swap_tensor.storage_data_ptr in self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index]:
+                    del self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index][swap_tensor.storage_data_ptr]
                     # For slice tensors, only the first tensor is resized. Other h2d the tensor size
                     self.h2d_special_tensor(swap_tensor)
 

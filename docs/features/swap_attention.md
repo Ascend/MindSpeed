@@ -23,6 +23,8 @@
 
 ## 使用方法
 
+`--swap-modules`：参数类型为string，默认值为"input_norm,self_attention,post_attention_norm"，可根据模型自行配置module，需要结合`--swap-attention`使用
+
 ### a. 仅开启预取功能：`--swap-attention`
 
 开启后，将对每一层的attention层的激活值进行预取，提高计算效率。
