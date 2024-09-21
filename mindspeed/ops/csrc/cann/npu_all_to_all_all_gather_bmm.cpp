@@ -82,7 +82,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_alltoall_allgather_bmm(
         y2out = at::empty(y2_output_size, yoptions);
     }
     at::Tensor y3out{nullptr};
-    if (need_activation_feature_value && (act_type != 0)) {
+    if (need_activation_feature_value) {
         y3out = at::empty(y1_output_size, yoptions);
     }
 

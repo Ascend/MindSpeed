@@ -100,6 +100,7 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
                 bool need_allgather_out=False, bool need_activation_feature=False) -> (Tensor, Tensor, Tensor)"'''
             if torch_npu_api_version != 2:
                 raise ValueError(f"torch_npu_api_version {torch_npu_api_version} unsupport")
+            CheckDtype(x, weight, bias)
             return AllToAllAllGatherBatchMatmul(x,
                                                 weight,
                                                 bias=bias,
@@ -111,6 +112,22 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
                                                 act_type=act_type,
                                                 need_allgather_out=need_allgather_out,
                                                 need_activation_feature=need_activation_feature)
+
+
+def CheckDtype(x: Tensor, weight: Tensor, bias: Optional[Tensor]):
+    if x.dtype != DataType.DT_BF16 and x.dtype != DataType.DT_FLOAT16:
+        raise AssertionError(f'type of x must be fp16/bf16, but got {x.dtype}.')
+    if weight.dtype != DataType.DT_BF16 and weight.dtype != DataType.DT_FLOAT16:
+        raise AssertionError(f'type of weight must be fp16/bf16, but got {weight.dtype}.')
+    if x.dtype != weight.dtype:
+        raise AssertionError(f'type of x and weight must be same, but got x {x.dtype} weight {weight.dtype}.')
+    if bias is not None:
+        if bias.dtype != DataType.DT_FLOAT16 and bias.dtype != DataType.DT_FLOAT:
+            raise AssertionError(f'type of bias must fp16/fp32, but got {bias.dtype}.')
+        if x.dtype == DataType.DT_FLOAT16 and bias.dtype != DataType.DT_FLOAT16:
+            raise AssertionError(f'type of bias must fp16 when x is fp16, but got {bias.dtype}.')
+        if x.dtype == DataType.DT_BF16 and bias.dtype != DataType.DT_FLOAT:
+            raise AssertionError(f'type of bias must fp32 when x is bf16, but got {bias.dtype}.')
 
 
 def AllToAllAllGatherBatchMatmul(

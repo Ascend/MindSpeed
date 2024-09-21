@@ -18,6 +18,7 @@ import torch
 import torchair
 from torch.library import Library, impl
 from mindspeed.op_builder.builder import MindSpeedOpBuilder, AS_LIBRARY
+from mindspeed.op_builder.npu_all_to_all_all_gather_bmm_builder import CheckDtype
 torch_npu_api_version = None
 try:
     from torchair import ge
@@ -93,6 +94,7 @@ class BatchMatMulReduceScatterAlltoAllOpBuilder(MindSpeedOpBuilder):
                                                    meta_outputs: TensorSpec = None):
             if torch_npu_api_version != 2:
                 raise ValueError(f"torch_npu_api_version {torch_npu_api_version} unsupport")
+            CheckDtype(x, weight, bias)
             return BatchMatmulReduceScatterAlltoAll(x,
                                                     weight,
                                                     bias=bias,
