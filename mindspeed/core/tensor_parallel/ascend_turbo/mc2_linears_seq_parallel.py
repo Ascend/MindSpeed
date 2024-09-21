@@ -23,15 +23,19 @@ class ColumnSeqParallelLinear(torch.autograd.Function):
         x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
 
         world_size = ascend_turbo_cfg.get_world_size()
+        # npu_all_gather_base_mm currently do not support bias
         output, all_gather_grad_output = torch_npu.npu_all_gather_base_mm(
             x,
             weight.t(),
             hcomm_info,
             world_size,
-            bias=bias,
+            bias=None,
             gather_index=0,
             gather_output=(not ascend_turbo_cfg.all_gather_recomputation),
         )
+
+        if bias is not None:
+            output = output + bias
 
         output = output.view(
             int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]
@@ -119,9 +123,13 @@ class RowSeqParallelLinear(torch.autograd.Function):
 
         x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
 
+        # npu_mm_reduce_scatter_base currently do not support bias
         output = torch_npu.npu_mm_reduce_scatter_base(
-            x, weight.t(), hcomm_info, world_size, reduce_op="sum", bias=bias
+            x, weight.t(), hcomm_info, world_size, reduce_op="sum", bias=None
         )
+
+        if bias is not None:
+            output = output + bias
 
         ctx.hcomm_info = hcomm_info
         ctx.world_size = world_size

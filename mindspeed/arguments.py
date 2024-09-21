@@ -609,8 +609,6 @@ def validate_args_wrapper(validate_args):
         if args.use_ascend_mc2:
             if args.use_ascend_coc:
                 raise AssertionError('--mc2 and coc can not be used together')
-            if args.add_bias_linear or args.add_qkv_bias:
-                raise AssertionError('--mc2 currently does not support linear and attention with bias.')
         if args.use_nd_matmul:
             if args.normalization == 'LayerNorm':
                 raise AssertionError('ND_MatMul is temporarily incompatible with LayerNorm')
