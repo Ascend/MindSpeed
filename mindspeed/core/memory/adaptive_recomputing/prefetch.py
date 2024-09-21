@@ -175,7 +175,7 @@ class SwapPrefetch:
         # Records the same data_ptr tensor status.
         if ori_tensor.storage().data_ptr() in self.data_ptr:
             self.swap_tensors[self.data_ptr[ori_tensor.storage().data_ptr()]].stat = 'h2d'
-            swap_tensor.stat = 'host'
+            swap_tensor.stat = 'd2h'
             swap_tensor.tensor_cpu = self.swap_tensors[self.data_ptr[ori_tensor.storage().data_ptr()]].tensor_cpu
             self.data_ptr[ori_tensor.storage().data_ptr()] = len(self.swap_tensors)
         else:
