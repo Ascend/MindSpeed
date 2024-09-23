@@ -175,6 +175,15 @@ def mcore_models_adaptation(aspm, mindspeed_args):
     if mindspeed_args.recompute_norm:
         from .core.models.gpt.gpt_layer_specs import build_norm_recompute_layer_wrapper
         aspm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._build_layers', build_norm_recompute_layer_wrapper)
+    
+    if getattr(mindspeed_args, 'reset_attention_mask', False):
+        from .core.datasets.gpt_dataset import _get_ltor_masks_and_position_ids, collate_wrapper
+        aspm.register_patch('megatron.core.datasets.gpt_dataset._get_ltor_masks_and_position_ids', _get_ltor_masks_and_position_ids)
+        aspm.register_patch('torch.utils.data._utils.collate.default_collate', collate_wrapper)
+
+    if getattr(mindspeed_args, 'reset_position_ids', False):
+        from .core.models.common.embeddings.rotary_pos_embedding import rotary_forward
+        aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward', rotary_forward) 
 
 
 def mcore_transformer_adaptation_l0(aspm):

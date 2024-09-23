@@ -64,13 +64,7 @@ def get_batch_on_this_cp_rank(batch):
     args = get_args()
 
     if args.reset_attention_mask:
-        import itertools
         position_ids = batch['position_ids']
-        actual_seq_len = [compute_actual_seq_len(seq) for seq in position_ids]
-        length = actual_seq_len[0][-1]
-        seq_len_1d = [[elem + i * length for elem in seq] for i, seq in enumerate(actual_seq_len)]
-        actual_seq_len = list(itertools.chain(*seq_len_1d))
-        set_actual_seq_len(actual_seq_len)
         position_ids = position_ids.transpose(0, 1).contiguous()
         set_position_ids(position_ids)    
  
@@ -202,13 +196,29 @@ def _get_batch_on_this_cp_rank_in_hybrid_cp_general(batch):
     return batch
 
 
+def _broadcast(item):
+    if item is not None:
+        torch.distributed.broadcast(item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
+
+
+def broadcast_dynamic(item):
+    if item is not None:
+        item = item.npu()
+        item_len = torch.tensor(item.numel(), device=torch.cuda.current_device())
+        _broadcast(item_len)
+        _broadcast(item)
+    else:
+        item_len = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
+        _broadcast(item_len)
+        item = torch.empty([item_len.item()], dtype=torch.int64, device=torch.cuda.current_device())
+        _broadcast(item)
+
+    return item
+
+
 def get_batch_on_this_tp_rank(data_iterator):
     from megatron.training import get_args
     args = get_args()
-
-    def _broadcast(item):
-        if item is not None:
-            torch.distributed.broadcast(item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
 
     if mpu.get_tensor_model_parallel_rank() == 0:
         if data_iterator is not None:
@@ -245,6 +255,10 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         elif args.reset_attention_mask:
             _broadcast(batch['position_ids'])
+        
+        if args.reset_attention_mask:
+            actual_seq_len = broadcast_dynamic(data['actual_seq_len'])
+            set_actual_seq_len(actual_seq_len.tolist())   
 
     else:
         tokens = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
@@ -294,5 +308,9 @@ def get_batch_on_this_tp_rank(data_iterator):
             'attention_mask': attention_mask,
             'position_ids': position_ids
         }
+
+        if args.reset_attention_mask:
+            actual_seq_len = broadcast_dynamic(None)
+            set_actual_seq_len(actual_seq_len.tolist())
 
     return batch

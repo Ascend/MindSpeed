@@ -67,7 +67,8 @@ def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool
     sin_ = (torch.sin(freqs) * _mscale).to(t.dtype)
 
     if args.use_fused_rotary_pos_emb:
-        t = npu_rotary_position_embedding(t.contiguous(), cos_, sin_).to(t.dtype)
+        mode = 1 if rotary_interleaved else 0
+        t = npu_rotary_position_embedding(t.contiguous(), cos_, sin_, mode).to(t.dtype)
     else:
         t = (t * cos_) + (_rotate_half(t, rotary_interleaved) * sin_)
 
@@ -112,12 +113,47 @@ def rotary_embedding_init_wrapper(fn):
     return wrapper
 
 
+def rotary_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
+    """Forward pass of RoPE embedding.
+
+    Args:
+        max_seq_len (int): Maximum size of sequence
+        offset (int, optional): _description_. Defaults to 0.
+
+    Returns:
+        Tensor: Embeddings after applying RoPE.
+    """
+    seq = (
+        torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
+        + offset
+    )
+
+    if self.seq_len_interpolation_factor is not None:
+        seq *= 1 / self.seq_len_interpolation_factor
+
+    freqs = torch.outer(seq, self.inv_freq)
+    # first part even vector components, second part odd vector components,
+    #  2 * dim in dimension size
+    if not self.rotary_interleaved:
+        emb = torch.cat((freqs, freqs), dim=-1)
+    else:
+        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(
+            freqs.shape[0], -1
+        )
+    # emb [seq_length, .., dim]
+    emb = emb[:, None, None, :]
+    position_ids = get_position_ids()
+    s, b = position_ids.shape
+    emb = emb[position_ids.view(-1)].squeeze(1).reshape(s, b, 1, -1)
+
+    if parallel_state.get_context_parallel_world_size() > 1:
+        # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
+        emb = get_pos_emb_on_this_cp_rank(emb, 0)
+    return emb
+
+
 def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
     args = get_args()
-    if args.reset_attention_mask:
-        position_ids = get_position_ids()
-        s, b = position_ids.shape
-        pos_emb = pos_emb[position_ids.view(-1)].squeeze(1).reshape(s, b, 1, -1)
     
     if args.context_parallel_algo == 'megatron_cp_algo':
         if args.cp_attention_mask_type == 'general':
