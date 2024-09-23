@@ -533,6 +533,8 @@ def mcore_moe_adaptation(pm, args):
                     from .core.transformer.moe.token_dispatcher import alltoall_token_permutation_new, \
                         alltoall_token_unpermutation_new
                     from .core.transformer.moe.experts import group_mlp_forward
+                    from .core.transformer.mlp import mlp_init
+                    pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init)
                     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', group_mlp_forward)
                     pm.register_patch(
                         'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
@@ -553,6 +555,8 @@ def mcore_moe_adaptation(pm, args):
                     from .core.transformer.moe.token_dispatcher import alltoall_token_permutation_new, \
                         alltoall_token_unpermutation_new
                     from .core.transformer.moe.experts import group_mlp_forward
+                    from .core.transformer.mlp import mlp_init
+                    pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init)
                     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', group_mlp_forward)
                     pm.register_patch(
                         'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
@@ -578,8 +582,8 @@ def mcore_moe_adaptation(pm, args):
                 from .core.transformer.moe.token_dispatcher import (allgather_token_permutation_new,
                                                                     allgather_token_unpermutation_new)
                 from .core.transformer.moe.experts import group_mlp_forward
-                from .core.transformer.mlp import mlp_init_wrapper
-                pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init_wrapper)
+                from .core.transformer.mlp import mlp_init
+                pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init)
                 pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', group_mlp_forward)
                 pm.register_patch(
                     'megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation',

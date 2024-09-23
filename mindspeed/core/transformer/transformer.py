@@ -365,6 +365,9 @@ def core_mlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         is_recompute_activation = should_recompute_activation(self.layer_number)
+        if get_args().moe_alltoall_overlap_comm:
+            moe_ctx = args[-1]
+            args = args[:-1]
 
         def activation_function(*function_args):
             intermediate, bias = function_args
@@ -387,8 +390,22 @@ def core_mlp_forward_wrapper(fn):
 
             return intermediate
 
-        if not is_recompute_activation:
+        moe_without_activation = get_args().moe_without_activation
+        if not (is_recompute_activation or moe_without_activation):
             output, output_bias = fn(self, *args, **kwargs)
+        elif moe_without_activation:
+            if self.shared_expert:
+                self.activation_function = activation_function
+                hidden_states = args[0]
+                fc1_out_parallel, bias_parallel = self.linear_fc1(hidden_states)
+                act_out_parallel = activation_function(fc1_out_parallel, bias_parallel)
+                output, output_bias = self.linear_fc2(act_out_parallel)
+                fc1_out_parallel.untyped_storage().resize_(0)
+                act_out_parallel.untyped_storage().resize_(0)
+                moe_ctx.shared_fc1_out = fc1_out_parallel
+                moe_ctx.shared_act_out = act_out_parallel
+            else:
+                output, output_bias = fn(self, *args, **kwargs)
         else:
             hidden_states = args[0]
             intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)

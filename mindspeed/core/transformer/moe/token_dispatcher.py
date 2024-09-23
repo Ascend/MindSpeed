@@ -6,8 +6,9 @@ from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import permute, unpermute
 from megatron.core.tensor_parallel.mappings import _gather_along_first_dim_expert_parallel
 from mindspeed.core.transformer.moe.router import gather_from_sequence_parallel_region_to_moe_async
-from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
+from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import forward_func
+from mindspeed.core.transformer.moe.unpermute_without_activation import UnpermuteWithoutActivation
 
 
 def allgather_token_permutation(self, hidden_states: torch.Tensor, max_prob: torch.Tensor, max_ind):
@@ -569,7 +570,7 @@ def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor, bias: t
 
 
 def alltoall_token_permutation_new(
-        self, hidden_states: torch.Tensor, scores: torch.Tensor, indices: torch.Tensor, shared_experts, save_tensors, save_tensors_for_grad
+        self, hidden_states: torch.Tensor, scores: torch.Tensor, indices: torch.Tensor, shared_experts, save_tensors, save_tensors_for_grad, moe_ctx=None
 ):
     self.hidden_shape = hidden_states.shape
     self.scores = scores
@@ -614,7 +615,11 @@ def alltoall_token_permutation_new(
 
     # shared experts
     if shared_experts is not None:
-        (share_experts_output, _), *_ = forward_func(shared_experts, hidden_states)
+        (share_experts_output, _), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
+        if parallel_state.get_tensor_model_parallel_world_size() > 1:
+            share_experts_graph, share_experts_output, rs_shared_experts_handle = async_reduce_scatter(share_experts_output, parallel_state.get_tensor_model_parallel_group(),
+                                                                                                       event=permute1_ep_all_to_all_handle, stream=torch.npu.default_stream())
+            share_experts_output = (share_experts_graph, share_experts_output, rs_shared_experts_handle)
     else:
         share_experts_output = None
 
@@ -689,12 +694,19 @@ def alltoall_token_unpermutation_new(
 
     def alltoall_token_unpermutation2(permutated_local_input_tokens):
         # Unpermutation 1: AlltoAll output to output
-        output = unpermute(
-            permutated_local_input_tokens,
-            self.reversed_local_input_permutation_mapping,
-            probs=self.scores,
-            topk=self.router_topk
-        )
+        if get_args().moe_without_activation:
+            output = UnpermuteWithoutActivation.apply(
+                permutated_local_input_tokens,
+                self.reversed_local_input_permutation_mapping,
+                self.scores
+            )
+        else:
+            output = unpermute(
+                permutated_local_input_tokens,
+                self.reversed_local_input_permutation_mapping,
+                probs=self.scores,
+                topk=self.router_topk
+            )
 
         # Perform tensor parallel AlltoAll communication
         if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
@@ -708,6 +720,6 @@ def alltoall_token_unpermutation_new(
     output, unpermute2_input_detach = forward_func(alltoall_token_unpermutation2, permutated_local_input_tokens)
     save_tensors.append(unpermute2_input_detach)
     save_tensors_for_grad.append(unpermute2_input_detach)
-    if not get_args().use_fused_moe_token_permute_and_unpermute:
+    if not get_args().use_fused_moe_token_permute_and_unpermute or get_args().moe_without_activation:
         unpermute2_input_detach.untyped_storage().resize_(0)
     return output, None

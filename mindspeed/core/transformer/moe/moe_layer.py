@@ -45,11 +45,11 @@ def moe_layer_init_wrapper(init_func):
         if global_args.n_shared_experts:
             config = deepcopy(self.config)
             config.ffn_hidden_size = global_args.n_shared_experts * self.config.ffn_hidden_size
-            if self.moe_allgather_overlap_comm:
+            if self.moe_allgather_overlap_comm or self.moe_alltoall_overlap_comm:
                 from mindspeed.core.transformer.moe.layers import ColumnParallelLinear, RowParallelLinear
                 self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
                                                                      linear_fc2=RowParallelLinear, ),
-                                          shared_expert=self.moe_allgather_overlap_comm)
+                                          shared_expert=True)
             else:
                 from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
                 self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,

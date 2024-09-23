@@ -1,10 +1,64 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
+import torch_npu
 
 AG_TP_HIDDEN_STATUS = None
+AG_SHARED_EXPERTS_INPUTS = []
 GEMM_BACKWARD_NEED_TENSORS = None
 RS_GLOBAL_HIDDEN_STATES_GRAD_WITH_HANDLE = None
+SWAP_STREAM = None
+SWAP_STREAM2 = None
+SWAP_TENSOR = None
+MATMUL_OUTPUT_GRAD = None
+UNPERMUTED_TOKENS = None
+
+
+def get_swap_stream():
+    global SWAP_STREAM2
+    if SWAP_STREAM2 is None:
+        _ = torch_npu.npu.Stream(device=torch.npu.current_device())
+        SWAP_STREAM2 = torch_npu.npu.Stream(device=torch.npu.current_device())
+    stream = SWAP_STREAM2
+    return stream
+
+
+def set_swap_status(tensor):
+    global SWAP_TENSOR
+    SWAP_TENSOR = tensor
+
+
+def get_swap_status():
+    global SWAP_STREAM
+    if SWAP_STREAM is None:
+        SWAP_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
+    global SWAP_TENSOR
+    stream = SWAP_STREAM
+    tensor = SWAP_TENSOR
+    SWAP_TENSOR = None
+    return stream, tensor
+
+
+def set_prob_backward_need_tensors(matmul_output_grad, unpermuted_tokens):
+    global MATMUL_OUTPUT_GRAD
+    MATMUL_OUTPUT_GRAD = matmul_output_grad
+    global UNPERMUTED_TOKENS
+    UNPERMUTED_TOKENS = unpermuted_tokens
+
+
+def get_prob_backward_need_tensors():
+    global SWAP_STREAM2
+    if SWAP_STREAM2 is None:
+        _ = torch_npu.npu.Stream(device=torch.npu.current_device())
+        SWAP_STREAM2 = torch_npu.npu.Stream(device=torch.npu.current_device())
+    global MATMUL_OUTPUT_GRAD
+    global UNPERMUTED_TOKENS
+    stream = SWAP_STREAM2
+    matmul_output_grad = MATMUL_OUTPUT_GRAD
+    unpermuted_tokens = UNPERMUTED_TOKENS
+    MATMUL_OUTPUT_GRAD = None
+    UNPERMUTED_TOKENS = None
+    return stream, matmul_output_grad, unpermuted_tokens
 
 
 def set_ag_tp_hidden_status(_inputs):

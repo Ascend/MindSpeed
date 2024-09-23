@@ -1,3 +1,6 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+
 import os
 import warnings
 from typing import Any, Callable, List, Optional
@@ -60,11 +63,16 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
         ctx.sequence_parallel = sequence_parallel
         ctx.grad_output_buffer = grad_output_buffer
         ctx.shared_expert = shared_expert
-
+        ctx.need_save = True
         if sequence_parallel:
             if shared_expert:
-                from mindspeed.core.transformer.moe.moe_layer_overlap_allgather import AG_SHARED_EXPERTS_INPUTS
-                total_input = AG_SHARED_EXPERTS_INPUTS.pop(0)
+                from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
+                ag_shared_experts_inputs = AG_SHARED_EXPERTS_INPUTS.pop(0)
+                if isinstance(ag_shared_experts_inputs, tuple):
+                    ag_shared_experts_inputs, handle = ag_shared_experts_inputs
+                    handle.wait()
+                    ctx.need_save = False
+                total_input = ag_shared_experts_inputs
             else:
                 world_size = get_tensor_model_parallel_world_size()
                 dim_size = list(input.size())
@@ -110,13 +118,13 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
                     all_gather_buffer, input, group=get_tensor_model_parallel_group(), async_op=True
                 )
 
-                set_ag_tp_hidden_status(all_gather_buffer)
                 # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
                 # gather is scheduled before the input gradient computation
                 total_input = all_gather_buffer
             else:
                 total_input = input
-                set_ag_tp_hidden_status(input)
+            if ctx.need_save:
+                set_ag_tp_hidden_status(total_input)
         grad_input = grad_output.matmul(weight)
 
         if ctx.sequence_parallel and wgrad_compute:
