@@ -159,9 +159,6 @@ def attention_forward_wrapper(fn):
     ):
         args = get_args()
         if args.multi_head_latent_attention:
-            """
-            Do patch for repeating KV so that GQA+Ulysses is better supported.
-            """
             # hidden_states: [sq, b, h]
 
             # For self attention we just duplicate the rotary_pos_emb if it isn't already
@@ -227,16 +224,6 @@ def attention_forward_wrapper(fn):
                     query = F.pad(query, [0, 256 - self.q_head_dim])
                     key = F.pad(key, [0, 256 - self.q_head_dim])
                     value = F.pad(value, [0, 256 - self.v_head_dim])
-
-            # Do repeat KV to support GQA+Ulysses
-            args = get_args()
-            should_kv_repeat_before_uly = args.context_parallel_size > 1 and \
-                                          args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo'] and \
-                                          args.kv_head_repeat_before_uly_alltoall
-            heads_per_gqa_group = self.num_attention_heads_per_partition // self.num_query_groups_per_partition
-            if should_kv_repeat_before_uly and heads_per_gqa_group > 1:
-                key = key.repeat_interleave(heads_per_gqa_group, dim=2)
-                value = value.repeat_interleave(heads_per_gqa_group, dim=2)
 
             # ==================================
             # core attention computation

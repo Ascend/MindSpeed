@@ -1067,6 +1067,11 @@ def parallel_attention_forward(self, hidden_states, attention_mask,
         key_layer = apply_rotary_pos_emb(key_layer, k_pos_emb, self.config)
 
     if not self.use_flash_attn:
+        if self.num_attention_heads_per_partition // self.num_query_groups_per_partition > 1:
+            key_layer = key_layer.repeat_interleave(
+                self.num_attention_heads_per_partition // self.num_query_groups_per_partition, dim=2)
+            value_layer = value_layer.repeat_interleave(
+                self.num_attention_heads_per_partition // self.num_query_groups_per_partition, dim=2)
         if self.checkpoint_core_attention:
             context_layer = self._checkpointed_attention_forward(
                 query_layer, key_layer, value_layer, attention_mask)
