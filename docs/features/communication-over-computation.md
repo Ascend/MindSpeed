@@ -50,8 +50,7 @@
 
 ATB安装方法：
 
-- 二进制包安装：安装CANN-NNAL包之后, source /usr/local/Ascend/nnal/atb/set_env.sh 
-- 编译安装：ATB编译完成之后, source output/atb/set_env.sh
+- 二进制包安装：安装CANN-NNAL包之后, source /usr/local/Ascend/nnal/atb/set_env.sh
 ```shell
 --use-ascend-coc
 --coc-fused-kernel # 注意：当前只支持TP=8的场景！
