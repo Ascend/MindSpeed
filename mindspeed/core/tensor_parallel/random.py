@@ -67,6 +67,12 @@ def checkpoint_function_backward(ctx, *args):
     get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
 
     # Compute the forward pass.
+    flops_counter = None
+    if global_args.op_cal_tflops:
+        from mindspeed.core.training import get_flops_counter
+        flops_counter = get_flops_counter()
+        flops_counter.pause()
+
     detached_inputs = detach_variable(inputs)
     if global_args.optimize_recomp_communication_level > 0:
         if global_args.sequence_parallel and (not global_args.use_ascend_mc2):
@@ -86,6 +92,9 @@ def checkpoint_function_backward(ctx, *args):
     else:
         with torch.enable_grad():
             outputs = ctx.run_function(*detached_inputs)
+
+    if global_args.op_cal_tflops:
+        flops_counter.resume()
 
     # Set the states back to what it was at the start of this function.
     torch.set_rng_state(bwd_cpu_rng_state)

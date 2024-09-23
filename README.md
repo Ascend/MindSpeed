@@ -127,6 +127,7 @@ MindSpeed提供了多层次的优化解决方案，分为三个层级，用户�
 | 【Prototype】alibi                                | [link](docs/features/alibi.md)                            |
 | 【Prototype】PP自动并行                               | [link](docs/features/automated-pipeline.md)               |
 | 【Prototype】Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
+| 【Prototype】TFOPS计算                              | [link](docs/features/ops_flops_cal.md)                    |
 | 【Prototype】ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)               |
 | 【Prototype】自定义空操作层                              | [link](docs/features/noop-layers.md)                      |
 | 【Prototype】Ascend Norm重计算                                     | [link](docs/features/norm-recompute.md)                   |

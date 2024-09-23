@@ -32,7 +32,9 @@
 #include "torch_npu/csrc/framework/interface/EnvVariables.h"
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
-
+#if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
+    #include "torch_npu/csrc/flopcount/FlopCount.h"
+#endif
 #define NPU_NAME_SPACE at_npu::native
 
 using aclOpExecutor = struct aclOpExecutor;

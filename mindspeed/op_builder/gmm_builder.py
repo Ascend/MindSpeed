@@ -74,7 +74,7 @@ def conveter_npu_gmm_param(
 
 class GMMOpBuilderPublic(MindSpeedOpBuilder):
     def sources(self):
-        return ['ops/csrc/cann/gmm.cpp']
+        return ['ops/csrc/cann/gmm.cpp', 'ops/csrc/flopcounter/FlopCounter.cpp']
 
     def include_paths(self):
         paths = super().include_paths()

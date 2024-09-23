@@ -286,6 +286,8 @@ def _add_training_args(parser):
     group.add_argument('--pipe-experts-multi-stream', action='store_true', default=False,
                        help='Use multi stream to avoid link collision in collective communication when --use-pipe-experts. '
                             'The default is False.')
+    group.add_argument('--op-cal-tflops', action='store_true', default=False,
+                       help='use for cal mfu and hfu')
     return parser
 
 

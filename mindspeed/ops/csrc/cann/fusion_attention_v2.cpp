@@ -20,6 +20,7 @@
 #include <torch_npu/csrc/include/ops.h>
 
 #include "inc/aclnn_common.h"
+#include "../flopcounter/FlopCounter.h"
 
 const static int FLASH_THRESHOLD = 512;
 const static int N = 32;
@@ -186,7 +187,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_fusion_attention_
         at::Tensor dpse_required;
         dpse = dpse_required;
     }
-
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::flash_attention_backward_flop, query, key, value, dy, head_num, input_layout, actual_seq_qlen, actual_seq_kvlen);
+    #endif
     return std::make_tuple(dq, dk, dv, dpse);
 }
 
@@ -412,7 +415,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, int64_t, int64_t, int
             scale, keep_prob, pre_tokens, next_tokens, head_num, input_layout_ptr, inner_precise,
             sparse_mode, pse_type, softmax_max, softmax_sum, softmax_out, attention_score);
     }
-
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::flash_attention_forward_flop, query, key, value, head_num, input_layout, actual_seq_qlen, actual_seq_kvlen);
+    #endif
     return std::make_tuple(attention_score, softmax_max, softmax_sum, softmax_out,
         seed, offset, numels);
 }

@@ -437,11 +437,14 @@ def megatron_training_adaptation_l0(aspm, args):
     aspm.register_patch('megatron.training.training.pretrain', pretrain)
 
 
-def megatron_training_adaptation(aspm):
+def megatron_training_adaptation(aspm, mindspeed_args):
     from .core.performance.auto_pipeline_perf.global_vars import get_num_microbatches_wrapper
+    from .core.training import training_log
     from .utils import get_batch_on_this_tp_rank
     from .tokenizer import build_tokenizer_wrapper
     from .core.training import pretrain_decorator, setup_model_and_optimizer_decorator
+    if mindspeed_args.op_cal_tflops:
+        aspm.register_patch('megatron.training.training.training_log', training_log)
     aspm.register_patch('megatron.training.global_vars.get_num_microbatches', get_num_microbatches_wrapper)
     aspm.register_patch('megatron.training.training.pretrain', pretrain_decorator)
     aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_decorator)
@@ -731,7 +734,7 @@ def adaptation_l2(aspm, mindspeed_args):
     legacy_model_transformer(aspm, mindspeed_args)
     legacy_model_rms_norm_adaptation(aspm)
 
-    megatron_training_adaptation(aspm)
+    megatron_training_adaptation(aspm, mindspeed_args)
     ascend_adaptation(aspm, mindspeed_args)
     coc_adaptation(aspm, mindspeed_args)
     mcore_moe_adaptation(aspm, mindspeed_args)
