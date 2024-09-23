@@ -63,7 +63,13 @@ $$
 6、C大于0，上限为算子device内存上限；
 
 ## npu_bmm_reducescatter_alltoall 类的调用示例(待验证)
+在终端调用命令如下：
+```
+python3 -m torch.distributed.launch --nproc_per_node 8 --master_addr 127.0.0.1  --master_port 29500 demo_test.py
+```
+注：master_addr和master_port参数需用户根据实际情况设置
 
+demo_test.py的示例代码如下：
 ```python
 import os
 import pytest
