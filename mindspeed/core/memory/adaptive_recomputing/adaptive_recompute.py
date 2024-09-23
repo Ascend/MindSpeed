@@ -281,9 +281,6 @@ class AdaptiveRecomputePolicy:
         vpp_layer = args.num_layers_per_virtual_pipeline_stage
         if self.num_prefetch <= vpp_size:
             swap_list = [['0'] if i < self.num_prefetch else [''] for i in range(vpp_size)]
-            recompute_list = [['0'] if i < recompute_num_layers else [''] for i in range(vpp_size)]
-            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and args.reduce_recompute_for_last_chunk:
-                recompute_list[-1] = ['']
         else:
             for chunk in range(vpp_size):
                 chunk_swap_layer = ['0']
@@ -291,11 +288,17 @@ class AdaptiveRecomputePolicy:
                     if layer_id % vpp_size == chunk:
                         chunk_swap_layer.append(f'{layer_id // vpp_size}')
                 swap_list.append(chunk_swap_layer)
-                chunk_recompute_layer = ['' for _ in range(vpp_layer)]
-                for layer_id in range(recompute_num_layers):
-                    cur_layer_idx = layer_id % (vpp_layer * pp_size)
+
+        if recompute_num_layers <= vpp_size:
+            recompute_list = [['0'] if i < recompute_num_layers else [''] for i in range(vpp_size)]
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and args.reduce_recompute_for_last_chunk:
+                recompute_list[-1] = ['']
+        else:
+            for chunk in range(vpp_size):
+                chunk_recompute_layer = ['0']
+                for layer_id in range(vpp_size, recompute_num_layers):
                     if layer_id % vpp_size == chunk:
-                        chunk_recompute_layer[cur_layer_idx] = str(layer_id // vpp_size)
+                        chunk_recompute_layer.append(f'{layer_id // vpp_size}')
                 recompute_list.append(chunk_recompute_layer)
             if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and args.reduce_recompute_for_last_chunk:
                 if recompute_list[-1][-1] == str(args.num_layers_per_virtual_pipeline_stage - 1):

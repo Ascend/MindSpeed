@@ -128,10 +128,6 @@ class SwapPrefetch:
         if ori_tensor.numel() * ori_tensor.element_size() * 2 < 1024 * 1024:
             return True
         if ori_tensor.grad_fn is None:
-            if ori_tensor.storage().size() != ori_tensor.numel():
-                return True
-            if ori_tensor.dim() > 2:
-                return False
             return True
         if ori_tensor.storage().size() == 0:
             return True
