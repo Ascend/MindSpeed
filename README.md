@@ -118,6 +118,7 @@ MindSpeed提供了多层次的优化解决方案，分为三个层级，用户�
 | Ascend nano-pipe流水线并行                           | [link](docs/features/nanopipe-pipeline-parallel.md)       |
 | Ascend MLP 通信隐藏                                 | [link](docs/features/pipeline-experts.md)                 |
 | Ascend 重计算流水线独立调度                               | [link](docs/features/recompute_independent_pipelining.md) |
+| Ascend swap_attention            | [link](docs/features/swap_attention.md)                   |
 | Ulysses 长序列并行                                   | [link](docs/features/ulysses-context-parallel.md)         |
 | Ring Attention 长序列并行                            | [link](docs/features/ring-attention-context-parallel.md)  |
 | EOD Reset训练场景                 | [link](docs/features/eod-reset.md)  |
