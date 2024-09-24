@@ -71,7 +71,6 @@ GPT_ARGS="
     --initial-loss-scale 4096.0 \
     --adam-beta2 0.95 \
     --adam-eps 1e-5 \
-    --no-gradient-accumulation-fusion \
     --disable-bias-linear \
     --group-query-attention \
     --num-query-groups 8 \
