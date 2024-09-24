@@ -13,4 +13,4 @@ einops
 scipy
 sentencepiece
 pytest
-transformers
+transformers>=4.43.2
