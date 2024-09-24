@@ -11,17 +11,44 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
 
 ### 1. 安装依赖
 
-在安装**MindSpeed**之前，请参考[版本配套表](#版本配套表)，安装最新昇腾软件栈：[https://www.hiascend.com/zh/](https://www.hiascend.com/zh/)。
+在安装**MindSpeed**之前，请参考[版本配套表](#版本配套表)，安装最新昇腾软件栈。
 
-| 依赖软件      |
-|-----------|
-| Driver    | 
-| Firmware  | 
-| CANN      | 
-| Kernel    | 
-| PyTorch   | 
-| torch_npu | 
-| apex      | 
+<table border="0">
+  <tr>
+    <th>依赖软件</th>
+    <th>软件安装指南</th>
+  </tr>
+
+  <tr>
+    <td>昇腾NPU驱动</td>
+    <td rowspan="2">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/softwareinst/instg/instg_0003.html?Mode=PmIns&OS=Ubuntu&Software=cannToolKit">驱动固件安装指南</a> 》</td>
+  </tr>
+  <tr>
+    <td>昇腾NPU固件</td>
+  </tr>
+  <tr>
+    <td>Toolkit（开发套件）</td>
+    <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/softwareinst/instg/instg_0000.html">CANN 软件安装指南</a> 》</td>
+  </tr>
+  <tr>
+    <td>Kernel（算子包）</td>
+  </tr>
+  <tr>
+    <td>NNAL（Ascend Transformer Boost加速库）</td>
+  </tr>
+  <tr>
+    <td>PyTorch</td>
+    <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/Pytorch/60RC2/configandinstg/instg/insg_0001.html">Ascend Extension for PyTorch 配置与安装</a> 》</td>
+  </tr>
+  <tr>
+    <td>torch_npu插件</td>
+  </tr>
+  <tr>
+    <td>apex</td>
+  </tr>
+</table>
+
+
 
 
 ### 2. 安装 MindSpeed
@@ -174,12 +201,12 @@ MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 
 **PyTorch Extension**版本号采用`{PyTorch版本}-{昇腾版本}`命名规则，前者为**PyTorch Extension**匹配的PyTorch版本，后者用于匹配CANN版本，详细匹配如下：
 
-| MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |Python版本                               |
-| ----------------- | --- |------------- | ------------- | --------------------------------------- |
-|       master      | Core 0.7.0  |   2.1.0     |   在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       core_r0.6.0 | Core 0.6.0  |  2.1.0     |   在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.1         |  Core 0.6.0 |  2.1.0     |   6.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.0         | commitid bcce6f  |  2.1.0     |   6.0.RC1 | Python3.8.x, Python3.9.x, Python3.10.x  |
+| MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |CANN版本| Python版本                               |
+| ----------------- | --- |------------- | ------------- | --------------------------------------- | ------------- |
+|       master      | Core 0.7.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       core_r0.6.0 | Core 0.6.0  |  2.1.0     |   在研版本 | 在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       1.1         |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       1.0         | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  |
 
 [昇腾辅助软件](https://gitee.com/ascend/pytorch#%E6%98%87%E8%85%BE%E8%BE%85%E5%8A%A9%E8%BD%AF%E4%BB%B6)中有更多关于PyTorch和CANN的版本信息。
 
