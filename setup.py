@@ -43,7 +43,9 @@ def package_files(directory):
 
 
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mindspeed')
-subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
+
+if os.getenv('CI_BUILD', '0') != '1':
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
 
 setuptools.setup(
     name=__package_name__,
