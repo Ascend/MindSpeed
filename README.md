@@ -151,8 +151,8 @@ MindSpeed提供了多层次的优化解决方案，分为三个层级，用户�
 | Ascend swap_attention            | [link](docs/features/swap_attention.md)                   |
 | Ulysses 长序列并行                | [link](docs/features/ulysses-context-parallel.md)         |
 | Ring Attention 长序列并行         | [link](docs/features/ring-attention-context-parallel.md)  |
+| 混合长序列并行           | [link](docs/features/hybrid-context-parallel.md)          |
 | 【Prototype】EOD Reset训练场景                 | [link](docs/features/eod-reset.md)  |
-| 【Prototype】混合长序列并行           | [link](docs/features/hybrid-context-parallel.md)          |
 | 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
 | 【Prototype】alibi             | [link](docs/features/alibi.md)                            |
 | 【Prototype】PP自动并行            | [link](docs/features/automated-pipeline.md)               |
