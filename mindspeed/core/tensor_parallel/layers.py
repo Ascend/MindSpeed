@@ -797,7 +797,15 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
                         in_row=True,
                         pipe_experts=False
                     )
-                grad_weight = None
+                if hasattr(weight, 'grad_added_to_main_grad'):
+                    grad_weight = torch.zeros(
+                            weight.main_grad.shape,
+                            dtype=input.dtype,
+                            device=torch.cuda.current_device(),
+                            requires_grad=False,
+                        )
+                else:
+                    grad_weight = None
             else:
                 total_input = input
                 grad_output = grad_output_gathered.contiguous()
@@ -821,6 +829,15 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
                 weight,
                 ctx.sequence_parallel
             )
+            if hasattr(weight, 'grad_added_to_main_grad'):
+                grad_weight = torch.zeros(
+                        weight.main_grad.shape,
+                        dtype=input.dtype,
+                        device=torch.cuda.current_device(),
+                        requires_grad=False,
+                    )
+            else:
+                grad_weight = None
         if not WeightGradStore.is_decoupleBlock:
             if ctx.sequence_parallel:
                 world_size = get_tensor_model_parallel_world_size()
@@ -876,7 +893,6 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
             )
             # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
             # reduce_scatter is scheduled before the weight gradient computation
-        grad_weight = None
         if not WeightGradStore.is_decoupleBlock:
             grad_weight = grad_output.t().matmul(total_input)
         grad_bias = grad_output.sum(dim=0) if use_bias else None

@@ -7,8 +7,7 @@ import torch_npu
 
 from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
-    get_tensor_model_parallel_world_size,
-    is_pipeline_first_stage
+    get_tensor_model_parallel_world_size
 )
 from megatron.training import get_args
 
@@ -74,6 +73,9 @@ class WeightGradStore:
     host_tensors_input = []
     ori_storage = []
     is_decoupleBlock = False
+    grad_overlap_count = 0
+    interval_per_layers_count = 0
+    interval_per_layers = []
 
     @classmethod
     def put(cls, total_input, grad_output, weight, sequence_parallel, in_row=False, pipe_experts=False):
@@ -83,13 +85,13 @@ class WeightGradStore:
             if grad_output is not None:
                 cls.host_tensors_gradoutput.append(swap_d2h(grad_output, cls.prefetch_stream))
             cls.host_tensors_input.append(swap_d2h(total_input, cls.prefetch_stream))
-
+        cls.interval_per_layers_count += 1
         cls.cache.append((total_input, grad_output, weight, sequence_parallel, in_row, pipe_experts))
 
     @classmethod
     def flush(cls):
-        cls.weight_grad_queue.put(cls.cache)
-        cls.cache = []
+        cls.interval_per_layers.append(cls.interval_per_layers_count)
+        cls.interval_per_layers_count = 0
 
     @classmethod
     def save_grad_output(cls, grad):
@@ -160,13 +162,19 @@ class WeightGradStore:
 
         grad_weight = grad_output.t().matmul(total_input)
         weight.main_grad.data.add_(grad_weight)
+        cls.grad_overlap_count += 1
 
     @classmethod
-    def pop(cls):
+    def pop(cls, overlap_arg=None):
         if len(cls.cache) == 0:
             return
         if cls.gather_stream is None:
             cls.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+        if get_args().overlap_grad_reduce:
+            if overlap_arg is None:
+                raise RuntimeError("overlap_arg is invalid")
+            pipeline_parallel_size, nano_flag, synchronized_model_chunks, grad_sync_func, model = overlap_arg 
+            model_chunk_id = len(nano_flag) - 1
         input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.cache.pop(0)
         if not sequence_parallel:
             grad_output = grad_output_slice
@@ -175,22 +183,41 @@ class WeightGradStore:
             if pipe_experts and not get_args().use_nanopipe_swap:
                 grad_output_slice = cls.grad_store.pop(0)
             grad_output, handle = gather(grad_output_slice, cls.gather_stream)
-
+        layers_count = 0
         cls.store_grad_cache = (input, grad_output, weight, sequence_parallel, in_row, pipe_experts)
         while len(cls.cache) > 0:
             if handle is not None:
                 handle.wait()
             next_grad_cache, handle = cls.overlap_all_gather()
             cls.overlap_matmul(cls.store_grad_cache)
+            if get_args().overlap_grad_reduce:
+                if cls.grad_overlap_count == cls.interval_per_layers[0]:
+                    cls.interval_per_layers.pop(0)
+                    layers_count += 1
+                    if layers_count == pipeline_parallel_size:
+                        if model_chunk_id not in synchronized_model_chunks and not nano_flag[model_chunk_id]:
+                            grad_sync_func[model_chunk_id](model[model_chunk_id].parameters())
+                            synchronized_model_chunks.add(model_chunk_id)
+                        model_chunk_id -= 1
+                        layers_count = 0 
+                    cls.grad_overlap_count = 0
             cls.store_grad_cache = next_grad_cache
         if handle is not None:
             handle.wait()
         cls.overlap_matmul(cls.store_grad_cache)
+        if get_args().overlap_grad_reduce:
+            if model_chunk_id not in synchronized_model_chunks and not nano_flag[model_chunk_id]:
+                grad_sync_func[model_chunk_id](model[model_chunk_id].parameters())
+                synchronized_model_chunks.add(model_chunk_id)
+                model_chunk_id -= 1
+                cls.grad_overlap_count = 0
         cls.stored_grads = None
         cls.store_grad_cache = None
         cls.swap_event = []
         cls.grad_store = []
         cls.host_pipe_experts_grad = []
+        cls.interval_per_layers = []
+        cls.interval_per_layers_count = 0
 
     @classmethod
     def resize_ori_storage(cls, use_nano_swap):
