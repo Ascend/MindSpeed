@@ -265,6 +265,10 @@ class CheckpointFunctionRipipe(torch.autograd.Function):
             ctx.recompute_func()
 
         outputs = ctx.outputs
+        detached_inputs = ctx.detached_inputs
+        ctx.outputs = None
+        ctx.detached_inputs = None
+        ctx.recompute_func = None
 
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)
@@ -272,7 +276,7 @@ class CheckpointFunctionRipipe(torch.autograd.Function):
         # filter out non tensor outputs for backward pass
         outputs, args = zip(*filter(lambda x: torch.is_tensor(x[0]), zip(outputs, args)))
         torch.autograd.backward(outputs, args)
-        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else inp for inp in ctx.detached_inputs)
+        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else inp for inp in detached_inputs)
         return (None, None) + grads
 
 
