@@ -661,6 +661,10 @@ def forward_backward_pipelining_with_interleaving_nano_pipe(
     num_fwd = min((pipeline_parallel_size - 1) * 2 + (num_model_chunks - 1) * pipeline_parallel_size, total_num_microbatches)
     num_microbatches_remaining = total_num_microbatches - num_warmup_microbatches
     num_dx = num_fwd - num_warmup_microbatches
+    overlap_chunks_num = (num_dx + pipeline_parallel_size - 1) // pipeline_parallel_size 
+    nano_flag = [True] * len(model)
+    for i in range(overlap_chunks_num):
+        nano_flag[-i - 1] = False
 
     # Checkpoint the activations of partial Transformer layers in a number of micro-batches
     # within the maximum outstanding micro-batch backpropagations.
@@ -769,7 +773,7 @@ def forward_backward_pipelining_with_interleaving_nano_pipe(
         parallel_state.set_virtual_pipeline_model_parallel_rank(model_chunk_id)
 
         # launch grad synchronization (default)
-        if config.grad_sync_func is None and is_last_microbatch_for_model_chunk(microbatch_id):
+        if config.grad_sync_func is None and is_last_microbatch_for_model_chunk(microbatch_id) and nano_flag[model_chunk_id]:
             enable_grad_sync()
             synchronized_model_chunks.add(model_chunk_id)
 
@@ -794,9 +798,10 @@ def forward_backward_pipelining_with_interleaving_nano_pipe(
                 grad_sync_microbatch_id
             ):
                 grad_sync_chunk_id = get_model_chunk_id(grad_sync_microbatch_id, forward=False)
-                enable_grad_sync()
-                config.grad_sync_func[grad_sync_chunk_id](model[grad_sync_chunk_id].parameters())
-                synchronized_model_chunks.add(grad_sync_chunk_id)
+                if nano_flag[grad_sync_chunk_id]:
+                    enable_grad_sync()
+                    config.grad_sync_func[grad_sync_chunk_id](model[grad_sync_chunk_id].parameters())
+                    synchronized_model_chunks.add(grad_sync_chunk_id)
         disable_grad_sync()
 
         return input_tensor_grad
@@ -977,6 +982,8 @@ def forward_backward_pipelining_with_interleaving_nano_pipe(
                 WeightGradStore.resize_ori_storage(args.use_nanopipe_swap)
 
             input_tensor_grad = backward_step_helper(backward_k)
+            if WeightGradStore.is_decoupleBlock:
+                WeightGradStore.flush()
             if k == num_dx - 1:
                 WeightGradStore.end_decouple()
             backward_model_chunk_id = get_model_chunk_id(backward_k, forward=False)
@@ -1020,7 +1027,8 @@ def forward_backward_pipelining_with_interleaving_nano_pipe(
                 WeightGradStore.resize_ori_storage(args.use_nanopipe_swap)
 
             input_tensor_grad = backward_step_helper(backward_k)
-
+            if WeightGradStore.is_decoupleBlock:
+                WeightGradStore.flush()
             if k == num_dx - 1:
                 WeightGradStore.end_decouple()
 
@@ -1118,7 +1126,11 @@ def forward_backward_pipelining_with_interleaving_nano_pipe(
             )
             if args.use_nanopipe_swap and k == max(num_microbatches_remaining + 1, (total_num_microbatches + num_microbatches_remaining) // 2):
                 WeightGradStore.swap_tensors()
-        WeightGradStore.pop()
+        if nano_flag[0] and 0 not in synchronized_model_chunks:
+            config.grad_sync_func[0](model[0].parameters())
+            synchronized_model_chunks.add(0)
+        overlap_arg = [pipeline_parallel_size, nano_flag, synchronized_model_chunks, config.grad_sync_func, model]
+        WeightGradStore.pop(overlap_arg)
         # Launch any remaining grad reductions.
         enable_grad_sync()
         if config.grad_sync_func is not None:
