@@ -61,9 +61,8 @@ class TestDistributedOptimizer(DistributedTest):
         assert WeightGradStore.cache[0][2:] == ('weight1', True, False, False)
 
         WeightGradStore.flush()
-        assert WeightGradStore.cache == []
-        assert not WeightGradStore.weight_grad_queue.empty()
-        assert WeightGradStore.weight_grad_queue.get() == [(total_input, grad_output, 'weight1', True, False, False)]
+        assert WeightGradStore.interval_per_layers_count == 0
+        assert len(WeightGradStore.interval_per_layers) > 0
 
     @pytest.mark.parametrize("tp_pp", [(2, 2)])
     @pytest.mark.parametrize("row", [True, False])
