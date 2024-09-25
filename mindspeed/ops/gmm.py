@@ -60,7 +60,7 @@ def npu_gmm_param_verification(x, weight, *, bias=None, group_list=None, group_t
             isinstance(group_list, (torch.Tensor, type(None)))
             or (isinstance(group_list, list) and all(isinstance(x, int) for x in group_list))
         ):
-            raise TypeError(f"group_list must be a List of int, torch.Tensor or None, got {type(group_list)}.")
+            raise TypeError(f"group_list must be a List of int64, torch.Tensor or None, got {type(group_list)}.")
     else:
         if not (isinstance(group_list, (torch.Tensor, type(None)))):
             raise TypeError(f"group_list must be a torch.Tensor or None, got {type(group_list)}.")
@@ -69,7 +69,7 @@ def npu_gmm_param_verification(x, weight, *, bias=None, group_list=None, group_t
             raise ValueError(f"If group_list is not None, it must be an one-dimensional tensor, "
                              f"got dimension of group_list: {len(group_list.shape)}!")
         if group_list.dtype != torch.int64:
-            raise TypeError(f"group_list must be a List of int, got group_list type: {type(group_list)}, "
+            raise TypeError(f"group_list must be a List of int64, got group_list type: {type(group_list)}, "
                             f"dtype: {group_list.dtype}!")
     if not isinstance(group_type, (int, type(None))):
         raise TypeError(f"group_type must be an int or None, got {type(group_type)}.")
