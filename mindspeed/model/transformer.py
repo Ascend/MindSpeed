@@ -839,7 +839,7 @@ def should_recompute_activation(self):
         return False
 
     if args.recompute_in_bubble or args.recompute_in_advance:
-        pipeline_checkpoint_manager = get_pipeline_checkpoint_manager(args.vpp_size)
+        pipeline_checkpoint_manager = get_pipeline_checkpoint_manager(args.virtual_pipeline_model_parallel_size)
         if pipeline_checkpoint_manager.chunk_do_recompute:
             return False
         elif args.recompute_in_bubble:
