@@ -7,7 +7,7 @@ from mindspeed.ops import gmm
 __all__ = ["npu_quant_gmm", "npu_quant_gmm_v2"]
 
 
-mindspeed_ops = QuantGMMOpBuilder().load()
+op_builder = QuantGMMOpBuilder()
 
 
 def CheckOptionalTensor(tensor, device, name):
@@ -34,8 +34,8 @@ def _npu_quant_gmm(x, weight, scale, *, offset=None, per_token_scale=None, bias=
         output_dtype_value = -1
     else:
         raise ValueError(f"output_dtype should be int8, float16, bfloat16 or None, but got {output_dtype}")
-    outputs = mindspeed_ops.npu_quant_gmm([x], [weight], scale, offset, per_token_scale, bias, group_list,
-                                          group_list_type, output_dtype_value, act_type)
+    outputs = op_builder.load().npu_quant_gmm([x], [weight], scale, offset, per_token_scale, bias, group_list,
+                                       group_list_type, output_dtype_value, act_type)
     return outputs[0]
 
 
