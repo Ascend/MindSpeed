@@ -2,6 +2,8 @@ import torch
 import torch_npu
 from mindspeed.op_builder import NpuDropoutAddLayerNormOpBuilder
 
+__all__ = ["npu_dropout_add_layer_norm"]
+
 
 def npu_dropout_add_layer_norm(x0,
                                residual,
