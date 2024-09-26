@@ -1,4 +1,4 @@
-# gmm对外接口
+# quant_gmm对外接口
 
 npu_quant_gmm(x, weight, scale, *, offset=None, per_token_scale=None, bias=None, group_list=None,
 output_dtype=None, act_type=0)

@@ -4,6 +4,8 @@ from mindspeed.op_builder import QuantGMMOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 from mindspeed.ops import gmm
 
+__all__ = ["npu_quant_gmm", "npu_quant_gmm_v2"]
+
 
 mindspeed_ops = QuantGMMOpBuilder().load()
 
