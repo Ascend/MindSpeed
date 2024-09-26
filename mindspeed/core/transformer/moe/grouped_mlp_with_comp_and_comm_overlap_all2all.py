@@ -34,18 +34,27 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             group_list_data_type = 0
         ctx.group_list_data_type = group_list_data_type
         ctx.layer_number = layer_number
-        mm1_out = \
-            GMMFunction.builder.load().npu_gmm([inputs], [weights1], [], group_list.tolist(), 0, group_list_data_type)[
-                0]
+        use_gmm = (inputs.nelement() != 0)
+        ctx.use_gmm = use_gmm
+        if use_gmm:
+            mm1_out = \
+                GMMFunction.builder.load().npu_gmm([inputs], [weights1], [], group_list.tolist(), 0, group_list_data_type)[
+                    0]
+        else:
+            mm1_out = torch.matmul(inputs, weights1)
         inputs.untyped_storage().resize_(0)
         act_out, detached_act_inputs = forward_func(activation_func, mm1_out)
         args = get_args()
         moe_without_activation = args.moe_without_activation
         if moe_without_activation:
             mm1_out.untyped_storage().resize_(0)
-        mm2_out = \
-            GMMFunction.builder.load().npu_gmm([act_out], [weights2], [], group_list.tolist(), 0, group_list_data_type)[
-                0]
+        if use_gmm:
+            mm2_out = \
+                GMMFunction.builder.load().npu_gmm([act_out], [weights2], [], group_list.tolist(), 0, group_list_data_type)[
+                    0]
+        else:
+            mm2_out = torch.matmul(act_out, weights2)
+
         if moe_without_activation:
             act_out.untyped_storage().resize_(0)
             moe_layer_ctx.recompute_tensors = (inputs, mm1_out, act_out)
@@ -77,17 +86,23 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
          permute2_input_detach, permute2_graph, output_splits, input_splits) = get_gemm_backward_need_tensors()
 
         # grad of mm2
-        weights2 = rearrange(weights2, 'n h f -> n f h')
-        grad_mm2_inputs = \
-            GMMFunction.builder.load().npu_gmm([grad_outs], [weights2], [], group_list.tolist(), 0,
-                                               group_list_data_type)[0]
+        if ctx.use_gmm:
+            weights2 = rearrange(weights2, 'n h f -> n f h')
+            grad_mm2_inputs = \
+                GMMFunction.builder.load().npu_gmm([grad_outs], [weights2], [], group_list.tolist(), 0,
+                                                   group_list_data_type)[0]
+        else:
+            grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
         act_graph = mm2_inputs
         if should_recompute_activation(layer_number):
             activation_func = ctx.activation_func
             mm2_inputs = activation_func(act_inputs)
+        if ctx.use_gmm:
+            grad_weights2 = GMMFunction.builder.load().npu_gmm([mm2_inputs.t()], [grad_outs], [], group_list.tolist(), 2,
+                                                               group_list_data_type)[0]
+        else:
+            grad_weights2 = torch.matmul(mm2_inputs.t(), grad_outs)
 
-        grad_weights2 = GMMFunction.builder.load().npu_gmm([mm2_inputs.t()], [grad_outs], [], group_list.tolist(), 2,
-                                                           group_list_data_type)[0]
         # grad of activation_func
         grad_outs.untyped_storage().resize_(0)
         mm2_inputs.untyped_storage().resize_(0)
@@ -114,9 +129,12 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
                 input_splits,
                 ep_group,
             )
-        weights1 = rearrange(weights1, 'n h f -> n f h')
-        mm1_inputs_grad = GMMFunction.builder.load().npu_gmm([act_inputs.grad], [weights1], [], group_list.tolist(), 0,
-                                                             group_list_data_type)[0]
+        if ctx.use_gmm:
+            weights1 = rearrange(weights1, 'n h f -> n f h')
+            mm1_inputs_grad = GMMFunction.builder.load().npu_gmm([act_inputs.grad], [weights1], [], group_list.tolist(), 0,
+                                                                 group_list_data_type)[0]
+        else:
+            mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
         # 峰值
         backward_func(permute2_graph, mm1_inputs_grad)
@@ -143,13 +161,19 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             global_input_tokens.untyped_storage().resize_(0)
 
         if moe_without_activation:
-            mm1_weights_grad = \
-                GMMFunction.builder.load().npu_gmm([inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
-                                                   group_list_data_type)[0]
+            if ctx.use_gmm:
+                mm1_weights_grad = \
+                    GMMFunction.builder.load().npu_gmm([inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
+                                                       group_list_data_type)[0]
+            else:
+                mm1_weights_grad = torch.matmul(inputs.t(), act_inputs.grad)
         else:
-            mm1_weights_grad = \
-                GMMFunction.builder.load().npu_gmm([mm1_inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
-                                                   group_list_data_type)[0]
+            if ctx.use_gmm:
+                mm1_weights_grad = \
+                    GMMFunction.builder.load().npu_gmm([mm1_inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
+                                                       group_list_data_type)[0]
+            else:
+                mm1_weights_grad = torch.matmul(mm1_inputs.t(), act_inputs.grad)
         act_inputs.grad.untyped_storage().resize_(0)
         return mm1_inputs_grad, mm1_weights_grad, grad_weights2, None, None
 
