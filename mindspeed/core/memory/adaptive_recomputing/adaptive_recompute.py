@@ -311,7 +311,8 @@ class AdaptiveRecomputePolicy:
                 layer_id = vpp * vpp_layer * pp_size + i + vpp_layer * cur_pp_rank
                 if layer_id in cur_pp_noop_layers:
                     swap_list[vpp][i] = ''
-                    recompute_list[vpp][i] = ''
+                    if len(recompute_list[vpp]) >= i + 1:
+                        recompute_list[vpp][i] = ''
 
         prefetch_list = swap_list
         interval = 0
