@@ -207,14 +207,19 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 # Recompute mm1 and act
                 input_, mm1_out, act_out = ctx.recompute_tensors
                 ctx.recompute_tensors = None
-                group_list = torch.cumsum(tokens_per_expert, dim=0)
-                w1 = ctx.weight1.view(ctx.num_local_experts, ctx.hidden_size, -1)
-                if isinstance(group_list, (torch.Tensor, type(None))):
-                    group_list_data_type = 1
+                if global_input_tokens.nelement() != 0:
+                    group_list = torch.cumsum(tokens_per_expert, dim=0)
+                    w1 = ctx.weight1.view(ctx.num_local_experts, ctx.hidden_size, -1)
+                    if isinstance(group_list, (torch.Tensor, type(None))):
+                        group_list_data_type = 1
+                    else:
+                        group_list_data_type = 0
+                    mm1_out_ = GMMFunction.builder.load().npu_gmm([global_input_tokens], [w1], [], group_list.tolist(), 0, group_list_data_type)[0]
+                    group_list.untyped_storage().resize_(0)
                 else:
-                    group_list_data_type = 0
-                mm1_out_ = GMMFunction.builder.load().npu_gmm([global_input_tokens], [w1], [], group_list.tolist(), 0, group_list_data_type)[0]
-                group_list.untyped_storage().resize_(0)
+                    w1 = ctx.weight1.view(ctx.hidden_size, -1)
+                    mm1_out_ = torch.matmul(global_input_tokens, w1)
+
                 act_out_ = ctx.activation_func(mm1_out_)
                 act_out_size = act_out_.untyped_storage().size()
                 act_out.untyped_storage().resize_(act_out_size)

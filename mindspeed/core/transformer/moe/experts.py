@@ -56,9 +56,13 @@ def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert
 
 
 def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx=None):
+    if permuted_local_hidden_states.nelement() != 0:
+        w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
+        w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
+    else:
+        w1 = self.weight1.view(self.config.hidden_size, -1)
+        w2 = self.weight2.view(-1, self.config.hidden_size)
     group_list = torch.cumsum(tokens_per_expert, dim=0)
-    w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
-    w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
     if get_args().moe_alltoall_overlap_comm:
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
                                                               (self.activation_func, group_list, self.layer_number),
