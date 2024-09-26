@@ -19,6 +19,9 @@ from torch.library import impl
 from mindspeed.op_builder.ffn_builder import FFNOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 
+__all__ = ["npu_ffn"]
+
+
 mindspeed_ops = FFNOpBuilder().load()
 
 

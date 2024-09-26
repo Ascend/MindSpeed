@@ -1,5 +1,9 @@
 import torch
 from mindspeed.op_builder import RotaryPositionEmbeddingOpBuilder
+
+__all__ = ["npu_rotary_position_embedding"]
+
+
 rope_op_builder = RotaryPositionEmbeddingOpBuilder()
 
 

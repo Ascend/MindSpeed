@@ -3,6 +3,8 @@ from torch.library import impl
 from mindspeed.op_builder import GMMOpBuilder, GMMV2OpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 
+__all__ = ["npu_gmm", "npu_gmm_v2"]
+
 
 class GMMFunction(torch.autograd.Function):
     builder = GMMOpBuilder()
