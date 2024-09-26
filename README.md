@@ -119,6 +119,7 @@ MindSpeed提供了多层次的优化解决方案，分为三个层级，用户�
 
 # 特性介绍
 MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性以及关键场景特性。
+【Prototype】表示原型特性，暂未商用发布
 ## Megatron特性支持
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
@@ -164,6 +165,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
 | 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
 | 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
+| 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
 | 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
 
 ## 通信优化特性
