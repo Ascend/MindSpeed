@@ -204,8 +204,6 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】npu_fused_moe_token_unpermute   | [link](docs/ops/npu_fused_moe_token_unpermute.md)    |
 | 【Prototype】npu_ring_attention_update  | [link](docs/ops/npu_ring_attention_update.md)  |
 | 【Prototype】npu_matmul_add_fp32 | [link](docs/ops/npu_matmul_add.md)  |
-| 【Prototype】npu_all_to_all_all_gather_bmm  | [link](docs/ops/npu_all_to_all_all_gather_bmm.md)  |
-| 【Prototype】npu_bmm_reduce_scatter_all_to_all  | [link](docs/ops/npu_bmm_reduce_scatter_all_to_all.md)  |
 
 
 # MindSpeed中采集Profile数据
