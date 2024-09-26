@@ -2,6 +2,10 @@ from typing import Optional, List, Dict
 import torch
 import torch_npu
 from mindspeed.op_builder import GroupedMatMulAllReduceOpBuilder
+
+__all__ = ["npu_grouped_mat_mul_all_reduce"]
+
+
 mindspeed_ops = GroupedMatMulAllReduceOpBuilder().load()
 
 

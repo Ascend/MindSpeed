@@ -1,6 +1,10 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import torch
 from mindspeed.op_builder import MatmulAddOpBuilder
+
+__all__ = ["npu_matmul_add_fp32"]
+
+
 matmul_add_op_builder = MatmulAddOpBuilder()
 
 

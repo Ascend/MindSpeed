@@ -2,6 +2,10 @@
 import torch
 
 from mindspeed.op_builder import RingAttentionUpdateOpBuilder
+
+__all__ = ["npu_ring_attention_update"]
+
+
 op_builder = RingAttentionUpdateOpBuilder()
 
 

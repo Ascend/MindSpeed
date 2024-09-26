@@ -19,6 +19,9 @@ from torch.library import impl
 from mindspeed.op_builder.npu_inplace_mm_all_reduce_add_rms_norm_builder import InplaceMatmulAllReduceAddRmsNormOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 
+__all__ = ["npu_mm_all_reduce_add_rms_norm_"]
+
+
 mindspeed_ops = InplaceMatmulAllReduceAddRmsNormOpBuilder().load()
 
 

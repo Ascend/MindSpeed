@@ -4,6 +4,9 @@ import torch_npu
 
 from mindspeed.op_builder import MoeTokenUnpermuteOpBuilder
 
+__all__ = ["npu_moe_token_unpermute"]
+
+
 moe_token_unpermute_op_builder = MoeTokenUnpermuteOpBuilder()
 
 

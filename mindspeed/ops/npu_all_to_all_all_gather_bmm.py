@@ -5,6 +5,9 @@ from torch.library import impl
 from mindspeed.op_builder import AllToAllAllGatherBatchMatMulOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 
+__all__ = ["npu_alltoall_allgather_bmm"]
+
+
 mindspeed_ops_builder = AllToAllAllGatherBatchMatMulOpBuilder()
 SUPPORTED_ACT_TYPE = ["None", "GeLu", "SiLu", "ReLu", "FastGeLu", "GegLu", "SwigLu", "RegLu"]
 ACT_TYPE_DICT = {"none": 0,

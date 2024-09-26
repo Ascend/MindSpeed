@@ -118,68 +118,96 @@ MindSpeed提供了多层次的优化解决方案，分为三个层级，用户�
 
 
 # 特性介绍
+MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性以及关键场景特性。
+## Megatron特性支持
+| 特性                           | 介绍                                                        |
+|------------------------------|-----------------------------------------------------------|
+| Megatron 数据并行                | [link](docs/features/data-parallel.md)                    |
+| Megatron 张量并行                | [link](docs/features/tensor-parallel.md)                  |
+| Megatron 流水并行                | [link](docs/features/pipeline-parallel.md)                |
+| Megatron 虚拟流水并行              | [link](docs/features/virtual-pipeline-parallel.md)        |
+| Megatron 分布式优化器              | [link](docs/features/distributed-optimizer.md)            |
+| Megatron 序列并行                | [link](docs/features/sequence-parallel.md)                |
+| Megatron 异步DDP               | [link](docs/features/async-ddp.md)                        |
+| Megatron 权重更新通信隐藏            | [link](docs/features/async-ddp-param-gather.md)           |
+| Megatron 重计算                 | [link](docs/features/recomputation.md)                    |
 
-| 特性                                              | 介绍                                                        |
-|-------------------------------------------------|-----------------------------------------------------------|
-| Megatron 数据并行                                   | [link](docs/features/data-parallel.md)                    |
-| Megatron 张量并行                                   | [link](docs/features/tensor-parallel.md)                  |
-| Megatron 流水并行                                   | [link](docs/features/pipeline-parallel.md)                |
-| Megatron 虚拟流水并行                                 | [link](docs/features/virtual-pipeline-parallel.md)        |
-| Megatron 序列并行                                   | [link](docs/features/sequence-parallel.md)                |
-| Megatron 重计算                                    | [link](docs/features/recomputation.md)                    |
-| Megatron 分布式优化器                                 | [link](docs/features/distributed-optimizer.md)            |
-| Megatron 异步DDP                                  | [link](docs/features/async-ddp.md)                        |
-| Megatron 权重更新通信隐藏                               | [link](docs/features/async-ddp-param-gather.md)           |
-| Megatron Mcore MoE                              | [link](docs/features/megatron_moe/megatron-moe.md)                                    |
-| Ascend DeepSpeed MoE                            | [link](docs/features/deepspeed_moe/deepspeed-moe.md)      |
-| Ascend Mask归一                                   | [link](docs/features/generate-mask.md)                    |
-| Ascend 内存碎片优化                                   | [link](docs/features/memory-fragmentation.md)             |
-| Ascend 自适应选择重计算                                 | [link](docs/features/adaptive-recompute.md)               |
-| Ascend 激活函数重计算                                  | [link](docs/features/activation-function-recompute.md)    |
-| Ascend 计算通信并行优化                                 | [link](docs/features/communication-over-computation.md)   |
-| Ascend BF16 参数副本复用                              | [link](docs/features/reuse-fp32-param.md)                 |
-| Ascend rms_norm 融合算子                            | [link](docs/features/rms_norm.md)                         |
-| Ascend swiglu 融合算子                              | [link](docs/features/swiglu.md)                           |
-| Ascend rotary_embedding 融合算子                    | [link](docs/features/rotary-embedding.md)                 |
-| Ascend flash attention 适配                       | [link](docs/features/flash-attention.md)                  |
-| Ascend nano-pipe流水线并行                           | [link](docs/features/nanopipe-pipeline-parallel.md)       |
-| Ascend MLP 通信隐藏                                 | [link](docs/features/pipeline-experts.md)                 |
-| Ascend 重计算流水线独立调度                               | [link](docs/features/recompute_independent_pipelining.md) |
+## 并行策略特性
+| 特性                           | 介绍                                                        |
+|------------------------------|-----------------------------------------------------------|
+| Ulysses 长序列并行                | [link](docs/features/ulysses-context-parallel.md)         |
+| Ascend Ring Attention 长序列并行         | [link](docs/features/ring-attention-context-parallel.md)  |
+| Ascend nano-pipe流水线并行        | [link](docs/features/nanopipe-pipeline-parallel.md)       |
+| Ascend 混合长序列并行           | [link](docs/features/hybrid-context-parallel.md)          |
+| 【Prototype】Ascend PP自动并行            | [link](docs/features/automated-pipeline.md)               |
+| 【Prototype】Ascend 自定义空操作层                              | [link](docs/features/noop-layers.md)     |
+
+## 内存优化特性
+| 特性                           | 介绍                                                        |
+|------------------------------|-----------------------------------------------------------|
+| Ascend 自适应选择重计算              | [link](docs/features/adaptive-recompute.md)               |
+| Ascend 激活函数重计算               | [link](docs/features/activation-function-recompute.md)    |
+| Ascend 重计算流水线独立调度            | [link](docs/features/recompute_independent_pipelining.md) |
+| Ascend 内存碎片优化                | [link](docs/features/memory-fragmentation.md)             |
+| Ascend Mask归一                | [link](docs/features/generate-mask.md)                    |
+| Ascend BF16 参数副本复用           | [link](docs/features/reuse-fp32-param.md)                 |
 | Ascend swap_attention            | [link](docs/features/swap_attention.md)                   |
-| Ulysses 长序列并行                                   | [link](docs/features/ulysses-context-parallel.md)         |
-| Ring Attention 长序列并行                            | [link](docs/features/ring-attention-context-parallel.md)  |
-| 混合长序列并行                              | [link](docs/features/hybrid-context-parallel.md)          |
-| 【Prototype】EOD Reset训练场景                 | [link](docs/features/eod-reset.md)  |
-| 【Prototype】Ascend MC2                           | [link](docs/features/mc2.md)                              |
-| 【Prototype】alibi                                | [link](docs/features/alibi.md)                            |
-| 【Prototype】PP自动并行                               | [link](docs/features/automated-pipeline.md)               |
-| 【Prototype】Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
-| 【Prototype】TFOPS计算                              | [link](docs/features/ops_flops_cal.md)                    |
-| 【Prototype】ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)               |
-| 【Prototype】自定义空操作层                              | [link](docs/features/noop-layers.md)                      |
-| 【Prototype】Ascend Norm重计算                                     | [link](docs/features/norm-recompute.md)                   |
-| 【Prototype】高可用特性                                | [link](docs/features/high_availability.md)                |
-| 【Prototype】其他昇腾亲和优化                             | 暂无                                                        |
+| 【Prototype】Ascend Norm重计算                  | [link](docs/features/norm-recompute.md)          |
+
+## 亲和计算特性
+| 特性                           | 介绍                                                        |
+|------------------------------|-----------------------------------------------------------|
+| Ascend rms_norm 融合算子         | [link](docs/features/rms_norm.md)                         |
+| Ascend swiglu 融合算子           | [link](docs/features/swiglu.md)                           |
+| Ascend rotary_embedding 融合算子 | [link](docs/features/rotary-embedding.md)                 |
+| Ascend flash attention 融合算子    | [link](docs/features/flash-attention.md)                  |
+| Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
+| 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
+| 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
+| 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
+
+## 通信优化特性
+| 特性                           | 介绍                                                        |
+|------------------------------|-----------------------------------------------------------|
+| Ascend Ampipe流水通信隐藏          | [link](docs/features/ampipe.md)                           |
+
+## 关键场景特性
+| 特性                           | 介绍                                                        |
+|------------------------------|-----------------------------------------------------------|
+| Megatron Mcore MoE           | [link](docs/features/megatron_moe/megatron-moe.md)        |
+| DeepSpeed MoE         | [link](docs/features/deepspeed_moe/deepspeed-moe.md)      |
+| 【Prototype】Ascend alibi             | [link](docs/features/alibi.md)                            |
+| 【Prototype】Ascend EOD Reset训练场景                 | [link](docs/features/eod-reset.md)  |
+
+## 其它特性
+| 特性                           | 介绍                                                        |
+|------------------------------|-----------------------------------------------------------|
+| Ascend TFOPS计算                              | [link](docs/features/ops_flops_cal.md)                    |
+| 高可用特性                                | [link](docs/features/high_availability.md)                |
 
 # 自定义算子
-
+部分自定义算子设置为公开接口，公开接口设置说明请参照[MindSpeed安全声明](SECURITYNOTE.md)中的公开接口声明,具体对外接口细节参照以下算子对应的手册链接。
 | 算子                                         | 介绍                                                  |
 |--------------------------------------------|-----------------------------------------------------|
 | npu_dropout_add_layer_norm                 | [link](docs/ops/npu_dropout_add_layer_norm.md)      |
 | npu_rotary_position_embedding              | [link](docs/ops/npu_rotary_position_embedding.md)   |
-| 【Prototype】ffn                             | [link](docs/ops/ffn.md)                             |
-| 【Prototype】fusion_attention                | [link](docs/ops/fusion_attention.md)                |
-| 【Prototype】rms_norm                        | [link](docs/ops/rms_norm.md)                        |
-| 【Prototype】swiglu                          | [link](docs/ops/swiglu.md)                          |
+| fusion_attention                | [link](docs/ops/fusion_attention.md)                |
+| rms_norm                        | [link](docs/ops/rms_norm.md)                        |
+| swiglu                          | [link](docs/ops/swiglu.md)                          |
+| npu_mm_all_reduce_add_rms_norm  | [link](docs/ops/npu_mm_all_reduce_add_rms_norm.md)  |
+| npu_mm_all_reduce_add_rms_norm_ | [link](docs/ops/npu_mm_all_reduce_add_rms_norm_.md) |
+| npu_gmm             | [link](docs/ops/gmm.md)  |
+| npu_grouped_mat_mul_all_reduce  | [link](docs/ops/npu_grouped_mat_mul_all_reduce.md)  |
 | 【Prototype】lcal_coc                        | [link](docs/ops/lcal_coc.md)                        |
-| 【Prototype】npu_mm_all_reduce_add_rms_norm  | [link](docs/ops/npu_mm_all_reduce_add_rms_norm.md)  |
-| 【Prototype】npu_mm_all_reduce_add_rms_norm_ | [link](docs/ops/npu_mm_all_reduce_add_rms_norm_.md) |
-| 【Prototype】npu_grouped_mat_mul             | [link](docs/ops/gmm.md)                             |
-| 【Prototype】npu_grouped_mat_mul_all_reduce  | [link](docs/ops/npu_grouped_mat_mul_all_reduce.md)  |
+| 【Prototype】ffn                             | [link](docs/ops/ffn.md)                             |
 | 【Prototype】npu_fused_moe_token_permute     | [link](docs/ops/npu_fused_moe_token_permute.md)     |
 | 【Prototype】npu_fused_moe_token_unpermute   | [link](docs/ops/npu_fused_moe_token_unpermute.md)    |
 | 【Prototype】npu_ring_attention_update  | [link](docs/ops/npu_ring_attention_update.md)  |
-| 【Prototype】npu_matmul_add_fp32  | [link](docs/ops/npu_matmul_add.md)|
+| 【Prototype】npu_matmul_add_fp32 | [link](docs/ops/npu_matmul_add.md)  |
+| 【Prototype】npu_all_to_all_all_gather_bmm  | [link](docs/ops/npu_all_to_all_all_gather_bmm.md)  |
+| 【Prototype】npu_bmm_reduce_scatter_all_to_all  | [link](docs/ops/npu_bmm_reduce_scatter_all_to_all.md)  |
+
+
 # MindSpeed中采集Profile数据
 
 MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：

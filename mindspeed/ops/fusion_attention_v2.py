@@ -16,6 +16,8 @@
 import torch
 from mindspeed.op_builder import FusionAttentionV2OpBuilder
 
+__all__ = ["npu_fusion_attention"]
+
 
 class FusionAttentionV2Function(torch.autograd.Function):
 

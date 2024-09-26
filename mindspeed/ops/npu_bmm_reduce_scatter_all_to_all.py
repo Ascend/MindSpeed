@@ -19,6 +19,9 @@ from torch.library import impl
 from mindspeed.op_builder.npu_bmm_reduce_scatter_all_to_all_builder import BatchMatMulReduceScatterAlltoAllOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 
+__all__ = ["npu_bmm_reducescatter_alltoall"]
+
+
 mindspeed_ops_builder = BatchMatMulReduceScatterAlltoAllOpBuilder()
 
 
