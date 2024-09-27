@@ -22,7 +22,7 @@ from mindspeed.op_builder.builder import AS_LIBRARY
 __all__ = ["npu_mm_all_reduce_add_rms_norm_"]
 
 
-mindspeed_ops = InplaceMatmulAllReduceAddRmsNormOpBuilder().load()
+op_builder = InplaceMatmulAllReduceAddRmsNormOpBuilder()
 
 
 @impl(AS_LIBRARY, "npu_mm_all_reduce_add_rms_norm_", "PrivateUse1")
@@ -47,19 +47,19 @@ def npu_mm_all_reduce_add_rms_norm_single_(x1,
         raise AssertionError('residual must not be None.')
     if gamma is None:
         raise AssertionError('gamma must not be None.')
-    y, normOut = mindspeed_ops.npu_mm_all_reduce_add_rms_norm_(x1,
-                                                               x2,
-                                                               residual,
-                                                               gamma,
-                                                               hcom,
-                                                               reduce_op,
-                                                               epsilon,
-                                                               bias,
-                                                               antiquant_scale,
-                                                               antiquant_offset,
-                                                               dequant_scale,
-                                                               antiquant_group_size,
-                                                               comm_turn)
+    y, normOut = op_builder.load().npu_mm_all_reduce_add_rms_norm_(x1,
+                                                            x2,
+                                                            residual,
+                                                            gamma,
+                                                            hcom,
+                                                            reduce_op,
+                                                            epsilon,
+                                                            bias,
+                                                            antiquant_scale,
+                                                            antiquant_offset,
+                                                            dequant_scale,
+                                                            antiquant_group_size,
+                                                            comm_turn)
     return (y.view(residual.shape), normOut.view(residual.shape))
 
 

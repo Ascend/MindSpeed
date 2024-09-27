@@ -22,7 +22,7 @@ from mindspeed.op_builder.builder import AS_LIBRARY
 __all__ = ["npu_ffn"]
 
 
-mindspeed_ops = FFNOpBuilder().load()
+op_builder = FFNOpBuilder()
 
 
 @impl(AS_LIBRARY, "npu_ffn", "PrivateUse1")
@@ -45,7 +45,7 @@ def _npu_ffn(x,
              antiquant_offset2=None,
              inner_precise=None,
              output_dtype=None):
-    return mindspeed_ops.npu_ffn(x,
+    return op_builder.load().npu_ffn(x,
                                    weight1,
                                    weight2,
                                    activation,
