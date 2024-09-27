@@ -316,16 +316,10 @@ def mcore_tensor_parallel_adaptation_l1(aspm):
 
 def mcore_tensor_parallel_adaptation(aspm):
     from .core.tensor_parallel.random import checkpoint_wrapper
-    from .core.tensor_parallel.random import checkpoint_function_backward
     from .core.tensor_parallel.layers import vocab_parallel_embedding_forward
-    from .core.tensor_parallel.layers import row_parallel_nocomm_optimizer_wrapper
     from .core.tensor_parallel.layers import parallel_linear_init_wrapper
-    aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
-                        checkpoint_function_backward)
     aspm.register_patch('megatron.core.tensor_parallel.layers.VocabParallelEmbedding.forward',
                         vocab_parallel_embedding_forward)
-    aspm.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear.forward',
-                        row_parallel_nocomm_optimizer_wrapper)
     aspm.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear.__init__',
                         parallel_linear_init_wrapper)
     aspm.register_patch('megatron.core.tensor_parallel.layers.ColumnParallelLinear.__init__',
@@ -396,8 +390,6 @@ def legacy_model_transformer(aspm, args):
     from .model.transformer import parallel_mlp_forward_wrapper, parallel_transformer_init_wrapper, \
         parallel_transformer_init
     from .model.transformer import core_attention_init_wrapper, core_attention_forward
-    from .core.transformer.transformer import parallel_transformer_layer_forward_wrapper, \
-        parallel_transformer_checkpointed_forward_wrapper
     from .model.transformer import switch_mlp_init_wrapper, switch_mlp_forward_wrapper, \
         parallel_transformer_layer_init_wrapper
     if not args.automated_pipeline and args.noop_layers:
@@ -407,10 +399,6 @@ def legacy_model_transformer(aspm, args):
     aspm.register_patch('megatron.legacy.model.transformer.ParallelMLP.forward', parallel_mlp_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.CoreAttention.__init__', core_attention_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.CoreAttention.forward', core_attention_forward)
-    aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformerLayer.forward',
-                        parallel_transformer_layer_forward_wrapper)
-    aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer._checkpointed_forward',
-                        parallel_transformer_checkpointed_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.SwitchMLP.__init__', switch_mlp_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.SwitchMLP.forward', switch_mlp_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformerLayer.__init__',
