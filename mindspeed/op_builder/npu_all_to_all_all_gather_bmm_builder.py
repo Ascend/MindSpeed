@@ -33,10 +33,10 @@ else:
 
 class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
     OP_NAME = "npu_alltoall_allgather_bmm"
-    OP_PROTO = "npu_alltoall_allgather_bmm(Tensor x, Tensor weight, *, Tensor? bias=None, \
+    OP_PROTO = "npu_alltoall_allgather_bmm(Tensor x, Tensor weight, \
         str group_ep, int group_ep_worldsize, \
         str group_tp, int group_tp_worldsize, \
-        int shard_type=0, int act_type=0, \
+        *, Tensor? bias=None, int shard_type=0, int act_type=0, \
         bool need_allgather_out=False, \
         bool need_activation_feature=False) -> (Tensor, Tensor, Tensor)"
 
@@ -65,9 +65,9 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
     
     def register_op_ir(self):
         @impl(AS_LIBRARY, "npu_alltoall_allgather_bmm", "Meta")
-        def npu_alltoall_allgather_bmm_forward(x, weight, *, bias=None,
+        def npu_alltoall_allgather_bmm_forward(x, weight,
                                                group_ep, group_ep_worldsize, group_tp, group_tp_worldsize,
-                                               shard_type=0, act_type=0,
+                                               *, bias=None, shard_type=0, act_type=0,
                                                need_allgather_out=False, need_activation_feature=False):
             batch = weight.size(0)
             m = x.size(1) * group_ep_worldsize
@@ -84,12 +84,12 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
         def convert_npu_alltoall_allgather_bmm(
             x: Tensor,
             weight: Tensor,
-            *,
-            bias: Optional[Tensor] = None,
             group_ep: str,
             group_ep_worldsize: int,
             group_tp: str,
             group_tp_worldsize: int,
+            *,
+            bias: Optional[Tensor] = None,
             shard_type: Optional[int] = 0,
             act_type: Optional[int] = 0,
             need_allgather_out: Optional[bool] = False,
@@ -103,11 +103,11 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
             CheckDtype(x, weight, bias)
             return AllToAllAllGatherBatchMatmul(x,
                                                 weight,
+                                                group_ep,
+                                                group_ep_worldsize,
+                                                group_tp,
+                                                group_tp_worldsize,
                                                 bias=bias,
-                                                group_ep=group_ep,
-                                                group_ep_worldsize=group_ep_worldsize,
-                                                group_tp=group_tp,
-                                                group_tp_worldsize=group_tp_worldsize,
                                                 shard_type=shard_type,
                                                 act_type=act_type,
                                                 need_allgather_out=need_allgather_out,
@@ -133,12 +133,12 @@ def CheckDtype(x: Tensor, weight: Tensor, bias: Optional[Tensor]):
 def AllToAllAllGatherBatchMatmul(
     x: Tensor,
     weight: Tensor,
-    *,
-    bias: Optional[Tensor] = None,
     group_ep: str,
     group_ep_worldsize: int,
     group_tp: str,
     group_tp_worldsize: int,
+    *,
+    bias: Optional[Tensor] = None,
     shard_type: Optional[int] = 0,
     act_type: Optional[int] = 0,
     need_allgather_out: Optional[bool] = False,

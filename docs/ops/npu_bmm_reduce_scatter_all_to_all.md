@@ -2,12 +2,12 @@
 ```
 def npu_bmm_reducescatter_alltoall(x: Tensor,
                                    weight: Tensor,
-                                   *,
-                                   bias: Optional[Tensor] = None,
                                    group_ep: str,
                                    group_ep_worldsize: int,
                                    group_tp: str,
                                    group_tp_worldsize: int,
+                                   *,
+                                   bias: Optional[Tensor] = None,
                                    shard_type: Optional[int] = 0) -> Tensor:
 ```
 
@@ -15,12 +15,18 @@ def npu_bmm_reducescatter_alltoall(x: Tensor,
 BatchMatMulReduceScatterAllToAll是实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
 大体计算流程为：BatchMatMul计算-->转置（shard_type等于0时需要）-->ReduceScatter集合通信-->Add-->AllToAll集合通信
 
+计算逻辑如下，其中y为输出，x weight bias为输入
 $$
-计算逻辑如下，其中y为输出
-temp1 = BatchMatMul(x，weight)
-temp2 = ReduceScatter(temp1)
-temp3 = Add(temp2, bias)
-y = AllToAll(temp3)
+ bmmOut = BatchMatMul(x，weight)
+$$
+$$
+ reduceScatterOut = ReduceScatter(bmmOut)
+$$
+$$
+ addOut = Add(reduceScatterOut, bias)
+$$
+$$
+ y = AllToAll(addOut)
 $$
 
 ## 输入输出及属性说明：
@@ -41,7 +47,7 @@ $$
 
 
 ## 输入限制
-因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=ep_world_size，tp=tp_world_size）
+因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=group_ep_worldsize，tp=group_tp_worldsize）
 按H轴进行ReduceScatter场景，即shard_type为0场景（暂不支持该场景）：
 - x: (E/ep, ep*C, M/tp) 
 - weight：(E/ep, M/tp, H)
@@ -49,25 +55,25 @@ $$
 - y：(E, C, H/tp)
 
 按C轴进行ReduceScatter场景，即shard_type为1场景：
-- x: (E/ep, ep*tp*C/tp, M/tp) 
+- x: (E/ep, ep\*tp\*C/tp, M/tp) 
 - weight：(E/ep, M/tp, H)
 - bias：(E/ep, 1, H)    两维时为(E/ep, H)
-- y：(E, C, H)
+- y：(E, C/tp, H)
 
 数据关系说明：
-1、比如x.size(0)等于E/tp，y.size(0)等于E，则表示，y.size(0) = ep*x.size(0)，y.size(0)是ep的整数倍；其他关系类似
-2、E的取值范围为[2, 2048]，且E是ep的整数倍；
-3、H的取值范围为：[1, 65535]；
-4、M/tp的取值为：[1, 65535]；
-5、ep、tp均仅支持2、4、8、16；
-6、C大于0，上限为算子device内存上限；
+- 比如x.size(0)等于E/tp，y.size(0)等于E，则表示，y.size(0) = ep*x.size(0)，y.size(0)是ep的整数倍；其他关系类似
+- E的取值范围为[2, 2048]，且E是ep的整数倍；
+- H的取值范围为：[1, 65535]；
+- M/tp的取值为：[1, 65535]；
+- ep、tp均仅支持2、4、8、16；
+- C大于0，上限为算子device内存上限；
 
 ## npu_bmm_reducescatter_alltoall 类的调用示例(待验证)
 在终端调用命令如下：
 ```
 python3 -m torch.distributed.launch --nproc_per_node 8 --master_addr 127.0.0.1  --master_port 29500 demo_test.py
 ```
-注：master_addr和master_port参数需用户根据实际情况设置
+注：master_addr和master_port参数需用户根据实际情况设置，8表示ep_size*tp_size，按实际修改 
 
 demo_test.py的示例代码如下：
 ```python
@@ -151,11 +157,11 @@ def test_npu_bmm_reducescatter_alltoall(dtype, y_shard_type, transpose_weight):
     
     y = npu_bmm_reducescatter_alltoall(x_npu,
                                        weight_npu,
+                                       ep_group,
+                                       ep_size,
+                                       tp_group,
+                                       tp_size,
                                        bias=bias_npu,
-                                       group_ep=ep_group,
-                                       group_ep_worldsize=ep_size,
-                                       group_tp=tp_group,
-                                       group_tp_worldsize=tp_size,
                                        shard_type=y_shard_type)
     print(f'y_shape = {y.size()}')
     if y_shard_type == 0:
@@ -169,6 +175,7 @@ if __name__ == '__main__':
     shard_type = 1
     transpose_weight = False
     y_npu = test_npu_bmm_reducescatter_alltoall(dtype, shard_type, transpose_weight)
+    rank = int(os.environ["LOCAL_RANK"])
     if rank == 0:
         for i, y in enumerate(y_npu):
             y.cpu().numpy().tofile(f"./y_{i}.bin")

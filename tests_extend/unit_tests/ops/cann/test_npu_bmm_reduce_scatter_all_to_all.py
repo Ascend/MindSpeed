@@ -35,13 +35,13 @@ class TestNPUBMMReduceScatterAlltoAll(DistributedTest):
 
     def custom_op_exec(self):
         return npu_bmm_reducescatter_alltoall(self.x_npu,
-                                            self.weight_npu,
-                                            bias=self.bias_npu,
-                                            group_ep=self.ep_hcomm_info,
-                                            group_ep_worldsize=self.ep_size,
-                                            group_tp=self.tp_hcomm_info,
-                                            group_tp_worldsize=self.tp_size,
-                                            shard_type=self.y_shard_type)
+                                              self.weight_npu,
+                                              self.ep_hcomm_info,
+                                              self.ep_size,
+                                              self.tp_hcomm_info,
+                                              self.tp_size,
+                                              bias=self.bias_npu,
+                                              shard_type=self.y_shard_type)
 
     def get_hcomm_info(self, n, i):
         default_pg = _get_default_group()

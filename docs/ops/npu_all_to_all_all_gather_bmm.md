@@ -3,12 +3,12 @@
 def npu_alltoall_allgather_bmm(
     x: Tensor,
     weight: Tensor,
-    *,
-    bias: Optional[Tensor] = None,
     group_ep: str,
     group_ep_worldsize: int,
     group_tp: str,
     group_tp_worldsize: int,
+    *,
+    bias: Optional[Tensor] = None,
     shard_type: Optional[int] = 0,
     act_type: Optional[str] = "None",
     need_allgather_out: Optional[bool] = False,
@@ -21,12 +21,18 @@ def npu_alltoall_allgather_bmm(
 bmm指BatchMatMul，AllToAllAllGahterBatchMatMul算子是实现AllToAll、AllGather集合通信与BatchMatMul计算并行的算子。
 大体计算流程为：AllToAll集合通信-->AllGather集合通信-->BatchMatMul-->激活（可选，可以没有）
 
+计算逻辑如下，其中y1 y2 y3为输出，x weight bias为输入，activating为激活函数（由act_type决定，当act_type为None时，表示不调用激活函数）
 $$
-计算逻辑如下，其中y1 y2 y3为输出
-x1 = AllToAll(x)
-y2 = AllGather(x1)
-y3 = BatchMatMul(y2, weight, bias)
-y1 = 激活函数(y3)
+ alltoallOut = AllToAll(x)
+$$
+$$
+ y2 = AllGather(alltoallOut)
+$$
+$$
+ y3 = BatchMatMul(y2, weight, bias)
+$$
+$$
+ y1 = activating(y3)
 $$
 
 ## 输入输出及属性说明：
@@ -52,20 +58,21 @@ $$
 
 
 ## 输入shape限制
-因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=ep_world_size，tp=tp_world_size）
-- x: (E,C/tp,H)；
-- weight：(E/ep,H,M/tp)；
-- bias：(E/ep,1,M/tp)；  支持两维或三维，两维时shape为：(E/ep, M/tp)
-- y1：(E/ep,ep*tp*C/tp,M/tp)；
-- y2：(E/ep,ep*tp*C/tp,H)；
-- y3：(E/ep,ep*tp*C/tp,M/tp)
+因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=group_ep_worldsize，tp=group_tp_worldsize）
+- x: (E, C/tp, H)；
+- weight：(E/ep, H, M/tp)；
+- bias：(E/ep, 1, M/tp)；  支持两维或三维，两维时shape为：(E/ep, M/tp)
+- y1：(E/ep, ep\*tp\*C/tp, M/tp)；
+- y2：(E/ep, ep\*tp\*C/tp, H)；
+- y3：(E/ep, ep\*tp\*C/tp, M/tp)
+
 数据关系说明：
-1、比如x.size(0)等于E，weight.size(0)等于E/ep，则表示，x.size(0) = ep*weight.size(0)，x.size(0)是ep的整数倍；其他关系类似
-2、E的取值范围为[2, 2048]，且E是ep的整数倍；
-3、H的取值范围为：[1, 65535]；
-4、M/tp的取值为：[1, 65535]；
-5、ep、tp均仅支持2、4、8、16；
-6、C大于0，上限为算子device内存上限；
+- 比如x.size(0)等于E，weight.size(0)等于E/ep，则表示，x.size(0) = ep*weight.size(0)，x.size(0)是ep的整数倍；其他关系类似
+- E的取值范围为[2, 2048]，且E是ep的整数倍；
+- H的取值范围为：[1, 65535]；
+- M/tp的取值为：[1, 65535]；
+- ep、tp均仅支持2、4、8、16；
+- C大于0，上限为算子device内存上限；
 
 ## npu_alltoall_allgather_bmm 的调用示例
 在终端调用命令如下：
@@ -151,20 +158,22 @@ if __name__ == '__main__':
         print(f'!!!!after transpose, weight_npu.size()={weight_npu.size()}')
         print(f'!!!!after transpose, weight_npu.is_contiguous()={weight_npu.is_contiguous()}')
     bias_npu = bias.npu().to(dtype)
+    # 赋值None可以验证bias为空的场景
+    bias_npu = None
     
     y_npu = npu_alltoall_allgather_bmm(x_npu,
                                        weight_npu,
+                                       ep_group,
+                                       ep_size,
+                                       tp_group,
+                                       tp_size,
                                        bias=bias_npu,
-                                       group_ep=ep_group,
-                                       group_ep_worldsize=ep_size,
-                                       group_tp=tp_group,
-                                       group_tp_worldsize=tp_size,
                                        shard_type=x_shard_type,
                                        act_type=act_type,
                                        need_allgather_out=out_y2_flag,
                                        need_activation_feature=out_y3_flag)
     if rank == 0:
-        for i, y in enumerate(y_npu):
+        for i, y in enumerate(y_npu[0]):
             y.cpu().numpy().tofile(f"./y_{i}.bin")
 
 ```
