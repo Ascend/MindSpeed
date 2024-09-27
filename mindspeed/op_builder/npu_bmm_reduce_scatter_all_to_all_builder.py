@@ -34,8 +34,8 @@ else:
 
 class BatchMatMulReduceScatterAlltoAllOpBuilder(MindSpeedOpBuilder):
     OP_NAME = "npu_bmm_reducescatter_alltoall"
-    OP_PROTO = "npu_bmm_reducescatter_alltoall(Tensor x, Tensor weight, *, Tensor? bias=None, str group_ep, int group_ep_worldsize, \
-        str group_tp, int group_tp_worldsize, int shard_type=0) -> Tensor"
+    OP_PROTO = "npu_bmm_reducescatter_alltoall(Tensor x, Tensor weight, str group_ep, int group_ep_worldsize, \
+        str group_tp, int group_tp_worldsize, *, Tensor? bias=None, int shard_type=0) -> Tensor"
 
     def __init__(self):
         super(BatchMatMulReduceScatterAlltoAllOpBuilder, self).__init__(self.OP_NAME)
@@ -62,8 +62,8 @@ class BatchMatMulReduceScatterAlltoAllOpBuilder(MindSpeedOpBuilder):
     
     def register_op_ir(self):
         @impl(AS_LIBRARY, "npu_bmm_reducescatter_alltoall", "Meta")
-        def npu_bmm_reducescatter_alltoall_forward(x, weight, *, bias=None, group_ep, group_ep_worldsize,
-                                                   group_tp, group_tp_worldsize, shard_type=0):
+        def npu_bmm_reducescatter_alltoall_forward(x, weight, group_ep, group_ep_worldsize,
+                                                   group_tp, group_tp_worldsize, *, bias=None, shard_type=0):
             if group_ep_worldsize == 0:
                 raise AssertionError('group_ep_worldsize can not be 0.')
             if group_tp_worldsize == 0:
@@ -84,12 +84,12 @@ class BatchMatMulReduceScatterAlltoAllOpBuilder(MindSpeedOpBuilder):
         @register_fx_node_ge_converter(torch.ops.mindspeed.npu_bmm_reducescatter_alltoall.default)
         def convert_npu_bmm_reducescatter_alltoall(x: Tensor,
                                                    weight: Tensor,
-                                                   *,
-                                                   bias: Optional[Tensor] = None,
                                                    group_ep: str,
                                                    group_ep_worldsize: int,
                                                    group_tp: str,
                                                    group_tp_worldsize: int,
+                                                   *,
+                                                   bias: Optional[Tensor] = None,
                                                    shard_type: Optional[int] = 0,
                                                    meta_outputs: TensorSpec = None):
             if torch_npu_api_version != 2:
@@ -97,23 +97,23 @@ class BatchMatMulReduceScatterAlltoAllOpBuilder(MindSpeedOpBuilder):
             CheckDtype(x, weight, bias)
             return BatchMatmulReduceScatterAlltoAll(x,
                                                     weight,
+                                                    group_ep,
+                                                    group_ep_worldsize,
+                                                    group_tp,
+                                                    group_tp_worldsize,
                                                     bias=bias,
-                                                    group_ep=group_ep,
-                                                    group_ep_worldsize=group_ep_worldsize,
-                                                    group_tp=group_tp,
-                                                    group_tp_worldsize=group_tp_worldsize,
                                                     shard_type=shard_type)
 
 
 def BatchMatmulReduceScatterAlltoAll(x: Tensor,
-                                    weight: Tensor,
-                                    *,
-                                    bias: Tensor = None,
-                                    group_ep: str,
-                                    group_ep_worldsize: int,
-                                    group_tp: str,
-                                    group_tp_worldsize: int,
-                                    shard_type: int = 0):
+                                     weight: Tensor,
+                                     group_ep: str,
+                                     group_ep_worldsize: int,
+                                     group_tp: str,
+                                     group_tp_worldsize: int,
+                                     *,
+                                     bias: Tensor = None,
+                                     shard_type: int = 0):
     transpose_weight = False
     return torchair.ge.custom_op(
         "BatchMatMulReduceScatterAlltoAll",

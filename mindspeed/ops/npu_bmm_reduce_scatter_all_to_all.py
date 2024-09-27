@@ -28,12 +28,12 @@ mindspeed_ops_builder = BatchMatMulReduceScatterAlltoAllOpBuilder()
 @impl(AS_LIBRARY, "npu_bmm_reducescatter_alltoall", "PrivateUse1")
 def npu_bmm_reducescatter_alltoall_single(x,
                                           weight,
-                                          *,
-                                          bias=None,
                                           group_ep,
                                           group_ep_worldsize,
                                           group_tp,
                                           group_tp_worldsize,
+                                          *,
+                                          bias=None,
                                           shard_type=0):
     if x is None:
         raise AssertionError('x must not be None.')
