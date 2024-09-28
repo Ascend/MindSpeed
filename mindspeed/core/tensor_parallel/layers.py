@@ -24,6 +24,7 @@ import torch
 import torch_npu
 import torch.distributed
 import torch.nn.functional as F
+import fused_weight_gradient_mlp_cuda
 from torch.nn.parameter import Parameter
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.parameter import Parameter
