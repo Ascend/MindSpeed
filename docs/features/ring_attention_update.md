@@ -1,4 +1,4 @@
-# Ring Attention update 融合优化
+# Ascend Ring Attention Update 融合优化
 
 ## 问题分析
 Ring Attention 是一种优化注意力机制的技术，它借鉴了分块 Softmax 的原理，通过分块的方式执行自注意力和前馈网络计算，从而在不需要获取整个序列的完整矩阵的情况下进行注意力计算。
@@ -11,7 +11,7 @@ MindSpeed将注意力更新操作融合成一个算子，显著提高注意力�
 ## 使用方法
 ### 前提条件
 开启Ring Attention长序列并行
-`--context-parallel-size CP  \
+`--context-parallel-size ${CP}  \
 --context-parallel-algo megatron_cp_algo 
 `
 其中，CP大于1
