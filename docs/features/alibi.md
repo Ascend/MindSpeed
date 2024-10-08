@@ -20,11 +20,11 @@ Alibi算法给attention score添加了一个预设的线性偏置矩阵（如下
 
 （1）对于不使用融合算子fusion_attention的情况，设置`--position-embedding-type alibi`即可调用该算法。
 
-（2）对于使用融合算子fusion_attention的情况设置 `--alibi-fusion-attn-type 2`（支持0，2，3）
+（2）对于使用融合算子fusion_attention的情况设置 `--alibi-fusion-attn-type 2`（支持0，2，3）。
 0表示生成alibi后传入，1暂不开放， 2和3表示核内生成， 3做pse的时候会做sqrt。
 如果要设置alibi为对角线对称取反，则需设置`alibi_diagonal_opposite`，反之（亦是默认情况，且与2和3时核内生成一致）无需进行设置。
 
-（3）目前ring-attention-context-parallel已经支持alibi位置编码，当前只支持mask为causal的场景，以及 `--alibi-fusion-attn-type` 为2，3的压缩模式
+（3）目前ring-attention-context-parallel已经支持alibi位置编码，当前只支持mask为causal的场景，以及 `--alibi-fusion-attn-type` 为2，3的压缩模式。
 ## 使用效果
 
 

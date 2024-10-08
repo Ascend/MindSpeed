@@ -25,11 +25,11 @@
 
 ## 使用场景
 
-该特性主要用于训练场景，如果用户发现NPU报内存不足(out of memory)的错误，reserved和allocated的内存差距过大时(如reserved-allocated>1G)，则
+该特性主要用于训练场景，如果用户发现计算设备报内存不足(out of memory)的错误，reserved和allocated的内存差距过大时(如reserved-allocated>1G)，则
 说明torch中可能产生了较多的内存碎片，此时可考虑开启该特性以减少内存碎片，避免内存不足的问题。
 
 **示例** ：
-Tried to allocated 3384.00 MiB (NPU 2; 61.22 GiB total capacity; 53.87 GiB already allocated; 53.87 GiB current
+Tried to allocated 3384.00 MiB (device 2; 61.22 GiB total capacity; 53.87 GiB already allocated; 53.87 GiB current
 activate; 1.59 GiB free;
 56.60 GiB reserved in total by PyTorch), 发现reserved-allocated=2.73G，碎片较多，可以考虑开启该特性。
 
@@ -41,7 +41,7 @@ activate; 1.59 GiB free;
 
 主要收益场景及配置：
 
-| 模型           | 参数                                                                          | NPU卡数    | 显存收益        |
+| 模型           | 参数                                                                          | 计算设备卡数    | 显存收益        |
 |--------------|-----------------------------------------------------------------------------|----------|-------------|
 | llama2-7B    | seq-length=4096、mico-batch-size=4、global-batch-size=16、TP=8、PP=1、DP=1、开启FA  | 8卡（单机）   | 3%（1.71G）   |
 | llama2-7B    | seq-length=6144、mico-batch-size=4、global-batch-size=16、TP=8、PP=1、DP=1、开启FA  | 8卡（单机）   | 2.4%（1.22G） |
@@ -55,11 +55,10 @@ activate; 1.59 GiB free;
 
 ## 注意事项：
 
-由于该特性在内存充足时倾向于新申请内存，而非将已申请的内存空间碎片化，因此在少量情况下可能和hccl抢占内存，hccl在内存不足时无法通过torch释放额外预留的空闲空间，
-从而报hccl内存不足的错误。此问题可以通过设置torch_npu.npu.set_per_process_memory_fraction接口来设置允许torch占用的内存上限来解决该问题
+1. 由于该特性在内存充足时倾向于新申请内存，而非将已申请的内存空间碎片化，因此在少量情况下可能和hccl抢占内存，hccl在内存不足时无法通过torch释放额外预留的空闲空间，从而报hccl内存不足的错误。此问题可以通过设置类似于torch_npu.npu.set_per_process_memory_fraction接口，调节允许torch占用的内存上限来解决该问题。
 
 **接口设置**：
 位置：MindSpeed/mindspeed/core/memory/memory_fragmentation/memory_recorder.py
 添加：torch_npu.npu.set_per_process_memory_fraction(x)，其中x为想要限制torch占用内存的最高比例，例如x设置为0.94，表示torch最多占用"单卡内存*0.94"的内存。
 
-**注**：由于内存碎片优化与自适应选择重计算两个特性都修改了PyTorch内存管理模块，这两个特性都打开会存在冲突，mindspeed进行了assert判断。
+2. 由于内存碎片优化与自适应选择重计算两个特性都修改了PyTorch内存管理模块，这两个特性都打开会存在冲突，mindspeed进行了assert判断。

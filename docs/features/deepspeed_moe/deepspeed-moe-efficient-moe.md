@@ -2,7 +2,7 @@
 
 ### 问题分析
 
-现有MoE无token丢弃方案在训练过程中实时all reduce通信全局最大专家容量作为所有rank的容量，引入频繁的all reduce开销
+现有MoE无token丢弃方案在训练过程中实时all reduce通信全局最大专家容量作为所有rank的容量，引入频繁的all reduce开销。
 
 ### 优化方案
 
@@ -45,6 +45,5 @@ top1 多种并行方式 提速效果：
 
 同时开启此优化减少显存占用3%：
 <p align="center"> <img src="../../../sources/images/moe_dynamic_padding_e.png" height="500px" width="800px"></p>
-
 
 

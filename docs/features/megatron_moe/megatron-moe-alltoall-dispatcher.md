@@ -5,7 +5,7 @@
 在 Alltoall dispatcher 分支中，调用了 repeat_interleave 算子，此算子只使用了单个 block dim 在单个下发流上进行串行计算，且耗时较长，算子的输出也是在 alltoall、permute、alltoallv 之后才用到。
 
 ### 2. 计算通信并行
-在 alltoall 分支中的 permutation 函数最后会进行 allgather 操作对所有 tokens 被切分的 H 维进行补全，然后再对数据分块进行专家计算。此项操作为串行操作，但各专家间的 tokens 并没有存在依赖关系，可修改为并行操作。
+在 alltoall 分支中的 permutation 函数最后会进行 allgather 操作，对所有 tokens 被切分的 H 维进行补全，然后再对数据分块进行专家计算。此项操作为串行操作，但各专家间的 tokens 并没有存在依赖关系，可修改为并行操作。
 
 
 ## 解决方案
