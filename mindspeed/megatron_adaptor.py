@@ -273,6 +273,7 @@ def mcore_optimizer_adapation(aspm):
     from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
     from .optimizer.optimizer import (mixed_precision_optimizer_step,
                                       reuse_fp32_param_init_wrapper, optimizer_config_init_wrapper)
+    from .core.distributed.param_and_grad_buffer import reuse_fp32_param_param_and_grad_buffer_init_wrapper
     # optim relative.
     aspm.register_patch('megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step',
                         mixed_precision_optimizer_step)
@@ -282,6 +283,8 @@ def mcore_optimizer_adapation(aspm):
                         optimizer_config_init_wrapper)
     aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
                         reuse_fp32_param_distrib_optimizer_init_wrapper)
+    aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
+                        reuse_fp32_param_param_and_grad_buffer_init_wrapper)
 
 
 def mcore_pipeline_parallel_adaptation(aspm):
