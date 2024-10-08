@@ -2,6 +2,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 
 import os
+import math
 from functools import wraps
 import torch
 from megatron.training import get_args
@@ -26,3 +27,18 @@ def pipe_register_grad_ready(self, param: torch.nn.Parameter):
     if self.is_last_microbatch and FLAG_GRAD_REDUCE:
         bucket = self.param_to_bucket[param]
         bucket.register_grad_ready(param)
+
+
+def reuse_fp32_param_param_and_grad_buffer_init_wrapper(init_func):
+    @wraps(init_func)
+    def reuse_fp32_param_param_and_grad_buffer_init(*args, **kwargs):
+        global_args = get_args()
+        math_ceil = math.ceil
+        if global_args.reuse_fp32_param and global_args.use_distributed_optimizer:
+            def ceil_even(x):
+                return math_ceil(math_ceil(x) / 2) * 2
+            math.ceil = ceil_even
+        init_func(*args, **kwargs)
+        if global_args.reuse_fp32_param and global_args.use_distributed_optimizer:
+            math.ceil = math_ceil
+    return reuse_fp32_param_param_and_grad_buffer_init
