@@ -24,3 +24,8 @@ num_head 要能被 tp_size*cp_size 整除。
 ## 使用效果
 
 利用多个计算设备对输入序列进行并行切分，降低单设备的内存消耗，相比不开启序列并行单步耗时增加，相比重计算计算效率提升。
+
+## 鸣谢
+
+1.GitHub项目地址：
+https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses

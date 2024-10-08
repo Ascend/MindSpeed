@@ -4,7 +4,7 @@
 
 Mixture of Expert（MoE）是指混合专家模型功能。在大模型训练中使用该功能可以将常规的稠密大模型变成稀疏的MoE大模型，在计算量不显著增加的情况下大幅提升模型的参数量。
 
-通过使用专家并行（Expert Parallelism，EP），把专家分配到多个NPU上，减轻单个NPU的显存压力，也就是说专家并行（Expert Parallelism，EP），对全量专家进行分组。
+通过使用专家并行（Expert Parallelism，EP），把专家分配到多个计算设备上，减轻单个计算设备的显存压力，也就是说专家并行（Expert Parallelism，EP），对全量专家进行分组。
 如图所示，一个包含6个专家的MoE模型在EP=2时的专家分布情况。可以把专家并行理解成模型并行的一种形态（模型被切分成多份），但是输入的数据又是不同的（DP），因此token在经过Router之后，可能会选中别的卡上的专家，此时就需要将这些token发送过去，即EP进程组内需要通过All2All通信交换token。值得注意的是，该MoE模型在token选择专家时，如果超过容量会drop掉token。
 
 ![输入图片说明](moe.png)
@@ -80,4 +80,4 @@ MoE特性token重排优化:
 |------------------------------------|------------------------------------------------------|
 | Ascend DeepSpeed MoE token 重排性能优化  | [link](deepspeed-moe-token-rearrange.md)             |
 | Ascend DeepSpeed MoE dropless 性能优化 | [link](deepspeed-moe-efficient-moe.md) |
-| Ascend MLP 通信隐藏              | [link](../pipeline-experts.md)  
+| Ascend MLP 通信隐藏              | [link](../pipeline-experts.md)                 |

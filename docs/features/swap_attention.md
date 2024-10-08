@@ -6,7 +6,7 @@
 
 ## 解决方案
 
-新增swap-attention功能，利用NPU内存和CPU内存来存放激活值，在梯度反传的同时从CPU内存预取激活值来减少重计算，充分利用H2D高带宽的优势以网补存、以网强算，提升MFU，加速大模型的训练。
+新增swap-attention功能，利用设备内存和CPU内存来存放激活值，在梯度反传的同时从CPU内存预取激活值来减少重计算，充分利用H2D高带宽的优势以网补存、以网强算，提升MFU，加速大模型的训练。
 
 ![输入图片说明](../../sources/images/swap_attention.png)
 
@@ -49,4 +49,4 @@
 
 ## 注意事项：
 
-`--recompute-num-layers [int]`中的[int]层数指的是每一个ppstage的层数。[int]的取值应该小于等于num-layers/pipeline-model-parallel-size.
+`--recompute-num-layers [int]`中的[int]层数指的是每一个pp stage的层数。[int]的取值应该小于等于num-layers/pipeline-model-parallel-size.

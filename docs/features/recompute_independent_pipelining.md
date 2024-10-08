@@ -20,10 +20,11 @@
 
 ## 使用方法
 
-脚本中添加： --recompute-in-bubble 可开启利用bubble进行重计算功能，实现内存节省
+脚本中添加： --recompute-in-bubble 可开启利用bubble进行重计算功能，实现内存节省。
 使用条件：此功能仅支持虚拟流水线调度，使用此功能前不能开启重计算，recompute_num_layers参数需为None或0。
 
-脚本中添加： --recompute-in-advance 可开启提前重计算以及去除不必要重计算功能，实现训练性能提升
-使用条件：此功能仅支持虚拟流水线调度，使用此功能前需要开启重计算，且不支持recompute_method为uniform，recompute_num_layers不能为None或0
+脚本中添加： --recompute-in-advance 可开启提前重计算以及去除不必要重计算功能，实现训练性能提升。
+使用条件：此功能仅支持虚拟流水线调度，使用此功能前需要开启重计算，且不支持recompute_method为uniform，recompute_num_layers不能为None或0。
 
+#### 注意：
 两者不可同时开启

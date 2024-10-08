@@ -56,7 +56,7 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
 下载源码安装：
 
  ```shell
- git clone https://gitee.com/ascend/MindSpeed.git
+ git clone -b core_r0.7.0_6.0.rc3 https://gitee.com/ascend/MindSpeed.git
  pip install -e MindSpeed
  ```
 
@@ -111,14 +111,6 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
     bash examples/pretrain_gpt_distributed.sh
     ```
 
-# 自定义优化级别
-MindSpeed提供了多层次的优化解决方案，分为三个层级，用户可根据实际需求灵活启用任意层级。高层级兼容低层级的能力，确保了整个系统的稳定性和扩展性。
-用户可以通过设置`optimization_level`参数来自定义开启的优化层级。该参数支持以下值：
-- `0`：基础兼容层L0，提供Megatron-LM框架对NPU的支持，确保无缝集成。该层包含基础功能集patch，保证可靠性和稳定性，为高级优化奠定基础。
-- `1`：亲和性增强层L1（兼容L0能力），集成高性能融合算子库，结合昇腾亲和的计算优化，充分释放昇腾算力，显著提升计算效率。
-- `2`（默认值）：自研加速算法层L2（兼容L1,L0能力），集成了多项自主研发的核心技术成果，提供全面的性能优化。
-
-
 # 特性介绍
 MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性以及关键场景特性。
 【Prototype】表示原型特性，暂未商用发布
@@ -163,10 +155,10 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend swiglu 融合算子           | [link](docs/features/swiglu.md)                           |
 | Ascend rotary_embedding 融合算子 | [link](docs/features/rotary-embedding.md)                 |
 | Ascend flash attention 融合算子    | [link](docs/features/flash-attention.md)                  |
-| Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
+| 【Prototype】Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
 | 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
-| 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
 | 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
+| 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
 | 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
 
 ## 通信优化特性
@@ -187,9 +179,10 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
 | Ascend TFOPS计算                              | [link](docs/features/ops_flops_cal.md)                    |
+| 【Prototype】自定义优化级别                                | [link](docs/features/opti_level.md)                |
 
 # 自定义算子
-部分自定义算子设置为公开接口，公开接口设置说明请参照[MindSpeed安全声明](SECURITYNOTE.md)中的公开接口声明,具体对外接口细节参照以下算子对应的手册链接。
+部分自定义算子设置为公开接口，公开接口设置说明请参照MindSpeed安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。
 | 算子                                         | 介绍                                                  |
 |--------------------------------------------|-----------------------------------------------------|
 | npu_dropout_add_layer_norm                 | [link](docs/ops/npu_dropout_add_layer_norm.md)      |
@@ -234,7 +227,8 @@ MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 | MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |CANN版本| Python版本                               |
 | ----------------- | --- |------------- | ------------- | --------------------------------------- | ------------- |
 |       master      | Core 0.7.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       core_r0.6.0 | Core 0.6.0  |  2.1.0     |   在研版本 | 在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       core_r0.7.0_6.0.rc3 | Core 0.7.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       core_r0.6.0_6.0.rc3 | Core 0.6.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
 |       1.1         |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
 |       1.0         | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  |
 
@@ -256,8 +250,10 @@ MindSpeed版本分支的维护阶段如下：
 
 | **MindSpeed版本** | **维护策略** | **当前状态** | **发布时间**   | **后续状态**         | **EOL日期** |
 |-----------------|-----------|--------|------------|------------------|-----------|
+| core_r0.7.0_6.0.rc3             |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
+| core_r0.6.0_6.0.rc3            |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
 | 1.1             |  常规版本  | 维护   | 2024/06/30 | 预计2024/12/30起无维护	 |           |
-| 1.0             |  常规版本  | 维护   | 2024/03/30 | 预计2024/9/30起无维护 |           |
+| 1.0             |  常规版本  | 停止维护   | 2024/03/30 | 2024/9/30起无维护 |           |
 
 
 # 安全声明
