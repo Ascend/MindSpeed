@@ -17,11 +17,13 @@
 
 ## 使用方法
 
-（1）安装华为自研高可用框架mindio_ttp.whl mindio_ttp相关说明：https://www.hiascend.com/document/detail/zh/mindx-dl/60rc1/mindio/mindiottp
+（1）正确安装华为自研高可用框架mindio_ttp.whl mindio_ttp相关说明：https://www.hiascend.com/document/detail/zh/mindx-dl/60rc1/mindio/mindiottp
 
-（2）对于开启此功能，设置`--enable-high-availability`使能即可调用。
+（2）检测HDK版本，需支持使能devmem。
 
-（3）设置`enable-optimizer-state-local-copy`使能保存上一步优化器状态，内存会进一步增加，默认可关闭。
+（3）对于开启此功能，设置`--enable-high-availability`使能即可调用。
+
+（4）设置`enable-optimizer-state-local-copy`使能保存上一步优化器状态，内存会进一步增加，默认可关闭。
 
 ## 使用效果
 

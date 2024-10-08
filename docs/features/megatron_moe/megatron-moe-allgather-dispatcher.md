@@ -13,7 +13,7 @@ local_hidden_states = torch.gather(global_hidden_states, 0, self.global_local_ma
 ```
 
 ### 2. 异步通信
-在 Allgather dispatcher 分支中，会 permutate 函数开头分别对 hidden_states、max_ind、max_prob 三个数据做 allgather 通信，此些操作为串行操作，但各计算任务之间并非串行依赖关系。
+在 Allgather dispatcher 分支中，会 permutate 函数开头分别对 hidden_states、max_ind、max_prob 三个数据做 allgather 通信，这些操作为串行操作，但各计算任务之间并非串行依赖关系。
 
 
 ## 解决方案

@@ -161,7 +161,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend swiglu 融合算子           | [link](docs/features/swiglu.md)                           |
 | Ascend rotary_embedding 融合算子 | [link](docs/features/rotary-embedding.md)                 |
 | Ascend flash attention 融合算子    | [link](docs/features/flash-attention.md)                  |
-| Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
+| 【Prototype】Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
 | 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
 | 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
 | 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
@@ -188,7 +188,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 高可用特性                                | [link](docs/features/high_availability.md)                |
 
 # 自定义算子
-部分自定义算子设置为公开接口，公开接口设置说明请参照[MindSpeed安全声明](SECURITYNOTE.md)中的公开接口声明,具体对外接口细节参照以下算子对应的手册链接。
+部分自定义算子设置为公开接口，公开接口设置说明请参照MindSpeed安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。
 | 算子                                         | 介绍                                                  |
 |--------------------------------------------|-----------------------------------------------------|
 | npu_dropout_add_layer_norm                 | [link](docs/ops/npu_dropout_add_layer_norm.md)      |
@@ -234,7 +234,8 @@ MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 | MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |CANN版本| Python版本                               |
 | ----------------- | --- |------------- | ------------- | --------------------------------------- | ------------- |
 |       master      | Core 0.7.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       core_r0.6.0 | Core 0.6.0  |  2.1.0     |   在研版本 | 在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       core_r0.7.0_6.0.rc3 | Core 0.7.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       core_r0.6.0_6.0.rc3 | Core 0.6.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
 |       1.1         |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
 |       1.0         | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  |
 
@@ -256,8 +257,10 @@ MindSpeed版本分支的维护阶段如下：
 
 | **MindSpeed版本** | **维护策略** | **当前状态** | **发布时间**   | **后续状态**         | **EOL日期** |
 |-----------------|-----------|--------|------------|------------------|-----------|
+| core_r0.7.0_6.0.rc3             |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
+| core_r0.6.0_6.0.rc3            |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
 | 1.1             |  常规版本  | 维护   | 2024/06/30 | 预计2024/12/30起无维护	 |           |
-| 1.0             |  常规版本  | 维护   | 2024/03/30 | 预计2024/9/30起无维护 |           |
+| 1.0             |  常规版本  | 停止维护   | 2024/03/30 | 2024/9/30起无维护 |           |
 
 
 # 安全声明
