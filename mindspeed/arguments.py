@@ -88,6 +88,10 @@ def _add_high_availability_args(parser):
     group.add_argument('--enable-optimizer-state-local-copy',
                        action='store_true',
                        help='high availability feature, enable parameter state local copy of distributed optimizer')
+    
+    group.add_argument("--enable-hbmfault-repair", 
+                       action='store_true',
+                       help="high availability feature, enable hbmfault repair")
 
     return parser
 
@@ -430,6 +434,8 @@ def validate_args_wrapper(validate_args):
         args = validate_args(args, defaults)
         if args.enable_optimizer_state_local_copy and not args.enable_high_availability:
             raise AssertionError('switch of the high availability feature is unenabled.')
+        if args.enable_hbmfault_repair and not args.enable_high_availability:
+            raise AssertionError('switch of the high availability feature is unsupported')
         if args.enable_high_availability and args.enable_zero3:
             raise AssertionError('zero3 and enable_high_availability do not support enabling together.')
         if args.enable_high_availability and args.reuse_fp32_param:
