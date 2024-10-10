@@ -23,6 +23,9 @@
 #include "atb/types.h"
 #include "atb/operation.h"
 #include "atb/utils.h"
+#if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
+    #include "torch_npu/csrc/flopcount/FlopCount.h"
+#endif
 
 atb::Tensor AtTensor2Tensor(const at::Tensor atTensor);
 atb::Context* GetContext();

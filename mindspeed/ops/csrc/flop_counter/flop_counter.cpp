@@ -16,7 +16,7 @@
 
 #include "torch_npu/csrc/core/npu/NPUException.h"
 
-#include "FlopCounter.h"
+#include "flop_counter.h"
 
 
 int64_t FlopCounter::mm_flop(const at::Tensor &tensor1, const at::Tensor &tensor2)
@@ -54,6 +54,19 @@ int64_t FlopCounter::mm_flop(const at::Tensor &tensor1, const at::Tensor &tensor
     return flop;
 }
 
+int64_t FlopCounter::coc_flop(const at::Tensor &tensor1, const at::Tensor &tensor2, bool trans, bool is_ag_mm)
+{
+    // Count flops for coc.
+    at::Tensor tensor2_transposed;
+    if (trans) {
+        tensor2_transposed = at::transpose(tensor2, 0, 1);
+    } else {
+        tensor2_transposed = tensor2;
+    }
+    int64_t total_flops = FlopCounter::mm_flop(tensor1, tensor2_transposed);
+    return is_ag_mm ? total_flops * 8 : total_flops;
+}
+
 int64_t FlopCounter::bmm_flop(const at::Tensor &self, const at::Tensor &mat2)
 {
     // Count flops for the bmm operation.
@@ -80,12 +93,18 @@ std::vector<std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::vector<i
     // for general, shape should view to [B, N, S, D]
 
     std::vector<std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::vector<int64_t>, std::vector<int64_t>>> result;
+    int64_t q_0 = query[0];
     int64_t q_1 = query[1];
     int64_t q_2 = query[2];
+    int64_t q_3 = query[3];
+    int64_t k_0 = key[0];
     int64_t k_1 = key[1];
     int64_t k_2 = key[2];
+    int64_t k_3 = key[3];
+    int64_t v_0 = value[0];
     int64_t v_1 = value[1];
     int64_t v_2 = value[2];
+    int64_t v_3 = value[3];
 
     // for GQA and MQA
     if (input_layer_str == "SBH" || input_layer_str == "BSH" || input_layer_str == "BSND") {
@@ -100,55 +119,37 @@ std::vector<std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::vector<i
         }
     }
 
+    std::vector<int64_t> new_query_shape;
+    std::vector<int64_t> new_key_shape;
+    std::vector<int64_t> new_value_shape;
+    std::vector<int64_t> new_grad_out_shape;
     if (input_layer_str == "BSH") {
-        std::vector<int64_t> new_query_shape = {query[0], head_num, q_1, q_2/head_num};
-        std::vector<int64_t> new_key_shape = {key[0], head_num, k_1, k_2/head_num};
-        std::vector<int64_t> new_value_shape = {value[0], head_num, v_1, v_2/head_num};
-        std::vector<int64_t> new_grad_out_shape;
-        if (!grad_out.empty()) {
-            new_grad_out_shape = new_query_shape;
-        }
-        result.emplace_back(new_query_shape, new_key_shape, new_value_shape, new_grad_out_shape);
+        new_query_shape = {q_0, head_num, q_1, q_2/head_num};
+        new_key_shape = {k_0, head_num, k_1, k_2/head_num};
+        new_value_shape = {v_0, head_num, v_1, v_2/head_num};
     } else if (input_layer_str == "SBH") {
-        std::vector<int64_t> new_query_shape = {q_1, head_num, query[0], q_2/head_num};
-        std::vector<int64_t> new_key_shape = {k_1, head_num, key[0], k_2/head_num};
-        std::vector<int64_t> new_value_shape = {v_1, head_num, value[0], v_2/head_num};
-        std::vector<int64_t> new_grad_out_shape;
-        if (!grad_out.empty()) {
-            new_grad_out_shape = new_query_shape;
-        }
-        result.emplace_back(new_query_shape, new_key_shape, new_value_shape, new_grad_out_shape);
-    } else if (input_layer_str == "BNSD") {
-        std::vector<int64_t> new_grad_out_shape;
-        if (!grad_out.empty()) {
-            new_grad_out_shape = query;
-        }
-        result.emplace_back(query, key, value, new_grad_out_shape);
+        new_query_shape = {q_1, head_num, q_0, q_2/head_num};
+        new_key_shape = {k_1, head_num, k_0, k_2/head_num};
+        new_value_shape = {v_1, head_num, v_0, v_2/head_num};
     } else if (input_layer_str == "BSND") {
-        std::vector<int64_t> new_query_shape = {query[0], q_2, q_1, query[3]};
-        std::vector<int64_t> new_key_shape = {key[0], k_2, k_1, key[3]};
-        std::vector<int64_t> new_value_shape = {value[0], v_2, v_1, value[3]};
-        std::vector<int64_t> new_grad_out_shape;
-        if (!grad_out.empty()) {
-            new_grad_out_shape = new_query_shape;
-        }
-        result.emplace_back(new_query_shape, new_key_shape, new_value_shape, new_grad_out_shape);
+        new_query_shape = {q_0, q_2, q_1, q_3};
+        new_key_shape = {k_0, k_2, k_1, k_3};
+        new_value_shape = {v_0, v_2, v_1, v_3};
     } else if (input_layer_str == "TND") {
         TORCH_CHECK(!cum_seq_q.empty(), "The actual_seq_qlen is not empty when TND");
         TORCH_CHECK(!cum_seq_k.empty(), "The actual_seq_kvlen is not empty when TND");
         TORCH_CHECK(cum_seq_q.size() == cum_seq_k.size(), "The size of actual_seq_qlen is equal actual_seq_kvlen when TND");
 
         int64_t b = cum_seq_q.size();
-        std::vector<int64_t> new_query_shape = {b, q_1, query[0]/b, q_2};
-        std::vector<int64_t> new_key_shape = {b, k_1, key[0]/b, k_2};
-        std::vector<int64_t> new_value_shape = {b, v_1, value[0]/b, v_2};
-        std::vector<int64_t> new_grad_out_shape;
-        if (!grad_out.empty()) {
-            new_grad_out_shape = new_query_shape;
-        }
-        result.emplace_back(new_query_shape, new_key_shape, new_value_shape, new_grad_out_shape);
+        new_query_shape = {b, q_1, q_0/b, q_2};
+        new_key_shape = {b, k_1, k_0/b, k_2};
+        new_value_shape = {b, v_1, v_0/b, v_2};
     }
 
+    if (!grad_out.empty()) {
+        new_grad_out_shape = new_query_shape;
+    }
+    result.emplace_back(new_query_shape, new_key_shape, new_value_shape, new_grad_out_shape);
     return result;
 }
 

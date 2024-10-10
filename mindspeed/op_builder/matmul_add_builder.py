@@ -10,5 +10,6 @@ class MatmulAddOpBuilder(AtbOpBuilder):
 
     def sources(self):
         return ['ops/csrc/atb/matmul_add.cpp',
-                'ops/csrc/atb/utils/atb_adapter.cpp']
+                'ops/csrc/atb/utils/atb_adapter.cpp',
+                'ops/csrc/flop_counter/flop_counter.cpp']
     
