@@ -21,7 +21,13 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         hidden_states.requires_grad = True
 
         # router
-        (scores, indices), _ = forward_func(moe_layer.router, hidden_states)
+        with torch.enable_grad():
+            scores, indices = moe_layer.router(hidden_states)
+
+        save_tensors.append(scores)
+        scores = scores.detach()
+        scores.requires_grad = True
+        save_tensors.append(scores)
         moe_without_activation = args.moe_without_activation
         if moe_without_activation:
             ctx.activation_func = moe_layer.experts.activation_func
@@ -30,10 +36,6 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             ctx.weight1 = moe_layer.experts.weight1
             ctx.moe_grouped_gemm = moe_layer.token_dispatcher.config.moe_grouped_gemm
             ctx.num_local_experts = moe_layer.token_dispatcher.num_local_experts
-            save_tensors.append(scores)
-            if moe_layer.token_dispatcher.router_topk > 1:
-                scores = scores.detach()
-                scores.requires_grad = True
 
         save_tensors.append(indices)
 
@@ -83,7 +85,6 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         else:
             output_sum = output.detach()
 
-        ctx.saved_tensors_for_grad = save_tensors_for_grad
         return output_sum, mlp_bias
 
     @staticmethod
@@ -91,29 +92,27 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         global_args = get_args()
         moe_without_activation = global_args.moe_without_activation
         if moe_without_activation:
-            (scores,
+            (route_graph, detach_scores,
              indices,
              permute1_graph,
              permute2_input_detach, permute2_graph,
              experts_graph,
-             _, unpermute1_graph,
-             _, unpermute2_graph,
-             _, share_experts_graph,
+             unpermute1_input_detach, unpermute1_graph,
+             unpermute2_input_detach, unpermute2_graph,
+             detach_input, share_experts_graph,
              global_input_tokens_local_experts_indices,
              tokens_per_expert) = ctx.saved_tensors
-            permute2_input_detach, unpermute1_input_detach, unpermute2_input_detach, detach_input = ctx.saved_tensors_for_grad
+            # permute2_input_detach, unpermute1_input_detach, unpermute2_input_detach, detach_input = ctx.saved_tensors_for_grad
         else:
-            (indices,
+            (route_graph, detach_scores,
+             indices,
              permute1_graph,
-             _, permute2_graph,
+             permute2_input_detach, permute2_graph,
              experts_graph,
-             _, unpermute1_graph,
-             _, unpermute2_graph,
-             _, share_experts_graph,
+             unpermute1_input_detach, unpermute1_graph,
+             unpermute2_input_detach, unpermute2_graph,
+             detach_input, share_experts_graph,
              global_input_tokens_local_experts_indices) = ctx.saved_tensors
-            permute2_input_detach, unpermute1_input_detach, unpermute2_input_detach, detach_input = ctx.saved_tensors_for_grad
-        # ctx.saved_tensors = None
-        ctx.save_for_backward()
 
         output_splits = ctx.output_splits
         input_splits = ctx.input_splits
@@ -256,7 +255,6 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         unpermute1_backward_input.untyped_storage().resize_(0)
 
         backward_func(experts_graph, unpermute1_input_detach.grad)
-        # backward_func(permute2_graph, experts_detach_input.grad)
         unpermute1_input_detach.grad.untyped_storage().resize_(0)
 
         from mindspeed.core.transformer.moe.moe_utils import get_all2all_experts_output
@@ -270,8 +268,9 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 stream, matmul_output_grad, unpermuted_tokens = get_prob_backward_need_tensors()
                 torch.npu.current_stream().wait_stream(stream)
                 probs_grad = (matmul_output_grad * unpermuted_tokens).sum(-1).squeeze(-1)
-                scores.backward(probs_grad)
+                route_graph.backward(probs_grad)
             ctx.router_topk = None
-
+        else:
+            route_graph.backward(detach_scores.grad)
         grad_output = detach_input.grad
         return grad_output, None
