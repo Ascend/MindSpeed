@@ -1,3 +1,4 @@
+import acl
 import torch
 import torch_npu
 
@@ -36,16 +37,6 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             shared_experts_input = hidden_states
             shared_experts_allgather_handle = None
 
-        # 专家 ep group allgather hidden_states
-        global_hidden_states_tuple = None
-        if moe_layer.config.sequence_parallel or moe_layer.config.expert_model_parallel_size > 1:
-            _, global_hidden_states, ghs_handle = async_all_gather(
-                shared_experts_input,
-                get_expert_model_parallel_group() if shared_experts_allgather_handle else get_tensor_and_expert_parallel_group(),
-                shared_experts_allgather_handle
-            )
-            global_hidden_states = global_hidden_states.view(-1, global_hidden_states.shape[-1])
-            global_hidden_states_tuple = (global_hidden_states, ghs_handle)
         # router
         (scores, indices), _ = forward_func(moe_layer.router, hidden_states)
 
@@ -53,11 +44,11 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         global_indices_tuple = None
         global_probs_tuple = None
         if moe_layer.config.sequence_parallel or (moe_layer.config.expert_model_parallel_size > 1):
-            global_indices, gi_handle = (
-                indices
-                if isinstance(indices, tuple)
-                else async_all_gather(indices, get_tensor_and_expert_parallel_group())
-            )
+            if isinstance(indices, tuple):
+                global_indices, gi_handle = indices
+            else:
+                _, global_indices, gi_handle = async_all_gather(indices, get_tensor_model_parallel_group())
+
             global_indices_tuple = (global_indices, gi_handle)
 
             _, global_probs, gp_handle = async_all_gather(
@@ -65,6 +56,25 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             )
 
             global_probs_tuple = (global_probs, gp_handle)
+
+        # 专家 ep group allgather hidden_states
+        global_hidden_states_tuple = None
+        if moe_layer.config.sequence_parallel or moe_layer.config.expert_model_parallel_size > 1:
+            if '910B' in acl.get_soc_name():
+                _, global_hidden_states, ghs_handle = async_all_gather(
+                    hidden_states,
+                    get_expert_model_parallel_group()
+                )
+            else:
+                _, global_hidden_states, ghs_handle = async_all_gather(
+                    shared_experts_input,
+                    get_expert_model_parallel_group()
+                    if shared_experts_allgather_handle
+                    else get_tensor_and_expert_parallel_group(),
+                    shared_experts_allgather_handle
+                )
+            global_hidden_states = global_hidden_states.view(-1, global_hidden_states.shape[-1])
+            global_hidden_states_tuple = (global_hidden_states, ghs_handle)
 
         # shared experts
         shared_experts_rs_handle = None
@@ -184,7 +194,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         if share_experts_graph is not None:
             # 反向 —— 共享专家
             share_experts_graph.backward(ag_share_experts_grad_input)
-        else:
+        if '910B' in acl.get_soc_name() or share_experts_graph is None:
             from mindspeed.core.transformer.moe.moe_utils import set_ag_tp_hidden_status
             set_ag_tp_hidden_status(input_)
 

@@ -5,6 +5,7 @@ import os
 import warnings
 from typing import Any, Callable, List, Optional
 
+import acl
 import torch
 import torch_npu
 import torch.distributed
@@ -123,7 +124,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
                 total_input = all_gather_buffer
             else:
                 total_input = input
-            if ctx.need_save:
+            if ctx.need_save and '910B' not in acl.get_soc_name():
                 set_ag_tp_hidden_status(total_input)
         grad_input = grad_output.matmul(weight)
 

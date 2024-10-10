@@ -34,14 +34,20 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         else:
             group_list_data_type = 0
         ctx.group_list_data_type = group_list_data_type
-        mm1_out = \
-            GMMFunction.builder.load().npu_gmm([inputs], [weights1], [], group_list.tolist(), 0, group_list_data_type)[
-                0]
+        use_gmm = (inputs.nelement() != 0)
+        ctx.use_gmm = use_gmm
+        if use_gmm:
+            mm1_out = GMMFunction.builder.load().npu_gmm([inputs], [weights1], [], group_list.tolist(), 0,
+                                                         group_list_data_type)[0]
+        else:
+            mm1_out = torch.matmul(inputs, weights1)
         inputs.untyped_storage().resize_(0)
         act_out, detached_act_inputs = forward_func(activation_func, mm1_out)
-        mm2_out = \
-            GMMFunction.builder.load().npu_gmm([act_out], [weights2], [], group_list.tolist(), 0, group_list_data_type)[
-                0]
+        if use_gmm:
+            mm2_out = GMMFunction.builder.load().npu_gmm([act_out], [weights2], [], group_list.tolist(), 0,
+                                                         group_list_data_type)[0]
+        else:
+            mm2_out = torch.matmul(act_out, weights2)
         if should_recompute_activation(layer_number):
             act_out.untyped_storage().resize_(0)
             ctx.activation_func = activation_func
@@ -58,19 +64,24 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         token_unpermutation_graph, global_hidden_states_detach, indices, global_local_map = get_gemm_backward_need_tensors()
 
         # grad of mm2
-        weights2 = rearrange(weights2, 'n h f -> n f h')
-
-        grad_mm2_inputs = \
-            GMMFunction.builder.load().npu_gmm([grad_outs], [weights2], [], group_list.tolist(), 0,
-                                               group_list_data_type)[0]
+        if ctx.use_gmm:
+            weights2 = rearrange(weights2, 'n h f -> n f h')
+            grad_mm2_inputs = \
+                GMMFunction.builder.load().npu_gmm([grad_outs], [weights2], [], group_list.tolist(), 0,
+                                                   group_list_data_type)[0]
+        else:
+            grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
         if should_recompute_activation(layer_number):
             activation_func = ctx.activation_func
             act_out = activation_func(act_inputs)
             mm2_inputs = act_out
         else:
             mm2_inputs = act_graph
-        grad_weights2 = GMMFunction.builder.load().npu_gmm([mm2_inputs.t()], [grad_outs], [], group_list.tolist(), 2,
-                                                           group_list_data_type)[0]
+        if ctx.use_gmm:
+            grad_weights2 = GMMFunction.builder.load().npu_gmm([mm2_inputs.t()], [grad_outs], [], group_list.tolist(),
+                                                               2, group_list_data_type)[0]
+        else:
+            grad_weights2 = torch.matmul(mm2_inputs.t(), grad_outs)
         grad_outs.untyped_storage().resize_(0)
         mm2_inputs.untyped_storage().resize_(0)
 
@@ -86,27 +97,34 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         # mm1_inputs = ctx.inputs
         _, ag_inputs_tp_ep, ag_handle = async_all_gather(ag_inputs_tp,
                                                          get_expert_model_parallel_group() if get_args().n_shared_experts else get_tensor_and_expert_parallel_group())
+        if ctx.use_gmm:
+            # grad of mm1-inputs
+            weights1 = rearrange(weights1, 'n h f -> n f h')
+            mm1_inputs_grad = GMMFunction.builder.load().npu_gmm([act_inputs.grad], [weights1], [], group_list.tolist(),
+                                                                 0, group_list_data_type)[0]
+        else:
+            mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
-        # grad of mm1-inputs
-        weights1 = rearrange(weights1, 'n h f -> n f h')
-        mm1_inputs_grad = GMMFunction.builder.load().npu_gmm([mm1_outs_grad], [weights1], [], group_list.tolist(), 0,
-                                                             group_list_data_type)[0]
         # token 反重排的反向
-
         backward_func(token_unpermutation_graph, mm1_inputs_grad)
         mm1_inputs_grad.untyped_storage().resize_(0)
         _, rs_global_hidden_states_grad, rs_handle = async_reduce_scatter(global_hidden_states_detach.grad,
                                                                           get_tensor_and_expert_parallel_group())
         rs_global_hidden_states_grad_with_handle = (rs_global_hidden_states_grad, rs_handle)
         ag_handle.wait()
+
         # token 重排计算
         mm1_inputs = ag_inputs_tp_ep[global_local_map, :][indices, :]
         global_local_map.untyped_storage().resize_(0)
         indices.untyped_storage().resize_(0)
         ag_inputs_tp_ep.untyped_storage().resize_(0)
-        mm1_weights_grad = \
-            GMMFunction.builder.load().npu_gmm([mm1_inputs.t()], [mm1_outs_grad], [], group_list.tolist(), 2,
-                                               group_list_data_type)[0]
+        if ctx.use_gmm:
+            mm1_weights_grad = \
+                GMMFunction.builder.load().npu_gmm([mm1_inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
+                                                   group_list_data_type)[0]
+        else:
+            mm1_weights_grad = torch.matmul(mm1_inputs.t(), act_inputs.grad)
+
         mm1_outs_grad.untyped_storage().resize_(0)
 
         set_rs_global_hidden_states_grad_with_handle(rs_global_hidden_states_grad_with_handle)
