@@ -119,7 +119,6 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             permutated_local_input_tokens = alltoall_token_permutation1(detach_input, indices, router_topk)
 
         if not moe_without_activation:
-            detach_input.untyped_storage().resize_(0)
             ep_group = get_expert_model_parallel_group()
             if get_args().moe_tp_extend_ep:
                 ep_group = get_tensor_and_expert_parallel_group()
