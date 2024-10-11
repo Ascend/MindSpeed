@@ -152,16 +152,29 @@ class WeightGradStore:
     def overlap_matmul(cls, grad_store_cache):
         total_input, grad_output, weight, sequence_parallel, in_row, pipe_experts = grad_store_cache
         grad_output = grad_output.contiguous()
+        sb = grad_output.shape[0] * grad_output.shape[1]
         # Convert the tensor shapes to 2D for execution compatibility
         grad_output = grad_output.view(
-            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
+            sb, grad_output.shape[2]
         )
         total_input = total_input.view(
-            total_input.shape[0] * total_input.shape[1], total_input.shape[2]
+            sb, total_input.shape[2]
         )
-
-        grad_weight = grad_output.t().matmul(total_input)
-        weight.main_grad.data.add_(grad_weight)
+        if get_args().gradient_accumulation_fusion:
+            import fused_weight_gradient_mlp_cuda
+            if weight.main_grad.dtype == torch.float32:
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
+                    total_input, grad_output, weight.main_grad
+                )
+            elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
+                    total_input, grad_output, weight.main_grad
+                )
+            else:
+                raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+        else:
+            grad_weight = grad_output.t().matmul(total_input)
+            weight.main_grad.data.add_(grad_weight)
         cls.grad_overlap_count += 1
 
     @classmethod
