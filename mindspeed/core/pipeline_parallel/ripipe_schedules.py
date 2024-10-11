@@ -155,7 +155,10 @@ def forward_backward_ripipe_pipelining(
 
     num_fwd = min((pipeline_parallel_size - 1) * 2 + (num_model_chunks - 1) * pipeline_parallel_size, total_num_microbatches)
     num_dx = num_fwd - num_warmup_microbatches
-
+    overlap_chunks_num = (num_dx + pipeline_parallel_size - 1) // pipeline_parallel_size 
+    nano_flag = [True] * len(model)
+    for i in range(overlap_chunks_num):
+        nano_flag[-i - 1] = False
     # ripipe related, calculate the variables needed by the recompute_in_bubble function
     num_microbatches_recompute, num_microbatches_recompute_forward, num_microbatches_recompute_steady_groups, \
         num_microbatches_recompute_tail = get_ripipe_recompute_count_params(num_microbatches,
@@ -299,7 +302,7 @@ def forward_backward_ripipe_pipelining(
         parallel_state.set_virtual_pipeline_model_parallel_rank(model_chunk_id)
 
         # launch grad synchronization (default)
-        if config.grad_sync_func is None and is_last_microbatch_for_model_chunk(microbatch_id):
+        if config.grad_sync_func is None and is_last_microbatch_for_model_chunk(microbatch_id) and nano_flag[model_chunk_id]:
             enable_grad_sync()
             synchronized_model_chunks.add(model_chunk_id)
 
@@ -324,9 +327,10 @@ def forward_backward_ripipe_pipelining(
                     grad_sync_microbatch_id
             ):
                 grad_sync_chunk_id = get_model_chunk_id(grad_sync_microbatch_id, forward=False)
-                enable_grad_sync()
-                config.grad_sync_func[grad_sync_chunk_id](model[grad_sync_chunk_id].parameters())
-                synchronized_model_chunks.add(grad_sync_chunk_id)
+                if nano_flag[grad_sync_chunk_id]:
+                    enable_grad_sync()
+                    config.grad_sync_func[grad_sync_chunk_id](model[grad_sync_chunk_id].parameters())
+                    synchronized_model_chunks.add(grad_sync_chunk_id)
         disable_grad_sync()
 
         return input_tensor_grad
@@ -532,8 +536,11 @@ def forward_backward_ripipe_pipelining(
                 WeightGradStore.resize_ori_storage(args.use_nanopipe_swap)
 
             input_tensor_grad = backward_step_helper(backward_k)
-            if k == num_dx - 1 and args.use_nanopipe:
-                WeightGradStore.end_decouple()
+            if args.use_nanopipe:
+                if WeightGradStore.is_decoupleBlock:
+                    WeightGradStore.flush()
+                if k == num_dx - 1:
+                    WeightGradStore.end_decouple()
 
             backward_model_chunk_id = get_model_chunk_id(backward_k, forward=False)
             parallel_state.set_virtual_pipeline_model_parallel_rank(backward_model_chunk_id)
@@ -711,7 +718,12 @@ def forward_backward_ripipe_pipelining(
 
         # nanopipe related
         if args.use_nanopipe:
-            WeightGradStore.pop()
+            if nano_flag[0] and 0 not in synchronized_model_chunks:
+                config.grad_sync_func[0](model[0].parameters())
+                synchronized_model_chunks.add(0)
+            overlap_arg = [pipeline_parallel_size, nano_flag, synchronized_model_chunks, config.grad_sync_func, model]
+            WeightGradStore.pop(overlap_arg)
+
         # Launch any remaining grad reductions.
         enable_grad_sync()
         if config.grad_sync_func is not None:
