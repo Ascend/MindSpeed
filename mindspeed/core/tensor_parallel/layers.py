@@ -818,7 +818,35 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
                 total_input = total_input.view(
                     total_input.shape[0] * total_input.shape[1], total_input.shape[2]
                 )
-                grad_weight = grad_output.t().matmul(total_input)
+                if ctx.gradient_accumulation_fusion:
+                    if weight.main_grad.dtype == torch.float32:
+                        fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
+                            total_input, grad_output, weight.main_grad
+                        )
+                    elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
+                        fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
+                            total_input, grad_output, weight.main_grad
+                        )
+                    else:
+                        raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+                    if hasattr(weight, 'grad_added_to_main_grad'):
+                        if getattr(weight, 'zero_out_wgrad', False):
+                            grad_weight = torch.zeros(
+                                weight.main_grad.shape,
+                                dtype=input.dtype,
+                                device=torch.cuda.current_device(),
+                                requires_grad=False,
+                            )
+                        else:
+                            grad_weight = torch.empty(
+                                weight.main_grad.shape,
+                                dtype=input.dtype,
+                                device=torch.cuda.current_device(),
+                                requires_grad=False,
+                            )
+                        weight.grad_added_to_main_grad = True
+                else:
+                    grad_weight = grad_output.t().matmul(total_input)
             grad_bias = grad_output.sum(dim=0) if use_bias else None
 
             return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
@@ -895,7 +923,42 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
             # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
             # reduce_scatter is scheduled before the weight gradient computation
         if not WeightGradStore.is_decoupleBlock:
-            grad_weight = grad_output.t().matmul(total_input)
+            if ctx.gradient_accumulation_fusion:
+                if weight.main_grad.dtype == torch.float32:
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
+                        total_input, grad_output, weight.main_grad
+                    )
+                elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
+                        total_input, grad_output, weight.main_grad
+                    )
+                else:
+                    raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+
+                if hasattr(weight, 'grad_added_to_main_grad'):
+                    # When overlap_grad_reduce is True, need to ensure that backward hooks
+                    # are all run on the main backprop thread to prevent deadlocks. Setup
+                    # dummy grad_weight tensor to prevent backward hooks from being run
+                    # in a background thread.
+                    if getattr(weight, 'zero_out_wgrad', False):
+                        grad_weight = torch.zeros(
+                            weight.main_grad.shape,
+                            dtype=input.dtype,
+                            device=torch.cuda.current_device(),
+                            requires_grad=False,
+                        )
+                    else:
+                        grad_weight = torch.empty(
+                            weight.main_grad.shape,
+                            dtype=input.dtype,
+                            device=torch.cuda.current_device(),
+                            requires_grad=False,
+                        )
+                    weight.grad_added_to_main_grad = True
+                else:
+                    grad_weight = None
+            else:
+                grad_weight = grad_output.t().matmul(total_input)
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         if ctx.sequence_parallel:

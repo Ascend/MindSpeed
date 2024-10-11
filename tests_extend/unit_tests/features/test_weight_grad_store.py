@@ -110,6 +110,7 @@ class TestDistributedOptimizer(DistributedTest):
 
         args = parse_args(None, True)
         args.use_nanopipe_swap = True
+        args.gradient_accumulation_fusion = False
         set_args(args)
         destroy_model_parallel()
         initialize_model_parallel(tensor_model_parallel_size=tp,
