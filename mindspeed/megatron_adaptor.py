@@ -170,10 +170,12 @@ def mcore_models_adaptation(aspm, mindspeed_args):
 
     if not mindspeed_args.automated_pipeline and mindspeed_args.noop_layers:
         from .core.transformer.transformer_block import _build_layers
+        from .core.transformer.moe.moe_utils import track_moe_metrics
         from megatron.core.transformer.transformer_block import TransformerBlock
         from mindspeed.training import num_floating_point_wrapper
         TransformerBlock._build_layers = _build_layers
         aspm.register_patch('megatron.training.training.num_floating_point_operations', num_floating_point_wrapper)
+        aspm.register_patch('megatron.core.transformer.moe.moe_utils.track_moe_metrics', track_moe_metrics)
 
     if mindspeed_args.recompute_norm:
         from .core.models.gpt.gpt_layer_specs import build_norm_recompute_layer_wrapper
