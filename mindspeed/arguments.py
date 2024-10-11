@@ -656,7 +656,13 @@ def validate_args_wrapper(validate_args):
             else:
                 args.recompute_num_layers = args.num_layers_per_virtual_pipeline_stage
         if isinstance(args.noop_layers, str):
-            args.noop_layers = {int(x) for x in args.noop_layers.split(',') if 0 <= int(x) < args.num_layers}
+            noop_layers = set()
+            for x in args.noop_layers.split(','):
+                if int(x) >= args.num_layers or int(x) < 0:
+                    raise AssertionError(f'each element in args.noop_layers({args.noop_layers}) should bigger or equal '
+                                         f'to 0 and smaller than args.num_layers({args.num_layers})')
+                noop_layers.add(int(x))
+            args.noop_layers = noop_layers
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
