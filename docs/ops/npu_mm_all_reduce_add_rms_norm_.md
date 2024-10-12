@@ -99,6 +99,7 @@ $$
 - ``antiquantOffset`` 若非空，shape 与 ``antiquant_scale``一致。
 - 伪量化场景下，``x2`` 的数据类型需为 ``int8``，``x1``、``bias``（若支持）、``residual``、``gamma``、``antiquant_scale``、``antiquant_offset``计算输入的数据类型要一致。
 - 伪量化场景下，``antiquant_group_size`` 取值满足取值范围``[32, min(k-1, INT_MAX)]``且为32倍数。
+- 一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## npu_mm_all_redcue_add_rms_norm 接口的调用方式
 
