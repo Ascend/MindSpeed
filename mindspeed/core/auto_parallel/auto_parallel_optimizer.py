@@ -17,6 +17,7 @@ import os
 import time
 import math
 import random
+import ast
 from pathlib import Path
 
 import pandas as pd
@@ -91,7 +92,7 @@ class SearchByGreyBox:
         if prop > self.stop_threshold:
             sample = random.choice(rest_config)
             self.exist_config.append(sample)
-            return eval(sample)
+            return ast.literal_eval(sample)
         print(f'Unexplored proportion: {prop} < stop_thd :{self.stop_threshold}, early stop triggered.')
         return None
 
@@ -147,4 +148,4 @@ class SearchByGreyBox:
         
         model_manager.save_models('final_model')
         min_key = min(self.config_performances.keys())
-        return eval(self.config_performances.get(min_key)), min_key
+        return ast.literal_eval(self.config_performances.get(min_key)), min_key

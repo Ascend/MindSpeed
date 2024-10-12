@@ -17,6 +17,7 @@ import os
 import glob
 import copy
 import warnings
+import ast
 from typing import Optional
 
 import pandas as pd
@@ -264,7 +265,7 @@ class DataHandler:
         new_input_shape = []
         for index, tmp_data in data[[KeyField.OpType, KeyField.InputShapes, KeyField.OutputShapes]].iterrows():
             op, input_shape, output_shape = tmp_data.tolist()
-            input_shape, output_shape = eval(input_shape), eval(output_shape)
+            input_shape, output_shape = ast.literal_eval(input_shape), ast.literal_eval(output_shape)
             if op == 'LayerNorm' or op == 'LayerNormGrad':
                 input_shape = input_shape.split(';')[0]
             elif op == 'Add' or op == 'Mul':
@@ -322,9 +323,9 @@ class DataHandler:
         input_shapes = []
         for index, sample in self.current_profiling_operator.iterrows():
             input_shape = sample[KeyField.InputShapes]
-            input_shape = eval(input_shape).split(';')
+            input_shape = ast.literal_eval(input_shape).split(';')
             input_shape = [list(map(lambda x: int(x), s.split(','))) for s in input_shape]
-            output_shape = eval(sample[KeyField.OutputShapes]).split(',')
+            output_shape = ast.literal_eval(sample[KeyField.OutputShapes]).split(',')
             output_shape = [int(s) for s in output_shape]
             if sample[KeyField.OpType] == 'BatchMatMul':
                 if output_shape[1] != input_shape[0][1]:
