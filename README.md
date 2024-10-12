@@ -142,6 +142,7 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
 
 | MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |CANN版本| Python版本                               |
 | ----------------- | --- |------------- | ------------- | --------------------------------------- | ------------- |
+|       1.1（商用）        |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
 |       1.0（商用）      | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  |
 
 [昇腾辅助软件](https://gitee.com/ascend/pytorch#%E6%98%87%E8%85%BE%E8%BE%85%E5%8A%A9%E8%BD%AF%E4%BB%B6)中有更多关于PyTorch和CANN的版本信息。
