@@ -234,11 +234,12 @@ MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 
 | MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |CANN版本| Python版本                               |
 | ----------------- | --- |------------- | ------------- | --------------------------------------- | ------------- |
-|       master      | Core 0.7.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.0.rc3_core_r0.7.0 | Core 0.7.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.0.rc3_core_r0.6.0 | Core 0.6.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.1         |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.0         | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  |
+|       master（主线）     | Core 0.7.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       core_r0.6.0（主线）| Core 0.6.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       1.0.rc3_core_r0.7.0（商用）| Core 0.7.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       1.0.rc3_core_r0.6.0（商用）| Core 0.6.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       1.1（商用）        |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
+|       1.0（商用）      | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  |
 
 [昇腾辅助软件](https://gitee.com/ascend/pytorch#%E6%98%87%E8%85%BE%E8%BE%85%E5%8A%A9%E8%BD%AF%E4%BB%B6)中有更多关于PyTorch和CANN的版本信息。
 
