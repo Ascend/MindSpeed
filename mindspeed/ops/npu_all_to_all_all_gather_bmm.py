@@ -9,15 +9,12 @@ __all__ = ["npu_alltoall_allgather_bmm"]
 
 
 mindspeed_ops_builder = AllToAllAllGatherBatchMatMulOpBuilder()
-SUPPORTED_ACT_TYPE = ["None", "GeLu", "SiLu", "ReLu", "FastGeLu", "GegLu", "SwigLu", "RegLu"]
+SUPPORTED_ACT_TYPE = ["None", "GeLu", "SiLu", "ReLu", "FastGeLu"]
 ACT_TYPE_DICT = {"none": 0,
                 "gelu": 1,
                 "silu": 2,
                 "relu": 3,
-                "fastgelu": 4,
-                "geglu": 5,
-                "swiglu": 6,
-                "reglu": 7
+                "fastgelu": 4
                 }
 
 
@@ -46,11 +43,11 @@ def npu_alltoall_allgather_bmm_single(x,
 
 def convert_act_type(act_type):
     if not isinstance(act_type, str):
-        raise AssertionError(f'act_type should be str type. Supported act_type:{SUPPORTED_ACT_TYPE}')  
+        raise AssertionError(f'act_type should be str type, but got type {type(act_type)}')
     act_type_lower = act_type.lower()
     if act_type_lower in ACT_TYPE_DICT:
         return ACT_TYPE_DICT[act_type_lower]
-    raise AssertionError(f'Unknown act_type: {act_type}. Supported act_type:{SUPPORTED_ACT_TYPE}')
+    raise AssertionError(f'Unknown act_type: {act_type}, supported act_type:{SUPPORTED_ACT_TYPE}, case insensitive')
 
 
 def npu_alltoall_allgather_bmm(*args, **kwargs):
