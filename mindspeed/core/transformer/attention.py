@@ -33,9 +33,9 @@ def attention_init_wrapper(fn):
         fn(self, *arg, **kwargs)
 
         args = get_args()
-        if args.context_parallel_size > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo']:
+        if args.context_parallel_size > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
             ulysses_group = mpu.get_context_parallel_group()
-            if args.context_parallel_algo == 'hybrid_cp_algo':
+            if args.context_parallel_algo == 'hybrid_cp_algo' or args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
                 ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
             self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
 

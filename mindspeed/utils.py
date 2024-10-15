@@ -5,11 +5,20 @@ import functools
 import re
 import torch
 from megatron.core import mpu
+from megatron.training.global_vars import get_args
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
                                              get_context_parallel_for_hybrid_ulysses_rank,
                                              get_context_parallel_for_hybrid_ring_world_size,
                                              get_context_parallel_for_hybrid_ring_rank)
-from megatron.training.global_vars import get_args
+from mindspeed.core.context_parallel.utils import (set_scheduling_info,
+                                                   set_remapped_seq_order,
+                                                   adaptive_reschedule_task,
+                                                   get_adaptive_cp_mask_list_by_user,
+                                                   get_adaptive_cp_grid_mask_by_user,
+                                                   generate_adaptive_cp_mask_list_by_user,
+                                                   generate_adaptive_cp_grid_mask_by_user)
+from mindspeed.model.transformer import set_attention_mask, get_attention_mask
+
 
 _ACTUAL_SEQ_LEN = None
 _POSITION_IDS = None
@@ -85,6 +94,10 @@ def get_batch_on_this_cp_rank(batch):
             batch = _get_batch_on_this_cp_rank_in_hybrid_cp_general(batch)
         else:
             batch = _get_batch_on_this_cp_rank_in_hybrid_cp(batch)
+    elif args.context_parallel_algo == 'adaptive_cp_algo':
+        batch = _get_batch_on_this_cp_rank_in_adaptive_cp(batch)
+    elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
+        batch = _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch)
     return batch
 
 
@@ -113,16 +126,22 @@ def _get_batch_on_this_cp_rank_in_megatron_cp(batch):
 def _get_batch_on_this_cp_rank_in_megatron_cp_general(batch):
     cp_rank = mpu.get_context_parallel_rank()
     cp_size = mpu.get_context_parallel_world_size()
-    for key, val in batch.items():
-        if key == 'attention_mask' and val is not None:
-            if len(val.shape) != 2:
-                raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
-            seq_dim = 0
-            mask_row = val.chunk(cp_size, dim=seq_dim)[cp_rank].contiguous()
+
+    attention_mask = get_attention_mask()
+    if attention_mask is not None:
+        if len(attention_mask.shape) != 2:
+            raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
+        seq_dim = 0
+        mask_row = attention_mask.chunk(cp_size, dim=seq_dim)[cp_rank].contiguous()
+        if get_args().attention_mask_on_cpu:
+            mask_list = [m.contiguous().npu(non_blocking=True) for m in mask_row.chunk(cp_size, dim=1)]
+        else:
             mask_list = [m.contiguous() for m in mask_row.chunk(cp_size, dim=1)]
-            batch[key] = mask_list
-            continue
-        if val is not None:
+        batch['attention_mask'] = mask_list
+        set_attention_mask(mask_list)
+
+    for key, val in batch.items():
+        if key != 'attention_mask' and val is not None:
             seq_dim = 1
             val = val.chunk(cp_size, dim=seq_dim)[cp_rank].contiguous()
             batch[key] = val
@@ -178,17 +197,21 @@ def _get_batch_on_this_cp_rank_in_hybrid_cp_general(batch):
     u_rank = get_context_parallel_for_hybrid_ulysses_rank()
     r_rank = get_context_parallel_for_hybrid_ring_rank()
 
-    for key, val in batch.items():
-        if key == 'attention_mask' and val is not None:
-            if len(val.shape) != 2:
-                raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
-            seq_dim = 0
-            mask_row = val.chunk(r_size, dim=seq_dim)[r_rank].contiguous()
+    attention_mask = get_attention_mask()
+    if attention_mask is not None:
+        if len(attention_mask.shape) != 2:
+            raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
+        seq_dim = 0
+        mask_row = attention_mask.chunk(r_size, dim=seq_dim)[r_rank].contiguous()
+        if get_args().attention_mask_on_cpu:
+            mask_list = [m.contiguous().npu(non_blocking=True) for m in mask_row.chunk(r_size, dim=1)]
+        else:
             mask_list = [m.contiguous() for m in mask_row.chunk(r_size, dim=1)]
-            batch[key] = mask_list
-            continue
+        batch['attention_mask'] = mask_list
+        set_attention_mask(mask_list)
 
-        if val is not None:
+    for key, val in batch.items():
+        if key != 'attention_mask' and val is not None:
             seq_dim = 1
             val = val.chunk(r_size, dim=seq_dim)[r_rank].contiguous()
             val = val.chunk(u_size, dim=seq_dim)[u_rank].contiguous()
@@ -314,4 +337,82 @@ def get_batch_on_this_tp_rank(data_iterator):
             actual_seq_len = broadcast_dynamic(None)
             set_actual_seq_len(actual_seq_len.tolist())
 
+    return batch
+
+
+def _get_batch_on_this_cp_rank_in_adaptive_cp(batch):
+    args = get_args()
+    cp_rank = mpu.get_context_parallel_rank()
+    cp_size = mpu.get_context_parallel_world_size()
+
+    attention_mask = get_attention_mask()
+    if args.adaptive_cp_manually_set_mask_list:
+        remapped_seq_order = list(range(args.seq_length))
+        generate_adaptive_cp_grid_mask_by_user(cp_size)
+        grid_mask = get_adaptive_cp_grid_mask_by_user()
+        scheduling = adaptive_reschedule_task(grid_mask, cp_size)
+        generate_adaptive_cp_mask_list_by_user(remapped_seq_order, scheduling, cp_rank, cp_size)
+        mask_list = get_adaptive_cp_mask_list_by_user()
+    else:
+        if attention_mask is None:
+            raise AssertionError("Do not use adaptive cp with full mask")
+        if len(attention_mask.shape) != 2:
+            raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
+        from mindspeed.core.context_parallel.utils import adaptive_cp_ops
+        remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attention_mask, cp_size)
+        mask_list = adaptive_cp_ops.get_mask_list(attention_mask, scheduling, remapped_seq_order, cp_rank, cp_size)
+
+    batch['attention_mask'] = mask_list
+    set_attention_mask(mask_list)
+    set_scheduling_info(torch.distributed.get_rank(), scheduling)
+    set_remapped_seq_order(remapped_seq_order)
+
+    for key, val in batch.items():
+        if key != 'attention_mask' and val is not None:
+            seq_dim = 1
+            per = val.shape[seq_dim] // cp_size
+            index = torch.tensor(remapped_seq_order[cp_rank * per:(cp_rank + 1) * per], device=val.device,
+                                 dtype=torch.int)
+            val = val.index_select(seq_dim, index)
+            batch[key] = val
+    return batch
+
+
+def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
+    args = get_args()
+    ulys_size = get_context_parallel_for_hybrid_ulysses_world_size()
+    adap_size = get_context_parallel_for_hybrid_ring_world_size()
+    ulys_rank = get_context_parallel_for_hybrid_ulysses_rank()
+    adap_rank = get_context_parallel_for_hybrid_ring_rank()
+
+    attention_mask = get_attention_mask()
+    if args.adaptive_cp_manually_set_mask_list:
+        remapped_seq_order = list(range(args.seq_length))
+        generate_adaptive_cp_grid_mask_by_user(adap_size)
+        grid_mask = get_adaptive_cp_grid_mask_by_user()
+        scheduling = adaptive_reschedule_task(grid_mask, adap_size)
+        generate_adaptive_cp_mask_list_by_user(remapped_seq_order, scheduling, adap_rank, adap_size)
+        mask_list = get_adaptive_cp_mask_list_by_user()
+    else:
+        if attention_mask is None:
+            raise AssertionError("Do not use adaptive cp with full mask")
+        if len(attention_mask.shape) != 2:
+            raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
+        from mindspeed.core.context_parallel.utils import adaptive_cp_ops
+        remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attention_mask, adap_size)
+        mask_list = adaptive_cp_ops.get_mask_list(attention_mask, scheduling, remapped_seq_order, adap_rank, adap_size)
+
+    batch['attention_mask'] = mask_list
+    set_scheduling_info(torch.distributed.get_rank(), scheduling)
+    set_remapped_seq_order(remapped_seq_order)
+    set_attention_mask(mask_list)
+
+    for key, val in batch.items():
+        if key != 'attention_mask' and val is not None:
+            seq_dim = 1
+            per = val.shape[seq_dim] // adap_size // ulys_size
+            which_per = ulys_rank * adap_size + adap_rank
+            index = torch.tensor(remapped_seq_order[which_per * per:(which_per + 1) * per], device=val.device)
+            val = val.index_select(seq_dim, index)
+            batch[key] = val
     return batch

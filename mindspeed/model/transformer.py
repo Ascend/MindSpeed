@@ -65,7 +65,8 @@ from mindspeed.moe.ampipe.ampipe_args import ForwardArgs
 from mindspeed.moe.utils import (get_slice_indices_from_order_to_disorder,
                                  get_slice_indices_from_disorder_to_order,
                                  all_gather_along_first_dim)
-
+from mindspeed.core.context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
+from mindspeed.core.context_parallel.utils import get_scheduling_info
 
 
 try:
@@ -568,14 +569,18 @@ def generate_attention_mask():
         _GLOBAL_ATTN_MASK = torch.triu(torch.ones([2048, 2048], dtype=bool, device=torch.cuda.current_device()), diagonal=1)
     else:
         args.sparse_mode = 0
-        _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=torch.cuda.current_device()), diagonal=-(args.pre_tockens + 1)) \
-            + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=torch.cuda.current_device()), diagonal=args.next_tockens + 1))
+        if args.attention_mask_on_cpu:
+            _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device='cpu'), diagonal=-(args.pre_tockens + 1)) \
+                                 + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device='cpu'), diagonal=args.next_tockens + 1))
+        else:
+            _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=torch.cuda.current_device()), diagonal=-(args.pre_tockens + 1)) \
+                                 + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=torch.cuda.current_device()), diagonal=args.next_tockens + 1))
 
 
 def get_attention_mask():
     global _GLOBAL_ATTN_MASK
     args = get_args()
-    if args.reset_attention_mask:
+    if args.reset_attention_mask and args.context_parallel_algo not in ['adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
         args.sparse_mode = 2
         _GLOBAL_ATTN_MASK = torch.triu(torch.ones([2048, 2048], dtype=bool, device=torch.cuda.current_device()), diagonal=1)
     elif args.cp_attention_mask_type == 'causal' and _GLOBAL_ATTN_MASK is None:
@@ -969,7 +974,8 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
     except Exception as e:
         raise ValueError('Invalid head_dim: {}'.format(head_dim)) from e
 
-    if args.context_parallel_size > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
+    if args.context_parallel_size > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
+                                                                         'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
         in_hybrid_mode = False
         if get_context_parallel_group_for_hybrid_ring(check_initialized=False) is not None:
             in_hybrid_mode = True
@@ -990,19 +996,22 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
         cp_para['cp_group'] = cp_group
         cp_para['cp_size'] = cp_size
         cp_para['rank'] = rank
-        cp_para['cp_global_ranks'] = cp_global_ranks
-        cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
-            if args.use_cp_send_recv_overlap else None
-        cp_para['pse'] = self.pse
-        cp_para['pse_type'] = self.pse_type
 
-        cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
-        cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
-        cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
-        cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
-        cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
-
-        output = ringattn_context_parallel(q, k, v, head_num, cp_para, scale, attention_mask, self.dropout_p)
+        if args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
+            cp_para['cp_global_ranks'] = cp_global_ranks
+            cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
+                if args.use_cp_send_recv_overlap else None
+            cp_para['pse'] = self.pse
+            cp_para['pse_type'] = self.pse_type
+            cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
+            cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
+            cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
+            cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
+            cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
+            output = ringattn_context_parallel(q, k, v, head_num, cp_para, scale, attention_mask, self.dropout_p)
+        else:
+            cp_para['scheduling_info'] = get_scheduling_info()
+            output = adaptive_attn_context_parallel(q, k, v, head_num, cp_para, scale, attention_mask, self.dropout_p)
     else:
         if args.use_fusion_attn_v2:
             output = npu_fusion_attention(
@@ -1047,9 +1056,9 @@ def parallel_attention_init_wrapper(fn):
             kv_projection_size = _args.kv_channels * _args.num_attention_heads
         # qkv bias
         bias = _args.add_qkv_bias or _args.add_bias_linear
-        if args[0].context_parallel_size > 1 and args[0].context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo']:
+        if args[0].context_parallel_size > 1 and args[0].context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
             ulysses_group = mpu.get_context_parallel_group()
-            if args[0].context_parallel_algo == 'hybrid_cp_algo':
+            if args[0].context_parallel_algo == 'hybrid_cp_algo' or args[0].context_parallel_algo == 'hybrid_adaptive_cp_algo':
                 ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
             if self.use_flash_attn:
                 self.core_attention_flash = UlyssesContextAttention(self.core_attention_flash, ulysses_group)
