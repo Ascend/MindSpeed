@@ -307,7 +307,8 @@ def initialize_context_parallel_group_for_hybrid_cp(
 ):
     from megatron.training import get_args
     if (not hasattr(get_args(), 'context_parallel_algo') or
-            get_args().context_parallel_algo != 'hybrid_cp_algo'):
+            (get_args().context_parallel_algo != 'hybrid_cp_algo' and
+             get_args().context_parallel_algo != 'hybrid_adaptive_cp_algo')):
         return
 
     rank = torch.distributed.get_rank()

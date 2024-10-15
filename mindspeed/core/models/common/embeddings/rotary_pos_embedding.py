@@ -12,9 +12,10 @@ from mindspeed.utils import get_position_ids
 from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
 
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
-                                           get_context_parallel_for_hybrid_ulysses_rank,
-                                           get_context_parallel_for_hybrid_ring_world_size,
-                                           get_context_parallel_for_hybrid_ring_rank)
+                                             get_context_parallel_for_hybrid_ulysses_rank,
+                                             get_context_parallel_for_hybrid_ring_world_size,
+                                             get_context_parallel_for_hybrid_ring_rank)
+from mindspeed.core.context_parallel.utils import get_remapped_seq_order
 
 
 def yarn_find_correction_dim(
@@ -167,6 +168,10 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp_general(pos_emb, seq_dim)
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp(pos_emb, seq_dim)
+    elif args.context_parallel_algo == 'adaptive_cp_algo':
+        pos_emb = _get_pos_emb_on_this_cp_rank_in_adaptive_cp(pos_emb, seq_dim)
+    elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
+        pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emb, seq_dim)
     return pos_emb
 
 
@@ -222,3 +227,34 @@ def _get_pos_emb_on_this_cp_rank_in_hybrid_cp_general(pos_emb, seq_dim):
     pos_emb = pos_emb.chunk(u_size, dim=seq_dim)[u_rank]
 
     return pos_emb
+
+
+def _get_pos_emb_on_this_cp_rank_in_adaptive_cp(pos_emd, seq_dim):
+    cp_size = parallel_state.get_context_parallel_world_size()
+    cp_rank = parallel_state.get_context_parallel_rank()
+
+    remapped_seq_order = get_remapped_seq_order()
+    if remapped_seq_order is not None:
+        per = pos_emd.shape[seq_dim] // cp_size
+        index = torch.tensor(remapped_seq_order[cp_rank * per:(cp_rank + 1) * per], dtype=torch.int,
+                             device=pos_emd.device)
+        pos_emd = pos_emd.index_select(seq_dim, index)
+
+    return pos_emd
+
+
+def _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emd, seq_dim):
+    ulys_size = get_context_parallel_for_hybrid_ulysses_world_size()
+    adap_size = get_context_parallel_for_hybrid_ring_world_size()
+    ulys_rank = get_context_parallel_for_hybrid_ulysses_rank()
+    adap_rank = get_context_parallel_for_hybrid_ring_rank()
+
+    remapped_seq_order = get_remapped_seq_order()
+    if remapped_seq_order is not None:
+        per = pos_emd.shape[seq_dim] // adap_size // ulys_size
+        which_per = ulys_rank * adap_size + adap_rank
+        index = torch.tensor(remapped_seq_order[which_per * per:(which_per + 1) * per], dtype=torch.int,
+                             device=pos_emd.device)
+        pos_emd = pos_emd.index_select(seq_dim, index)
+
+    return pos_emd

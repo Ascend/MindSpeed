@@ -24,6 +24,8 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                            get_ring_group_for_intra_window,
                                            get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.model.transformer import get_attention_mask
+from mindspeed.core.context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
+from mindspeed.core.context_parallel.utils import get_scheduling_info
 from mindspeed.utils import get_actual_seq_len
 
 try:
@@ -105,7 +107,8 @@ def dot_product_attention_forward(
     
     scale = 1.0 / math.sqrt(self.hidden_size_per_attention_head) if self.scale_mask_softmax.scale is None else self.softmax_scale
 
-    if args.context_parallel_size > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
+    if args.context_parallel_size > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
+                                                                         'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
         in_hybrid_mode = False
         if get_context_parallel_group_for_hybrid_ring(check_initialized=False) is not None:
             in_hybrid_mode = True
@@ -126,22 +129,26 @@ def dot_product_attention_forward(
         cp_para['cp_group'] = cp_group
         cp_para['cp_size'] = cp_size
         cp_para['rank'] = rank
-        cp_para['cp_global_ranks'] = cp_global_ranks
-        cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
-            if args.use_cp_send_recv_overlap else None
-        cp_para['pse'] = self.pse
-        cp_para['pse_type'] = self.pse_type
-
-        cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
-        cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
-        cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
-        cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
-        cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
 
         query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
-        output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p,
-                                           actual_seq_len, actual_seq_len)
 
+        if args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
+            cp_para['cp_global_ranks'] = cp_global_ranks
+            cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
+                if args.use_cp_send_recv_overlap else None
+            cp_para['pse'] = self.pse
+            cp_para['pse_type'] = self.pse_type
+
+            cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
+            cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
+            cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
+            cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
+            cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
+            output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p,
+                                               actual_seq_len, actual_seq_len)
+        else:
+            cp_para['scheduling_info'] = get_scheduling_info()
+            output = adaptive_attn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p)
     else:
         if actual_seq_len is not None: # TND
             query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
