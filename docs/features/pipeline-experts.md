@@ -16,7 +16,7 @@
 开启后，将对每个experts进行细粒度切分，对前向和反向的执行顺序进行编排，实现通信和计算之间的掩盖，提高效率。
 
 ### b. 多流水线：`--pipe-experts-multi-stream`
-需要在打开`--use-pipe-experts`的基础上开启使用。开启后，能够保证ep的alltoall通信和tp的allgather/reduce-scatter之间串行执行，避免910C上的集合通信出现链路冲突。
+需要在打开`--use-pipe-experts`的基础上开启使用。开启后，能够保证ep的alltoall通信和tp的allgather/reduce-scatter之间串行执行，避免集合通信出现链路冲突。
 
 ### c. 多副本：`--pipe-experts-multi-data N`
 需要在打开`--use-pipe-experts`的基础上开启使用，`N`表示使用N份副本。开启后，能将输入数据切分为多个副本，将不同副本间的计算和通信类比为多个experts的计算和通信。
@@ -27,7 +27,7 @@
 
 在 local_experts 等于 1 时，即 ep = num_expert 时，可以考虑使用多副本间的计算通信流水实现通信隐藏的目的。
 
-在使用910C进行训练时，推荐开启多流水线`--pipe-experts-multi-stream`规避集合通信上出现的链路冲突。
+可开启多流水线`--pipe-experts-multi-stream`规避集合通信上出现的链路冲突。
 
 ## 使用方法
 

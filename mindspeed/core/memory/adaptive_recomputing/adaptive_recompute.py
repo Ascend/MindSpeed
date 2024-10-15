@@ -95,32 +95,6 @@ class AdaptiveRecomputePolicy:
                 return True
         return False
 
-    @staticmethod
-    def get_hardware(all_args):
-        bandwidth = 16
-        bandwidth_beta = 0.7
-        mfu = 0.5
-        version = acl.get_soc_name()
-        if "910B3" in version:
-            tflops = 313
-        elif "910B1" in version:
-            tflops = 363
-        elif "910C1" in version:
-            tflops = 363
-        else:
-            tflops = 280
-
-        if all_args.bf16:
-            data_bytes = DTYPE_NBYTES_MAP['bf16']
-        elif all_args.fp16:
-            data_bytes = DTYPE_NBYTES_MAP['fp16']
-        elif all_args.fp32:
-            data_bytes = DTYPE_NBYTES_MAP['fp32']
-        else:
-            data_bytes = 2
-        rt_hardware = bandwidth, bandwidth_beta, mfu, tflops, data_bytes
-        return rt_hardware
-
     def is_stable_policy(self, profiling_step):
         all_args = get_args()
         # not activate swap function or remove swap manager hook
