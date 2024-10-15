@@ -233,14 +233,14 @@ MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 
 **PyTorch Extension**版本号采用`{PyTorch版本}-{昇腾版本}`命名规则，前者为**PyTorch Extension**匹配的PyTorch版本，后者用于匹配CANN版本，详细匹配如下：
 
-| MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |CANN版本| Python版本                               |
-| ----------------- | --- |------------- | ------------- | --------------------------------------- | ------------- |
-|       master（主线）     | Core 0.7.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       core_r0.6.0（主线）| Core 0.6.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.0.rc3_core_r0.7.0（商用）| Core 0.7.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.0.rc3_core_r0.6.0（商用）| Core 0.6.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.1（商用）        |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  |
-|       1.0（商用）      | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  |
+| MindSpeed版本     | Megatron版本    | PyTorch版本   | torch_npu版本    |CANN版本| Python版本                               | 硬件型态     |
+| ----------------- | --- |------------- | ------------- | --------------------------------------- | ------------- |----------|
+|       master（主线）     | Core 0.7.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+|       core_r0.6.0（主线）| Core 0.6.0  |   2.1.0     |   在研版本 |  在研版本 | Python3.8.x, Python3.9.x, Python3.10.x  | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+|       1.0.RC3_core_r0.7.0（商用）| Core 0.7.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+|       1.0.RC3_core_r0.6.0（商用）| Core 0.6.0  |  2.1.0     |   6.0.RC3 | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x  | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+|       1.1（商用）        |  Core 0.6.0 |  2.1.0     |   6.0.RC2 |  8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x  | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+|       1.0（商用）      | commitid bcce6f  |  2.1.0     |   6.0.RC1 |  8.0.RC1|Python3.8.x, Python3.9.x, Python3.10.x  | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 
 [昇腾辅助软件](https://gitee.com/ascend/pytorch#%E6%98%87%E8%85%BE%E8%BE%85%E5%8A%A9%E8%BD%AF%E4%BB%B6)中有更多关于PyTorch和CANN的版本信息。
 
@@ -260,8 +260,8 @@ MindSpeed版本分支的维护阶段如下：
 
 | **MindSpeed版本** | **维护策略** | **当前状态** | **发布时间**   | **后续状态**         | **EOL日期** |
 |-----------------|-----------|--------|------------|------------------|-----------|
-| 1.0.rc3_core_r0.7.0             |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
-| 1.0.rc3_core_r0.6.0            |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
+| 1.0.RC3_core_r0.7.0             |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
+| 1.0.RC3_core_r0.6.0            |  常规版本  | 维护   | 2024/09/30 | 预计2025/3/30起无维护	 |           |
 | 1.1             |  常规版本  | 维护   | 2024/06/30 | 预计2024/12/30起无维护	 |           |
 | 1.0             |  常规版本  | 停止维护   | 2024/03/30 | 2024/9/30起无维护 |           |
 
