@@ -116,18 +116,64 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
 
 def CheckDtype(x: Tensor, weight: Tensor, bias: Optional[Tensor]):
     if x.dtype != DataType.DT_BF16 and x.dtype != DataType.DT_FLOAT16:
-        raise AssertionError(f'type of x must be fp16/bf16, but got {x.dtype}.')
+        raise AssertionError(f'type of x must be DT_FLOAT16/DT_BF16, but got {GeDtypeToStr(x.dtype)}.')
     if weight.dtype != DataType.DT_BF16 and weight.dtype != DataType.DT_FLOAT16:
-        raise AssertionError(f'type of weight must be fp16/bf16, but got {weight.dtype}.')
+        raise AssertionError(f'type of weight must be DT_FLOAT16/DT_BF16, but got {GeDtypeToStr(weight.dtype)}.')
     if x.dtype != weight.dtype:
-        raise AssertionError(f'type of x and weight must be same, but got x {x.dtype} weight {weight.dtype}.')
+        raise AssertionError(f'type of x and weight must be same, but got x {GeDtypeToStr(x.dtype)} '\
+                             f'weight {GeDtypeToStr(weight.dtype)}.')
     if bias is not None:
         if bias.dtype != DataType.DT_FLOAT16 and bias.dtype != DataType.DT_FLOAT:
-            raise AssertionError(f'type of bias must fp16/fp32, but got {bias.dtype}.')
+            raise AssertionError(f'type of bias must DT_FLOAT16/DT_FLOAT32, but got {GeDtypeToStr(bias.dtype)}.')
         if x.dtype == DataType.DT_FLOAT16 and bias.dtype != DataType.DT_FLOAT16:
-            raise AssertionError(f'type of bias must fp16 when x is fp16, but got {bias.dtype}.')
+            raise AssertionError(f'type of bias must DT_FLOAT16 when x is DT_FLOAT16, '\
+                                 f'but got {GeDtypeToStr(bias.dtype)}.')
         if x.dtype == DataType.DT_BF16 and bias.dtype != DataType.DT_FLOAT:
-            raise AssertionError(f'type of bias must fp32 when x is bf16, but got {bias.dtype}.')
+            raise AssertionError(f'type of bias must DT_FLOAT32 when x is DT_BF16, '\
+                                 f'but got {GeDtypeToStr(bias.dtype)}.')
+
+
+def GeDtypeToStr(ge_dtype: DataType):
+    ge_datatype = {
+        DataType.DT_FLOAT: 'DT_FLOAT32',
+        DataType.DT_FLOAT16: 'DT_FLOAT16',
+        DataType.DT_INT8: 'DT_INT8',
+        DataType.DT_INT16: 'DT_INT16',
+        DataType.DT_UINT16: 'DT_UINT16',
+        DataType.DT_UINT8: 'DT_UINT8',
+        DataType.DT_INT32: 'DT_INT32',
+        DataType.DT_INT64: 'DT_INT64',
+        DataType.DT_UINT32: 'DT_UINT32',
+        DataType.DT_UINT64: 'DT_UINT64',
+        DataType.DT_BOOL: 'DT_BOOL',
+        DataType.DT_DOUBLE: 'DT_DOUBLE',
+        DataType.DT_STRING: 'DT_STRING',
+        DataType.DT_DUAL_SUB_INT8: 'DT_DUAL_SUB_INT8',
+        DataType.DT_DUAL_SUB_UINT8: 'DT_DUAL_SUB_UINT8',
+        DataType.DT_COMPLEX64: 'DT_COMPLEX64',
+        DataType.DT_COMPLEX128: 'DT_COMPLEX128',
+        DataType.DT_QINT8: 'DT_QINT8',
+        DataType.DT_QINT16: 'DT_QINT16',
+        DataType.DT_QINT32: 'DT_QINT32',
+        DataType.DT_QUINT8: 'DT_QUINT8',
+        DataType.DT_QUINT16: 'DT_QUINT16',
+        DataType.DT_RESOURCE: 'DT_RESOURCE',
+        DataType.DT_STRING_REF: 'DT_STRING_REF',
+        DataType.DT_DUAL: 'DT_DUAL',
+        DataType.DT_VARIANT: 'DT_VARIANT',
+        DataType.DT_BF16: 'DT_BF16',
+        DataType.DT_UNDEFINED: 'DT_UNDEFINED',
+        DataType.DT_INT4: 'DT_INT4',
+        DataType.DT_UINT1: 'DT_UINT1',
+        DataType.DT_INT2: 'DT_INT2',
+        DataType.DT_UINT2: 'DT_UINT2',
+        DataType.DT_COMPLEX32: 'DT_COMPLEX32',
+        DataType.DT_MAX: 'DT_MAX',
+    }
+    if ge_dtype in ge_datatype:
+        return ge_datatype[ge_dtype]
+    else:
+        return 'unknown'
 
 
 def AllToAllAllGatherBatchMatmul(
