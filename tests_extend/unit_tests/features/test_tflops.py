@@ -1,7 +1,7 @@
 import pytest
 import torch
 import torch_npu
-
+from mindspeed import megatron_adaptor # noqa
 
 from megatron.training.global_vars import set_args # noqa
 from megatron.training.arguments import parse_args # noqa
@@ -13,7 +13,6 @@ from megatron.core.tensor_parallel import RowParallelLinear, ColumnParallelLinea
 from commons import set_random_seed, initialize_model_parallel # noqa
 from unit_tests.common import DistributedTest # noqa
 from mindspeed.model.transformer import get_attention_mask, set_attention_mask
-from mindspeed import megatron_adaptor # noqa
 from mindspeed.core.tensor_parallel.ascend_turbo.initialize import initialize_cfg_from_args
 from mindspeed.core.training import get_flops_counter
 
@@ -66,14 +65,14 @@ def run_mc2_tflops(world_size):
     flops_counter.stop()
     flops_counter.start()
 
-    gather_list = [torch.zeros(input_.shape).half().npu() for _ in range(self.world_size)]
+    gather_list = [torch.zeros(input_.shape).half().npu() for _ in range(world_size)]
     torch.distributed.all_gather(gather_list, input_)
     gather_res = torch.concat(gather_list, dim=0)
     output_naive = torch.matmul(gather_res, linear_layer_col.weight.t())
     counts_mm_col = flops_counter.get_flops()
     flops_counter.stop()
 
-    assert counts_mm_col == counts_mc2_col[2]
+    assert counts_mm_col[0] == counts_mc2_col[0]
 
     args.seq_len = 256
     args.output_size_coeff = 256
@@ -97,14 +96,12 @@ def run_mc2_tflops(world_size):
     flops_counter.stop()
     flops_counter.start()
 
-    res = torch.matmul(input_, linear_layer.weight.npu().T)
-    tensor = torch.empty(args.batch_size // self.world_size, args.seq_len, output_size)
+    res = torch.matmul(input_, linear_layer_row.weight.npu().T)
+    tensor = torch.empty(args.batch_size // world_size, args.seq_len, output_size)
 
     counts_mm_row = flops_counter.get_flops()
-
-    assert counts_mm_row == counts_mc2_row[0]
-
-    assert torch.allclose(123, counts[0], rtol=0.005, atol=0.005)
+    flops_counter.stop()
+    assert counts_mm_row[0] == counts_mc2_row[0]
 
 
 def run_fa_tflops(bs, seq_len, dtype, use_fa2):
@@ -124,7 +121,7 @@ def run_fa_tflops(bs, seq_len, dtype, use_fa2):
     config = TransformerConfig(num_layers=2, hidden_size=32, num_attention_heads=4, use_cpu_initialization=True)
 
     flops_counter = get_flops_counter()
-    flops_counter.start()
+
     attn = DotProductAttention(
         config=config, layer_number=1, attn_mask_type=AttnMaskType.causal, attention_type='self')
 
@@ -133,7 +130,7 @@ def run_fa_tflops(bs, seq_len, dtype, use_fa2):
     q = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
     k = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
     v = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
-
+    flops_counter.start()
     # global attn mask will be generated at DotProductAttention forward wrapper
     out = attn(q, k, v, None, None, None)
     counts = flops_counter.get_flops()
