@@ -23,7 +23,7 @@ class FusionAttentionV2OpBuilder(MindSpeedOpBuilder):
         super(FusionAttentionV2OpBuilder, self).__init__(self.OP_NAME)
 
     def sources(self):
-        return ['ops/csrc/cann/fusion_attention_v2.cpp', 'ops/csrc/flopcounter/FlopCounter.cpp']
+        return ['ops/csrc/cann/fusion_attention_v2.cpp', 'ops/csrc/flop_counter/flop_counter.cpp']
 
     def include_paths(self):
         paths = super().include_paths()

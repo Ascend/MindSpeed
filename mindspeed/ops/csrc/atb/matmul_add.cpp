@@ -27,6 +27,7 @@
 #include "atb/operation.h"
 #include "atb/train_op_params.h"
 #include "atb/infer_op_params.h"
+#include "../flop_counter/flop_counter.h"
 #endif
 
 using namespace std;
@@ -56,6 +57,9 @@ void matmul_add_fp32(const at::Tensor &x, const at::Tensor &weight, at::Tensor &
         atb::CreateOperation(param, &op);
         TORCH_CHECK(op != nullptr, "MatmulAdd_forward get op failed!");
         RunAtbCmd(op, paramsetter, "LinearOperation");
+        #ifdef FLOP_COUNT
+        FLOP_COUNT(FlopCounter::mm_flop, x, weight);
+        #endif
         return ;
 #endif
 }

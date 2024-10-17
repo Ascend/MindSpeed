@@ -19,7 +19,7 @@
 #include <torch_npu/csrc/include/ops.h>
 
 #include "inc/aclnn_common.h"
-#include "../flopcounter/FlopCounter.h"
+#include "../flop_counter/flop_counter.h"
 
 using npu_preparation = at_npu::native::OpPreparation;
 

@@ -18,7 +18,3 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 ## 使用效果 
 开启融合算子，llama2_70B_4k_tp2_pp2_vpp1_dp2性能可提升1.5%。
-
-## 使用限制
-npu_matmul_add_fp32暂不支持mfu统计。
-

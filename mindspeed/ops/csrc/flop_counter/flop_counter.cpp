@@ -16,7 +16,7 @@
 
 #include "torch_npu/csrc/core/npu/NPUException.h"
 
-#include "FlopCounter.h"
+#include "flop_counter.h"
 
 
 int64_t FlopCounter::mm_flop(const at::Tensor &tensor1, const at::Tensor &tensor2)
@@ -52,6 +52,19 @@ int64_t FlopCounter::mm_flop(const at::Tensor &tensor1, const at::Tensor &tensor
     }
 
     return flop;
+}
+
+int64_t FlopCounter::coc_flop(const at::Tensor &tensor1, const at::Tensor &tensor2, bool trans, bool is_ag_mm)
+{
+    // Count flops for coc.
+    at::Tensor tensor2_transposed;
+    if (trans) {
+        tensor2_transposed = at::transpose(tensor2, 0, 1);
+    } else {
+        tensor2_transposed = tensor2;
+    }
+    int64_t total_flops = FlopCounter::mm_flop(tensor1, tensor2_transposed);
+    return is_ag_mm ? total_flops * 8 : total_flops;
 }
 
 int64_t FlopCounter::bmm_flop(const at::Tensor &self, const at::Tensor &mat2)
