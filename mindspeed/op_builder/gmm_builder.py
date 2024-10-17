@@ -75,7 +75,7 @@ class GMMOpBuilderPublic(MindSpeedOpBuilder):
     TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
 
     def sources(self):
-        return ['ops/csrc/cann/gmm.cpp', 'ops/csrc/flopcounter/FlopCounter.cpp']
+        return ['ops/csrc/cann/gmm.cpp', 'ops/csrc/flop_counter/flop_counter.cpp']
 
     def include_paths(self):
         paths = super().include_paths()
