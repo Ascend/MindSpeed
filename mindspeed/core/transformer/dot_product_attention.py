@@ -80,7 +80,8 @@ def dot_product_attention_init_wrapper(fn):
 def dot_product_attention_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params):
-        attention_mask = get_attention_mask()
+        if not attention_mask:
+            attention_mask = get_attention_mask()
         if get_args().use_flash_attn:
             return dot_product_attention_forward(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params)
         return fn(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params)
