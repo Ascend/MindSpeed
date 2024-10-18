@@ -5,10 +5,10 @@ import torch
 import torch_npu
 
 from mindspeed import megatron_adaptor
-from unit_tests.common import DistributedTest
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from mindspeed.core.context_parallel.utils import forward_update
+from unit_tests.common import TOL_MAPPING
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
@@ -45,31 +45,23 @@ def run_one_case(batch_size, head_num, seq_size, head_dim, data_type):
         prev_attn_out_fused, prev_softmax_max_fused, prev_softmax_sum_fused,
         cur_attn_out_fused, cur_softmax_max_fused, cur_softmax_sum_fused)
 
-
-    tols = dict(atol=5e-3, rtol=5e-3)
-    if data_type == torch.bfloat16:
-        tols = dict(atol=2.5e-2, rtol=2.5e-2)
-
+    tols = TOL_MAPPING.get(data_type)
     assert torch.allclose(softmax_max.npu(), softmax_max_fused, **tols)
     assert torch.allclose(softmax_sum.npu(), softmax_sum_fused, **tols)
     assert torch.allclose(attn_out.npu(), attn_out_fused, **tols)
 
 
-
-class TestNpuFusedRingAttentionUpdate(DistributedTest):
-    world_size = 1
+class TestNpuFusedRingAttentionUpdate():
 
     @pytest.mark.skip(reason='not support for current version')
+    @pytest.mark.parametrize("bs_hn_seq_hd", [(1, 64, 8192, 128), (1, 32, 8192, 128), (1, 32, 65536, 128), (1, 32, 32768, 128)])
     @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float, torch.float16])
-    def test_npu_fused_ring_attention_update(self, dtype):
-        # mixtral： B = 1, N = 32, S = 8192, D = 128
-        batch_size, head_num, seq_size, head_dim = 1, 32, 8192, 128
-        run_one_case(batch_size, head_num, seq_size, head_dim, dtype)
-
-        # gpt_moe： B = 1, N = 32, S = 65536, D = 128
-        batch_size, head_num, seq_size, head_dim = 1, 32, 65536, 128
-        run_one_case(batch_size, head_num, seq_size, head_dim, dtype)
-
-        # llama：B = 1, N = 32, S = 32768, D = 128
-        batch_size, head_num, seq_size, head_dim = 1, 32, 32768, 128
+    def test_npu_fused_ring_attention_update(self, bs_hn_seq_hd, dtype):
+        """
+        mixtral： B = 1, N = 32, S = 8192, D = 128
+        extend：  B = 1, N = 64, S = 8192, D = 128
+        gpt_moe： B = 1, N = 32, S = 65536, D = 128
+        llama：   B = 1, N = 32, S = 32768, D = 128
+        """
+        batch_size, head_num, seq_size, head_dim = bs_hn_seq_hd
         run_one_case(batch_size, head_num, seq_size, head_dim, dtype)

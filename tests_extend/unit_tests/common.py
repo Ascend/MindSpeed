@@ -23,6 +23,12 @@ from torch_npu.contrib import transfer_to_npu
 # Worker timeout for tests that hang
 TEST_TIMEOUT = 600
 
+TOL_MAPPING = {
+    torch.float: dict(atol=1e-4, rtol=1e-4),
+    torch.float16: dict(atol=1e-3, rtol=1e-3),
+    torch.bfloat16: dict(atol=5e-3, rtol=5e-3),
+}
+
 
 def get_xdist_worker_id():
     xdist_worker = os.environ.get("PYTEST_XDIST_WORKER", None)
