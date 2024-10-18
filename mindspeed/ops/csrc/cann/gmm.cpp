@@ -18,8 +18,8 @@
 #include <torch_npu/csrc/core/npu/NPUFormat.h>
 #include <torch_npu/csrc/include/ops.h>
 
+#include "../flop_counter/flop_counter.h"
 #include "inc/aclnn_common.h"
-#include "../flopcounter/FlopCounter.h"
 
 using npu_preparation = at_npu::native::OpPreparation;
 

@@ -20,7 +20,7 @@
 #include <torch_npu/csrc/include/ops.h>
 
 #include "inc/aclnn_common.h"
-#include "../flopcounter/FlopCounter.h"
+#include "../flop_counter/flop_counter.h"
 
 const static int FLASH_THRESHOLD = 512;
 const static int N = 32;

@@ -31,6 +31,7 @@
 #include "inc/atb_adapter.h"
 #include "atb/operation.h"
 #include "atb/infer_op_params.h"
+#include "../flop_counter/flop_counter.h"
 #endif
 
 
@@ -63,6 +64,9 @@ void matmul_all_reduce(const at::Tensor &input1, const at::Tensor &input2, const
     atb::CreateOperation(param, &op);
     TORCH_CHECK(op != nullptr, "lcal coc get op failed!");
     RunAtbCmd(op, paramsetter, "matmul_all_reduce");
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::coc_flop, input1, input2, transB, false);
+    #endif
 }
 
 
@@ -95,6 +99,9 @@ void all_gather_matmul(const at::Tensor &input1, const at::Tensor &input2, const
     atb::CreateOperation(param, &op);
     TORCH_CHECK(op != nullptr, "lcal coc get op failed!");
     RunAtbCmd(op, paramsetter, "all_gather_matmul");
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::coc_flop, input1, input2, transB, true);
+    #endif
 }
 
 
@@ -128,6 +135,9 @@ void all_gather_matmul_v2(const at::Tensor &input1, const at::Tensor &input2, co
     atb::CreateOperation(param, &op);
     TORCH_CHECK(op != nullptr, "lcal coc get op failed!");
     RunAtbCmd(op, paramsetter, "all_gather_matmul_v2");
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::coc_flop, input1, input2, transB, true);
+    #endif
 }
 
 
@@ -160,6 +170,9 @@ void matmul_reduce_scatter(const at::Tensor &input1, const at::Tensor &input2, c
     atb::CreateOperation(param, &op);
     TORCH_CHECK(op != nullptr, "lcal coc get op failed!");
     RunAtbCmd(op, paramsetter, "matmul_reduce_scatter");
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::coc_flop, input1, input2, transB, false);
+    #endif
 }
 
 
@@ -192,6 +205,9 @@ void pure_matmul(const at::Tensor &input1, const at::Tensor &input2, const c10::
     atb::CreateOperation(param, &op);
     TORCH_CHECK(op != nullptr, "lcal coc get op failed!");
     RunAtbCmd(op, paramsetter, "pure_matmul");
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::coc_flop, input1, input2, transB, false);
+    #endif
 }
 
 

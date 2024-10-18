@@ -140,6 +140,7 @@ def train_step_decorator(train_step):
         if args_.profile_npu and (torch.distributed.get_rank() in args_.profile_ranks):
             args_.prof.step()
         if args_.op_cal_tflops:
+            flop_count = get_flops_counter()
             counts = flop_count.get_flops()
             set_count(counts)
             flop_count.stop()
