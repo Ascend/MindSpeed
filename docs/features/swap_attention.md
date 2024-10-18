@@ -14,7 +14,7 @@
 
 ### a. 优化性能：
 
-在需要开启全重计算的场景下，可以通过开启`--swap-attention`和`--recompute layers [int]`替换全重计算，以达到提升性能的目的。
+在需要开启全重计算的场景下，可以通过开启`--swap-attention`和`--recompute-num-layers [int]`替换全重计算，以达到提升性能的目的。
 
 ### b. 内存节省：
 

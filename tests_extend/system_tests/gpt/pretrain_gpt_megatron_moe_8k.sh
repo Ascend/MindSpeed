@@ -75,7 +75,7 @@ GPT_ARGS="
     --global-batch-size 4 \
     --train-iters 1000 \
     --lr 5.0e-7 \
-    --lr-warmup-fraction 0.05 \
+    --lr-decay-iters 320000 \
     --lr-decay-style cosine \
     --clip-grad 1.0 \
     --weight-decay 0.1 \
