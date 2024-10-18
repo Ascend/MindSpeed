@@ -54,7 +54,7 @@ $$
 - shard_type：可选属性，int，默认值为0，0表示在H维度按tp域进行allgather，1表示在C维度上按tp域进行allgather。当前仅支持shard_type等于1的场景。
 - act_type：可选属性，str，激活函数类型，默认值为None，表示无激活函数。支持GELU/Silu/FastGELU/Relu/None等。
 - need_allgather_out：是否需要输出allgather后的结果，默认False，表示不需要输出。
-- need_activation_feature：是否需要输出执行激活函数前的结果（BatchMatMul后），默认False，表示不需要输出。仅在act_type不为0的时候有意义。
+- need_activation_feature：是否需要输出执行激活函数前的结果（BatchMatMul后），默认False，表示不需要输出。仅在act_type不为None的时候有意义。
 
 
 ## 输入shape限制
@@ -67,12 +67,15 @@ $$
 - y3：(E/ep, ep\*tp\*C/tp, M/tp)
 
 数据关系说明：
-- 比如x.size(0)等于E，weight.size(0)等于E/ep，则表示，x.size(0) = ep*weight.size(0)，x.size(0)是ep的整数倍；其他关系类似
-- E的取值范围为[2, 2048]，且E是ep的整数倍；
+- 比如x.size(0)等于E，weight.size(0)等于E/ep，则表示，x.size(0) = ep\*weight.size(0)，x.size(0)是ep的整数倍；其他关系类似
+- E的取值范围为[2, 512]，且E是ep的整数倍；
 - H的取值范围为：[1, 65535]；
 - M/tp的取值为：[1, 65535]；
+- E/ep的取值范围为：[1, 32]；
 - ep、tp均仅支持2、4、8、16；
+- ep域和tp域不能一致；
 - C大于0，上限为算子device内存上限；
+- 不支持跨超节点，只支持超节点内；
 
 ## npu_alltoall_allgather_bmm 的调用示例
 在终端调用命令如下：

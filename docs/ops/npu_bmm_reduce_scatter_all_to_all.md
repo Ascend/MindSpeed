@@ -49,7 +49,7 @@ $$
 ## 输入限制
 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=group_ep_worldsize，tp=group_tp_worldsize）
 按H轴进行ReduceScatter场景，即shard_type为0场景（暂不支持该场景）：
-- x: (E/ep, ep*C, M/tp) 
+- x: (E/ep, ep\*C, M/tp) 
 - weight：(E/ep, M/tp, H)
 - bias：(E/ep, 1, H/tp)  两维时为(E/ep, H/tp)
 - y：(E, C, H/tp)
@@ -61,12 +61,15 @@ $$
 - y：(E, C/tp, H)
 
 数据关系说明：
-- 比如x.size(0)等于E/tp，y.size(0)等于E，则表示，y.size(0) = ep*x.size(0)，y.size(0)是ep的整数倍；其他关系类似
-- E的取值范围为[2, 2048]，且E是ep的整数倍；
+- 比如x.size(0)等于E/tp，y.size(0)等于E，则表示，y.size(0) = ep\*x.size(0)，y.size(0)是ep的整数倍；其他关系类似
+- E的取值范围为[2, 512]，且E是ep的整数倍；
 - H的取值范围为：[1, 65535]；
-- M/tp的取值为：[1, 65535]；
+- M/tp的取值范围为：[1, 65535]；
+- E/ep的取值范围为：[1, 32]；
 - ep、tp均仅支持2、4、8、16；
+- ep域和tp域不能一致；
 - C大于0，上限为算子device内存上限；
+- 不支持跨超节点，只支持超节点内；
 
 ## npu_bmm_reducescatter_alltoall 类的调用示例(待验证)
 在终端调用命令如下：
