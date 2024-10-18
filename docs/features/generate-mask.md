@@ -42,7 +42,7 @@ FA场景，当序列长度大于2048或使用ring_cp_algo时，默认走压缩�
 
 [2] 提供全局变量 `mindspeed/model/transformer.py`-`global _GLOBAL_ATTN_MASK`。
 
-[3] 提供 `--sparse_mode` 传参，配合FA多种模式调用。
+[3] 提供 `--sparse-mode` 传参，配合FA多种模式调用。`--sparse-mode`的不同模式信息可以参考[torch_npu.npu_fusion_attention算子文档](https://www.hiascend.com/document/detail/zh/Pytorch/60RC2/apiref/apilist/ptaoplist_001095.html)。
 
 [4] 提供 `mindspeed/model/transformer.py`-`def set_attention_mask`、`def get_attention_mask`、`def generate_attention_mask` 三个额外接口，实现正常流程外的设置、获取和生成功能。
 
