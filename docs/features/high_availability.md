@@ -25,6 +25,8 @@
 
 （4）设置`enable-optimizer-state-local-copy`使能保存上一步优化器状态，内存会进一步增加，默认可关闭。
 
+（5）设置`enable-hbmfault-repair `使能进行uce修复功能的开关。
+
 ## 使用效果
 
 使用后在故障后触发UCE流程，方便继续训练。
