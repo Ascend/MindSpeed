@@ -579,7 +579,7 @@ def get_attention_mask():
 def parallel_transformer_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, hidden_states, attention_mask, **kwargs):
-        if not attention_mask:
+        if attention_mask is None:
             attention_mask = get_attention_mask()
         return fn(self, hidden_states, attention_mask, **kwargs)
     return wrapper
