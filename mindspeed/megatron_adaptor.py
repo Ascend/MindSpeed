@@ -177,6 +177,12 @@ def mcore_models_adaptation(aspm, mindspeed_args):
                         get_gpt_layer_local_spec)
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__',
                         rotary_embedding_init_wrapper)
+    from .core.models.common.embeddings.language_model_embedding import language_model_embedding_forward_wrapper
+    aspm.register_patch('megatron.core.models.common.embeddings.language_model_embedding.LanguageModelEmbedding.forward',
+                        language_model_embedding_forward_wrapper)
+    from .core.models.common.embeddings.rotary_pos_embedding import rotary_embedding_get_rotary_seq_len_wrapper
+    aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len',
+                        rotary_embedding_get_rotary_seq_len_wrapper)
 
     if not mindspeed_args.automated_pipeline and mindspeed_args.noop_layers:
         from .core.transformer.transformer_block import _build_layers
@@ -186,6 +192,7 @@ def mcore_models_adaptation(aspm, mindspeed_args):
         TransformerBlock._build_layers = _build_layers
         aspm.register_patch('megatron.training.training.num_floating_point_operations', num_floating_point_wrapper)
         aspm.register_patch('megatron.core.transformer.moe.moe_utils.track_moe_metrics', track_moe_metrics)
+
 
     if mindspeed_args.recompute_norm:
         from .core.models.gpt.gpt_layer_specs import build_norm_recompute_layer_wrapper
@@ -220,6 +227,8 @@ def mcore_transformer_adaptation(aspm):
     from .core.transformer.transformer_block import transformer_block_checkpointed_forward_wrapper
     from .core.transformer.transformer import parallel_transformer_layer_init_wrapper
     from .core.transformer.transformer import core_mlp_forward_wrapper
+    from .core.transformer.mlp import mlp_init_wrapper
+    from .core.transformer.transformer_block import transformer_block_forward_wrapper
     aspm.register_patch('megatron.core.transformer.attention.SelfAttentionSubmodules', SelfAttentionSubmodules)
     aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
     aspm.register_patch("megatron.core.transformer.attention.Attention.forward", attention_forward_wrapper)
@@ -232,6 +241,9 @@ def mcore_transformer_adaptation(aspm):
                         parallel_transformer_layer_init_wrapper)
     aspm.register_patch('megatron.core.transformer.mlp.MLP.forward',
                         core_mlp_forward_wrapper)
+    aspm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init_wrapper)
+    aspm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.forward',
+                        transformer_block_forward_wrapper)
 
 
 def mcore_parallel_state_adaptation(aspm):
@@ -302,7 +314,7 @@ def mcore_optimizer_adapation(aspm):
 
 def mcore_pipeline_parallel_adaptation(aspm):
     from .core.pipeline_parallel.p2p_communication import _communicate_shapes
-    from .core.pipeline_parallel.schedules import get_forward_backward_func_wrapper
+    from .core.pipeline_parallel.schedules import get_tensor_shapes_wrapper, get_forward_backward_func_wrapper
     from .core.performance.auto_pipeline_perf.schedules import get_forward_backward_func_decorator, \
         backward_step_decorator, forward_step_decorator
 
@@ -316,6 +328,8 @@ def mcore_pipeline_parallel_adaptation(aspm):
                         forward_step_decorator)
     aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._communicate_shapes',
                         _communicate_shapes)
+    aspm.register_patch('megatron.core.pipeline_parallel.schedules.get_tensor_shapes',
+                        get_tensor_shapes_wrapper)
 
 
 def mcore_multiparam_pipeline_parallel_adaptation(aspm, mindspeed_args):
@@ -681,6 +695,21 @@ def zero3_adaptation(aspm, args):
             distributed_data_parallel_zero_grad_wrapper)
 
 
+def tensor_2d_adaptation(aspm, args):
+    if args.tp_2d:
+        from mindspeed.core.tensor_parallel.tp_2d.norm_factory import get_norm_tp_2d
+        from mindspeed.core.tensor_parallel.tp_2d.norm_factory import _allreduce_layernorm_grads_wrapper
+        from mindspeed.core.models.common.embeddings.rotary_pos_embedding import rotary_embedding_forward_wrapper
+        from mindspeed.core.pipeline_parallel.flexible_schedules import forward_backward_pipelining_with_interleaving_patch
+        aspm.register_patch('megatron.legacy.model.utils.get_norm', get_norm_tp_2d)
+        aspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_layernorm_grads',
+                            _allreduce_layernorm_grads_wrapper)
+        aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward',
+                            rotary_embedding_forward_wrapper)
+        aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_with_interleaving',
+                            forward_backward_pipelining_with_interleaving_patch)
+
+
 def adaptation_l0(aspm):
     """
     The minimum patch set for megatron to adapt to NPU
@@ -736,6 +765,7 @@ def adaptation_l2(aspm, mindspeed_args):
     mcore_moe_adaptation(aspm, mindspeed_args)
     deepspeed_moe_adaptation(aspm, mindspeed_args)
     zero3_adaptation(aspm, mindspeed_args)
+    tensor_2d_adaptation(aspm, mindspeed_args)
 
 
 def exe_adaptation():

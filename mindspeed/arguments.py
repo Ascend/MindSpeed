@@ -38,6 +38,7 @@ def process_args(parser):
     parser = _add_automated_pipeline_args(parser)
     parser = _add_alibi_args(parser)
     parser = _add_ndmm_args(parser)
+    parser = _add_2d_tp_args(parser)
     parser = _add_coc_args(parser)
     parser = _add_profile_args(parser)
     parser = _add_auto_parallel_args(parser)
@@ -694,6 +695,23 @@ def validate_args_wrapper(validate_args):
                     args.use_pipe_experts = False
                     args.pipe_experts_multi_stream = False
                     args.pipe_experts_multi_data = 1
+        if args.tp_2d:
+            if args.sequence_parallel:
+                raise AssertionError('2d tp does not support sequence parallel')
+            if args.use_fused_rmsnorm:
+                raise AssertionError('2d tp does not support fused rmsnorm')
+            if args.use_nanopipe:
+                raise AssertionError('tp-2d does not support nano-pipe')
+            if args.ampipe_degree > 1:
+                raise AssertionError('tp-2d does not support ampipe')
+            if args.context_parallel_algo not in ['megatron_cp_algo', 'ulysses_cp_algo']:
+                raise AssertionError('tp-2d now only support megatron_cp_algo or ulysses_cp_algo')
+            if args.use_ascend_coc:
+                raise AssertionError('tp-2d does not support ascend coc')
+            if args.tensor_model_parallel_size // args.tp_x != args.tp_y:
+                raise AssertionError('need satisfy tp = tp_x * tp_y')
+            if args.expert_model_parallel_size > 1:
+                raise AssertionError('2d tp does not support moe')
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
@@ -760,4 +778,19 @@ def _add_auto_parallel_args(parser):
     group.add_argument('--profile-operator', action='store_true', help='')
     group.add_argument('--profile-memory', action='store_true', help='')
     group.add_argument('--prof-file', type=str, default=None, help='')
+    return parser
+
+
+def _add_2d_tp_args(parser):
+    group = parser.add_argument_group(title='2d-tp')
+    group.add_argument('--tp-2d', action='store_true', default=False,
+                       help='use use-2d-tp to replace megatron-style tensor parallel')
+    group.add_argument('--enable-overlap-ag-with-matmul', action='store_true', default=False,
+                       help='use enable-overlap-ag-with-matmul to overlap allgather with matmul')
+    group.add_argument('--enable-overlap-matmul-with-rs', action='store_true', default=False,
+                       help='use enable-overlap-matmul-with-rs to overlap matmul with reduce-scatter')
+    group.add_argument('--tp-x', type=int, default=1,
+                       help='the fist dim tensor parallel size for Linear')
+    group.add_argument('--tp-y', type=int, default=1,
+                       help='the second dim tensor parallel size for Linear')
     return parser

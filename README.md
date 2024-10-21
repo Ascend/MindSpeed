@@ -174,6 +174,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
 | Ascend nano-pipe流水线并行        | [link](docs/features/nanopipe-pipeline-parallel.md)       |
+| Ascend 高维张量并行                | [link](docs/features/tensor-parallel-2d.md)                           |
 
 ## 关键场景特性
 | 特性                           | 介绍                                                        |
