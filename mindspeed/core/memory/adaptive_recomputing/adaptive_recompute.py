@@ -326,8 +326,17 @@ class AdaptiveRecomputePolicy:
         if vpp_size > 1:
             return self.granular_module_allocation(vpp_size, recompute_num_layers, cur_pp_noop_layers)
         else:
-            swap_list = [str(i) if i not in cur_pp_noop_layers else '' for i in range(self.num_prefetch)]
-            recompute_list = [str(i) if i not in cur_pp_noop_layers else '' for i in range(recompute_num_layers)]
+            swap_list, recompute_list = [], []
+            for i in range(self.num_prefetch):
+                if i + self.pp_rank * per_pp_layers not in cur_pp_noop_layers:
+                    swap_list.append(str(i))
+                else:
+                    swap_list.append('')
+            for i in range(recompute_num_layers):
+                if i + self.pp_rank * per_pp_layers not in cur_pp_noop_layers:
+                    recompute_list.append(str(i))
+                else:
+                    recompute_list.append('')
 
             prefetch_list = swap_list
             prefetch_recompute_group = [[swap_list], [prefetch_list], [recompute_list]]
