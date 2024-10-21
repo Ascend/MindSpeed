@@ -416,3 +416,19 @@ def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
             val = val.index_select(seq_dim, index)
             batch[key] = val
     return batch
+
+
+def checkpoint_forward_wrapper(fn):
+    def wrapper(ctx, run_function, distribute_saved_activations, *args):
+        ctx.actual_seq_len = get_actual_seq_len()
+        return fn(ctx, run_function, distribute_saved_activations, *args)
+
+    return wrapper
+
+
+def checkpoint_backward_wrapper(fn):
+    def wrapper(ctx, *args):
+        set_actual_seq_len(ctx.actual_seq_len)
+        return fn(ctx, *args)
+    
+    return wrapper
