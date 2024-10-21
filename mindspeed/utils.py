@@ -424,3 +424,19 @@ def get_batch_on_this_tp_rank(data_iterator):
             set_actual_seq_len(actual_seq_len.tolist())
 
     return batch
+
+
+def checkpoint_forward_wrapper(fn):
+    def wrapper(ctx, run_function, distribute_saved_activations, *args):
+        ctx.actual_seq_len = get_actual_seq_len()
+        return fn(ctx, run_function, distribute_saved_activations, *args)
+
+    return wrapper
+
+
+def checkpoint_backward_wrapper(fn):
+    def wrapper(ctx, *args):
+        set_actual_seq_len(ctx.actual_seq_len)
+        return fn(ctx, *args)
+    
+    return wrapper
