@@ -428,8 +428,6 @@ def validate_args_wrapper(validate_args):
         if args.use_ascend_mc2:
             if args.use_ascend_coc:
                 raise AssertionError('--mc2 and coc can not be used together')
-            if args.add_bias_linear or args.add_qkv_bias:
-                raise AssertionError('--mc2 currently does not support linear and attention with bias.')
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
