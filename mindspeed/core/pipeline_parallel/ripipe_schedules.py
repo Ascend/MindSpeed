@@ -139,7 +139,8 @@ def forward_backward_ripipe_pipelining(
     tensor_shape[0] = tensor_shape[0] // parallel_state.get_context_parallel_world_size()
     if config.sequence_parallel:
         tensor_shape[0] = tensor_shape[0] // parallel_state.get_tensor_model_parallel_world_size()
-
+    tensor_shape[0] = tensor_shape[0] // args.tp_x
+    tensor_shape[-1] = tensor_shape[-1] // args.tp_y
     # Compute number of warmup and remaining microbatches.
     num_model_chunks = len(model)
     total_num_microbatches = num_microbatches * num_model_chunks

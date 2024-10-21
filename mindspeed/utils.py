@@ -5,6 +5,7 @@ import functools
 
 import torch
 from megatron.core import mpu
+from megatron.training import get_args
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
                                              get_context_parallel_for_hybrid_ulysses_rank,
                                              get_context_parallel_for_hybrid_ring_world_size,
@@ -76,13 +77,16 @@ def get_batch_on_this_cp_rank(batch):
         position_ids = position_ids.transpose(0, 1).contiguous()
         set_position_ids(position_ids)    
  
-    cp_size = args.context_parallel_size
-    if not cp_size > 1:
+    tp_y_cp_size = args.context_parallel_size * args.tp_y if args.tp_2d else args.context_parallel_size
+    if not tp_y_cp_size > 1:
         return batch
 
+    cp_expanded_by_2d_tp = args.tp_y > 1
     if args.context_parallel_algo == 'megatron_cp_algo':
         if args.cp_attention_mask_type == 'general':
             batch = _get_batch_on_this_cp_rank_in_megatron_cp_general(batch)
+        elif cp_expanded_by_2d_tp:
+            batch = _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch)
         else:
             batch = _get_batch_on_this_cp_rank_in_megatron_cp(batch)
     elif args.context_parallel_algo == 'ulysses_cp_algo':
@@ -324,6 +328,49 @@ def broadcast_dynamic(item):
         _broadcast(item)
 
     return item
+
+
+def _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch):
+    cp_rank = mpu.get_context_parallel_rank()
+    cp_size = mpu.get_context_parallel_world_size()
+
+    args = get_args()
+    tp_y_cp_size = args.context_parallel_size * args.tp_y
+
+    for key, val in batch.items():
+        if key == 'attention_mask' or val is None:
+            continue
+
+        seq_dim = 1
+        b = val.shape[0]
+
+        # [b, s] -> [b, 2*tp_y_cp_sz, s/(2*tp_y_cp_sz)]
+        val = val.view(
+            *val.shape[0:seq_dim],
+            2 * tp_y_cp_size,
+            val.shape[seq_dim] // (2 * tp_y_cp_size),
+            *val.shape[(seq_dim + 1):],
+        )
+
+        rearrange_index = []
+        for i in range(tp_y_cp_size):
+            rearrange_index.extend([i, 2 * tp_y_cp_size - 1 - i])
+        rearrange_idx_tensor = torch.tensor(rearrange_index, device=val.device)
+
+        val = val.index_select(seq_dim, index=rearrange_idx_tensor)
+
+        # [b, 2 * tp_y_cp_sz, s / (2 * tp_y_cp_sz)] -> [b, cp, s/cp]
+        val = val.view(
+            *val.shape[0:seq_dim],
+            cp_size,
+            val.shape[seq_dim] // cp_size,
+            *val.shape[(seq_dim + 1):],
+        )
+        # [b, 1, s/cp] -> [b, s/cp]
+        val = val[:, cp_rank].view(b, -1)
+        batch[key] = val
+
+    return batch
 
 
 def get_batch_on_this_tp_rank(data_iterator):

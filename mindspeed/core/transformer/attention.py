@@ -10,10 +10,18 @@ from megatron.core.transformer import TransformerConfig, ModuleSpec, build_modul
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core import mpu
+from megatron.core.utils import divide
 from megatron.training import get_args
 
 from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses
+from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
+from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses, \
+    get_tensor_model_parallel_world_size_for_nd1_dim1
+from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPXOverlapCollectiveComm, \
+    TPYCollectiveComm, TPYOverlapCollectiveComm
+from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
+from mindspeed.core.tensor_parallel.tp_2d.parallel_linear_2d import ParallelLinear2D
 
 
 @dataclass
@@ -35,7 +43,11 @@ def attention_init_wrapper(fn):
         args = get_args()
         if args.context_parallel_size > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
                                                                              'hybrid_adaptive_cp_algo']:
-            ulysses_group = mpu.get_context_parallel_group()
+            if args.tp_2d:
+                tp_y_cp = TensorParallelYUnionCP()
+                ulysses_group = tp_y_cp.group
+            else:
+                ulysses_group = mpu.get_context_parallel_group()
             if args.context_parallel_algo in ['hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
                 ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
             self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
@@ -142,6 +154,41 @@ def self_attention_init_wrapper(fn):
                 skip_bias_add=True,
                 is_expert=False,
                 tp_comm_buffer_name='proj',
+            )
+
+        if args.tp_2d:
+            attn_heads_split_num = get_tensor_model_parallel_world_size_for_nd1_dim1()
+            self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, attn_heads_split_num)
+            self.num_query_groups_per_partition = divide(self.config.num_query_groups, attn_heads_split_num)
+            self.linear_qkv = ParallelLinear2D(
+                self.config.hidden_size,
+                self.query_projection_size + 2 * self.kv_projection_size,
+                config=self.config,
+                init_method=self.config.init_method,
+                add_bias=self.config.add_bias_linear,
+                skip_bias_add=True,
+                ag_comm_intf=TPXCollectiveComm,
+                ag_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+                rs_comm_intf=TPYCollectiveComm,
+                rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+                enable_overlap_ag_with_matmul=False,
+                enable_overlap_matmul_with_rs=False,
+                partition_dim=0
+            )
+            self.linear_proj = ParallelLinear2D(
+                self.query_projection_size,
+                self.config.hidden_size,
+                config=self.config,
+                init_method=self.config.output_layer_init_method,
+                add_bias=self.config.add_bias_linear,
+                skip_bias_add=True,
+                ag_comm_intf=TPYCollectiveComm,
+                ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+                rs_comm_intf=TPXCollectiveComm,
+                rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+                enable_overlap_ag_with_matmul=args.enable_overlap_ag_with_matmul,
+                enable_overlap_matmul_with_rs=False,
+                partition_dim=1
             )
 
     return wrapper

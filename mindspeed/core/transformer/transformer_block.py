@@ -10,6 +10,9 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
 from megatron.training import get_args
 from megatron.core.transformer.custom_layers.transformer_engine import TENorm
+from mindspeed.core.tensor_parallel.comm_autograd_function import auto_grad_sync_gather_along_last_dim, \
+    auto_grad_sync_gather_along_first_dim
+from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPYCollectiveComm
 
 
 def transformer_block_checkpointed_forward_wrapper(forward_func):
@@ -213,3 +216,14 @@ def _build_layers(self):
             hidden_size=self.config.hidden_size,
             eps=self.config.layernorm_epsilon,
         )
+
+
+def transformer_block_forward_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        hidden_states = fn(*args, **kwargs)
+        if get_args().tp_2d and parallel_state.is_pipeline_last_stage():
+            hidden_states = auto_grad_sync_gather_along_first_dim(hidden_states, TPXCollectiveComm)
+            hidden_states = auto_grad_sync_gather_along_last_dim(hidden_states, TPYCollectiveComm)
+        return hidden_states
+    return wrapper

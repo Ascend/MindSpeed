@@ -47,7 +47,14 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                            get_ring_group_for_intra_window,
                                            get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
+from mindspeed.core.parallel_state import get_tensor_model_parallel_world_size_for_nd1_dim1
+from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm
+from mindspeed.core.tensor_parallel.comm_group_api import TPXOverlapCollectiveComm
+from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
+from mindspeed.core.tensor_parallel.comm_group_api import TPYOverlapCollectiveComm
+from mindspeed.core.tensor_parallel.tp_2d.parallel_linear_2d import ParallelLinear2D
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
+from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.core.tensor_parallel.layers import Nd_ParallelLinear
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
@@ -623,6 +630,36 @@ def parallel_mlp_init_wrapper(fn):
                 is_expert=is_expert,
                 matmul_id=2
             )
+        elif _args.tp_2d:
+            self.dense_h_to_4h = ParallelLinear2D(
+                config.hidden_size,
+                ffn_hidden_size,
+                config=config,
+                init_method=config.init_method,
+                add_bias=self.add_bias,
+                skip_bias_add=True,
+                is_expert=is_expert,
+                ag_comm_intf=TPXCollectiveComm,
+                ag_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+                rs_comm_intf=TPYCollectiveComm,
+                rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+                enable_overlap_ag_with_matmul=False,
+                enable_overlap_matmul_with_rs=_args.enable_overlap_matmul_with_rs,
+                partition_dim=0)
+            self.dense_4h_to_h = ParallelLinear2D(
+                config.ffn_hidden_size,
+                config.hidden_size,
+                config=config,
+                init_method=config.output_layer_init_method,
+                add_bias=self.add_bias,
+                skip_bias_add=True,
+                ag_comm_intf=TPYCollectiveComm,
+                ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+                rs_comm_intf=TPXCollectiveComm,
+                rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+                enable_overlap_ag_with_matmul=_args.enable_overlap_ag_with_matmul,
+                enable_overlap_matmul_with_rs=False,
+                partition_dim=1)
         else:
             self.dense_h_to_4h = tensor_parallel.ColumnParallelLinear(
                 config.hidden_size,
@@ -797,17 +834,29 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
     except Exception as e:
         raise ValueError('Invalid head_dim: {}'.format(head_dim)) from e
 
-    if args.context_parallel_size > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
+    cp_expanded_by_2d_tp = args.tp_2d and args.tp_y > 1
+    if cp_expanded_by_2d_tp:
+        tp_y_cp_sz = args.context_parallel_size * args.tp_y
+    else:
+        tp_y_cp_sz = args.context_parallel_size
+    if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
                                                                          'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
         in_hybrid_mode = False
         if get_context_parallel_group_for_hybrid_ring(check_initialized=False) is not None:
             in_hybrid_mode = True
 
         if not in_hybrid_mode:
-            cp_group = mpu.get_context_parallel_group()
-            cp_size = mpu.get_context_parallel_world_size()
-            rank = mpu.get_context_parallel_rank()
-            cp_global_ranks = mpu.get_context_parallel_global_ranks()
+            if cp_expanded_by_2d_tp:
+                tp_y_cp = TensorParallelYUnionCP()
+                cp_group = tp_y_cp.group
+                cp_size = tp_y_cp.get_parallel_group_world_size()
+                rank = tp_y_cp.get_parallel_rank()
+                cp_global_ranks = tp_y_cp.global_ranks
+            else:
+                cp_group = mpu.get_context_parallel_group()
+                cp_size = mpu.get_context_parallel_world_size()
+                rank = mpu.get_context_parallel_rank()
+                cp_global_ranks = mpu.get_context_parallel_global_ranks()
         else:
             cp_group = get_context_parallel_group_for_hybrid_ring()
             cp_size = get_context_parallel_for_hybrid_ring_world_size()
@@ -822,16 +871,21 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
 
         if args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
             cp_para['cp_global_ranks'] = cp_global_ranks
-            cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
-                if args.use_cp_send_recv_overlap else None
+            if args.use_cp_send_recv_overlap:
+                if cp_expanded_by_2d_tp:
+                    cp_para['cp_group_for_send_recv_overlap'] = tp_y_cp.overlap_group
+                else:
+                    cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap()
+            else:
+                cp_para['cp_group_for_send_recv_overlap'] = None
             cp_para['pse'] = self.pse
             cp_para['pse_type'] = self.pse_type
-
-            cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
-            cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
-            cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
-            cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
-            cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
+            if args.context_parallel_size > 1 and not args.tp_2d:
+                cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
+                cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
+                cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
+                cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
+                cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
 
             output = ringattn_context_parallel(q, k, v, head_num, cp_para, scale, attention_mask, self.dropout_p)
         else:
@@ -872,7 +926,27 @@ def parallel_attention_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
+        # patch for 2d-tp
         config = args[0]
+        training_args = get_args()
+        attn_heads_split_num = (
+            get_tensor_model_parallel_world_size_for_nd1_dim1()
+            if training_args.tp_2d
+            else mpu.get_tensor_model_parallel_world_size()
+        )
+
+        # Per attention head and per partition values.
+        self.num_attention_heads_per_partition = config.num_attention_heads // attn_heads_split_num
+
+        if self.group_query_attention:
+            if training_args.num_query_groups % attn_heads_split_num != 0:
+                raise NotImplementedError(
+                    "Currently the num_query_groups should be a multiple of the tensor parallel size"
+                )
+            self.num_query_groups_per_partition = training_args.num_query_groups // attn_heads_split_num
+        else:
+            self.num_query_groups_per_partition = self.num_attention_heads_per_partition
+
         query_projection_size = config.kv_channels * config.num_attention_heads
         _args = get_args()
         if _args.group_query_attention:
@@ -883,7 +957,11 @@ def parallel_attention_init_wrapper(fn):
         bias = _args.add_qkv_bias or _args.add_bias_linear
         if args[0].context_parallel_size > 1 and args[0].context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
                                                                                    'hybrid_adaptive_cp_algo']:
-            ulysses_group = mpu.get_context_parallel_group()
+            if training_args.tp_2d:
+                tp_y_cp = TensorParallelYUnionCP()
+                ulysses_group = tp_y_cp.group
+            else:
+                ulysses_group = mpu.get_context_parallel_group()
             if args[0].context_parallel_algo == 'hybrid_cp_algo' or args[0].context_parallel_algo == \
                     'hybrid_adaptive_cp_algo':
                 ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
@@ -903,6 +981,21 @@ def parallel_attention_init_wrapper(fn):
                 input_is_parallel=True,
                 matmul_id=1
             )
+        elif _args.tp_2d:
+            self.query_key_value = ParallelLinear2D(
+                config.hidden_size,
+                query_projection_size + 2 * kv_projection_size,
+                config=config,
+                init_method=config.init_method,
+                add_bias=bias,
+                skip_bias_add=True,
+                ag_comm_intf=TPXCollectiveComm,
+                ag_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+                rs_comm_intf=TPYCollectiveComm,
+                rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+                enable_overlap_ag_with_matmul=False,
+                enable_overlap_matmul_with_rs=False,
+                partition_dim=0)
         else:
             self.query_key_value = tensor_parallel.ColumnParallelLinear(
                 config.hidden_size,
@@ -927,6 +1020,21 @@ def parallel_attention_init_wrapper(fn):
                 input_is_parallel=True,
                 matmul_id=2
             )
+        elif _args.tp_2d:
+            self.dense = ParallelLinear2D(
+                query_projection_size,
+                config.hidden_size,
+                config=config,
+                init_method=config.output_layer_init_method,
+                add_bias=bias,
+                skip_bias_add=True,
+                ag_comm_intf=TPYCollectiveComm,
+                ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+                rs_comm_intf=TPXCollectiveComm,
+                rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+                enable_overlap_ag_with_matmul=_args.enable_overlap_ag_with_matmul,
+                enable_overlap_matmul_with_rs=False,
+                partition_dim=1)
         else:
             self.dense = tensor_parallel.RowParallelLinear(
                 query_projection_size,
