@@ -153,3 +153,17 @@ def forward_step(
     if unwrap_output_tensor:
         return output_tensor, num_tokens
     return [output_tensor], num_tokens
+ 
+ 
+def get_tensor_shapes_wrapper(get_tensor_shapes):
+    @wraps(get_tensor_shapes)
+    def wrapper(*args, **kwargs):
+        # [s, b, h]
+        tensor_shapes = get_tensor_shapes(*args, **kwargs)
+        arguments = get_args()
+        if arguments.tp_2d:
+            tensor_shapes = [[tensor_shape[0] // arguments.tp_x, tensor_shape[1], tensor_shape[2] // arguments.tp_y]
+                             for tensor_shape in tensor_shapes]
+ 
+        return tensor_shapes
+    return wrapper

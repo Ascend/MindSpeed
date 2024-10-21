@@ -16,6 +16,7 @@ from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulyss
                                            get_context_parallel_for_hybrid_ring_world_size,
                                            get_context_parallel_for_hybrid_ring_rank)
 from mindspeed.core.context_parallel.utils import get_remapped_seq_order
+from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 
 
 def yarn_find_correction_dim(
@@ -156,13 +157,19 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
 def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
     args = get_args()
 
+    cp_expanded_by_2d_tp = args.tp_y > 1
     if args.context_parallel_algo == 'megatron_cp_algo':
         if args.cp_attention_mask_type == 'general':
             pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
+        elif cp_expanded_by_2d_tp:
+            pos_emb = _get_pos_emb_on_this_tp_y_cp_rank_in_megatron_cp(pos_emb, seq_dim)
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_megatron_cp(pos_emb, seq_dim)
     elif args.context_parallel_algo == 'ulysses_cp_algo':
-        pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
+        if cp_expanded_by_2d_tp:
+            pos_emb = _get_pos_emb_on_this_tp_y_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
+        else:
+            pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
     elif args.context_parallel_algo == 'hybrid_cp_algo':
         if args.cp_attention_mask_type == 'general':
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp_general(pos_emb, seq_dim)
@@ -187,6 +194,37 @@ def _get_pos_emb_on_this_cp_rank_in_megatron_cp(pos_emb, seq_dim):
     pos_emb = pos_emb.index_select(seq_dim, cp_idx)
     pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
     return pos_emb
+
+
+def _get_pos_emb_on_this_tp_y_cp_rank_in_megatron_cp(pos_emb, seq_dim):
+    origin_pos_emb_shape = pos_emb.shape
+    tp_y_cp_group = TensorParallelYUnionCP()
+    tp_y_cp_size = tp_y_cp_group.get_parallel_group_world_size()
+    # [s, 1, 1, head_dim] ---> [2*tp_y_cp_size, s/(2*tp_y_cp_size), 1, 1, head_dim]
+    pos_emb = pos_emb.view(
+        *pos_emb.shape[:seq_dim], 2 * tp_y_cp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
+    )
+    rearrange_index = []
+    for i in range(tp_y_cp_size):
+        rearrange_index.extend([i, 2 * tp_y_cp_size - 1 - i])
+
+    rearrange_idx_tensor = torch.tensor(rearrange_index, device=pos_emb.device)
+
+    # Reorder pos embedding according dataset handling.
+    # selected res shape: [2 * tp_y_cp_size, s / (2 * tp_y_cp_size), 1, 1, head_dim]
+    pos_emb = pos_emb.index_select(seq_dim, index=rearrange_idx_tensor)
+    pos_emb = pos_emb.view(*origin_pos_emb_shape)
+    # viewed res shape: [tp_y_cp_sz, s/tp_y_cp_sz, 1, head_dim]
+    pos_emb = pos_emb.view(
+        *pos_emb.shape[0:seq_dim],
+        tp_y_cp_size,
+        pos_emb.shape[seq_dim] // tp_y_cp_size,
+        *pos_emb.shape[(seq_dim + 1):],
+    )
+    # cur_rank_pos_emb shape: [s/cp, 1, 1, head_dim]
+    tp_y_cp_rank = tp_y_cp_group.get_parallel_rank()
+    cur_rank_pos_emb = pos_emb[tp_y_cp_rank].squeeze(axis=0)
+    return cur_rank_pos_emb
 
 
 def _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim):
@@ -259,3 +297,71 @@ def _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emd, seq_dim):
 
     return pos_emd
 
+
+def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
+    """Forward pass of RoPE embedding.
+
+    Args:
+        max_seq_len (int): Maximum size of sequence
+        offset (int, optional): _description_. Defaults to 0.
+
+    Returns:
+        Tensor: Embeddings after applying RoPE.
+    """
+    seq = (
+        torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
+        + offset
+    )
+
+    if self.seq_len_interpolation_factor is not None:
+        seq *= 1 / self.seq_len_interpolation_factor
+
+    freqs = torch.outer(seq, self.inv_freq)
+    # first part even vector components, second part odd vector components,
+    #  2 * dim in dimension size
+    if not self.rotary_interleaved:
+        emb = torch.cat((freqs, freqs), dim=-1)
+    else:
+        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(
+            freqs.shape[0], -1
+        )
+    # emb [seq_length, .., dim]
+    emb = emb[:, None, None, :]
+    global_args = get_args()
+    cp = global_args.context_parallel_size
+    if global_args.tp_2d:
+        tp_y_cp_sz = cp * global_args.tp_y
+    else:
+        tp_y_cp_sz = cp
+    if tp_y_cp_sz > 1:
+        # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
+        emb = get_pos_emb_on_this_cp_rank(emb, 0)
+    return emb
+
+
+def rotary_embedding_forward_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, max_seq_len: int, offset: int = 0):
+        return rotary_embedding_forward(self, max_seq_len, offset)
+
+    return wrapper
+
+
+def _get_pos_emb_on_this_tp_y_cp_rank_in_ulysses_cp(pos_emb, seq_dim):
+    tp_y_cp_group = TensorParallelYUnionCP()
+    tp_y_cp_size = tp_y_cp_group.get_parallel_group_world_size()
+ 
+    cp_rank = tp_y_cp_group.get_parallel_rank()
+    pos_emb = pos_emb.chunk(tp_y_cp_size, dim=seq_dim)[cp_rank]
+    return pos_emb
+
+
+def rotary_embedding_get_rotary_seq_len_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, inference_params, transformer, transformer_input, transformer_config,):
+        rotary_seq_len = fn(self, inference_params, transformer, transformer_input, transformer_config,)
+        global_args = get_args()
+        if global_args.tp_2d:
+            rotary_seq_len *= global_args.tp_x
+        return rotary_seq_len
+    return wrapper

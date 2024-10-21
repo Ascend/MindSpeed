@@ -22,6 +22,9 @@ from datetime import timedelta
 import torch
 import megatron
 
+from mindspeed.core.simple_parallel_cfg import SimpleParallelCfg
+from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
+
 _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP = None
 _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_ULYSSES = None
 _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_RING = None
@@ -36,7 +39,8 @@ _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV = None
 _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW = None
 _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP = None
 
-
+_TP_X_PARALLEL_RING_RANKS = None
+_TP_Y_PARALLEL_RING_RANKS = None
 
 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1 = None
 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2 = None
@@ -46,6 +50,12 @@ _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM1 = None
 _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM2 = None
 _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM1 = None
 _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM2 = None
+_TP_X_SD_RCV_OVERLAP_GROUP = None
+_TP_Y_SD_RCV_OVERLAP_GROUP = None
+_TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK = None
+_TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_RANK = None
+_TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_WORLD_SIZE = None
+_TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE = None
 
 _TENSOR_AND_CONTEXT_PARALLEL_GROUP = None
 _TENSOR_AND_CONTEXT_PARALLEL_GLOBAL_RANKS = None
@@ -227,14 +237,32 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             if rank in ranks:
                 _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
 
-
+        from megatron.training import get_args
+        args = get_args()
+        nd1_dim1_sz = args.nd1_dim1_size if args.use_nd_matmul else args.tp_x
+        nd2_dim1_sz = args.nd2_dim1_size if args.use_nd_matmul else args.tp_y
         initialize_ndmm_parallel_group(
             nccl_comm_cfgs,
             tensor_model_parallel_size=tensor_model_parallel_size,
-            nd1_dim1_size=args.nd1_dim1_size,
-            nd2_dim1_size=args.nd2_dim1_size,
+            nd1_dim1_size=nd1_dim1_sz,
+            nd2_dim1_size=nd2_dim1_sz,
         )
-
+        if args.tp_2d:
+            tp_y_cp_group = TensorParallelYUnionCP(
+                parallel_cfg=SimpleParallelCfg(
+                    dp=data_parallel_size,
+                    pp=pipeline_model_parallel_size,
+                    tp=tensor_model_parallel_size,
+                    cp=context_parallel_size,
+                    ep=expert_model_parallel_size,
+                    tp_x=get_args().tp_x,
+                    tp_y=get_args().tp_y,
+                ),
+                pg_name="tp-y-cp",
+                overlap_gp_name="tp-y-cp-overlap",
+                nccl_comm_cfgs=nccl_comm_cfgs
+            )
+            print(f'tp_y_cp_group.global_ranks={tp_y_cp_group.global_ranks} for rank {rank}')
     return wrapper
 
 
@@ -280,7 +308,8 @@ def initialize_context_parallel_group_for_send_recv_overlap(
     from megatron.training import get_args
     if not get_args().use_cp_send_recv_overlap:
         return
-
+    if get_args().tp_2d:
+        return
     rank = torch.distributed.get_rank()
     world_size: int = torch.distributed.get_world_size()
     num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
@@ -378,6 +407,8 @@ def initialize_context_parallel_group_for_double_ring(
 ):
     from megatron.training import get_args
     args = get_args()
+    if args.tp_2d:
+        return
     if context_parallel_size == 1 or args.context_parallel_algo not in ['megatron_cp_algo', 'hybrid_cp_algo']:
         return
         
@@ -917,6 +948,18 @@ def get_context_parallel_for_hybrid_ring_global_ranks():
     return _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_RING
 
 
+def get_tp_x_ring_global_ranks():
+    global _TP_X_PARALLEL_RING_RANKS
+    assert (_TP_X_PARALLEL_RING_RANKS is not None), 'TP-X parallel group for ring is not initialized'
+    return _TP_X_PARALLEL_RING_RANKS
+
+
+def get_tp_y_ring_global_ranks():
+    global _TP_Y_PARALLEL_RING_RANKS
+    assert (_TP_Y_PARALLEL_RING_RANKS is not None), 'TP-Y parallel group for ring is not initialized'
+    return _TP_Y_PARALLEL_RING_RANKS
+
+
 def destroy_model_parallel_wrapper(destroy_model_parallel):
     @wraps(destroy_model_parallel)
     def wrapper():
@@ -928,16 +971,48 @@ def destroy_model_parallel_wrapper(destroy_model_parallel):
         global _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_ULYSSES
         global _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_RING
         global _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_ULYSSES
+        global _TP_X_PARALLEL_RING_RANKS
+        global _TP_Y_PARALLEL_RING_RANKS
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1
+        global _TP_X_SD_RCV_OVERLAP_GROUP
+        global _TP_Y_SD_RCV_OVERLAP_GROUP
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_RANK
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_WORLD_SIZE
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM1
+        global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2
+        global _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM1
+        global _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM2
+        global _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM1
+        global _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM2
+        global _TENSOR_AND_CONTEXT_PARALLEL_GROUP
+        global _TENSOR_AND_CONTEXT_PARALLEL_GLOBAL_RANKS
         _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP = None
         _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = None
         _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_RING = None
         _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_ULYSSES = None
         _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_RING = None
         _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_ULYSSES = None
-        global _TENSOR_AND_CONTEXT_PARALLEL_GROUP
-        global _TENSOR_AND_CONTEXT_PARALLEL_GLOBAL_RANKS
         _TENSOR_AND_CONTEXT_PARALLEL_GROUP = None
         _TENSOR_AND_CONTEXT_PARALLEL_GLOBAL_RANKS = None
+        _TP_X_PARALLEL_RING_RANKS = None
+        _TP_Y_PARALLEL_RING_RANKS = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1 = None
+        _TP_X_SD_RCV_OVERLAP_GROUP = None
+        _TP_Y_SD_RCV_OVERLAP_GROUP = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2 = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_RANK = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_WORLD_SIZE = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM1 = None
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2 = None
+        _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM1 = None
+        _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM2 = None
+        _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM1 = None
+        _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM2 = None
 
         global _GROBAL_PROCESS_GROUP_GLOO
         _GROBAL_PROCESS_GROUP_GLOO = None
@@ -951,6 +1026,18 @@ def get_tensor_model_parallel_group_for_nd1_dim1(check_initialized=True):
     return _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1
 
 
+def get_tp_x_sd_rcv_overlap_group(check_initialized=True):
+    if check_initialized and _TP_X_SD_RCV_OVERLAP_GROUP is None:
+        raise AssertionError('tp-x send recv overlap group is not initialized')
+    return _TP_X_SD_RCV_OVERLAP_GROUP
+
+
+def get_tp_y_sd_rcv_overlap_group(check_initialized=True):
+    if check_initialized and _TP_Y_SD_RCV_OVERLAP_GROUP is None:
+        raise AssertionError('tp-y send recv overlap group is not initialized')
+    return _TP_Y_SD_RCV_OVERLAP_GROUP
+
+
 def get_tensor_model_parallel_group_for_nd1_dim2(check_initialized=True):
     if check_initialized and _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2 is None:
         raise AssertionError('tensor model parallel group for nd1 dim2 is not initialized')
@@ -961,6 +1048,42 @@ def get_tensor_model_parallel_group_for_nd2_dim1(check_initialized=True):
     if check_initialized and _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM1 is None:
         raise AssertionError('tensor model parallel group for nd2 dim1 is not initialized')
     return _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM1
+
+
+def get_tensor_model_parallel_group_for_nd1_dim1_rank():
+    global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK
+    if _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK is None:
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK = torch.distributed.get_rank(
+            group=get_tensor_model_parallel_group_for_nd1_dim1())
+
+    return _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK
+
+
+def get_tensor_model_parallel_group_for_nd1_dim2_rank():
+    global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_RANK
+    if _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_RANK is None:
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_RANK = torch.distributed.get_rank(
+            group=get_tensor_model_parallel_group_for_nd1_dim2())
+
+    return _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_RANK
+
+
+def get_tensor_model_parallel_group_for_nd1_dim1_world_size():
+    global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_WORLD_SIZE
+    if _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_WORLD_SIZE is None:
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_WORLD_SIZE = torch.distributed.get_world_size(
+            group=get_tensor_model_parallel_group_for_nd1_dim1())
+
+    return _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_WORLD_SIZE
+
+
+def get_tensor_model_parallel_group_for_nd1_dim2_world_size():
+    global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE
+    if _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE is None:
+        _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE = torch.distributed.get_world_size(
+            group=get_tensor_model_parallel_group_for_nd1_dim2())
+
+    return _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE
 
 
 def get_tensor_model_parallel_group_for_nd2_dim2(check_initialized=True):
@@ -1016,7 +1139,7 @@ def initialize_ndmm_parallel_group(
     from megatron.training.global_vars import _ensure_var_is_not_initialized
 
     args = get_args()
-    if not args.use_nd_matmul:
+    if not (args.use_nd_matmul or args.tp_2d):
         return
 
     global _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1
@@ -1039,6 +1162,18 @@ def initialize_ndmm_parallel_group(
         _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2, 'nd2_dim2'
     )
 
+    global _TP_X_PARALLEL_RING_RANKS
+    _ensure_var_is_not_initialized(_TP_X_PARALLEL_RING_RANKS, 'tp_x_ring_ranks')
+
+    global _TP_Y_PARALLEL_RING_RANKS
+    _ensure_var_is_not_initialized(_TP_Y_PARALLEL_RING_RANKS, 'tp_y_ring_ranks')
+
+    global _TP_X_SD_RCV_OVERLAP_GROUP
+    _ensure_var_is_not_initialized(_TP_X_SD_RCV_OVERLAP_GROUP, 'tp_x_overlap_ranks')
+
+    global _TP_Y_SD_RCV_OVERLAP_GROUP
+    _ensure_var_is_not_initialized(_TP_Y_SD_RCV_OVERLAP_GROUP, 'tp_y_overlap_ranks')
+
     if tensor_model_parallel_size % nd1_dim1_size != 0:
         raise RuntimeError(
             f"tensor_model_parallel_size can't divisible by nd1_dim1_size"
@@ -1053,17 +1188,30 @@ def initialize_ndmm_parallel_group(
     world_size: int = torch.distributed.get_world_size()
     num_tensor_model_parallel_group: int = world_size // tensor_model_parallel_size
 
+    tp_nd1_dim1_groups = []
+    tp_nd1_dim2_groups = []
+    tp_nd2_dim1_groups = []
+    tp_nd2_dim2_groups = []
     for i in range(num_tensor_model_parallel_group):
         for j in range(tensor_model_parallel_size // nd1_dim1_size):
             ranks = range(
                 i * tensor_model_parallel_size + j * nd1_dim1_size,
                 i * tensor_model_parallel_size + (j + 1) * nd1_dim1_size
             )
+            tp_nd1_dim1_groups.append(list(ranks))
             group = torch.distributed.new_group(
                 ranks, pg_options=ps.get_nccl_options('nd1_dim1', nccl_comm_cfgs)
             )
+            if args.enable_overlap_ag_with_matmul:
+                tp_x_ag_overlap_group = torch.distributed.new_group(
+                    ranks, pg_options=ps.get_nccl_options('ag_x_sd_rcv_overlap', nccl_comm_cfgs)
+                )
+            else:
+                tp_x_ag_overlap_group = None
             if rank in ranks:
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1 = group
+                _TP_X_SD_RCV_OVERLAP_GROUP = tp_x_ag_overlap_group
+                _TP_X_PARALLEL_RING_RANKS = ranks
 
         nd1_dim2_size = tensor_model_parallel_size // nd1_dim1_size
         for j in range(tensor_model_parallel_size // nd1_dim2_size):
@@ -1072,17 +1220,27 @@ def initialize_ndmm_parallel_group(
                 (i + 1) * tensor_model_parallel_size,
                 nd1_dim1_size
             )
+            tp_nd1_dim2_groups.append(list(ranks))
             group = torch.distributed.new_group(
                 ranks, pg_options=ps.get_nccl_options('nd1_dim2', nccl_comm_cfgs)
             )
+            if args.enable_overlap_ag_with_matmul:
+                tp_y_ag_overlap_group = torch.distributed.new_group(
+                    ranks, pg_options=ps.get_nccl_options('ag_y_sd_rcv_overlap', nccl_comm_cfgs)
+                )
+            else:
+                tp_y_ag_overlap_group = None
             if rank in ranks:
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2 = group
+                _TP_Y_SD_RCV_OVERLAP_GROUP = tp_y_ag_overlap_group
+                _TP_Y_PARALLEL_RING_RANKS = ranks
 
         for j in range(tensor_model_parallel_size // nd2_dim1_size):
             ranks = range(
                 i * tensor_model_parallel_size + j * nd2_dim1_size,
                 i * tensor_model_parallel_size + (j + 1) * nd2_dim1_size
             )
+            tp_nd2_dim1_groups.append(list(ranks))
             group = torch.distributed.new_group(
                 ranks, pg_options=ps.get_nccl_options('nd2_dim1', nccl_comm_cfgs)
             )
@@ -1096,6 +1254,7 @@ def initialize_ndmm_parallel_group(
                 (i + 1) * tensor_model_parallel_size,
                 nd2_dim1_size
             )
+            tp_nd2_dim2_groups.append(list(ranks))
             group = torch.distributed.new_group(
                 ranks, pg_options=ps.get_nccl_options('nd2_dim2', nccl_comm_cfgs)
             )

@@ -17,6 +17,10 @@ from functools import wraps
 import torch
 from megatron.training import get_args
 from megatron.core import mpu, tensor_parallel
+from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPYCollectiveComm
+from mindspeed.core.tensor_parallel.comm_autograd_function import (auto_grad_sync_gather_along_first_dim,
+                                                                    auto_grad_sync_gather_along_last_dim,
+                                                                    auto_grad_scatter_along_first_dim_then_last_dim)
 from mindspeed.moe.utils import get_slice_indices_from_disorder_to_order, get_slice_indices_from_order_to_disorder
 
 
@@ -41,6 +45,10 @@ def parallel_lm_logits(
     if args.use_nd_matmul:
         input_parallel = tensor_parallel.gather_from_tensor_model_parallel_region(input_parallel)
 
+    if args.tp_2d:
+        input_parallel = auto_grad_sync_gather_along_first_dim(input_parallel, TPXCollectiveComm)
+        input_parallel = auto_grad_sync_gather_along_last_dim(input_parallel, TPYCollectiveComm)
+
     # Matrix multiply.
     logits_parallel = tensor_parallel.linear_with_grad_accumulation_and_async_allreduce(
         input=input_parallel,
@@ -50,7 +58,6 @@ def parallel_lm_logits(
         async_grad_allreduce=async_grad_allreduce,
         sequence_parallel=args.sequence_parallel)
     # Gather if needed.
-
     if parallel_output:
         return logits_parallel
 
@@ -63,6 +70,10 @@ def embedding_forward_wrapper(forward):
         encoder_input = forward(self, *args, **kwargs)
         if get_args().use_nd_matmul:
             encoder_input = tensor_parallel.scatter_to_tensor_model_parallel_region(encoder_input)
+        if get_args().tp_2d:
+            encoder_input = auto_grad_scatter_along_first_dim_then_last_dim(
+                encoder_input, TPXCollectiveComm, TPYCollectiveComm
+            )
         return encoder_input
     return wrapper
 
