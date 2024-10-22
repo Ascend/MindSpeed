@@ -294,10 +294,9 @@ class AdaptiveRecomputePolicy:
         prefetch_recompute_group = [swap_list, prefetch_list, recompute_list]
         return [prefetch_recompute_group, interval, self.num_prefetch, cur_pp_noop_layers]
 
-    def get_cur_stage_noop_layers(self, noop_layers):
+    def get_cur_stage_noop_layers(self, noop_layers, cur_pp_rank):
         all_args = get_args()
         cur_pp_noop_layers = []
-        cur_pp_rank = parallel_state.get_pipeline_model_parallel_rank()
         pp_size = all_args.pipeline_model_parallel_size or 1
         layers_per_pp = all_args.num_layers // pp_size
         for i in noop_layers:
@@ -309,31 +308,33 @@ class AdaptiveRecomputePolicy:
     def solve_prefetch_policy(self):
         all_args = get_args()
         noop_layers = list(all_args.noop_layers) if isinstance(all_args.noop_layers, set) else []
-        cur_pp_noop_layers = self.get_cur_stage_noop_layers(noop_layers)
+        cur_pp_rank = parallel_state.get_pipeline_model_parallel_rank()
+        cur_pp_noop_layers = self.get_cur_stage_noop_layers(noop_layers, cur_pp_rank)
         recompute_num_layers = all_args.recompute_num_layers or 0
         pp_size = all_args.pipeline_model_parallel_size or 1
         vpp_size = all_args.virtual_pipeline_model_parallel_size or 1
+        per_pp_layers = all_args.num_layers // pp_size
         if not all_args.enable_recompute_layers_per_pp_rank:
             recompute_num_layers *= vpp_size
         if all_args.recompute_method == 'block':
             self.num_prefetch = recompute_num_layers
         elif all_args.recompute_method == 'uniform':
-            recompute_num_layers = all_args.num_layers // pp_size
+            recompute_num_layers = per_pp_layers
             self.num_prefetch = recompute_num_layers
         else:
-            self.num_prefetch = all_args.num_layers // pp_size
+            self.num_prefetch = per_pp_layers
         self.interval = 0
         if vpp_size > 1:
             return self.granular_module_allocation(vpp_size, recompute_num_layers, cur_pp_noop_layers)
         else:
             swap_list, recompute_list = [], []
             for i in range(self.num_prefetch):
-                if i + self.pp_rank * per_pp_layers not in cur_pp_noop_layers:
+                if i + cur_pp_rank * per_pp_layers not in cur_pp_noop_layers:
                     swap_list.append(str(i))
                 else:
                     swap_list.append('')
             for i in range(recompute_num_layers):
-                if i + self.pp_rank * per_pp_layers not in cur_pp_noop_layers:
+                if i + cur_pp_rank * per_pp_layers not in cur_pp_noop_layers:
                     recompute_list.append(str(i))
                 else:
                     recompute_list.append('')
