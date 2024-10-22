@@ -315,9 +315,14 @@ def mcore_tensor_parallel_adaptation_l0(aspm):
 
 def mcore_tensor_parallel_adaptation_l1(aspm):
     from .core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy_forward
+    from .utils import checkpoint_forward_wrapper, checkpoint_backward_wrapper
     # use logical negation followed by multiplication to achieve the same effect as setting selected elements to zero
     aspm.register_patch('megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.forward',
                         vocab_parallel_cross_entropy_forward)
+    aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.forward',
+                        checkpoint_forward_wrapper)
+    aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
+                        checkpoint_backward_wrapper)
 
 
 def mcore_tensor_parallel_adaptation(aspm):
@@ -331,7 +336,6 @@ def mcore_tensor_parallel_adaptation(aspm):
     aspm.register_patch('megatron.core.tensor_parallel.layers.ColumnParallelLinear.__init__',
                         parallel_linear_init_wrapper)
     aspm.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
-
 
 def megatron_core_adaptation(aspm):
     from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_wrapper
