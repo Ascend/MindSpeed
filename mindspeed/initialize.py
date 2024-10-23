@@ -3,8 +3,10 @@ from functools import wraps
 import torch
 import torch_npu
 from megatron.training import get_args
+from megatron.training.utils import print_rank_0
 from megatron.training.initialize import _warmup_jit_function
 from mindspeed.core.tensor_parallel.ascend_turbo.initialize import initialize_cfg_from_args
+from .utils import extend_seed_all
 
 
 def _compile_dependencies():
@@ -51,4 +53,13 @@ def mc2_wrapper(fn):
         initialize_cfg_from_args(args)
         return res
 
+    return wrapper
+
+
+def deter_comp_wrapper(fn):
+    @wraps(fn)
+    def wrapper(seed_, data_parallel_random_init=False):
+        fn(seed_, data_parallel_random_init=False)
+        extend_seed_all(seed_)
+        print_rank_0("deterministic computing is applied for npu.")
     return wrapper
