@@ -4,17 +4,8 @@ import torch
 from torch.library import impl
 
 from mindspeed.op_builder.builder import AS_LIBRARY
-from mindspeed.op_builder.gmm_builder import GMMOpBuilderPublic, GroupedMatmul, torch_npu_api_version
+from mindspeed.op_builder.gmm_builder import GMMOpBuilderPublic, GroupedMatmul, fill_empty_tensor
 from mindspeed.op_builder.gmm_builder import ge, Tensor, TensorSpec, DataType, register_fx_node_ge_converter
-
-if torch_npu_api_version == 2:
-    from mindspeed.op_builder.gmm_builder import Fill
-
-    def FillEmptyTensor(dtype):
-        return Fill(ge.Const(0), ge.Cast(0., dst_type=dtype))
-else:
-    def FillEmptyTensor(dtype):
-        return ge.Fill([0], ge.Cast(0., dst_type=dtype))
 
 
 class QuantGMMOpBuilder(GMMOpBuilderPublic):
@@ -57,10 +48,10 @@ class QuantGMMOpBuilder(GMMOpBuilderPublic):
             act_type: Optional[int] = 0,
             meta_outputs: TensorSpec = None,
         ):
-            bias = bias or FillEmptyTensor(DataType.DT_INT32)
-            offset = offset or FillEmptyTensor(DataType.DT_FLOAT)
-            antiquant_scale = FillEmptyTensor(DataType.DT_FLOAT16)
-            antiquant_offset = FillEmptyTensor(DataType.DT_FLOAT16)
+            bias = bias or fill_empty_tensor(DataType.DT_INT32)
+            offset = offset or fill_empty_tensor(DataType.DT_FLOAT)
+            antiquant_scale = fill_empty_tensor(DataType.DT_FLOAT16)
+            antiquant_offset = fill_empty_tensor(DataType.DT_FLOAT16)
 
             y_dtype = 0
             if output_dtype is None or output_dtype == torch.float16:

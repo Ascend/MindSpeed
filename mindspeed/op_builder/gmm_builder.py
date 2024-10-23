@@ -22,6 +22,13 @@ except ImportError:
 else:
     torch_npu_api_version = 2
 
+if torch_npu_api_version == 2:
+    def fill_empty_tensor(dtype):
+        return Fill(ge.Const(0), ge.Cast(0., dst_type=dtype))
+else:
+    def fill_empty_tensor(dtype):
+        return ge.Fill([0], ge.Cast(0., dst_type=dtype))
+
 
 gmm_param = namedtuple('gmm_param', ['bias', 'scale', 'offset', 'antiquant_scale', 'antiquant_offset'])
 
@@ -34,40 +41,20 @@ def conveter_npu_gmm_param(
     if group_type == 2:
         raise ValueError(f"GMM: graph mode does not support group_type 2!")
     x_dtype = x.dtype
-
-    if torch_npu_api_version == 2:
-        if bias is None:
-            if x_dtype == DataType.DT_BF16:
-                bias = Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT))
-            elif x_dtype == DataType.DT_UINT8:
-                bias = Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_INT32))
-            else:
-                bias = Fill(ge.Const(0), ge.Cast(0., dst_type=x_dtype))
-
-        scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_UINT64))]
-        offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT))]
-        antiquant_scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
-        antiquant_offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
+    if bias is None:
         if x_dtype == DataType.DT_BF16:
-            antiquant_scale = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_BF16))]
-            antiquant_offset = [Fill(ge.Const(0), ge.Cast(0., dst_type=DataType.DT_BF16))]
-    elif torch_npu_api_version == 1:
-        if bias is None:
-            if x_dtype == DataType.DT_BF16:
-                bias = ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT))
-            elif x_dtype == DataType.DT_UINT8:
-                bias = ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_INT32))
-            else:
-                bias = ge.Fill([0], ge.Cast(0., dst_type=x_dtype))
-
-        scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_UINT64))]
-        offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT))]
-        antiquant_scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
-        antiquant_offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_FLOAT16))]
-        if x_dtype == DataType.DT_BF16:
-            antiquant_scale = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_BF16))]
-            antiquant_offset = [ge.Fill([0], ge.Cast(0., dst_type=DataType.DT_BF16))]
-
+            bias = fill_empty_tensor(DataType.DT_FLOAT)
+        elif x_dtype == DataType.DT_UINT8:
+            bias = fill_empty_tensor(DataType.DT_INT32)
+        else:
+            bias = fill_empty_tensor(DataType.x_dtype)
+    scale = [fill_empty_tensor(DataType.DT_UINT64)]
+    offset = [fill_empty_tensor(DataType.DT_FLOAT)]
+    antiquant_scale = [fill_empty_tensor(DataType.DT_FLOAT16)]
+    antiquant_offset = [fill_empty_tensor(DataType.DT_FLOAT16)]
+    if x_dtype == DataType.DT_BF16:
+        antiquant_scale = [fill_empty_tensor(DataType.DT_BF16)]
+        antiquant_offset = [fill_empty_tensor(DataType.DT_BF16)]
     return gmm_param(bias, scale, offset, antiquant_scale, antiquant_offset)
 
 

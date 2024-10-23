@@ -6,6 +6,15 @@ from mindspeed.op_builder.builder import AS_LIBRARY
 __all__ = ["npu_gmm", "npu_gmm_v2"]
 
 
+def check_optional_tensor(tensor, device, name):
+    if not isinstance(tensor, (torch.Tensor, type(None))):
+        raise TypeError(f"{name} must be a torch.Tensor or None, got {type(tensor)}.")
+    if isinstance(tensor, torch.Tensor) and tensor.device != device:
+        raise RuntimeError(
+            f"Expected all tensors to be on the same device, but found at least two devices, "
+            f"{device}(arg0) and {tensor.device}({name})!")
+
+
 class GMMFunction(torch.autograd.Function):
     builder = GMMOpBuilder()
     builder2 = GMMV2OpBuilder()
