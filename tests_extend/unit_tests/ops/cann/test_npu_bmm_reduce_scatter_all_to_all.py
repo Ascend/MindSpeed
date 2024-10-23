@@ -82,8 +82,7 @@ class TestNPUBMMReduceScatterAlltoAll(DistributedTest):
         hcomm_info_dist['tp_group'] = tp_group
         return hcomm_info_dist
 
-    
-    @pytest.mark.skipif(DEVICE_NAME != 'Ascend910C', reason='device type is not supported, skip this UT!')
+    @pytest.mark.skipif(reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize('y_shard_type', [1])
     @pytest.mark.parametrize('transpose_weight', [False, True])
