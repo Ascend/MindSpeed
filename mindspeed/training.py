@@ -2,6 +2,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import gc
 import time
+import sys
 from functools import wraps
 import torch
 
@@ -174,12 +175,8 @@ def train_uce(forward_step_func, model, optimizer, opt_param_scheduler,
         num_floating_point_operations_so_far += num_floating_point_operations(args, batch_size)
 
         if args.enable_high_availability:
-            from mindio_ttp.framework_ttp import tft_set_step_args
-
-            args.num_floating_point_operations_so_far = num_floating_point_operations_so_far
-            tft_set_step_args(
-                [iteration, model, optimizer, opt_param_scheduler, args.num_floating_point_operations_so_far])
             args.iteration = iteration
+            args.num_floating_point_operations_so_far = num_floating_point_operations_so_far
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
