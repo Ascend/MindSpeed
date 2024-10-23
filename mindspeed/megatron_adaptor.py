@@ -269,6 +269,9 @@ def mcore_fusions_adaptation(aspm, args):
         from .core.fusions.npu_moe_token_unpermute import unpermute_wrapper
         aspm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute_wrapper)
         aspm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute_wrapper)
+    if args.npu_deterministic:
+        from mindspeed.initialize import deter_comp_wrapper
+        aspm.register_patch('megatron.training.initialize._set_random_seed', deter_comp_wrapper)
 
 
 def mcore_optimizer_adapation(aspm):

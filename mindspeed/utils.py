@@ -2,8 +2,12 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import functools
+import random
+import os
 
 import torch
+import torch_npu
+import numpy as np
 from megatron.core import mpu
 from megatron.training import get_args
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
@@ -487,3 +491,12 @@ def checkpoint_backward_wrapper(fn):
         return fn(ctx, *args)
     
     return wrapper
+
+
+def extend_seed_all(seed=1234):
+    os.environ['HCCL_DETERMINISTIC'] = 'True'
+    os.environ['CLOSE_MATMUL_K_SHIFT'] = 1
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    torch.use_deterministic_algorithms(True)
+    torch_npu.npu.manual_seed_all(seed)
+    torch_npu.npu.manual_seed(seed)
