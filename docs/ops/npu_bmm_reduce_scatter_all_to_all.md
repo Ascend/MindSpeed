@@ -67,9 +67,9 @@ $$
 - M/tp的取值范围为：[1, 65535]；
 - E/ep的取值范围为：[1, 32]；
 - ep、tp均仅支持2、4、8、16；
-- ep域和tp域不能一致；
+- group_ep和group_tp名称不能相同；
 - C大于0，上限为算子device内存上限；
-- 不支持跨超节点，只支持超节点内；
+- 不支持跨超节点，只支持超节点内，ep域AlltoAll支持超节点内跨节点，tp域ReduceScatter仅支持超节点内单一节点；
 
 ## npu_bmm_reducescatter_alltoall 类的调用示例(待验证)
 在终端调用命令如下：
