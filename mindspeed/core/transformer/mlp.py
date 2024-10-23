@@ -102,7 +102,6 @@ def mlp_init(
         )
 
     self.shared_expert = shared_expert
-    return mlp_init
 
 
 def mlp_init_2d_wrapper(fn):
