@@ -149,7 +149,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         use_bias = ctx.use_bias
         # first we prepare the total inputs needed to compute grad_input, grad_weight.
         # [s/(y*cp), b, E/x]---AG(y)---> [s/cp, b, E/x]
-        # Use sync AG to avoid communication competition, for the bandwidth is shared for 910C.
+        # Use sync AG to avoid communication competition, for the bandwidth is shared for A3.
         grad_output = grad_output.contiguous()
         total_grad_output = sync_gather_along_first_dim(grad_output, ctx.rs_comm_intf)
 
