@@ -275,6 +275,8 @@ def _add_training_args(parser):
                        help='enable computation and tp or sp communication overlap in ampipe')
     group.add_argument('--op-cal-tflops', action='store_true', default=False,
                        help='use for cal mfu and hfu')
+    group.add_argument('--npu-deterministic', action='store_true', default=False,
+                       help='enable deterministic computing for npu')
     return parser
 
 
