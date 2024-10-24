@@ -75,7 +75,7 @@ nanopipe依赖于vpp，设置`--nun-layers-per-virtual-pipeline-stage N`。要�
 
 ## 使用方法
 
-基于nanopipe的基础上再开启`--use-nanopipe-swap`。
+基于nanopipe的基础上再开启`--use-nanopipe-swap`。此特性暂未适配`--use-mcore-models`。
 
 ## 使用效果
 

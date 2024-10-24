@@ -141,7 +141,6 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ulysses 长序列并行                | [link](docs/features/ulysses-context-parallel.md)         |
 | Ascend Ring Attention 长序列并行         | [link](docs/features/ring-attention-context-parallel.md)  |
 | Ascend 混合长序列并行           | [link](docs/features/hybrid-context-parallel.md)          |
-| 【Prototype】Ascend PP自动并行            | [link](docs/features/automated-pipeline.md)               |
 | 【Prototype】Ascend 自定义空操作层                              | [link](docs/features/noop-layers.md)     |
 | 【Prototype】Adaptive-CP 泛化掩码自适应负载均衡序列并行分布式FA | [link](docs/features/adaptive-cp.md)    |
 
@@ -174,7 +173,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
 | Ascend nano-pipe流水线并行        | [link](docs/features/nanopipe-pipeline-parallel.md)       |
-| Ascend 高维张量并行                | [link](docs/features/tensor-parallel-2d.md)                           |
+| 【Prototype】Ascend 高维张量并行                | [link](docs/features/tensor-parallel-2d.md)                           |
 
 ## 关键场景特性
 | 特性                           | 介绍                                                        |

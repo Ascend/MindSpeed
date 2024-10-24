@@ -35,7 +35,7 @@ activate; 1.59 GiB free;
 
 ## 使用方法
 
-脚本中设置参数`--memory-fragmentation`，即开启内存碎片优化特性。
+使用此特性需要设置环境变量`export PYTORCH_NPU_ALLOC_CONF=expandable_segments:FALSE`，同时脚本中设置参数`--memory-fragmentation`，即开启内存碎片优化特性。
 
 ## 使用效果
 
