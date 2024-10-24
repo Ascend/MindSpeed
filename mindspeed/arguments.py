@@ -74,8 +74,12 @@ def _add_deepseek_args(parser):
                        help='moe_alltoall_overlap_comm')
     group.add_argument('--moe-allgather-overlap-comm', action='store_true', default=False,
                        help='moe_allgather_overlap_comm')
-    group.add_argument('--moe-without-activation', action='store_true', default=False,
-                       help='save all the memory occupied by activations in moe layer.')
+    group.add_argument("--moe-zero-memory", type=str, default='disable',
+                       choices=['disable', 'level0', 'level1'],
+                       help="Save activation memory in moe layer.")
+    group.add_argument('--moe-zero-memory-num-layers', type=int, default=None,
+                       help='the number of layers using moe-zero-memory level1'
+                            'in each pp stage.')
     return parser
 
 
@@ -532,6 +536,14 @@ def validate_args_wrapper(validate_args):
             raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
         if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
             raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now.')
+        if args.moe_zero_memory_num_layers is not None:
+            num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
+            if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:
+                raise AssertionError('`--moe-zero-memory-num-layers` must be between 0 and num layers per pipeline stage')
+            if args.moe_zero_memory == "disable":
+                raise AssertionError('`--moe-zero-memory` must be enabled when using `--moe-zero-memory-num-layers`')
+        if args.moe_zero_memory != "disable" and args.moe_allgather_overlap_comm:
+            raise AssertionError('`--moe-zero-memory` do not support `--moe-allgather-overlap-comm` for now.')
         if args.moe_dynamic_padding and not args.moe_no_drop:
             raise AssertionError('`--moe-dynamic-padding` only support for `--moe-no-drop`.')
         if args.moe_permutation_async_comm and args.moe_model_type != 'megatron_moe':
@@ -548,7 +560,7 @@ def validate_args_wrapper(validate_args):
             assert args.seq_length % (2 * args.context_parallel_size) == 0, f"sequence length must be divisible by 2 * context_parallel_size"
             if args.position_embedding_type == 'alibi':
                 assert args.alibi_fusion_attn_type in [2, 3] and args.cp_attention_mask_type == 'causal', f"megatron_cp_algo only support alibi type in [2, 3] and cp_attention_mask_type is causal"
-            
+
             assert args.cp_window_size >= 1 and args.cp_window_size < args.context_parallel_size, f'cp_window_size should in range [1, context_parallel_size) when using double_ring_attention.'
             n_window, remainder = divmod(args.context_parallel_size, args.cp_window_size)
             assert n_window >= 1 and remainder == 0, f'context parallel size must be divisible by cp_window_size when using double ring attention.'
@@ -562,7 +574,7 @@ def validate_args_wrapper(validate_args):
             assert head >= 1 and remainder == 0, f"num_attention_heads must be divisible by ulysse-degree-in-cp * tensor_model_parallel_size in hybrid cp"
 
             assert args.seq_length % (2 * args.context_parallel_size) == 0, f"sequence length must be divisible by 2 * context_parallel_size in hybrid cp"
-            
+
             assert args.cp_window_size >= 1 and args.cp_window_size < ring_degree, f'cp_window_size should be in range [1, ring_degree) when using double ring attention with hybrid context parallelism.'
             n_window, remainder = divmod(ring_degree, args.cp_window_size)
             assert n_window >= 1 and remainder == 0, f'ring_degree should be divisible by cp_window_size when using double ring with hybrid context parallelism.'
@@ -579,7 +591,7 @@ def validate_args_wrapper(validate_args):
             assert head >= 1 and remainder == 0, f"num_attention_heads must be divisible by ulysse-degree-in-cp * tensor_model_parallel_size in hybrid cp"
             assert args.seq_length % args.context_parallel_size == 0, f"sequence length must be divisible by context_parallel_size in hybrid cp"
             args.use_flash_attn = True
-            
+
         # Mandatory modification to SBH, subsequent abandonment of other formats such as BSH,BSND
         if args.shape_order != 'SBH':
             args.shape_order = 'SBH'

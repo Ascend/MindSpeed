@@ -14,8 +14,9 @@
 # limitations under the License.
 
 import torch
+import acl
 from einops import rearrange
-from megatron.core.parallel_state import get_expert_model_parallel_group, get_tensor_and_expert_parallel_group
+from megatron.core.parallel_state import get_expert_model_parallel_group, get_tensor_and_expert_parallel_group, get_tensor_and_expert_parallel_world_size, get_expert_model_parallel_world_size
 from megatron.training import get_args
 from mindspeed.ops.gmm import GMMFunction
 from mindspeed.model.transformer import should_recompute_activation
@@ -23,6 +24,7 @@ from mindspeed.core.transformer.moe.moe_utils import (get_gemm_backward_need_ten
                                                       set_rs_global_hidden_states_grad_with_handle)
 from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
+from mindspeed.core.transformer.moe.token_dispatcher import cann_version_check
 
 
 class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
@@ -95,8 +97,10 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         ag_inputs_tp = get_ag_tp_hidden_status()
         ag_inputs_tp = ag_inputs_tp.view(-1, ag_inputs_tp.shape[-1])
         # mm1_inputs = ctx.inputs
-        _, ag_inputs_tp_ep, ag_handle = async_all_gather(ag_inputs_tp,
-                                                         get_expert_model_parallel_group() if get_args().n_shared_experts else get_tensor_and_expert_parallel_group())
+        ag_group = get_expert_model_parallel_group()
+        if '910B' in acl.get_soc_name() or not get_args().n_shared_experts:
+            ag_group = get_tensor_and_expert_parallel_group()
+        _, ag_inputs_tp_ep, ag_handle = async_all_gather(ag_inputs_tp, ag_group)
         if ctx.use_gmm:
             # grad of mm1-inputs
             weights1 = rearrange(weights1, 'n h f -> n f h')
@@ -114,7 +118,19 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         ag_handle.wait()
 
         # token 重排计算
-        mm1_inputs = ag_inputs_tp_ep[global_local_map, :][indices, :]
+        global_args = get_args()
+        num_local_experts = global_args.num_experts // get_expert_model_parallel_world_size()
+        if global_args.moe_tp_extend_ep:
+            num_local_experts = global_args.num_experts // get_tensor_and_expert_parallel_world_size()
+        if cann_version_check:
+            mm1_inputs = ag_inputs_tp_ep[global_local_map, :]
+            if num_local_experts > 1:
+                mm1_inputs = mm1_inputs[indices, :]
+        else:
+            mm1_inputs = torch.gather(ag_inputs_tp_ep, 0, global_local_map)
+            if num_local_experts > 1:
+                mm1_inputs = torch.gather(mm1_inputs, 0, indices)
+
         global_local_map.untyped_storage().resize_(0)
         indices.untyped_storage().resize_(0)
         ag_inputs_tp_ep.untyped_storage().resize_(0)

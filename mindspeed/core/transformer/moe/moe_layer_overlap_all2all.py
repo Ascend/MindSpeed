@@ -7,7 +7,7 @@ from megatron.training import get_args
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather
 from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func
 from mindspeed.ops.gmm import GMMFunction
-from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
+from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS, only_recompute_activation
 
 
 class MoELayerOverlapAll2All(torch.autograd.Function):
@@ -19,6 +19,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         ctx.input_shape = hidden_states.shape
         hidden_states = hidden_states.detach()
         hidden_states.requires_grad = True
+        ctx.is_only_recompute_activation = only_recompute_activation(moe_layer.layer_number)
 
         # router
         with torch.enable_grad():
@@ -28,8 +29,8 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         scores = scores.detach()
         scores.requires_grad = True
         save_tensors.append(scores)
-        moe_without_activation = args.moe_without_activation
-        if moe_without_activation:
+        moe_zero_memory = args.moe_zero_memory
+        if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             ctx.activation_func = moe_layer.experts.activation_func
             ctx.hidden_size = moe_layer.experts.config.hidden_size
             ctx.num_local_experts = moe_layer.experts.num_local_experts
@@ -69,8 +70,8 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         save_tensors.append(share_experts_output)
         save_tensors.append(moe_layer.token_dispatcher.global_input_tokens_local_experts_indices)
 
-        if moe_without_activation:
-            save_tensors.append(tokens_per_expert)
+        if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
+            ctx.tokens_per_expert = tokens_per_expert
 
         ctx.save_for_backward(*save_tensors)
         ctx.output_splits = moe_layer.token_dispatcher.output_splits
@@ -85,34 +86,25 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         else:
             output_sum = output.detach()
 
+        ctx.saved_tensors_for_grad = save_tensors_for_grad
         return output_sum, mlp_bias
 
     @staticmethod
     def backward(ctx, *args):
         global_args = get_args()
-        moe_without_activation = global_args.moe_without_activation
-        if moe_without_activation:
-            (route_graph, detach_scores,
-             indices,
-             permute1_graph,
-             permute2_input_detach, permute2_graph,
-             experts_graph,
-             unpermute1_input_detach, unpermute1_graph,
-             unpermute2_input_detach, unpermute2_graph,
-             detach_input, share_experts_graph,
-             global_input_tokens_local_experts_indices,
-             tokens_per_expert) = ctx.saved_tensors
-            # permute2_input_detach, unpermute1_input_detach, unpermute2_input_detach, detach_input = ctx.saved_tensors_for_grad
-        else:
-            (route_graph, detach_scores,
-             indices,
-             permute1_graph,
-             permute2_input_detach, permute2_graph,
-             experts_graph,
-             unpermute1_input_detach, unpermute1_graph,
-             unpermute2_input_detach, unpermute2_graph,
-             detach_input, share_experts_graph,
-             global_input_tokens_local_experts_indices) = ctx.saved_tensors
+        moe_zero_memory = global_args.moe_zero_memory
+        (route_graph, detach_scores,
+         indices,
+         permute1_graph,
+         permute2_input_detach, permute2_graph,
+         experts_graph,
+         unpermute1_input_detach, unpermute1_graph,
+         unpermute2_input_detach, unpermute2_graph,
+         detach_input, share_experts_graph,
+         global_input_tokens_local_experts_indices,
+         ) = ctx.saved_tensors
+
+        ctx.save_for_backward()
 
         output_splits = ctx.output_splits
         input_splits = ctx.input_splits
@@ -133,11 +125,11 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 backward_ag_shared = args[0]
                 backward_ag_shared_handle = None
 
-        if moe_without_activation:
+        if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             with torch.no_grad():
                 if get_tensor_model_parallel_world_size() > 1 and global_args.n_shared_experts:
                     _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
-                        detach_input, get_tensor_model_parallel_group()
+                        detach_input, get_tensor_model_parallel_group(), is_use_get_global_memory_buffer=True
                     )
                     AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
 
@@ -159,7 +151,8 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 )
 
         unpermute2_graph.backward(args[0])
-        if moe_without_activation:
+        unpermute2_graph = None
+        if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             if global_args.n_shared_experts:
                 with torch.no_grad():
                     # Recompute mm1 and act of shared experts
@@ -176,6 +169,9 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 if backward_ag_shared_handle is not None:
                     backward_ag_shared_handle.wait()
                 share_experts_graph.backward(backward_ag_shared)
+                share_experts_graph = None
+                if backward_ag_shared_handle is not None:
+                    backward_ag_shared.untyped_storage().resize_(0)
                 ctx.shared_act_out.untyped_storage().resize_(0)
                 ctx.shared_fc1_out.untyped_storage().resize_(0)
 
@@ -192,7 +188,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             ep_group,
         )
 
-        if moe_without_activation:
+        if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             with torch.no_grad():
                 if ctx.num_local_experts > 1:
                     # Recompute permutation2
@@ -207,7 +203,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 input_, mm1_out, act_out = ctx.recompute_tensors
                 ctx.recompute_tensors = None
                 if global_input_tokens.nelement() != 0:
-                    group_list = torch.cumsum(tokens_per_expert, dim=0)
+                    group_list = torch.cumsum(ctx.tokens_per_expert, dim=0)
                     w1 = ctx.weight1.view(ctx.num_local_experts, ctx.hidden_size, -1)
                     if isinstance(group_list, (torch.Tensor, type(None))):
                         group_list_data_type = 1
@@ -247,6 +243,9 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             if backward_ag_shared_handle is not None:
                 backward_ag_shared_handle.wait()
             share_experts_graph.backward(backward_ag_shared)
+            share_experts_graph = None
+            if backward_ag_shared_handle is not None:
+                backward_ag_shared.untyped_storage().resize_(0)
         handle.wait()
         unpermute2_input_detach.grad.untyped_storage().resize_(0)
 
@@ -260,9 +259,10 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         from mindspeed.core.transformer.moe.moe_utils import get_all2all_experts_output
         permute1_backward_input, bw_permute1_ep_all2all_handle = get_all2all_experts_output()
         bw_permute1_ep_all2all_handle.wait()
+        permute2_input_detach.grad.untyped_storage().resize_(0)
         backward_func(permute1_graph, permute1_backward_input)
-
-        if moe_without_activation:
+        permute1_backward_input.untyped_storage().resize_(0)
+        if moe_zero_memory != "disable":
             if ctx.router_topk > 1:
                 from mindspeed.core.transformer.moe.moe_utils import get_prob_backward_need_tensors
                 stream, matmul_output_grad, unpermuted_tokens = get_prob_backward_need_tensors()
@@ -272,5 +272,6 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             ctx.router_topk = None
         else:
             route_graph.backward(detach_scores.grad)
+        route_graph = None
         grad_output = detach_input.grad
         return grad_output, None
