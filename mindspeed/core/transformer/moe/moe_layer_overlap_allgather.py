@@ -6,19 +6,18 @@ from megatron.core.parallel_state import (get_expert_model_parallel_group, get_t
                                           get_tensor_model_parallel_group, get_tensor_model_parallel_world_size)
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
+from mindspeed.core.transformer.moe.token_dispatcher import cann_version_check
 from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_utils import (forward_func, backward_func, set_gemm_backward_need_tensors,
                                                       get_rs_global_hidden_states_grad_with_handle)
 
 
-SHARED_EXPERTS_STREAM = None
 
 
 class MoELayerOverlapAllGather(torch.autograd.Function):
     @staticmethod
     def forward(ctx, hidden_states, moe_layer: MoELayer):
-        global SHARED_EXPERTS_STREAM
         args = get_args()
         save_tensors = []
         ctx.input_shape = hidden_states.shape
@@ -63,7 +62,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             if '910B' in acl.get_soc_name():
                 _, global_hidden_states, ghs_handle = async_all_gather(
                     hidden_states,
-                    get_expert_model_parallel_group()
+                    get_tensor_and_expert_parallel_group()
                 )
             else:
                 _, global_hidden_states, ghs_handle = async_all_gather(
@@ -84,18 +83,14 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         if args.n_shared_experts:
             if shared_experts_allgather_handle is not None:
                 shared_experts_allgather_handle.wait()
-            if SHARED_EXPERTS_STREAM is None:
-                SHARED_EXPERTS_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
-            SHARED_EXPERTS_STREAM.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(SHARED_EXPERTS_STREAM):
-                (share_experts_output, share_experts_bias), _ = forward_func(
-                    moe_layer.shared_experts, hidden_states
-                )
+            (share_experts_output, share_experts_bias), _ = forward_func(
+                moe_layer.shared_experts, hidden_states
+            )
 
             if get_tensor_model_parallel_world_size() > 1:
                 # reduce scatter
                 _, rs_share_experts_output, shared_experts_rs_handle = async_reduce_scatter(
-                    share_experts_output, get_tensor_model_parallel_group(), stream=SHARED_EXPERTS_STREAM
+                    share_experts_output, get_tensor_model_parallel_group()
                 )
             else:
                 rs_share_experts_output = share_experts_output
@@ -122,7 +117,8 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         global_probs_detach, global_hidden_states_detach = token_permutation_input[1][0], token_permutation_input[2][0]
 
         global_hidden_states_detach.untyped_storage().resize_(0)
-        global_probs_detach.untyped_storage().resize_(0)
+        if cann_version_check:
+            global_probs_detach.untyped_storage().resize_(0)
         save_tensors.append(global_probs_detach)
         save_tensors.append(global_hidden_states_detach)
 
@@ -155,7 +151,6 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         ctx.save_for_backward(*save_tensors)
 
         if args.n_shared_experts:
-            torch.cuda.current_stream().wait_stream(SHARED_EXPERTS_STREAM)
             if shared_experts_rs_handle is not None:
                 shared_experts_rs_handle.wait()
 
@@ -182,12 +177,20 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         else:
             ag_share_experts_grad_input = args[0]
             ag_share_experts_handle = None
+
+        if '910B' not in acl.get_soc_name() and share_experts_graph:
+            _, ag_experts_grad_input, ag_experts_handle = async_all_gather(
+                ag_share_experts_grad_input,
+                get_expert_model_parallel_group(),
+                ag_share_experts_handle
+            )
+        else:
+            _, ag_experts_grad_input, ag_experts_handle = async_all_gather(
+                args[0],
+                get_tensor_and_expert_parallel_group(),
+            )
+
         args = None
-        _, ag_experts_grad_input, ag_experts_handle = async_all_gather(
-            ag_share_experts_grad_input,
-            get_tensor_and_expert_parallel_group() if share_experts_graph is None else get_expert_model_parallel_group(),
-            ag_share_experts_handle
-        )
         if ag_share_experts_handle is not None:
             ag_share_experts_handle.wait()
 

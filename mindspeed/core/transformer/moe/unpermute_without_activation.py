@@ -30,7 +30,7 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
         Returns:
             torch.Tensor: The unpermuted tokens, optionally merged with probabilities.
         """
-        assert not padded_mode, "moe-without-activation temporally does not support padded mode"
+        assert not padded_mode, "moe-zero-memory temporally does not support padded mode"
 
         assert sorted_indices.numel() == permuted_tokens.size(0)
         saved_tensors = [sorted_indices]

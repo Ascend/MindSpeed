@@ -73,8 +73,12 @@ def _add_deepseek_args(parser):
                        help='moe_alltoall_overlap_comm')
     group.add_argument('--moe-allgather-overlap-comm', action='store_true', default=False,
                        help='moe_allgather_overlap_comm')
-    group.add_argument('--moe-without-activation', action='store_true', default=False,
-                       help='save all the memory occupied by activations in moe layer.')
+    group.add_argument("--moe-zero-memory", type=str, default='disable',
+                       choices=['disable', 'level0', 'level1'],
+                       help="Save activation memory in moe layer.")
+    group.add_argument('--moe-zero-memory-num-layers', type=int, default=None,
+                       help='the number of layers using moe-zero-memory level1'
+                            'in each pp stage.')
     return parser
 
 
@@ -88,7 +92,7 @@ def _add_high_availability_args(parser):
     group.add_argument('--enable-optimizer-state-local-copy',
                        action='store_true',
                        help='high availability feature, enable parameter state local copy of distributed optimizer')
-    
+
     group.add_argument("--enable-hbmfault-repair", 
                        action='store_true',
                        help="high availability feature, enable hbmfault repair")
@@ -520,6 +524,14 @@ def validate_args_wrapper(validate_args):
             raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
         if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
             raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now.')
+        if args.moe_zero_memory_num_layers is not None:
+            num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
+            if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:
+                raise AssertionError('`--moe-zero-memory-num-layers` must be between 0 and num layers per pipeline stage')
+            if args.moe_zero_memory == "disable":
+                raise AssertionError('`--moe-zero-memory` must be enabled when using `--moe-zero-memory-num-layers`')
+        if args.moe_zero_memory != "disable" and args.moe_allgather_overlap_comm:
+            raise AssertionError('`--moe-zero-memory` do not support `--moe-allgather-overlap-comm` for now.')
         if args.moe_dynamic_padding and not args.moe_no_drop:
             raise AssertionError('`--moe-dynamic-padding` only support for `--moe-no-drop`.')
         if args.moe_permutation_async_comm and args.moe_model_type != 'megatron_moe':
@@ -555,7 +567,7 @@ def validate_args_wrapper(validate_args):
             n_window, remainder = divmod(ring_degree, args.cp_window_size)
             assert n_window >= 1 and remainder == 0, f'ring_degree should be divisible by cp_window_size when using double ring with hybrid context parallelism.'
             args.use_flash_attn = True
-            
+
             
         # Mandatory modification to SBH, subsequent abandonment of other formats such as BSH,BSND
         if args.shape_order != 'SBH':

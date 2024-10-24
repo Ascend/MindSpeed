@@ -11,11 +11,13 @@ from megatron import core
 from megatron.training import get_args, get_num_microbatches
 from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.core.utils import make_viewless_tensor
-from megatron.legacy.model.transformer import bias_dropout_add_fused_train, get_bias_dropout_add, bias_dropout_add_fused_inference
+from megatron.legacy.model.transformer import bias_dropout_add_fused_train, get_bias_dropout_add, \
+    bias_dropout_add_fused_inference
 from megatron.legacy.model.enums import AttnMaskType, LayerType, AttnType
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
+from mindspeed.core.transformer.moe.moe_utils import only_recompute_activation
 
 
 def parallel_transformer_layer_init_wrapper(fn):
@@ -48,6 +50,7 @@ def parallel_transformer_layer_forward_wrapper(forward_func):
         else:
             output = parallel_transformer_layer_forward(*args, **kwargs)
         return output
+
     return row_parallel_forward
 
 
@@ -57,13 +60,13 @@ class TransformerLayerStage(enum.Enum):
 
 
 def parallel_transformer_layer_forward(self, hidden_states, attention_mask=None,
-                encoder_output=None, enc_dec_attn_mask=None,
-                retriever_input=None,
-                retriever_output=None,
-                retriever_attn_mask=None,
-                inference_params=None,
-                rotary_pos_emb=None,
-                transformer_stage=None):
+                                       encoder_output=None, enc_dec_attn_mask=None,
+                                       retriever_input=None,
+                                       retriever_output=None,
+                                       retriever_attn_mask=None,
+                                       inference_params=None,
+                                       rotary_pos_emb=None,
+                                       transformer_stage=None):
     def _ckpt_comm_process_sp(residual):
         args = get_args()
         if args.optimize_recomp_communication_level:
@@ -77,6 +80,7 @@ def parallel_transformer_layer_forward(self, hidden_states, attention_mask=None,
                             parallel_state.get_tensor_model_parallel_world_size() - tp_rank - 1), 0)
                     return residual
         return None
+
     # hidden_states: [s, b, h]
     if self.bias_dropout_fusion:
         if self.training:
@@ -121,7 +125,7 @@ def parallel_transformer_layer_forward(self, hidden_states, attention_mask=None,
             norm_input = residual + self.drop_path(out)
         if transformer_stage == TransformerLayerStage.attn:
             return norm_input
-        
+
     if transformer_stage is None or transformer_stage == TransformerLayerStage.ffn:
         if transformer_stage == TransformerLayerStage.ffn:
             norm_input = hidden_states[0] if isinstance(hidden_states, tuple) else hidden_states
@@ -179,6 +183,7 @@ def parallel_transformer_checkpointed_forward_wrapper(forward_func):
         else:
             output = parallel_transformer_checkpointed_forward_tp_optimized(*args, **kwargs)
         return output
+
     return row_parallel_forward
 
 
@@ -268,9 +273,10 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
 
 
 def parallel_transformer_checkpointed_forward_tp_optimized(self, hidden_states, attention_mask,
-                          encoder_output, enc_dec_attn_mask,
-                          rotary_pos_emb, is_first_microbatch):
+                                                           encoder_output, enc_dec_attn_mask,
+                                                           rotary_pos_emb, is_first_microbatch):
     """Forward method with activation checkpointing."""
+
     def custom(start, end):
         def custom_forward(*args, **kwargs):
             x_, *args = args
@@ -278,7 +284,9 @@ def parallel_transformer_checkpointed_forward_tp_optimized(self, hidden_states, 
                 layer = self._get_layer(index)
                 x_ = layer(x_, *args, **kwargs)
             return x_
+
         return custom_forward
+
     args = get_args()
     if args.optimize_recomp_communication_level > 1:
         def custom_nocomm(start, end):
@@ -293,6 +301,7 @@ def parallel_transformer_checkpointed_forward_tp_optimized(self, hidden_states, 
                 layer = self._get_layer(start)
                 output = layer(*args, **kwargs)
                 return output
+
             return custom_attn, custom_ffn
 
         def custom_checkpoint(function, distribute_saved_activations, *args):
@@ -376,7 +385,8 @@ def core_mlp_forward_wrapper(fn):
             if self.config.gated_linear_unit:
                 global_args = get_args()
                 if global_args.use_fused_swiglu:
-                    assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
+                    assert (
+                                self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
                     self.activation_func = fused_swiglu
                     intermediate = self.activation_func(intermediate)
                 else:
@@ -390,10 +400,10 @@ def core_mlp_forward_wrapper(fn):
 
             return intermediate
 
-        moe_without_activation = get_args().moe_without_activation
-        if not (is_recompute_activation or moe_without_activation):
+        moe_zero_memory = get_args().moe_zero_memory
+        if not (is_recompute_activation or moe_zero_memory != "disable"):
             output, output_bias = fn(self, *args, **kwargs)
-        elif moe_without_activation:
+        elif moe_zero_memory == "level1" and not only_recompute_activation(self.layer_number):
             if self.shared_expert:
                 self.activation_function = activation_function
                 hidden_states = args[0]
@@ -426,18 +436,19 @@ def core_mlp_forward_wrapper(fn):
             if output.requires_grad:
                 output.register_hook(self.activation_checkpoint_manager.recompute)
         return output, output_bias
+
     return wrapper
 
 
 def norm_recompute_forward(
-    self,
-    hidden_states,
-    attention_mask,
-    context=None,
-    context_mask=None,
-    rotary_pos_emb=None,
-    inference_params=None,
-    packed_seq_params=None,
+        self,
+        hidden_states,
+        attention_mask,
+        context=None,
+        context_mask=None,
+        rotary_pos_emb=None,
+        inference_params=None,
+        packed_seq_params=None,
 ):
     # hidden_states: [s, b, h]
 
