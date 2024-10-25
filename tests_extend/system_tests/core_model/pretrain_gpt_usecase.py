@@ -1,3 +1,4 @@
+import ast
 import copy
 import os
 import re
@@ -61,7 +62,7 @@ def run_result_report(log_dir):
             if 'iteration' in line and 'finished' not in line:
                 try:
                     iteration = int(re.findall('iteration\s+(.*?)\/ ', line)[0])
-                    loss = eval(re.findall('lm loss: (.*?) ', line)[0])
+                    loss = ast.literal_eval(re.findall('lm loss: (.*?) ', line)[0])
                     info_dict[iteration] = loss
                 except:
                     print(f"failed to parse line: {line}")
