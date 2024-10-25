@@ -1,3 +1,6 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, Bytedance Inc. All rights reserved.
 from functools import wraps
 from collections import deque
 from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
