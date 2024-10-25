@@ -16,7 +16,7 @@
 - `--moe-permutation-async-comm`
 - `--moe-grouped-gemm`，目前仅支持Grouped MLP。
 
-同时需要确保`--num-moe-experts`能被`tp * ep`整除。
+同时需要确保`--num-experts`能被`tp * ep`整除。
 
 ## 适用场景
 

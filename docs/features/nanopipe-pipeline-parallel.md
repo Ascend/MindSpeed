@@ -43,7 +43,7 @@
 
 ## 使用方法
 
-nanopipe依赖于vpp，设置`--nun-layers-per-virtual-pipeline-stage N`。要求`--pipeline-model-parallel-size` > 2
+nanopipe依赖于vpp，设置`--num-layers-per-virtual-pipeline-stage N`。要求`--pipeline-model-parallel-size` > 2
 设置`--use-nanopipe`，默认为False，根据用户需求配置。
 
 ## 使用效果
