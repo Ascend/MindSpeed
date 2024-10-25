@@ -338,7 +338,7 @@ def checkpoint_backward_wrapper(fn):
 
 def extend_seed_all(seed=1234):
     os.environ['HCCL_DETERMINISTIC'] = 'True'
-    os.environ['CLOSE_MATMUL_K_SHIFT'] = 1
+    os.environ['CLOSE_MATMUL_K_SHIFT'] = "1"
     os.environ['PYTHONHASHSEED'] = str(seed)
     torch.use_deterministic_algorithms(True)
     torch_npu.npu.manual_seed_all(seed)
