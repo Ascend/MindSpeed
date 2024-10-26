@@ -38,7 +38,7 @@ static void check_params_dim(const at::Tensor &x, const at::Tensor &weight,
     TORCH_CHECK(weight.dim() == DIMS, "weight needs to be 3D, but got: ", weight.dim(), "D");
     TORCH_CHECK(x.size(2) == weight.size(1),
                 "The K-axis in the two inputs of Matmul must be equal, but in reality, the K-axis of x is ",
-                x.size(2), " and the K-axis of weight is ", weight.size(0));
+                x.size(2), " and the K-axis of weight is ", weight.size(1));
     if (bias.has_value()) {
         const at::Tensor &bias_const = bias.value_or(at::Tensor());
         TORCH_CHECK(bias_const.dim() == DIMS or bias_const.dim() == 2,
