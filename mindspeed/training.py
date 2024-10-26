@@ -175,8 +175,12 @@ def train_uce(forward_step_func, model, optimizer, opt_param_scheduler,
         num_floating_point_operations_so_far += num_floating_point_operations(args, batch_size)
 
         if args.enable_high_availability:
-            args.iteration = iteration
+            from mindio_ttp.framework_ttp import tft_set_step_args
+
             args.num_floating_point_operations_so_far = num_floating_point_operations_so_far
+            args.iteration = iteration
+            tft_set_step_args(
+                [iteration, model, optimizer, opt_param_scheduler, args.num_floating_point_operations_so_far])
 
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
