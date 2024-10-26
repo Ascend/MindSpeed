@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import re
@@ -79,7 +80,7 @@ def compare_loss_with_baseline(feat_log_name_prefix: str, baseline_log_name_pref
             if 'iteration' in line and 'finished' not in line:
                 try:
                     iteration = int(re.findall('iteration\s+(.*?)\/ ', line)[0])
-                    loss = eval(re.findall('lm loss: (.*?) ', line)[0])
+                    loss = ast.literal_eval(re.findall('lm loss: (.*?) ', line)[0])
                     loss_dict[iteration] = loss
                 except:
                     print(f"failed to parse line : {line}")
