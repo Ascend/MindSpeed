@@ -290,7 +290,7 @@ def _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emd, seq_dim):
     remapped_seq_order = get_remapped_seq_order()
     if remapped_seq_order is not None:
         per = pos_emd.shape[seq_dim] // adap_size // ulys_size
-        which_per = ulys_rank * adap_size + adap_rank
+        which_per = adap_rank * ulys_size + ulys_rank
         index = torch.tensor(remapped_seq_order[which_per * per:(which_per + 1) * per], dtype=torch.int,
                              device=pos_emd.device)
         pos_emd = pos_emd.index_select(seq_dim, index)

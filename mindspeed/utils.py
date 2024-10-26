@@ -418,7 +418,7 @@ def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
         if key != 'attention_mask' and val is not None:
             seq_dim = 1
             per = val.shape[seq_dim] // adap_size // ulys_size
-            which_per = ulys_rank * adap_size + adap_rank
+            which_per = adap_rank * ulys_size + ulys_rank
             index = torch.tensor(remapped_seq_order[which_per * per:(which_per + 1) * per], device=val.device)
             val = val.index_select(seq_dim, index)
             batch[key] = val
