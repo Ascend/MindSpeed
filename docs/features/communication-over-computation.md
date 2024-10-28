@@ -28,9 +28,7 @@
 3. ALL_GATHER_MATMUL, ALL_GATHER_MATMUL_V2融合算子（先通信后计算）（V2版本接口支持ALL_GATHER中间结果获取）；
 4. 量化场景：MATMUL_ALL_REDUCE融合算子支持fp16格式的w8A16伪量化，粒度包含per tensor / per channel / per group；
 
-## 使用方法 —— 在MindSpeed中进行整网训练
-
-计算通信并行优化算法通过在训练脚本(MindSpeed/tests_extend/xxx/xxx.sh)中配置环境变量来进行使能，需要安装mindspeed。
+## 使用方法
 
 当前计算通信并行有两种实现方法：python脚本使能、融合算子使能，两者选其一即可。两个方式都需要替换原Megatron框架中的ColumnParallelLinear和RowParallelLinear这两个class的forward函数，替换脚本已经根据MindSpeed指定Megatron版本进行编码和适配，位于mindspeed/core/tensor_parallel/lcal_coc/目录下。
 

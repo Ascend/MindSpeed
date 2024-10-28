@@ -25,7 +25,7 @@ Mixture of Expert（MoE）是指混合专家模型功能。在大模型训练中
 
 ## 使用场景
 
-在需要处理大规模数据集和复杂任务的情况下，使用基于 moe 结构的大模型，以及其他SP、CP等特性。
+在需要处理大规模数据集和复杂任务的情况下，使用基于 moe 结构的大模型，以及其他SP、CP等特性。此特性暂未适配`--use-mcore-models`。
 
 ### 使用建议：
 
@@ -81,4 +81,3 @@ MoE特性token重排优化:
 | Ascend DeepSpeed MoE token 重排性能优化  | [link](deepspeed-moe-token-rearrange.md)             |
 | Ascend DeepSpeed MoE dropless 性能优化 | [link](deepspeed-moe-efficient-moe.md) |
 | Ascend MLP 通信隐藏              | [link](../pipeline-experts.md)                 |
-| Ascend Ampipe流水通信隐藏          | [link](../ampipe.md)                     |

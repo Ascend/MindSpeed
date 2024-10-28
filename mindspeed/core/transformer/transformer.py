@@ -383,18 +383,9 @@ def core_mlp_forward_wrapper(fn):
             if bias is not None:
                 intermediate = intermediate + bias
             if self.config.gated_linear_unit:
-                global_args = get_args()
-                if global_args.use_fused_swiglu:
-                    assert (
-                                self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
-                    self.activation_func = fused_swiglu
-                    intermediate = self.activation_func(intermediate)
-                else:
-                    def glu(x):
-                        x = torch.chunk(x, 2, dim=-1)
-                        return self.config.activation_func(x[0]) * x[1]
-
-                    intermediate = glu(intermediate)
+                assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
+                self.activation_func = fused_swiglu
+                intermediate = self.activation_func(intermediate)
             else:
                 intermediate = self.activation_func(intermediate)
 
