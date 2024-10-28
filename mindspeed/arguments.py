@@ -520,10 +520,20 @@ def validate_args_wrapper(validate_args):
                       "and --pipe-experts-multi-data is set to 1, "
                       "--use-pipe-experts will be turned off.")
                 args.use_pipe_experts = False
-        if not args.moe_permutation_async_comm and (args.moe_alltoall_overlap_comm or args.moe_allgather_overlap_comm):
-            raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
+
+        if args.moe_alltoall_overlap_comm and not args.moe_token_dispatcher_type == 'alltoall':
+            raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall`.')
+
+        if args.moe_allgather_overlap_comm and not args.moe_token_dispatcher_type == 'allgather':
+            raise AssertionError('`--moe-allgather-overlap-comm` only support with `--moe-token-dispatcher-type allgather`.')
+
+        if args.moe_alltoall_overlap_comm or args.moe_allgather_overlap_comm:
+            if not args.moe_permutation_async_comm:
+                raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
+            if not args.moe_grouped_gemm:
+                raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-grouped-gemm`.')
         if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
-            raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now.')
+            raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now. only support with moe_tp_extend_ep when tp > 1.')
         if args.moe_zero_memory_num_layers is not None:
             num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
             if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:
