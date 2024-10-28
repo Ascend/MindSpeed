@@ -292,7 +292,7 @@ def mcore_optimizer_adapation(aspm):
                         reuse_fp32_param_param_and_grad_buffer_init_wrapper)
 
 
-def mcore_pipeline_parallel_adaptation(aspm):
+def mcore_pipeline_parallel_adaptation(aspm, mindspeed_args):
     from .core.pipeline_parallel.p2p_communication import _communicate_shapes
     from .core.pipeline_parallel.schedules import get_forward_backward_func_wrapper, get_tensor_shapes_wrapper
     from .core.performance.auto_pipeline_perf.schedules import get_forward_backward_func_decorator, \
@@ -310,6 +310,10 @@ def mcore_pipeline_parallel_adaptation(aspm):
                         forward_step_decorator)
     aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._communicate_shapes',
                         _communicate_shapes)
+    if mindspeed_args.optimize_send_recv_comm and mindspeed_args.num_layers_per_virtual_pipeline_stage is not None:
+        from .core.pipeline_parallel.p2p_communication import _p2p_ops_send_recv_overlap
+        aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._p2p_ops',
+                            _p2p_ops_send_recv_overlap)
 
 
 def mcore_tensor_parallel_adaptation_l0(aspm):
@@ -768,7 +772,7 @@ def adaptation_l2(aspm, mindspeed_args):
     megatron_core_adaptation(aspm)
     mcore_models_adaptation(aspm, mindspeed_args)
     mcore_optimizer_adapation(aspm)
-    mcore_pipeline_parallel_adaptation(aspm)
+    mcore_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_tensor_parallel_adaptation(aspm)
     mcore_transformer_adaptation(aspm)
 

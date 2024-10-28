@@ -390,7 +390,7 @@ def _add_algorithm_args(parser):
     group.add_argument('--optimize-recomp-communication-status', type=int, default=0,
                        help='The algorithm optimize the status of tp communication in the recompute stage.')
     group.add_argument('--optimize-send-recv-comm', action='store_true', 
-                       help='optimize send_recv communication in pipeline without interleaving.')
+                       help='optimize send_recv communication in pipeline parallel.')
     group.add_argument('--enable-zero3', action='store_true', default=False,
                        help='Use this flag to enable zero3, including the segmentation of the parameters, gradients, and optimizers of the row-parallel and column-parallel models, as well as the overlap optimization of the gradient reduce sactter and weight all gather.')
     return parser
