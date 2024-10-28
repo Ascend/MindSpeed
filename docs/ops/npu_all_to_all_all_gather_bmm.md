@@ -21,18 +21,18 @@ def npu_alltoall_allgather_bmm(
 bmm指BatchMatMul，AllToAllAllGahterBatchMatMul算子是实现AllToAll、AllGather集合通信与BatchMatMul计算并行的算子。
 大体计算流程为：AllToAll集合通信-->AllGather集合通信-->BatchMatMul-->激活（可选，可以没有）
 
-计算逻辑如下，其中y1 y2 y3为输出，x weight bias为输入，activating为激活函数（由act_type决定，当act_type为None时，表示不调用激活函数）
+计算逻辑如下，其中y1Out y2OutOptional y3OutOptional为输出，x weight bias为输入，activating为激活函数（由act_type决定，当act_type为None时，表示不调用激活函数）
 $$
  alltoallOut = AllToAll(x)
 $$
 $$
- y2 = AllGather(alltoallOut)
+ y2OutOptional = AllGather(alltoallOut)
 $$
 $$
- y3 = BatchMatMul(y2, weight, bias)
+ y3OutOptional = BatchMatMul(y2OutOptional, weight, bias)
 $$
 $$
- y1 = activating(y3)
+ y1Out = activating(y3OutOptional)
 $$
 
 ## 输入输出及属性说明：
@@ -42,9 +42,9 @@ $$
 - bias：可选输入，Tensor，数据类型支持float16, float32。x为float16时，bias需为float16；x为bfloat16时，bias需为float32，必须为两维或三维，数据格式支持ND。BatchMatMul计算的bias。
 
 输出：
-- y1：Tensor，数据类型支持float16, bfloat16，仅支持3维。最终计算结果，如果有激活函数则为激活函数的输出，否则为BatchMatMul的输出。数据类型与输入x保持一致。
-- y2：Tensor，可选输出，数据类型支持float16, bfloat16，仅支持3维。AllGather的输出，数据类型与输入x保持一致。反向可能需要。
-- y3：Tensor，可选输出，数据类型支持float16, bfloat16，仅支持3维。有激活函数时，BatchMatMul的输出，类型与输入x保持一致。
+- y1Out：Tensor，数据类型支持float16, bfloat16，仅支持3维。最终计算结果，如果有激活函数则为激活函数的输出，否则为BatchMatMul的输出。数据类型与输入x保持一致。
+- y2OutOptional：Tensor，可选输出，数据类型支持float16, bfloat16，仅支持3维。AllGather的输出，数据类型与输入x保持一致。反向可能需要。
+- y3OutOptional：Tensor，可选输出，数据类型支持float16, bfloat16，仅支持3维。有激活函数时，BatchMatMul的输出，类型与输入x保持一致。
 
 属性：
 - group_ep：必选属性，str。ep通信域名称，专家并行的通信域。
@@ -62,9 +62,9 @@ $$
 - x: (E, C/tp, H)；
 - weight：(E/ep, H, M/tp)；
 - bias：(E/ep, 1, M/tp)；  支持两维或三维，两维时shape为：(E/ep, M/tp)
-- y1：(E/ep, ep\*tp\*C/tp, M/tp)；
-- y2：(E/ep, ep\*tp\*C/tp, H)；
-- y3：(E/ep, ep\*tp\*C/tp, M/tp)
+- y1Out：(E/ep, ep\*tp\*C/tp, M/tp)；
+- y2OutOptional：(E/ep, ep\*tp\*C/tp, H)；
+- y3OutOptional：(E/ep, ep\*tp\*C/tp, M/tp)
 
 数据关系说明：
 - 比如x.size(0)等于E，weight.size(0)等于E/ep，则表示，x.size(0) = ep\*weight.size(0)，x.size(0)是ep的整数倍；其他关系类似
