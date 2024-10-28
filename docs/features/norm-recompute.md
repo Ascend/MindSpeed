@@ -19,13 +19,13 @@
 
 ## 使用方法
 
-脚本中添加：`--recompute-norm` 可开启Norm重计算。
+脚本中添加：`--recompute-norm` 可开启Norm重计算。此特性仅支持mcore分支。
 
 添加：`--recompute-norm-num-layers ${num}` 可指定激活函数重计算的层数。
 
 Norm重计算兼容激活函数重计算、全重计算同时开启：
 
-1.同时开启时，仅支持 `--recompute-method 为 block`
+1.同时开启时，仅支持 `--recompute-method` 为 `block`。
 
 2.同时开启时，会按照指定的全重计算和Norm重计算的层数做各自类型的重计算，即不会有一层既做全重计算又做Norm重计算。
 

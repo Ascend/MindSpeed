@@ -57,7 +57,7 @@ def groupedmlp_init_wrapper(fn):
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
         args_ = get_args()
-        if self.config.gated_linear_unit and args_.use_fused_swiglu:
+        if self.config.gated_linear_unit:
             assert (self.config.activation_func == F.silu
                 ), 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
