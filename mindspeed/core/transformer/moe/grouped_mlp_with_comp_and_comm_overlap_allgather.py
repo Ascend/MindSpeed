@@ -96,7 +96,6 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         # re-gather mm1 forward inputs
         ag_inputs_tp = get_ag_tp_hidden_status()
         ag_inputs_tp = ag_inputs_tp.view(-1, ag_inputs_tp.shape[-1])
-        # mm1_inputs = ctx.inputs
         ag_group = get_expert_model_parallel_group()
         if '910B' in acl.get_soc_name() or not get_args().n_shared_experts:
             ag_group = get_tensor_and_expert_parallel_group()

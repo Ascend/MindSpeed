@@ -185,6 +185,8 @@ class PipeExpert(torch.autograd.Function):
         multi_stream = args[5]
 
         input_shape = list(inputs.size())
+        if multi_data > input_shape[1]:
+            raise ValueError('--pipe-experts-multi-data cannot be greater than experts capacity')
         slice_seq_size = input_shape[1] // multi_data
         if input_shape[1] % multi_data != 0:
             slice_seq_size += 1

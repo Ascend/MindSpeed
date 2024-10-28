@@ -485,9 +485,6 @@ def validate_args_wrapper(validate_args):
             assert num_layers_per_pipeline_stage // args.num_layers_per_virtual_pipeline_stage > 1, \
             'considering args of num_layers and pipeline_model_parallel_size, vpp setting should be meaningful'
 
-        if int(os.getenv('ADAPTIVE_RECOMPUTING', '0')) and int(os.getenv('MEMORY_FRAGMENTATION', '0')):
-            raise AssertionError('ADAPTIVE_RECOMPUTING and MEMORY_FRAGMENTATION all open is not supported')
-
 
         if args.use_fused_rmsnorm:
             if args.normalization != "RMSNorm":

@@ -42,6 +42,9 @@ bool NpuCachingCustomAllocator::initialized() { return !device_allocator.empty()
 
 /** allocates a block which is safe to use from the provided stream */
 void *NpuCachingCustomAllocator::malloc(int device, size_t size, aclrtStream stream) {
+  TORCH_INTERNAL_ASSERT(
+        0 <= device && static_cast<size_t>(device) < device_allocator.size(),
+        "device index out of range.");
   Block *block = device_allocator[device]->malloc(device, size, stream);
   add_allocated_block(block);
   void *devPtr = static_cast<void *>(block->ptr);
@@ -56,6 +59,9 @@ void NpuCachingCustomAllocator::free(void *ptr) {
   if (!block) {
     AT_ERROR("invalid device pointer: ", ptr);
   }
+  TORCH_INTERNAL_ASSERT(
+        0 <= block->device && static_cast<size_t>(block->device) < device_allocator.size(),
+        "device index out of range.");
   device_allocator[block->device]->free(block);
 }
 
@@ -109,12 +115,19 @@ void CachingAllocatorConfig::consumeToken(const std::vector<std::string> &config
 size_t CachingAllocatorConfig::parseMaxSplitSize(const std::vector<std::string> &config, size_t i) {
   consumeToken(config, ++i, ':');
   if (++i < config.size()) {
-    size_t val1 = static_cast<size_t>(stoi(config[i]));
-    TORCH_CHECK(val1 > kLargeBuffer / (1024 * 1024), "CachingAllocator option max_split_size_mb too small, must be > ",
-                kLargeBuffer / (1024 * 1024));
-    val1 = std::max(val1, kLargeBuffer / (1024 * 1024));
-    val1 = std::min(val1, (std::numeric_limits<size_t>::max() / (1024 * 1024)));
-    m_max_split_size = val1 * 1024 * 1024;
+    size_t val1 = 0;
+    try{
+        val1 = static_cast<size_t>(stoi(config[i]));
+    } catch (const std::invalid_argument& e){
+        TORCH_CHECK(false, "Error, expecting digit string in config");
+    } catch (const std::out_of_range& e){
+        TORCH_CHECK(false, "Error, out of int range");
+    }
+    TORCH_CHECK(val1 > kLargeBuffer / kUnitMB, "CachingAllocator option max_split_size_mb too small, must be > ",
+                kLargeBuffer / kUnitMB);
+    val1 = std::max(val1, kLargeBuffer / kUnitMB);
+    val1 = std::min(val1, (std::numeric_limits<size_t>::max() / kUnitMB));
+    m_max_split_size = val1 * kUnitMB;
   } else {
     TORCH_CHECK(false, "Error, expecting max_split_size_mb value");
   }
@@ -124,7 +137,14 @@ size_t CachingAllocatorConfig::parseMaxSplitSize(const std::vector<std::string> 
 size_t CachingAllocatorConfig::parseGarbageCollectionThreshold(const std::vector<std::string> &config, size_t i) {
   consumeToken(config, ++i, ':');
   if (++i < config.size()) {
-    double val1 = stod(config[i]);
+    double val1 = 0.0;
+    try {
+        val1 = stod(config[i]);
+    } catch (const std::invalid_argument& e){
+        TORCH_CHECK(false, "Error, expecting digital string in config");
+    } catch (const std::out_of_range& e) {
+        TORCH_CHECK(false, "Error, out of double range");
+    }
     TORCH_CHECK(val1 > 0, "garbage_collect_threshold too small, set it 0.0~1.0");
     TORCH_CHECK(val1 < 1.0, "garbage_collect_threshold too big, set it 0.0~1.0");
     m_garbage_collection_threshold = val1;
@@ -144,7 +164,7 @@ size_t CachingAllocatorConfig::parseExpandableSegments(const std::vector<std::st
       void *ptr = nullptr;
       auto status = aclrtReserveMemAddress(&ptr, 512, 0, NULL, 1);
       if (status == ACL_ERROR_NONE) {
-        aclrtReleaseMemAddress(ptr);
+        TORCH_CHECK(aclrtReleaseMemAddress(ptr) == ACL_ERROR_NONE, "aclrtReleaseMemAddress failed.");
       } else {
         NPU_CHECK_SUPPORT_OR_ERROR(status);
         m_expandable_segments = false;

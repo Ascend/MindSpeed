@@ -39,6 +39,8 @@ Block *PluggableAllocator::get_allocated_block(void *ptr, bool remove) {
 }
 
 void PluggableAllocator::init(int device_count) {
+    int max_device_count = 1000000;
+    TORCH_INTERNAL_ASSERT(device_count < max_device_count, "Error, out of maximum device");
     int size = static_cast<int>(device_allocator.size());
     if (size < device_count) {
         device_allocator.resize(device_count);
@@ -54,6 +56,9 @@ bool PluggableAllocator::initialized() {
 
 /** allocates a block which is safe to use from the provided stream */
 void *PluggableAllocator::malloc(int device, size_t size, aclrtStream stream) {
+    TORCH_INTERNAL_ASSERT(
+        0 <= device && static_cast<size_t>(device) < device_allocator.size(),
+        "device index out of range.");
     Block *block = device_allocator[device]->malloc(device, size, stream);
     add_allocated_block(block);
     void *devPtr = static_cast<void *>(block->ptr);
@@ -68,15 +73,16 @@ void PluggableAllocator::free(void *ptr) {
     if (!block) {
         AT_ERROR("invalid device pointer: ", ptr);
     }
+    TORCH_INTERNAL_ASSERT(
+        0 <= block->device && static_cast<size_t>(block->device) < device_allocator.size(),
+        "device index out of range.");
     device_allocator[block->device]->free(block);
 }
 
 void PluggableAllocator::setMemoryFraction(double fraction, int device) {
     TORCH_INTERNAL_ASSERT(
-            0 <= device && device < device_allocator.size(),
-            "Allocator not initialized for device ",
-            device,
-            ": did you call init?");
+            0 <= device && static_cast<size_t>(device) < device_allocator.size(),
+            "device index out of range.");
     TORCH_INTERNAL_ASSERT(
             0 <= fraction && fraction <= 1,
             "invalid fraction:",
@@ -106,6 +112,9 @@ void *PluggableAllocator::getBaseAllocation(void *ptr, size_t *outSize) {
     if (!block) {
         AT_ERROR("invalid device pointer: ", ptr);
     }
+    TORCH_INTERNAL_ASSERT(
+        0 <= block->device && static_cast<size_t>(block->device) < device_allocator.size(),
+        "device index out of range.");
     return device_allocator[block->device]->get_base_allocation(block, outSize);
 }
 
@@ -128,6 +137,9 @@ void PluggableAllocator::recordStream(const c10::DataPtr &ptr, c10_npu::NPUStrea
     Block *block = get_allocated_block(ptr.get());
     // block must not be null reaching here
     TORCH_INTERNAL_ASSERT(block != nullptr, "No allocated block can be found");
+    TORCH_INTERNAL_ASSERT(
+        0 <= block->device && static_cast<size_t>(block->device) < device_allocator.size(),
+        "device index out of range.");
     device_allocator[block->device]->record_stream(block, stream);
 }
 
@@ -142,7 +154,6 @@ void PluggableAllocator::eraseStream(const c10::DataPtr &ptr, c10_npu::NPUStream
     // guarantee tensors won't be accidentally freed by one process while
     // they are still being used in another
     if (ptr.get_deleter() != &local_raw_delete) {
-//        TORCH_NPU_WARN_ONCE("Tensor not is not allocated by NPUCachingAllocator, skip eraseStream.");
         return;
     }
 
@@ -159,6 +170,9 @@ void PluggableAllocator::eraseStream(const c10::DataPtr &ptr, c10_npu::NPUStream
         return;
     }
 
+    TORCH_INTERNAL_ASSERT(
+        0 <= block->device && static_cast<size_t>(block->device) < device_allocator.size(),
+        "device index out of range.");
     device_allocator[block->device]->erase_stream(block, stream);
 }
 
@@ -177,6 +191,9 @@ c10::DeleterFnPtr PluggableAllocator::raw_deleter() const {
 }
 
 void PluggableAllocator::cacheInfo(int dev_id, size_t *cachedAndFree, size_t *largestBlock) {
+    TORCH_INTERNAL_ASSERT(
+        0 <= dev_id && static_cast<size_t>(dev_id) < device_allocator.size(),
+        "device index out of range.");
     device_allocator[dev_id]->cache_info(cachedAndFree, largestBlock);
 }
 
@@ -205,6 +222,9 @@ void PluggableAllocator::raw_delete(void *ptr) {
 }
 
 void PluggableAllocator::FreeDeviceCachedMemory(int device) {
+    TORCH_INTERNAL_ASSERT(
+        0 <= device && static_cast<size_t>(device) < device_allocator.size(),
+        "device index out of range.");
     device_allocator[device]->empty_cache(true);
 }
 

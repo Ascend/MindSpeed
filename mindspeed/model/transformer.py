@@ -739,7 +739,11 @@ def should_recompute_activation(layer_number):
             return False
         elif args.recompute_in_bubble:
             return True
-    
+
+    if args.recompute_activation_function_num_layers < 0:
+        raise AssertionError('--recompute-activation-function-num-layers cannot be less than 0.')
+    elif args.recompute_activation_function_num_layers > args.num_layers:
+        raise AssertionError('--recompute-activation-function-num-layers cannot be greater than the number of layers.')
     return should_recompute(args, layer_number, args.recompute_activation_function_num_layers)
 
 

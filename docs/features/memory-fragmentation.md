@@ -61,4 +61,6 @@ activate; 1.59 GiB free;
 位置：MindSpeed/mindspeed/core/memory/memory_fragmentation/memory_recorder.py
 添加：torch_npu.npu.set_per_process_memory_fraction(x)，其中x为想要限制torch占用内存的最高比例，例如x设置为0.94，表示torch最多占用"单卡内存*0.94"的内存。
 
-2. 由于内存碎片优化与自适应选择重计算两个特性都修改了PyTorch内存管理模块，这两个特性都打开会存在冲突，mindspeed进行了assert判断。
+2. 用户也可以通过环境变量`ALR_MAX`来设置torch allocator能够分配的总内存上限。
+
+3. 由于内存碎片优化与自适应选择重计算两个特性都修改了PyTorch内存管理模块，这两个特性都打开会存在冲突，mindspeed进行了assert判断。

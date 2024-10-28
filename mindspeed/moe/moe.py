@@ -58,7 +58,8 @@ class MoE(torch.nn.Module):
         pipe_experts_multi_data = args.pipe_experts_multi_data
         pipe_experts_multi_stream = args.pipe_experts_multi_stream
 
-        assert num_experts % ep_size == 0, f"Number of experts ({num_experts}) should be divisible by expert parallel size ({ep_size})"
+        if num_experts % ep_size != 0:
+            raise AssertionError(f"Number of experts should be divisible by expert parallel size")
         num_local_experts = num_experts // ep_size
 
         if pipe_experts:
