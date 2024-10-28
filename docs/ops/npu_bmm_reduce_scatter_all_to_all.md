@@ -15,7 +15,7 @@ def npu_bmm_reducescatter_alltoall(x: Tensor,
 BatchMatMulReduceScatterAllToAll是实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
 大体计算流程为：BatchMatMul计算-->转置（shard_type等于0时需要）-->ReduceScatter集合通信-->Add-->AllToAll集合通信
 
-计算逻辑如下，其中y为输出，x weight bias为输入
+计算逻辑如下，其中out为最终输出，x weight bias为输入
 $$
  bmmOut = BatchMatMul(x，weight)
 $$
@@ -26,7 +26,7 @@ $$
  addOut = Add(reduceScatterOut, bias)
 $$
 $$
- y = AllToAll(addOut)
+ out = AllToAll(addOut)
 $$
 
 ## 输入输出及属性说明：
@@ -36,7 +36,7 @@ $$
 - bias：可选输入，Tensor，数据类型float16, float32。x为float16时，bias需为float16；x为bfloat16时，bias需为float32。支持两维或三维。BatchMatMul计算的bias。(由于要进行ReduceScatter通信，因此需要在通信之后再Add)
 
 输出：
-- y：Tensor，数据类型float16, bfloat16，必须为3维。最终计算结果，类型与输入x保持一致。
+- out：Tensor，数据类型float16, bfloat16，必须为3维。最终计算结果，类型与输入x保持一致。
 
 属性：
 - group_ep：必选属性，str。ep通信域名称，专家并行的通信域。
@@ -52,16 +52,16 @@ $$
 - x: (E/ep, ep\*C, M/tp) 
 - weight：(E/ep, M/tp, H)
 - bias：(E/ep, 1, H/tp)  两维时为(E/ep, H/tp)
-- y：(E, C, H/tp)
+- out：(E, C, H/tp)
 
 按C轴进行ReduceScatter场景，即shard_type为1场景：
 - x: (E/ep, ep\*tp\*C/tp, M/tp) 
 - weight：(E/ep, M/tp, H)
 - bias：(E/ep, 1, H)    两维时为(E/ep, H)
-- y：(E, C/tp, H)
+- out：(E, C/tp, H)
 
 数据关系说明：
-- 比如x.size(0)等于E/tp，y.size(0)等于E，则表示，y.size(0) = ep\*x.size(0)，y.size(0)是ep的整数倍；其他关系类似
+- 比如x.size(0)等于E/tp，out.size(0)等于E，则表示，out.size(0) = ep\*x.size(0)，out.size(0)是ep的整数倍；其他关系类似
 - E的取值范围为[2, 512]，且E是ep的整数倍；
 - H的取值范围为：[1, 65535]；
 - M/tp的取值范围为：[1, 65535]；
