@@ -299,8 +299,10 @@ class AdaptiveRecomputePolicy:
         cur_pp_noop_layers = []
         pp_size = all_args.pipeline_model_parallel_size or 1
         layers_per_pp = all_args.num_layers // pp_size
+        vpp_layer = all_args.num_layers_per_virtual_pipeline_stage or layers_per_pp
+        vpp_layers = vpp_layer * pp_size
         for i in noop_layers:
-            pp_id = i // layers_per_pp
+            pp_id = (i % vpp_layers) // vpp_layer
             if pp_id == cur_pp_rank:
                 cur_pp_noop_layers.append(i)
         return cur_pp_noop_layers

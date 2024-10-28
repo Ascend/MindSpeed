@@ -67,8 +67,10 @@ class AdaptiveRecomputePolicy:
         cur_pp_rank = self.pp_rank
         pp_size = all_args.pipeline_model_parallel_size or 1
         layers_per_pp = all_args.num_layers // pp_size
+        vpp_layer = all_args.num_layers_per_virtual_pipeline_stage or layers_per_pp
+        vpp_layers = vpp_layer * pp_size
         for i in noop_layers:
-            pp_id = i // layers_per_pp
+            pp_id = (i % vpp_layers) // vpp_layer
             if pp_id == cur_pp_rank:
                 cur_pp_noop_layers.append(i)
         return cur_pp_noop_layers
@@ -263,3 +265,26 @@ class TestSwapAttention(DistributedTest):
                           [['0', '1'], ['', '']],
                           [['0', '1'], ['', '']],
                           [6, 7])
+
+    def test_swap_attention_cal_prefetch_list_enable_vpp_enable_multiple_noop_layers_with_inter_layer(self):
+        args = Config()
+        args.num_layers = 16
+        args.pipeline_model_parallel_size = 4
+        args.virtual_pipeline_model_parallel_size = 2
+        args.num_layers_per_virtual_pipeline_stage = 2
+        args.noop_layers = {0, 7}
+        args.enable_recompute_layers_per_pp_rank = True
+        arp = AdaptiveRecomputePolicy(args)
+        arp.pp_rank = 0
+        self.check_result(arp,
+                          [['', '1'], ['0', '1']],
+                          [['', '1'], ['0', '1']],
+                          [['', '1'], ['0', '1']],
+                          [0])
+
+        arp.pp_rank = 3
+        self.check_result(arp,
+                          [['0', ''], ['0', '1']],
+                          [['0', ''], ['0', '1']],
+                          [['0', ''], ['0', '1']],
+                          [7])
