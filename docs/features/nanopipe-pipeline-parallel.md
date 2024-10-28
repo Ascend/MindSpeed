@@ -39,7 +39,7 @@
 
 ## 使用场景
 
-在训练模型时，降低bubble的比例，从而提升计算效率，达到更好的流水线并行。
+在训练模型时，降低bubble的比例，从而提升计算效率，达到更好的流水线并行。此特性暂未适配`--use-mcore-models`。
 
 ## 使用方法
 
@@ -75,7 +75,7 @@ nanopipe依赖于vpp，设置`--num-layers-per-virtual-pipeline-stage N`。要�
 
 ## 使用方法
 
-基于nanopipe的基础上再开启`--use-nanopipe-swap`。此特性暂未适配`--use-mcore-models`。
+基于nanopipe的基础上再开启`--use-nanopipe-swap`。
 
 ## 使用效果
 
