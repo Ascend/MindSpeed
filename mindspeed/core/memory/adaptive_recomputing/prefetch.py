@@ -34,7 +34,6 @@ class SwapTensor:
         self.prefetch_data_ptr = tensor.data_ptr()
         self.storage_data_ptr = tensor.storage().data_ptr()
         self.layer_id = None
-        self.last_tensor = False
         self.first_tensor = False
         self.is_slice_tensor = tensor.storage().size() != tensor.numel()
         self.stream = None
@@ -130,6 +129,8 @@ class SwapPrefetch:
         if ori_tensor.grad_fn is None:
             return True
         if ori_tensor.storage().size() == 0:
+            return True
+        if ori_tensor.storage().size() != ori_tensor.numel():
             return True
 
         return False
@@ -230,6 +231,7 @@ class SwapPrefetch:
             self.first_layer_id = self.swap_tensors[0].layer_id
         elif self.prefetch_list and self.swap_tensors[0].layer_id <= self.prefetch_list[-1][-1][-1].layer_id:
             self.first_layer_id = self.swap_tensors[0].layer_id
+        first_resize_tensor = False
         for swap_tensor in self.swap_tensors:
             if self.swap_tensors[0].layer_id > self.first_layer_id and self.prefetch_list:
                 swap_tensor.layer_index = len(self.prefetch_list[-1])
@@ -237,10 +239,12 @@ class SwapPrefetch:
                     and swap_tensor.stat == "d2h":
                 if not self.update_slice_tensor_stat(swap_tensor):
                     continue
+                if not first_resize_tensor:
+                    swap_tensor.first_tensor = True
+                    first_resize_tensor = True
                 # During synchronization, let the first tensor wait for d2h
                 swap_tensor.wait_d2h_finished(swap_tensor.stream, swap_tensor.first_tensor)
-        self.swap_tensors[-1].last_tensor = True
-        self.swap_tensors[0].first_tensor = True
+
         if self.swap_tensors[-1].stat == 'host':
             if self.swap_tensors[0].layer_id > self.first_layer_id and self.prefetch_list:
                 self.prefetch_list[-1].append(self.swap_tensors)
