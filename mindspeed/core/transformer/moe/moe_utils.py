@@ -16,7 +16,7 @@ def permute(tokens, indices, num_out_tokens: int = None, padded_mode: bool = Fal
     else:
         topk = indices.size(1)
     flatten_indices = indices.view(-1)
-    # sorted_indices = torch.argsort(flatten_indices, stable=True)  # argsort int64 will be run on host cpu
+    # previous use argsort, argsort int64 will be run on host cpu
     sorted_indices = torch.sort(flatten_indices.float(), stable=True)[1]
     if num_out_tokens is not None:
         sorted_indices = sorted_indices[:num_out_tokens]

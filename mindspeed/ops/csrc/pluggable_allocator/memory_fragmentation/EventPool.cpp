@@ -1,6 +1,8 @@
 #include "EventPool.h"
 
 EventPool::Event EventPool::get(int device) {
+    TORCH_INTERNAL_ASSERT(0 <= device && static_cast<size_t>(device) < pools_.size(),
+                            "device index out of range");
     auto& pool = pools_[device];
     auto destructor = [&pool](c10_npu::NPUEvent* event) {
         std::lock_guard<std::mutex> g(pool.mutex_);

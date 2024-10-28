@@ -42,11 +42,11 @@ Token重排优化 建议默认开启。
 
 MoE特性基础功能:
 
-| 重要参数| 参数说明  |
-|  ----  | ----  |
-|--moe-model-type deepspeed_moe |使用mixtral模型 |
-|--num_experts  [int]             |专家数          |
-|--expert_model_parallel_size [int]  |专家并行     |
+| 重要参数                               | 参数说明  |
+|------------------------------------| ----  |
+| --moe-model-type deepspeed_moe     |使用mixtral模型 |
+| --num-experts  [int]               |专家数          |
+| --expert-model-parallel-size [int] |专家并行     |
 
 
 MoE支持序列并行:

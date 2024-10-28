@@ -14,7 +14,7 @@ void DeviceCachingAllocator::print_memory_analysis() {
 #ifdef MEMORY_RECORDER_DEBUG
         seg_type += seg.type_str;
 #endif
-        printf("SEG info: dev %d, size %lu, allocated %lu, type %s\n", seg.device, seg.total_size, seg.allocated_size,
+        printf("SEG info: dev %ld, size %lu, allocated %lu, type %s\n", seg.device, seg.total_size, seg.allocated_size,
                seg_type.c_str());
         std::vector<size_t> active, inactive, allocated, notallocated;
         for (BlockInfo& blk : seg.blocks) {
@@ -383,6 +383,7 @@ void DeviceCachingAllocator::free(Block* block) {
     block->allocated = false;
 
     // Tensor information processing in the step stage
+    TORCH_INTERNAL_ASSERT(malloc_recorder.step_count >= block->step_count);
     unsigned int step_distance = malloc_recorder.step_count - block->step_count;
     malloc_recorder.change_end_tik(block->start_tik, malloc_recorder.tik, block->tensor_size, step_distance,
                                    block->in_step);
@@ -393,6 +394,7 @@ void DeviceCachingAllocator::free(Block* block) {
     auto orig_block_size = block->size;
 
     // Tensor information processing in the forward stage
+    TORCH_INTERNAL_ASSERT(recorder.forward_count >= block->forward_count);
     unsigned int forward_distance = recorder.forward_count - block->forward_count;
     recorder.change_forward_end_tik(block->forward_start_tik, recorder.forward_tik, block->orig_size, forward_distance,
                                     block->in_forward);
@@ -464,7 +466,7 @@ void DeviceCachingAllocator::erase_stream(Block* block, c10_npu::NPUStream strea
 void DeviceCachingAllocator::set_memory_fraction(double fraction) {
     size_t device_free;
     size_t device_total;
-    aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total);
+    TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, "acl interface call failed");
     allowed_memory_maximum = static_cast<size_t>(fraction * device_total);
     set_fraction = true;
 }
@@ -661,8 +663,8 @@ bool DeviceCachingAllocator::map_block(Block* to_map, size_t size) {
         to_map->size = mapped_range.size;
     }
 
-    try_merge_blocks(to_map, to_map->prev, pool);
-    try_merge_blocks(to_map, to_map->next, pool);
+    TORCH_CHECK(try_merge_blocks(to_map, to_map->prev, pool) >= 0, "try_merge_blocks failed.");
+    TORCH_CHECK(try_merge_blocks(to_map, to_map->next, pool) >= 0, "try_merge_blocks failed.");
 
     pool.blocks.insert(to_map);
 
@@ -1138,7 +1140,8 @@ bool DeviceCachingAllocator::alloc_block(AllocParams& p, bool isRetry) {
         p.err = aclrtMalloc_wrapper(&ptr, size, aclrtMemMallocPolicy::ACL_MEM_MALLOC_HUGE_FIRST);
         size_t device_free;
         size_t device_total;
-        aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total);
+        TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, \
+                                    "Error, failed to get memory info");
         usable_total = alr_total_size + device_free;
         ASCEND_LOGD("pytorch-change code, reserved:%lu, free:%lu, reserved+free:%lu (after aclrtmalloc)\n", alr_total_size,
                device_free, alr_total_size + device_free);
@@ -1307,8 +1310,8 @@ void DeviceCachingAllocator::unmap_block(Block* block) {
     block->size = unmapped.size;
     block->mapped = false;
 
-    try_merge_blocks(block, block->prev, *block->pool);
-    try_merge_blocks(block, block->next, *block->pool);
+    TORCH_CHECK(try_merge_blocks(block, block->prev, *block->pool) >= 0, "try_merge_blocks failed.");
+    TORCH_CHECK(try_merge_blocks(block, block->next, *block->pool) >= 0, "try_merge_blocks failed.");
     block->pool->unmapped.insert(block);
 
     // update statistics
@@ -1356,9 +1359,9 @@ void DeviceCachingAllocator::synchronize_and_free_events(bool check_error) {
             Block* block = e.second;
 
             if (check_error) {
-                aclrtSynchronizeEvent(*event);
+                TORCH_CHECK(aclrtSynchronizeEvent(*event) == ACL_ERROR_NONE, "acl interface call failed");
             } else {
-                aclrtSynchronizeEvent(*event);
+                TORCH_CHECK(aclrtSynchronizeEvent(*event) == ACL_ERROR_NONE, "acl interface call failed");
             }
             ASCEND_LOGI("Event: aclrtSynchronizeEvent is successfully executed.");
 

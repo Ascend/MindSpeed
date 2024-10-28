@@ -59,6 +59,7 @@ using stream_set = ska::flat_hash_set<c10_npu::NPUStream>;
             }                                                                    \
         }                                                                        \
     } while (0)
+
 typedef std::shared_ptr<c10::GatheredContext> (*CreateContextFn)(void);
 
 constexpr size_t kMinBlockSize = 512;        // all sizes are rounded to at least 512 bytes
@@ -67,6 +68,7 @@ constexpr size_t kSmallBuffer = 2097152;     // "small" allocations are packed i
 constexpr size_t kLargeBuffer = 20971520;    // "large" allocations may be packed in 20 MiB blocks
 constexpr size_t kMinLargeAlloc = 10485760;  // allocations between 1 and 10 MiB may use kLargeBuffer
 constexpr size_t kRoundLarge = 2097152;      // round up large allocs to 2 MiB
+constexpr size_t kUnitMB = 1024 * 1024;        // 1MiB = 1024 * 1024 bytes
 
 using StatTypes = std::array<bool, static_cast<size_t>(StatType::NUM_TYPES)>;
 
@@ -205,12 +207,13 @@ struct ExpandableSegment {
         segment_size_(size) {
     size_t device_free;
     size_t device_total;
-    aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total);
+    TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, "aclrtGetMemInfo failed.");
     // we allocate enough address space for 1 1/8 the total memory on the NPU.
     // This allows for some cases where we have to unmap pages earlier in the
     // segment to put them at the end.
     max_handles_ = numSegments(device_total + device_total / 8);
-    aclrtReserveMemAddress(&ptr_, segment_size_ * max_handles_, 0, NULL, 1);
+    TORCH_CHECK(aclrtReserveMemAddress(&ptr_, segment_size_ * max_handles_, 0, NULL, 1) == ACL_ERROR_NONE, \
+                                "Error, failed to reserve memory address");
   }
   // begin must be aligned to segment_size_.
   // returns the actual range mapped, which may be
@@ -241,7 +244,7 @@ struct ExpandableSegment {
         for (auto j : c10::irange(begin, i)) {
           auto h = handles_.at(j).value();
           handles_.at(j) = c10::nullopt;
-          aclrtFreePhysical(h);
+          TORCH_CHECK(aclrtFreePhysical(h) == ACL_ERROR_NONE, "aclrtFreePhysical failed.");
         }
         trimHandles();
         return rangeFromHandles(begin, begin);
@@ -249,7 +252,8 @@ struct ExpandableSegment {
       handles_.at(i) = handle;
     }
     for (auto i : c10::irange(begin, end)) {
-      aclrtMapMem(ptr_ + i * segment_size_, segment_size_, 0, handles_.at(i).value(), 0);
+      TORCH_CHECK(aclrtMapMem(ptr_ + i * segment_size_, segment_size_, 0, handles_.at(i).value(), 0) == ACL_ERROR_NONE, \
+                                    "Error, failed to map memory");
     }
     return rangeFromHandles(begin, end);
   }
@@ -273,7 +277,7 @@ struct ExpandableSegment {
 
   ~ExpandableSegment() {
     forEachAllocatedRange([&](size_t begin, size_t end) { unmapHandles(begin, end); });
-    aclrtReleaseMemAddress(ptr_);
+    TORCH_CHECK(aclrtReleaseMemAddress(ptr_) == ACL_ERROR_NONE, "aclrtReleaseMemAddress failed.");
   }
 
  private:
@@ -285,12 +289,12 @@ struct ExpandableSegment {
     // cannot call c10::npu::stream_synchronize because
     // it might grab the GIL which can lead to a deadlock
     // Locking order must be GIL -> Allocator Lock
-    aclrtSynchronizeStream(stream_);
+    TORCH_CHECK(aclrtSynchronizeStream(stream_) == ACL_ERROR_NONE, "aclrtSynchronizeStream failed.");
     for (auto i : c10::irange(begin, end)) {
       aclrtDrvMemHandle h = handles_.at(i).value();
       handles_.at(i) = c10::nullopt;
-      aclrtUnmapMem(ptr_ + segment_size_ * i);
-      aclrtFreePhysical(h);
+      TORCH_CHECK(aclrtUnmapMem(ptr_ + segment_size_ * i) == ACL_ERROR_NONE, "aclrtUnmapMem failed.");
+      TORCH_CHECK(aclrtFreePhysical(h) == ACL_ERROR_NONE, "aclrtFreePhysical failed.");
     }
     trimHandles();
   }
@@ -466,7 +470,7 @@ class CachingAllocatorConfig {
     void *ptr = nullptr;
     auto status = aclrtReserveMemAddress(&ptr, 512, 0, NULL, 1);
     if (status == ACL_ERROR_NONE) {
-      aclrtReleaseMemAddress(ptr);
+      TORCH_CHECK(aclrtReleaseMemAddress(ptr) == ACL_ERROR_NONE, "aclrtReleaseMemAddress failed.");
     } else {
       m_expandable_segments = false;
     }
@@ -548,7 +552,7 @@ class DeviceCachingAllocator {
     std::unique_lock<std::recursive_mutex> lock(mutex);
 
     if (device == -1) {
-      c10_npu::GetDevice(&device);
+      TORCH_CHECK(c10_npu::GetDevice(&device) == ACL_ERROR_NONE, "GetDevice failed.");
     }
 
     // process outstanding npuEvents
@@ -620,7 +624,7 @@ class DeviceCachingAllocator {
       if (params.err == ACL_ERROR_RT_MEMORY_ALLOCATION) {
         size_t device_free;
         size_t device_total;
-        aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total);
+        TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, "aclrtGetMemInfo failed.");
 
         std::string allowed_info;
         if (set_fraction) {
@@ -837,7 +841,8 @@ class DeviceCachingAllocator {
   }
 
   static size_t round_size(size_t size) {
-    size = size + 32;
+    const size_t align_size = 32;
+    size = size + align_size;
     if (size < kMinBlockSize) {
       return kMinBlockSize;
     } else {
@@ -919,8 +924,8 @@ class DeviceCachingAllocator {
       to_map->size = mapped_range.size;
     }
 
-    try_merge_blocks(to_map, to_map->prev, pool);
-    try_merge_blocks(to_map, to_map->next, pool);
+    TORCH_CHECK(try_merge_blocks(to_map, to_map->prev, pool) >= 0, "try_merge_blocks failed.");
+    TORCH_CHECK(try_merge_blocks(to_map, to_map->next, pool) >= 0, "try_merge_blocks failed.");
 
     pool.blocks.insert(to_map);
 
@@ -1365,6 +1370,7 @@ class DeviceCachingAllocator {
       block->pool->blocks.insert(before_free);
     }
 
+    TORCH_CHECK(block->size >= before_size + unmapped.size, "after size should be greater than or equal to 0");
     auto after_size = block->size - (before_size + unmapped.size);
     if (after_size > 0) {
       // block -> after_free -> next?
@@ -1379,8 +1385,8 @@ class DeviceCachingAllocator {
     block->size = unmapped.size;
     block->mapped = false;
 
-    try_merge_blocks(block, block->prev, *block->pool);
-    try_merge_blocks(block, block->next, *block->pool);
+    TORCH_CHECK(try_merge_blocks(block, block->prev, *block->pool) >= 0, "try_merge_blocks failed.");
+    TORCH_CHECK(try_merge_blocks(block, block->next, *block->pool) >= 0, "try_merge_blocks failed.");
     block->pool->unmapped.insert(block);
 
     // update statistics
@@ -1432,11 +1438,11 @@ class DeviceCachingAllocator {
         Block *block = e.second;
 
         if (check_error) {
-          aclrtSynchronizeEvent(*event);
+          TORCH_CHECK(aclrtSynchronizeEvent(*event) == ACL_ERROR_NONE, "aclrtSynchronizeEvent failed.");
         } else {
-          aclrtSynchronizeEvent(*event);
+          TORCH_CHECK(aclrtSynchronizeEvent(*event) == ACL_ERROR_NONE, "aclrtSynchronizeEvent failed");
         }
-        ASCEND_LOGI("Event: aclrtSynchronizeEvent is successfully executed, event=%p", event.get());
+        ASCEND_LOGI("Event: aclrtSynchronizeEvent is successfully executed");
 
         block->event_count--;
         if (block->event_count == 0) {
@@ -1455,17 +1461,17 @@ class DeviceCachingAllocator {
     stream_set streams(std::move(block->stream_uses));
     AT_ASSERT(block->stream_uses.empty());
     for (auto &stream : streams) {
-      c10_npu::SetDevice(stream.device_index());
+      TORCH_CHECK(c10_npu::SetDevice(stream.device_index()) == ACL_ERROR_NONE, "SetDevice failed.");
 
       EventPool::Event event = create_event_internal(stream.device_index());
       event->record(stream);
-      ASCEND_LOGI("Event: record DeviceAllocator is successfully executed, event=%p", event.get());
+      ASCEND_LOGI("Event: record DeviceAllocator is successfully executed");
 
       block->event_count++;
       npu_events[stream].emplace_back(std::move(event), block);
     }
     if (ret_ctx == ACL_ERROR_NONE) {
-      aclrtSetCurrentContext(compiler_ctx);
+      TORCH_CHECK(aclrtSetCurrentContext(compiler_ctx) == ACL_ERROR_NONE, "aclrtSetCurrentContext failed.");
     }
   }
 

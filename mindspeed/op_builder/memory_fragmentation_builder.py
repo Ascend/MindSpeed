@@ -32,7 +32,8 @@ class MemoryFragmentationBuilder(MindSpeedOpBuilder):
                 'ops/csrc/pluggable_allocator/memory_fragmentation/PluggableAllocator.cpp',
                 'ops/csrc/pluggable_allocator/memory_fragmentation/PluggableAllocatorFunctions.cpp',
                 'ops/csrc/pluggable_allocator/memory_fragmentation/Decorator.cpp',
-                'ops/csrc/pluggable_allocator/memory_fragmentation/Recorder.cpp']
+                'ops/csrc/pluggable_allocator/memory_fragmentation/Recorder.cpp',
+                'ops/csrc/pluggable_allocator/memory_fragmentation/common.cpp']
 
     def cxx_args(self):
         args = super().cxx_args()
