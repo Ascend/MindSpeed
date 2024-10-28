@@ -374,7 +374,7 @@ def core_mlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         is_recompute_activation = should_recompute_activation(self.layer_number)
-        if get_args().moe_alltoall_overlap_comm:
+        if get_args().moe_alltoall_overlap_comm and not isinstance(args[-1], torch.Tensor):
             moe_ctx = args[-1]
             args = args[:-1]
 
