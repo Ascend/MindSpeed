@@ -23,7 +23,6 @@ def make_viewless_tensor(inp, requires_grad, keep_graph):
     '''
 
     # return tensor as-is, if not a 'view'
-    # if inp._base is None:
     try:
         if inp._base is None:
             return inp

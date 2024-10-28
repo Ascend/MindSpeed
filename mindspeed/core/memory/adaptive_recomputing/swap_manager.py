@@ -32,7 +32,10 @@ class SwapManager(metaclass=SwapManagerMeta):
         config = os.getenv('MIN_SWAP_TENSOR_SIZE')
         min_swap_tensor_size = 1024
         if config is not None:
-            min_swap_tensor_size = max(min_swap_tensor_size, int(config))
+            try:
+                min_swap_tensor_size = max(min_swap_tensor_size, int(config))
+            except ValueError:
+                print_rank_0('WARNING: MIN_SWAP_TENSOR_SIZE value error, fallback to default value 1024')
         if get_tensor_mem_size(tensor) < min_swap_tensor_size:
             return False
         # leaf node tensor
@@ -136,7 +139,10 @@ class SwapManager(metaclass=SwapManagerMeta):
         config = os.getenv('SWAP_SIZE_MULTIPLE')
         swap_size_multiple = 1
         if config is not None:
-            swap_size_multiple = max(1, int(config))
+            try:
+                swap_size_multiple = max(1, int(config))
+            except ValueError:
+                print_rank_0('WARNING: SWAP_SIZE_MULTIPLE value error, fallback to default value 1')
         for key in device_tensors_keys:
             if swap_size + cur_swap_size >= size * swap_size_multiple:
                 break

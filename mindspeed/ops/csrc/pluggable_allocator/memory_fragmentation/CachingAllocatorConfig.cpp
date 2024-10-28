@@ -55,7 +55,14 @@ void CachingAllocatorConfig::consumeToken(const std::vector<std::string>& config
 size_t CachingAllocatorConfig::parseMaxSplitSize(const std::vector<std::string>& config, size_t i) {
     consumeToken(config, ++i, ':');
     if (++i < config.size()) {
-        size_t val1 = static_cast<size_t>(stoi(config[i]));
+        size_t val1 = 0;
+        try{
+            val1 = static_cast<size_t>(stoi(config[i]));
+        } catch (const std::invalid_argument& e){
+            TORCH_CHECK(false, "Error, expecting digital string in config");
+        } catch (const std::out_of_range& e){
+            TORCH_CHECK(false, "Error, out of int range");
+        }
         TORCH_CHECK(val1 > kLargeBuffer / (1024 * 1024), "CachingAllocator option max_split_size_mb too small, must be > ",
                 kLargeBuffer / (1024 * 1024));
         val1 = std::max(val1, kLargeBuffer / (1024 * 1024));
@@ -70,7 +77,14 @@ size_t CachingAllocatorConfig::parseMaxSplitSize(const std::vector<std::string>&
 size_t CachingAllocatorConfig::parseGarbageCollectionThreshold(const std::vector<std::string>& config, size_t i) {
     consumeToken(config, ++i, ':');
     if (++i < config.size()) {
-        double val1 = stod(config[i]);
+        double val1 = 0.0;
+        try {
+            val1 = stod(config[i]);
+        } catch (const std::invalid_argument& e){
+            TORCH_CHECK(false, "Error, expecting digital string in config");
+        } catch (const std::out_of_range& e) {
+            TORCH_CHECK(false, "Error, out of double range");
+        }
         TORCH_CHECK(val1 > 0, "garbage_collect_threshold too small, set it 0.0~1.0");
         TORCH_CHECK(val1 < 1.0, "garbage_collect_threshold too big, set it 0.0~1.0");
         m_garbage_collection_threshold = val1;
@@ -87,8 +101,10 @@ size_t CachingAllocatorConfig::parseExpandableSegments(const std::vector<std::st
                 "Expected a single True/False argument for expandable_segments");
         m_expandable_segments = (config[i] == "True");
         void* ptr = nullptr;
-        auto status = aclrtReserveMemAddress(&ptr, 512, 0, NULL, 1);
-        aclrtReleaseMemAddress(ptr);
+        TORCH_CHECK(aclrtReserveMemAddress(&ptr, 512, 0, NULL, 1) == ACL_ERROR_NONE, \
+                                    "Error, failed to reserve memory address");
+        TORCH_CHECK(aclrtReleaseMemAddress(ptr) == ACL_ERROR_NONE, \
+                                    "Error, failed to release memory address");
     } else {
         TORCH_CHECK(false, "Error, expecting expandable_segments value");
     }
@@ -98,7 +114,14 @@ size_t CachingAllocatorConfig::parseExpandableSegments(const std::vector<std::st
 size_t CachingAllocatorConfig::parseDefaultLcThreshold(const std::vector<std::string> &config, size_t i) {
     consumeToken(config, ++i, ':');
     if (++i < config.size()) {
-        double val1 = stod(config[i]);
+        double val1 = 0.0;
+        try {
+            val1 = stod(config[i]);
+        } catch (const std::invalid_argument& e){
+            TORCH_CHECK(false, "Error, expecting digital string in config");
+        } catch (const std::out_of_range& e) {
+            TORCH_CHECK(false, "Error, out of double range");
+        }
         TORCH_CHECK(val1 >= 0, "default_lc_threshold too small, set it 0.0~INF");
         m_default_lc_threshold = val1;
     } else {
