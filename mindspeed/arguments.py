@@ -43,6 +43,7 @@ def process_args(parser):
     parser = _add_profile_args(parser)
     parser = _add_auto_parallel_args(parser)
     parser = _add_deepseek_args(parser)
+    parser = _auto_tuning_args(parser)
 
     return parser
 
@@ -69,6 +70,20 @@ def _add_deepseek_args(parser):
     group.add_argument('--rope-scaling-mscale-all-dim', type=float, default=0.0, help='Yarn rope: rope mscale all dim')
     group.add_argument('--rope-scaling-original-max-position-embeddings', type=int, default=None,
                        help='Yarn rope: rope original max position embeddings')
+
+    return parser
+
+
+def _auto_tuning_args(parser):
+    group = parser.add_argument_group(title='auto_tuning')
+
+    group.add_argument('--auto-tuning', action='store_true', help='enable auto tuning')
+    group.add_argument('--auto-tuning-work-dir', type=str, default='./auto_tuning_dir',
+                       help="auto tuning working path.")
+    group.add_argument('--auto-tuning-ranks', type=int, default=8, help='the global size of auto tuning')
+    group.add_argument('--auto-tuning-log-level', type=str, default='info', choices=['debug', 'info', 'warning'],
+                       help='auto tuning log level, could be debug, info or warning')
+    group.add_argument('--auto-tuning-log-file', type=str, help='where to save auto tuning log')
 
     return parser
 

@@ -2,6 +2,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import time
 from functools import wraps
+import os
 import torch
 
 from megatron.core import mpu
@@ -19,6 +20,7 @@ from megatron.training.training import build_train_valid_test_data_iterators
 from megatron.training.training import train
 from megatron.training.training import evaluate_and_print_results
 from megatron.training.training import print_datetime
+from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
 
 
 from megatron.training.utils import (
@@ -159,6 +161,15 @@ def pretrain(train_valid_test_dataset_provider,
     initialize_megatron(extra_args_provider=extra_args_provider,
                         args_defaults=args_defaults)
 
+    if (os.getenv("OOTB_OPTIMIZER_PARSE_ARGS", "FALSE") == "TRUE"):
+        working_dir = get_args().profile_save_path
+        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
+        hardware = MindSpeedAdaptor.get_hardware(working_dir=working_dir)
+        MindSpeedAdaptor.get_model_args(get_args(), hardware, working_dir)
+        print_rank_0("================OOTB_OPTIMIZER_PARSE_ARGS END EXIT!====================")
+
+        return
+
     if 'init_func' in args_defaults:
         init_func = args_defaults['init_func']
         init_func()
@@ -202,6 +213,14 @@ def pretrain(train_valid_test_dataset_provider,
     print_datetime('after model, optimizer, and learning rate '
                    'scheduler are built')
     config = get_model_config(model[0])
+
+    if (os.getenv("OOTB_OPTIMIZER_PARSE_MODEL", "FALSE") == "TRUE"):
+        output_path = args.profile_save_path
+        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
+        hardware = MindSpeedAdaptor.get_hardware()
+        MindSpeedAdaptor.get_model_params(model, mpu.get_pipeline_model_parallel_rank(), hardware, output_path)
+        print_rank_0("================OOTB_OPTIMIZER_PARSE_MODEL END EXIT!====================")
+        return
 
     # Data stuff.
     timers('train/valid/test-data-iterators-setup', log_level=0).start(
@@ -271,6 +290,14 @@ def pretrain(train_valid_test_dataset_provider,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
                                    verbose=True, write_to_tensorboard=not args.skip_train)
+
+    if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
+        # profiling parser
+        res_dir = args.profile_save_path
+        cur_rank = torch.distributed.get_rank()
+        if res_dir and cur_rank % 8 == 0:
+            GatherNodeProfiling(res_dir).parse_node_pkl(args)
+        print_datetime('after training is done')
 
 
 def num_floating_point_wrapper(fn):

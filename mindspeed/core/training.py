@@ -2,6 +2,8 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 """Pretrain utilities."""
 
+import os
+import sys
 import gc
 import os
 from functools import wraps
@@ -420,6 +422,22 @@ def pretrain_decorator(pretrain):
         global ENABLE_SCHEDULER
         new_parse_args = parse_args_wrapper(parse_args)
         argument = new_parse_args(kwargs.get('extra_args_provider'), False)
+
+        if argument.auto_tuning:
+            set_args(argument)
+            print("pretrain_decorator set_args ========================================")
+
+            from mindspeed.auto_tuning.auto_tuning import auto_tuning
+            global_args = get_args()
+            assert global_args.auto_tuning_ranks >= 16, "Auto-tuning searching space should be >= 16."
+            if not os.path.exists(global_args.auto_tuning_work_dir):
+                os.makedirs(global_args.auto_tuning_work_dir)
+
+            if global_args.rank % torch.cuda.device_count() == 0:
+                print("only rank 0 run auto tuning ========================================")
+                auto_tuning(global_args, working_dir=os.path.abspath(global_args.auto_tuning_work_dir))
+            return
+
         if argument.auto_parallel:
             set_args(argument)
             search_optimal_configuration(argument)

@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 from functools import wraps
@@ -560,6 +561,16 @@ def memory_fragmentation_adaptation(aspm, args):
         from .core.memory.adaptive_recomputing.adaptive_recompute import setup_model_and_optimizer_wrapper
         aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
 
+    if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
+        print(f"OOTB_OPTIMIZER_PROFILING success open")
+        from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
+        import megatron.training
+        from mindspeed.auto_tuning.module.parse.recompute_parser import allowed_recompute_parser_module_wrapper
+        allowed_recompute_parser_module_wrapper(megatron.legacy.model.transformer.ParallelTransformerLayer)
+        from mindspeed.auto_tuning.module.parse.recompute_parser import setup_model_and_optimizer_decorator
+        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_decorator)
+        print(f"setup_model_and_optimizer_decorator success")
+
     if adaptive_recompute_enable or args.memory_fragmentation:
         import megatron.training.initialize
         aspm.register_patch('megatron.training.initialize_megatron', megatron.training.initialize.initialize_megatron)
@@ -776,6 +787,11 @@ def adaptation_l2(aspm, mindspeed_args):
 
 
 def exe_adaptation():
+    modified_argv_path = os.getenv("OOTB_OPTIMIZER_MODIFIED_ARGV_PATH", None)
+    if modified_argv_path:
+        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
+        MindSpeedAdaptor.set_argv(sys.argv, modified_argv_path)
+        print("================OOTB_OPTIMIZER_MODIFIED_ARGV DONE!====================")
     mindspeed_args = get_mindspeed_args()
     from .patch_utils import MindSpeedPatchesManager as aspm
 
