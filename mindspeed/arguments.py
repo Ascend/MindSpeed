@@ -214,6 +214,10 @@ def _add_distributed_args(parser):
                        default=False, help='use nano pipeline parallelism with swap for reduce bubble.')
     group.add_argument('--use-pipe-experts', action='store_true',
                        help='Use this flag to enable pipe moe, overlap all2all and expert')
+    group.add_argument('--disable-gloo-group', action='store_true',
+                       help='Replace the communication method of the DP group in the distributed optimizer from gloo to hccl.')
+    group.add_argument('--hccl-slice-size', type=int, default=10 * 1024 * 1024,
+                       help='data slice size on each dp rank in distributed optimizer')  
     return parser
 
 

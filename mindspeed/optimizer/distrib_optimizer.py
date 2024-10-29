@@ -498,12 +498,20 @@ def load_parameter_state_from_dp_zero(self, state_dict):
             send_tensors = None
         shard_res_numel = shard_main_param_res_buffer.numel()
         recv_tensor = torch.empty((shard_res_numel,), dtype=torch.float16, device="cpu")
-        torch.distributed.scatter(
-            recv_tensor,
-            send_tensors,
-            data_parallel_global_ranks[0],
-            data_parallel_group_gloo,
-        )
+        if get_args().disable_gloo_group:
+            from mindspeed.utils import _scatter_hccl
+            _scatter_hccl(
+                recv_tensor,
+                send_tensors,
+                data_parallel_global_ranks[0],
+                self.data_parallel_group)
+        else:
+            torch.distributed.scatter(
+                recv_tensor,
+                send_tensors,
+                data_parallel_global_ranks[0],
+                data_parallel_group_gloo,
+            )
         recv_tensor_bf16_view = torch.tensor(recv_tensor.data.untyped_storage(), dtype=torch.bfloat16, device=recv_tensor.device)
         shard_main_param_res_buffer.copy_(recv_tensor_bf16_view)
 
@@ -522,20 +530,32 @@ def get_parameter_state_dp_zero(self):
     # gather buffer res
     buffer_res_full_shard = []
     for shard_main_param_res_buffer in self.shard_main_param_res_buffers:
-        if data_parallel_rank == 0:
-            recv_tensors = [torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.float16, device="cpu") for _ in range(data_parallel_world_size)]
-        else:
-            recv_tensors = None
+        if get_args().disable_gloo_group:
+            recv_tensors = [torch.empty(shard_main_param_res_buffer.numel(), dtype=torch.float16, device="cpu") for _
+                            in range(data_parallel_world_size)]
+        else:       
+            if data_parallel_rank == 0:
+                recv_tensors = [torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.float16, device="cpu") for _ in range(data_parallel_world_size)]
+            else:
+                recv_tensors = None
        
         send_tensor = torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.float16, device="cpu")
         send_tensor_bf16_view = torch.tensor(send_tensor.data.untyped_storage(), dtype=torch.bfloat16, device=send_tensor.device)
         send_tensor_bf16_view.copy_(shard_main_param_res_buffer.detach().cpu())
-        torch.distributed.gather(
-            send_tensor,
-            recv_tensors,
-            data_parallel_global_ranks[0],
-            data_parallel_group_gloo,
-        )
+        if get_args().disable_gloo_group:
+            from mindspeed.utils import _gather_hccl
+            _gather_hccl(
+                send_tensor,
+                recv_tensors,
+                self.data_parallel_group,
+            )
+        else:
+            torch.distributed.gather(
+                send_tensor,
+                recv_tensors,
+                data_parallel_global_ranks[0],
+                data_parallel_group_gloo,
+            )
         if data_parallel_rank == 0:
             buffer_res_full_shard.append(torch.cat(recv_tensors))
    
@@ -661,3 +681,212 @@ def fp32_tensor_convert_to_fp16_tensor(self):
 
                 if data_parallel_rank != 0:
                     shard_fp32_main_param_view[param_data_dp_numel:param_data_dp_numel * 2].copy_(shard_fp32_main_param_view[:param_data_dp_numel])
+
+
+def get_parameter_state_dp_zero_hccl(self):
+    """
+        Replace the communication method of gather from gloo to hccl.
+    """
+
+    # Data parallelism variables.
+    data_parallel_world_size = self.data_parallel_group.size()
+    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+    data_parallel_group = self.data_parallel_group
+
+    # Collect param states.
+    state = {
+        "buckets_coalesced": True,
+    }
+    for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
+
+        # Iterate grad buffers (by data type).
+        dtype_state = {}
+        assert len(gbuf_range_maps) == 1, "single dtype supported, for now."
+        for dtype, gbuf_range_map_for_all_buckets in gbuf_range_maps.items():
+            buffer_numel_unpadded = self.buffers[gbuf_idx].numel_unpadded
+            # Create coalesced tensors for all state related to parameters in this buffer.
+            world_tensors = {}
+            if data_parallel_rank == 0:
+                world_tensors = {
+                    key: torch.empty(
+                        (buffer_numel_unpadded,), dtype=torch.float32, device="cpu"
+                    )
+                    for key in ("param", "exp_avg", "exp_avg_sq")
+                }
+                world_tensors["numel_unpadded"] = buffer_numel_unpadded
+            offset_in_world_tensors = 0
+            for bucket_idx, gbuf_range_map in enumerate(gbuf_range_map_for_all_buckets):
+
+                # Compute local DP contiguous shard's size.
+                gbuf_world_numel = self.buffers[gbuf_idx].buckets[bucket_idx].grad_data.numel()
+                assert gbuf_world_numel % data_parallel_world_size == 0
+                gbuf_local_numel = gbuf_world_numel // data_parallel_world_size
+
+                gbuf_world_numel_unpadded = (
+                    self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
+                )
+                assert gbuf_world_numel_unpadded <= gbuf_world_numel
+
+                local_shards = {
+                    key: torch.empty((gbuf_local_numel,), dtype=torch.float32, device="cpu")
+                    for key in ("param", "exp_avg", "exp_avg_sq")
+                }
+
+                # Build contiguous DP rank shards (for param + optim states).
+                for model_param, param_range_map in gbuf_range_map["param_map"].items():
+
+                    # Main param & optimizer states.
+                    group_index, group_order = self.model_param_group_index_map[model_param]
+                    main_param = self.optimizer.param_groups[group_index]["params"][group_order]
+                    optim_state = self.optimizer.state[main_param]
+
+                    tensors = {
+                        "param": main_param,
+                        **optim_state,
+                    }
+
+                    # Copy states into contiguous shard.
+                    gbuf_local_start = param_range_map["gbuf_local"].start
+                    gbuf_local_end = param_range_map["gbuf_local"].end
+                    for key in local_shards:
+                        local_shards[key][gbuf_local_start:gbuf_local_end].data.copy_(
+                            tensors[key].detach().cpu()
+                        )
+
+                # Gather contiguous shards on DP rank 0.
+                for key, send_tensor in local_shards.items():
+
+                    # Gather tensor list.
+                    recv_tensors = [
+                        torch.empty((gbuf_local_numel,), dtype=torch.float32, device="cpu")
+                        for _ in range(data_parallel_world_size)
+                    ]
+
+                    # Gather.
+                    from mindspeed.utils import _gather_hccl
+                    _gather_hccl(
+                        send_tensor,
+                        recv_tensors,
+                        data_parallel_group,
+                    )
+
+                    # Concatenate.
+                    if data_parallel_rank == 0:
+                        recv_tensors_concatenated = torch.cat(recv_tensors)
+                        # Copy this bucket's collected all-gather tensors into the right place in the
+                        # tensor for the buffer. The tensor for the buffer gets rid of the padding
+                        # between buckets.
+                        start = offset_in_world_tensors
+                        end = offset_in_world_tensors + gbuf_world_numel_unpadded
+                        world_tensors[key][start:end].copy_(
+                            recv_tensors_concatenated[:gbuf_world_numel_unpadded]
+                        )
+
+                offset_in_world_tensors += gbuf_world_numel_unpadded
+
+            # Collect world state.
+            dtype_state[dtype] = world_tensors
+        state[gbuf_idx] = dtype_state
+
+    return state
+
+
+def load_parameter_state_from_dp_zero_hccl(self, state_dict):
+    """Load parameter state (i.e., parameter & optimizer tensors) from DP 0 rank,
+    using the new checkpoint format with coalesced state across buckets.
+
+    This method performs the reverse of get_parameter_state_dp_zero():
+    - Scatter contiguous buffers from DP rank 0 to each DP rank (each DP
+      rank receives its relevant subset of the world buffers).
+    - For each DP rank, copy param & optimizer shards from contiguous CPU
+      buffers. (e.g., one buffer each for main_param, exp_avg, and
+      exp_avg_sq).
+    """
+
+    # Data parallelism variables.
+    data_parallel_world_size = self.data_parallel_group.size()
+    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+    data_parallel_group = self.data_parallel_group
+    data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
+        self.data_parallel_group
+    )
+
+    # Scatter tensors to all DP ranks.
+    for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
+        for dtype, gbuf_range_map_for_all_buckets in gbuf_range_maps.items():
+            if data_parallel_rank == 0:
+                buffer_numel_unpadded = self.buffers[gbuf_idx].numel_unpadded
+                checkpoint_numel_unpadded = state_dict[gbuf_idx][dtype]["numel_unpadded"]
+                assert buffer_numel_unpadded == checkpoint_numel_unpadded, (
+                    f"Number of unpadded elements must be same in current run "
+                    f"({buffer_numel_unpadded}) and checkpoint ({checkpoint_numel_unpadded})"
+                )
+            for key in ("param", "exp_avg", "exp_avg_sq"):
+                offset_in_world_tensors = 0
+                for bucket_idx, gbuf_range_map in enumerate(gbuf_range_map_for_all_buckets):
+                    # Compute local DP contiguous shard's size.
+                    gbuf_world_numel = (
+                        self.buffers[gbuf_idx].buckets[bucket_idx].grad_data.numel()
+                    )
+                    assert gbuf_world_numel % data_parallel_world_size == 0
+                    gbuf_local_numel = gbuf_world_numel // data_parallel_world_size
+                    gbuf_world_numel_unpadded = (
+                        self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
+                    )
+                    assert gbuf_world_numel_unpadded <= gbuf_world_numel
+
+                    # Contiguous local shards (received from DP rank 0).
+                    recv_tensor = torch.empty(
+                        (gbuf_local_numel,), dtype=torch.float32, device="cpu"
+                    )
+
+                    # Scatter tensor list.
+                    if data_parallel_rank == 0:
+                        world_tensors = state_dict[gbuf_idx][dtype][key]
+
+                        start = offset_in_world_tensors
+                        end = offset_in_world_tensors + gbuf_world_numel_unpadded
+                        assert 0 <= start < end <= world_tensors.numel()
+                        world_tensor = world_tensors[start:end]
+                        offset_in_world_tensors += gbuf_world_numel_unpadded
+
+                        # Pad world_tensor to gbuf_world_numel. Don't pad at the front, pad at the back.
+                        world_tensor = torch.nn.functional.pad(
+                            world_tensor, (0, gbuf_world_numel - gbuf_world_numel_unpadded)
+                        )
+                        assert world_tensor.numel() == gbuf_world_numel
+                        gbuf_start_idxs = list(range(0, gbuf_world_numel, gbuf_local_numel))
+                        send_tensors = [
+                            world_tensor[i: (i + gbuf_local_numel)] for i in gbuf_start_idxs
+                        ]
+                    else:
+                        send_tensors = None
+
+                    # Scatter.
+                    from mindspeed.utils import _scatter_hccl
+                    _scatter_hccl(
+                        recv_tensor,
+                        send_tensors,
+                        data_parallel_global_ranks[0],
+                        data_parallel_group)
+
+                    # Copy local contiguous shards to param/optim shards.
+                    for model_param, param_range_map in gbuf_range_map["param_map"].items():
+
+                        # Main param & optimizer states.
+                        group_index, group_order = self.model_param_group_index_map[model_param]
+                        main_param = self.optimizer.param_groups[group_index]["params"][
+                            group_order
+                        ]
+                        if key == "param":
+                            tensor_to_copy_into = main_param
+                        else:
+                            optim_state = self.optimizer.state[main_param]
+                            tensor_to_copy_into = optim_state[key]
+
+                        # Copy states into contiguous shard.
+                        gbuf_local_start = param_range_map["gbuf_local"].start
+                        gbuf_local_end = param_range_map["gbuf_local"].end
+                        tensor_to_copy_into.data.copy_(
+                            recv_tensor[gbuf_local_start:gbuf_local_end]
+                        )

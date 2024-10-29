@@ -33,7 +33,6 @@ from mindspeed.core.performance.auto_pipeline_perf.schedulepipeline_solver impor
 from mindspeed.core.memory.auto_pipeline.autopipeline_apply import apply_autopipeline
 from mindspeed.core.memory.auto_pipeline.autopipeline_solver import solve_autopipeline, broadcast_policy_in_ranks, destroy_global_vars
 from mindspeed.arguments import parse_args_wrapper
-from mindspeed.core.parallel_state import get_global_process_group_gloo
 
 POLICY = None
 OPTIMIZED_MBS_LIST = None
@@ -326,19 +325,18 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
 
         # select all nodes info
         counts_0, counts_1 = get_count()
-        counts_0_tensor = torch.tensor([counts_0])
-        counts_1_tensor = torch.tensor([counts_1])
+        counts_0_tensor = torch.tensor([counts_0], device="npu")
+        counts_1_tensor = torch.tensor([counts_1], device="npu")
 
-        gloo_group = get_global_process_group_gloo()
         torch.distributed.all_reduce(
-            counts_0_tensor, op=torch.distributed.ReduceOp.SUM, group=gloo_group
+            counts_0_tensor, op=torch.distributed.ReduceOp.SUM
         )
         torch.distributed.all_reduce(
-            counts_1_tensor, op=torch.distributed.ReduceOp.SUM, group=gloo_group
+            counts_1_tensor, op=torch.distributed.ReduceOp.SUM
         )
 
-        mfu = counts_0_tensor.item() / (10 ** 12 * elapsed_time_per_iteration * args.world_size)
-        hfu = counts_1_tensor.item() / (10 ** 12 * elapsed_time_per_iteration * args.world_size)
+        mfu = counts_0_tensor.cpu().item() / (10 ** 12 * elapsed_time_per_iteration * args.world_size)
+        hfu = counts_1_tensor.cpu().item() / (10 ** 12 * elapsed_time_per_iteration * args.world_size)
 
         if args.log_timers_to_tensorboard:
             if writer:
