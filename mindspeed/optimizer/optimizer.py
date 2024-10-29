@@ -115,8 +115,12 @@ def reuse_fp32_param_init_wrapper(init_func):
                 self.float16_float32_groups.append(float16_float32_params_this_group)
                 self.int32_float32_groups.append(int32_float32_params_this_group)
             self._copy_model_params_to_main_params = _copy_model_params_to_main_params
-            self.fp16_tensor_convert_to_fp32_tensor = types.MethodType(fp16_tensor_convert_to_fp32_tensor, self)
-            self.fp32_tensor_convert_to_fp16_tensor = types.MethodType(fp32_tensor_convert_to_fp16_tensor, self)    
+            if args.npu_deterministic:
+                self.fp16_tensor_convert_to_fp32_tensor = types.MethodType(fp16_tensor_convert_to_fp32_tensor_deterministic, self)
+                self.fp32_tensor_convert_to_fp16_tensor = types.MethodType(fp32_tensor_convert_to_fp16_tensor_deterministic, self)    
+            else:
+                self.fp16_tensor_convert_to_fp32_tensor = types.MethodType(fp16_tensor_convert_to_fp32_tensor, self)
+                self.fp32_tensor_convert_to_fp16_tensor = types.MethodType(fp32_tensor_convert_to_fp16_tensor, self)    
     return reuse_fp32_param_init
 
 
@@ -195,3 +199,48 @@ def bf16_tensors_to_fp32_tensors(int32_tensors, bf16_fp32_tensors):
             return
         bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(2, -1).transpose(1, 0).reshape(-1).contiguous())
         int32_tensor.sub_(32768)
+
+
+def fp16_tensor_convert_to_fp32_tensor_deterministic(self):
+    for int32_float32_group, float16_param_group, fp32_from_float16_group in zip(
+        self.int32_float32_groups, self.float16_float32_groups, self.fp32_from_float16_groups):
+        bf16_tensors_to_fp32_tensors_deterministic(int32_float32_group, float16_param_group, fp32_from_float16_group, self.optimizer)
+
+
+def fp32_tensor_convert_to_fp16_tensor_deterministic(self):
+    for int32_float32_param_group, float16_param_group, fp32_from_float16_group in zip(
+        self.int32_float32_groups, self.float16_float32_groups, self.fp32_from_float16_groups):
+        fp32_tensors_to_bf16_tensors_deterministic(int32_float32_param_group, float16_param_group, fp32_from_float16_group, self.optimizer)
+
+
+def fp32_tensors_to_bf16_tensors_deterministic(int32_tensors, bf16_fp32_tensors, fp32_tensors, optimizer):
+    for int32_tensor, bf16_fp32_tensor, fp32_tensor in zip(int32_tensors, bf16_fp32_tensors, fp32_tensors):
+        if bf16_fp32_tensor.numel() == 0:
+            return  
+        odd_even_tensor = ((int32_tensor & 131071) == 32768).int()
+        int32_tensor.add_(32768)
+        optimizer_exp_avg_save_sign(optimizer, fp32_tensor, int32_tensor, odd_even_tensor)
+        bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(-1, 2).transpose(1, 0).reshape(-1).contiguous())
+
+
+def bf16_tensors_to_fp32_tensors_deterministic(int32_tensors, bf16_fp32_tensors, fp32_tensors, optimizer):
+    for int32_tensor, bf16_fp32_tensor, fp32_tensor in zip(int32_tensors, bf16_fp32_tensors, fp32_tensors):
+        if bf16_fp32_tensor.numel() == 0:
+            return
+        bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(2, -1).transpose(1, 0).reshape(-1).contiguous())
+        optimizer_exp_avg_load_sign(optimizer, fp32_tensor, int32_tensor)
+        int32_tensor.sub_(32768)
+
+
+def optimizer_exp_avg_save_sign(optimizer, fp32_param, int32_tensor, odd_even_tensor):
+    if "exp_avg_sq" in optimizer.state[fp32_param]:
+        int32_tensor.sub_(odd_even_tensor)
+        sign_tensor = torch.sign(odd_even_tensor - 0.5).reshape(optimizer.state[fp32_param]["exp_avg_sq"].shape)
+        optimizer.state[fp32_param]["exp_avg_sq"].mul_(sign_tensor)
+
+
+def optimizer_exp_avg_load_sign(optimizer, fp32_param, int32_tensor):
+    if "exp_avg_sq" in optimizer.state[fp32_param]:
+        odd_even_tensor = (torch.sign(optimizer.state[fp32_param]["exp_avg_sq"]) > 0).reshape(-1)
+        optimizer.state[fp32_param]["exp_avg_sq"].abs_()
+        int32_tensor.add_(odd_even_tensor)
