@@ -4,7 +4,7 @@ npu_gmm(x, weight, *, bias=None, group_list=None, group_type=0)
 
 npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0)
 
-[npu_gmm_v2]相较于[npu_gmm]接口, group_list的含义不同, 在npu_gmm接口中group_list中数值为分组轴大小的cumsum结果（累积和），npu_gmm_v2接口中group_list中数值为分组轴上每组大小。
+[npu_gmm_v2]相较于[npu_gmm]接口, group_list的含义不同, 在npu_gmm接口中group_list中数值为分组轴大小的cumsum结果（累积和），npu_gmm_v2接口中group_list中数值为分组轴上每组大小。两个接口的算子性能无差异，使用时可以根据整网中group_list的情况决定，如果前序算子输出的group_list为各group的大小，建议使用npu_gmm_v2接口，因为此时使用npu_gmm接口需要先调用torch.cumsum将group_list转为累积和的形式，带来额外开销。
 
 ## 前向接口：
 输入：
