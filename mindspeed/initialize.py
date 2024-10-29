@@ -63,3 +63,45 @@ def deter_comp_wrapper(fn):
         extend_seed_all(seed_)
         print_rank_0("deterministic computing is applied for npu.")
     return wrapper
+
+
+def _initialize_distributed_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        device_count = torch.cuda.device_count()
+        device = get_args().rank % device_count
+        torch.cuda.set_device(device)
+        from mindio_ttp.adaptor import tft_init_controller_processor
+        tft_init_controller_processor(enable_tls=False, tls_option_top_path='')
+        fn(*args, **kwargs)
+
+    return wrapper
+
+
+def reboot_skip_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        from mindio_ttp.adaptor import tft_is_arf_reboot_node
+        if tft_is_arf_reboot_node():
+            return None
+        res = fn(*args, **kwargs)
+        return res
+
+    return wrapper
+
+
+def new_group_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        backend = kwargs.get('backend', None)
+        from mindio_ttp.adaptor import tft_is_arf_reboot_node
+        if tft_is_arf_reboot_node() and isinstance(backend, str) and 'gloo' in backend:
+            return None
+
+        if torch.distributed.distributed_c10d._is_barrier_after_init():
+            kwargs['use_local_synchronization'] = True
+
+        res = fn(*args, **kwargs)
+        return res
+
+    return wrapper

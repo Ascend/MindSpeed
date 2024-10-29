@@ -174,10 +174,6 @@ def train_uce(forward_step_func, model, optimizer, opt_param_scheduler,
         args.consumed_train_samples += batch_size
         num_floating_point_operations_so_far += num_floating_point_operations(args, batch_size)
 
-        if args.enable_high_availability:
-            args.iteration = iteration
-            args.num_floating_point_operations_so_far = num_floating_point_operations_so_far
-
         # Logging.
         loss_scale = optimizer.get_loss_scale().item()
         params_norm = None
@@ -200,6 +196,10 @@ def train_uce(forward_step_func, model, optimizer, opt_param_scheduler,
                                           iteration, loss_scale,
                                           report_memory_flag, skipped_iter,
                                           grad_norm, params_norm, num_zeros_in_grad)
+
+        if args.enable_high_availability:
+            args.num_floating_point_operations_so_far = num_floating_point_operations_so_far
+            args.iteration = iteration
 
         # Autoresume
         if args.adlr_autoresume and \
@@ -309,7 +309,6 @@ def train_uce(forward_step_func, model, optimizer, opt_param_scheduler,
 def build_train_args(*input_args):
     args, timers, train_valid_test_dataset_provider, model_provider, model_type, forward_step_func, process_non_loss_data_func = input_args
 
-    from megatron.training.training import setup_model_and_optimizer
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
@@ -410,9 +409,7 @@ def pretrain(train_valid_test_dataset_provider,
         iteration = 0
         if args.do_train and args.train_iters > 0:
             if args.enable_high_availability:
-                from mindio_ttp.adaptor import tft_init_controller_processor, tft_register_processor, tft_train
-
-                tft_init_controller_processor(enable_tls=False, tls_option_top_path='')
+                from mindio_ttp.adaptor import tft_register_processor, tft_train
                 tft_register_processor(train_valid_test_dataset_provider, model_provider, model_type)
                 iteration, num_floating_point_operations_so_far = tft_train(train_args, test_data_iterator_list)
             else:

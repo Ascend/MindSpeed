@@ -518,3 +518,17 @@ def save_checkpoint_and_time_decorator(save_checkpoint_and_time):
         if global_args.use_distributed_optimizer and global_args.overlap_param_gather:
             optimizer.enable_pre_hook()
     return wrapper
+
+
+def build_train_valid_test_data_iterators_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        from mindio_ttp.adaptor import tft_is_arf_reboot_node
+        if tft_is_arf_reboot_node():
+            res = fn(*args, **kwargs)
+            get_args().do_train = True
+        else:
+            res = fn(*args, **kwargs)
+        return res
+
+    return wrapper

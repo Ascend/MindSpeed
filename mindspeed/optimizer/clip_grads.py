@@ -9,6 +9,7 @@ import amp_C
 import torch
 from apex.multi_tensor_apply import multi_tensor_applier
 from torch import inf
+from megatron.training import get_args
 
 
 def clip_grad_norm_fp32_uce(
@@ -96,9 +97,9 @@ def clip_grad_norm_fp32_uce(
             total_norm, op=torch.distributed.ReduceOp.SUM, group=model_parallel_group
         )
 
-        from mindio_ttp.adaptor import ttp_get_replica_dp_num
-
-        total_norm = total_norm / ttp_get_replica_dp_num()
+        if get_args().use_distributed_optimizer:
+            from mindio_ttp.adaptor import ttp_get_replica_dp_num
+            total_norm = total_norm / ttp_get_replica_dp_num()
 
         total_norm = total_norm.item() ** (1.0 / norm_type)
 

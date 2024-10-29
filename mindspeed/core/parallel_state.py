@@ -208,17 +208,10 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         print_rank_0(f"all_tensor_and_expert_group_ranks {all_tensor_and_expert_group_ranks}")
         print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
 
-        global _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM
-        if _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM is not None:
-            raise AttributeError('Pipeline parallel group for new stream is already initialized')      
-        num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
-        for i in range(num_pipeline_model_parallel_groups):
-            ranks = range(i, world_size, num_pipeline_model_parallel_groups)
-            group = torch.distributed.new_group(
-                ranks, pg_options=megatron.core.parallel_state.get_nccl_options('pp', nccl_comm_cfgs)
-            )
-            if rank in ranks:
-                _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
+        initialize_pipeline_new_stream_group(
+            nccl_comm_cfgs=nccl_comm_cfgs,
+            pipeline_model_parallel_size=pipeline_model_parallel_size,
+        )
 
         from megatron.training import get_args
         args = get_args()
@@ -230,9 +223,9 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             nd1_dim1_size=nd1_dim1_sz,
             nd2_dim1_size=nd2_dim1_sz,
         )
+
         if args.enable_high_availability:
             from mindio_ttp.adaptor import ttp_initialize_replica_dp_group
-
             ttp_initialize_replica_dp_group(
                 pipeline_model_parallel_size,
                 tensor_model_parallel_size,
@@ -240,6 +233,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 expert_model_parallel_size,
                 world_size
             )
+
         if args.tp_2d:
             tp_y_cp_group = TensorParallelYUnionCP(
                 parallel_cfg=SimpleParallelCfg(
@@ -1277,4 +1271,23 @@ def initialize_ndmm_parallel_group(
             )
             if rank in ranks:
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2 = group
+
+
+def initialize_pipeline_new_stream_group(
+    nccl_comm_cfgs: dict,
+    pipeline_model_parallel_size: int = 1,
+) -> None:
+    rank = torch.distributed.get_rank()
+    world_size = torch.distributed.get_world_size()
+    global _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM
+    if _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM is not None:
+        raise AttributeError('Pipeline parallel group for new stream is already initialized')
+    num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
+    for i in range(num_pipeline_model_parallel_groups):
+        ranks = range(i, world_size, num_pipeline_model_parallel_groups)
+        group = torch.distributed.new_group(
+            ranks, pg_options=megatron.core.parallel_state.get_nccl_options('pp', nccl_comm_cfgs)
+        )
+        if rank in ranks:
+            _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
 

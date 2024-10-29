@@ -696,6 +696,8 @@ def high_availability_adaptation(aspm, args):
         from .optimizer.clip_grads import clip_grad_norm_fp32_uce
         from .optimizer.distrib_optimizer import distributed_optimizer_uce_init
         from .training import train_uce
+        from .initialize import _initialize_distributed_wrapper
+        aspm.register_patch('megatron.training.initialize._initialize_distributed', _initialize_distributed_wrapper)
         aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
                             distributed_data_parallel_init_uce)
         aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.Bucket.start_grad_sync',
@@ -705,6 +707,13 @@ def high_availability_adaptation(aspm, args):
         aspm.register_patch('megatron.core.optimizer.clip_grad_norm_fp32', clip_grad_norm_fp32_uce)
         aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__', distributed_optimizer_uce_init)
         aspm.register_patch('megatron.training.training.train', train_uce)
+    if args.enable_worker_reboot:
+        from .core.training import build_train_valid_test_data_iterators_wrapper
+        from .initialize import reboot_skip_wrapper, new_group_wrapper
+        aspm.register_patch('megatron.training.training.build_train_valid_test_data_iterators', build_train_valid_test_data_iterators_wrapper)
+        for communication in ['barrier', 'all_reduce', '_all_gather_base', 'broadcast', 'all_gather_into_tensor']:
+            aspm.register_patch('torch.distributed.distributed_c10d.' + communication, reboot_skip_wrapper)
+        aspm.register_patch('torch.distributed.distributed_c10d.new_group', new_group_wrapper)
 
 
 def tensor_2d_adaptation(aspm, args):

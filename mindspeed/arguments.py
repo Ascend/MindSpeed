@@ -97,6 +97,10 @@ def _add_high_availability_args(parser):
     group.add_argument("--enable-hbmfault-repair", 
                        action='store_true',
                        help="high availability feature, enable hbmfault repair")
+
+    group.add_argument("--enable-worker-reboot",
+                       action='store_true',
+                       help="high availability feature, enable ARF")
     return parser
 
 
@@ -450,14 +454,24 @@ def validate_args_wrapper(validate_args):
                 flag_overlap_p2p_comm = True
 
         args = validate_args(args, defaults)
-        if args.enable_optimizer_state_local_copy and not args.enable_high_availability:
-            raise AssertionError('switch of the high availability feature is unenabled.')
-        if args.enable_hbmfault_repair and not args.enable_high_availability:
-            raise AssertionError('switch of the high availability feature is unsupported')
-        if args.enable_high_availability and args.enable_zero3:
-            raise AssertionError('zero3 and enable_high_availability do not support enabling together.')
-        if args.enable_high_availability and args.reuse_fp32_param:
-            raise AssertionError('reuse_fp32_param and enable_high_availability do not support enabling together.')
+        # high availability feature
+        if args.enable_high_availability:
+            try:
+                import mindio_ttp
+            except ModuleNotFoundError as e:
+                raise AssertionError(f"High availability feature requires the mindio_ttp package but is not installed. Exiting...") from e
+            if args.enable_zero3:
+                raise AssertionError('zero3 and enable_high_availability do not support enabling together.')
+            if args.reuse_fp32_param:
+                raise AssertionError('reuse_fp32_param and enable_high_availability do not support enabling together.')
+        else:
+            if args.enable_optimizer_state_local_copy:
+                raise AssertionError('switch of the local copy is unsupported, please enable high availability feature first.')
+            if args.enable_hbmfault_repair:
+                raise AssertionError('switch of the enable hbmfault repair is unsupported, please enable high availability feature first.')
+            if args.enable_worker_reboot:
+                raise AssertionError('switch of the enable worker reboot is unsupported, please enable high availability feature first.')
+
         if args.enable_zero3:
             print("[WARNING] zero3 currently does not support model save and load")
             if args.use_ascend_mc2 or args.reuse_fp32_param or args.recompute_granularity is not None or args.use_pipe_experts:
