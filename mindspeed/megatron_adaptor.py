@@ -147,6 +147,26 @@ def torch_adaptation(aspm):
     aspm.register_patch('torch.distributed._reduce_scatter_base', reduce_scatter_tensor)
 
 
+def communication_adaptation(aspm, mindspeed_args):
+    if mindspeed_args.disable_gloo_group:
+        from mindspeed.optimizer.distrib_optimizer import get_parameter_state_dp_zero_hccl, \
+            load_parameter_state_from_dp_zero_hccl
+        from mindspeed.core.parallel_state import (get_data_parallel_group_gloo_replace,
+                                                   get_data_modulo_expert_parallel_group_gloo_replace,
+                                                  new_group_wrapper)
+
+        aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.get_parameter_state_dp_zero',
+                            get_parameter_state_dp_zero_hccl)
+        aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.load_parameter_state_from_dp_zero',
+                            load_parameter_state_from_dp_zero_hccl)
+
+        aspm.register_patch('megatron.core.parallel_state.get_data_parallel_group_gloo',
+                            get_data_parallel_group_gloo_replace)
+        aspm.register_patch('megatron.core.parallel_state.get_data_modulo_expert_parallel_group_gloo',
+                            get_data_modulo_expert_parallel_group_gloo_replace)
+        aspm.register_patch('torch.distributed.new_group', new_group_wrapper)
+
+
 def mcore_models_adaptation_l0(aspm):
     from .core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec_wrapper
     # Replace FusedLayerNorm with MindSpeed's PTNorm operator in get_gpt-layer
@@ -761,6 +781,7 @@ def adaptation_l0(aspm, args):
     megatron_training_adaptation_l0(aspm, args)
     # context parallel(ring attention) requires mcore parallel state patch
     mcore_parallel_state_adaptation(aspm)
+    communication_adaptation(aspm, args)
 
 
 def adaptation_l1(aspm, mindspeed_args):

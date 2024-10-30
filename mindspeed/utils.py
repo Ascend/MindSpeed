@@ -1,15 +1,21 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
+import array
+import hashlib
+import logging
+from typing import List
 import functools
 import random
 import os
+import math
 
 import torch
 import torch_npu
 import numpy as np
 from megatron.core import mpu
 from megatron.training import get_args
+
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
                                              get_context_parallel_for_hybrid_ulysses_rank,
                                              get_context_parallel_for_hybrid_ring_world_size,
@@ -22,6 +28,7 @@ from mindspeed.core.context_parallel.utils import (set_scheduling_info,
                                                    generate_adaptive_cp_mask_list_by_user,
                                                    generate_adaptive_cp_grid_mask_by_user)
 from mindspeed.model.transformer import set_attention_mask, get_attention_mask
+
 
 _ACTUAL_SEQ_LEN = None
 _POSITION_IDS = None
@@ -500,3 +507,82 @@ def extend_seed_all(seed=1234):
     torch.use_deterministic_algorithms(True)
     torch_npu.npu.manual_seed_all(seed)
     torch_npu.npu.manual_seed(seed)
+
+
+def _gather_hccl(send_tensor, recv_tensors, data_parallel_group):
+    data_parallel_world_size = data_parallel_group.size()
+    data_parallel_rank = torch.distributed.get_rank(data_parallel_group)
+    global_data_parallel_rank = torch.distributed.get_global_rank(data_parallel_group, data_parallel_rank)
+
+    dim1, = send_tensor.shape
+    # hccl_slice_szie B parameters, occupying hccl_slice_szie * (dp + 1)B of NPU memory.
+    stride = get_args().hccl_slice_size
+    nums_gather = math.ceil(dim1 / stride)
+
+    for num in range(nums_gather):
+        start_index = num * stride
+        end_index = (num + 1) * stride
+        end_index = min(end_index, dim1)
+
+        send_part = send_tensor[start_index:end_index].npu()
+        recv_part = [
+            torch.empty(end_index - start_index, dtype=send_tensor.dtype, device="npu")
+            for _ in range(data_parallel_world_size)
+        ]
+
+        torch.distributed.all_gather(
+            recv_part, send_part, group=data_parallel_group
+        )
+
+        recv_part_cpu = [x.cpu() for x in recv_part]
+
+        if data_parallel_rank == 0:
+            for i in range(data_parallel_world_size):
+                recv_tensors[i][start_index:end_index].copy_(
+                    recv_part_cpu[i]
+                )
+
+        send_part.untyped_storage().resize_(0)
+        for recv in recv_part:
+            recv.untyped_storage().resize_(0)
+
+
+def _scatter_hccl(recv_tensor, send_tensors, source_rank, data_parallel_group):
+    data_parallel_rank = torch.distributed.get_rank(data_parallel_group)
+    global_data_parallel_rank = torch.distributed.get_global_rank(data_parallel_group, data_parallel_rank)
+
+    dim1, = recv_tensor.shape
+    # hccl_slice_szie B parameters, occupying hccl_slice_szie * (dp + 1)B of NPU memory.
+    stride = get_args().hccl_slice_size
+    
+    nums_scatter = math.ceil(dim1 / stride)
+
+    for num in range(nums_scatter):
+        start_index = num * stride
+        end_index = (num + 1) * stride
+        end_index = min(end_index, dim1)
+
+        if data_parallel_rank == 0:
+            send_part = [
+                x[start_index:end_index].npu()
+                for x in send_tensors
+            ]
+        else:
+            send_part = None
+        recv_part = torch.empty((end_index - start_index,), dtype=recv_tensor.dtype, device="npu")
+
+        torch.distributed.scatter(
+            recv_part,
+            send_part,
+            source_rank,
+            data_parallel_group
+        )
+
+        recv_part_cpu = recv_part.cpu()
+
+        recv_part.untyped_storage().resize_(0)
+        if data_parallel_rank == 0:
+            for send in send_part:
+                send.untyped_storage().resize_(0)
+
+        recv_tensor[start_index:end_index] = recv_part_cpu

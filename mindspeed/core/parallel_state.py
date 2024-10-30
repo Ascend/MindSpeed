@@ -40,7 +40,6 @@ _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM1 = None
 _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM2 = None
 _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM1 = None
 _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM2 = None
-_GROBAL_PROCESS_GROUP_GLOO = None
 _TP_X_SD_RCV_OVERLAP_GROUP = None
 _TP_Y_SD_RCV_OVERLAP_GROUP = None
 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM1_RANK = None
@@ -65,11 +64,6 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         from megatron.training.utils import print_rank_0
         from megatron.training import get_args
         args = get_args()
-
-        if args.op_cal_tflops:
-            global _GROBAL_PROCESS_GROUP_GLOO
-            ranks = range(0, args.world_size, 1)
-            _GROBAL_PROCESS_GROUP_GLOO = torch.distributed.new_group(ranks, backend='gloo')
 
         if virtual_pipeline_model_parallel_size is not None:
             megatron.core.parallel_state._VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
@@ -251,11 +245,6 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             )
             print(f'tp_y_cp_group.global_ranks={tp_y_cp_group.global_ranks} for rank {rank}')
     return wrapper
-
-
-def get_global_process_group_gloo():
-    global _GROBAL_PROCESS_GROUP_GLOO
-    return _GROBAL_PROCESS_GROUP_GLOO
 
 
 def get_ring_group_for_intra_window():
@@ -589,9 +578,6 @@ def destroy_model_parallel_wrapper(destroy_model_parallel):
         _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM1 = None
         _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM2 = None
 
-        global _GROBAL_PROCESS_GROUP_GLOO
-        _GROBAL_PROCESS_GROUP_GLOO = None
-
     return wrapper
 
 
@@ -705,6 +691,8 @@ def initialize_model_parallel(
     """
     from datetime import timedelta
     import megatron.core.parallel_state as ps
+    from megatron.training import get_args
+    args = get_args()
 
     # Get world size and rank. Ensure some consistencies.
     assert torch.distributed.is_initialized()
@@ -1271,6 +1259,40 @@ def initialize_ndmm_parallel_group(
             )
             if rank in ranks:
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2 = group
+
+
+def get_data_parallel_group_gloo_replace(with_context_parallel=False):
+    """Get the data parallel group-gloo the caller rank belongs to."""
+    import megatron.core.parallel_state as ps
+
+    if with_context_parallel:
+        assert (
+            ps._DATA_PARALLEL_GROUP_WITH_CP_GLOO is None
+        ), 'data parallel group-gloo with context parallel combined should be None when args.disable_gloo_group is True'
+        return ps._DATA_PARALLEL_GROUP_WITH_CP
+    else:
+        assert ps._DATA_PARALLEL_GROUP_GLOO is None, 'data parallel group-gloo should be None when args.disable_gloo_group is True'
+        return ps._DATA_PARALLEL_GROUP
+
+
+def get_data_modulo_expert_parallel_group_gloo_replace():
+    import megatron.core.parallel_state as ps
+
+    assert (
+        ps._DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO is None
+    ), 'data modulo expert parallel group-gloo should be None when args.disable_gloo_group is True'
+    return ps._DATA_MODULO_EXPERT_PARALLEL_GROUP
+
+
+def new_group_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        from megatron.training import get_args
+        if get_args().disable_gloo_group:
+            if "backend" in kwargs and kwargs["backend"] == "gloo":
+                return None
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 def initialize_pipeline_new_stream_group(
