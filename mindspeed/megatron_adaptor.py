@@ -406,7 +406,7 @@ def mcore_tensor_parallel_adaptation_l1(aspm):
                         checkpoint_backward_wrapper)
 
 
-def mcore_tensor_parallel_adaptation(aspm):
+def mcore_tensor_parallel_adaptation(aspm, args):
     from .core.tensor_parallel.random import checkpoint_wrapper
     from .core.tensor_parallel.random import checkpoint_function_backward
     from .core.tensor_parallel.layers import vocab_parallel_embedding_forward
@@ -423,6 +423,12 @@ def mcore_tensor_parallel_adaptation(aspm):
     aspm.register_patch('megatron.core.tensor_parallel.layers.ColumnParallelLinear.__init__',
                         parallel_linear_init_wrapper)
     aspm.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
+    if args.swap_attention or args.recompute_in_bubble or args.adaptive_recompute_device_swap:
+        from .core.tensor_parallel.layers import linear_forward_main_grad_wrapper, linear_backward_main_grad_wrapper
+        aspm.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
+                            linear_forward_main_grad_wrapper)
+        aspm.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
+                            linear_backward_main_grad_wrapper)
 
 
 def megatron_legacy_adaptation(aspm):
@@ -792,7 +798,7 @@ def adaptation_l2(aspm, mindspeed_args):
     mcore_optimizer_adapation(aspm)
     mcore_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_multiparam_pipeline_parallel_adaptation(aspm, mindspeed_args)
-    mcore_tensor_parallel_adaptation(aspm)
+    mcore_tensor_parallel_adaptation(aspm, mindspeed_args)
     mcore_transformer_adaptation(aspm)
 
     # megatron legacy
