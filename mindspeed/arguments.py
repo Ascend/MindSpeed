@@ -318,6 +318,9 @@ def _add_training_args(parser):
                        help='use for cal mfu and hfu')
     group.add_argument('--npu-deterministic', action='store_true', default=False,
                        help='enable deterministic computing for npu')    
+    group.add_argument('--optimizer-selection', type=str, default='fused_adamw',
+                       choices=['fused_adamw', 'fused_torch_adamw'],
+                       help='Select from the former fused AdamW optimizer and Torch fused AdamW optimizer')
     return parser
 
 
@@ -424,6 +427,10 @@ def validate_args_wrapper(validate_args):
         if args.overlap_param_gather and not args.use_mcore_models:
             args.use_mcore_models = True
             overlap_param_gather_without_mcore_models = True
+
+        #validate optimizer
+        if args.optimizer_selection == 'fused_adamw': 
+            print("[WARNING] The default AdamW optimizer is no longer recommended for new edition, Use the torch fused AdamW optimizer by argument --optimizer-selection fused_torch_adamw")
 
         # validate mla
         if args.multi_head_latent_attention:

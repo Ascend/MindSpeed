@@ -125,10 +125,8 @@ def te_adaptation(aspm):
 
 
 def apex_adaptation(aspm):
-    from .optimizer.adamw import AdamW
     from .core.fusions.fused_layer_norm import fused_layer_norm_affine
     from .ops.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
-    aspm.register_patch('apex.optimizers.FusedAdam', AdamW, create_dummy=True)
     aspm.register_patch('amp_C.multi_tensor_l2norm', multi_tensor_l2norm, create_dummy=True)
     aspm.register_patch('amp_C.multi_tensor_scale', multi_tensor_scale, create_dummy=True)
     aspm.register_patch('fused_layer_norm_cuda', create_dummy=True)
@@ -762,6 +760,14 @@ def tensor_2d_adaptation(aspm, args):
                             transformer_block_forward_wrapper)
 
 
+def optimizer_selection(aspm, mindspeed_args):
+    if mindspeed_args.optimizer_selection == 'fused_torch_adamw':
+        from .optimizer.adamw import FusedTorchAdamW as AdamW
+    elif mindspeed_args.optimizer_selection == 'fused_adamw':
+        from .optimizer.adamw import AdamW
+    aspm.register_patch('apex.optimizers.FusedAdam', AdamW, create_dummy=True)
+
+
 def adaptation_l0(aspm, args):
     """
     The minimum patch set for megatron to adapt to NPU
@@ -827,6 +833,7 @@ def exe_adaptation():
 
     if mindspeed_args.optimization_level >= 0:
         # The minimum patch set for megatron to adapt to NPU
+        optimizer_selection(aspm, mindspeed_args)
         adaptation_l0(aspm, mindspeed_args)
 
     if mindspeed_args.optimization_level >= 1:
