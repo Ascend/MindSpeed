@@ -32,20 +32,26 @@ def get_forward_backward_func_wrapper(get_forward_backward_func):
     @wraps(get_forward_backward_func)
     def wrapper(*args, **kwargs):
         arguments = get_args()
+        forward_backward_func = get_forward_backward_func(*args, **kwargs)
+
         if arguments.optimize_send_recv_comm and arguments.num_layers_per_virtual_pipeline_stage is None:
-            return flexible_schedules.forward_backward_pipelining_without_interleaving
+            forward_backward_func = flexible_schedules.forward_backward_pipelining_without_interleaving
 
         if arguments.automated_pipeline_perf and arguments.pp_schedule_list:
-            return flexible_schedules.forward_backward_pipelining_without_interleaving
+            forward_backward_func = flexible_schedules.forward_backward_pipelining_without_interleaving
 
         if arguments.recompute_in_bubble or arguments.recompute_in_advance:
-            return forward_backward_ripipe_pipelining
+            forward_backward_func = forward_backward_ripipe_pipelining
 
         if parallel_state.get_pipeline_model_parallel_world_size() > 1 \
             and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None \
             and arguments.use_nanopipe:
-            return flexible_schedules.forward_backward_pipelining_with_interleaving_nano_pipe
-        return get_forward_backward_func(*args, **kwargs)
+            forward_backward_func = flexible_schedules.forward_backward_pipelining_with_interleaving_nano_pipe
+
+        if arguments.enable_high_availability:
+            forward_backward_func = forward_backward_func_wrapper(forward_backward_func)
+
+        return forward_backward_func
     return wrapper
 
 
@@ -144,4 +150,15 @@ def get_tensor_shapes_wrapper(get_tensor_shapes):
                              for tensor_shape in tensor_shapes]
  
         return tensor_shapes
+    return wrapper
+
+
+def forward_backward_func_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        losses_reduced = fn(*args, **kwargs)
+        if get_args().enable_high_availability:
+            from mindio_ttp.adaptor import tft_set_losses_reduced
+            tft_set_losses_reduced(losses_reduced)
+        return losses_reduced
     return wrapper
