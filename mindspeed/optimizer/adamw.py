@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple, Union
 import torch
 import torch_npu
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
+from torch.optim.adamw import AdamW as TorchAdamW
 
 
 def adamw(params: List[Tensor],
@@ -46,6 +47,35 @@ def adamw(params: List[Tensor],
             maximize,
             out=(param.data, exp_avg, exp_avg_sq)
         )
+
+
+class FusedTorchAdamW(TorchAdamW):
+    def __init__(
+        self,
+        params,
+        lr: Union[float, Tensor] = 1e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+        amsgrad: bool = False,
+        *,
+        maximize: bool = False,
+        foreach: Optional[bool] = None,
+        capturable: bool = False,
+        differentiable: bool = False,
+        fused: Optional[bool] = None,
+    ):
+        super().__init__(params, 
+                lr=lr,
+                betas=betas,
+                eps=eps,
+                weight_decay=weight_decay,
+                amsgrad=amsgrad,
+                foreach=False,
+                maximize=maximize,
+                capturable=False,
+                differentiable=False,
+                fused=True,)
 
 
 class AdamW(Optimizer):
