@@ -207,7 +207,7 @@ def linear_backward_main_grad_wrapper(backward_func):
         for key in dir(ctx):
             if key == 'saved_tensors':
                 setattr(new_ctx, 'saved_tensors', (inputs, ctx.weight))
-            elif key.startwith('__') or key == 'saved_variables':
+            elif key.startswith('__') or key == 'saved_variables':
                 continue
             else:
                 try:
