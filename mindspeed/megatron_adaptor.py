@@ -292,22 +292,24 @@ def mcore_fusions_adaptation(aspm, args):
         aspm.register_patch('megatron.training.initialize._set_random_seed', deter_comp_wrapper)
 
 
-def mcore_optimizer_adapation(aspm):
-    from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
-    from .optimizer.optimizer import (mixed_precision_optimizer_step,
-                                      reuse_fp32_param_init_wrapper, optimizer_config_init_wrapper)
+def mcore_optimizer_adapation(aspm, args):
     from .core.distributed.param_and_grad_buffer import reuse_fp32_param_param_and_grad_buffer_init_wrapper
-    # optim relative.
-    aspm.register_patch('megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step',
-                        mixed_precision_optimizer_step)
-    aspm.register_patch('megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__',
-                        reuse_fp32_param_init_wrapper)
-    aspm.register_patch('megatron.core.optimizer.optimizer_config.OptimizerConfig.__init__',
-                        optimizer_config_init_wrapper)
-    aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
-                        reuse_fp32_param_distrib_optimizer_init_wrapper)
+    from .optimizer.optimizer import optimizer_config_init_wrapper
     aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
                         reuse_fp32_param_param_and_grad_buffer_init_wrapper)
+    aspm.register_patch('megatron.core.optimizer.optimizer_config.OptimizerConfig.__init__',
+                        optimizer_config_init_wrapper)
+    if args.reuse_fp32_param and not args.enable_high_availability:
+        from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
+        from .optimizer.optimizer import mixed_precision_optimizer_step, reuse_fp32_param_init_wrapper
+        # optim relative.
+        aspm.register_patch('megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step',
+                            mixed_precision_optimizer_step)
+        aspm.register_patch('megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__',
+                            reuse_fp32_param_init_wrapper)
+        aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
+                            reuse_fp32_param_distrib_optimizer_init_wrapper)
+
 
 
 def mcore_pipeline_parallel_adaptation(aspm, mindspeed_args):
@@ -712,7 +714,9 @@ def high_availability_adaptation(aspm, args):
         from .core.distributed.param_and_grad_buffer import start_grad_sync_wrapper
         from .optimizer.optimizer_init import get_megatron_optimizer, get_megatron_optimizer_based_on_param_groups
         from .optimizer.clip_grads import clip_grad_norm_fp32_uce
-        from .optimizer.distrib_optimizer import distributed_optimizer_uce_init
+        from .optimizer.distrib_optimizer import (distributed_optimizer_uce_init,
+                                                  distributed_optimizer_init_for_reuse_fp32_wrapper,
+                                                  get_parameter_state_dp_zero_with_high_availability_wrapper)
         from .training import train_uce
         from .initialize import _initialize_distributed_wrapper
         aspm.register_patch('megatron.training.initialize._initialize_distributed', _initialize_distributed_wrapper)
@@ -725,6 +729,26 @@ def high_availability_adaptation(aspm, args):
         aspm.register_patch('megatron.core.optimizer.clip_grad_norm_fp32', clip_grad_norm_fp32_uce)
         aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__', distributed_optimizer_uce_init)
         aspm.register_patch('megatron.training.training.train', train_uce)
+        if args.reuse_fp32_param:
+            from .optimizer.distrib_optimizer import (reuse_fp32_param_distrib_optimizer_init_wrapper,
+                                                      distributed_optimizer_init_for_reuse_fp32_wrapper,
+                                                      get_parameter_state_dp_zero_with_high_availability_wrapper)
+            from .optimizer.optimizer import (mixed_precision_optimizer_step, reuse_fp32_param_init_wrapper,
+                                              optimizer_config_init_wrapper)
+            from .core.distributed.param_and_grad_buffer import reuse_fp32_param_param_and_grad_buffer_init_wrapper
+            aspm.register_patch('megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step',
+                                mixed_precision_optimizer_step)
+            aspm.register_patch('megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__',
+                                reuse_fp32_param_init_wrapper)
+            aspm.register_patch('megatron.core.optimizer.optimizer_config.OptimizerConfig.__init__',
+                                optimizer_config_init_wrapper)
+            aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
+                                reuse_fp32_param_param_and_grad_buffer_init_wrapper)
+
+            aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
+                                distributed_optimizer_init_for_reuse_fp32_wrapper)
+            aspm.register_patch('mindio_ttp.adaptor.TTPReplicaOptimizer.get_parameter_state_dp_zero_for_ttp',
+                                get_parameter_state_dp_zero_with_high_availability_wrapper)
     if args.enable_worker_reboot:
         from .core.training import build_train_valid_test_data_iterators_wrapper
         from .initialize import reboot_skip_wrapper, new_group_wrapper
@@ -807,7 +831,7 @@ def adaptation_l2(aspm, mindspeed_args):
     """
     megatron_core_adaptation(aspm)
     mcore_models_adaptation(aspm, mindspeed_args)
-    mcore_optimizer_adapation(aspm)
+    mcore_optimizer_adapation(aspm, mindspeed_args)
     mcore_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_tensor_parallel_adaptation(aspm)
     mcore_transformer_adaptation(aspm)

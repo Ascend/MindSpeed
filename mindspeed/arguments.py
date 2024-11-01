@@ -473,8 +473,6 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError(f"High availability feature requires the mindio_ttp package but is not installed. Exiting...") from e
             if args.enable_zero3:
                 raise AssertionError('zero3 and enable_high_availability do not support enabling together.')
-            if args.reuse_fp32_param:
-                raise AssertionError('reuse_fp32_param and enable_high_availability do not support enabling together.')
         else:
             if args.enable_optimizer_state_local_copy:
                 raise AssertionError('switch of the local copy is unsupported, please enable high availability feature first.')
