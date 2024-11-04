@@ -427,6 +427,8 @@ def validate_args_wrapper(validate_args):
         # alibi type [2, 3] is only support FA2
         if args.alibi_fusion_attn_type in [2, 3]:
             args.use_fusion_attn_v2 = True
+        if args.use_fusion_attn_v2:
+            args.use_flash_attn = True
 
         # for vpp assert pp should > 2
         flag_num_layers_per_virtual_pipeline_stage = None
