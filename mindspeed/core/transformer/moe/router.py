@@ -58,3 +58,37 @@ def aux_loss_load_balancing(self, logits: torch.Tensor):
     scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
     probs = self.apply_load_balancing_loss(scores, tokens_per_expert, activation=probs)
     return probs, global_indices
+
+
+def routing_tp_extend_ep(self, logits: torch.Tensor):
+    """Top-k routing function
+
+    Args:
+        logits (torch.Tensor): Logits tensor after gating.
+
+    Returns:
+        probs (torch.Tensor): the probabilities tensor after load balancing.
+        indices (torch.Tensor): the indices tensor after top-k selection.
+    """
+    logits = logits.view(-1, self.config.num_moe_experts)
+
+    # Apply Z-Loss
+    logits = self.apply_z_loss(logits)
+
+    if self.routing_type == "sinkhorn":
+        scores, indices = self.sinkhorn_load_balancing(logits)
+    elif self.routing_type == "aux_loss":
+        scores, indices = self.aux_loss_load_balancing(logits)
+    elif self.routing_type == "none":
+        # A naive top-k routing without load balancing
+        scores, indices, _ = topk_softmax_with_capacity(
+            logits,
+            self.topk,
+            capacity_factor=self.config.moe_expert_capacity_factor,
+            pad_to_capacity=self.config.moe_pad_expert_input_to_capacity,
+            drop_policy=self.config.moe_token_drop_policy,
+        )
+    else:
+        raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")
+
+    return scores, indices

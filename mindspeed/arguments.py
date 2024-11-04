@@ -133,6 +133,9 @@ def _add_moe_args(parser):
                        help="Use sinkhorn load balancing in the gate.")
 
     # megatron mcore moe arguments
+    group.add_argument("--moe-tp-extend-ep", action='store_true',
+                       help="use tp group to extend experts parallelism"
+                            "instead of sharding weight tensor of experts in tp group")
     group.add_argument("--moe-permutation-async-comm", action='store_true',
                        help="overlap moe permutation 3 all gather communications")
     group.add_argument("--moe-adaptive-recompute-activation", action='store_true',
@@ -141,6 +144,17 @@ def _add_moe_args(parser):
                        help='MoE adaptive recompute threshold factor.')
     group.add_argument("--use-fused-moe-token-permute-and-unpermute", action='store_true',
                        help="Use fused moe permute and unpermute.")
+    # moe optimization arguments
+    group.add_argument('--moe-alltoall-overlap-comm', action='store_true', default=False,
+                       help='moe_alltoall_overlap_comm')
+    group.add_argument('--moe-allgather-overlap-comm', action='store_true', default=False,
+                       help='moe_allgather_overlap_comm')
+    group.add_argument("--moe-zero-memory", type=str, default='disable',
+                       choices=['disable', 'level0', 'level1'],
+                       help="Save activation memory in moe layer.")
+    group.add_argument('--moe-zero-memory-num-layers', type=int, default=None,
+                       help='the number of layers using moe-zero-memory level1'
+                            'in each pp stage.')
     return parser
 
 
@@ -524,6 +538,27 @@ def validate_args_wrapper(validate_args):
                       "and --pipe-experts-multi-data is set to 1, "
                       "--use-pipe-experts will be turned off.")
                 args.use_pipe_experts = False
+        if args.moe_alltoall_overlap_comm and not args.moe_token_dispatcher_type == 'alltoall':
+            raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall`.')
+
+        if args.moe_allgather_overlap_comm and not args.moe_token_dispatcher_type == 'allgather':
+            raise AssertionError('`--moe-allgather-overlap-comm` only support with `--moe-token-dispatcher-type allgather`.')
+
+        if args.moe_alltoall_overlap_comm or args.moe_allgather_overlap_comm:
+            if not args.moe_permutation_async_comm:
+                raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
+            if not args.moe_grouped_gemm:
+                raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-grouped-gemm`.')
+        if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
+            raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now. only support with moe_tp_extend_ep when tp > 1.')
+        if args.moe_zero_memory_num_layers is not None:
+            num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
+            if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:
+                raise AssertionError('`--moe-zero-memory-num-layers` must be between 0 and num layers per pipeline stage')
+            if args.moe_zero_memory == "disable":
+                raise AssertionError('`--moe-zero-memory` must be enabled when using `--moe-zero-memory-num-layers`')
+        if args.moe_zero_memory != "disable" and args.moe_allgather_overlap_comm:
+            raise AssertionError('`--moe-zero-memory` do not support `--moe-allgather-overlap-comm` for now.')
         if args.moe_dynamic_padding and not args.moe_no_drop:
             raise AssertionError('`--moe-dynamic-padding` only support for `--moe-no-drop`.')
         if args.moe_permutation_async_comm and args.moe_model_type != 'megatron_moe':
