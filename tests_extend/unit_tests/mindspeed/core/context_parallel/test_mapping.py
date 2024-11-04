@@ -10,34 +10,14 @@ import torch.distributed as dist
 
 from mindspeed import megatron_adaptor
 from unit_tests.common import DistributedTest
-from mindspeed.core.context_parallel.mapping import (all_to_all,split_forward_gather_backward,
-                                                     gather_forward_split_backward)
+from mindspeed.core.context_parallel.mapping import (all_to_all, split_forward_gather_backward,
+                                                     gather_forward_split_backward, cal_split_sizes)
 from megatron.core.parallel_state import destroy_model_parallel, initialize_model_parallel
 import megatron.core.parallel_state as mpu
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
-
-
-def cal_split_sizes(dim_size, world_size):
-    """
-    Calculate the split sizes for a given dimension size and number of processes.
-
-    This function divides the dimension size into `world_size` parts, distributing any remainder
-    among the first few parts.
-
-    Args:
-        dim_size (int): The total size of the dimension to be split.
-        world_size (int): The number of processes (or parts) to split the dimension into.
-
-    Returns:
-        List[int]: A list of integers representing the size of each part after splitting.
-    """
-    split_size = dim_size // world_size
-    remainder = dim_size % world_size
-    size_list = [split_size + (1 if i < remainder else 0) for i in range(world_size)]
-    return size_list
 
 
 def seed_all(seed=1234, mode=False):
@@ -71,7 +51,7 @@ class TestUnequalSplitGather(DistributedTest):
         destroy_model_parallel()
         initialize_model_parallel(tensor_model_parallel_size=self.world_size)
         group = mpu.get_tensor_model_parallel_group()
-        input_1 = torch.randn(12, 13, 14, 128).cuda().to(dtype)
+        input_1 = torch.randn(51, 119, 234, 1152).cuda().to(dtype)
         input_2 = torch.randn(16, 32, 64, 128).cuda().to(dtype)
         gather_idx, scatter_idx = gather_scatter_idx
         self.run_all_to_all(input_1, scatter_idx, gather_idx, group=group)
@@ -94,15 +74,10 @@ class TestUnequalSplitGather(DistributedTest):
 
     def run_all_to_all(self, input_, scatter_idx, gather_idx, group):
         world_size = dist.get_world_size(group)
-        if (input_.size(scatter_idx) % world_size) != 0:
-            s_split_sizes = cal_split_sizes(dim_size=input_.size(scatter_idx),
-                                            world_size=world_size)
-            t_split_sizes = [input_.size(gather_idx)] * world_size
-        else:
-            s_split_sizes = None
-            t_split_sizes = None
-        output_ = all_to_all(input_, group, scatter_idx, gather_idx, s_split_sizes, t_split_sizes)
-        output_2 = all_to_all(output_, group, gather_idx, scatter_idx, t_split_sizes, s_split_sizes)
+        output_ = all_to_all(input_, group, scatter_idx, gather_idx, input_.size(scatter_idx),
+                             input_.size(gather_idx) * world_size)
+        output_2 = all_to_all(output_, group, gather_idx, scatter_idx, input_.size(gather_idx) * world_size,
+                              input_.size(scatter_idx))
         assert torch.allclose(input_, output_2), "The input and the final output should be close."
 
     def run_split_gather(self, x, dim, group):
