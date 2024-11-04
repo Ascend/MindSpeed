@@ -143,7 +143,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend 混合长序列并行           | [link](docs/features/hybrid-context-parallel.md)          |
 | 【Prototype】Ascend 自定义空操作层                              | [link](docs/features/noop-layers.md)     |
 | 【Prototype】Adaptive-CP 泛化掩码自适应负载均衡序列并行分布式FA | [link](docs/features/adaptive-cp.md)    |
-
+| 【Prototype】PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
 ## 内存优化特性
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
