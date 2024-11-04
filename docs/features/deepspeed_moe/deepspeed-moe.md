@@ -29,7 +29,7 @@ Mixture of Expert（MoE）是指混合专家模型功能。在大模型训练中
 
 ### 使用建议：
 
-MoE+SP 建议默认开启。开启SP需要同时开启TP。
+MoE+SP MoE开启TP需要同时开启SP。
 
 MoE+cp 建议处理长序列时开启。
 

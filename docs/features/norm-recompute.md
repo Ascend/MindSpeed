@@ -21,7 +21,7 @@
 
 脚本中添加：`--recompute-norm` 可开启Norm重计算。此特性仅支持mcore分支。
 
-添加：`--recompute-norm-num-layers ${num}` 可指定激活函数重计算的层数。
+添加：`--recompute-norm-num-layers ${num}` 可指定Norm重计算的层数。
 
 Norm重计算兼容激活函数重计算、全重计算同时开启：
 
