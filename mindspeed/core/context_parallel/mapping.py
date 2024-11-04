@@ -5,14 +5,69 @@ import torch
 import torch.distributed as dist
 
 
+def adjust_tensor_dimensions(tensor, scatter_idx, gather_idx):
+    """
+    Adjusts the dimensions of a tensor to prepare for an all-to-all operation.
+
+    Args:
+        tensor (torch.Tensor): The input tensor.
+        scatter_idx (int): The index of the dimension to scatter.
+        gather_idx (int): The index of the dimension to gather.
+    """
+    dims = list(range(tensor.dim()))
+    assert scatter_idx != gather_idx
+    if gather_idx == 0:
+        # scatter_idx >= 2
+        if scatter_idx != 1:
+            dims[1], dims[gather_idx] = dims[gather_idx], dims[1]
+            dims[0], dims[scatter_idx] = dims[scatter_idx], dims[0]
+        # scatter_idx == 1
+        else:
+            dims[scatter_idx], dims[gather_idx] = dims[gather_idx], dims[scatter_idx]
+
+    elif gather_idx == 1:
+        # scatter_idx >= 2
+        if scatter_idx != 0:
+            # If scatter_idx is not 0, move it to 0
+            dims[0], dims[scatter_idx] = dims[scatter_idx], dims[0]
+    else:
+        if scatter_idx == 0:
+            dims[1], dims[gather_idx] = dims[gather_idx], dims[1]
+        # scatter_idx >= 1
+        else:
+            dims[0], dims[scatter_idx] = dims[scatter_idx], dims[0]
+            dims[1], dims[gather_idx] = dims[gather_idx], dims[1]
+    return tensor.permute(dims).contiguous(), dims
+
+
+def unadjust_tensor_dimensions(tensor, adjusted_dims):
+    """
+    Reverts the dimensions of a tensor back to their original order after an all-to-all operation.
+
+    Args:
+        tensor (torch.Tensor): The tensor with adjusted dimensions.
+        adjusted_dims (list): The list of dimensions after adjustment.
+
+    Returns:
+        torch.Tensor: The tensor with its dimensions reverted to the original order.
+    """
+    inverse_dims = [0] * len(adjusted_dims)
+
+    for new_pos, old_pos in enumerate(adjusted_dims):
+        inverse_dims[old_pos] = new_pos
+
+    unadjusted_tensor = tensor.permute(inverse_dims).contiguous()
+    return unadjusted_tensor
+
+
 def _all_to_all(
-        input_: torch.Tensor,
-        world_size: int,
-        group: dist.ProcessGroup,
-        scatter_dim: int,
-        gather_dim: int,
-        scatter_sizes: Optional[List[int]] = None,
-        gather_sizes: Optional[List[int]] = None
+    input_: torch.Tensor,
+    world_size: int,
+    group: dist.ProcessGroup,
+    scatter_dim: int,
+    gather_dim: int,
+    scatter_size: Optional[int] = None,
+    gather_size: Optional[int] = None
 ):
     """
     Helper function to perform the all-to-all operation. It scatters the input tensor along the specified scatter
@@ -22,63 +77,54 @@ def _all_to_all(
     Args:
         input_ (torch.Tensor): The input tensor to be processed.
         world_size (int): The number of processes in the process group.
-        process_group (dist.ProcessGroup): The process group to perform the operation within.
+        group (dist.ProcessGroup): The process group perform the operation within.
         scatter_dim (int): The index of the dimension that needs to be scattered.
         gather_dim (int): The index of the dimension that needs to be gathered.
-        scatter_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be scattered.
-            If not provided, the tensor will be split equally among the processes. Defaults to None.
-        gather_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be gathered.
-            If not provided, the tensor will be assumed to have equal parts. Defaults to None.
+        scatter_size (Optional[int]): The size of the dimension along which the tensor is scattered. Defaults to None.
+        gather_size (Optional[int]): The size of the dimension along which the tensor is gathered. Defaults to None.
 
     Returns:
         torch.Tensor: The resulting tensor after performing the all-to-all operation.
     """
-    rank = dist.get_rank(group)
+    input_ = input_.contiguous()
+    rank = dist.get_rank(group=group)
+    input_shape = list(input_.shape)
+    assert 0 <= scatter_dim < len(input_shape), "scatter_dim out of bounds"
+    assert 0 <= gather_dim < len(input_shape), "gather_dim out of bounds"
+    assert scatter_dim != gather_dim
 
-    # Ensure scatter_sizes and gather_sizes are lists if provided
-    assert scatter_sizes is None or isinstance(scatter_sizes, list)
-    assert gather_sizes is None or isinstance(gather_sizes, list)
+    adjusted_input, adjusted_input_dims = adjust_tensor_dimensions(input_, scatter_dim, gather_dim)
 
-    # Split the input tensor based on scatter_sizes or equally if scatter_sizes is None
-    if scatter_sizes:
-        input_list = [t.contiguous() for t in torch.split(input_, scatter_sizes, scatter_dim)]
-    else:
-        input_list = [t.contiguous() for t in torch.tensor_split(input_, world_size, scatter_dim)]
+    scatter_size_per_rank = scatter_size // world_size
+    scatter_size_remainder = scatter_size % world_size
+    input_split_sizes = [scatter_size_per_rank + (1 if i < scatter_size_remainder else 0) for i in range(world_size)]
 
-    # Prepare the output list with appropriate shapes
-    if gather_sizes:
-        output_list = []
-        tensor_shape_base = input_list[rank].size()
-        for i in range(world_size):
-            tensor_shape = list(tensor_shape_base)
-            tensor_shape[gather_dim] = gather_sizes[i]
-            output_list.append(torch.empty(tensor_shape, dtype=input_.dtype, device=input_.device))
+    gather_size_per_rank = gather_size // world_size
+    gather_size_remainder = gather_size % world_size
+    output_split_sizes = [gather_size_per_rank + (1 if i < gather_size_remainder else 0) for i in range(world_size)]
 
-    else:
-        output_list = [torch.empty_like(input_list[0], dtype=input_.dtype, device=input_.device)
-                       for _ in range(world_size)]
-    dist.all_to_all(output_list, input_list, group=group)
-    output = torch.cat(output_list, dim=gather_dim).contiguous()
+    adjusted_output_dims = adjusted_input_dims
+    adjusted_output_dims[1], adjusted_output_dims[0] = adjusted_output_dims[0], adjusted_output_dims[1]
+    adjusted_output = torch.empty((gather_size, input_split_sizes[rank], *adjusted_input.shape[2:]),
+                                  dtype=adjusted_input.dtype, device=adjusted_input.device)
 
-    return output
+    dist.all_to_all_single(
+        adjusted_output,
+        adjusted_input,
+        output_split_sizes=output_split_sizes,
+        input_split_sizes=input_split_sizes,
+        group=group,
+    )
+    output_ = unadjust_tensor_dimensions(adjusted_output, adjusted_output_dims)
+    return output_
 
 
 class _AllToAll(torch.autograd.Function):
     """Custom autograd function that performs an all-to-all communication.
     This function supports non-uniform scatter and gather sizes.
-
-    Args:
-        input_ (torch.Tensor): The input tensor to be processed.
-        process_group (dist.ProcessGroup): The process group to perform the operation within.
-        scatter_dim (int, optional): The index of the dimension that needs to be scattered. Defaults to 2.
-        gather_dim (int, optional): The index of the dimension that needs to be gathered. Defaults to 1.
-        scatter_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be scattered.
-            If not provided, the tensor will be split equally among the processes. Defaults to None.
-        gather_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be gathered.
-            If not provided, the tensor will be assumed to have equal parts. Defaults to None.
     """
     @staticmethod
-    def forward(ctx, input_, process_group, scatter_dim, gather_dim, scatter_sizes, gather_sizes):
+    def forward(ctx, input_, process_group, scatter_dim, gather_dim, scatter_size, gather_size):
         """
         Forward pass: Perform the all-to-all operation by scattering the input tensor along the specified scatter dimension
         and then gathering it along the specified gather dimension.
@@ -89,20 +135,21 @@ class _AllToAll(torch.autograd.Function):
             process_group (dist.ProcessGroup): The process group to perform the operation within.
             scatter_dim (int): The index of the dimension that needs to be scattered.
             gather_dim (int): The index of the dimension that needs to be gathered.
-            scatter_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be scattered.
-            gather_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be gathered.
+            scatter_size (int): The size of the scatter dimension.
+            gather_size (int): The size of the gather dimension.
 
         Returns:
             torch.Tensor: The resulting tensor after performing the all-to-all operation.
         """
         ctx.process_group = process_group
         ctx.scatter_dim = scatter_dim
-        ctx.scatter_sizes = scatter_sizes
+        ctx.scatter_size = scatter_size
         ctx.gather_dim = gather_dim
-        ctx.gather_sizes = gather_sizes
+        ctx.gather_size = gather_size
         ctx.world_size = dist.get_world_size(process_group)
-        output = _all_to_all(input_, ctx.world_size, process_group, scatter_dim, gather_dim, scatter_sizes,
-                             gather_sizes)
+        output = _all_to_all(
+            input_, ctx.world_size, process_group, scatter_dim, gather_dim, scatter_size, gather_size
+        )
         return output
 
     @staticmethod
@@ -124,10 +171,9 @@ class _AllToAll(torch.autograd.Function):
             ctx.process_group,
             ctx.gather_dim,
             ctx.scatter_dim,
-            ctx.gather_sizes,
-            ctx.scatter_sizes
+            ctx.gather_size,
+            ctx.scatter_size
         )
-
         return (
             grad_output,
             None,
@@ -239,13 +285,6 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     concatenates them.
     During the backward pass, it splits the gradients and scales them according to the specified mode.
 
-    Args:
-        input_ (torch.Tensor): The input tensor to be processed.
-        process_group (dist.ProcessGroup): The process group to perform the operation within.
-        dim (int): The dimension along which to concatenate the gathered tensors.
-        gather_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be gathered.
-            If not provided, it is assumed that all tensors have the same shape as the input tensor. Defaults to None.
-        grad_scale (str, optional): Gradient scaling mode. Can be "up", "down", or None. Defaults to "up".
     """
 
     @staticmethod
@@ -303,13 +342,6 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     Custom autograd function that splits the input tensor and keeps only the corresponding chunk for the current rank.
     During the backward pass, it gathers the gradients and scales them according to the specified mode.
 
-    Args:
-        input_ (torch.Tensor): The input tensor to be processed.
-        process_group (dist.ProcessGroup): The process group to perform the operation within.
-        dim (int): The dimension along which to split the tensor.
-        split_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be split.
-            If not provided, the tensor will be split equally among the processes. Defaults to None.
-        grad_scale (str, optional): Gradient scaling mode. Can be "up", "down", or None.
     """
     @staticmethod
     def symbolic(graph, input_, process_group, dim, split_sizes):
@@ -339,8 +371,8 @@ def all_to_all(
         process_group: dist.ProcessGroup,
         scatter_dim: int = 2,
         gather_dim: int = 1,
-        scatter_sizes: Optional[List[int]] = None,
-        gather_sizes: Optional[List[int]] = None
+        scatter_size: Optional[int] = None,
+        gather_size: Optional[int] = None
 ):
     """
     Performs an all-to-all operation on the input tensor. The input tensor is scattered along the specified scatter
@@ -352,15 +384,13 @@ def all_to_all(
         process_group (dist.ProcessGroup): The process group to perform the operation within.
         scatter_dim (int, optional): The index of the dimension that needs to be scattered. Defaults to 2.
         gather_dim (int, optional): The index of the dimension that needs to be gathered. Defaults to 1.
-        scatter_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be scattered.
-            If not provided, the tensor will be split equally among the processes. Defaults to None.
-        gather_sizes (Optional[List[int]], optional): A list of sizes for each part of the tensor to be gathered.
-            If not provided, the tensor will be assumed to have equal parts. Defaults to None.
+        scatter_size (Optional[int]): The size of the scatter dimension. Default is None.
+        gather_size (Optional[int]): The size of the gather dimension. Default is None.
 
     Returns:
         torch.Tensor: The resulting tensor after performing the all-to-all operation.
     """
-    return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim, scatter_sizes, gather_sizes)
+    return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim, scatter_size, gather_size)
 
 
 def split_forward_gather_backward(input_, process_group, dim, split_sizes=None, grad_scale="down"):
@@ -405,3 +435,23 @@ def gather_forward_split_backward(
         torch.Tensor: The resulting tensor after gathering and concatenating.
     """
     return _GatherForwardSplitBackward.apply(input_, process_group, dim, gather_sizes, grad_scale)
+
+
+def cal_split_sizes(dim_size, world_size):
+    """
+    Calculate the split sizes for a given dimension size and number of processes.
+
+    This function divides the dimension size into `world_size` parts, distributing any remainder
+    among the first few parts.
+
+    Args:
+        dim_size (int): The total size of the dimension to be split.
+        world_size (int): The number of processes (or parts) to split the dimension into.
+
+    Returns:
+        List[int]: A list of integers representing the size of each part after splitting.
+    """
+    split_size = dim_size // world_size
+    remainder = dim_size % world_size
+    size_list = [split_size + (1 if i < remainder else 0) for i in range(world_size)]
+    return size_list
