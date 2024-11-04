@@ -24,8 +24,8 @@ Alibi算法给attention score添加了一个预设的线性偏置矩阵（如下
 0表示生成alibi后传入，1暂不开放， 2和3表示核内生成， 3做pse的时候会做sqrt。
 如果要设置alibi为对角线对称取反，则需设置`alibi_diagonal_opposite`，反之（亦是默认情况，且与2和3时核内生成一致）无需进行设置。
 
-（3）目前ring-attention-context-parallel已经支持alibi位置编码，当前只支持mask为causal的场景，以及 `--alibi-fusion-attn-type` 为2，3的压缩模式。
-## 使用效果
+（3）目前alibi位置编码已经支持ring-attention长序列并行，当前只支持mask为causal的场景，以及 `--alibi-fusion-attn-type` 为2，3的压缩模式。暂不支持ulysses长序列并行和混合长序列并行。
 
+## 使用效果
 
 模型外推能力提高。
