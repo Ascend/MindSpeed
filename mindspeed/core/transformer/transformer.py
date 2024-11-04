@@ -16,6 +16,7 @@ from megatron.legacy.model.enums import AttnMaskType, LayerType, AttnType
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
+from mindspeed.core.transformer.moe.moe_utils import only_recompute_activation
 
 
 def parallel_transformer_layer_init_wrapper(fn):
@@ -364,7 +365,10 @@ def parallel_transformer_checkpointed_forward_tp_optimized(self, hidden_states, 
 def core_mlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        is_recompute_activation = should_recompute_activation(self)
+        is_recompute_activation = should_recompute_activation(self.layer_number)
+        if get_args().moe_alltoall_overlap_comm and not isinstance(args[-1], torch.Tensor):
+            moe_ctx = args[-1]
+            args = args[:-1]
 
         def activation_function(*function_args):
             intermediate, bias = function_args
@@ -379,8 +383,22 @@ def core_mlp_forward_wrapper(fn):
 
             return intermediate
 
-        if not is_recompute_activation:
+        moe_zero_memory = get_args().moe_zero_memory
+        if not (is_recompute_activation or moe_zero_memory != "disable"):
             output, output_bias = fn(self, *args, **kwargs)
+        elif moe_zero_memory == "level1" and not only_recompute_activation(self.layer_number):
+            if self.shared_expert:
+                self.activation_function = activation_function
+                hidden_states = args[0]
+                fc1_out_parallel, bias_parallel = self.linear_fc1(hidden_states)
+                act_out_parallel = activation_function(fc1_out_parallel, bias_parallel)
+                output, output_bias = self.linear_fc2(act_out_parallel)
+                fc1_out_parallel.untyped_storage().resize_(0)
+                act_out_parallel.untyped_storage().resize_(0)
+                moe_ctx.shared_fc1_out = fc1_out_parallel
+                moe_ctx.shared_act_out = act_out_parallel
+            else:
+                output, output_bias = fn(self, *args, **kwargs)
         else:
             hidden_states = args[0]
             intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)

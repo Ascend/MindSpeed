@@ -1,10 +1,193 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
+import torch_npu
 from megatron.core.transformer.moe.moe_utils import permute_with_padded_tokens, unpermute_with_padded_tokens
 from megatron.training import get_args
+from megatron.core import mpu
 from megatron.core.transformer.moe.moe_utils import (aggregate_aux_losses_tracker_across_pipeline_parallel,
                                                      clear_aux_losses_tracker, get_aux_losses_tracker)
+
+AG_TP_HIDDEN_STATUS = None
+AG_SHARED_EXPERTS_INPUTS = []
+GEMM_BACKWARD_NEED_TENSORS = None
+RS_GLOBAL_HIDDEN_STATES_GRAD_WITH_HANDLE = None
+SWAP_STREAM = None
+SWAP_STREAM2 = None
+SWAP_TENSOR = None
+MATMUL_OUTPUT_GRAD = None
+UNPERMUTED_TOKENS = None
+
+
+def get_swap_stream():
+    global SWAP_STREAM2
+    if SWAP_STREAM2 is None:
+        _ = torch_npu.npu.Stream(device=torch.npu.current_device())
+        SWAP_STREAM2 = torch_npu.npu.Stream(device=torch.npu.current_device())
+    stream = SWAP_STREAM2
+    return stream
+
+
+def set_swap_status(tensor):
+    global SWAP_TENSOR
+    SWAP_TENSOR = tensor
+
+
+def get_swap_status():
+    global SWAP_STREAM
+    if SWAP_STREAM is None:
+        SWAP_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
+    global SWAP_TENSOR
+    stream = SWAP_STREAM
+    tensor = SWAP_TENSOR
+    SWAP_TENSOR = None
+    return stream, tensor
+
+
+def set_prob_backward_need_tensors(matmul_output_grad, unpermuted_tokens):
+    global MATMUL_OUTPUT_GRAD
+    MATMUL_OUTPUT_GRAD = matmul_output_grad
+    global UNPERMUTED_TOKENS
+    UNPERMUTED_TOKENS = unpermuted_tokens
+
+
+def get_prob_backward_need_tensors():
+    global SWAP_STREAM2
+    if SWAP_STREAM2 is None:
+        _ = torch_npu.npu.Stream(device=torch.npu.current_device())
+        SWAP_STREAM2 = torch_npu.npu.Stream(device=torch.npu.current_device())
+    global MATMUL_OUTPUT_GRAD
+    global UNPERMUTED_TOKENS
+    stream = SWAP_STREAM2
+    matmul_output_grad = MATMUL_OUTPUT_GRAD
+    unpermuted_tokens = UNPERMUTED_TOKENS
+    MATMUL_OUTPUT_GRAD = None
+    UNPERMUTED_TOKENS = None
+    return stream, matmul_output_grad, unpermuted_tokens
+
+
+def set_ag_tp_hidden_status(_inputs):
+    global AG_TP_HIDDEN_STATUS
+    AG_TP_HIDDEN_STATUS = _inputs
+
+
+def get_ag_tp_hidden_status():
+    global AG_TP_HIDDEN_STATUS
+    result = AG_TP_HIDDEN_STATUS
+    AG_TP_HIDDEN_STATUS = None
+    return result
+
+
+def set_gemm_backward_need_tensors(_inputs):
+    global GEMM_BACKWARD_NEED_TENSORS
+    GEMM_BACKWARD_NEED_TENSORS = _inputs
+
+
+def get_gemm_backward_need_tensors():
+    global GEMM_BACKWARD_NEED_TENSORS
+    result = GEMM_BACKWARD_NEED_TENSORS
+    GEMM_BACKWARD_NEED_TENSORS = None
+    return result
+
+
+def set_rs_global_hidden_states_grad_with_handle(_inputs):
+    global RS_GLOBAL_HIDDEN_STATES_GRAD_WITH_HANDLE
+    RS_GLOBAL_HIDDEN_STATES_GRAD_WITH_HANDLE = _inputs
+
+
+def get_rs_global_hidden_states_grad_with_handle():
+    global RS_GLOBAL_HIDDEN_STATES_GRAD_WITH_HANDLE
+    result = RS_GLOBAL_HIDDEN_STATES_GRAD_WITH_HANDLE
+    RS_GLOBAL_HIDDEN_STATES_GRAD_WITH_HANDLE = None
+    return result
+
+
+ALL2ALL_EXPERTS_OUTPUT = None
+
+
+def set_all2all_experts_output(_input):
+    global ALL2ALL_EXPERTS_OUTPUT
+    ALL2ALL_EXPERTS_OUTPUT = _input
+
+
+def get_all2all_experts_output():
+    global ALL2ALL_EXPERTS_OUTPUT
+    result = ALL2ALL_EXPERTS_OUTPUT
+    ALL2ALL_EXPERTS_OUTPUT = None
+    return result
+
+
+def only_recompute_activation(layer_number):
+    args = get_args()
+    vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
+    vpp_size = args.virtual_pipeline_model_parallel_size
+    pp_size = args.transformer_pipeline_model_parallel_size
+
+    if vpp_size is not None:
+        layer_per_chunk = args.num_layers_per_virtual_pipeline_stage
+    elif pp_size is not None:
+        layer_per_chunk = args.num_layers // pp_size
+    else:
+        layer_per_chunk = args.num_layers
+
+    if vpp_rank is None:
+        vpp_rank = 0
+    if vpp_size is None:
+        vpp_size = 1
+    recompute_priority = ((layer_number - 1) % layer_per_chunk) * vpp_size + vpp_rank
+    moe_zero_memory_num_layers = args.moe_zero_memory_num_layers
+
+    if moe_zero_memory_num_layers:
+        if recompute_priority < moe_zero_memory_num_layers:
+            return False
+        else:
+            return True
+    else:
+        return False
+
+
+def forward_func(func, inputs):
+    def detach_tensor(input_):
+        if input_.requires_grad and input_.grad_fn is None:
+            return input_
+        else:
+            new_input = input_.detach()
+            new_input.requires_grad = True
+        return new_input
+
+    detach_inputs = []
+    if isinstance(inputs, tuple):
+        for input_ in inputs:
+            if isinstance(input_, tuple):
+                detach_input = []
+                for i in input_:
+                    if isinstance(i, torch.Tensor) and torch.is_floating_point(i):
+                        detach_input.append(detach_tensor(i))
+                    else:
+                        detach_input.append(i)
+                detach_inputs.append(tuple(detach_input))
+            else:
+                if isinstance(input_, torch.Tensor) and torch.is_floating_point(input_):
+                    detach_input = detach_tensor(input_)
+                else:
+                    detach_input = input_
+                detach_inputs.append(detach_input)
+    elif isinstance(inputs, torch.Tensor):
+        detach_inputs.append(detach_tensor(inputs))
+
+    with torch.enable_grad():
+        output = func(*detach_inputs)
+
+    return output, *detach_inputs
+
+
+def backward_func(func_tensor, gradinputs):
+    if gradinputs is None or func_tensor.grad_fn is None:
+        return
+    if isinstance(gradinputs, torch.Tensor):
+        func_tensor.backward(gradinputs)
+    elif isinstance(gradinputs, tuple):
+        func_tensor.backward(*gradinputs)
 
 
 def permute(tokens, indices, num_out_tokens: int = None, padded_mode: bool = False):
