@@ -9,7 +9,7 @@ MindSpeed对将rms_norm操作合并成一个算子，减少数据传输和临时
 模型使用rms_norm作为归一化方式，脚本中设置了`--normalization RMSNorm`。
 
 ## 使用方法
-设置`--use-fused-rmsnorm`即可调用rms_norm融合算子。mcore分支下默认开启。
+设置`--use-fused-rmsnorm`即可调用rms_norm融合算子。mcore分支下仅支持使能该融合算子。
 
 ## 使用效果 
 开启融合算子可以节省内存，提升性能。
