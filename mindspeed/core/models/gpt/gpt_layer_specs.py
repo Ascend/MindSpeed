@@ -43,7 +43,7 @@ def build_layers_wrapper(fn, column_forward, row_forward):
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
         for layer in self.layers:
-            if isinstance(layer.mlp, MoELayer):
+            if isinstance(getattr(layer, 'mlp', None), MoELayer):
                 for local_expert in layer.mlp.experts.local_experts:
                     local_expert.linear_fc1.forward = types.MethodType(column_forward, local_expert.linear_fc1)
                     local_expert.linear_fc2.forward = types.MethodType(row_forward, local_expert.linear_fc2)
