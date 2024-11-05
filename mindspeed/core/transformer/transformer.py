@@ -433,7 +433,8 @@ def norm_recompute_forward(
     )
 
     self.norm_ckpt1.discard_output()
-    attention_output_with_bias[0].register_hook(self.norm_ckpt1.recompute)
+    if self.training:
+        attention_output_with_bias[0].register_hook(self.norm_ckpt1.recompute)
 
     with self.bias_dropout_add_exec_handler():
         hidden_states = self.self_attn_bda(self.training, self.config.bias_dropout_fusion)(
@@ -473,7 +474,8 @@ def norm_recompute_forward(
     mlp_output_with_bias = self.mlp(pre_mlp_layernorm_output)
 
     self.norm_ckpt2.discard_output()
-    mlp_output_with_bias[0].register_hook(self.norm_ckpt2.recompute)
+    if self.training:
+        mlp_output_with_bias[0].register_hook(self.norm_ckpt2.recompute)
 
     with self.bias_dropout_add_exec_handler():
         hidden_states = self.mlp_bda(self.training, self.config.bias_dropout_fusion)(
