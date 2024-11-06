@@ -310,10 +310,10 @@ def mcore_fusions_adaptation(aspm, args):
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_bshd',
                         apply_rotary_pos_emb_bshd)
     if hasattr(args, 'use_fused_moe_token_permute_and_unpermute') and args.use_fused_moe_token_permute_and_unpermute:
-        from .ops.npu_moe_token_permute import npu_moe_token_permute
-        from .ops.npu_moe_token_unpermute import npu_moe_token_unpermute
-        aspm.register_patch('megatron.core.transformer.moe.moe_utils.permute', npu_moe_token_permute)
-        aspm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', npu_moe_token_unpermute)
+        from .core.fusions.npu_moe_token_permute import permute_wrapper
+        from .core.fusions.npu_moe_token_unpermute import unpermute_wrapper
+        aspm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute_wrapper)
+        aspm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute_wrapper)
     if args.npu_deterministic:
         from mindspeed.initialize import deter_comp_wrapper
         aspm.register_patch('megatron.training.initialize._set_random_seed', deter_comp_wrapper)
