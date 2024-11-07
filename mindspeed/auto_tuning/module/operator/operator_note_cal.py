@@ -13,6 +13,7 @@ class DictNoteShape(DictShape):
         self.input_shape = ""
         self.output_shape = ""
         self.duration = 0.0
+        self.num_experts = 0
         self.seq_length = 0
         self.flops = 0.0
         self.jit = 0
@@ -29,6 +30,7 @@ class DictNoteShape(DictShape):
         self.cp = config_info.cp
         self.ep = config_info.ep
         self.jit = config_info.jit
+        self.num_experts = config_info.num_experts or 1
         self.seq_length = config_info.seq_length
         self.input_shape = item.input_shapes.replace('"', '')
         self.output_shape = item.output_shapes.replace('"', '')

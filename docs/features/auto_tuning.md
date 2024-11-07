@@ -50,6 +50,7 @@ Auto Tuning特性完全依赖由profiling得出的黑盒建模，与网络结构
 --auto-tuning \                                 # 开启 Auto Tuning 特性
 --auto-tuning-work-dir ./auto_tuning_dir \      # 工作目录，在此会保存profiling等文件
 --auto-tuning-ranks 16 \                        # 需求搜索的卡数，最低16卡
+--auto-tuning-log-level debug \                 # Auto Tuning log记录等级，可选warning, info, debug
 --nnodes $NNODES \                              # Profiling拉起的节点数，与基线训练脚本保持一致
 --nproc-per-node $GPUS_PER_NODE \               # 每个节点上运行的进程数，一般与单节点卡数相同，与基线训练脚本保持一致
 --master-addr $MASTER_ADDR \                    # 主节点IP，与基线训练脚本保持一致
@@ -79,6 +80,7 @@ Auto Tuning特性完全依赖由profiling得出的黑盒建模，与网络结构
 以下环境变量为 Auto Tuning 控制阶段性 Profiling 所用环境变量开关，**仅为 Auto Tuning 内部使用**，**禁止**在正常训练流程中设置
 
 **Auto Tuning会在一个隔离的进程环境中设置以下环境变量，不会export至用户环境中**
+- "OOTB_OPTIMIZER_MODIFIED_ARGV_PATH=${WORK_dir}/auto_tuning_modified_argv.json": 修改Profiling拉起配置参数的文件位置
 - "OOTB_OPTIMIZER_PARSE_ARGS=TRUE": 获取硬件相关信息及模型参数
 - "OOTB_OPTIMIZER_PARSE_MODEL=TRUE": 获取模型结构
 - "OOTB_OPTIMIZER_PROFILING=TRUE": 获取完整Profiling信息及自适应重计算Profiling信息

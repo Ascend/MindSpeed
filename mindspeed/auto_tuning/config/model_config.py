@@ -63,13 +63,10 @@ class ModelConfig:
     global_world_size: int = None  # type: ignore
 
     # JIT
-    without_jit_compile: bool = None  # type: ignore
+    jit_compile: bool = None  # type: ignore
 
     # Flags
     disable_cp_flag: bool = False
-
-    # Debug
-    auto_tuning_debug = False
 
     def __str__(self) -> str:
         rt = list()

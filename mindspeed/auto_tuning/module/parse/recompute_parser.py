@@ -1,16 +1,13 @@
 import os
 import stat
-import sys
 
 from functools import wraps
 from collections.abc import Iterable
 from typing import Dict, List
 import pickle
 import acl
-import numpy as np
 import torch
 import torch.nn
-import torch_npu
 from megatron.training.global_vars import get_args
 
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import get_tensor_mem_size
@@ -138,7 +135,6 @@ class RecomputeParser:
             self.construct_context_recursive(next_name, module, current_ctx, next_have_allowed_recomputing)
 
     def register_recursive_hook(self, model, ctx, profiling_prefix, layer_index=0):
-        # print(f"success enter register_recursive_hook")
         index = layer_index or 0
         for module in model.children():
             if 'layers' not in ctx:
@@ -168,7 +164,8 @@ class RecomputeParser:
             ootb_context_path = get_args().profile_save_path
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             mode = stat.S_IWUSR | stat.S_IRUSR
-            with os.fdopen(os.open(ootb_context_path + '.json', flags, mode=mode), "wb") as file:
+            ootb_context_path_json = f'{ootb_context_path}.json'
+            with os.fdopen(os.open(ootb_context_path_json, flags, mode=mode), "wb") as file:
                 file.write(pickle.dumps(self.context))
 
     def hook_step_func(self, step_func, models):

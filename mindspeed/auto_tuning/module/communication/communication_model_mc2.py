@@ -34,7 +34,6 @@ class Mc2Model(CommunicationModel):
         self.logger.debug(mc2lt.format('No', 'tp', 'dp', 'pp', 'cp', 'ep', 'mc2_time', 'mc2_x', chr(12288)))
         index = 0
         for cfg in config_list:
-            # print(f"config_list:{config_list[i]}")
             if cfg.use_ascend_mc2:
                 self.logger.debug(mc2lt.format(index, cfg.tp, cfg.dp, cfg.pp,
                                    cfg.cp,

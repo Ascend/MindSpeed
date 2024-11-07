@@ -95,7 +95,6 @@ def generate_profiling_configs(model_cfg: ModelConfig) -> List[SearchConfig]:
     gen_cfg.seq_length = base_cfg.seq_length // 2
     if gen_cfg.seq_length < 2 * 1024:
         gen_cfg.seq_length = gen_cfg.seq_length * 4
-    # profile_cfgs.append(gen_cfg)
 
     for cfg in profile_cfgs:
         cfg.prepare_for_profiling()

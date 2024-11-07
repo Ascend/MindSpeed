@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import Column, Integer, String, UniqueConstraint, text, desc
 from sqlalchemy import create_engine, Float
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -7,16 +9,16 @@ BaseHistory = declarative_base()
 
 
 class DataBase:
-    def __init__(self):
-        db_uri_history = 'sqlite:///operator_history.db'
+    def __init__(self, working_dir: str):
+        db_uri_history = f'sqlite:///{os.path.join(working_dir, "operator_history.db")}'
         db_connection_history = DBConnection(db_uri_history)
         self.operator_history_dao = OperatorHistoryDAO(db_connection_history)
         BaseHistory.metadata.create_all(db_connection_history.engine)
-        db_uri_different = 'sqlite:///operator_different.db'
+        db_uri_different = f'sqlite:///{os.path.join(working_dir, "operator_different.db")}'
         db_connection_different = DBConnection(db_uri_different)
         self.operator_different_dao = OperatorHistoryDAO(db_connection_different)
         BaseHistory.metadata.create_all(db_connection_different.engine)
-        db_uri_profiling = 'sqlite:///operator_profiling.db'
+        db_uri_profiling = f'sqlite:///{os.path.join(working_dir, "operator_profiling.db")}'
         db_connection_profiling = DBConnection(db_uri_profiling)
         self.operator_profiling_dao = OperatorHistoryDAO(db_connection_profiling)
         BaseHistory.metadata.create_all(db_connection_profiling.engine)

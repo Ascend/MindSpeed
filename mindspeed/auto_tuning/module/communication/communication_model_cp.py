@@ -1,4 +1,3 @@
-import numpy as np
 from mindspeed.auto_tuning.module.communication.communication_model import CommunicationModel
 _GLOBAL_ATTN_FORWARD_KERNEL_NAMES = [
     "aclnnFlashAttentionScore_FlashAttentionScore_FlashAttentionScore"

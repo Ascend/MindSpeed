@@ -1,7 +1,7 @@
 import copy
 from mindspeed.auto_tuning.module.operator.operator_base_block import Block
 from mindspeed.auto_tuning.module.operator.operator_elemental import (OperatorList, ChangeList,
-                                                                                     ChangeOperatorList)
+                                                                      ChangeOperatorList)
 
 
 class ChangeBlock(Block):

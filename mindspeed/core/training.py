@@ -36,6 +36,7 @@ from mindspeed.core.memory.auto_pipeline.autopipeline_apply import apply_autopip
 from mindspeed.core.memory.auto_pipeline.autopipeline_solver import solve_autopipeline, broadcast_policy_in_ranks, destroy_global_vars
 from mindspeed.arguments import parse_args_wrapper
 
+
 POLICY = None
 OPTIMIZED_MBS_LIST = None
 PP_SCHEDULE_LIST = None
@@ -428,12 +429,13 @@ def pretrain_decorator(pretrain):
             from mindspeed.auto_tuning.auto_tuning import auto_tuning
             global_args = get_args()
             assert global_args.auto_tuning_ranks >= 16, "Auto-tuning searching space should be >= 16."
-            if not os.path.exists(global_args.auto_tuning_work_dir):
-                os.makedirs(global_args.auto_tuning_work_dir)
+            working_dir_root = os.path.realpath(global_args.auto_tuning_work_dir)
+            if not os.path.exists(working_dir_root) and global_args.rank % torch.cuda.device_count() == 0:
+                os.makedirs(working_dir_root)
 
             if global_args.rank % torch.cuda.device_count() == 0:
                 print("only rank 0 run auto tuning ========================================")
-                auto_tuning(global_args, working_dir=os.path.abspath(global_args.auto_tuning_work_dir))
+                auto_tuning(global_args, working_dir=working_dir_root)
             return
 
         if argument.auto_parallel:

@@ -6,6 +6,7 @@ import time
 
 import torch
 from mindspeed.auto_tuning.utils.logger import get_logger
+from mindspeed.auto_tuning.utils.restricted_unpickler import restricted_loads
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_config import ProfilingModelInfo
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_parse import ProfilingParser
 
@@ -44,12 +45,12 @@ class GatherNodeProfiling:
             for pkl_file in pkl_files:
                 node_pkl_path = os.path.join(pkl_path, pkl_file)
                 with open(node_pkl_path, 'rb') as f:
-                    pkl_model = pickle.load(f)
+                    pkl_model = restricted_loads(f)
                 self._fuse_models(pkl_model)
         else:
             node_pkl_path = os.path.join(pkl_path, pkl_files[0])
             with open(node_pkl_path, 'rb') as f:
-                pkl_model = pickle.load(f)
+                pkl_model = restricted_loads(f)
             self.fusion_model = pkl_model
         return self.fusion_model
 
@@ -57,7 +58,7 @@ class GatherNodeProfiling:
         parent_dir = os.path.dirname(self.profiling_file_path)
         ootb_node_path = os.path.join(parent_dir, f'ootb_{args.node_rank}.pkl')
         with open(ootb_node_path, 'rb') as f:
-            cfg = pickle.load(f)
+            cfg = restricted_loads(f)
         profiling_parser = ProfilingParser(self.profiling_file_path, search_cfg=cfg, args=args)
         profiling_res = profiling_parser.parser()
         if args.pipeline_model_parallel_size > 1 and profiling_parser.nodes > 1:
@@ -86,36 +87,6 @@ class GatherNodeProfiling:
             mode = stat.S_IWUSR | stat.S_IRUSR
             with os.fdopen(os.open(pkl_node_path, flags, mode=mode), 'wb') as f:
                 pickle.dump(profiling_res, f)
-
-    def parse_nodel_pkl_debug(self, cfg, args):
-        profiling_parser = ProfilingParser(self.profiling_file_path, search_cfg=cfg, args=args)
-        profiling_res = profiling_parser.parser()
-        pkl_path = os.path.join(self.profiling_file_path, 'pkl_path')
-        if not os.path.exists(pkl_path):
-            os.mkdir(pkl_path)
-        pkl_file_path = os.path.join(pkl_path, f'node_{args.node_rank}.pkl')
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        mode = stat.S_IWUSR | stat.S_IRUSR
-        with os.fdopen(os.open(pkl_file_path, flags, mode=mode), 'wb') as f:
-            pickle.dump(profiling_res, f)
-
-        scp_command = f"scp -r {pkl_file_path} {args.user_name}@{args.host_ip}:{pkl_path}/"
-        if args.node_rank != 0:
-            self.logger.debug(f'scp_command: {scp_command}')
-            sleep_time = 0
-            timeout_limit = 120
-            while True:
-                if sleep_time > timeout_limit:
-                    break
-                process = subprocess.Popen(scp_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                exit_code = process.returncode
-                if exit_code == 0:
-                    self.logger.debug("SCP operation completed successfully.")
-                    break
-                else:
-                    self.logger.debug(f"SCP operation failed with exit code {exit_code}.")
-                time.sleep(2)
-                sleep_time += 2
 
     def _fuse_models(self, new_model):
         if new_model.stage_id not in self.stage_id_list:

@@ -130,9 +130,6 @@ class DynamicMemModeling:
         def _get_profiling(cfg: SearchConfig) -> ProfilingModelInfo:
             profiling_path = os.path.join(working_dir, get_prof_dir(cfg))
             profiling_node_parse = GatherNodeProfiling(profiling_path)
-            if cfg.auto_tuning_debug:
-                from mindspeed.auto_tuning.module.hardware import Hardware
-                profiling_node_parse.parse_nodel_pkl_debug(cfg, Hardware())
             return profiling_node_parse.fuse_node_pkl()
 
         baseline_cfg, tp8_cfg, seq8k_cfg = \

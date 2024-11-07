@@ -16,7 +16,7 @@ def get_seq_length_for_profiling(model_cfg: ModelConfig) -> int:
     return min(model_cfg.seq_length, 32 * 1024)
 
 
-def get_prof_dir(cfg: SearchConfig, re_profile=False):
+def get_prof_dir(cfg: SearchConfig, re_profile=False) -> str:
     prof_dir = "auto_tuning_profiling"
     prof_dir += f"_{cfg.tp}tp"
     prof_dir += f"_{cfg.dp}dp"

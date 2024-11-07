@@ -17,10 +17,11 @@ from mindspeed.auto_tuning.utils.runner.torchrun_runner import TorchRunRunner
 from mindspeed.auto_tuning.config.model_config import ModelConfig
 from mindspeed.auto_tuning.config.generate_profiling_configs import generate_profiling_configs
 from mindspeed.auto_tuning.utils.utils import get_prof_dir
+from mindspeed.auto_tuning.utils.restricted_unpickler import restricted_loads
 
 
 def auto_tuning(args: Namespace, working_dir: str):
-    init_logger(args.auto_tuning_log_level, args.auto_tuning_log_file)
+    init_logger(args.auto_tuning_log_level)
     logger = get_logger("main")
     start_time = time.time()
     executor = ModelExecutor(TorchRunRunner())
@@ -32,11 +33,12 @@ def auto_tuning(args: Namespace, working_dir: str):
     args_parse_path = os.path.join(working_dir, ModelConfig.ARGS_PARSE_FILENAME)
     try:
         with open(hardware_parse_path, mode="rb") as file:
-            hardware: Hardware = pickle.loads(file.read())  # type: ignore
+            hardware: Hardware = restricted_loads(file)  # type: ignore
         with open(args_parse_path, mode="rb") as file:
-            model_config: ModelConfig = pickle.loads(file.read())  # type: ignore
-    except json.decoder.JSONDecodeError as e:
-        logger.error("Incorrect JSON format. JSONDecodeError: %s", str(e))
+            model_config: ModelConfig = restricted_loads(file)  # type: ignore
+    except pickle.UnpicklingError as e:
+        logger.error(f"Incorrect pickle format. UnpicklingError: {e}")
+        raise e
     Hardware().load(hardware)
     model_config.disable_cp_flag = False
     logger.info("<==========Finished parsing args==========>")
@@ -49,7 +51,8 @@ def auto_tuning(args: Namespace, working_dir: str):
         if not os.path.exists(os.path.join(working_dir, filename)):
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             mode = stat.S_IWUSR | stat.S_IRUSR
-            with os.fdopen(os.open(f'{working_dir}/ootb_{Hardware().node_rank}.pkl', flags, mode=mode), 'wb') as f:
+            pkl_filename = os.path.join(working_dir, f'ootb_{Hardware().node_rank}.pkl')
+            with os.fdopen(os.open(pkl_filename, flags, mode=mode), 'wb') as f:
                 pickle.dump(cfg, f)
             executor.execute(working_dir, output_filename=filename, cfg=cfg, flag=ExecutorFlag.PARSE_MODEL)
     logger.info("<==========Finished profiling static memory==========>")
@@ -59,7 +62,8 @@ def auto_tuning(args: Namespace, working_dir: str):
         if not os.path.exists(path):
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             mode = stat.S_IWUSR | stat.S_IRUSR
-            with os.fdopen(os.open(f'{working_dir}/ootb_{Hardware().node_rank}.pkl', flags, mode=mode), 'wb') as f:
+            pkl_filename = os.path.join(working_dir, f'ootb_{Hardware().node_rank}.pkl')
+            with os.fdopen(os.open(pkl_filename, flags, mode=mode), 'wb') as f:
                 pickle.dump(cfg, f)
             executor.execute(working_dir, output_filename=path, cfg=cfg, flag=ExecutorFlag.PROFILE)
     logger.info("<==========Finished profiling dynamic memory==========>")
@@ -103,13 +107,12 @@ def auto_tuning(args: Namespace, working_dir: str):
         if not os.path.exists(res_dir):
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             mode = stat.S_IWUSR | stat.S_IRUSR
-            with os.fdopen(os.open(f'{working_dir}/ootb_{Hardware().node_rank}.pkl', flags, mode=mode), 'wb') as f:
+            pkl_filename = os.path.join(working_dir, f'ootb_{Hardware().node_rank}.pkl')
+            with os.fdopen(os.open(pkl_filename, flags, mode=mode), 'wb') as f:
                 pickle.dump(profiling_cfg, f)
             executor.execute(working_dir, output_filename=res_dir, cfg=profiling_cfg, flag=ExecutorFlag.PROFILE)
 
         profiling_node_parse = GatherNodeProfiling(res_dir)
-        if profiling_cfg.auto_tuning_debug:
-            profiling_node_parse.parse_nodel_pkl_debug(profiling_cfg, hardware_config)
         profiling_res = profiling_node_parse.fuse_node_pkl()
 
         profiling_results.append([profiling_cfg, profiling_res])
@@ -118,7 +121,7 @@ def auto_tuning(args: Namespace, working_dir: str):
     profiling_and_parser_end_time = time.time()
 
     # 性能建模
-    model_performance = ModelPerformance(hardware_config, model_config)
+    model_performance = ModelPerformance(hardware_config, model_config, working_dir)
     model_performance.get_profiling_info(profiling_results)
 
     final_cfgs, unsampled_profiling = search_demo(model_config=model_config,

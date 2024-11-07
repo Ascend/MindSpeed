@@ -10,7 +10,7 @@ class ConfigInfo(object):
         self.vp = config.num_layers_per_virtual_pipeline_stage if config.num_layers_per_virtual_pipeline_stage else 1
         self.cp = config.context_parallel_size
         self.ep = config.expert_model_parallel_size or 1
-        self.jit = 1 if config.without_jit_compile else 0
+        self.jit = 1 if config.jit_compile else 0
         self.seq_length = config.seq_length
         self.num_experts = config.num_experts
 

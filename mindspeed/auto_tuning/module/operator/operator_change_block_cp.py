@@ -1,6 +1,6 @@
 from mindspeed.auto_tuning.module.operator.operator_change_block import ChangeBlock
 from mindspeed.auto_tuning.module.operator.operator_elemental import (DictShape, ChangeList,
-                                                                                     ChangeOperatorList)
+                                                                      ChangeOperatorList)
 
 
 class CpBlock(ChangeBlock):

@@ -1,3 +1,4 @@
+import ast
 import math
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -11,7 +12,7 @@ def cal_new_shape_new(cal_arr, search_cfg: SearchConfig):
     ep = search_cfg.ep or 1
     mbs = search_cfg.mbs
     num_experts = search_cfg.num_experts or 1
-    cal_arr = eval(cal_arr)
+    cal_arr = ast.literal_eval(cal_arr)
     result_arr = []
     base = 0.0001
     mbs_flag = False

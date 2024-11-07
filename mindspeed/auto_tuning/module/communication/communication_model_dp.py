@@ -1,4 +1,3 @@
-import numpy as np
 from mindspeed.auto_tuning.module.communication.communication_model \
     import CommunicationModel, CommunicationList, Domain
 

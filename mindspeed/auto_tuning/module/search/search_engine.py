@@ -1,12 +1,11 @@
 from typing import Deque, List, Optional, Tuple
 from collections import deque
 from copy import deepcopy
-import json
+import pickle
 import os
 import sys
 import traceback as tb
 
-import pickle
 
 
 from mindspeed.auto_tuning.utils.logger import get_logger
@@ -16,8 +15,8 @@ from mindspeed.auto_tuning.module.search.stage_1_prune import stage_1_discrete_s
 from mindspeed.auto_tuning.config.model_config import ModelConfig
 from mindspeed.auto_tuning.module.hardware import Hardware
 from mindspeed.auto_tuning.utils.utils import get_prof_dir
+from mindspeed.auto_tuning.utils.restricted_unpickler import restricted_loads
 from mindspeed.auto_tuning.config.generate_profiling_configs import generate_profiling_configs
-from mindspeed.auto_tuning.module.search.recompute_solver import RecomputeSolver
 
 
 _logger = get_logger("search")
@@ -45,17 +44,17 @@ def search_demo(model_config: ModelConfig,
     base_context = ""
     base_search_cfg = None
     for cfg in generate_profiling_configs(model_config):
-        json_path = f"{working_dir}/{get_prof_dir(cfg)}.json"
+        json_path = os.path.join(working_dir, f'{get_prof_dir(cfg)}.json')
         # find ep = 1 config
         if (not os.path.exists(json_path) or cfg.expert_model_parallel_size and
                 cfg.expert_model_parallel_size != 1):
             continue
         try:
             with open(json_path, "rb") as file:
-                base_context = pickle.loads(file.read())
+                base_context = restricted_loads(file)
                 base_search_cfg = cfg
-        except json.decoder.JSONDecodeError as e:
-            _logger.warning(f"Incorrect JSON format. JSONDecodeError: {e}")
+        except pickle.UnpicklingError as e:
+            _logger.warning(f"Incorrect pickle format. UnpicklingError: {e}")
             raise e
         if base_context:
             break
@@ -77,7 +76,7 @@ def search_demo(model_config: ModelConfig,
 
             # 自适应重计算修正性能，判断是否需要开自适应重计算
             context = ""
-            json_path = f"{working_dir}/{get_prof_dir(cfg)}.json"
+            json_path = os.path.join(working_dir, f'{get_prof_dir(cfg)}.json')
             if not os.path.exists(json_path):
                 # 利用建模结果求解当前场景的context
                 _logger.debug("success modeling context…………")
@@ -85,9 +84,9 @@ def search_demo(model_config: ModelConfig,
             else:
                 try:
                     with open(json_path, "rb") as file:
-                        context = pickle.loads(file.read())
-                except json.decoder.JSONDecodeError as e:
-                    _logger.warning(f"Incorrect JSON format. JSONDecodeError: {e}")
+                        context = restricted_loads(file)
+                except pickle.UnpicklingError as e:
+                    _logger.warning(f"Incorrect pickle format. UnpicklingError: {e}")
                     raise e
             _logger.debug(f"before recompute, perf = {perf} and memory = {mem_estimated}")
             _logger.debug(f"success enter recompute_solver and tp = {cfg.tensor_model_parallel_size} "
@@ -96,14 +95,10 @@ def search_demo(model_config: ModelConfig,
                           f"dp = {cfg.data_parallel_size} cp = {cfg.context_parallel_size} "
                           f"ep = {cfg.expert_model_parallel_size} zero = {cfg.use_distributed_optimizer}")
             # 背包计算内存预估值
-            # first_layer_context = get_first_layer_context(context)
             need_recompute, new_perf, add_mem, recompute_layer = full_recompute_solver(device_mem_cap - mem_estimated, context,
                                                                                        model_config, perf, cfg)
             new_memory = add_mem + mem_estimated
-            # recompute_solver = RecomputeSolver(first_layer_context, perf, mem_estimated, device_mem_cap, cfg, model_config)
-            # need_recompute, new_memory, new_perf = recompute_solver.build_solver_info()
             _logger.debug(f"after recompute, perf = {new_perf} and need_recompute = {need_recompute}")
-            # if not need_recompute:
             _logger.debug(f"cur mem_estimated = {new_memory}, recompute_layer = {recompute_layer}")
 
             better_found = False

@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple
 import os
-import json
+import stat
 from argparse import Namespace
 
 import pickle
@@ -8,9 +8,11 @@ from torch.nn import Module
 import torch.distributed as dist
 
 from mindspeed.auto_tuning.utils.logger import get_logger
+from mindspeed.auto_tuning.utils.restricted_unpickler import restricted_loads
 from mindspeed.auto_tuning.module.hardware import Hardware
 from mindspeed.auto_tuning.module.memory.model_param import ModelParam
 from mindspeed.auto_tuning.config.model_config import ModelConfig
+
 
 _logger = get_logger("MindSpeedAdaptor")
 
@@ -60,8 +62,11 @@ class MindSpeedAdaptor:
         hardware.node_rank = node_rank
 
         if working_dir and device_id == 0:
-            with open(os.path.join(working_dir, Hardware.HARDWARE_PARSE_FILENAME), mode="wb") as file:
-                file.write(pickle.dumps(hardware))
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            mode = stat.S_IWUSR | stat.S_IRUSR
+            hardware_filename = os.path.join(working_dir, Hardware.HARDWARE_PARSE_FILENAME)
+            with os.fdopen(os.open(hardware_filename, flags, mode=mode), 'wb') as f:
+                pickle.dump(hardware, f)
 
         return hardware
 
@@ -72,11 +77,13 @@ class MindSpeedAdaptor:
             if arg_name in model_config.__dict__:
                 model_config.__dict__[arg_name] = arg_value
         model_config.global_world_size = args.auto_tuning_ranks
-        model_config.without_jit_compile = True if os.getenv("WITHOUT_JIT_COMPILE") else False
 
         if dist.get_rank() % hardware.devices_per_node == 0:
-            with open(os.path.join(working_dir, ModelConfig.ARGS_PARSE_FILENAME), mode="wb") as file:
-                file.write(pickle.dumps(model_config))
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            mode = stat.S_IWUSR | stat.S_IRUSR
+            model_config_filename = os.path.join(working_dir, ModelConfig.ARGS_PARSE_FILENAME)
+            with os.fdopen(os.open(model_config_filename, flags, mode=mode), 'wb') as f:
+                pickle.dump(model_config, f)
 
         return model_config
 
@@ -105,8 +112,10 @@ class MindSpeedAdaptor:
         total_model_params = [None] * dist.get_world_size()
         dist.all_gather_object(total_model_params, (pipeline_model_parallel_rank, model_params))
         if dist.get_rank() % hardware.devices_per_node == 0:
-            with open(output_path, mode="wb") as file:
-                file.write(pickle.dumps(total_model_params))
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            mode = stat.S_IWUSR | stat.S_IRUSR
+            with os.fdopen(os.open(output_path, flags, mode=mode), 'wb') as f:
+                pickle.dump(total_model_params, f)
 
         return model_params
 
@@ -115,9 +124,9 @@ class MindSpeedAdaptor:
         with open(input_path, mode="rb") as file:
             try:
                 modified_argv: Tuple[Dict[str, Optional[str]], Dict[str, Optional[str]]] = \
-                    pickle.loads(file.read())  # type: ignore
-            except json.decoder.JSONDecodeError as e:
-                _logger.warning(f"Incorrect JSON format. JSONDecodeError: {e}")
+                    restricted_loads(file)  # type: ignore
+            except pickle.UnpicklingError as e:
+                _logger.warning(f"Incorrect pickle format. UnpicklingError: {e}")
                 raise e
 
         enabled_argv, disabled_argv = modified_argv

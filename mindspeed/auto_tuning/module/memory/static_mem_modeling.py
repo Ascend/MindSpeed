@@ -3,7 +3,6 @@ from dataclasses import replace
 from itertools import chain
 import os.path
 
-import pickle
 
 from mindspeed.auto_tuning.utils.logger import get_logger
 from mindspeed.auto_tuning.config.model_config import ModelConfig
@@ -11,6 +10,7 @@ from mindspeed.auto_tuning.config.search_config import SearchConfig
 from mindspeed.auto_tuning.module.memory.model_param import ModelParam
 from mindspeed.auto_tuning.utils.dtype import DTYPE
 from mindspeed.auto_tuning.utils.mem_utils import mem_b_to_mb
+from mindspeed.auto_tuning.utils.restricted_unpickler import restricted_loads
 
 
 class StaticMemModeling:
@@ -106,7 +106,7 @@ class StaticMemModeling:
         def _decode(filename: str) -> Any:
             filepath = os.path.join(working_dir, filename)
             with open(filepath, mode="rb") as file:
-                decode = pickle.loads(file.read())
+                decode = restricted_loads(file)
                 return decode
 
         def _get_pp_params(filename: str) -> List[List[ModelParam]]:

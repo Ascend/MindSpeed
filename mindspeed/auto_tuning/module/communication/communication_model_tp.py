@@ -29,9 +29,11 @@ class TpModel(CommunicationModel):
         comm_x = (s / (tp * cp))
         if pp == 1:
             # 前向最后一个allgather不计算，反向的前2个+最后一个allgather不计算
+            # 不开启PP的情况下TP域共有18个通信，需要剔除4个loss的通信
             comm_time = (total_time - wait_time) * 14 / 18 / pp
             self.tp_comm_overlap_time_list.append([overlap_time * 2 / 3 / pp])
         else:
+            # 开启PP的情况下TP域共有15个通信，需要剔除1个loss的通信
             comm_time = (total_time - wait_time) * 14 / 15 / pp
             self.tp_comm_overlap_time_list.append([overlap_time / pp])
         self.comm.append_hccs([comm_x], comm_time)

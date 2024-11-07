@@ -12,6 +12,7 @@ from mindspeed.auto_tuning.utils.utils import get_prof_dir
 from mindspeed.auto_tuning.module.operator.operator import OperatorPerformance
 from mindspeed.auto_tuning.module.operator.operator_database import OperatorHistory
 
+
 logger = get_logger('operator_re_profile')
 
 
@@ -46,25 +47,23 @@ def search_operator(working_dir, search_cfg, communication, profile_count,
         re_profiling_config.prepare_for_profiling()
 
         from mindspeed.auto_tuning.module.hardware import Hardware
-        res_dir = f"{working_dir}/{get_prof_dir(re_profiling_config, re_profile=True)}"
+        res_dir = os.path.join(working_dir, get_prof_dir(re_profiling_config, re_profile=True))
         if not os.path.exists(res_dir):
             profile_count[0] += 1
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             mode = stat.S_IWUSR | stat.S_IRUSR
-            with os.fdopen(os.open(f'{working_dir}/ootb_{Hardware().node_rank}.pkl', flags, mode=mode), 'wb') as f:
+            pkl_filename = os.path.join(working_dir, f'ootb_{Hardware().node_rank}.pkl')
+            with os.fdopen(os.open(pkl_filename, flags, mode=mode), 'wb') as f:
                 pickle.dump(re_profiling_config, f)
             executor.execute(working_dir=working_dir, output_filename=res_dir, cfg=re_profiling_config,
                              flag=ExecutorFlag.PROFILE)
         profiling_node_parse = GatherNodeProfiling(res_dir)
-        if re_profiling_config.auto_tuning_debug:
-            from mindspeed.auto_tuning.module.hardware import Hardware
-            profiling_node_parse.parse_nodel_pkl_debug(re_profiling_config, Hardware())
         profiling_res = profiling_node_parse.fuse_node_pkl()
 
-        re_profiling_config.without_jit_compile = True if os.getenv('WITHOUT_JIT_COMPILE', False) else False
+        re_profiling_config.jit_compile = search_cfg.jit_compile
         profiling_results.append([re_profiling_config, profiling_res])
 
-        operator_list = OperatorPerformance(model_config)
+        operator_list = OperatorPerformance(model_config, working_dir=working_dir)
         operator_not_found = operator_list.origin_profile_data_list.get_profinfo_list_from_profiling(
             profiling_res.forward.operator_info[-1],
             forwardflag=1)
@@ -81,7 +80,7 @@ def search_operator(working_dir, search_cfg, communication, profile_count,
                                                output_shape=operator.output_shapes.replace('"', ''),
                                                duration=operator.duration_us,
                                                device=Hardware().device_type,
-                                               jit=int(model_config.without_jit_compile),
+                                               jit=int(model_config.jit_compile),
                                                cann="8.0.RC2.alpha002",
                                                driver="24.1.rc2.b030",
                                                dtype=model_config.dtype.value[0])

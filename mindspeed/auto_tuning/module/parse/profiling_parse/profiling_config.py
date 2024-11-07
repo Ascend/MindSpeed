@@ -1,5 +1,4 @@
 from copy import deepcopy
-from dataclasses import dataclass
 from typing import List
 from mindspeed.auto_tuning.module.hardware import Hardware
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_constant import NumberConstant

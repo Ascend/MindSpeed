@@ -1,12 +1,13 @@
 from typing import Dict, Optional, Tuple
 import os
-import subprocess
+import stat
 from enum import Enum
 
 import pickle
 
 from mindspeed.auto_tuning.config.search_config import SearchConfig
 from mindspeed.auto_tuning.utils.runner.irunner import _Env, IRunner
+
 
 _Argv = Dict[str, Optional[str]]
 
@@ -106,8 +107,10 @@ class ModelExecutor:
         self._prepare_modified_argv_envvars(env, modified_argv_path)
 
         modified_argv = self._prepare_modified_argv(cfg, working_dir, output_filename, flag)
-        with open(modified_argv_path, mode="wb") as file:
-            file.write(pickle.dumps(modified_argv))
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        mode = stat.S_IWUSR | stat.S_IRUSR
+        with os.fdopen(os.open(modified_argv_path, flags, mode=mode), 'wb') as f:
+            pickle.dump(modified_argv, f)
 
         returncode = self.runner.run(env)
 

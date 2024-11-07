@@ -3,6 +3,7 @@ import time
 
 from mindspeed.auto_tuning.utils.logger import get_logger
 from mindspeed.auto_tuning.module.hardware import Hardware
+from mindspeed.auto_tuning.config.model_config import ModelConfig
 from mindspeed.auto_tuning.config.search_config import SearchConfig
 from mindspeed.auto_tuning.module.operator.operator_profile_get import OriginalProfileDataList
 from mindspeed.auto_tuning.module.operator.operator_note_cal import OperatorNoteList
@@ -11,13 +12,12 @@ from mindspeed.auto_tuning.module.operator.operator_change_block_cp import CpBlo
 from mindspeed.auto_tuning.module.operator.operator_change_block_ep import EpBlock
 from mindspeed.auto_tuning.module.operator.operator_elemental import DictCalShape
 from mindspeed.auto_tuning.module.operator.operator_database import DataBase, Operator, OperatorHistory
-from mindspeed.auto_tuning.module.operator.operator_shape_analysis import (separate_ep,
-                                                                                          separate_cp_tp)
+from mindspeed.auto_tuning.module.operator.operator_shape_analysis import separate_ep, separate_cp_tp
 from mindspeed.auto_tuning.module.operator.operator_shape_cal import (model_operator_with_tp,
-                                                                                     model_operator_with_shape,
-                                                                                     cal_new_shape_tce,
-                                                                                     cal_operator_flops,
-                                                                                     cal_operator_duration_with_shape)
+                                                                      model_operator_with_shape,
+                                                                      cal_new_shape_tce,
+                                                                      cal_operator_flops,
+                                                                      cal_operator_duration_with_shape)
 
 
 class OperatorPerformance(object):
@@ -29,8 +29,8 @@ class OperatorPerformance(object):
         4. 返回推荐配置
     """
 
-    def __init__(self, model_config):
-        self.db = DataBase()
+    def __init__(self, model_config: ModelConfig, working_dir: str):
+        self.db = DataBase(working_dir=working_dir)
         self.origin_profile_data_list = OriginalProfileDataList()
         self.model_config = model_config
         self._logger = get_logger('operator')
@@ -222,7 +222,7 @@ class OperatorPerformance(object):
                                                            output_shape=output_shape,
                                                            duration=0,
                                                            device=Hardware().device_type,
-                                                           jit=int(self.model_config.without_jit_compile),
+                                                           jit=int(self.model_config.jit_compile),
                                                            cann="8.0.RC2.alpha002",
                                                            driver="24.1.rc2.b030",
                                                            dtype=self.model_config.dtype.value[0]),

@@ -1,7 +1,5 @@
 from copy import deepcopy
 from typing import List, Dict
-import torch
-import torch_npu
 from mindspeed.auto_tuning.config.search_config import SearchConfig
 from mindspeed.auto_tuning.module.parse.recompute_module_info import ModuleRecomputeInfo
 
@@ -237,10 +235,6 @@ class RecomputeSolver:
             cost = k * self.layers_combination[i].cost * self.num_micro_batches
 
         device_memory = self.memory_limit
-        # print(f"device_memory = {device_memory} and memory = {memory} and "
-        #       f"cost = {cost} pre_step_ans.memory = {pre_step_ans.memory} and  self.layers_combination[i].memory ="
-        #       f" {self.layers_combination[i].memory} and self.layers_combination[i].cost = "
-        #       f"{self.layers_combination[i].cost} k = {k}")
 
         if device_memory >= memory and cost <= goods_value.cost and (len(pre_step_ans.layer_names) + k) == j:
             goods_value.memory = memory
@@ -272,35 +266,25 @@ class RecomputeSolver:
                                      self.num_warmup_micro_batches_per_chunk[cur_layer_chunk_rank])
             ans[0][i].layer_names.extend([self.layer_full_recompute_combination.name for _ in range(i)])
 
-        # for i in range(1, self.num_layers_per_pp + 1):
-        #     print("success print first line")
-        #     print(f"ans[0][i].cost = {ans[0][i].cost} and ans[0][i].memory = {ans[0][i].memory}")
 
         # find max goods value
         for i in range(1, combination_num):
-            # print(f"======================================================\n"
-            #       f"\n success i = {i} self.layers_combination[i].name = {self.layers_combination[i].name} "
-            #       f"self.layers_combination[i].memory ="
-            #       f" {self.layers_combination[i].memory} and self.layers_combination[i].cost = "
-            #       f"{self.layers_combination[i].cost}", flush=True)
             for j in range(1, self.num_layers_per_pp + 1):
                 k = 0
                 while k <= j:
                     ans[i][j] = self.get_max_goods_value([i, j, k], ans)
                     k += 1
-                # print(f"success   j = {j} and ans[i][j] = {ans[i][j].layer_names} and memory = {ans[i][j].memory} "
-                #       f"and cost ={ans[i][j].cost} \n\n", flush=True)
 
         # 右下角即为最优解
         best_goods_value = ans[combination_num - 1][self.num_layers_per_pp]
         print(f"after solve, current memory is {best_goods_value.memory} and current perf = {best_goods_value.cost} "
               f"and cur_recompute_combination is {best_goods_value.layer_names}")
-        need_recompte = False
+        need_recompute = False
         for combination_name in best_goods_value.layer_names:
             if combination_name != self.layer_without_recompute_combination.name:
-                need_recompte = True
+                need_recompute = True
                 break
-        return need_recompte, best_goods_value.memory, best_goods_value.cost
+        return need_recompute, best_goods_value.memory, best_goods_value.cost
 
 
 class LayerCombination:

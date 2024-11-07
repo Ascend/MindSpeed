@@ -1,5 +1,6 @@
 import math
 from mindspeed.auto_tuning.module.hardware import Hardware
+from mindspeed.auto_tuning.config.model_config import ModelConfig
 from mindspeed.auto_tuning.module.communication.communication import Communication
 from mindspeed.auto_tuning.module.operator.operator import OperatorPerformance
 from mindspeed.auto_tuning.module.operator.operator_re_profile import search_operator
@@ -11,9 +12,9 @@ class ModelPerformance(object):
     Model Performance modeling
     """
 
-    def __init__(self, hardware=None, model_cfg=None):
+    def __init__(self, hardware=None, model_cfg: ModelConfig = None, working_dir: str = None):
         self.communication = Communication(hardware, model_cfg)
-        self.operator = OperatorPerformance(model_cfg)
+        self.operator = OperatorPerformance(model_cfg, working_dir=working_dir)
         self.hardware = hardware
         self.logger = get_logger("ModelPerformance")
 
@@ -83,7 +84,6 @@ class ModelPerformance(object):
         self.logger.debug(tplt.format(tp, dp, pp, vp, cp, ep, total_operator_time,
                           total_communication_time, bubble_time, total_time, chr(12288)))
         tplt = "{0:<4}\t{1:<4}\t{2:<4}\t{3:<4}\t{4:<4}\t{5:<4}"
-        # logging.debug('debug，用来打印一些调试信息，级别最低')
         self.logger.debug(f"*******   each layer mbs communication time(ms)  ********")
         self.logger.debug(tplt.format('tp_time', 'dp_time', 'pp_time',
                           'bubble', 'cp_time', 'ep_time', chr(12288)))

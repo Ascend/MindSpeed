@@ -3,6 +3,7 @@ import json
 import os
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_constant import SpecialOperatorName
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_constant import NumberConstant
+from mindspeed.auto_tuning.utils.file_utils import check_file_size
 
 
 class FileAnalyseTool:
@@ -15,6 +16,7 @@ class FileAnalyseTool:
         csv_path = os.path.join(file_path, csv_name)
         try:
             with open(csv_path, newline='') as csvfile:
+                check_file_size(csvfile)
                 reader = csv.DictReader(csvfile)
                 csv_details = list(reader)
 
@@ -30,6 +32,7 @@ class FileAnalyseTool:
         json_details = {"p2p": {}, "collective": {}}
         try:
             with open(json_path, 'r') as f:
+                check_file_size(f)
                 details = json.load(f)
             details_value = list(details.values())[0]
             for name, info in details_value.get('p2p', {}).items():
