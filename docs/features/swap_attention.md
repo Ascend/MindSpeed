@@ -23,7 +23,7 @@
 
 ## 使用方法
 
-`--swap-modules`：参数类型为string，默认值为"input_norm,self_attention,post_attention_norm"，可根据模型自行配置module，需要结合`--swap-attention`使用
+`--swap-modules`：参数类型为string，默认值为"input_norm,self_attention,post_attention_norm"，可根据模型自行配置module，需要结合`--swap-attention`使用。使用前提是开启flash attention融合算子。
 
 ### a. 仅开启预取功能：`--swap-attention`
 
