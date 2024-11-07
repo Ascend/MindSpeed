@@ -47,7 +47,7 @@ def conveter_npu_gmm_param(
         elif x_dtype == DataType.DT_UINT8:
             bias = fill_empty_tensor(DataType.DT_INT32)
         else:
-            bias = fill_empty_tensor(DataType.x_dtype)
+            bias = fill_empty_tensor(x_dtype)
     scale = [fill_empty_tensor(DataType.DT_UINT64)]
     offset = [fill_empty_tensor(DataType.DT_FLOAT)]
     antiquant_scale = [fill_empty_tensor(DataType.DT_FLOAT16)]
