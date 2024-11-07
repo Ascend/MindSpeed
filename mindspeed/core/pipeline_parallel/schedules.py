@@ -24,6 +24,7 @@ from megatron.core.utils import get_attr_wrapped_model, get_model_config, get_mo
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
 from mindspeed.core.pipeline_parallel import flexible_schedules
 from mindspeed.core.pipeline_parallel.ripipe_schedules import forward_backward_ripipe_pipelining
+from mindspeed.core.pipeline_parallel import multiparameter_schedules
 
 LOSS_BACKWARD_SCALE = torch.tensor(1.0)
 
@@ -51,7 +52,14 @@ def get_forward_backward_func_wrapper(get_forward_backward_func):
         if arguments.enable_high_availability:
             forward_backward_func = forward_backward_func_wrapper(forward_backward_func)
 
+        if arguments.use_multiparameter_pipeline_model_parallel:
+            pipeline_model_parallel_size = parallel_state.get_pipeline_model_parallel_world_size()
+            if pipeline_model_parallel_size > 1 \
+                    and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+                forward_backward_func = multiparameter_schedules.forward_backward_pipelining_with_interleaving
+
         return forward_backward_func
+
     return wrapper
 
 

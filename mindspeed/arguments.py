@@ -320,6 +320,8 @@ def _add_training_args(parser):
     group.add_argument('--pipe-experts-multi-stream', action='store_true', default=False,
                        help='Use multi stream to avoid link collision in collective communication when --use-pipe-experts. '
                             'The default is False.')
+    group.add_argument('--use-multiparameter-pipeline-model-parallel', action='store_true', default=False,
+                       help='can transfer multi parameters from stage to stage in pipeline model parallel')
     group.add_argument('--op-cal-tflops', action='store_true', default=False,
                        help='use for cal mfu and hfu')
     group.add_argument('--npu-deterministic', action='store_true', default=False,
@@ -419,6 +421,8 @@ def core_transformer_config_from_args_wrapper(fn):
         config = fn(args)
         config.context_parallel_algo = args.context_parallel_algo
         config.batch_p2p_comm = False
+        if args.use_multiparameter_pipeline_model_parallel:
+            config.deallocate_pipeline_outputs = False
         return config
 
     return wrapper
