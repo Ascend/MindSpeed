@@ -512,7 +512,7 @@ def reuse_fp32_param_distrib_optimizer_init_wrapper(init_func):
             from mindspeed.op_builder import AlgorithmOpBuilder
             reuse_data_ptr = AlgorithmOpBuilder().load().reuse_data_ptr
             data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-            data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+            data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
             self.model_param_bucket_and_res_map = {}
             self.model_param_bucket_and_shard_main_param_int32_view_map = {}
             self.shard_main_param_res_buffers = []
@@ -685,17 +685,22 @@ def fp16_tensor_convert_to_fp32_tensor(self):
     into the fp32 tensor through view transposition.
     """
     data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
     iteration = getattr(get_args(), "iteration", 0)
+    npu_deterministic = getattr(get_args(), "npu_deterministic", False)
     if data_parallel_world_size == 1:
         for shard_fp32_param_fp16_view in self.shard_fp32_param_fp16_view_group:
             shard_fp32_param_fp16_view.copy_(
                     shard_fp32_param_fp16_view.view(2, -1).transpose(1, 0).reshape(-1).contiguous())
        
-        for shard_res_and_buffer_model_param in self.shard_main_param_res_buffers:
-            shard_main_param_int32_view_buffer = self.model_param_bucket_and_shard_main_param_int32_view_map[shard_res_and_buffer_model_param]
+        if npu_deterministic:
             if not self.first_sub_flag:
-                shard_main_param_int32_view_buffer.sub_(32768)
+                fp16_tensor_convert_to_fp32_tensor_deterministic(self.shard_fp32_from_float16_groups, self.optimizer)
+        else:
+            for shard_res_and_buffer_model_param in self.shard_main_param_res_buffers:
+                shard_main_param_int32_view_buffer = self.model_param_bucket_and_shard_main_param_int32_view_map[shard_res_and_buffer_model_param]
+                if not self.first_sub_flag:
+                    shard_main_param_int32_view_buffer.sub_(32768)
     else:
         for buffer in self.buffers:
             for bucket in buffer.buckets:
@@ -733,7 +738,10 @@ def fp16_tensor_convert_to_fp32_tensor(self):
                         workspace_convert_view.view(2, -1).transpose(1, 0).reshape(-1).contiguous())
            
                 if not self.first_sub_flag:
-                    shard_main_param_int32_view_bucket[:param_data_dp_numel].sub_(32768)
+                    if npu_deterministic:
+                        fp16_tensor_convert_to_fp32_tensor_deterministic(self.shard_fp32_from_float16_groups, self.optimizer)
+                    else:
+                        shard_main_param_int32_view_bucket[:param_data_dp_numel].sub_(32768)
 
 
 def fp32_tensor_convert_to_fp16_tensor(self):
@@ -744,26 +752,37 @@ def fp32_tensor_convert_to_fp16_tensor(self):
     into the bf16 data and residual through view transposition.
     """
     data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+    npu_deterministic = getattr(get_args(), "npu_deterministic", False)
     if data_parallel_world_size == 1:
-        for shard_res_and_buffer_model_param in self.shard_main_param_res_buffers:
-            shard_main_param_int32_view_buffer = self.model_param_bucket_and_shard_main_param_int32_view_map[shard_res_and_buffer_model_param]
-            shard_main_param_int32_view_buffer.add_(32768)
-            self.first_sub_flag = False
+        if npu_deterministic:
+            fp32_tensor_convert_to_fp16_tensor_deterministic(self.shard_fp32_from_float16_groups, self.optimizer)
+        else:
+            for shard_res_and_buffer_model_param in self.shard_main_param_res_buffers:
+                shard_main_param_int32_view_buffer = self.model_param_bucket_and_shard_main_param_int32_view_map[shard_res_and_buffer_model_param]
+                shard_main_param_int32_view_buffer.add_(32768)
+        self.first_sub_flag = False
 
         for shard_fp32_param_fp16_view in self.shard_fp32_param_fp16_view_group:
             shard_fp32_param_fp16_view.copy_(
                     shard_fp32_param_fp16_view.view(-1, 2).transpose(1, 0).reshape(-1).contiguous())
     else:
+        if npu_deterministic:
+            fp32_tensor_convert_to_fp16_tensor_deterministic(self.shard_fp32_from_float16_groups, self.optimizer)
+        else:
+            for buffer in self.buffers:
+                for bucket in buffer.buckets:
+                    bucket_param_data = bucket.param_data
+                    param_data_dp_numel = bucket_param_data.numel() // data_parallel_world_size
+                    shard_main_param_int32_view_bucket = self.model_param_bucket_and_shard_main_param_int32_view_map[bucket_param_data]
+                    shard_main_param_int32_view_bucket[:param_data_dp_numel].add_(32768)
+
         for buffer in self.buffers:
             for bucket in buffer.buckets:
+                self.first_sub_flag = False
                 bucket_param_data = bucket.param_data
                 param_data_dp_numel = bucket_param_data.numel() // data_parallel_world_size
                 bucket_res = self.model_param_bucket_and_res_map[bucket_param_data]
-                shard_main_param_int32_view_bucket = self.model_param_bucket_and_shard_main_param_int32_view_map[bucket_param_data]
-                shard_main_param_int32_view_bucket[:param_data_dp_numel].add_(32768)
-                self.first_sub_flag = False
-           
                 bucket_res_position = max(0, data_parallel_rank - 1) * param_data_dp_numel
                 shard_fp32_main_param_view = bucket_param_data[bucket_res_position: bucket_res_position + param_data_dp_numel * 2]
 
@@ -795,6 +814,33 @@ def fp32_tensor_convert_to_fp16_tensor(self):
 
                 if data_parallel_rank != 0:
                     shard_fp32_main_param_view[param_data_dp_numel:param_data_dp_numel * 2].copy_(shard_fp32_main_param_view[:param_data_dp_numel])
+
+
+def fp16_tensor_convert_to_fp32_tensor_deterministic(shard_fp32_from_float16_groups, optimizer):
+    assert hasattr(optimizer, "state")
+    for shard_fp32_from_float16_group in shard_fp32_from_float16_groups:
+        for shard_fp32_param in shard_fp32_from_float16_group:
+            if "exp_avg_sq" in optimizer.state[shard_fp32_param]:
+                shard_int32_tensor = torch.tensor(shard_fp32_param.untyped_storage(), dtype=torch.int32, device=shard_fp32_param.device)
+                assert shard_int32_tensor.numel() == shard_fp32_param.numel()
+                odd_even_tensor = (torch.sign(optimizer.state[shard_fp32_param]["exp_avg_sq"]) > 0).reshape(-1)
+                optimizer.state[shard_fp32_param]["exp_avg_sq"].abs_()
+                shard_int32_tensor.add_(odd_even_tensor)
+                shard_int32_tensor.sub_(32768)
+
+
+def fp32_tensor_convert_to_fp16_tensor_deterministic(shard_fp32_from_float16_groups, optimizer):
+    assert hasattr(optimizer, "state")
+    for shard_fp32_from_float16_group in shard_fp32_from_float16_groups:
+        for shard_fp32_param in shard_fp32_from_float16_group:
+            if "exp_avg_sq" in optimizer.state[shard_fp32_param]:
+                shard_int32_tensor = torch.tensor(shard_fp32_param.untyped_storage(), dtype=torch.int32, device=shard_fp32_param.device)
+                assert shard_int32_tensor.numel() == shard_fp32_param.numel()
+                odd_even_tensor = ((shard_int32_tensor & 131071) == 32768).int()
+                shard_int32_tensor.add_(32768)
+                shard_int32_tensor.sub_(odd_even_tensor)
+                sign_tensor = torch.sign(odd_even_tensor - 0.5).reshape(optimizer.state[shard_fp32_param]["exp_avg_sq"].shape)
+                optimizer.state[shard_fp32_param]["exp_avg_sq"].mul_(sign_tensor)
 
 
 def get_parameter_state_dp_zero_hccl(self):
