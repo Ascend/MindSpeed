@@ -76,7 +76,7 @@ class MixtralParallelMLPBM(torch.nn.Module):
             setattr(self.w3, "in_nano", True)
 
     def forward(self, hidden_states):
-        is_recompute_activation = should_recompute_activation(self)
+        is_recompute_activation = should_recompute_activation(self.layer_number)
 
         if is_recompute_activation:
             self.activation_checkpoint_manager = CheckpointWithoutOutput()

@@ -874,9 +874,9 @@ def should_recompute(args, layer_number, num_recompute):
         return recompute_priority < num_recompute
 
 
-def should_recompute_activation(self):
+def should_recompute_activation(layer_number):
     args = get_args()
-    if not args.recompute_activation_function or self.layer_number is None:
+    if not args.recompute_activation_function or layer_number is None:
         return False
 
     if args.recompute_in_bubble or args.recompute_in_advance:
@@ -891,7 +891,7 @@ def should_recompute_activation(self):
             raise AssertionError('--recompute-activation-function-num-layers cannot be less than 0.')
         elif args.recompute_activation_function_num_layers > args.num_layers:
             raise AssertionError('--recompute-activation-function-num-layers cannot be greater than the number of layers.')
-    return should_recompute(args, self.layer_number, args.recompute_activation_function_num_layers)
+    return should_recompute(args, layer_number, args.recompute_activation_function_num_layers)
 
 
 def should_recompute_norm(self):
@@ -902,7 +902,7 @@ def should_recompute_norm(self):
 
 
 def parallel_mlp_forward(self, hidden_states):
-    is_recompute_activation = should_recompute_activation(self)
+    is_recompute_activation = should_recompute_activation(self.layer_number)
     args = get_args()
     
     def activation_function(*function_args):
