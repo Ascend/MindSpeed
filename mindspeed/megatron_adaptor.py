@@ -410,6 +410,13 @@ def mcore_tensor_parallel_adaptation(aspm, args):
     from .core.tensor_parallel.layers import vocab_parallel_embedding_forward
     from .core.tensor_parallel.layers import row_parallel_nocomm_optimizer_wrapper
     from .core.tensor_parallel.layers import parallel_linear_init_wrapper
+
+    def has_recomputation_or_swap(args):
+        return (args.swap_attention or
+                args.recompute_in_bubble or
+                args.adaptive_recompute_device_swap or
+                args.recompute_in_advance)
+
     aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
                         checkpoint_function_backward)
     aspm.register_patch('megatron.core.tensor_parallel.layers.VocabParallelEmbedding.forward',
@@ -421,7 +428,7 @@ def mcore_tensor_parallel_adaptation(aspm, args):
     aspm.register_patch('megatron.core.tensor_parallel.layers.ColumnParallelLinear.__init__',
                         parallel_linear_init_wrapper)
     aspm.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
-    if args.swap_attention or args.recompute_in_bubble or args.adaptive_recompute_device_swap:
+    if has_recomputation_or_swap(args):
         from .core.tensor_parallel.layers import linear_forward_main_grad_wrapper, linear_backward_main_grad_wrapper
         aspm.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
                             linear_forward_main_grad_wrapper)

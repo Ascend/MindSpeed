@@ -722,7 +722,7 @@ def is_activate_adaptive_recompute():
         return False, profiling_step
     max_profiling_step = all_args.train_iters // 10
     profiling_step = all_args.adaptive_recompute_profiling_step
-    if profiling_step > all_args.train_iters:
+    if profiling_step > all_args.train_iters and not all_args.swap_attention:
         raise AssertionError('\"adaptive-recompute-profiling-step\" cannot be greater than train_iters')
     if profiling_step < 5 or profiling_step > max_profiling_step:
         print_rank_0(f"[WARNING] consider set \"adaptive-recompute-profiling-step\" value >=5"
