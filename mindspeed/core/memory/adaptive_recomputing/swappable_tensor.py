@@ -1,5 +1,4 @@
 import torch
-import torch_npu
 
 
 class SwappableTensor(torch.Tensor):

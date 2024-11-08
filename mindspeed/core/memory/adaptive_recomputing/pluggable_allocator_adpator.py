@@ -1,8 +1,7 @@
-import os
 import ctypes
 
-import torch
 import torch_npu
+
 from mindspeed.op_builder import AdaptiveRecomputingPluggableAllocatorBuilder
 
 

@@ -3,13 +3,10 @@ from copy import deepcopy
 
 import networkx as nx
 import torch
-import torch_npu
 import numpy as np
 
 from megatron.training import print_rank_0
 from megatron.core import parallel_state
-
-from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager
 
 
 class GraphSolver:
@@ -185,8 +182,9 @@ class GraphSolver:
         result = {}
         try:
             module_layers = self.module_layers["module_layers"]
-        except KeyError:
+        except KeyError as e:
             print_rank_0("[ERROR] The key \"module_layers\" doesn't exist.")
+            raise e
         for i, node in enumerate(recompute_nodes):
             if node != self.layer_recompute_one_combination.broadcast_value:
                 continue
@@ -478,8 +476,9 @@ class GraphSolver:
     def print_list_to_policy(self, recompute_policy_list):
         try:
             module_layers = self.module_layers["module_layers"]
-        except KeyError:
+        except KeyError as e:
             print_rank_0("[ERROR] The key \"module_layers\" doesn't exist.")
+            raise e
         module_layers_num = len(module_layers)
         if len(recompute_policy_list) == 0:
             return

@@ -54,6 +54,7 @@ aclError aclrtMalloc_wrapper(void **devPtr, size_t size, aclrtMemMallocPolicy po
 
 aclError aclrtFree_wrapper(void *devPtr) {
     alr_lock.lock();
+    TORCH_INTERNAL_ASSERT(alr_total_size >= alr_recorder[devPtr]);
     alr_total_size -= alr_recorder[devPtr];
     alr_recorder.erase(devPtr);
     alr_lock.unlock();

@@ -81,7 +81,7 @@ class WeightGradStore:
     def put(cls, total_input, grad_output, weight, sequence_parallel, in_row=False, pipe_experts=False):
         if get_args().use_nanopipe_swap:
             if cls.prefetch_stream is None:
-                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
             if grad_output is not None:
                 cls.host_tensors_gradoutput.append(swap_d2h(grad_output, cls.prefetch_stream))
             cls.host_tensors_input.append(swap_d2h(total_input, cls.prefetch_stream))
@@ -97,7 +97,7 @@ class WeightGradStore:
     def save_grad_output(cls, grad):
         if get_args().use_nanopipe_swap:
             if cls.prefetch_stream is None:
-                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
             cls.host_pipe_experts_grad.append(swap_d2h(grad, cls.prefetch_stream))
         cls.grad_store.append(grad)
 
@@ -132,7 +132,7 @@ class WeightGradStore:
     def swap_tensors(cls):
         if get_args().use_nanopipe_swap:
             if cls.prefetch_stream is None:
-                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+                cls.prefetch_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
             cls.prefetch_stream.wait_stream(torch.npu.current_stream())
             for cache_id in range(len(cls.cache)):
                 cls.cache[cache_id] = list(cls.cache[cache_id])
@@ -182,7 +182,7 @@ class WeightGradStore:
         if len(cls.cache) == 0:
             return
         if cls.gather_stream is None:
-            cls.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+            cls.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
         if get_args().overlap_grad_reduce:
             if overlap_arg is None:
                 raise RuntimeError("overlap_arg is invalid")

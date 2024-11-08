@@ -14,8 +14,6 @@ from megatron.core.utils import divide
 from megatron.training import get_args
 
 from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
-from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses
-from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses, \
     get_tensor_model_parallel_world_size_for_nd1_dim1
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPXOverlapCollectiveComm, \

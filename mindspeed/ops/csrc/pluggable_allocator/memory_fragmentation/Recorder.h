@@ -26,6 +26,7 @@ constexpr size_t kMinLargeAlloc = 10485760; // allocations between 1 and 10 MiB 
 constexpr size_t kRoundLarge = 2097152; // round up large allocs to 2 MB
 constexpr size_t kSizeLimit = 1395864371;   // 1.3G = 1395864371 1.5G=1610612736
 constexpr size_t myMaxSplitSize = 1800000000;   // 1.67G
+constexpr size_t kUnitMB = 1024 * 1024;        // 1MiB = 1024 * 1024 bytes
 
 // Check if it is in the forward stage
 static bool _check() { return g_record_flag; }
