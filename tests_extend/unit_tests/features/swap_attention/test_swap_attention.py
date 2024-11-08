@@ -142,7 +142,7 @@ class TestSwapAttention(DistributedTest):
         tensor_cpu = torch.empty(tensor1.shape, dtype=tensor1.dtype, pin_memory=True, device='cpu')
         tensor_storage_size = tensor1.untyped_storage().size()
 
-        stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+        stream = torch_npu.npu.Stream(device=torch.npu.current_device())
         with torch_npu.npu.stream(stream):
             stream.wait_stream(torch.npu.current_stream())
             tensor_cpu.untyped_storage().copy_(tensor1.untyped_storage(), non_blocking=True)

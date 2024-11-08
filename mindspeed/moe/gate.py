@@ -6,7 +6,7 @@
 
 # copied from https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/moe/sharded_moe.py
 # reworked/refactored some parts to make it run.
-from typing import Callable, Dict, Tuple, Union, Any
+from typing import Callable, Dict, Tuple
 from collections import namedtuple
 
 import torch

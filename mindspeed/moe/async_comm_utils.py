@@ -25,7 +25,6 @@ from megatron.core.parallel_state import (
     get_expert_model_parallel_group,
 )
 from megatron.training import get_args
-from megatron.core.parallel_state import is_pipeline_first_stage
 from mindspeed.core.weight_grad_store import WeightGradStore
 
 

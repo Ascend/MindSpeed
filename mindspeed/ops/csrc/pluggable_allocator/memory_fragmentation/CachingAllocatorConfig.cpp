@@ -63,11 +63,11 @@ size_t CachingAllocatorConfig::parseMaxSplitSize(const std::vector<std::string>&
         } catch (const std::out_of_range& e){
             TORCH_CHECK(false, "Error, out of int range");
         }
-        TORCH_CHECK(val1 > kLargeBuffer / (1024 * 1024), "CachingAllocator option max_split_size_mb too small, must be > ",
-                kLargeBuffer / (1024 * 1024));
-        val1 = std::max(val1, kLargeBuffer / (1024 * 1024));
-        val1 = std::min(val1, (std::numeric_limits<size_t>::max() / (1024 * 1024)));
-        m_max_split_size = val1 * 1024 * 1024;
+        TORCH_CHECK(val1 > kLargeBuffer / kUnitMB, "CachingAllocator option max_split_size_mb too small, must be > ",
+                kLargeBuffer / kUnitMB);
+        val1 = std::max(val1, kLargeBuffer / kUnitMB);
+        val1 = std::min(val1, (std::numeric_limits<size_t>::max() / kUnitMB));
+        m_max_split_size = val1 * kUnitMB;
     } else {
         TORCH_CHECK(false, "Error, expecting max_split_size_mb value");
     }
@@ -101,7 +101,8 @@ size_t CachingAllocatorConfig::parseExpandableSegments(const std::vector<std::st
                 "Expected a single True/False argument for expandable_segments");
         m_expandable_segments = (config[i] == "True");
         void* ptr = nullptr;
-        TORCH_CHECK(aclrtReserveMemAddress(&ptr, 512, 0, NULL, 1) == ACL_ERROR_NONE, \
+        constexpr size_t virtual_mem_size = 512;
+        TORCH_CHECK(aclrtReserveMemAddress(&ptr, virtual_mem_size, 0, NULL, 1) == ACL_ERROR_NONE, \
                                     "Error, failed to reserve memory address");
         TORCH_CHECK(aclrtReleaseMemAddress(ptr) == ACL_ERROR_NONE, \
                                     "Error, failed to release memory address");

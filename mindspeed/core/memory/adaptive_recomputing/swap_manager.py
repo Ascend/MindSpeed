@@ -1,9 +1,6 @@
 import os
 import time
 
-import torch
-import torch_npu
-
 from megatron.training import print_rank_0
 from mindspeed.core.memory.adaptive_recomputing.swappable_tensor import SwappableTensor
 

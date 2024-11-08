@@ -2,9 +2,7 @@
 import re
 import torch
 import torch_npu
-from megatron.training import print_rank_0
 from megatron.training import get_args
-from megatron.core import parallel_state
 
 DEBUG_PRINT = True
 

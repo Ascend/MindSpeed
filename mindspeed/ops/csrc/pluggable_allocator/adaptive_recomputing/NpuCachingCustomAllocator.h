@@ -208,10 +208,12 @@ struct ExpandableSegment {
     size_t device_free;
     size_t device_total;
     TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, "aclrtGetMemInfo failed.");
+    TORCH_INTERNAL_ASSERT(device_free <= device_total);
     // we allocate enough address space for 1 1/8 the total memory on the NPU.
     // This allows for some cases where we have to unmap pages earlier in the
     // segment to put them at the end.
-    max_handles_ = numSegments(device_total + device_total / 8);
+    constexpr size_t extra_space_factor = 8;
+    max_handles_ = numSegments(device_total + device_total / extra_space_factor);
     TORCH_CHECK(aclrtReserveMemAddress(&ptr_, segment_size_ * max_handles_, 0, NULL, 1) == ACL_ERROR_NONE, \
                                 "Error, failed to reserve memory address");
   }
@@ -330,6 +332,7 @@ struct ExpandableSegment {
   }
 
   SegmentRange rangeFromHandles(size_t begin, size_t end) {
+    TORCH_INTERNAL_ASSERT(end >= begin);
     return SegmentRange(ptr() + segment_size_ * begin, segment_size_ * (end - begin));
   }
 
@@ -468,7 +471,8 @@ class CachingAllocatorConfig {
         m_garbage_collection_threshold(0),
         m_expandable_segments(true) {
     void *ptr = nullptr;
-    auto status = aclrtReserveMemAddress(&ptr, 512, 0, NULL, 1);
+    constexpr size_t virtual_mem_size = 512;
+    auto status = aclrtReserveMemAddress(&ptr, virtual_mem_size, 0, NULL, 1);
     if (status == ACL_ERROR_NONE) {
       TORCH_CHECK(aclrtReleaseMemAddress(ptr) == ACL_ERROR_NONE, "aclrtReleaseMemAddress failed.");
     } else {
@@ -607,11 +611,11 @@ class DeviceCachingAllocator {
         PyObject *pFunc2 = PyObject_GetAttrString(pClass, "swap_out_by_size");
 
         PyObject *pArgs = PyTuple_New(1);
-        PyTuple_SetItem(pArgs, 0, PyLong_FromLong(size));
+        TORCH_CHECK(PyTuple_SetItem(pArgs, 0, PyLong_FromLong(size)) == 0, "PyTuple_SetItem failed.");
 
         PyObject *pResult = PyObject_CallObject(pFunc2, pArgs);
         bool ret = false;
-        PyArg_Parse(pResult, "p", &ret);
+        TORCH_CHECK(PyArg_Parse(pResult, "p", &ret), "PyArg_Parse failed.");
         PyGILState_Release(state);
         if (!ret) {
           std::cout << "SWAP Failed" << std::endl;
@@ -625,6 +629,7 @@ class DeviceCachingAllocator {
         size_t device_free;
         size_t device_total;
         TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, "aclrtGetMemInfo failed.");
+        TORCH_INTERNAL_ASSERT(device_free <= device_total);
 
         std::string allowed_info;
         if (set_fraction) {
@@ -778,7 +783,7 @@ class DeviceCachingAllocator {
   void emptyCache(bool check_error) {
     std::shared_ptr<c10::GatheredContext> context = maybeGatherContext(RecordContext::ALL);
     std::lock_guard<std::recursive_mutex> lock(mutex);
-    release_cached_blocks(check_error, context);
+    TORCH_CHECK(release_cached_blocks(check_error, context), "release_cached_blocks failed.");
   }
 
   /** Returns a copy of the memory allocator stats **/
@@ -1069,6 +1074,7 @@ class DeviceCachingAllocator {
   }
 
   bool should_split(const Block *block, size_t size) {
+    TORCH_INTERNAL_ASSERT(block->size >= size);
     size_t remaining = block->size - size;
     if (block->pool->is_small || CachingAllocatorConfig::expandable_segments()) {
       return remaining >= kMinBlockSize;
@@ -1180,7 +1186,7 @@ class DeviceCachingAllocator {
       return;
     }
 
-    c10_npu::npuSynchronizeDevice(true);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(true), "npuSynchronizeDevice failed.");
 
     // Repeat GC until we reach reclaim > target size.
     bool block_freed = true;
@@ -1268,7 +1274,7 @@ class DeviceCachingAllocator {
       (key.size < CachingAllocatorConfig::max_split_size()) ? CachingAllocatorConfig::max_split_size() : key.size;
     auto it = pool.blocks.lower_bound(&key);
 
-    c10_npu::npuSynchronizeDevice(true);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(true), "npuSynchronizeDevice failed.");
 
     if (it == pool.blocks.end() || (*it)->stream != p.stream()) {
       // No single block is large enough; free multiple oversize blocks, starting with the largest
@@ -1302,7 +1308,7 @@ class DeviceCachingAllocator {
   bool release_cached_blocks(bool check_error, const std::shared_ptr<c10::GatheredContext> &context)
   {
     // Make sure event deque from taskqueue, then synchronize Event
-    c10_npu::npuSynchronizeDevice(check_error);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(check_error), "npuSynchronizeDevice failed.");
 
     // First ensure that all blocks that can't currently be allocated due to
     // outstanding events are returned to the pool.
@@ -1333,7 +1339,7 @@ class DeviceCachingAllocator {
     TORCH_INTERNAL_ASSERT(!block->expandable_segment_);
     record_trace(TraceEntry::SEGMENT_FREE, int64_t(block->ptr), block->size, block->stream, block->device,
                  context ? context : block->context_when_segment_allocated);
-    aclrtFree((void *)block->ptr);
+    TORCH_CHECK(aclrtFree((void *)block->ptr) == ACL_ERROR_NONE, "aclrtFree failed.");
     total_allocated_memory -= block->size;
 
     auto *pool = block->pool;

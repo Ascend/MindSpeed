@@ -126,6 +126,10 @@ $$
 
 在训练脚本的参数列表中加入 `--tp-2d`，开启2D张量并行，`--tp-x N1`和`--tp-y N2`分别设置其x轴、y轴的切分大小，其中需满足`tp = N1 * N2`。
 
+其他优化参数：
+- `--enable-overlap-ag-with-matmul`: 在linear计算时开启all-gather通信和matmul进行隐藏，以便加速
+- `--enable-overlap-matmul-with-rs`: 在linear计算时开启matmul计算和reduce-scatter通信进行隐藏，以便加速
+
 ## 使用效果
 
 在llama3-405B模型训练时，tp=16情况下，开启2D张量并行，tp_x=8，tp_y=2，相比原Megatron 1D张量并行性能提升5%+。

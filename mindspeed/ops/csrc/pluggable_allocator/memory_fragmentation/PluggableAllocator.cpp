@@ -89,7 +89,7 @@ void PluggableAllocator::setMemoryFraction(double fraction, int device) {
             fraction,
             ". Please set within (0, 1).");
 
-    c10_npu::SetDevice(device);
+    TORCH_CHECK(c10_npu::SetDevice(device) == ACL_ERROR_NONE, "SetDevice failed.");
 
     device_allocator[device]->set_memory_fraction(fraction);
 }
