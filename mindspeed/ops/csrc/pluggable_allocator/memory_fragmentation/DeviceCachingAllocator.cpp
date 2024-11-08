@@ -52,13 +52,13 @@ void DeviceCachingAllocator::print_memory_analysis() {
     for (auto &x : memory_cnt) {
         printf("%s cnt %lu size %lu\n", x.first.c_str(), x.second.first, x.second.second);
     }
-    fflush(stdout);
+    TORCH_CHECK(fflush(stdout) == 0, "fflush failed.");
 }
 
 Block* DeviceCachingAllocator::malloc(int device, size_t orig_size, aclrtStream stream) {
     std::unique_lock<std::recursive_mutex> lock(mutex);
     if (device == -1) {
-        c10_npu::GetDevice(&device);
+        TORCH_CHECK(c10_npu::GetDevice(&device) == ACL_ERROR_NONE, "GetDevice failed.");
     }
 
     size_t tensor_forward_end = std::numeric_limits<size_t>::max();
@@ -75,7 +75,7 @@ Block* DeviceCachingAllocator::malloc_internal(int device, size_t orig_size, acl
     std::unique_lock<std::recursive_mutex> lock(mutex);
 
     if (device == -1) {
-        c10_npu::GetDevice(&device);
+        TORCH_CHECK(c10_npu::GetDevice(&device) == ACL_ERROR_NONE, "GetDevice failed.");
     }
 
     // process outstanding npuEvents
@@ -230,11 +230,11 @@ Block* DeviceCachingAllocator::malloc_internal(int device, size_t orig_size, acl
             PyObject *pFunc2 = PyObject_GetAttrString(pClass, "swap_out_by_size");
 
             PyObject *pArgs = PyTuple_New(1);
-            PyTuple_SetItem(pArgs, 0, PyLong_FromLong(size));
+            TORCH_CHECK(PyTuple_SetItem(pArgs, 0, PyLong_FromLong(size)) == 0, "PyTuple_SetItem failed.");
 
             PyObject *pResult = PyObject_CallObject(pFunc2, pArgs);
             bool ret = false;
-            PyArg_Parse(pResult, "p", &ret);
+            TORCH_CHECK(PyArg_Parse(pResult, "p", &ret), "PyArg_Parse failed.");
             PyGILState_Release(state);
             if (!ret) {
                 std::cout << "SWAP Failed" << std::endl;
@@ -248,7 +248,8 @@ Block* DeviceCachingAllocator::malloc_internal(int device, size_t orig_size, acl
         if (params.err == ACL_ERROR_RT_MEMORY_ALLOCATION) {
             size_t device_free;
             size_t device_total;
-            aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total);
+            TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, "aclrtGetMemInfo failed.");
+            TORCH_INTERNAL_ASSERT(device_free <= device_total);
 
             std::string allowed_info;
             if (set_fraction) {
@@ -467,13 +468,14 @@ void DeviceCachingAllocator::set_memory_fraction(double fraction) {
     size_t device_free;
     size_t device_total;
     TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, "acl interface call failed");
+    TORCH_INTERNAL_ASSERT(device_free <= device_total);
     allowed_memory_maximum = static_cast<size_t>(fraction * device_total);
     set_fraction = true;
 }
 
 void DeviceCachingAllocator::empty_cache(bool check_error) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
-    release_cached_blocks(check_error);
+    TORCH_CHECK(release_cached_blocks(check_error), "release_cached_blocks failed.");
 }
 
 void DeviceCachingAllocator::dev_set_shutdown_stats() { shutdown_stats = true; }
@@ -818,6 +820,7 @@ std::vector<BlockPool*> DeviceCachingAllocator::get_pool_list(size_t size, LifeC
 }
 
 bool DeviceCachingAllocator::should_split(const Block* block, size_t size) {
+    TORCH_INTERNAL_ASSERT(block->size >= size);
     size_t remaining = block->size - size;
     if (block->pool->is_small || CachingAllocatorConfig::expandable_segments()) {
         return remaining >= kMinBlockSize;
@@ -1078,7 +1081,7 @@ void DeviceCachingAllocator::garbage_collect_cached_blocks() {
         return;
     }
 
-    c10_npu::npuSynchronizeDevice(true);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(true), "npuSynchronizeDevice failed.");
 
     // Repeat GC until we reach reclaim > target size.
     bool block_freed = true;
@@ -1142,6 +1145,7 @@ bool DeviceCachingAllocator::alloc_block(AllocParams& p, bool isRetry) {
         size_t device_total;
         TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, \
                                     "Error, failed to get memory info");
+        TORCH_INTERNAL_ASSERT(device_free <= device_total);
         usable_total = alr_total_size + device_free;
         ASCEND_LOGD("pytorch-change code, reserved:%lu, free:%lu, reserved+free:%lu (after aclrtmalloc)\n", alr_total_size,
                device_free, alr_total_size + device_free);
@@ -1173,7 +1177,7 @@ bool DeviceCachingAllocator::release_available_cached_blocks(const AllocParams& 
             (key.size < CachingAllocatorConfig::max_split_size()) ? CachingAllocatorConfig::max_split_size() : key.size;
     auto it = pool.blocks.lower_bound(&key);
 
-    c10_npu::npuSynchronizeDevice(true);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(true), "npuSynchronizeDevice failed.");
 
     if (it == pool.blocks.end() || (*it)->stream != p.stream()) {
         // No single block is large enough; free multiple oversize blocks, starting with the largest
@@ -1210,7 +1214,7 @@ bool DeviceCachingAllocator::release_cached_blocks(bool check_error) {
     synchronize_and_free_events(check_error);
 
     // Free all non-split cached blocks
-    c10_npu::npuSynchronizeDevice(check_error);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(check_error), "npuSynchronizeDevice failed.");
     release_blocks(long_lc_pools.large_blocks);
     release_blocks(long_lc_pools.small_blocks);
     release_blocks(default_lc_pools.large_blocks);
@@ -1238,7 +1242,7 @@ bool DeviceCachingAllocator::release_cached_blocks_long(bool check_error) {
     synchronize_and_free_events(check_error);
 
     // Free all non-split cached blocks
-    c10_npu::npuSynchronizeDevice(check_error);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(check_error), "npuSynchronizeDevice failed.");
     release_blocks(long_lc_pools.large_blocks);
     release_blocks(long_lc_pools.small_blocks);
 
@@ -1251,7 +1255,7 @@ bool DeviceCachingAllocator::release_cached_blocks_default(bool check_error) {
     synchronize_and_free_events(check_error);
 
     // Free all non-split cached blocks
-    c10_npu::npuSynchronizeDevice(check_error);
+    TORCH_CHECK(c10_npu::npuSynchronizeDevice(check_error), "npuSynchronizeDevice failed.");
     release_blocks(default_lc_pools.large_blocks);
     release_blocks(default_lc_pools.small_blocks);
 
@@ -1260,7 +1264,7 @@ bool DeviceCachingAllocator::release_cached_blocks_default(bool check_error) {
 
 void DeviceCachingAllocator::release_block(Block* block) {
     TORCH_INTERNAL_ASSERT(!block->expandable_segment_);
-    aclrtFree_wrapper((void*)block->ptr);
+    TORCH_CHECK(aclrtFree_wrapper((void*)block->ptr) == ACL_ERROR_NONE, "aclrtFree_wrapper failed.");
     total_allocated_memory -= block->size;
 
     auto* pool = block->pool;
@@ -1296,6 +1300,7 @@ void DeviceCachingAllocator::unmap_block(Block* block) {
         block->pool->blocks.insert(before_free);
     }
 
+    TORCH_CHECK(block->size >= before_size + unmapped.size, "after size should be greater than or equal to 0");
     auto after_size = block->size - (before_size + unmapped.size);
     if (after_size > 0) {
         // block -> after_free -> next?
@@ -1382,7 +1387,7 @@ void DeviceCachingAllocator::insert_events(Block* block) {
     stream_set streams(std::move(block->stream_uses));
     AT_ASSERT(block->stream_uses.empty());
     for (auto& stream : streams) {
-        c10_npu::SetDevice(stream.device_index());
+        TORCH_CHECK(c10_npu::SetDevice(stream.device_index()) == ACL_ERROR_NONE, "SetDevice failed.");
 
         EventPool::Event event = create_event_internal(stream.device_index());
         event->record(stream);
@@ -1392,7 +1397,7 @@ void DeviceCachingAllocator::insert_events(Block* block) {
         npu_events[stream].emplace_back(std::move(event), block);
     }
     if (ret_ctx == ACL_ERROR_NONE) {
-        aclrtSetCurrentContext(compiler_ctx);
+        TORCH_CHECK(aclrtSetCurrentContext(compiler_ctx) == ACL_ERROR_NONE, "aclrtSetCurrentContext failed.");
     }
 }
 

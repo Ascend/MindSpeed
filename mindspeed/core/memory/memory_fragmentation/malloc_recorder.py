@@ -1,5 +1,3 @@
-import torch
-import torch_npu
 from functools import wraps
 from mindspeed.core.memory.memory_fragmentation.pluggable_allocator_adpator import load_memory_fragmentation_module
 

@@ -41,3 +41,4 @@ SwapManager 能需要内存管理适配 PTA 的 NPUPluggableAllocator 接口拦�
 - 由于自适应选择重计算与内存碎片优化两个特性都修改了PyTorch内存管理模块，这两个特性都打开会存在冲突，mindspeed进行了assert判断。
 - 当使用`--adaptive-recompute-device-swap`时，用户可以通过环境变量`MIN_SWAP_TENSOR_SIZE`来指定允许被换出tensor的最小大小（最小可为1024），如不指定，则默认为1024
 - 当使用`--adaptive-recompute-device-swap`时，用户可以通过环境变量`SWAP_SIZE_MULTIPLE`来指定换出大小与malloc大小的比值（最小可为1），如不指定，则默认为1
+- 自适应重计算通过实现自己的allocator来实现对OOM的拦截，此allocator仍然支持PTA的环境变量`PYTORCH_NPU_ALLOC_CONF`，用户可以参考[此处](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha001/apiref/envref/envref_07_0053.html)来配置该环境变量。

@@ -84,7 +84,7 @@ class TestDistributedOptimizer(DistributedTest):
         pipeline_model_parallel_split_rank=None)
         WeightGradStore.cache = [(input_data, grad_output, weight, sequence_parallel, in_row, False)]
         if WeightGradStore.gather_stream is None:
-            WeightGradStore.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+            WeightGradStore.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
         result, handle = WeightGradStore.overlap_all_gather()
         diff_value = 0.00001
         if handle is not None:
@@ -119,7 +119,7 @@ class TestDistributedOptimizer(DistributedTest):
         pipeline_model_parallel_split_rank=None)
 
         if WeightGradStore.gather_stream is None:
-            WeightGradStore.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device)
+            WeightGradStore.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
 
         WeightGradStore.put(input_data, grad_output, weight, sequence_parallel=False, in_row=True, pipe_experts=False)
         WeightGradStore.put(input_data, grad_output, weight, sequence_parallel=False, in_row=True, pipe_experts=False)

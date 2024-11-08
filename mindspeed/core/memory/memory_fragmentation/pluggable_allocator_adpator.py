@@ -1,9 +1,8 @@
-import os
 import ctypes
 
-import torch
 import torch_npu
 from mindspeed.op_builder import MemoryFragmentationBuilder
+
 
 class PluggableAllocatorAdaptor(object):
     MEMORY_FRAGMENTATION_MODULE = None

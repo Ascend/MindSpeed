@@ -29,6 +29,8 @@ Block *NpuCachingCustomAllocator::get_allocated_block(void *ptr, bool remove) {
 }
 
 void NpuCachingCustomAllocator::init(int device_count) {
+  int max_device_count = 1000000;
+  TORCH_INTERNAL_ASSERT(device_count < max_device_count, "Error, out of maximum device");
   int size = static_cast<int>(device_allocator.size());
   if (size < device_count) {
     device_allocator.resize(device_count);
@@ -162,7 +164,8 @@ size_t CachingAllocatorConfig::parseExpandableSegments(const std::vector<std::st
     m_expandable_segments = (config[i] == "True");
     if (m_expandable_segments) {
       void *ptr = nullptr;
-      auto status = aclrtReserveMemAddress(&ptr, 512, 0, NULL, 1);
+      constexpr size_t virtual_mem_size = 512;
+      auto status = aclrtReserveMemAddress(&ptr, virtual_mem_size, 0, NULL, 1);
       if (status == ACL_ERROR_NONE) {
         TORCH_CHECK(aclrtReleaseMemAddress(ptr) == ACL_ERROR_NONE, "aclrtReleaseMemAddress failed.");
       } else {

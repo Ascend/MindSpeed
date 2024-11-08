@@ -1,6 +1,5 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
-import os
 from functools import wraps
 import argparse
 
@@ -131,7 +130,7 @@ def _add_moe_args(parser):
                        help='Use experts in every "expert-interval" layers')
     group.add_argument('--moe-train-capacity-factor', type=float, default=1.0,
                        help='The capacity of the MoE expert at training time')
-    group.add_argument('--noisy-gate-policy', type=str, default=None,
+    group.add_argument('--noisy-gate-policy', type=str, default=None, choices=['Jitter', 'RSample', 'None'],
                        help="noisy gate policy, valid options are 'Jitter', 'RSample' or 'None'.")
     group.add_argument('--enable-token-rearrange-opt', action='store_true',
                        help="Use this flag to enable token rearrange optimize")
@@ -773,6 +772,11 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('need satisfy tp = tp_x * tp_y')
             if args.expert_model_parallel_size > 1:
                 raise AssertionError('2d tp does not support moe')
+
+        if args.expert_interval <= 0 or args.expert_interval > args.num_layers:
+            raise AssertionError("--expert-interval must be between 1 and num layers")
+        if args.moe_train_capacity_factor <= 0.0:
+            raise AssertionError("--moe-train-capacity-factor must be greater than 0.0")
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)

@@ -237,10 +237,12 @@ struct ExpandableSegment {
         size_t device_total;
         TORCH_CHECK(aclrtGetMemInfo(ACL_HBM_MEM, &device_free, &device_total) == ACL_ERROR_NONE, \
                                     "Error, failed to get memory info");
+        TORCH_INTERNAL_ASSERT(device_free <= device_total);
         // we allocate enough address space for 1 1/8 the total memory on the NPU.
         // This allows for some cases where we have to unmap pages earlier in the
         // segment to put them at the end.
-        max_handles_ = numSegments(device_total + device_total / 8);
+        constexpr size_t extra_space_factor = 8;
+        max_handles_ = numSegments(device_total + device_total / extra_space_factor);
         TORCH_CHECK(aclrtReserveMemAddress(&ptr_, segment_size_ * max_handles_, 0, NULL, 1) == ACL_ERROR_NONE, \
                                     "Error, failed to reserve memory address");
     }
@@ -318,7 +320,7 @@ private:
         // cannot call c10::npu::stream_synchronize because
         // it might grab the GIL which can lead to a deadlock
         // Locking order must be GIL -> Allocator Lock
-        aclrtSynchronizeStream(stream_);
+        TORCH_CHECK(aclrtSynchronizeStream(stream_) == ACL_ERROR_NONE, "aclrtSynchronizeStream failed.");
         for (auto i : c10::irange(begin, end)) {
             aclrtDrvMemHandle h = handles_.at(i).value();
             handles_.at(i) = c10::nullopt;
@@ -361,6 +363,7 @@ private:
     }
 
     SegmentRange rangeFromHandles(size_t begin, size_t end) {
+        TORCH_INTERNAL_ASSERT(end >= begin);
         return SegmentRange(ptr() + segment_size_ * begin, segment_size_ * (end - begin));
     }
 
