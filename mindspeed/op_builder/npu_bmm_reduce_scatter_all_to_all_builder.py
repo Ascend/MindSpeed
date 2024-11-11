@@ -72,6 +72,19 @@ class BatchMatMulReduceScatterAlltoAllOpBuilder(MindSpeedOpBuilder):
             c = x.size(1) // group_ep_worldsize
             h = weight.size(2)
 
+            if x.size(0) == 0:
+                raise AssertionError('The first dim of x can not be 0.')
+            if x.size(1) == 0:
+                raise AssertionError('The second dim of x can not be 0.')
+            if x.size(2) == 0:
+                raise AssertionError('The last dim of x can not be 0.')
+            if weight.size(0) == 0:
+                raise AssertionError('The first dim of weight can not be 0.')
+            if weight.size(1) == 0:
+                raise AssertionError('The second dim of weight can not be 0.')
+            if weight.size(2) == 0:
+                raise AssertionError('The last dim of weight can not be 0.')
+
             if shard_type == 0:
                 # shard in h dimensions
                 h = h // group_tp_worldsize
