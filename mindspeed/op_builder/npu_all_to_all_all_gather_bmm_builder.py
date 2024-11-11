@@ -75,6 +75,20 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
                 m *= group_tp_worldsize
             n = weight.size(2)
             k = weight.size(1)
+            
+            if x.size(0) == 0:
+                raise AssertionError('The first dim of x can not be 0.')
+            if x.size(1) == 0:
+                raise AssertionError('The second dim of x can not be 0.')
+            if x.size(2) == 0:
+                raise AssertionError('The last dim of x can not be 0.')
+            if weight.size(0) == 0:
+                raise AssertionError('The first dim of weight can not be 0.')
+            if weight.size(1) == 0:
+                raise AssertionError('The second dim of weight can not be 0.')
+            if weight.size(2) == 0:
+                raise AssertionError('The last dim of weight can not be 0.')
+
             empty_tensor = x.new_empty((0))
             return (x.new_empty((batch, m, n)),
                     x.new_empty((batch, m, k)) if need_allgather_out else empty_tensor,
