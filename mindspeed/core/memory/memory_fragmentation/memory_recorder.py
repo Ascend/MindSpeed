@@ -1,4 +1,6 @@
 from functools import wraps
+
+from megatron.legacy.model.transformer import ParallelTransformer
 from mindspeed.core.memory.memory_fragmentation.pluggable_allocator_adpator import load_memory_fragmentation_module
 
 
@@ -11,7 +13,7 @@ class MemoryRecorder(object):
 
     def register_recursive_hook(self, prefix_name, model):
         for name, module in model.named_children():
-            if str.isdigit(name):
+            if isinstance(module, ParallelTransformer):
                 module.no_checkpoint_forward = module.forward
                 module.forward = wrapper(module.forward)
 
