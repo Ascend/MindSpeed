@@ -166,6 +166,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
 | 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
 | 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
+| 【Prototype】Ascend npu_groupmatmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_groupmatmul_add.md)|
 | 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
 
 ## 通信优化特性
@@ -206,6 +207,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】npu_fused_moe_token_unpermute   | [link](docs/ops/npu_fused_moe_token_unpermute.md)    |
 | 【Prototype】npu_ring_attention_update  | [link](docs/ops/npu_ring_attention_update.md)  |
 | 【Prototype】npu_matmul_add_fp32 | [link](docs/ops/npu_matmul_add.md)  |
+| 【Prototype】npu_groupmatmul_add_fp32 | [link](docs/ops/npu_groupmatmul_add.md)  |
 | 【Prototype】npu_all_to_all_all_gather_bmm  | [link](docs/ops/npu_all_to_all_all_gather_bmm.md)  |
 | 【Prototype】npu_bmm_reduce_scatter_all_to_all  | [link](docs/ops/npu_bmm_reduce_scatter_all_to_all.md)  |
 | 【Prototype】quant_gmm  | [link](docs/ops/quant_gmm.md)  |
