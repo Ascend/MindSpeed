@@ -20,3 +20,4 @@ from .npu_bmm_reduce_scatter_all_to_all_builder import BatchMatMulReduceScatterA
 from .npu_all_to_all_all_gather_bmm_builder import AllToAllAllGatherBatchMatMulOpBuilder
 from .adaptive_cp_builder import AdaptiveCpOpBuilder
 from .matmul_add_builder import MatmulAddOpBuilder
+from .groupmatmul_add_builder import GroupMatmulAddOpBuilder

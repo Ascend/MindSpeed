@@ -173,6 +173,10 @@ def _add_moe_args(parser):
                        help='MoE adaptive recompute threshold factor.')
     group.add_argument("--use-fused-moe-token-permute-and-unpermute", action='store_true',
                        help="Use fused moe permute and unpermute.")
+    group.add_argument("--gemm-gradient-accumulation-fusion", action='store_true',
+                       help="Use gradient-accumulation-fusion in gemm.")
+    group.add_argument("--gemm-gradient-accumulation-fusion-jia", action='store_true',
+                       help="Use gradient-accumulation-fusion in gemm.")
     return parser
 
 

@@ -658,9 +658,12 @@ def mcore_moe_adaptation(pm, args):
         from .core.transformer.moe.moe_layer import moe_layer_init_wrapper
         pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
 
-    from .core.transformer.moe.experts import groupedmlp_init_wrapper, groupedmlp_forward_wrapper
+    # from .core.transformer.moe.experts import groupedmlp_init_wrapper, groupedmlp_forward_wrapper
+    from .core.transformer.moe.experts import groupedmlp_init_wrapper, groupedmlp_forward
     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.__init__', groupedmlp_init_wrapper)
-    pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', groupedmlp_forward_wrapper)
+    # pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', groupedmlp_forward_wrapper)
+    pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', groupedmlp_forward)
+
 
     if args.use_ascend_mc2 and not hasattr(args, 'moe_grouped_gemm'):
         # MoE MLP not use mc2 linear

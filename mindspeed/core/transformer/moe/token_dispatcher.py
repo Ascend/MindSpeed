@@ -53,7 +53,8 @@ def allgather_token_permutation(self, hidden_states: torch.Tensor, max_prob: tor
                 min=0,
                 max=num_global_experts - 1,
             )
-        self.all_tokens_per_expert = all_tokens_per_expert.cpu().to(torch.long)
+        # self.all_tokens_per_expert = all_tokens_per_expert.cpu().to(torch.long)
+        self.all_tokens_per_expert = all_tokens_per_expert.to(torch.long)
         tokens_per_expert = self.all_tokens_per_expert[self.local_expert_indices[0]: self.local_expert_indices[-1] + 1]
         self.global_local_map = global_local_mask.nonzero()[:, 0]
 
@@ -97,7 +98,8 @@ def allgather_token_permutation(self, hidden_states: torch.Tensor, max_prob: tor
                 min=self.local_expert_indices[0],
                 max=self.local_expert_indices[-1],
             )
-            tokens_per_expert = tokens_per_expert.cpu().to(torch.long)
+            # tokens_per_expert = tokens_per_expert.cpu().to(torch.long)
+            tokens_per_expert = tokens_per_expert.to(torch.long)
         self.all_tokens_per_expert = tokens_per_expert
 
     if self.num_local_experts > 1:
@@ -272,9 +274,11 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         self.output_splits = (
             self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu")).numpy()
         )
-        num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0).to(
-            torch.device("cpu"), non_blocking=True
-        )
+        #num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0).to(
+        #    torch.device("cpu"), non_blocking=True
+        #)
+        num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0)
+
         # ===================================================
         # num_global_tokens_per_expert: [ep_size, num_experts]
         # num_global_tokens_per_local_expert: [ep_size, num_local_experts]
@@ -382,9 +386,10 @@ def preprocess_tp_extend_ep(self, indices: torch.Tensor) -> torch.Tensor:
         self.output_splits = (
             self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu")).numpy()
         )
-        num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0).to(
-            torch.device("cpu"), non_blocking=True
-        )
+        # num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0).to(
+        #     torch.device("cpu"), non_blocking=True
+        # )
+        num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0)
         # ===================================================
         # num_global_tokens_per_expert: [ep_size, num_experts]
         # num_global_tokens_per_local_expert: [ep_size, num_local_experts]
@@ -394,9 +399,10 @@ def preprocess_tp_extend_ep(self, indices: torch.Tensor) -> torch.Tensor:
         self.num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
             -1, self.num_experts
         )
-        num_tokens_per_local_expert = num_local_tokens_per_expert.to(
-            torch.device("cpu"), non_blocking=True
-        )
+        # num_tokens_per_local_expert = num_local_tokens_per_expert.to(
+        #     torch.device("cpu"), non_blocking=True
+        # )
+        num_tokens_per_local_expert = num_local_tokens_per_expert
 
     if self.num_local_experts > 1:
         if not hasattr(self, 'comm_stream'):
