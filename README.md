@@ -85,7 +85,6 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
      import os
      import torch
     +import mindspeed.megatron_adaptor
-     from torch import Tensor
      from functools import partial
      from typing import Union
     ```

@@ -26,8 +26,6 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 
 如果想要使得计算和通信可以互相掩盖，理论上需要确保每个计算块分到的序列长度$c \geq F/B$。其中F是每个device的FLOPS，B是每个device间的带宽。具体推导过程参见原文。在实践中，需要确保每个计算块分到的序列长度足够大，才能较好掩盖。
 
-目前仅支持单向Causal Attention。
-
 
 ## 使用方法
 
@@ -36,8 +34,8 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 |--context-parallel-size [int] |开启CP对应的数量，默认为1，根据用户需求配置。|
 |--seq-length [int] |输入序列的长度。|
 |--use-cp-send-recv-overlap |建议开启，开启后支持send receive overlap功能。|
-|--cp-attention-mask-type [full/causal] |可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置full代表全量计算。|
-|--context-parallel-algo megatron_cp_algo |可选项为`ulysses_cp_algo`或者`megatron_cp_algo`，默认项为`ulysses_cp_algo`，当设置为`megatron_cp_algo`时开启Ring Attention。|
+| --cp-attention-mask-type [general/causal] | 可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置general代表全量计算。|
+|--context-parallel-algo megatron_cp_algo |长序列并行算法选项，默认项为`ulysses_cp_algo`，当设置为`megatron_cp_algo`时开启Ring Attention。|
 |--cp-window-size [int] | 可选，默认为`1`，即使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。|
 
 ## 使用效果

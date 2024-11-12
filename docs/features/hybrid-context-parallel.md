@@ -19,8 +19,6 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 序列并行维度被分为Ulysses维度和ring attention维度，Ulysses维度和ring attention维度乘积即为序列并行维度。
 
-目前仅支持单向Causal Attention。
-
 ## 使用方法
 
 设置`--context-parallel-size`，默认为1，根据用户需求配置。
@@ -30,6 +28,8 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 设置`--ulysses-degree-in-cp`，需要确保`--context-parallel-size`可以被该参数整除且大于1。例如当设置`--context-parallel-size=8`时，可以设置`--ulysses-degree-in-cp=2`或`--ulysses-degree-in-cp=4`。
 
 同时需要确保`--ulysses-degree-in-cp`可以被attention head数整除。
+
+混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置和Double Ring Attention算法。
 
 ## 使用效果
 
