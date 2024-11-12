@@ -2,9 +2,6 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -45,6 +42,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         enable_overlap_ag_with_matmul=False,
         enable_overlap_matmul_with_rs=False,
         gradient_accumulation_fusion=False,
+        enable_backward_overlap_ag_with_matmul=False
     ):
         """
         :param ctx: context to save some tensors or vars for backward use.
@@ -55,9 +53,10 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         :param ag_overlap_comm_intf: AllGather communication overlap send and recv comm group
         :param rs_comm_intf: ReduceScatter communication process group interface.
         :param rs_overlap_comm_intf: ReduceScatter communication overlap send and recv comm group
-        :param enable_overlap_ag_with_matmul:  enable overlap all-gather with matmul
-        :param enable_overlap_matmul_with_rs: enable overlap matmul with reduce-scatter
+        :param enable_overlap_ag_with_matmul:  enable overlap all-gather with matmul in forward
+        :param enable_overlap_matmul_with_rs: enable overlap matmul with reduce-scatter in forward
         :param gradient_accumulation_fusion: enable gradient accumulation fusion
+        :param enable_backward_overlap_ag_with_matmul: enable overlap all-gather with matmul
         :return: forward result tensor.
         """
         ctx.save_for_backward(activation_input)
@@ -68,6 +67,8 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         ctx.ag_overlap_comm_intf = ag_overlap_comm_intf
         ctx.rs_overlap_comm_intf = rs_overlap_comm_intf
         ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
+        ctx.enable_backward_overlap_ag_with_matmul = enable_backward_overlap_ag_with_matmul
+
         if enable_overlap_matmul_with_rs:
             activation_input = activation_input.contiguous()
             return Linear2DSplitAlongFirstDim._do_mm_overlap_reducescatter(
@@ -85,34 +86,6 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
 
             if bias is not None:
                 matmul_res += bias
-        elif get_args().use_ascend_mc2:  # MC2 适配
-            ag_group = ag_comm_intf.get_comm_group()
-            rank = ag_comm_intf.get_comm_rank()
-            if torch.__version__ > "2.0":
-                global_rank = torch.distributed.get_global_rank(ag_group, rank)
-                hcomm_info = ag_group._get_backend(torch.device("npu")).get_hccl_comm_name(
-                    global_rank
-                )
-            else:
-                hcomm_info = ag_group.get_hccl_comm_name(rank)
-
-            x = activation_input.reshape(-1, activation_input.size(2))
-
-            # [s/(x*cp), b, H/y] --AG(x)--> [s/cp, b, H/y]
-            # [s/cp, b, H/y] @ [H/y, e/x] -> [sb/cp, e/x]
-            output, _ = torch_npu.npu_all_gather_base_mm(
-                x,
-                weight.t(),
-                hcomm_info,
-                ag_comm_intf.get_comm_group_world_size(),
-                bias=bias,
-                gather_index=0,
-                gather_output=False,
-            )
-            # [sb/cp, e/x]---> [s/cp, b, e/x]
-            matmul_res = output.view(
-                output.shape[0] // activation_input.shape[1], activation_input.shape[1], output.shape[1]
-            )
         else:
             # [s/(x*cp), b, H/y] -> [s/cp, b, H/y]
             activation_input = activation_input.contiguous()
@@ -144,6 +117,8 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         """
         # activation_input shape: [s/(x*cp), b, h/y]
         # weight shape: [h/y, E/x]
+        if ctx.enable_backward_overlap_ag_with_matmul:
+            return Linear2DSplitAlongFirstDim._backward_ag_overlap_with_mm(ctx, grad_output)
         activation_input, = ctx.saved_tensors
         weight = ctx.weight
         use_bias = ctx.use_bias
@@ -222,7 +197,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
 
         if rs_grad_input_handle:
             rs_grad_input_handle.wait()
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None
 
     @staticmethod
     def _do_allgather_left_tensor_and_matmul_overlap(
@@ -317,3 +292,145 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         # [s / (cp * y * y), b, e / x] ->  [s/(cp*y), b, e/x]
         final_res = torch.reshape(rs_res.view(chunk_num, -1, weight.size(1)).transpose(0, 1), (chunk_size, -1, weight.size(1)))
         return final_res
+
+    @staticmethod
+    def _backward_ag_overlap_with_mm(ctx, grad_output):
+        """Backward implementation of Linear2DSplitAlongFirstDim, the computation and communication
+        overlap:
+
+        ----------------------------------------------------------------------------->time
+        | send(grad_o-0, Y|X)
+        | recive(grad_o-1, Y|X)
+        |    part_grad_act = MM(tot_grad_o-0, weight)
+        |                  part_grad_act = MM2(tot_grad_o-1, weight)
+        |                                                      RS(part_grad_act, X|Y)
+        |                                                      MM(tot_grad_o^T, tot_act_input)
+
+
+        :param ctx: context
+        :param grad_output: with shape: [s/cp, b, E/(xy)]
+        :return:grads of all the input para of forward function as a tuple
+        """
+        # activation_input shape: [s/(x*cp), b, h/y]
+        # weight shape: [h/y, E/x]
+        activation_input, = ctx.saved_tensors
+        weight = ctx.weight
+        use_bias = ctx.use_bias
+        # first we prepare the total inputs needed to compute grad_input, grad_weight.
+        # [s/(y*cp), b, E/x]---AG(y)---> [s/cp, b, E/x]
+        # Use sync AG to avoid communication competition, for the bandwidth is shared for A3.
+        rs_comm_intf = ctx.rs_comm_intf
+        rs_overlap_comm_intf = ctx.rs_overlap_comm_intf
+        grad_output = grad_output.contiguous()
+        cur_rs_rank = ctx.rs_comm_intf.get_comm_rank()
+        rs_world_sz = ctx.rs_comm_intf.get_comm_group_world_size()
+        # do tp-x times matmul and reduce the partial res.
+        matmul_res = [None] * rs_world_sz
+        cur_step_rcv_handle = None
+        ring_rs_ranks = rs_overlap_comm_intf.get_ring_global_ranks()
+        next_rank = ring_rs_ranks[(cur_rs_rank + rs_world_sz - 1) % rs_world_sz]
+        prev_rank = ring_rs_ranks[(cur_rs_rank + 1) % rs_world_sz]
+        rs_comm_group = rs_comm_intf.get_comm_group()
+        rs_overlap_comm_group = rs_overlap_comm_intf.get_comm_group()
+        cur_step_tensor_to_send = grad_output
+        # 下一次要计算的数据（本次要从上一个 rank 接收的 tensor。）
+        cur_step_rcv_input = torch.empty_like(grad_output)
+        # first_linear forward: [H/y, e/x] -> [H/(xy), e/x]
+        # collect total_grad_output
+        grad_output_list = [None] * rs_world_sz
+        grad_output_list[cur_rs_rank] = grad_output
+        gather_input_handle, gathered_tensors = None, None
+        for step in range(rs_world_sz):
+            if step < rs_world_sz - 1 and cur_rs_rank % 2 == 0:  # 偶数 rank 先发再收
+                torch_dist.isend(cur_step_tensor_to_send, next_rank, rs_comm_group)
+                cur_step_rcv_handle = torch_dist.irecv(
+                    cur_step_rcv_input, prev_rank, rs_overlap_comm_group
+                )
+            elif step < rs_world_sz - 1 and cur_rs_rank % 2 == 1:  # 奇数 rank 先收再发
+                cur_step_rcv_handle = torch_dist.irecv(cur_step_rcv_input, prev_rank, rs_comm_group)
+                torch_dist.isend(cur_step_tensor_to_send, next_rank, rs_overlap_comm_group)
+
+            # compute: grad_output @ split_right(split by inner dim)
+            # [e/x, h/(xy)]
+            cur_tensor_idx = (step + cur_rs_rank) % rs_world_sz
+
+            # first linear forward: [s/(x*cp), b, H/y] @ [H/y, e/x] -> [s/(x*cp), b, e/x]
+            cur_step_matmul_res = torch.matmul(cur_step_tensor_to_send, weight)
+            matmul_res[cur_tensor_idx] = cur_step_matmul_res
+            if step > 0:
+                grad_output_list[cur_tensor_idx] = cur_step_tensor_to_send.clone()
+            if step < rs_world_sz - 1:
+                cur_step_rcv_handle.wait()
+                cur_step_tensor_to_send = cur_step_rcv_input.clone()
+            if step == 0:
+                # prepare total activation_input for computing grad weight.
+                # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
+                activation_input = activation_input.contiguous()
+                gather_input_handle, gathered_tensors = async_gather_tensors(
+                    local_rank_input=activation_input, ag_comm_intf=ctx.ag_comm_intf
+                )
+
+        partial_grad_input = torch.cat(matmul_res)
+        # [s/cp, b, H/y] (partial sum)---RS(X)--->[s/cp, b, H/(xy)] (full sum)
+        rs_grad_input_handle, grad_input = async_reduce_scatter_along_first_dim(
+            partial_grad_input, comm_intf=ctx.ag_comm_intf
+        )
+
+        total_grad_output = torch.cat(grad_output_list, dim=0)
+
+        # Convert the tensor shapes to 2D for execution compatibility
+        sb = total_grad_output.shape[0] * total_grad_output.shape[1]
+        # [s/cp, b, E/x]--view--> [sb/cp, E/x]
+        total_grad_output = total_grad_output.view(sb, total_grad_output.shape[2])
+
+        if gather_input_handle:
+            gather_input_handle.wait()
+
+        # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
+        total_activation_input = gathered_tensors
+        # [s/cp, b, h/y]--view--> [sb/cp, h/y]
+        total_activation_input = total_activation_input.view(sb, total_activation_input.shape[2])
+        if ctx.gradient_accumulation_fusion:
+            import fused_weight_gradient_mlp_cuda
+            total_grad_output = total_grad_output.contiguous()
+            if weight.main_grad.dtype == torch.float32:
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
+                    total_activation_input, total_grad_output, weight.main_grad
+                )
+            elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
+                    total_activation_input, total_grad_output, weight.main_grad
+                )
+            else:
+                raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+
+            if hasattr(weight, 'grad_added_to_main_grad'):
+                # When overlap_grad_reduce is True, need to ensure that backward hooks
+                # are all run on the main backprop thread to prevent deadlocks. Setup
+                # dummy grad_weight tensor to prevent backward hooks from being run
+                # in a background thread.
+                if getattr(weight, 'zero_out_wgrad', False):
+                    grad_weight = torch.zeros(
+                        weight.main_grad.shape,
+                        dtype=activation_input.dtype,
+                        device=torch.cuda.current_device(),
+                        requires_grad=False,
+                    )
+                else:
+                    grad_weight = torch.empty(
+                        weight.main_grad.shape,
+                        dtype=activation_input.dtype,
+                        device=torch.cuda.current_device(),
+                        requires_grad=False,
+                    )
+                weight.grad_added_to_main_grad = True
+            else:
+                grad_weight = None
+        else:
+            # [E/x, sb/cp] @ [sb/cp, h/y] ---> [E/x, h/y]
+            grad_weight = total_grad_output.t().matmul(total_activation_input)
+        grad_bias = total_grad_output.sum(dim=0) if use_bias else None
+
+        if rs_grad_input_handle:
+            rs_grad_input_handle.wait()
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None

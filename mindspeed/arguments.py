@@ -843,12 +843,14 @@ def _add_2d_tp_args(parser):
     group = parser.add_argument_group(title='2d-tp')
     group.add_argument('--tp-2d', action='store_true', default=False,
                        help='use use-2d-tp to replace megatron-style tensor parallel')
-    group.add_argument('--enable-overlap-ag-with-matmul', action='store_true', default=False,
-                       help='use enable-overlap-ag-with-matmul to overlap allgather with matmul')
-    group.add_argument('--enable-overlap-matmul-with-rs', action='store_true', default=False,
-                       help='use enable-overlap-matmul-with-rs to overlap matmul with reduce-scatter')
     group.add_argument('--tp-x', type=int, default=1,
                        help='the fist dim tensor parallel size for Linear')
     group.add_argument('--tp-y', type=int, default=1,
                        help='the second dim tensor parallel size for Linear')
+    group.add_argument('--enable-overlap-ag-with-matmul', action='store_true', default=False,
+                       help='use enable-overlap-ag-with-matmul to overlap all-gather with matmul')
+    group.add_argument('--enable-overlap-matmul-with-rs', action='store_true', default=False,
+                       help='use enable-overlap-matmul-with-rs to overlap matmul with reduce-scatter')
+    group.add_argument('--enable-backward-overlap-ag-with-matmul', action='store_true', default=False,
+                       help='use enable-backward-overlap-ag-with-matmul to overlap all-gather  with matmul in backward')
     return parser
