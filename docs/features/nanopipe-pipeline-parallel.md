@@ -12,7 +12,7 @@
 
 ![img](../../sources/images/virtual-pipeline.PNG)
 
-独立调度imput梯度和weight梯度的nano-pipe如下图所示：
+独立调度input梯度和weight梯度的nano-pipe如下图所示：
 
 ![img](../../sources/images/nanopipe.png)
 
