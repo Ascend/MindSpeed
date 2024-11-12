@@ -19,13 +19,13 @@ def assert_grouped_gemm_is_available():
 
 class Ops:
     @staticmethod
-    def gmm(a, b, batch_sizes, trans_b=False):
+    def gmm(a, b, batch_sizes, trans_b=False, original_weight=None):
         from mindspeed.ops.gmm import npu_gmm
 
         if trans_b:
             b = b.t()
         group_list = torch.cumsum(batch_sizes, dim=0)
-        return npu_gmm(a, b, bias=None, group_list=group_list.tolist(), group_type=0)
+        return npu_gmm(a, b, bias=None, group_list=group_list, group_type=0, original_weight=original_weight)
 
 
 def get_device_capability():

@@ -20,5 +20,5 @@
     product = torch.mm(x.T, weight)
     result = product + C
     # 融合算子计算过程
-    npu_matmul_add_fp32(x, weight, C)
+    npu_matmul_add_fp32(weight, x, C)
 ```
