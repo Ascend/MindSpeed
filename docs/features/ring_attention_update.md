@@ -10,11 +10,8 @@ MindSpeed将注意力更新操作融合成一个算子，显著提高注意力�
 
 ## 使用方法
 ### 前提条件
-开启Ring Attention长序列并行
-`--context-parallel-size ${CP}  \
---context-parallel-algo megatron_cp_algo 
-`
-其中，CP大于1
+设置`--context-parallel-size ${CP}`，其中CP大于1。
+开启Ring Attention长序列并行`--context-parallel-algo megatron_cp_algo`或混合长序列并行`--context-parallel-algo hybrid_cp_algo`。
 
 设置`--use-fused-ring-attention-update`即可调用Ring Attention update融合算子。
 
