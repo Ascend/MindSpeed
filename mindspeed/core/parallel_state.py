@@ -297,7 +297,8 @@ def initialize_context_parallel_group_for_send_recv_overlap(
     from megatron.training import get_args
     if not get_args().use_cp_send_recv_overlap:
         return
-    if get_args().tp_2d:
+    # when tp_y > 1, use TensorParallelYUnionCP
+    if get_args().tp_2d and get_args().tp_y > 1:
         return
     rank = torch.distributed.get_rank()
     world_size: int = torch.distributed.get_world_size()
@@ -1190,7 +1191,7 @@ def initialize_ndmm_parallel_group(
             group = torch.distributed.new_group(
                 ranks, pg_options=ps.get_nccl_options('nd1_dim1', nccl_comm_cfgs)
             )
-            if args.enable_overlap_ag_with_matmul:
+            if args.enable_overlap_ag_with_matmul or args.enable_backward_overlap_ag_with_matmul:
                 tp_x_ag_overlap_group = torch.distributed.new_group(
                     ranks, pg_options=ps.get_nccl_options('ag_x_sd_rcv_overlap', nccl_comm_cfgs)
                 )
@@ -1212,7 +1213,7 @@ def initialize_ndmm_parallel_group(
             group = torch.distributed.new_group(
                 ranks, pg_options=ps.get_nccl_options('nd1_dim2', nccl_comm_cfgs)
             )
-            if args.enable_overlap_ag_with_matmul:
+            if args.enable_overlap_ag_with_matmul or args.enable_backward_overlap_ag_with_matmul:
                 tp_y_ag_overlap_group = torch.distributed.new_group(
                     ranks, pg_options=ps.get_nccl_options('ag_y_sd_rcv_overlap', nccl_comm_cfgs)
                 )

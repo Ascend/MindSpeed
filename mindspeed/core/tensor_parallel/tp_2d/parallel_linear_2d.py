@@ -2,9 +2,6 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +9,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-from typing import Callable
+from typing import Any, Callable
 
 import torch
 
@@ -59,6 +56,7 @@ class ParallelLinear2D(torch.nn.Module):
         tp_comm_buffer_name: Communication buffer name is not used in
                              non-Transformer-Engine modules.
         partition_dim: divide with dim, column parallel set 0, row parallel set 1
+        enable_backward_overlap_ag_with_matmul: enable overlap all-gather with matmul
 
     """
 
@@ -83,6 +81,7 @@ class ParallelLinear2D(torch.nn.Module):
         enable_overlap_ag_with_matmul=False,
         enable_overlap_matmul_with_rs=False,
         partition_dim: int = 0,
+        enable_backward_overlap_ag_with_matmul=False,
     ):
         super().__init__()
         self.mp_config: ModelParallelConfig = config
@@ -113,6 +112,7 @@ class ParallelLinear2D(torch.nn.Module):
         self.is_expert = is_expert
         self.expert_parallel = config.expert_model_parallel_size > 1
         self.gradient_accumulation_fusion = config.gradient_accumulation_fusion
+        self.enable_backward_overlap_ag_with_matmul = enable_backward_overlap_ag_with_matmul
         if config.sequence_parallel:
             raise RuntimeError(
                 "Nd_matmul cannot be used with sequence_parallel."
@@ -172,6 +172,13 @@ class ParallelLinear2D(torch.nn.Module):
             setattr(self.bias, "allreduce", True)
             setattr(self.bias, "sequence_parallel", False)
 
+    def set_extra_state(self, state: Any):
+        """ Extra state is ignored """
+
+    def get_extra_state(self) -> None:
+        """ Keep compatibility with TE state dict. """
+        return None
+
     def forward(self, activation_input):
         matmul_output = Linear2DSplitAlongFirstDim.apply(
             activation_input,
@@ -184,6 +191,7 @@ class ParallelLinear2D(torch.nn.Module):
             self.enable_overlap_ag_with_matmul,
             self.enable_overlap_matmul_with_rs,
             self.gradient_accumulation_fusion,
+            self.enable_backward_overlap_ag_with_matmul,
         )
 
         if not self.skip_bias_add:

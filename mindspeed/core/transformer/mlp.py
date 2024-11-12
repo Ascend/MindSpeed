@@ -127,7 +127,7 @@ def mlp_init_2d_wrapper(fn):
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=args.enable_overlap_matmul_with_rs,
                 partition_dim=0,
-            )
+                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul)
             self.linear_fc2 = ParallelLinear2D(
                 self.config.ffn_hidden_size,
                 self.config.hidden_size,
@@ -142,6 +142,6 @@ def mlp_init_2d_wrapper(fn):
                 rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
                 enable_overlap_ag_with_matmul=args.enable_overlap_ag_with_matmul,
                 enable_overlap_matmul_with_rs=False,
-                partition_dim=1
-            )
+                partition_dim=1,
+                enable_backward_overlap_ag_with_matmul=False)
     return wrapper
