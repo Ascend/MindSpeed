@@ -19,7 +19,7 @@ num_head 要能被 tp_size*cp_size 整除。
 ## 使用方法
 
 设置`--context-parallel-size`，默认为1，根据用户需求配置。
-设置`--context-parallel-algo`，可选项为`ulysses_cp_algo`或者`megatron_cp_algo`，默认`ulysses_cp_algo`。
+同时设置`--context-parallel-algo ulysses_cp_algo`。
 
 ## 使用效果
 
