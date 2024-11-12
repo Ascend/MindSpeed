@@ -645,7 +645,8 @@ def parallel_mlp_init_wrapper(fn):
                 rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=_args.enable_overlap_matmul_with_rs,
-                partition_dim=0)
+                partition_dim=0,
+                enable_backward_overlap_ag_with_matmul=_args.enable_backward_overlap_ag_with_matmul)
             self.dense_4h_to_h = ParallelLinear2D(
                 config.ffn_hidden_size,
                 config.hidden_size,
@@ -659,7 +660,8 @@ def parallel_mlp_init_wrapper(fn):
                 rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
                 enable_overlap_ag_with_matmul=_args.enable_overlap_ag_with_matmul,
                 enable_overlap_matmul_with_rs=False,
-                partition_dim=1)
+                partition_dim=1,
+                enable_backward_overlap_ag_with_matmul=False)
         else:
             self.dense_h_to_4h = tensor_parallel.ColumnParallelLinear(
                 config.hidden_size,
@@ -1000,7 +1002,8 @@ def parallel_attention_init_wrapper(fn):
                 rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=False,
-                partition_dim=0)
+                partition_dim=0,
+                enable_backward_overlap_ag_with_matmul=_args.enable_backward_overlap_ag_with_matmul)
         else:
             self.query_key_value = tensor_parallel.ColumnParallelLinear(
                 config.hidden_size,
@@ -1037,7 +1040,7 @@ def parallel_attention_init_wrapper(fn):
                 ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
                 rs_comm_intf=TPXCollectiveComm,
                 rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
-                enable_overlap_ag_with_matmul=_args.enable_overlap_ag_with_matmul,
+                enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1)
         else:

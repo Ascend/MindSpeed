@@ -1,3 +1,6 @@
+# coding=utf-8
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 from dataclasses import dataclass
 from functools import wraps
 from typing import Union
@@ -171,7 +174,8 @@ def self_attention_init_wrapper(fn):
                 rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=False,
-                partition_dim=0
+                partition_dim=0,
+                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
             )
             self.linear_proj = ParallelLinear2D(
                 self.query_projection_size,
@@ -184,7 +188,7 @@ def self_attention_init_wrapper(fn):
                 ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
                 rs_comm_intf=TPXCollectiveComm,
                 rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
-                enable_overlap_ag_with_matmul=args.enable_overlap_ag_with_matmul,
+                enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1
             )
