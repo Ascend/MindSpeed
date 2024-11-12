@@ -182,18 +182,10 @@ int64_t sdpa_flop_count(const std::vector<int64_t> query_shape, const std::vecto
     int64_t total_flops = 0;
 
     // q: [b, h, s_q, d_q] @ k: [b, h, d_q, s_k] -> scores: [b, h, s_q, s_k]
-    at::Tensor shape1_non_const = at::empty({b * h, s_q, d_q}, at::kFloat);
-    const at::Tensor &shape1 = shape1_non_const;
-    at::Tensor shape2_non_const = at::empty({b * h, d_q, s_k}, at::kFloat);
-    const at::Tensor &shape2 = shape2_non_const;
-    total_flops += FlopCounter::bmm_flop(shape1, shape2);
+    total_flops += b * h * s_q * d_q * s_k * 2;
 
     // scores: [b, h, s_q, s_k] @ v: [b, h, s_k, d_v] -> out: [b, h, s_q, d_v]
-    at::Tensor shape3_non_const = at::empty({b * h, s_q, s_k}, at::kFloat);
-    const at::Tensor &shape3 = shape3_non_const;
-    at::Tensor shape4_non_const = at::empty({b * h, s_k, d_v}, at::kFloat);
-    const at::Tensor &shape4 = shape4_non_const;
-    total_flops += FlopCounter::bmm_flop(shape3, shape4);
+    total_flops += b * h * s_q * s_k * d_v * 2;
 
     return total_flops;
 }
@@ -235,32 +227,16 @@ int64_t sdpa_backward_flop_count(const std::vector<int64_t> query_shape, const s
     int64_t total_flops = 0;
 
     // gradOut: [b, h, s_q, d_v] @ v: [b, h, d_v, s_k] -> gradScores: [b, h, s_q, s_k]
-    at::Tensor shape1_non_const = at::empty({b * h, s_q, d_v}, at::kFloat);
-    const at::Tensor &shape1 = shape1_non_const;
-    at::Tensor shape2_non_const = at::empty({b * h, d_v, s_k}, at::kFloat);
-    const at::Tensor &shape2 = shape2_non_const;
-    total_flops += FlopCounter::bmm_flop(shape1, shape2);
+    total_flops += b * h * s_q * d_v * s_k * 2;
 
     // scores: [b, h, s_k, s_q] @ gradOut: [b, h, s_q, d_v] -> gradV: [b, h, s_k, d_v]
-    at::Tensor shape3_non_const = at::empty({b * h, s_k, s_q}, at::kFloat);
-    const at::Tensor &shape3 = shape3_non_const;
-    at::Tensor shape4_non_const = at::empty({b * h, s_q, d_v}, at::kFloat);
-    const at::Tensor &shape4 = shape4_non_const;
-    total_flops += FlopCounter::bmm_flop(shape3, shape4);
+    total_flops += b * h * s_k * s_q * d_v * 2;
 
     // gradScores: [b, h, s_q, s_k] @ k: [b, h, s_k, d_q] -> gradQ: [b, h, s_q, d_q]
-    at::Tensor shape5_non_const = at::empty({b * h, s_q, s_k}, at::kFloat);
-    const at::Tensor &shape5 = shape5_non_const;
-    at::Tensor shape6_non_const = at::empty({b * h, s_k, d_q}, at::kFloat);
-    const at::Tensor &shape6 = shape6_non_const;
-    total_flops += FlopCounter::bmm_flop(shape5, shape6);
+    total_flops += b * h * s_q * s_k * d_q * 2;
 
     // q: [b, h, d_q, s_q] @ gradScores: [b, h, s_q, s_k] -> gradK: [b, h, d_q, s_k]
-    at::Tensor shape7_non_const = at::empty({b * h, d_q, s_q}, at::kFloat);
-    const at::Tensor &shape7 = shape7_non_const;
-    at::Tensor shape8_non_const = at::empty({b * h, s_q, s_k}, at::kFloat);
-    const at::Tensor &shape8 = shape8_non_const;
-    total_flops += FlopCounter::bmm_flop(shape7, shape8);
+    total_flops += b * h * d_q * s_q * s_k * 2;
 
     return total_flops;
 }
@@ -321,14 +297,7 @@ int64_t FlopCounter::gmm_flop(const at::TensorList &x, const at::TensorList &wei
     if (group_type_value == 0) {
         for (int64_t i = 0; i < group_list_real.size(); i++) {
             int64_t after_i = group_list_real[i];
-            std::vector<int64_t> x_new_shape = {after_i - before_i, x_shape.back()};
-            std::vector<int64_t> w_new_shape = {weight_shape[weight_shape.size() - 2], weight_shape.back()};
-
-            at::Tensor x_non_const = at::empty(x_new_shape, at::kFloat);
-            const at::Tensor &x_ = x_non_const;
-            at::Tensor w_non_const = at::empty(w_new_shape, at::kFloat);
-            const at::Tensor &w_ = w_non_const;
-            total_flops += FlopCounter::mm_flop(x_, w_);
+            total_flops += (after_i - before_i) * x_shape.back() * weight_shape.back() * 2;
             before_i = after_i;
         }
     }
@@ -336,14 +305,7 @@ int64_t FlopCounter::gmm_flop(const at::TensorList &x, const at::TensorList &wei
     if (group_type_value == 2) {
         for (int64_t i = 0; i < group_list_real.size(); i++) {
             int64_t after_i = group_list_real[i];
-            std::vector<int64_t> x_new_shape = {x_shape.front(), after_i - before_i};
-            std::vector<int64_t> w_new_shape = {after_i - before_i, weight_shape.back()};
-
-            at::Tensor x_non_const = at::empty(x_new_shape, at::kFloat);
-            const at::Tensor &x_ = x_non_const;
-            at::Tensor w_non_const = at::empty(w_new_shape, at::kFloat);
-            const at::Tensor &w_ = w_non_const;
-            total_flops += FlopCounter::mm_flop(x_, w_);
+            total_flops += x_shape.front() * (after_i - before_i) * weight_shape.back() * 2;
             before_i = after_i;
         }
     }
