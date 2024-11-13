@@ -2,6 +2,8 @@ from functools import reduce
 import torch
 import torch_npu
 
+from megatron.training import get_args
+from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
 from .min_comm_cfg import min_comm_config
 from .matmul_soc_friendly import get_aligned_mm_inputs
 from .coc_utils import CommunicationType, COCParallel, get_output_shape
@@ -78,7 +80,42 @@ class COCColumnSeqParallelFunction(torch.autograd.Function):
             if min_comm_config.all_gather_recomputation_enabled:
                 total_input_work.wait()
             total_input = reshape_to_2D(total_input)
-            grad_weight = grad_output.t().matmul(total_input)
+            if get_args().gradient_accumulation_fusion:
+                if weight.main_grad.dtype == torch.float32:
+                    npu_matmul_add_fp32(
+                        total_input, grad_output, weight.main_grad
+                    )
+                elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
+                    npu_matmul_add_fp16(
+                        total_input, grad_output, weight.main_grad
+                    )
+                else:
+                    raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+
+                if hasattr(weight, 'grad_added_to_main_grad'):
+                    # When overlap_grad_reduce is True, need to ensure that backward hooks
+                    # are all run on the main backprop thread to prevent deadlocks. Setup
+                    # dummy grad_weight tensor to prevent backward hooks from being run
+                    # in a background thread.
+                    if getattr(weight, 'zero_out_wgrad', False):
+                        grad_weight = torch.zeros(
+                            weight.main_grad.shape,
+                            dtype=total_input.dtype,
+                            device=torch.cuda.current_device(),
+                            requires_grad=False,
+                        )
+                    else:
+                        grad_weight = torch.empty(
+                            weight.main_grad.shape,
+                            dtype=total_input.dtype,
+                            device=torch.cuda.current_device(),
+                            requires_grad=False,
+                        )
+                    weight.grad_added_to_main_grad = True
+                else:
+                    grad_weight = None
+            else:
+                grad_weight = grad_output.t().matmul(total_input)
             sub_grad_input_work.wait()
             if is_grad_bias_needed and ctx.use_bias:
                 grad_bias = grad_output.sum(dim=0) if grad_output.is_contiguous() else grad_output.t().sum(dim=1)
@@ -157,7 +194,42 @@ class COCRowSeqParallelFunction(torch.autograd.Function):
             grad_output = coc_all_gather.comm_output
             grad_output = shuffle_as_coc_reduce_scatter(grad_output, ctx.world_size, parallel_num)
             total_input = reshape_to_2D(total_input)
-            grad_weight = grad_output.t().matmul(total_input)
+            if get_args().gradient_accumulation_fusion:
+                if weight.main_grad.dtype == torch.float32:
+                    npu_matmul_add_fp32(
+                        total_input, grad_output, weight.main_grad
+                    )
+                elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
+                    npu_matmul_add_fp16(
+                        total_input, grad_output, weight.main_grad
+                    )
+                else:
+                    raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+
+                if hasattr(weight, 'grad_added_to_main_grad'):
+                    # When overlap_grad_reduce is True, need to ensure that backward hooks
+                    # are all run on the main backprop thread to prevent deadlocks. Setup
+                    # dummy grad_weight tensor to prevent backward hooks from being run
+                    # in a background thread.
+                    if getattr(weight, 'zero_out_wgrad', False):
+                        grad_weight = torch.zeros(
+                            weight.main_grad.shape,
+                            dtype=total_input.dtype,
+                            device=torch.cuda.current_device(),
+                            requires_grad=False,
+                        )
+                    else:
+                        grad_weight = torch.empty(
+                            weight.main_grad.shape,
+                            dtype=total_input.dtype,
+                            device=torch.cuda.current_device(),
+                            requires_grad=False,
+                        )
+                    weight.grad_added_to_main_grad = True
+                else:
+                    grad_weight = None
+            else:
+                grad_weight = grad_output.t().matmul(total_input)
             if is_grad_bias_needed and ctx.use_bias:
                 grad_bias = grad_output.sum(dim=0) if grad_output.is_contiguous() else grad_output.t().sum(dim=1)
 
