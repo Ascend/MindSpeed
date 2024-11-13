@@ -904,6 +904,7 @@ def should_recompute_norm(self):
 
 
 def parallel_mlp_forward(self, hidden_states):
+    self.layer_number = getattr(self, "layer_number", None)
     is_recompute_activation = should_recompute_activation(self.layer_number)
     args = get_args()
     
