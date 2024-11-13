@@ -760,6 +760,7 @@ def should_recompute_norm(layer_number):
 def parallel_mlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
+        self.layer_number = getattr(self, "layer_number", None)
         is_recompute_activation = should_recompute_activation(self.layer_number)
 
         def activation_function(*function_args):
