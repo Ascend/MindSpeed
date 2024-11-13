@@ -53,7 +53,7 @@ class MindSpeedOpBuilder(ABC):
 
     def cxx_args(self):
         args = ['-fstack-protector-all', '-Wl,-z,relro,-z,now,-z,noexecstack', '-fPIC', '-pie',
-                '-Wl,--disable-new-dtags,--rpath', '-s']
+                '-s', '-fvisibility=hidden', '-D_FORTIFY_SOURCE=2', '-O2']
         return args
 
     def extra_ldflags(self):
