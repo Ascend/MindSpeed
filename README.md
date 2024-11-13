@@ -56,7 +56,7 @@ MindSpeed 是针对华为昇腾设备的大模型加速库。
 下载源码安装：
 
  ```shell
- git clone -b core_r0.6.0 https://gitee.com/ascend/MindSpeed.git
+ git clone -b 1.0.0_core_r0.6.0 https://gitee.com/ascend/MindSpeed.git
  pip install -e MindSpeed
  ```
 
