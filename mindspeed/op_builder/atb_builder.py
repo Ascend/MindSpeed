@@ -31,7 +31,7 @@ class AtbOpBuilder(MindSpeedOpBuilder):
             '-D ENABLE_ATB',
             '-fstack-protector-all', 
             '-Wl,-z,relro,-z,now,-z,noexecstack',
-            '-fPIC', '-pie', '-Wl,--disable-new-dtags,--rpath', '-s'
+            '-fPIC', '-pie', '-s'
         ]
         return args
     
@@ -39,8 +39,7 @@ class AtbOpBuilder(MindSpeedOpBuilder):
         flags = ['-L' + os.path.join(self._torch_npu_path, 'lib'), '-ltorch_npu',
                  '-L' + os.path.join(self.get_atb_path(), 'lib'), '-lasdops',
                  '-L' + os.path.join(self.get_atb_path(), 'lib'), '-llcal',
-                 '-L' + os.path.join(self.get_atb_path(), 'lib'), '-latb',
-                 '-Wl,-rpath=' + os.path.join(self.get_atb_path(), 'lib')]
+                 '-L' + os.path.join(self.get_atb_path(), 'lib'), '-latb']
         return flags
 
     def load(self, verbose=True):

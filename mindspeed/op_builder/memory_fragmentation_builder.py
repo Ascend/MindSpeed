@@ -36,8 +36,8 @@ class MemoryFragmentationBuilder(MindSpeedOpBuilder):
                 'ops/csrc/pluggable_allocator/memory_fragmentation/common.cpp']
 
     def cxx_args(self):
-        args = super().cxx_args()
-        args += ["-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"]
+        args = ['-fstack-protector-all', '-Wl,-z,relro,-z,now,-z,noexecstack', '-fPIC', '-pie',
+                '-s', '-D_FORTIFY_SOURCE=2', '-O2', "-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"]
         return args
 
     def extra_ldflags(self):
