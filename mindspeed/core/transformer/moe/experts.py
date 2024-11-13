@@ -121,8 +121,6 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
             h = torch.matmul(h, w2)
             fc2_output = h
     else:
-        permuted_local_hidden_states = args[0]
-        tokens_per_expert = args[1]
         w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
         w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 
