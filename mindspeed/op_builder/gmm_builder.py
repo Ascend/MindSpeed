@@ -88,8 +88,8 @@ class GMMOpBuilderPublic(MindSpeedOpBuilder):
 class GMMOpBuilder(GMMOpBuilderPublic):
     OP_NAME = "grouped_matmul"
     OP_PROTO = (
-        "npu_gmm.List(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, int[]? group_list=None, int? group_type=0) -> Tensor",
-        "npu_gmm.Tensor(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor"
+        "npu_gmm.List(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, int[]? group_list=None, int? group_type=0, bool? gemm_fusion=False) -> Tensor",
+        "npu_gmm.Tensor(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0, bool? gemm_fusion=False) -> Tensor"
     )
 
     def __init__(self):
@@ -99,7 +99,7 @@ class GMMOpBuilder(GMMOpBuilderPublic):
 
     def register_op_ir(self):
         @impl(AS_LIBRARY, "npu_gmm.Tensor", "Meta")
-        def npu_gmm_forward(original_weight, x, weight, *, bias=None, group_list=None, group_type=0):
+        def npu_gmm_forward(original_weight, x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=False):
             BM = x.shape[0]
             N = weight.shape[-1]
             y = x.new_empty((BM, N), dtype=x.dtype)
@@ -114,6 +114,7 @@ class GMMOpBuilder(GMMOpBuilderPublic):
             bias: Optional[Tensor] = None,
             group_list: Optional[Tensor] = None,
             group_type: Optional[int] = 0,
+            gemm_fusion: Optional[bool] = False,
             meta_outputs: TensorSpec = None,
         ):
             """npu_gmm(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor
@@ -128,7 +129,7 @@ class GMMOpBuilder(GMMOpBuilderPublic):
 class GMMV2OpBuilder(GMMOpBuilderPublic):
     OP_NAME = "grouped_matmul_v2"
     OP_PROTO = (
-        "npu_gmm_v2.Tensor(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor"
+        "npu_gmm_v2.Tensor(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0, bool? gemm_fusion=False) -> Tensor"
     )
 
     def __init__(self):
@@ -138,7 +139,7 @@ class GMMV2OpBuilder(GMMOpBuilderPublic):
 
     def register_op_ir(self):
         @impl(AS_LIBRARY, "npu_gmm_v2.Tensor", "Meta")
-        def npu_gmm_v2_forward(original_weight, x, weight, *, bias=None, group_list=None, group_type=0):
+        def npu_gmm_v2_forward(original_weight, x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=False):
             BM = x.shape[0]
             N = weight.shape[-1]
             y = x.new_empty((BM, N), dtype=x.dtype)
@@ -153,6 +154,7 @@ class GMMV2OpBuilder(GMMOpBuilderPublic):
             bias: Optional[Tensor] = None,
             group_list: Optional[Tensor] = None,
             group_type: Optional[int] = 0,
+            gemm_fusion: Optional[bool] = False,
             meta_outputs: TensorSpec = None,
         ):
             """npu_gmm_v2(Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0) -> Tensor
