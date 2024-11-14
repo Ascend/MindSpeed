@@ -25,8 +25,9 @@ class AdaptiveRecomputingPluggableAllocatorBuilder(MindSpeedOpBuilder):
         return ['ops/csrc/pluggable_allocator/adaptive_recomputing/NpuCachingCustomAllocator.cpp']
 
     def cxx_args(self):
-        args = super().cxx_args()
-        args += ['-D_GLIBCXX_USE_CXX11_ABI=0', "-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"]
+        args = ['-fstack-protector-all', '-Wl,-z,relro,-z,now,-z,noexecstack', '-fPIC', '-pie',
+                '-s', '-D_FORTIFY_SOURCE=2', '-O2', '-D_GLIBCXX_USE_CXX11_ABI=0',
+                "-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"]
         return args
 
     def extra_ldflags(self):
