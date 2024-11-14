@@ -3,6 +3,7 @@
 import os
 from functools import wraps
 import argparse
+import warnings
 
 
 def extra_args_provider_decorator(extra_args_provider):
@@ -673,6 +674,10 @@ def validate_args_wrapper(validate_args):
                     args.use_pipe_experts = False
                     args.pipe_experts_multi_stream = False
                     args.pipe_experts_multi_data = 1
+        
+        if args.fp16:
+            args.gradient_accumulation_fusion = False
+            warnings.warn("Unsupported gradient fp16 bf16 for gradient accumulation fusion")
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
