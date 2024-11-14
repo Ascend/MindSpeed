@@ -98,6 +98,8 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
         if self.token_dispatcher.all_tokens_per_expert is None or torch.max(
                 self.token_dispatcher.all_tokens_per_expert) > threshold:
             output, mlp_bias = tensor_parallel.checkpoint(custom_forward, False, hidden_states)
+        else:
+            output, mlp_bias = custom_forward(hidden_states)
     else:
         output, mlp_bias = custom_forward(hidden_states)
     return output, mlp_bias

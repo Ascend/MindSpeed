@@ -2,6 +2,7 @@
 
 from functools import wraps
 import argparse
+import warnings
 
 
 def extra_args_provider_decorator(extra_args_provider):
@@ -174,8 +175,6 @@ def _add_moe_args(parser):
     group.add_argument("--use-fused-moe-token-permute-and-unpermute", action='store_true',
                        help="Use fused moe permute and unpermute.")
     group.add_argument("--gemm-gradient-accumulation-fusion", action='store_true',
-                       help="Use gradient-accumulation-fusion in gemm.")
-    group.add_argument("--gemm-gradient-accumulation-fusion-jia", action='store_true',
                        help="Use gradient-accumulation-fusion in gemm.")
     return parser
 
@@ -768,6 +767,10 @@ def validate_args_wrapper(validate_args):
             raise AssertionError("--expert-interval must be between 1 and num layers")
         if args.moe_train_capacity_factor <= 0.0:
             raise AssertionError("--moe-train-capacity-factor must be greater than 0.0")
+
+        if args.fp16:
+            args.gradient_accumulation_fusion = False
+            warnings.warn("Unsupported gradient fp16 bf16 for gradient accumulation fusion")
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)

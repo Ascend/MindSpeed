@@ -66,11 +66,11 @@ def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx
     group_list = torch.cumsum(tokens_per_expert, dim=0)
     if get_args().moe_alltoall_overlap_comm:
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                              (self.activation_func, group_list, self.layer_number),
+                                                              (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number),
                                                               ctx=ctx)
     else:  # get_args().moe_allgather_overlap_comm
         return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                (self.activation_func, group_list, self.layer_number))
+                                                                (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number))
 
 
 def groupedmlp_init_wrapper(fn):
@@ -94,67 +94,54 @@ def groupedmlp_init_wrapper(fn):
     return wrapper
 
 
-# def groupedmlp_forward_wrapper(fn):
-#     @wraps(fn)
-#     def wrapper(self, *args, **kwargs):
-#         self.should_recompute_activation = should_recompute_activation(self)
-#         if self.should_recompute_activation and not self.set_recompute_activation_func:
-#             self.activation_checkpoint_manager = CheckpointWithoutOutput()
-#             self.local_activation_func = self.activation_func
-
-#             def recompute_activation_func(*args):
-#                 output = self.activation_checkpoint_manager.checkpoint(self.local_activation_func, False, *args)
-#                 return output
-#             self.activation_func = recompute_activation_func
-#             self.set_recompute_activation_func = True
-#         fc2_output, _ = fn(self, *args, **kwargs)
-
-#         if self.should_recompute_activation:
-#             # discard the activation output and restored by recomputation before backward of fc2.
-#             self.activation_checkpoint_manager.discard_output()
-#             if fc2_output.requires_grad:
-#                 fc2_output.register_hook(self.activation_checkpoint_manager.recompute)
-
-#         return fc2_output, None
-#     return wrapper:
-
 def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
-    self.should_recompute_activation = should_recompute_activation(self)
-    if self.should_recompute_activation and not self.set_recompute_activation_func:
-        self.activation_checkpoint_manager = CheckpointWithoutOutput()
-        self.local_activation_func = self.activation_func
+    is_recompute_activation = should_recompute_activation(
+        self.layer_number) and not get_args().moe_alltoall_overlap_comm and not get_args().moe_allgather_overlap_comm
 
-        def recompute_activation_func(*args):
-            output = self.activation_checkpoint_manager.checkpoint(self.local_activation_func, False, *args)
-            return output
-        self.activation_func = recompute_activation_func
-        self.set_recompute_activation_func = True
+    gemm_fusion = get_args().gemm_gradient_accumulation_fusion
+    fc2_output = None
 
-    if permuted_local_hidden_states.nelement() != 0:
-        # Reshape the weights for the grouped GEMMs.
+    if not is_recompute_activation:
+        if permuted_local_hidden_states.nelement() != 0:
+            # Reshape the weights for the grouped GEMMs.
+            w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
+            w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
+
+            fc1_output = gg.ops.gmm(permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion, original_weight=self.weight1)
+
+            intermediate_parallel = self.activation_func(fc1_output)
+
+            fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion, original_weight=self.weight2)
+        else:
+            # No token is allocated for local experts.
+            assert torch.count_nonzero(tokens_per_expert) == 0
+            # Make sure parameters still have gradients when no tokens are routed to this set of experts.
+            w1 = self.weight1.view(self.config.hidden_size, -1)
+            w2 = self.weight2.view(-1, self.config.hidden_size)
+            h = torch.matmul(permuted_local_hidden_states, w1)
+            h = self.activation_func(h)
+            h = torch.matmul(h, w2)
+            fc2_output = h
+    else:
+        # permuted_local_hidden_states = args[0]
+        # tokens_per_expert = args[1]
         w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
         w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 
-        fc1_output = gg.ops.gmm(self.weight1, permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False)
+        fc1_output = gg.ops.gmm(permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion, original_weight=self.weight1)
 
-        intermediate_parallel = self.activation_func(fc1_output)
+        self.activation_checkpoint_manager = CheckpointWithoutOutput()
+        intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
+                                                                                False,
+                                                                                fc1_output)
+        fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion, original_weight=self.weight2)
 
-        fc2_output = gg.ops.gmm(self.weight2, intermediate_parallel, w2, tokens_per_expert, trans_b=False)
-    else:
-        # No token is allocated for local experts.
-        assert torch.count_nonzero(tokens_per_expert) == 0
-
-        # Make sure parameters still have gradients when no tokens are routed to this set of experts.
-        w1 = self.weight1.view(self.config.hidden_size, -1)
-        w2 = self.weight2.view(-1, self.config.hidden_size)
-        h = torch.matmul(permuted_local_hidden_states, w1)
-        h = self.activation_func(h)
-        h = torch.matmul(h, w2)
-        fc2_output = h
-
-    if self.should_recompute_activation:
-        # discard the activation output and restored by recomputation before backward of fc2.
+        # discard the output of the activation function,
+        # which will be restored by recomputation during backward.
         self.activation_checkpoint_manager.discard_output()
+
+        # when backward to output of dense_4h_to_h,
+        # recompute and restore the output of activation function.
         if fc2_output.requires_grad:
             fc2_output.register_hook(self.activation_checkpoint_manager.recompute)
 
