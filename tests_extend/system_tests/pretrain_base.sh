@@ -1,24 +1,5 @@
 #!/bin/bash
 
-# entry file:  pretrain_gpt_usecase.py
-echo "------ARGUMENTS LIST --------"
-for ARGUMENT in "$@"
-do
-   KEY=$(echo $ARGUMENT | cut -f1 -d=)
-   VALUE="${ARGUMENT#*${KEY}=}"
-
-   export "$KEY"="$VALUE"
-   echo "$KEY=$VALUE"
-done
-
-if [[ -z $EXTRA_ARGS ]]; then
-  echo "no additional params"
-else
-  ADDITIONAL_PARAMS=$EXTRA_ARGS ;
-fi
-echo "---------------------------------"
-set -exo pipefail
-
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export HCCL_DETERMINISTIC=TRUE
 
@@ -83,14 +64,14 @@ GPT_ARGS="
 DATA_ARGS="
     --load ${LOAD_CKPT_DIR:-./ckpt_llama} \
     --data-path ${DATA_PATH:-/home/dataset/llama2/alpaca_text_document} \
-    --split 100,0,0
+    --split 949,50,1
 "
 
 OUTPUT_ARGS="
     --log-interval 1 \
     --save-interval 10 \
-    --eval-interval 50 \
-    --eval-iters 0 \
+    --eval-interval 10 \
+    --eval-iters 2 \
 "
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
@@ -99,6 +80,5 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --exit-on-missing-checkpoint \
-    ${ADDITIONAL_PARAMS:+$ADDITIONAL_PARAMS} \
 
 set +x
