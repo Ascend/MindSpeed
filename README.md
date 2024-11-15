@@ -188,6 +188,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
 | Ascend TFOPS计算                              | [link](docs/features/ops_flops_cal.md)                    |
+| Auto Tuning 并行策略自动搜索系统                 | [link](docs/features/auto_tuning.md)                     |
 
 # 自定义算子
 部分自定义算子设置为公开接口，公开接口设置说明请参照MindSpeed安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。
