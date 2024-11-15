@@ -16,3 +16,5 @@ pytest
 transformers>=4.43.2
 gpytorch
 pandas
+scikit-learn
+SQLAlchemy
