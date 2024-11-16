@@ -35,7 +35,7 @@ class _SyncGatherAlongFirstDim(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, comm_intf: CollectiveCommIntf):
         ctx.comm_intf = comm_intf
-        return sync_gather_along_first_dim(input_, comm_intf, "_SyncGatherAlongFirstDim")
+        return sync_gather_along_first_dim(input_, comm_intf)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -135,7 +135,7 @@ class _ScatterAlongFirstDim(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        return sync_gather_along_first_dim(grad_output, ctx.comm_intf, "_ScatterAlongFirstDim"), None
+        return sync_gather_along_first_dim(grad_output, ctx.comm_intf), None
 
 
 class _ScatterAlongFirstDimThenLastDim(torch.autograd.Function):
@@ -161,8 +161,7 @@ class _ScatterAlongFirstDimThenLastDim(torch.autograd.Function):
     def backward(ctx, grad_output):
         last_dim_gather_output = _gather_along_last_dim(grad_output, ctx.last_dim_comm_intf)
         first_dim_gather_output = sync_gather_along_first_dim(
-            last_dim_gather_output, ctx.first_dim_comm_intf, "_ScatterAlongFirstDimThenLastDim"
-        )
+            last_dim_gather_output, ctx.first_dim_comm_intf)
         return first_dim_gather_output, None, None
 
 

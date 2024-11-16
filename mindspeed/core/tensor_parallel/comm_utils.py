@@ -140,14 +140,12 @@ def async_gather_tensors(
     dim_size = list(local_rank_input.size())
     dim_size[0] *= world_size
 
-    all_gather_buffer = get_global_memory_buffer().get_tensor(
-        dim_size, local_rank_input.dtype, buffer_name
-    )
+    ag_out = torch.empty(dim_size, dtype=local_rank_input.dtype, device=torch.cuda.current_device())
     handle = torch.distributed._all_gather_base(
-        all_gather_buffer, local_rank_input, group=ag_comm_intf.get_comm_group(), async_op=True
+        ag_out, local_rank_input, group=ag_comm_intf.get_comm_group(), async_op=True
     )
 
-    return handle, all_gather_buffer
+    return handle, ag_out
 
 
 def sync_gather_along_first_dim(
