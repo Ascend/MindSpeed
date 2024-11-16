@@ -175,12 +175,13 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】Ascend 高维张量并行                | [link](docs/features/tensor-parallel-2d.md)                           |
 
 ## 关键场景特性
-| 特性                           | 介绍                                                        |
-|------------------------------|-----------------------------------------------------------|
-| Megatron Mcore MoE           | [link](docs/features/megatron_moe/megatron-moe.md)        |
-| DeepSpeed MoE         | [link](docs/features/deepspeed_moe/deepspeed-moe.md)      |
-| 【Prototype】Ascend alibi             | [link](docs/features/alibi.md)                            |
-| 【Prototype】Ascend EOD Reset训练场景                 | [link](docs/features/eod-reset.md)  |
+| 特性                              | 介绍                                                   |
+|---------------------------------|------------------------------------------------------|
+| Megatron Mcore MoE              | [link](docs/features/megatron_moe/megatron-moe.md)   |
+| DeepSpeed MoE                   | [link](docs/features/deepspeed_moe/deepspeed-moe.md) |
+| Ascend 共享专家                 | [link](docs/features/shared-experts.md)              |
+| 【Prototype】Ascend alibi         | [link](docs/features/alibi.md)                       |
+| 【Prototype】Ascend EOD Reset训练场景 | [link](docs/features/eod-reset.md)                   |
 
 ## 其它特性
 | 特性                           | 介绍                                                        |
