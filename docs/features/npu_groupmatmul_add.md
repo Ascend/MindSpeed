@@ -4,7 +4,7 @@
 MOE大模型训练中，MOE专家开启了梯度累加功能，但累加效率较慢，梯度累加中的 Add 算子占比较高
 
 ## 解决方法
-MindSpeed将gmm操作和add操作合并成一个融合算子。算子接口见[link](../ops/npu_groupmatmul_add_fp32.md)。
+MindSpeed将gmm操作和add操作合并成一个融合算子。算子接口见[link](../ops/npu_groupmatmul_add.md)。
 
 ## 使用场景
 带有MOE的大模型均使用。

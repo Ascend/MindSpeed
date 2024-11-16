@@ -84,7 +84,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         if moe_zero_memory != "level0" and not (moe_zero_memory == "level1" and is_only_recompute_activation):
             inputs, act_inputs, mm2_inputs, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
         else:
-            act_inputs, mm2_inputs, weights1, weights2, original_weight1, original_weight2, original_weight1, original_weight2, group_list = ctx.saved_tensors
+            act_inputs, mm2_inputs, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
         group_list_data_type = ctx.group_list_data_type
         from mindspeed.core.transformer.moe.moe_utils import get_gemm_backward_need_tensors, set_all2all_experts_output
         ((detach_input, indices, router_topk, global_input_tokens_local_experts_indices),
