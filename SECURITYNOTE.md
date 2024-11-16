@@ -63,6 +63,7 @@
 |  开源引入  |                           https://github.com/sail-sg/zero-bubble-pipeline-parallelism                            |   mindspeed/docs/features/nanopipe-pipeline-parallel.md   |                           https://arxiv.org/abs/2401.10241                   |      nanopipe-pipeline-parallel说明文档       |
 |  开源引入  |                           https://github.com/iclr24-3434/AMPipe.git                            |   mindspeed/docs/features/ampipe.md   |                           https://openreview.net/pdf?id=yLgr02IsXY                   |                ampipe说明文档                 |
 |  开源引入  |                           https://gitee.com/ascend/pytorch                            |   mindspeed/docs/features/adaptive-recompute.md   |                           https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha001/apiref/envref/envref_07_0053.html                   |     环境变量`PYTORCH_NPU_ALLOC_CONF`说明文档      |
+|  开源引入  |                           https://github.com/deepseek-ai/DeepSeek-MoE                            |         mindspeed/docs/features/shared-experts.md          |                           https://arxiv.org/pdf/2401.06066                   |                 共享专家说明文档                  |
 
 
 ## 公开接口声明
