@@ -268,6 +268,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_fusion_attention_
         key, value, dy, head_num, input_layout_str, pse, drop_mask, padding_mask, atten_mask,
         softmax_max, softmax_sum, softmax_in, attention_in, scale_value, keep_prob, pre_tokens,
         next_tokens, inner_precise, prefix, actual_seq_qlen, actual_seq_kvlen, q_start_idx, kv_start_idx, sparse_mode, pse_type);
+    if (!sync && get_dropout_status(keep_prob) != DropOutStatus::DROPOUT_NONE) {
+        c10::Device device = drop_mask.device();
+        c10::impl::VirtualGuardImpl impl(device.type());
+        impl.recordDataPtrOnStream(drop_mask.storage().data_ptr(), c10_npu::getCurrentNPUStream());
+    }
     return result;
 }
 
@@ -414,6 +419,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, int64_t, int64_t, int
             format_pse, format_drop_mask, format_padding_mask, format_atten_mask, prefixN, q_start_idx_val, kv_start_idx_val,
             scale, keep_prob, pre_tokens, next_tokens, head_num, input_layout_ptr, inner_precise,
             sparse_mode, pse_type, softmax_max, softmax_sum, softmax_out, attention_score);
+    }
+    if (!sync && get_dropout_status(keep_prob) != DropOutStatus::DROPOUT_NONE) {
+        c10::Device device = format_drop_mask.device();
+        c10::impl::VirtualGuardImpl impl(device.type());
+        impl.recordDataPtrOnStream(format_drop_mask.storage().data_ptr(), c10_npu::getCurrentNPUStream());
     }
     #ifdef FLOP_COUNT
     FLOP_COUNT(FlopCounter::flash_attention_forward_flop, query, key, value, head_num, input_layout, actual_seq_qlen, actual_seq_kvlen);
