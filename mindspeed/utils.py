@@ -580,7 +580,7 @@ def check_param_hashes_across_dp_replicas_hccl(model: List[torch.nn.Module]) -> 
         for (param_name, param) in model_chunk.named_parameters():
             param_hash = torch.frombuffer(
                 array.array(
-                    'B', hashlib.sha1(param.data.to("cpu").float().numpy(force=True)).digest()
+                    'B', hashlib.sha256(param.data.to("cpu").float().numpy(force=True)).digest()
                 ),
                 dtype=torch.uint8,
             )
