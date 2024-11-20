@@ -485,8 +485,18 @@ def parallel_transformer_init(self, config,
             self.num_layers = 1
             self.layers = torch.nn.ModuleList([ NoopTransformerLayer(1) ])
         else:
-            self.layers = torch.nn.ModuleList(
-                [build_layer(i + 1 + offset) for i in range(self.num_layers)])
+            if args.automated_pipeline and args.num_layer_list and args.virtual_pipeline_model_parallel_size is None:
+                start_layer_num = 1
+                self.layers = torch.nn.ModuleList()
+                for idx, value in enumerate(args.num_layer_list):
+                    if parallel_state.get_pipeline_model_parallel_rank() == idx:
+                        self.num_layers = value
+                        for layer_num in range(start_layer_num, start_layer_num + value):
+                            self.layers.append(build_layer(layer_num))
+                    start_layer_num += value
+            else:
+                self.layers = torch.nn.ModuleList(
+                    [build_layer(i + 1 + offset) for i in range(self.num_layers)])
 
             # Update dropout rate for Retro encoder.
             if model_type == ModelType.retro_encoder:

@@ -488,7 +488,7 @@ def setup_model_and_optimizer_decorator(setup_model_and_optimizer):
         argument = get_args()
         if argument.automated_pipeline and POLICY:
             if torch.distributed.get_rank() == 0:
-                broadcast_policy_in_ranks(0, policy)
+                broadcast_policy_in_ranks(0, POLICY)
             else:
                 broadcast_policy_in_ranks(0)
         if argument.automated_pipeline_perf and ENABLE_SCHEDULER:
