@@ -819,3 +819,123 @@ def alltoall_token_unpermutation_new(
     if not get_args().use_fused_moe_token_permute_and_unpermute or get_args().moe_zero_memory != "disable":
         unpermute2_input_detach.untyped_storage().resize_(0)
     return output, None
+
+
+def allgather_token_permutation_npu(self, hidden_states: torch.Tensor, max_prob: torch.Tensor, max_ind: torch.Tensor):
+    self.hidden_shape = hidden_states.shape
+    # [S/TP, B, H] -> [S*B/TP, H]
+    hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
+
+    # Permute the tokens across the expert parallel devices.
+    if self.config.sequence_parallel or (self.config.expert_model_parallel_size > 1):
+        # [S*B/TP, H] -> [S*B, H]
+        global_hidden_states = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
+            hidden_states
+        )
+        with torch.no_grad():
+            global_indices = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
+                max_ind
+            )
+            # Create a mask of mapping between global and local tokens where each
+            # element is True if it's between the local_expert_indices
+            global_local_mask = (global_indices >= self.local_expert_indices[0]) & (
+                global_indices <= self.local_expert_indices[-1]
+            )
+            local_indices = global_indices.masked_select(global_local_mask)
+
+        if self.router_topk > 1:  # k > 1
+            global_probs = tensor_parallel.gather_from_sequence_parallel_region_to_moe(max_prob)
+            self.local_probs = global_probs.masked_select(global_local_mask)
+        else:
+            self.local_probs = max_prob
+
+        # Reshape global_local_mask to be compatible with Tensor.gather
+        global_local_map = global_local_mask.nonzero()[:, 0]
+        self.global_local_map = global_local_map.view(-1, 1).expand(-1, hidden_states.shape[-1])
+        local_hidden_states = torch.gather(global_hidden_states, 0, self.global_local_map)
+    else:
+        if self.router_topk > 1:
+            global_local_mask = torch.ones_like(max_ind).bool()
+            local_indices = max_ind.masked_select(global_local_mask)
+            self.local_probs = max_prob.masked_select(global_local_mask)
+            global_local_map = global_local_mask.nonzero()[:, 0]
+            self.global_local_map = global_local_map.view(-1, 1).expand(
+                -1, hidden_states.shape[-1]
+            )
+            local_hidden_states = torch.gather(hidden_states, 0, self.global_local_map)
+        else:
+            local_indices = max_ind
+            self.local_probs = max_prob
+            local_hidden_states = hidden_states
+            self.global_local_map = None
+
+    with torch.no_grad():
+        # The indices of local_indices that give its sorted order along dim 0.
+        self.indices = torch.argsort(local_indices, dim=0)
+        tokens_per_expert = torch.histc(
+            local_indices,
+            bins=self.num_local_experts,
+            min=self.local_expert_indices[0],
+            max=self.local_expert_indices[-1],
+        )
+        tokens_per_expert = tokens_per_expert.to(torch.long)
+
+    # Stage2: permute the tokens locally so that they are grouped by their expert assignment
+    # Reshape indices to be compatible with Tensor.gather
+    self.indices = self.indices.view(-1, 1).expand(-1, hidden_states.shape[-1])
+    permuted_local_hidden_states = torch.gather(local_hidden_states, 0, self.indices)
+    return (
+        permuted_local_hidden_states,
+        tokens_per_expert,
+    )
+
+
+def alltoall_preprocess_npu(self, indices: torch.Tensor):
+    num_local_tokens_per_expert = torch.histc(
+        indices, bins=self.num_experts, min=0, max=self.num_experts
+    )
+    # num_local_tokens_per_expert: [num_experts]
+
+    ep_size = self.config.expert_model_parallel_size
+    if ep_size > 1:
+        # ===================================================
+        # Calculate input_splits, output_splits for alltoall-v.
+        # ===================================================
+        self.input_splits = (
+            num_local_tokens_per_expert.reshape(ep_size, self.num_local_experts)
+            .sum(axis=1)
+            .to(torch.device("cpu"))
+            .numpy()
+        )
+        num_global_tokens_per_expert = _gather_along_first_dim_expert_parallel(
+            num_local_tokens_per_expert
+        ).reshape(ep_size, self.num_experts)
+        self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
+            :, self.local_expert_indices
+        ]
+        self.output_splits = (
+            self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu")).numpy()
+        )
+        num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0)
+        # ===================================================
+        # num_global_tokens_per_expert: [ep_size, num_experts]
+        # num_global_tokens_per_local_expert: [ep_size, num_local_experts]
+        # num_tokens_per_local_expert: [num_local_experts]
+        # ===================================================
+    else:
+        self.num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
+            -1, self.num_experts
+        )
+        num_tokens_per_local_expert = num_local_tokens_per_expert
+
+    if self.num_local_experts > 1:
+        expert_ids_per_ep_rank = torch.tensor(
+            [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
+            dtype=torch.int32,
+            device=torch.cuda.current_device(),
+        )
+        self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+            expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
+        )
+
+    return num_tokens_per_local_expert
