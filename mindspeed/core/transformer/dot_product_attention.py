@@ -8,8 +8,14 @@ from functools import wraps
 import torch
 import torch_npu
 from torch import Tensor
+from megatron.core.fusions.fused_softmax import FusedScaleMaskSoftmax
+from megatron.core.transformer import TransformerConfig
+from megatron.core.transformer.dot_product_attention import DotProductAttention
+from megatron.core.transformer.enums import AttnMaskType
+from megatron.core.transformer.utils import attention_mask_func
+from megatron.core.utils import divide
 from megatron.training import get_args
-from megatron.core import mpu
+from megatron.core import mpu, parallel_state
 from mindspeed.core.models.common.embeddings.rotary_pos_embedding import yarn_get_mscale
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
@@ -35,49 +41,96 @@ except ImportError:
     rearrange = None
 
 
-def dot_product_attention_init_wrapper(fn):
-    @wraps(fn)
-    def wrapper(self, *args, **kwargs):
-        config = args[1] if len(args) > 1 else kwargs['config']
-        cp_size = config.context_parallel_size
-        config.context_parallel_size = 1
-        fn(self, *args, **kwargs)
-        config.context_parallel_size = cp_size
+def dot_product_attention_init(
+    self,
+    config: TransformerConfig,
+    layer_number: int,
+    attn_mask_type: AttnMaskType,
+    attention_type: str,
+    attention_dropout: float = None,
+):
+    cp_size = config.context_parallel_size
+    config.context_parallel_size = 1
 
-        # add pse
-        args = get_args()
-        self.pse = None
-        self.pse_type = args.alibi_fusion_attn_type
+    super(DotProductAttention, self).__init__(config=config)
+    assert (
+            self.config.context_parallel_size == 1
+    ), "Context parallelism is only supported by TEDotProductAttention!"
 
-        if args.multi_head_latent_attention:
-            self.scale_mask_softmax.scale = True
-            self.hidden_size_per_partition = args.num_attention_heads * args.v_head_dim
-            self.q_head_dim = args.qk_nope_head_dim + args.qk_rope_head_dim
-            self.softmax_scale = self.q_head_dim ** (-0.5)
+    assert (
+            self.config.window_size is None
+    ), "Sliding Window Attention is only supported by TEDotProductAttention!"
 
-            if args.rope_scaling_type is not None:
-                mscale_all_dim = args.rope_scaling_mscale_all_dim if args.rope_scaling_mscale_all_dim else 0
-                scaling_factor = args.rope_scaling_factor
+    self.layer_number = max(1, layer_number)
+    self.attn_mask_type = attn_mask_type
+    self.attention_type = attention_type  # unused for now
 
-                if mscale_all_dim:
-                    mscale = yarn_get_mscale(scaling_factor, mscale_all_dim)
-                    self.softmax_scale = self.softmax_scale * mscale * mscale
+    projection_size = self.config.kv_channels * self.config.num_attention_heads
+    args = get_args()
+    # Per attention head and per partition values.
+    world_size = args.tp_x if args.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
+    self.hidden_size_per_partition = divide(projection_size, world_size)
+    self.hidden_size_per_attention_head = divide(projection_size, config.num_attention_heads)
+    self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
+    self.num_query_groups_per_partition = divide(self.config.num_query_groups, world_size)
 
-            self.norm_factor = 1.0 / self.softmax_scale
+    coeff = None
+    self.norm_factor = math.sqrt(self.hidden_size_per_attention_head)
+    if self.config.apply_query_key_layer_scaling:
+        coeff = self.layer_number
+        self.norm_factor *= coeff
 
-        if self.pse_type is None:
-            self.pse_type = 1 # not use pse
-        elif self.pse_type == 0:
-            alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(args.seq_length,
-                                                    args.num_attention_heads,
-                                                    args.params_dtype,
-                                                    args.alibi_diagonal_opposite,
-                                                    1024)
-            self.pse = alibi
-        elif self.pse_type == 2 or self.pse_type == 3:
-            self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(args.num_attention_heads)
+    self.scale_mask_softmax = FusedScaleMaskSoftmax(
+        input_in_fp16=self.config.fp16,
+        input_in_bf16=self.config.bf16,
+        attn_mask_type=self.attn_mask_type,
+        scaled_masked_softmax_fusion=self.config.masked_softmax_fusion,
+        mask_func=attention_mask_func,
+        softmax_in_fp32=self.config.attention_softmax_in_fp32,
+        scale=coeff,
+    )
 
-    return wrapper
+    # Dropout. Note that for a single iteration, this layer will generate
+    # different outputs on different number of parallel partitions but
+    # on average it should not be partition dependent.
+    self.attention_dropout = torch.nn.Dropout(
+        self.config.attention_dropout if attention_dropout is None else attention_dropout
+    )
+
+    config.context_parallel_size = cp_size
+
+    # add pse
+    args = get_args()
+    self.pse = None
+    self.pse_type = args.alibi_fusion_attn_type
+
+    if args.multi_head_latent_attention:
+        self.scale_mask_softmax.scale = True
+        self.hidden_size_per_partition = args.num_attention_heads * args.v_head_dim
+        self.q_head_dim = args.qk_nope_head_dim + args.qk_rope_head_dim
+        self.softmax_scale = self.q_head_dim ** (-0.5)
+
+        if args.rope_scaling_type is not None:
+            mscale_all_dim = args.rope_scaling_mscale_all_dim if args.rope_scaling_mscale_all_dim else 0
+            scaling_factor = args.rope_scaling_factor
+
+            if mscale_all_dim:
+                mscale = yarn_get_mscale(scaling_factor, mscale_all_dim)
+                self.softmax_scale = self.softmax_scale * mscale * mscale
+
+        self.norm_factor = 1.0 / self.softmax_scale
+
+    if self.pse_type is None:
+        self.pse_type = 1 # not use pse
+    elif self.pse_type == 0:
+        alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(args.seq_length,
+                                                args.num_attention_heads,
+                                                args.params_dtype,
+                                                args.alibi_diagonal_opposite,
+                                                1024)
+        self.pse = alibi
+    elif self.pse_type == 2 or self.pse_type == 3:
+        self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(args.num_attention_heads)
 
 
 def dot_product_attention_forward_wrapper(fn):
@@ -111,7 +164,7 @@ def dot_product_attention_forward(
 
     cp_expanded_by_2d_tp = args.tp_2d and args.tp_y > 1
     if cp_expanded_by_2d_tp:
-        tp_y_cp_sz = args.context_parallel_size * args.tp_y
+        tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
     else:
         tp_y_cp_sz = args.context_parallel_size
     if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',

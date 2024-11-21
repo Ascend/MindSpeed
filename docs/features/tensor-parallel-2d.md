@@ -126,10 +126,13 @@ $$
 
 在训练脚本的参数列表中加入 `--tp-2d`，开启2D张量并行，`--tp-x N1`和`--tp-y N2`分别设置其x轴、y轴的切分大小，其中需满足`tp = N1 * N2`(N1 > 1, N2 > 1)。
 
-其他优化参数：
+其他优化参数，用于辅助高维张量并行特性进行通信隐藏，需要开启tp-2d时生效：
 - `--enable-overlap-ag-with-matmul`: 在linear层forward计算时，开启all-gather通信和matmul进行隐藏，以便加速
 - `--enable-overlap-matmul-with-rs`: 在linear层forward计算时，开启matmul计算和reduce-scatter通信进行隐藏，以便加速
 - `--enable-backward-overlap-ag-with-matmul`: 在linear层backward计算梯度时，开启all-gather通信和matmul进行隐藏，以便加速
+
+注意事项：
+当前高维张量并行特性不与`--sequence-parallel`、`--use-fused-rmsnorm`、MoE等特性相兼容，请根据实际情况调整配置。
 
 ## 使用效果
 

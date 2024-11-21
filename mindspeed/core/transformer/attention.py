@@ -10,9 +10,10 @@ import torch.nn.functional as F
 
 from megatron.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb
 from megatron.core.transformer import TransformerConfig, ModuleSpec, build_module
-from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
+from megatron.core.transformer.attention import SelfAttentionSubmodules, CrossAttentionSubmodules, \
+    Attention
 from megatron.core.transformer.enums import AttnMaskType
-from megatron.core import mpu
+from megatron.core import mpu, parallel_state
 from megatron.core.utils import divide
 from megatron.training import get_args
 
@@ -36,23 +37,69 @@ class SelfAttentionSubmodules:
     linear_kvb: Union[ModuleSpec, type] = None
 
 
-def attention_init_wrapper(fn):
-    @wraps(fn)
-    def wrapper(self, *arg, **kwargs):
-        fn(self, *arg, **kwargs)
+def attention_init(
+    self,
+    config: TransformerConfig,
+    submodules: Union[SelfAttentionSubmodules, CrossAttentionSubmodules],
+    layer_number: int,
+    attn_mask_type: AttnMaskType,
+    attention_type: str,
+):
+    super(Attention, self).__init__(config=config)
+    self.config = config
+    self.layer_number = layer_number
+    self.attn_mask_type = attn_mask_type
+    self.attention_type = attention_type
 
-        args = get_args()
-        if args.context_parallel_size > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
-            if args.tp_2d:
-                tp_y_cp = TensorParallelYUnionCP()
-                ulysses_group = tp_y_cp.group
-            else:
-                ulysses_group = mpu.get_context_parallel_group()
-            if args.context_parallel_algo == 'hybrid_cp_algo' or args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
-                ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
-            self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
+    # For normal attention without groups, num_query_groups == num_attention_heads,
+    # so these two will be the same
+    self.query_projection_size = self.config.kv_channels * self.config.num_attention_heads
+    self.kv_projection_size = self.config.kv_channels * self.config.num_query_groups
 
-    return wrapper
+    args = get_args()
+    # patch for tp-2d
+    world_size = args.tp_x if args.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
+    # Per attention head and per partition values.
+    self.hidden_size_per_attention_head = divide(
+        self.query_projection_size, self.config.num_attention_heads
+    )
+    self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
+    self.num_query_groups_per_partition = divide(self.config.num_query_groups, world_size)
+
+    self.core_attention = build_module(
+        submodules.core_attention,
+        config=self.config,
+        layer_number=self.layer_number,
+        attn_mask_type=self.attn_mask_type,
+        attention_type=self.attention_type,
+    )
+
+    self.checkpoint_core_attention = self.config.recompute_granularity == 'selective'
+
+    # Output.
+    self.linear_proj = build_module(
+        submodules.linear_proj,
+        self.query_projection_size,
+        self.config.hidden_size,
+        config=self.config,
+        init_method=self.config.output_layer_init_method,
+        bias=self.config.add_bias_linear,
+        input_is_parallel=True,
+        skip_bias_add=True,
+        is_expert=False,
+        tp_comm_buffer_name='proj',
+    )
+
+    if args.context_parallel_size > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
+                                                                         'hybrid_adaptive_cp_algo']:
+        if args.tp_2d:
+            tp_y_cp = TensorParallelYUnionCP()
+            ulysses_group = tp_y_cp.group
+        else:
+            ulysses_group = mpu.get_context_parallel_group()
+        if args.context_parallel_algo in ['hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
+            ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
+        self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
 
 
 def self_attention_init_wrapper(fn):
