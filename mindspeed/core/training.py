@@ -89,7 +89,8 @@ def train_decorator(train):
         else:
             args_.profile_npu = False
 
-        if args_.profile_npu and (torch.distributed.get_rank() in args_.profile_ranks):
+        if hasattr(args_, 'profile_npu') and args_.profile_npu \
+                and (torch.distributed.get_rank() in args_.profile_ranks):
             active = args_.profile_step_end - args_.profile_step_start
             skip_first = args_.profile_step_start
 
