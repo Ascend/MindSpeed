@@ -146,7 +146,8 @@ def train_step_decorator(train_step):
             ret = train_step(*args, **kwargs)
         else:
             ret = train_step(*args, **kwargs)
-            if args_.profile_npu and (torch.distributed.get_rank() in args_.profile_ranks):
+            if hasattr(args_, 'profile_npu') and args_.profile_npu \
+                    and (torch.distributed.get_rank() in args_.profile_ranks):
                 args_.prof.step()
         if args_.op_cal_tflops:
             counts = flop_count.get_flops()
