@@ -235,18 +235,18 @@ def mcore_models_adaptation(aspm, mindspeed_args):
 def mcore_transformer_adaptation_l0(aspm):
     from .core.transformer.custom_layers.transformer_engine import PTNorm
     from .core.transformer.dot_product_attention import dot_product_attention_forward_wrapper, \
-        dot_product_attention_init_wrapper
+        dot_product_attention_init
     aspm.register_patch('megatron.core.transformer.custom_layers.transformer_engine.TENorm', PTNorm)
     # Add cp parameters to dot_deduct_mattention init, and add fusion attention support for alibi in non cp situations
     aspm.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention.__init__',
-                        dot_product_attention_init_wrapper)
+                        dot_product_attention_init)
     aspm.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention.forward',
                         dot_product_attention_forward_wrapper)
 
 
 def mcore_transformer_adaptation(aspm):
     from .core.transformer.module import megatron_module_init_wrapper
-    from .core.transformer.attention import (attention_init_wrapper, SelfAttentionSubmodules,
+    from .core.transformer.attention import (attention_init, SelfAttentionSubmodules,
                                              self_attention_init_wrapper, attention_forward_wrapper)
     from .core.transformer.transformer_block import transformer_block_checkpointed_forward_wrapper
     from .core.transformer.transformer import parallel_transformer_layer_init_wrapper
@@ -256,7 +256,7 @@ def mcore_transformer_adaptation(aspm):
     aspm.register_patch('megatron.core.transformer.attention.SelfAttentionSubmodules', SelfAttentionSubmodules)
     aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
     aspm.register_patch("megatron.core.transformer.attention.Attention.forward", attention_forward_wrapper)
-    aspm.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
+    aspm.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init)
     aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
     aspm.register_patch('megatron.core.transformer.module.MegatronModule.__init__', megatron_module_init_wrapper)
     aspm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
@@ -477,14 +477,14 @@ def legacy_model_rms_norm_adaptation(aspm):
 def legacy_model_transformer_l0(aspm):
     from .model.transformer import parallel_mlp_init_wrapper, flash_self_attention_forward, \
         flash_self_attention_init_wrapper, parallel_transformer_forward_wrapper
-    from .model.transformer import parallel_attention_init_wrapper, parallel_attention_forward
+    from .model.transformer import parallel_attention_init, parallel_attention_forward
     aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.forward',
                         parallel_transformer_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelMLP.__init__', parallel_mlp_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.FlashSelfAttention.forward', flash_self_attention_forward)
     aspm.register_patch('megatron.legacy.model.transformer.FlashSelfAttention.__init__',
                         flash_self_attention_init_wrapper)
-    aspm.register_patch('megatron.legacy.model.transformer.ParallelAttention.__init__', parallel_attention_init_wrapper)
+    aspm.register_patch('megatron.legacy.model.transformer.ParallelAttention.__init__', parallel_attention_init)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelAttention.forward',
                         parallel_attention_forward)
 
@@ -840,6 +840,9 @@ def tensor_2d_adaptation(aspm, args):
                             rotary_embedding_forward_wrapper)
         aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_with_interleaving',
                             forward_backward_pipelining_with_interleaving_patch)
+        from .core.transformer.transformer_config import transformer_config_post_init
+        aspm.register_patch('megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
+                            transformer_config_post_init)
 
 
 def optimizer_selection(aspm, mindspeed_args):
