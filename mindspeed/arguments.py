@@ -557,6 +557,10 @@ def validate_args_wrapper(validate_args):
             raise AssertionError('--recompute-norm is not compatible with selective recomputation')
         if args.recompute_norm and not args.use_mcore_models:
             raise AssertionError('--recompute-norm is only supported with mcore models')
+        if args.use_nanopipe and args.use_mcore_models:
+            raise AssertionError('--use-nanopipe is not available with mcore models')
+        if args.adaptive_recompute_device_swap and args.use_mcore_models:
+            raise AssertionError('--adaptive-recompute-device-swap is not available with mcore models')  
         if adaptive_recompute_enable:
             assert args.recompute_granularity is None and args.recompute_method is None, \
                 'adaptive selective recompute is not compatible with ' \

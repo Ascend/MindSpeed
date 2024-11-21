@@ -56,6 +56,7 @@ activate; 1.59 GiB free;
 ## 注意事项：
 
 1. 由于该特性在内存充足时倾向于新申请内存，而非将已申请的内存空间碎片化，因此在少量情况下可能和hccl抢占内存，hccl在内存不足时无法通过torch释放额外预留的空闲空间，从而报hccl内存不足的错误。此问题可以通过设置类似于torch_npu.npu.set_per_process_memory_fraction接口，调节允许torch占用的内存上限来解决该问题。
+2. 暂不兼容 --use-fused-rotary-pos-emb 和 --adaptive-recompute-device-swap 特性。
 
 **接口设置**：
 位置：MindSpeed/mindspeed/core/memory/memory_fragmentation/memory_recorder.py
