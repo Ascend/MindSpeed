@@ -1,7 +1,9 @@
 import os
 import sys
+import shutil
 import argparse
 from functools import wraps
+from multiprocessing import Lock
 import torch
 from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
@@ -715,7 +717,15 @@ def mcore_moe_adaptation(pm, args):
 
         from .core.transformer.moe.moe_layer import moe_layer_init_wrapper
         pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
-
+    else:
+        if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall':
+            from .core.transformer.moe.token_dispatcher import alltoall_preprocess_npu
+            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess',
+                    alltoall_preprocess_npu)
+        else:
+            from .core.transformer.moe.token_dispatcher import allgather_token_permutation_npu
+            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation', allgather_token_permutation_npu)
+    
     from .core.transformer.moe.experts import groupedmlp_init_wrapper, groupedmlp_forward
     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.__init__', groupedmlp_init_wrapper)
     if not args.moe_alltoall_overlap_comm and not args.moe_allgather_overlap_comm:
@@ -897,6 +907,27 @@ def adaptation_l2(aspm, mindspeed_args):
     tensor_2d_adaptation(aspm, mindspeed_args)
 
 
+def delete_lock_file(directory, lock):
+    flag_lock = False
+    lock.acquire()
+    if os.path.exists(directory):
+        for root, dirs, files in os.walk(directory):
+            for name in files:
+                if name.endswith('.lock') or name.endswith('lock'):
+                    if os.path.exists(directory):
+                        flag_lock = True
+                        print(f"Process (PID: {os.getpid()}) is deleting Lock directory")
+                        shutil.rmtree(directory)
+                        print(f"Process (PID: {os.getpid()}) deleted Lock directory")
+                        if flag_lock:
+                            break
+                    else:
+                        print(f"Process (PID: {os.getpid()}) Directory {directory} does not exist.")
+            if flag_lock:
+                break    
+    lock.release()
+
+
 def exe_adaptation():
     modified_argv_path = os.getenv("OOTB_OPTIMIZER_MODIFIED_ARGV_PATH", None)
     if modified_argv_path:
@@ -904,6 +935,12 @@ def exe_adaptation():
         MindSpeedAdaptor.set_argv(sys.argv, modified_argv_path)
         print("================OOTB_OPTIMIZER_MODIFIED_ARGV DONE!====================")
     mindspeed_args = get_mindspeed_args()
+
+    from torch.utils.cpp_extension import _get_build_directory
+    build_directory = _get_build_directory("", True)
+    delete_lock = Lock()
+    delete_lock_file(build_directory, delete_lock)
+    
     from .patch_utils import MindSpeedPatchesManager as aspm
 
     if mindspeed_args.optimization_level >= 0:
