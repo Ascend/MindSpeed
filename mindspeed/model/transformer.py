@@ -25,8 +25,9 @@ import torch
 import torch_npu
 import torch.nn.functional as F
 import numpy as np
-from megatron.training import get_args, get_tokenizer, get_num_microbatches
+from megatron.training import get_args, get_tokenizer
 from megatron.core import parallel_state, mpu, tensor_parallel
+from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.utils import make_viewless_tensor
 from megatron.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb
 from megatron.legacy.model.utils import openai_gelu, erf_gelu, get_norm

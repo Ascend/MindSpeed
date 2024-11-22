@@ -48,6 +48,7 @@ def aux_loss_load_balancing(self, logits: torch.Tensor):
         capacity_factor=self.config.moe_expert_capacity_factor,
         pad_to_capacity=self.config.moe_pad_expert_input_to_capacity,
         drop_policy=self.config.moe_token_drop_policy,
+        use_pre_softmax=self.config.moe_router_pre_softmax,
     )
     global_indices = indices
     if self.config.sequence_parallel or (self.config.expert_model_parallel_size > 1):
@@ -55,8 +56,9 @@ def aux_loss_load_balancing(self, logits: torch.Tensor):
             global_indices = gather_from_sequence_parallel_region_to_moe_async(indices)
 
     # Apply load balancing loss
-    scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
-    probs = self.apply_load_balancing_loss(scores, tokens_per_expert, activation=probs)
+    if self.training:
+        scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
+        probs = self.apply_load_balancing_loss(scores, tokens_per_expert, activation=probs)
     return probs, global_indices
 
 

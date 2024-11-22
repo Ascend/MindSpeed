@@ -4,9 +4,9 @@ import torch
 import torch_npu
 from megatron.core.transformer.moe.moe_utils import permute_with_padded_tokens, unpermute_with_padded_tokens
 from megatron.training import get_args
-from megatron.core import mpu
-from megatron.core.transformer.moe.moe_utils import (aggregate_aux_losses_tracker_across_pipeline_parallel,
-                                                     clear_aux_losses_tracker, get_aux_losses_tracker)
+from megatron.core import parallel_state
+from megatron.core.transformer.moe.moe_utils import (reduce_aux_losses_tracker_across_ranks,
+                                                     clear_aux_losses_tracker, )
 
 AG_TP_HIDDEN_STATUS = None
 AG_SHARED_EXPERTS_INPUTS = []
@@ -270,9 +270,10 @@ def track_moe_metrics(
 ):
     # Aux loss logging
 
-    aggregate_aux_losses_tracker_across_pipeline_parallel()
+    reduce_aux_losses_tracker_across_ranks()
+    tracker = parallel_state.get_moe_layer_wise_logging_tracker()
     if writer is not None:
-        aux_losses = {k: v.float() * loss_scale for k, v in get_aux_losses_tracker().items()}
+        aux_losses = {k: v['values'].float() * loss_scale for k, v in tracker.items()}
         for name, loss_list in aux_losses.items():
             # adaptation for
             loss_list_mean = get_mean(loss_list)

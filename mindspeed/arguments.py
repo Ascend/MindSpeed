@@ -401,7 +401,6 @@ def _add_algorithm_args(parser):
     group.add_argument('--reuse-fp32-param', action='store_true',
                        help='The distributed training optimizer frees up '
                             'param copies of FP32 to save memory.')
-    group.add_argument('--rotary-base', type=float, help='rotary-base.')
 
     group.add_argument('--optimize-recomp-communication-level', type=int, default=0,
                        help='The algorithm optimize the level of tp communication in the recompute stage.')
@@ -433,8 +432,8 @@ def validate_args_wrapper(validate_args):
         if defaults is None:
             defaults = {}
         overlap_param_gather_without_mcore_models = False
-        if args.overlap_param_gather and not args.use_mcore_models:
-            args.use_mcore_models = True
+        if args.overlap_param_gather and args.use_legacy_models:
+            args.use_legacy_models = False
             overlap_param_gather_without_mcore_models = True
 
         #validate optimizer
@@ -620,7 +619,7 @@ def validate_args_wrapper(validate_args):
         if args.shape_order != 'SBH':
             args.shape_order = 'SBH'
         if overlap_param_gather_without_mcore_models:
-            args.use_mcore_models = False
+            args.use_legacy_models = True
         if args.transformer_impl == 'transformer_engine':
             args.transformer_impl = 'local'
         if args.fp8:
@@ -639,7 +638,7 @@ def validate_args_wrapper(validate_args):
         adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or args.adaptive_recompute_device_swap
         if args.recompute_norm and args.recompute_granularity == "selective":
             raise AssertionError('--recompute-norm is not compatible with selective recomputation')
-        if args.recompute_norm and not args.use_mcore_models:
+        if args.recompute_norm and args.use_legacy_models:
             raise AssertionError('--recompute-norm is only supported with mcore models')
         if args.use_nanopipe and args.use_mcore_models:
             raise AssertionError('--use-nanopipe is not available with mcore models')

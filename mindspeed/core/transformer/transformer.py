@@ -8,7 +8,8 @@ import torch_npu
 import torch.nn.functional as F
 
 from megatron import core
-from megatron.training import get_args, get_num_microbatches
+from megatron.training import get_args
+from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.core.utils import make_viewless_tensor
 from megatron.legacy.model.transformer import bias_dropout_add_fused_train, get_bias_dropout_add, bias_dropout_add_fused_inference

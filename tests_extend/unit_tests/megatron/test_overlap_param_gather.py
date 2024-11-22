@@ -58,7 +58,6 @@ def step_optimizer(model, optimizer_config, ddp_config, seed: int = None):
                 model_chunk.config,
                 ddp_config,
                 model_chunk,
-                data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
             )
             for model_chunk in model
         ]

@@ -27,6 +27,7 @@ DISTRIBUTED_ARGS="
 "
 
 GPT_ARGS="
+    --use-legacy-models \
     --tensor-model-parallel-size ${TP} \
     --use-multiparameter-pipeline-model-parallel \
     --pipeline-model-parallel-size ${PP} \

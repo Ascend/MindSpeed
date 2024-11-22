@@ -9,6 +9,8 @@ from megatron.core import mpu
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.utils import get_model_config
 
+from megatron.training import one_logger_utils
+
 from megatron.training.checkpointing import save_checkpoint
 
 from megatron.training.initialize import initialize_megatron
@@ -20,9 +22,10 @@ from megatron.training.training import build_train_valid_test_data_iterators
 from megatron.training.training import train
 from megatron.training.training import evaluate_and_print_results
 from megatron.training.training import print_datetime
-from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
-
-
+from megatron.core.num_microbatches_calculator import (
+    get_current_global_batch_size,
+    get_num_microbatches,
+    update_num_microbatches)
 from megatron.training.utils import (
     calc_params_l2_norm,
     check_adlr_autoresume_termination,
@@ -37,10 +40,10 @@ from megatron.training.global_vars import (
     get_timers,
     get_tensorboard_writer,
     get_wandb_writer,
-    get_one_logger,
-    get_current_global_batch_size,
-    get_num_microbatches,
-    update_num_microbatches)
+    get_one_logger)
+
+from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
+
 _TRAIN_START_TIME = time.time()
 
 
@@ -191,27 +194,32 @@ def pretrain(train_valid_test_dataset_provider,
     torch.distributed.all_reduce(start_time_tensor,
                                  op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item()
+
+    app_metrics = {}
+    app_metrics['app_start_time'] = round(_TRAIN_START_TIME * 1000.0)
+    app_metrics['app_model_init_start_time'] = round(_TRAIN_START_TIME * 1000.0)
+
     print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(
         time.time() - _TRAIN_START_TIME))
     print_datetime('after megatron is initialized')
+    app_metrics['app_model_init_finish_time'] = one_logger_utils.get_timestamp_in_ms()
 
     args = get_args()
     timers = get_timers()
 
-    one_logger = get_one_logger()
-    if one_logger:
-        one_logger.log_metrics({
-            'train_iterations_warmup': 5
-        })
+    # Track E2E metrics on pretrain start
+    one_logger_utils.on_pretrain_start()
 
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
+    app_metrics['app_build_optimizer_start_time'] = one_logger_utils.get_timestamp_in_ms()
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
         model_provider, model_type)
 
     timers('model-and-optimizer-setup').stop()
     print_datetime('after model, optimizer, and learning rate '
                    'scheduler are built')
+    app_metrics['app_build_optimizer_finish_time'] = one_logger_utils.get_timestamp_in_ms()
     config = get_model_config(model[0])
 
     if (os.getenv("OOTB_OPTIMIZER_PARSE_MODEL", "FALSE") == "TRUE"):
@@ -223,6 +231,7 @@ def pretrain(train_valid_test_dataset_provider,
         return
 
     # Data stuff.
+    app_metrics['app_build_dataiters_start_time'] = one_logger_utils.get_timestamp_in_ms()
     timers('train/valid/test-data-iterators-setup', log_level=0).start(
         barrier=True)
     if args.virtual_pipeline_model_parallel_size is not None:
@@ -242,11 +251,20 @@ def pretrain(train_valid_test_dataset_provider,
                 train_valid_test_dataset_provider)
     timers('train/valid/test-data-iterators-setup').stop()
     print_datetime('after dataloaders are built')
+    app_metrics['app_build_dataiters_finish_time'] = one_logger_utils.get_timestamp_in_ms()
+
+    # Track if training is enabled. Can only be done once args.do_train is assigned after dataloader is built.
+    one_logger_utils.track_config_flags(args.train_iters, args.skip_train, args.do_train,
+                                        args.do_valid, args.do_test, args.dataloader_type,
+                                        args.retro_project_dir, args.retro_cyclic_train_iters)
 
     # Print setup timing.
     print_rank_0('done with setup ...')
     timers.log(['model-and-optimizer-setup',
                 'train/valid/test-data-iterators-setup'], barrier=True)
+
+    one_logger = get_one_logger()
+    one_logger and one_logger.log_metrics(app_metrics)
 
     # Context used for persisting some state between checkpoint saves.
     checkpointing_context = {}
@@ -272,6 +290,11 @@ def pretrain(train_valid_test_dataset_provider,
         if args.save and iteration != 0 and iteration % args.save_interval != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                             num_floating_point_operations_so_far, checkpointing_context)
+
+        one_logger and one_logger.log_metrics({
+            'app_train_loop_finish_time': one_logger_utils.get_timestamp_in_ms()
+        })
+
     else:
         print_rank_0('skipping training (--skip-train is on) ...')
 
@@ -298,6 +321,11 @@ def pretrain(train_valid_test_dataset_provider,
         if res_dir and cur_rank % 8 == 0:
             GatherNodeProfiling(res_dir).parse_node_pkl(args)
         print_datetime('after training is done')
+
+    one_logger and one_logger.log_metrics({
+        'app_finish_time': one_logger_utils.get_timestamp_in_ms()
+    })
+    one_logger_utils.finish()
 
 
 def num_floating_point_wrapper(fn):

@@ -125,6 +125,9 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
     Returns:
         Tensor: Embeddings after applying RoPE.
     """
+    if self.inv_freq.device.type == 'cpu':
+        # move `inv_freq` to GPU once at the first micro-batch forward pass
+        self.inv_freq = self.inv_freq.to(device=torch.cuda.current_device())
     seq = (
         torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
         + offset

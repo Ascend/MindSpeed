@@ -93,12 +93,14 @@ def allgather_token_permutation(self, hidden_states: torch.Tensor, max_prob: tor
         with torch.no_grad():
             # The indices of local_indices that give its sorted order along dim 0.
             self.indices = torch.argsort(local_indices, dim=0)
-            tokens_per_expert = torch.histc(
-                local_indices,
-                bins=self.num_local_experts,
-                min=self.local_expert_indices[0],
-                max=self.local_expert_indices[-1],
+            tokens_per_expert = torch.bincount(
+                local_indices.view(-1),
+                minlength=self.config.num_moe_experts,
             )
+            if self.num_local_experts < self.config.num_moe_experts:
+                tokens_per_expert = tokens_per_expert[
+                    self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
+                ]
             tokens_per_expert = tokens_per_expert.to(torch.long)
         self.all_tokens_per_expert = tokens_per_expert
 
@@ -201,8 +203,10 @@ def allgather_token_unpermutation(self, hidden_states: torch.Tensor, bias: torch
                     0, self.global_local_map, unpermuted_local_bias
                 )
 
-            output_bias_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
-                unpermuted_global_bias
+            output_bias_total = (
+                tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
+                    unpermuted_global_bias
+                )
             )
             # bias is duplicated across tensor parallelism ranks;
             # reduce scatter reduces bias across tensor parallel_ranks
@@ -250,9 +254,7 @@ def allgather_token_unpermutation(self, hidden_states: torch.Tensor, bias: torch
 
 
 def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
-    num_local_tokens_per_expert = torch.histc(
-        indices, bins=self.num_experts, min=0, max=self.num_experts
-    )
+    num_local_tokens_per_expert = torch.bincount(indices.view(-1), minlength=self.num_experts)
     # num_local_tokens_per_expert: [num_experts]
 
     ep_size = self.config.expert_model_parallel_size
@@ -264,7 +266,20 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         )
         return num_tokens_per_local_expert
     elif self.config.moe_expert_capacity_factor is not None:
-        self.num_out_tokens = num_local_tokens_per_expert.sum().cpu()
+        # Token drop but no pad. A synchronization is needed before the first
+        # permutation to get the `num_out_tokens` CPU value.
+        self.num_out_tokens = num_local_tokens_per_expert.sum().to(
+            torch.device("cpu"), non_blocking=True
+        )
+        self.cuda_sync_point = "before_permutation_1"
+    elif ep_size > 1:
+        # Token dropless and enable ep. A synchronization is needed before expert parallel
+        # AlltoAll communication to get the `input_splits` and `output_splits` CPU values.
+        self.cuda_sync_point = "before_ep_alltoall"
+    else:
+        # Token dropless and no ep. A synchronization is needed before the token_permutation()
+        # function returns to get the `tokens_per_expert` CPU value.
+        self.cuda_sync_point = "before_finish"
 
     if ep_size > 1:
         # ===================================================
@@ -273,14 +288,14 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         self.input_splits = (
             num_local_tokens_per_expert.reshape(ep_size, self.num_local_experts)
             .sum(axis=1)
-            .to(torch.device("cpu"))
+            .to(torch.device("cpu"), non_blocking=True)
             .numpy()
         )
         num_global_tokens_per_expert = _gather_along_first_dim_expert_parallel(
             num_local_tokens_per_expert
         ).reshape(ep_size, self.num_experts)
         self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
-            :, self.local_expert_indices
+            :, self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
         ]
         self.output_splits = (
             self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu")).numpy()
@@ -302,13 +317,11 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
             self.comm_stream = torch.cuda.Stream()
         self.comm_stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(self.comm_stream):
-            expert_ids_per_ep_rank = torch.tensor(
-                [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
-                dtype=torch.int32,
-                device=torch.cuda.current_device(),
-            )
+            # No further synchronization is needed because torch.repeat_interleave() calls stream
+            # synchronization internally when the `output_size` parameter is not provided.
+            self.cuda_sync_point = "no_sync"
             self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-                expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
+                self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
             )
 
     return num_tokens_per_local_expert
@@ -334,6 +347,8 @@ def alltoall_token_permutation(
     
     # Permutation 1: input to AlltoAll input
     self.hiddden_shape_before_permute = hidden_states.shape
+    if self.cuda_sync_point == "before_permutation_1":
+        torch.cuda.current_stream().synchronize()
     permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
         hidden_states,
         indices,
@@ -342,6 +357,8 @@ def alltoall_token_permutation(
     )
 
     # Perform expert parallel AlltoAll communication
+    if self.cuda_sync_point == "before_ep_alltoall":
+        torch.cuda.current_stream().synchronize()
     global_input_tokens = tensor_parallel.all_to_all(
         parallel_state.get_expert_model_parallel_group(),
         permutated_local_input_tokens,
@@ -372,6 +389,8 @@ def alltoall_token_permutation(
         global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
             global_input_tokens
         )
+    if self.cuda_sync_point == "before_finish":
+        torch.cuda.current_stream().synchronize()
 
     return global_input_tokens, tokens_per_expert
 
@@ -960,12 +979,14 @@ def allgather_token_permutation_npu(self, hidden_states: torch.Tensor, max_prob:
     with torch.no_grad():
         # The indices of local_indices that give its sorted order along dim 0.
         self.indices = torch.argsort(local_indices, dim=0)
-        tokens_per_expert = torch.histc(
-            local_indices,
-            bins=self.num_local_experts,
-            min=self.local_expert_indices[0],
-            max=self.local_expert_indices[-1],
+        tokens_per_expert = torch.bincount(
+            local_indices.view(-1),
+            minlength=self.config.num_moe_experts,
         )
+        if self.num_local_experts < self.config.num_moe_experts:
+            tokens_per_expert = tokens_per_expert[
+                                self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
+                                ]
         tokens_per_expert = tokens_per_expert.to(torch.long)
     
     # Stage2: permute the tokens locally so that they are grouped by their expert assignment
@@ -982,9 +1003,7 @@ def allgather_token_permutation_npu(self, hidden_states: torch.Tensor, max_prob:
 
 
 def alltoall_preprocess_npu(self, indices: torch.Tensor):
-    num_local_tokens_per_expert = torch.histc(
-        indices, bins=self.num_experts, min=0, max=self.num_experts
-    )
+    num_local_tokens_per_expert = torch.bincount(indices.view(-1), minlength=self.num_experts)
     # num_local_tokens_per_expert: [num_experts]
 
     ep_size = self.config.expert_model_parallel_size
@@ -996,7 +1015,17 @@ def alltoall_preprocess_npu(self, indices: torch.Tensor):
         )
         return num_tokens_per_local_expert
     elif self.config.moe_expert_capacity_factor is not None:
-        self.num_out_tokens = num_local_tokens_per_expert.sum().cpu()
+        # Token drop but no pad.
+        self.num_out_tokens = num_local_tokens_per_expert.sum().to(
+            torch.device("cpu"), non_blocking=True
+        )
+        self.cuda_sync_point = "before_permutation_1"
+    elif ep_size > 1:
+        # Token dropless and enable ep.
+        self.cuda_sync_point = "before_ep_alltoall"
+    else:
+        # Token dropless and no ep.
+        self.cuda_sync_point = "before_finish"
 
     if ep_size > 1:
         # ===================================================
@@ -1005,15 +1034,15 @@ def alltoall_preprocess_npu(self, indices: torch.Tensor):
         self.input_splits = (
             num_local_tokens_per_expert.reshape(ep_size, self.num_local_experts)
             .sum(axis=1)
-            .to(torch.device("cpu"))
+            .to(torch.device("cpu"), non_blocking=True)
             .numpy()
         )
         num_global_tokens_per_expert = _gather_along_first_dim_expert_parallel(
             num_local_tokens_per_expert
         ).reshape(ep_size, self.num_experts)
         self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
-            :, self.local_expert_indices
-        ]
+                                                  :, self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
+                                                  ]
         self.output_splits = (
             self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu")).numpy()
         )
@@ -1030,13 +1059,11 @@ def alltoall_preprocess_npu(self, indices: torch.Tensor):
         num_tokens_per_local_expert = num_local_tokens_per_expert
 
     if self.num_local_experts > 1:
-        expert_ids_per_ep_rank = torch.tensor(
-            [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
-            dtype=torch.int32,
-            device=torch.cuda.current_device(),
-        )
+        # No further synchronization is needed because torch.repeat_interleave() calls stream
+        # synchronization internally when the `output_size` parameter is not provided.
+        self.cuda_sync_point = "no_sync"
         self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-            expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
+            self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
         )
 
     return num_tokens_per_local_expert

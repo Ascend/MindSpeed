@@ -38,11 +38,11 @@ WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 #export ADAPTIVE_RECOMPUTING=1
 
-if [[ "${USE_MCORE}" == 'True' ]]; then
+if [[ "${USE_MCORE}" == 'False' ]]; then
        echo "Running using megatron core"
        # TRANSFORMER_IMPL=transformer_engine
        # command="$command export NVTE_ALLOW_NONDETERMINISTIC_ALGO=$ALLOW_NONDETERMINISTIC;"
-       USE_CORE=1
+       USE_LEGACY=1
 fi
 
 if [[ $USE_FP8 -eq 1 ]]; then
@@ -85,7 +85,7 @@ fi
 
 set +x
 
-echo "use_mcore: ${USE_CORE}, ${USE_CORE:+--use-mcore-models}"
+echo "use_legacy: ${USE_LEGACY}, ${USE_LEGACY:+--use-legacy-models}"
 echo "vp_size: ${VP_SIZE}, ${VP_SIZE:+--num-layers-per-virtual-pipeline-stage "$VP_SIZE"}"
 echo "add_params : ${ADDITIONAL_PARAMS}, ${ADDITIONAL_PARAMS:+$ADDITIONAL_PARAMS}"
 
@@ -99,7 +99,7 @@ DISTRIBUTED_ARGS="
 
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
-       --num-layers 12 \
+       --num-layers 8 \
        --hidden-size 512 \
        --num-attention-heads 8 \
        --log-params-norm \
@@ -115,7 +115,7 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
        --data-path ${DATA_PATH} \
        --vocab-file ${VOCAB_FILE} \
        --merge-file ${MERGE_FILE} \
-       --split 949,50,1 \
+       --split 100,0,0 \
        --distributed-backend nccl \
        --lr 0.00015 \
        --min-lr 1.0e-5 \
@@ -125,7 +125,7 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
        --log-interval 1 \
        --save-interval $__SAVE_INTERVAL \
        --eval-interval 15 \
-       --eval-iters 10 \
+       --eval-iters 0 \
        --transformer-impl local \
        --tensor-model-parallel-size ${TP_SIZE} \
        --pipeline-model-parallel-size ${PP_SIZE} \
@@ -133,7 +133,7 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
        --no-rope-fusion \
        ${VP_SIZE:+--num-layers-per-virtual-pipeline-stage "$VP_SIZE"} \
        ${ADDITIONAL_PARAMS:+$ADDITIONAL_PARAMS} \
-       ${USE_CORE:+--use-mcore-models} \
+       ${USE_LEGACY:+--use-legacy-models} \
        ${YAML_CFG:+--yaml-cfg "$YAML_CFG"} \
        --no-gradient-accumulation-fusion
 

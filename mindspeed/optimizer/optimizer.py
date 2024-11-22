@@ -7,6 +7,75 @@ from megatron.training import get_args
 
 
 @torch.no_grad()
+def prepare_grads(self) -> bool:
+    """Pre-processing gradients before the optimizer step, returns whether inf/nan is found."""
+    timers = self.config.timers
+
+    # Copy gradients from model params to main params.
+    if timers is not None:
+        timers('optimizer-copy-to-main-grad', log_level=1).start(
+            barrier=self.config.barrier_with_L1_time
+        )
+    self._copy_model_grads_to_main_grads()
+    if timers is not None:
+        timers('optimizer-copy-to-main-grad').stop()
+
+    if self.config.reuse_fp32_param:
+        # bf16 -> fp32
+        self.fp16_tensor_convert_to_fp32_tensor()
+
+    # Do unscale, check for inf, and update grad scaler only for
+    # the case that grad scaler is provided.
+    if self.grad_scaler:
+
+        # Unscale and check for inf/nan.
+        if timers is not None:
+            timers('optimizer-unscale-and-check-inf', log_level=1).start(
+                barrier=self.config.barrier_with_L1_time
+            )
+        found_inf_flag = self._unscale_main_grads_and_check_for_nan()
+        if timers is not None:
+            timers('optimizer-unscale-and-check-inf').stop()
+
+        # We are done with scaling gradients
+        # so we can update the loss scale.
+        self.grad_scaler.update(found_inf_flag)
+
+        return found_inf_flag
+
+    return False
+
+
+@torch.no_grad()
+def step_with_ready_grads(self) -> bool:
+    """Step the optimizer with ready gradients, return successful."""
+    timers = self.config.timers
+    # Step the optimizer.
+    if timers is not None:
+        timers('optimizer-inner-step', log_level=1).start(
+            barrier=self.config.barrier_with_L1_time
+        )
+    self.optimizer.step()
+    if timers is not None:
+        timers('optimizer-inner-step').stop()
+
+    # Update params from main params.
+    if timers is not None:
+        timers('optimizer-copy-main-to-model-params', log_level=1).start(
+            barrier=self.config.barrier_with_L1_time
+        )
+    if self.config.reuse_fp32_param:
+        # fp32 -> bf16 + res
+        self.fp32_tensor_convert_to_fp16_tensor()
+    else:
+        self._copy_main_params_to_model_params()
+    if timers is not None:
+        timers('optimizer-copy-main-to-model-params').stop()
+
+    return True
+
+
+@torch.no_grad()
 def mixed_precision_optimizer_step(self):
     # Copy gradients from model params to main params.
     timers = self.config.timers

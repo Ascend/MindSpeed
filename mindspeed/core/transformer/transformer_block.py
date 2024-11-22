@@ -44,7 +44,6 @@ def transformer_block_checkpointed_forward(
                 context,
                 context_mask,
                 rotary_pos_emb,
-                packed_seq_params,
         ):
             for index in range(start, end):
                 layer = self._get_layer(index)
@@ -75,7 +74,6 @@ def transformer_block_checkpointed_forward(
                 context,
                 context_mask,
                 rotary_pos_emb,
-                packed_seq_params,
             )
         else:
             return tensor_parallel.checkpoint(
@@ -86,7 +84,6 @@ def transformer_block_checkpointed_forward(
                 context,
                 context_mask,
                 rotary_pos_emb,
-                packed_seq_params,
             )
 
     # Checkpoint the input activation of only a set number of individual
@@ -111,7 +108,6 @@ def transformer_block_checkpointed_forward(
                     context,
                     context_mask,
                     rotary_pos_emb,
-                    packed_seq_params,
                 )
     elif global_args.recompute_method == 'block':
         vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
@@ -148,7 +144,6 @@ def transformer_block_checkpointed_forward(
                     context,
                     context_mask,
                     rotary_pos_emb,
-                    packed_seq_params,
                 )
 
     return hidden_states
@@ -206,13 +201,15 @@ def _build_layers(self):
         ]
     )
 
-    if self.post_process and self.post_layer_norm:
-        # Final layer norm before output.
-        self.final_layernorm = TENorm(
+    if self.submodules.layer_norm and self.post_process and self.post_layer_norm:
+        self.final_layernorm = build_module(
+            self.submodules.layer_norm,
             config=self.config,
             hidden_size=self.config.hidden_size,
             eps=self.config.layernorm_epsilon,
         )
+    else:
+        self.final_layernorm = None  # Either this or nn.Identity
 
 
 def transformer_block_forward_wrapper(fn):

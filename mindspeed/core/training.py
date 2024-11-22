@@ -14,11 +14,12 @@ from megatron.training import get_args
 from megatron.training import get_timers
 from megatron.training import is_last_rank
 from megatron.core import parallel_state
+from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.training import print_rank_0
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import (set_args, get_tensorboard_writer, get_wandb_writer,
-                                           get_one_logger, get_num_microbatches)
+                                           get_one_logger)
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import print_rank_last, report_memory
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
@@ -538,17 +539,4 @@ def setup_model_and_optimizer_decorator(setup_model_and_optimizer):
             profiling = Profiling(argument)
             profiling.register_recursive_hook("", model)
         return model, optimizer, opt_param_scheduler
-    return wrapper
-
-
-def save_checkpoint_and_time_decorator(save_checkpoint_and_time):
-    @wraps(save_checkpoint_and_time)
-    def wrapper(*args, **kwargs):
-        global_args = get_args()
-        optimizer = args[2]
-        if global_args.use_distributed_optimizer and global_args.overlap_param_gather:
-            optimizer.disable_pre_hook()
-        save_checkpoint_and_time(*args, **kwargs)
-        if global_args.use_distributed_optimizer and global_args.overlap_param_gather:
-            optimizer.enable_pre_hook()
     return wrapper

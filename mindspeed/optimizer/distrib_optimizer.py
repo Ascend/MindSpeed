@@ -726,7 +726,7 @@ def get_parameter_state_dp_zero_hccl(self):
             world_tensors = {}
             if data_parallel_rank == 0:
                 world_tensors = {
-                    key: torch.empty(
+                    key: torch.zeros(
                         (buffer_numel_unpadded,), dtype=torch.float32, device="cpu"
                     )
                     for key in ("param", "exp_avg", "exp_avg_sq")
@@ -746,7 +746,7 @@ def get_parameter_state_dp_zero_hccl(self):
                 assert gbuf_world_numel_unpadded <= gbuf_world_numel
 
                 local_shards = {
-                    key: torch.empty((gbuf_local_numel,), dtype=torch.float32, device="cpu")
+                    key: torch.zeros((gbuf_local_numel,), dtype=torch.float32, device="cpu")
                     for key in ("param", "exp_avg", "exp_avg_sq")
                 }
 
@@ -776,7 +776,7 @@ def get_parameter_state_dp_zero_hccl(self):
 
                     # Gather tensor list.
                     recv_tensors = [
-                        torch.empty((gbuf_local_numel,), dtype=torch.float32, device="cpu")
+                        torch.zeros((gbuf_local_numel,), dtype=torch.float32, device="cpu")
                         for _ in range(data_parallel_world_size)
                     ]
 
@@ -854,7 +854,7 @@ def load_parameter_state_from_dp_zero_hccl(self, state_dict):
                     assert gbuf_world_numel_unpadded <= gbuf_world_numel
 
                     # Contiguous local shards (received from DP rank 0).
-                    recv_tensor = torch.empty(
+                    recv_tensor = torch.zeros(
                         (gbuf_local_numel,), dtype=torch.float32, device="cpu"
                     )
 

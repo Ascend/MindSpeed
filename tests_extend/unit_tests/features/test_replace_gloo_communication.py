@@ -22,13 +22,13 @@ from megatron.training.utils import unwrap_model
 from megatron.core.parallel_state import (get_data_parallel_group,
                                           get_data_parallel_group_gloo,
                                           get_data_modulo_expert_parallel_group,
-                                          get_data_modulo_expert_parallel_group_gloo)
+                                          get_data_modulo_expert_parallel_group_gloo,
+                                          initialize_model_parallel)
 
 from mindspeed.utils import _scatter_hccl, _gather_hccl, check_param_hashes_across_dp_replicas_hccl
 from mindspeed.optimizer.distrib_optimizer import get_parameter_state_dp_zero_hccl, \
     load_parameter_state_from_dp_zero_hccl
-from mindspeed.core.parallel_state import (initialize_model_parallel,
-                                           get_data_parallel_group_gloo_replace,
+from mindspeed.core.parallel_state import (get_data_parallel_group_gloo_replace,
                                            get_data_modulo_expert_parallel_group_gloo_replace)
 
 from unit_tests.common import DistributedTest

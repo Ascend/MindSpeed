@@ -28,7 +28,9 @@ from megatron.core.pipeline_parallel.schedules import (
     forward_step, 
     backward_step, 
     deallocate_output_tensor,
-    check_first_val_step
+    check_first_val_step,
+    clear_embedding_activation_buffer,
+    finish_embedding_wgrad_compute
 )
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.pipeline_parallel.p2p_communication import (
@@ -1179,6 +1181,10 @@ def forward_backward_pipelining_with_interleaving_patch(
     if config.overlap_p2p_comm and config.batch_p2p_comm:
         raise ValueError("Can not use both overlap_p2p_comm and batch_p2p_comm")
 
+    # Needed only when gradients are finalized in M-Core
+    if config.finalize_model_grads_func is not None and not forward_only:
+        embedding_module = clear_embedding_activation_buffer(config, model)
+
     if config.timers is not None:
         config.timers('forward-backward', log_level=1).start(barrier=config.barrier_with_L1_time)
 
@@ -1748,6 +1754,10 @@ def forward_backward_pipelining_with_interleaving_patch(
                     synchronized_model_chunks.add(model_chunk_id)
 
     if config.finalize_model_grads_func is not None and not forward_only:
+        # If defer_embedding_wgrad_compute is enabled we need to do the
+        # weight gradient GEMM's here.
+        finish_embedding_wgrad_compute(config, embedding_module)
+
         # Finalize model grads (perform full grad all-reduce / reduce-scatter for
         # data parallelism, layernorm all-reduce for sequence parallelism, and
         # embedding all-reduce for pipeline parallelism).

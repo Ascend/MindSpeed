@@ -18,7 +18,7 @@ LLAMA3-8B 训练的硬件配置:
    git clone https://github.com/NVIDIA/Megatron-LM.git
    cd Megatron-LM
    # git checkout 到使用的Megatron-LM分支
-   git checkout core_r0.7.0
+   git checkout core_r0.8.0
    mindspeed -P
    mkdir model_from_hf
    mkdir dataset

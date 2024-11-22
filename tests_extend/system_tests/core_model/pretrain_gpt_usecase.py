@@ -58,6 +58,7 @@ def run_result_report(log_dir):
             file_lines = f.readlines()
 
         file_lines = [str(line.decode(encoding='utf-8')).strip() for line in file_lines]
+        cnt_lines_parsed_err = 0
         for line in file_lines:
             if 'iteration' in line and 'finished' not in line:
                 try:
@@ -65,8 +66,10 @@ def run_result_report(log_dir):
                     loss = ast.literal_eval(re.findall('lm loss: (.*?) ', line)[0])
                     info_dict[iteration] = loss
                 except:
-                    print(f"failed to parse line: {line}")
+                    cnt_lines_parsed_err += 1
                     continue
+        if not info_dict:
+            print(f"failed to parse {cnt_lines_parsed_err} lines in: {_log_file}")
         return {"loss_dict": info_dict}
 
     flags = os.O_RDWR | os.O_CREAT
@@ -110,8 +113,9 @@ def xtest_gpt_usecase(usecase_yaml, usecase_script):
             if 'yaml_cfg' in uc_instance.keys():
                 uc_instance['yaml_cfg'] = os.path.join(os.path.dirname(__file__), uc_instance['yaml_cfg'])
             try:
+                case_id = uc_instance.get("id", str(casesequence_index).zfill(2))
                 # Preparing Case Parameters
-                param_list = [f"{str(key).upper()}={str(value)}" for key, value in uc_instance.items()]
+                param_list = [f"{str(key).upper()}={str(value)}" for key, value in uc_instance.items() if key != "id"]
                 param_str = " ".join(param_list)
                 script_path = os.path.join(os.path.dirname(__file__), usecase_script)
                 print("=================== STARTING ======================")
@@ -123,8 +127,7 @@ def xtest_gpt_usecase(usecase_yaml, usecase_script):
                 sepc_param = " ".join([f"{str(key).upper()}={str(value)}" for key, value in sepc_param_dict.items()])
                 print(f"spec_param : {sepc_param}")
 
-                log_save_path = os.path.join(logs_dir,
-                                             f"usecase-{str(casesequence_index).zfill(2)}-{casegroup_index}.log")
+                log_save_path = os.path.join(logs_dir, f"usecase-{case_id}-{casegroup_index}.log")
                 # run usecase
                 os.system(f"sh {script_path} {param_str} {sepc_param} 2>&1 | tee {log_save_path}")
                 print("==================== ENDING =======================")

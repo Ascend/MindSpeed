@@ -39,6 +39,7 @@ DISTRIBUTED_ARGS="
 "
 
 GPT_ARGS="
+    --use-legacy-models \
     --tensor-model-parallel-size ${TP_SIZE:-1} \
     --pipeline-model-parallel-size ${PP_SIZE:-1} \
     --transformer-impl local \

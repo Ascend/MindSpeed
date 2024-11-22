@@ -10,7 +10,8 @@ import torch
 import torch.nn
 import torch_npu
 
-from megatron.training import print_rank_0, get_num_microbatches
+from megatron.training import print_rank_0
+from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.training import get_args
 from megatron.core import parallel_state
 

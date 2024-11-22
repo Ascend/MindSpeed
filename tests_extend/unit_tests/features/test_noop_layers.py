@@ -41,8 +41,7 @@ from megatron.core.transformer.enums import ModelType
 from megatron.core.parallel_state import destroy_model_parallel
 from megatron.training.initialize import _initialize_distributed, _set_random_seed
 from mindspeed.core.transformer.moe.moe_utils import get_mean
-from megatron.core.transformer.moe.moe_utils import (save_to_aux_losses_tracker, get_aux_losses_tracker,
-                                                     clear_aux_losses_tracker)
+from megatron.core.transformer.moe.moe_utils import (save_to_aux_losses_tracker, clear_aux_losses_tracker)
 from megatron.core import parallel_state
 from unit_tests.common import DistributedTest
 
@@ -56,17 +55,9 @@ def _get_offset(self, config):
             'num_layers_per_stage must be divisible by ' \
             'virtual_pipeline_model_parallel_size'
         assert argument.model_type != ModelType.encoder_and_decoder
-        # Number of layers in each model chunk is the number of layers in the stage,
-        # divided by the number of model chunks in a stage.
+
         self.num_layers = self.num_layers // config.virtual_pipeline_model_parallel_size
-        # With 8 layers, 2 stages, and 4 model chunks, we want an assignment of
-        # layers to stages like (each list is a model chunk):
-        # Stage 0: [0]  [2]  [4]  [6]
-        # Stage 1: [1]  [3]  [5]  [7]
-        # With 8 layers, 2 stages, and 2 virtual stages, we want an assignment of
-        # layers to stages like (each list is a model chunk):
-        # Stage 0: [0, 1]  [4, 5]
-        # Stage 1: [2, 3]  [6, 7]
+
         offset = mpu.get_virtual_pipeline_model_parallel_rank() * (
             config.num_layers // config.virtual_pipeline_model_parallel_size) + \
             (mpu.get_pipeline_model_parallel_rank() * self.num_layers)
@@ -86,9 +77,10 @@ def _get_offset(self, config):
 
 
 def track_moe_metrics_mock(loss_scale, writer, total_loss_dict=None):
+    tracker = parallel_state.get_moe_layer_wise_logging_tracker()
     # Aux loss logging
     if writer is not None:
-        aux_losses = {k: v.float() * loss_scale for k, v in get_aux_losses_tracker().items()}
+        aux_losses = {k: v['values'].float() * loss_scale for k, v in tracker.items()}
         for name, loss_list in aux_losses.items():
             loss_list_mean = get_mean(loss_list)
             if total_loss_dict is not None:
@@ -100,9 +92,10 @@ def track_moe_metrics_mock(loss_scale, writer, total_loss_dict=None):
 
 
 def track_moe_metrics_megatron_original_mock(loss_scale, writer, total_loss_dict=None):
+    tracker = parallel_state.get_moe_layer_wise_logging_tracker()
     # Aux loss logging
     if writer is not None:
-        aux_losses = {k: v.float() * loss_scale for k, v in get_aux_losses_tracker().items()}
+        aux_losses = {k: v['values'].float() * loss_scale for k, v in tracker.items()}
         for name, loss_list in aux_losses.items():
             if total_loss_dict is not None:
                 if name not in total_loss_dict:
@@ -214,7 +207,7 @@ class TestNoopLayer(DistributedTest):
         total_loss_dict = dict()
         track_moe_metrics_mock(1, True, total_loss_dict)
         assert total_loss_dict.get(name) == 1
-        del parallel_state._MOE_AUX_LOSSES_LOGGING_TRACKER[name]
+        del parallel_state._MOE_LAYER_WISE_LOGGING_TRACKER[name]
 
     @pytest.mark.parametrize("tp_pp_vp_stage", [(2, 2, 1), (2, 2, None), (2, 1, None), (1, 2, None), (1, 1, None)])
     @pytest.mark.parametrize("num_layers", [4])
@@ -237,7 +230,7 @@ class TestNoopLayer(DistributedTest):
         total_loss_dict = dict()
         track_moe_metrics_mock(1, True, total_loss_dict)
         assert total_loss_dict.get(name) == 1
-        del parallel_state._MOE_AUX_LOSSES_LOGGING_TRACKER[name]
+        del parallel_state._MOE_LAYER_WISE_LOGGING_TRACKER[name]
 
     @pytest.mark.parametrize("tp_pp_vp_stage", [(2, 2, 1), (2, 2, None), (2, 1, None), (1, 2, None), (1, 1, None)])
     @pytest.mark.parametrize("num_layers", [4])
@@ -262,7 +255,7 @@ class TestNoopLayer(DistributedTest):
         # using the megatron original track moe metrics function and using the noop_layers,
         # will get the following wrong results:
         assert total_loss_dict.get(name) == 0.5
-        del parallel_state._MOE_AUX_LOSSES_LOGGING_TRACKER[name]
+        del parallel_state._MOE_LAYER_WISE_LOGGING_TRACKER[name]
 
     @pytest.mark.parametrize("tp_pp_vp_stage", [(2, 2, 1), (2, 2, None), (2, 1, None), (1, 2, None), (1, 1, None)])
     @pytest.mark.parametrize("num_layers", [4])
@@ -285,4 +278,4 @@ class TestNoopLayer(DistributedTest):
         total_loss_dict = dict()
         track_moe_metrics_mock(1, True, total_loss_dict)
         assert total_loss_dict.get(name) == 1
-        del parallel_state._MOE_AUX_LOSSES_LOGGING_TRACKER[name]
+        del parallel_state._MOE_LAYER_WISE_LOGGING_TRACKER[name]

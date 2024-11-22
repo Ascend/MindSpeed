@@ -181,6 +181,7 @@ def linear_forward_main_grad_wrapper(forward_func):
                                  bias,
                                  gradient_accumulation_fusion,
                                  allreduce_dgrad,
+                                 wgrad_deferral_limit,
                                  sequence_parallel,
                                  grad_output_buffer,):
         output = forward_func(ctx,
@@ -189,6 +190,7 @@ def linear_forward_main_grad_wrapper(forward_func):
                               bias,
                               gradient_accumulation_fusion,
                               allreduce_dgrad,
+                              wgrad_deferral_limit,
                               sequence_parallel,
                               grad_output_buffer,)
         ctx.weight = weight
@@ -379,14 +381,24 @@ def vocab_parallel_embedding_forward(self, input_):
         masked_input = input_
         # Get the embeddings.
 
-    # For higher accumulation accuracy for bf16 on NPU.
-    output_parallel = F.embedding(masked_input, self.weight)
+    if self.deterministic_mode:
+        output_parallel = self.weight[masked_input]
+    else:
+        # F.embedding currently has a non-deterministic backward function
+        # For higher accumulation accuracy for bf16 on NPU.
+        output_parallel = F.embedding(masked_input, self.weight)
 
     # Mask the output embedding.
     if self.tensor_model_parallel_size > 1:
         output_parallel *= ~input_mask[..., None]
     # Reduce across all the model parallel GPUs.
-    output = reduce_from_tensor_model_parallel_region(output_parallel)
+    if self.reduce_scatter_embeddings:
+        # Data format change to avoid explicit tranposes : [b s h] --> [s b h].
+        output_parallel = output_parallel.transpose(0, 1).contiguous()
+        output = reduce_scatter_to_sequence_parallel_region(output_parallel)
+    else:
+        # Reduce across all the model parallel GPUs.
+        output = reduce_from_tensor_model_parallel_region(output_parallel)
     return output
 
 
@@ -511,6 +523,7 @@ class LinearWithGradAccumulationAndAsyncCommunicationPipeExperts(torch.autograd.
         async_grad_allreduce,
         sequence_parallel,
         grad_output_buffer,
+        wgrad_deferral_limit,
         pipe_experts,
         ampipe_degree
     ):
@@ -520,6 +533,7 @@ class LinearWithGradAccumulationAndAsyncCommunicationPipeExperts(torch.autograd.
         ctx.async_grad_allreduce = async_grad_allreduce
         ctx.sequence_parallel = sequence_parallel
         ctx.grad_output_buffer = grad_output_buffer
+        ctx.wgrad_deferral_limit = wgrad_deferral_limit
         ctx.pipe_experts = pipe_experts
 
         if sequence_parallel:
@@ -579,11 +593,13 @@ class LinearWithGradAccumulationAndAsyncCommunicationPipeExperts(torch.autograd.
         input, weight = ctx.saved_tensors
         use_bias = ctx.use_bias
         grad_output_buffer = ctx.grad_output_buffer
+        wgrad_deferral_limit = ctx.wgrad_deferral_limit
 
         wgrad_compute = True
         if grad_output_buffer is not None:
-            grad_output_buffer.append(grad_output)
-            wgrad_compute = False
+            if wgrad_deferral_limit == 0 or len(grad_output_buffer) < wgrad_deferral_limit:
+                grad_output_buffer.append(grad_output)
+                wgrad_compute = False
 
         if wgrad_compute:
             if ctx.sequence_parallel:
@@ -682,11 +698,11 @@ class LinearWithGradAccumulationAndAsyncCommunicationPipeExperts(torch.autograd.
             handle.wait()
             # Need to return None's as gradient has to flow for all the input arguments
             # provided during forward
-            return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+            return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
 
         if ctx.async_grad_allreduce:
             handle.wait()
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
 
 
 class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Function):
@@ -701,6 +717,7 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
         bias,
         gradient_accumulation_fusion,
         async_grad_allreduce,
+        wgrad_deferral_limit,
         sequence_parallel,
         pipe_experts,
         is_nano_row,
@@ -713,6 +730,7 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
         ctx.use_bias = bias is not None
         ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
         ctx.async_grad_allreduce = async_grad_allreduce
+        ctx.wgrad_deferral_limit = wgrad_deferral_limit
         ctx.sequence_parallel = sequence_parallel
         ctx.pipe_experts = pipe_experts
         global_args = get_args()
@@ -901,7 +919,7 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
                     grad_weight = grad_output.t().matmul(total_input)
             grad_bias = grad_output.sum(dim=0) if use_bias else None
 
-            return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+            return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
 
         if WeightGradStore.is_decoupleBlock:
             WeightGradStore.put(
@@ -1015,11 +1033,11 @@ class LinearWithGradAccumulationAndAsyncCommunication_nano(torch.autograd.Functi
 
         if ctx.sequence_parallel:
             handle.wait()
-            return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+            return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
 
         if ctx.async_grad_allreduce:
             handle.wait()
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
 
 
 class LinearWithGradAccumulationAndAsyncCommunicationAmpipe(torch.autograd.Function):
@@ -1036,6 +1054,7 @@ class LinearWithGradAccumulationAndAsyncCommunicationAmpipe(torch.autograd.Funct
         allreduce_dgrad,
         sequence_parallel,
         grad_output_buffer,
+        wgrad_deferral_limit,
         ampipe_degree,
         is_dense_h_to_3h
     ):
@@ -1044,6 +1063,7 @@ class LinearWithGradAccumulationAndAsyncCommunicationAmpipe(torch.autograd.Funct
         ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
         ctx.allreduce_dgrad = allreduce_dgrad
         ctx.sequence_parallel = sequence_parallel
+        ctx.wgrad_deferral_limit = wgrad_deferral_limit
         ctx.grad_output_buffer = grad_output_buffer
         ctx.ampipe_degree = ampipe_degree
         ctx.is_dense_h_to_3h = is_dense_h_to_3h
@@ -1125,11 +1145,13 @@ class LinearWithGradAccumulationAndAsyncCommunicationAmpipe(torch.autograd.Funct
         input, weight = ctx.saved_tensors
         use_bias = ctx.use_bias
         grad_output_buffer = ctx.grad_output_buffer
+        wgrad_deferral_limit = ctx.wgrad_deferral_limit
 
         wgrad_compute = True
         if grad_output_buffer is not None:
-            grad_output_buffer.append(grad_output)
-            wgrad_compute = False
+            if wgrad_deferral_limit == 0 or len(grad_output_buffer) < wgrad_deferral_limit:
+                grad_output_buffer.append(grad_output)
+                wgrad_compute = False
 
         if wgrad_compute:
             if ctx.sequence_parallel:
@@ -1228,12 +1250,12 @@ class LinearWithGradAccumulationAndAsyncCommunicationAmpipe(torch.autograd.Funct
             handle.wait()
             # Need to return None's as gradient has to flow for all the input arguments
             # provided during forward
-            return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+            return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
 
         if ctx.allreduce_dgrad:
             handle.wait()
 
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None
 
 
 def linear_with_grad_accumulation_and_async_allreduce_moe(
@@ -1245,6 +1267,7 @@ def linear_with_grad_accumulation_and_async_allreduce_moe(
     sequence_parallel: bool,
     pipe_experts=False,
     grad_output_buffer: Optional[List[torch.Tensor]] = None,
+    wgrad_deferral_limit: Optional[int] = 0,
     allreduce_dgrad: bool = None,
     matmul_id: int = 1,
     is_nano_row: bool = False,
@@ -1322,6 +1345,7 @@ def linear_with_grad_accumulation_and_async_allreduce_moe(
         allreduce_dgrad,
         sequence_parallel,
         grad_output_buffer,
+        wgrad_deferral_limit
     ]
 
     if not linear_with_grad_accumulation_and_async_allreduce_moe.warned:
@@ -1350,6 +1374,7 @@ def linear_with_grad_accumulation_and_async_allreduce_moe(
                 weight,
                 bias,
                 gradient_accumulation_fusion,
+                wgrad_deferral_limit,
                 async_grad_allreduce,
                 sequence_parallel,
                 pipe_experts,
@@ -1537,7 +1562,11 @@ def column_parallel_moe(self, input_: torch.Tensor, weight: Optional[torch.Tenso
         input_parallel = copy_to_tensor_model_parallel_region(input_)
 
     if self.config.defer_embedding_wgrad_compute:
-        self.embedding_activation_buffer.append(input_parallel)
+        if (
+                self.config.wgrad_deferral_limit == 0
+                or len(self.embedding_activation_buffer) < self.config.wgrad_deferral_limit
+        ):
+            self.embedding_activation_buffer.append(input_parallel)
 
     # Matrix multiply.
     if not weight.requires_grad:
@@ -1554,9 +1583,14 @@ def column_parallel_moe(self, input_: torch.Tensor, weight: Optional[torch.Tenso
         if self.explicit_expert_comm
         else self.allreduce_dgrad,
         sequence_parallel=False if self.explicit_expert_comm else self.sequence_parallel,
-        grad_output_buffer=self.grad_output_buffer
-        if self.config.defer_embedding_wgrad_compute
-        else None,
+        grad_output_buffer=(
+            self.grad_output_buffer if self.config.defer_embedding_wgrad_compute else None
+        ),
+        wgrad_deferral_limit=(
+            self.config.wgrad_deferral_limit
+            if self.config.defer_embedding_wgrad_compute
+            else None
+        ),
         pipe_experts=self.pipe_experts,
         is_nano_column=self.in_nano,
         ampipe_degree=self.ampipe_degree,
@@ -1760,6 +1794,7 @@ class LinearWithGradAccumulationAndAsyncCommunication_Nd(torch.autograd.Function
         bias,
         gradient_accumulation_fusion,
         async_grad_allreduce,
+        wgrad_deferral_limit,
         sequence_parallel,
         grad_output_buffer,
         pipe_experts,
@@ -1774,6 +1809,7 @@ class LinearWithGradAccumulationAndAsyncCommunication_Nd(torch.autograd.Function
         ctx.use_bias = bias is not None
         ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
         ctx.async_grad_allreduce = async_grad_allreduce
+        ctx.wgrad_deferral_limit = wgrad_deferral_limit
         ctx.sequence_parallel = sequence_parallel
         ctx.save_for_backward(input, weight)
 
