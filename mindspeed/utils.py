@@ -28,6 +28,7 @@ from mindspeed.core.context_parallel.utils import (set_scheduling_info,
                                                    get_adaptive_cp_grid_mask_by_user,
                                                    generate_adaptive_cp_mask_list_by_user,
                                                    generate_adaptive_cp_grid_mask_by_user)
+from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.model.transformer import set_attention_mask, get_attention_mask
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,17 @@ logger = logging.getLogger(__name__)
 
 _ACTUAL_SEQ_LEN = None
 _POSITION_IDS = None
+_REARRANGE_IDX_TENSOR = None
+
+
+def generate_rearrange_idx_tensor(tp_y_cp_size):
+    global _REARRANGE_IDX_TENSOR
+    if _REARRANGE_IDX_TENSOR is None:
+        rearrange_index = []
+        for i in range(tp_y_cp_size):
+            rearrange_index.extend([i, 2 * tp_y_cp_size - 1 - i])
+        _REARRANGE_IDX_TENSOR = torch.tensor(rearrange_index, device='cpu', pin_memory=True).to(device='npu', non_blocking=True)
+    return _REARRANGE_IDX_TENSOR
 
 
 def get_actual_seq_len():
@@ -91,7 +103,7 @@ def get_batch_on_this_cp_rank(batch):
         position_ids = position_ids.transpose(0, 1).contiguous()
         set_position_ids(position_ids)    
 
-    tp_y_cp_size = args.context_parallel_size * args.tp_y if args.tp_2d else args.context_parallel_size
+    tp_y_cp_size = TensorParallelYUnionCP().get_parallel_group_world_size() if args.tp_2d else args.context_parallel_size
     if not tp_y_cp_size > 1:
         return batch
 
@@ -439,8 +451,8 @@ def _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch):
     cp_rank = mpu.get_context_parallel_rank()
     cp_size = mpu.get_context_parallel_world_size()
 
-    args = get_args()
-    tp_y_cp_size = args.context_parallel_size * args.tp_y
+    tp_y_cp_size = TensorParallelYUnionCP().get_parallel_group_world_size()
+    rearrange_idx_tensor = generate_rearrange_idx_tensor(tp_y_cp_size)
 
     for key, val in batch.items():
         if key == 'attention_mask' or val is None:
@@ -456,11 +468,6 @@ def _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch):
             val.shape[seq_dim] // (2 * tp_y_cp_size),
             *val.shape[(seq_dim + 1):],
         )
-
-        rearrange_index = []
-        for i in range(tp_y_cp_size):
-            rearrange_index.extend([i, 2 * tp_y_cp_size - 1 - i])
-        rearrange_idx_tensor = torch.tensor(rearrange_index, device=val.device)
 
         val = val.index_select(seq_dim, index=rearrange_idx_tensor)
 

@@ -8,7 +8,7 @@ from functools import wraps
 from megatron.core.models.common.embeddings.rotary_pos_embedding import _rotate_half
 from megatron.training import get_args
 from megatron.core import parallel_state
-from mindspeed.utils import get_position_ids
+from mindspeed.utils import get_position_ids, generate_rearrange_idx_tensor
 from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
 
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
@@ -204,11 +204,7 @@ def _get_pos_emb_on_this_tp_y_cp_rank_in_megatron_cp(pos_emb, seq_dim):
     pos_emb = pos_emb.view(
         *pos_emb.shape[:seq_dim], 2 * tp_y_cp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
     )
-    rearrange_index = []
-    for i in range(tp_y_cp_size):
-        rearrange_index.extend([i, 2 * tp_y_cp_size - 1 - i])
-
-    rearrange_idx_tensor = torch.tensor(rearrange_index, device=pos_emb.device)
+    rearrange_idx_tensor = generate_rearrange_idx_tensor(tp_y_cp_size)
 
     # Reorder pos embedding according dataset handling.
     # selected res shape: [2 * tp_y_cp_size, s / (2 * tp_y_cp_size), 1, 1, head_dim]

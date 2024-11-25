@@ -25,18 +25,6 @@
 * 分离weight梯度计算流程，通过修改RowParallelLinear和ColumnParallelLinear的backward实现，将对weight的梯度计算进行剥离，先存储在调度器的dw计算队列中。
 * 在需要对dw计算时，从调度器的dw计算队列中pop出一个计算，然后计算对应的梯度。
 
-### 内存优化及通信隐藏：
-
-相比[Zero Bubble Pipeline Parallelism](https://arxiv.org/abs/2401.10241),在做dw计算时matmul要用的张量存在内存中没有释放，导致动态内存占用过大, nanopipe仅保留部分必要的激活值，节省大量内存，但是增多了通信。再采用并行matmul和all-gather以达到通信隐藏的目的。
-
-其中，将input梯度计算的列切割中的all-gather通信转移到行切割的前方并进行通信隐藏，节省了一个all-gather的通信量。如下图所示
-
-![img](../../sources/images/ag_mm.png)
-
-完整的nanopipe流程如下图所示
-
-![img](../../sources/images/nanopipe_mm.png)
-
 ## 使用场景
 
 在训练模型时，降低bubble的比例，从而提升计算效率，达到更好的流水线并行。此特性暂未适配`--use-mcore-models`。
