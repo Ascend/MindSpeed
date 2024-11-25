@@ -385,6 +385,8 @@ def core_mlp_forward_wrapper(fn):
                 intermediate = intermediate + bias
             if self.config.gated_linear_unit:
                 assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
+                if not hasattr(self, 'origin_activation_func'):
+                    self.origin_activation_func = self.activation_func
                 self.activation_func = fused_swiglu
                 intermediate = self.activation_func(intermediate)
             else:
@@ -394,6 +396,8 @@ def core_mlp_forward_wrapper(fn):
 
         moe_zero_memory = get_args().moe_zero_memory
         if not (is_recompute_activation or moe_zero_memory != "disable"):
+            if hasattr(self, 'origin_activation_func'):
+                self.activation_func = self.origin_activation_func
             output, output_bias = fn(self, *args, **kwargs)
         elif moe_zero_memory == "level1" and not only_recompute_activation(self.layer_number):
             if self.shared_expert:
