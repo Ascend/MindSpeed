@@ -4,7 +4,6 @@ from mindspeed.auto_tuning.module.communication.communication_model import Commu
 class PpModel(CommunicationModel):
     def __init__(self, hccs_dev_num):
         super(PpModel, self).__init__(hccs_dev_num)
-        # profile建模数据信息表
 
     def get_communication_info_from_profile(self, pp_profile_time_info, hcom_info_tage_id, pp):
         last_pp_start_time = 0
@@ -23,13 +22,13 @@ class PpModel(CommunicationModel):
         dp = config.dp
         layers_per_vpp = config.layers_per_vpp if config.layers_per_vpp else 1
         comm_x = 1 / (layers_per_vpp * tp * cp)
-        iv_list = [comm_x, 0, 0] # pp不需要考虑cross单独的建模
+        iv_list = [comm_x, 0, 0] # PP does not need to consider cross modeling.
         comm_time = pp_profile_time_info.each_pp_time
         self.main_domain.max_domain = pp * dp * cp * tp
         self.main_domain.min_domain = pp * dp * cp * tp
         if pp > 1:
             self.main_domain.append_time_in_domain(self.comm, iv_list, comm_time)
-            # 这里的PPtime代表的是每一次PP通信的单次耗时
+            # PPtime indicates the time consumed by each PP communication.
 
     def modeling(self):
         self.comm.modeling()
@@ -90,11 +89,11 @@ class PpModel(CommunicationModel):
 
         pp_time = 0.0
         comm_x = (1 / (vp * tp * cp))
-        iv_list = [comm_x, 0, 0] # pp不需要考虑cross单独的建模
+        iv_list = [comm_x, 0, 0] # PP does not need to consider cross modeling.
         self.main_domain.max_domain = pp * dp * cp * tp
         self.main_domain.min_domain = pp * dp * cp * tp
         if pp > 1:
             each_pp_time = self.main_domain.cal_time_in_domain(self.comm, iv_list)
-            each_pp_time = each_pp_time * 2  # send 和 receive乘2，TODO提升精度
-            pp_time = each_pp_time * (pp * vp - 1) * 2  # 正向+反向 所以乘2，TODO提升精度
+            each_pp_time = each_pp_time * 2  # Multiply send and receive by 2.
+            pp_time = each_pp_time * (pp * vp - 1) * 2
         return pp_time

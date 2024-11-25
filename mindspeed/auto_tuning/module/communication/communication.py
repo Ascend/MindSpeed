@@ -37,13 +37,13 @@ class Communication(object):
 
     def adapt_to_profile_info(self, profiling_results):
         for index, (config, model) in enumerate(profiling_results):
-            # 读取一组配置文件中的profile信息
+            # Reads profile information in a group of configuration files.
             total_profile_time_info = communication_profile.TotalProfileTimeInfo()
 
             self.config_list.append(config)
 
             self.get_profile_info(model, total_profile_time_info, config, profiling_results, index)
-            # 现在强制只跑一层
+            # Now force to run only one floor
 
             if config.use_ascend_mc2:
                 self.mc2_model.get_comm_info_list(

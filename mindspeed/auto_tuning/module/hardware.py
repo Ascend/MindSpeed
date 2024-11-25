@@ -10,26 +10,25 @@ class Hardware(metaclass=Singleton):
     HARDWARE_PARSE_FILENAME = "auto_tuning_hardware.json"
 
     def __init__(self) -> None:
-        # device config 优先使用Profiling的结果，没有再使用device性能配置
-        self.device_type: str = "910B3"  # default
+        self.device_type: str = "910"
         self.host_ip: str = "localhost"
         self.user_name: str = "root"
 
         self.cube_performance: float = 363.7248
         self.vector_performance: float = 11.3664
         self.cube_utilization_ratio: float = 0.742
-        self.cube_time_ratio: float = 0.62  # cube耗时占cube+vector总时间的比例，近似估算时使用
-        self.memory_limit: float = 60.0 * 1024  # MB
+        self.cube_time_ratio: float = 0.62
+        self.memory_limit: float = 60.0 * 1024
 
         # intra-node config
         self.devices_per_node: int = 8
-        self.intra_node_bandwidth: int = 196  # 单向
+        self.intra_node_bandwidth: int = 196
         self.intra_node_bandwidth_utilization_ratio: float = 0.65
 
         # inter-node config
         self.num_nodes: int = 2
         self.node_rank: int = 0
-        self.inter_node_bandwidth: int = 25  # 单向
+        self.inter_node_bandwidth: int = 25
         self.inter_node_bandwidth_utilization_ratio: float = 0.7
 
     def __str__(self):

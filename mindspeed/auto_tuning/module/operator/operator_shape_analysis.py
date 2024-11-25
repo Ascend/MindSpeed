@@ -45,9 +45,10 @@ def separate_ep(results):
             index_visit[j] = True
             input_list[ep2] = get_default_shape_change(result2.input_shape)
             output_list[ep2] = get_default_shape_change(result2.output_shape)
-        # 计算线性关系
+        # calculate linear relationship
         ep_arr = list(input_list.keys())
-        # 第一次ep相同会记录，后面的ep，直接修改相关维度，插入字典
+        # The first occurrence of ep is recorded, other ep operator shapes directly modify the relevant dimension and
+        # insert into the dictionary.
         if flag == 0:
             diff_idx_input = [0] * count_num(input_list.get(str(ep1)))
             diff_idx_output = [0] * count_num(output_list.get(str(ep1)))
@@ -100,7 +101,7 @@ def separate_cp_tp(results):
             index_visit[j] = True
             input_list[tp2] = result2.input_shape
             output_list[tp2] = result2.output_shape
-        # 计算线性关系
+        # calculate linear relationship
         tp_arr = list(input_list.keys())
         if set(input_list.keys()) == {'8', '4'}:
             for index_i, sublist in enumerate(input_list.get('4')):
@@ -109,7 +110,7 @@ def separate_cp_tp(results):
                     if (check_value and index_i < len(input_list.get('8'))
                             and j < len(input_list.get('4')[index_i])):
                         input_list.get('8')[index_i][j] = value
-        # 第一次cp相同会记录，后面的cp，直接修改相关维度
+        # The first occurrence of cp is recorded, other cp operator shapes directly modify the relevant dimension
         if flag == 0:
             arr_in = input_list.get(str(tp1))
             arr_out = output_list.get(str(tp1))
@@ -127,12 +128,11 @@ def separate_cp_tp(results):
     if set(input_shape_dic.keys()) == {'4', '2'}:
         for i, sublist in enumerate(input_shape_dic.get('2')):
             for j, value in enumerate(sublist):
-                # 如果找到带有'.4'的值
                 check_value = isinstance(value, float) and '.4' in str(value)
                 if (check_value and
                         i < len(input_shape_dic.get('4')) and j < len(input_shape_dic.get('4')[i])):
                     input_shape_dic.get('4')[i][j] = value
-    # 计算线性关系
+    # calculate linear relationship
     cp_arr = list(input_shape_dic.keys())
     input_cal_arr, diff_idx_input = analyze_shape_arr_new(input_shape_dic, cp_arr, diff_idx_input, 1)
     output_cal_arr, diff_idx_output = analyze_shape_arr_new(output_shape_dic, cp_arr, diff_idx_output, 1)
@@ -141,13 +141,13 @@ def separate_cp_tp(results):
 
 
 def analyze_shape_arr_new(input_shape_list, tp_arr, diff, mode=0):
-    # 数据清洗，清楚部分非数据
+    # Data cleaning, removing some invalid data.
     input_shape_list, tp_arr = normal_list(input_shape_list, tp_arr)
 
-    # 初始化结果数组，为shape每个位置初始化一个值，一开始默认是不变的
+    # Initialize the result array, initializing values for each position in the shape, defaulting value means unchanged.
     result_arr = input_shape_list.get(str(tp_arr[0]))
 
-    # 比对不同tp之间shape的差异，寻找差异列索引以及数组
+    # Compare the differences in shape between different TPs, and find the index of the differing columns
     diff_idx, diff_arr = analyze_shape_list(input_shape_list, str(tp_arr[0]))
     w_arr = []
     num = count_num(result_arr)
@@ -163,11 +163,11 @@ def analyze_shape_arr_new(input_shape_list, tp_arr, diff, mode=0):
     """
         tp cp ep
         1  1  1
-        只被tp切割后缀0.4，只被cp 0.2，只被ep 0.1
-        cp+ep二进制对应0.3
+        Only cut by TP with a suffix of 0.4, only CP is 0.2, only EP is 0.1.
+        CP + EP binary corresponds to 0.3.
     """
     for index, _ in enumerate(diff_idx):
-        # 根据差异数据计算记录变化规律，默认是 tp * shape_x
+        # Calculate and record the pattern of changes based on the different data, with the default tp * shape_x
         i = diff_idx[index]
         if mode == 2:
             w = cal_shape_change_with_ep(diff_arr[index], tp_arr)
@@ -181,20 +181,20 @@ def analyze_shape_arr_new(input_shape_list, tp_arr, diff, mode=0):
         if diff[i] == 1:
             if mode == 0:
                 if flag == 0:
-                    # 只被tp 0.4
+                    # Only cut by TP 0.4
                     w_arr.append(float(w) + 0.4)
                 elif flag == 1:
                     # tp + ep 0.5
                     w_arr.append(float(int(w)) + 0.5)
             elif mode == 1:
                 if flag == 0:
-                    # 只被cp 0.2
+                    # Only cut by CP 0.2
                     w_arr.append(float(w) + 0.2)
                 elif flag == 1:
                     # cp + ep 0.3
                     w_arr.append(float(int(w)) + 0.3)
             elif mode == 2:
-                # ep 变化的后缀是0.1
+                # ep with suffix 0.1
                 w_arr.append(float(w) + 0.1)
         elif diff[i] == 2:
             if flag == 0:
@@ -222,9 +222,9 @@ def get_default_shape_change(param):
 
 
 def analyze_shape_list(input_shape_list, row1_value):
-    diff_index = []  # 存储不同的列索引
-    diff_arr = []  # 存储不同的数据
-    # 对每个数字列表中的子列表进行比较
+    diff_index = []  # Save different column indices
+    diff_arr = []  # Save different data
+    # Compare the sublist within each list.
     column_index = 0
 
     for i in range(len(input_shape_list[row1_value])):
@@ -330,7 +330,7 @@ def count_num(arr):
 
 
 def modify_by_index(shape_list, index_diff, tp_arr, mode=0):
-    # 数据清洗，清洗部分非数据，例如shape对不上的数据
+    # Data cleaning, to remove invalid data elements, such as data that doesn't match the shape
     input_shape_list, tp_arr = normal_list(shape_list, tp_arr)
 
     input_list = shape_list[str(tp_arr[0])]

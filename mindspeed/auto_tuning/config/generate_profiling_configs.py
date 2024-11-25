@@ -26,7 +26,7 @@ def generate_profiling_configs(model_cfg: ModelConfig) -> List[SearchConfig]:
     if "910_9" in Hardware().device_type and base_cfg.tp == 8:
         bi_tp = 16
 
-    # 基础配置
+    # base config
     # 4dp
     profile_cfgs.append(base_cfg)
 
@@ -52,7 +52,7 @@ def generate_profiling_configs(model_cfg: ModelConfig) -> List[SearchConfig]:
         gen_cfg.expert_model_parallel_size = 2
     profile_cfgs.append(gen_cfg)
 
-    # CP配置
+    # CP config
     if not model_cfg.disable_cp_flag:
         # 4cp
         gen_cfg = replace(base_cfg)
@@ -77,7 +77,7 @@ def generate_profiling_configs(model_cfg: ModelConfig) -> List[SearchConfig]:
         if gen_cfg.seq_length // gen_cfg.cp >= 2 * 1024:
             profile_cfgs.append(gen_cfg)
 
-    # MLP配置
+    # MLP config
     if model_cfg.is_moe():
         gen_cfg = replace(base_cfg)
         gen_cfg.expert_model_parallel_size = 1
@@ -88,7 +88,7 @@ def generate_profiling_configs(model_cfg: ModelConfig) -> List[SearchConfig]:
         gen_cfg_pp2.pipeline_model_parallel_size = 2
         profile_cfgs.append(gen_cfg_pp2)
 
-    # seq减半
+    # half-seq
     gen_cfg = replace(base_cfg)
     if model_cfg.is_moe():
         gen_cfg.expert_model_parallel_size = 1

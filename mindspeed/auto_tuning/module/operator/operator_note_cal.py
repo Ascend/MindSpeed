@@ -56,10 +56,10 @@ class OperatorNoteList:
             cp = block.origin_profile_data_list.data_list[index].config_info.cp
             ep = block.origin_profile_data_list.data_list[index].config_info.ep
             num_experts = block.origin_profile_data_list.data_list[index].config_info.num_experts
-            # 基础模块对齐
+            # Align the base block
             operator_note.reset_index_name(operator_note.fw, block.base_block.fw)
             operator_note.reset_index_name(operator_note.bw, block.base_block.bw)
-            # CP基础模块对齐
+            # Align the cp base block
             if cp > 1:
                 _, cp_fw_index = operator_note.reset_index_name(operator_note.fw, block.cp_block.fw)
                 _, cp_re_index = operator_note.reset_index_name(operator_note.bw, block.cp_block.re)
@@ -71,7 +71,7 @@ class OperatorNoteList:
                                                                           cp_re_index, cp / 2)
                     operator_note.bw = block.cp_block.reset_index_diff_cp(operator_note.bw, block.cp_block.diff_list.bw,
                                                                           cp_bw_index, cp / 2)
-            # EP模块对齐
+            # Align the ep block
             if num_experts:
                 if num_experts // ep >= 2:
                     operator_note.fw = block.ep_block.reset_index_diff_ep(operator_note.fw, block.ep_block.fw,
