@@ -2,6 +2,7 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Bytedance Inc. All rights reserved.
 import os
+from logging import getLogger
 from textwrap import wrap
 import types
 from functools import wraps
@@ -13,6 +14,7 @@ import megatron.core.tensor_parallel as tensor_parallel
 from megatron.training import get_args
 
 TRANSPOSE_BF16_BLOCK_SIZE = 4096 * 4096
+logger = getLogger(__name__)
 
 
 def build_optimizer_group_ranges_zero3_wrapper(fn):
