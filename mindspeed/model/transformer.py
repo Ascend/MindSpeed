@@ -27,7 +27,8 @@ from megatron.training import get_args, get_tokenizer
 from megatron.core import parallel_state, mpu, tensor_parallel
 from megatron.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb
 from megatron.legacy.model.utils import openai_gelu, erf_gelu, get_norm
-from megatron.legacy.model.transformer import ParallelMLP, ParallelTransformer, ParallelTransformerLayer
+from megatron.legacy.model.transformer import ParallelMLP, ParallelTransformer, ParallelTransformerLayer, CoreAttention, \
+    FlashSelfAttention, ParallelAttention
 from megatron.core.enums import ModelType
 from megatron.legacy.model.enums import AttnType, AttnMaskType, LayerType
 from megatron.legacy.model.transformer import _get_num_layers, _get_layer_type
@@ -844,7 +845,7 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
 
     cp_expanded_by_2d_tp = args.tp_2d and args.tp_y > 1
     if cp_expanded_by_2d_tp:
-        tp_y_cp_sz = args.context_parallel_size * args.tp_y
+        tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
     else:
         tp_y_cp_sz = args.context_parallel_size
     if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
@@ -930,135 +931,224 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
     return output
 
 
-def parallel_attention_init_wrapper(fn):
-    @wraps(fn)
-    def wrapper(self, *args, **kwargs):
-        fn(self, *args, **kwargs)
-        # patch for 2d-tp
-        config = args[0]
-        training_args = get_args()
-        attn_heads_split_num = (
-            get_tensor_model_parallel_world_size_for_nd1_dim1()
-            if training_args.tp_2d
-            else mpu.get_tensor_model_parallel_world_size()
-        )
+def parallel_attention_init(self, config, layer_number,
+                            attention_type=AttnType.self_attn,
+                            attn_mask_type=AttnMaskType.padding):
+    super(ParallelAttention, self).__init__()
+    args = get_args()
+    self.layer_number = max(1, layer_number)
+    self.attention_type = attention_type
+    self.attn_mask_type = attn_mask_type
+    self.params_dtype = config.params_dtype
+    self.sequence_parallel = config.sequence_parallel
+    self.config = config
+    self.group_query_attention = args.group_query_attention
+    self.num_query_groups = args.num_query_groups
 
-        # Per attention head and per partition values.
-        self.num_attention_heads_per_partition = config.num_attention_heads // attn_heads_split_num
+    query_projection_size = config.kv_channels * config.num_attention_heads
+    if self.group_query_attention:
+        kv_projection_size = args.kv_channels * args.num_query_groups
+    else:
+        kv_projection_size = args.kv_channels * args.num_attention_heads
+
+    self.use_flash_attn = args.use_flash_attn \
+                          and attention_type == AttnType.self_attn \
+                          and self.attn_mask_type == AttnMaskType.causal
+    if self.use_flash_attn:
+        try:
+            from flash_attn.flash_attn_interface import flash_attn_unpadded_func
+        except ImportError:
+            try:
+                from flash_attn.flash_attn_interface import flash_attn_varlen_func as flash_attn_unpadded_func
+            except ImportError:
+                flash_attn_unpadded_func = None
+        if flash_attn_unpadded_func is None:
+            raise ImportError('FlashAttention is not installed, please install with '
+                              'pip install flash-attn')
+        assert attention_type == AttnType.self_attn, ('FlashAttention code path only supports '
+                                                      'self-attention for now')
+        assert self.attn_mask_type == AttnMaskType.causal, ('FlashAttention code path only '
+                                                            'supports causal mask for now')
+        if rearrange is None:
+            raise ImportError('einops is not installed, please install with pip install einops')
+
+    # Per attention head and per partition values.
+    from megatron import core
+    self.hidden_size_per_attention_head = core.utils.divide(
+        query_projection_size, config.num_attention_heads)
+
+    # Strided linear layer.
+    if attention_type == AttnType.self_attn:
+        self.query_key_value = tensor_parallel.ColumnParallelLinear(
+            config.hidden_size,
+            query_projection_size + 2 * kv_projection_size,
+            config=config,
+            init_method=config.init_method,
+            bias=args.add_bias_linear or args.add_qkv_bias,
+            gather_output=False)
+    else:
+        assert attention_type == AttnType.cross_attn
 
         if self.group_query_attention:
-            if training_args.num_query_groups % attn_heads_split_num != 0:
-                raise NotImplementedError(
-                    "Currently the num_query_groups should be a multiple of the tensor parallel size"
-                )
-            self.num_query_groups_per_partition = training_args.num_query_groups // attn_heads_split_num
-        else:
-            self.num_query_groups_per_partition = self.num_attention_heads_per_partition
+            raise NotImplementedError("Grouped query attention not implemented for cross-attention.")
+        assert query_projection_size == kv_projection_size
 
-        query_projection_size = config.kv_channels * config.num_attention_heads
-        _args = get_args()
-        if _args.group_query_attention:
-            kv_projection_size = _args.kv_channels * _args.num_query_groups
-        else:
-            kv_projection_size = _args.kv_channels * _args.num_attention_heads
-        # qkv bias
-        bias = _args.add_qkv_bias or _args.add_bias_linear
-        if args[0].context_parallel_size > 1 and args[0].context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
-                                                                                   'hybrid_adaptive_cp_algo']:
-            if training_args.tp_2d:
-                tp_y_cp = TensorParallelYUnionCP()
-                ulysses_group = tp_y_cp.group
-            else:
-                ulysses_group = mpu.get_context_parallel_group()
-            if args[0].context_parallel_algo == 'hybrid_cp_algo' or args[0].context_parallel_algo == \
-                    'hybrid_adaptive_cp_algo':
-                ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
-            if self.use_flash_attn:
-                self.core_attention_flash = UlyssesContextAttention(self.core_attention_flash, ulysses_group)
-            else:
-                self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
+        self.query = tensor_parallel.ColumnParallelLinear(
+            config.hidden_size,
+            query_projection_size,
+            config=config,
+            init_method=config.init_method,
+            bias=config.add_bias_linear,
+            gather_output=False)
 
-        if _args.use_nd_matmul:
-            self.query_key_value = Nd_ParallelLinear(
-                config.hidden_size,
-                query_projection_size + 2 * kv_projection_size,
-                config=config,
-                init_method=config.init_method,
-                bias=bias,
-                skip_bias_add=True,
-                input_is_parallel=True,
-                matmul_id=1
+        self.key_value = tensor_parallel.ColumnParallelLinear(
+            config.hidden_size,
+            2 * kv_projection_size,
+            config=config,
+            init_method=config.init_method,
+            bias=config.add_bias_linear,
+            gather_output=False)
+
+    self.core_attention = CoreAttention(self.layer_number, config,
+                                        self.attn_mask_type)
+    self.checkpoint_core_attention = config.recompute_granularity == 'selective'
+
+    if self.use_flash_attn:
+        self.core_attention_flash = FlashSelfAttention(
+            causal=True, attention_dropout=config.attention_dropout
+        )
+
+    # Output.
+    self.dense = tensor_parallel.RowParallelLinear(
+        query_projection_size,
+        config.hidden_size,
+        config=config,
+        init_method=config.output_layer_init_method,
+        bias=args.add_bias_linear,
+        input_is_parallel=True,
+        skip_bias_add=True)
+
+    # patch for attention
+    patch_for_attention(config, self)
+
+
+def patch_for_attention(config, self):
+    _args = get_args()
+    attn_heads_split_num = (
+        get_tensor_model_parallel_world_size_for_nd1_dim1()
+        if _args.tp_2d
+        else mpu.get_tensor_model_parallel_world_size()
+    )
+    # Per attention head and per partition values.
+    self.num_attention_heads_per_partition = config.num_attention_heads // attn_heads_split_num
+    if self.group_query_attention:
+        if _args.num_query_groups % attn_heads_split_num != 0:
+            raise NotImplementedError(
+                "Currently the num_query_groups should be a multiple of the tensor parallel size"
             )
-        elif _args.tp_2d:
-            self.query_key_value = ParallelLinear2D(
-                config.hidden_size,
-                query_projection_size + 2 * kv_projection_size,
-                config=config,
-                init_method=config.init_method,
-                add_bias=bias,
-                skip_bias_add=True,
-                ag_comm_intf=TPXCollectiveComm,
-                ag_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
-                rs_comm_intf=TPYCollectiveComm,
-                rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
-                enable_overlap_ag_with_matmul=False,
-                enable_overlap_matmul_with_rs=False,
-                partition_dim=0,
-                enable_backward_overlap_ag_with_matmul=_args.enable_backward_overlap_ag_with_matmul)
+        self.num_query_groups_per_partition = _args.num_query_groups // attn_heads_split_num
+    else:
+        self.num_query_groups_per_partition = self.num_attention_heads_per_partition
+    query_projection_size = config.kv_channels * config.num_attention_heads
+    if _args.group_query_attention:
+        kv_projection_size = _args.kv_channels * _args.num_query_groups
+    else:
+        kv_projection_size = _args.kv_channels * _args.num_attention_heads
+    # qkv bias
+    bias = _args.add_qkv_bias or _args.add_bias_linear
+    if _args.context_parallel_size > 1 and _args.context_parallel_algo in ['ulysses_cp_algo',
+                                                                                           'hybrid_cp_algo',
+                                                                                           'hybrid_adaptive_cp_algo']:
+        if _args.tp_2d:
+            tp_y_cp = TensorParallelYUnionCP()
+            ulysses_group = tp_y_cp.group
         else:
-            self.query_key_value = tensor_parallel.ColumnParallelLinear(
-                config.hidden_size,
-                query_projection_size + 2 * kv_projection_size,
-                config=config,
-                init_method=config.init_method,
-                bias=bias,
-                gather_output=False)
-
-        # dense bias
-        bias = _args.add_dense_bias or _args.add_bias_linear
-        skip_bias_add = _args.skip_bias_add
-        # Output.
-        if _args.use_nd_matmul:
-            self.dense = Nd_ParallelLinear(
-                query_projection_size,
-                config.hidden_size,
-                config=config,
-                init_method=config.output_layer_init_method,
-                bias=bias,
-                skip_bias_add=True,
-                input_is_parallel=True,
-                matmul_id=2
-            )
-        elif _args.tp_2d:
-            self.dense = ParallelLinear2D(
-                query_projection_size,
-                config.hidden_size,
-                config=config,
-                init_method=config.output_layer_init_method,
-                add_bias=bias,
-                skip_bias_add=True,
-                ag_comm_intf=TPYCollectiveComm,
-                ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
-                rs_comm_intf=TPXCollectiveComm,
-                rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
-                enable_overlap_ag_with_matmul=False,
-                enable_overlap_matmul_with_rs=False,
-                partition_dim=1)
+            ulysses_group = mpu.get_context_parallel_group()
+        if _args.context_parallel_algo == 'hybrid_cp_algo' or _args.context_parallel_algo == \
+                'hybrid_adaptive_cp_algo':
+            ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
+        if self.use_flash_attn:
+            self.core_attention_flash = UlyssesContextAttention(self.core_attention_flash, ulysses_group)
         else:
-            self.dense = tensor_parallel.RowParallelLinear(
-                query_projection_size,
-                config.hidden_size,
-                config=config,
-                init_method=config.output_layer_init_method,
-                bias=bias,
-                input_is_parallel=True,
-                skip_bias_add=skip_bias_add)
-        
-        if _args.use_nanopipe and parallel_state.get_pipeline_model_parallel_world_size() > 1 \
-                    and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
-            setattr(self.query_key_value, "in_nano", True)
-            setattr(self.dense, "in_nano", True)
-    return wrapper
+            self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
+    if _args.use_nd_matmul:
+        self.query_key_value = Nd_ParallelLinear(
+            config.hidden_size,
+            query_projection_size + 2 * kv_projection_size,
+            config=config,
+            init_method=config.init_method,
+            bias=bias,
+            skip_bias_add=True,
+            input_is_parallel=True,
+            matmul_id=1
+        )
+    elif _args.tp_2d:
+        self.query_key_value = ParallelLinear2D(
+            config.hidden_size,
+            query_projection_size + 2 * kv_projection_size,
+            config=config,
+            init_method=config.init_method,
+            add_bias=bias,
+            skip_bias_add=True,
+            ag_comm_intf=TPXCollectiveComm,
+            ag_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+            rs_comm_intf=TPYCollectiveComm,
+            rs_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+            enable_overlap_ag_with_matmul=False,
+            enable_overlap_matmul_with_rs=False,
+            partition_dim=0,
+            enable_backward_overlap_ag_with_matmul=_args.enable_backward_overlap_ag_with_matmul)
+    else:
+        self.query_key_value = tensor_parallel.ColumnParallelLinear(
+            config.hidden_size,
+            query_projection_size + 2 * kv_projection_size,
+            config=config,
+            init_method=config.init_method,
+            bias=bias,
+            gather_output=False)
+    # dense bias
+    bias = _args.add_dense_bias or _args.add_bias_linear
+    skip_bias_add = _args.skip_bias_add
+    # Output.
+    if _args.use_nd_matmul:
+        self.dense = Nd_ParallelLinear(
+            query_projection_size,
+            config.hidden_size,
+            config=config,
+            init_method=config.output_layer_init_method,
+            bias=bias,
+            skip_bias_add=True,
+            input_is_parallel=True,
+            matmul_id=2
+        )
+    elif _args.tp_2d:
+        self.dense = ParallelLinear2D(
+            query_projection_size,
+            config.hidden_size,
+            config=config,
+            init_method=config.output_layer_init_method,
+            add_bias=bias,
+            skip_bias_add=True,
+            ag_comm_intf=TPYCollectiveComm,
+            ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
+            rs_comm_intf=TPXCollectiveComm,
+            rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
+            enable_overlap_ag_with_matmul=False,
+            enable_overlap_matmul_with_rs=False,
+            partition_dim=1)
+    else:
+        self.dense = tensor_parallel.RowParallelLinear(
+            query_projection_size,
+            config.hidden_size,
+            config=config,
+            init_method=config.output_layer_init_method,
+            bias=bias,
+            input_is_parallel=True,
+            skip_bias_add=skip_bias_add)
+    if _args.use_nanopipe and parallel_state.get_pipeline_model_parallel_world_size() > 1 \
+            and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+        setattr(self.query_key_value, "in_nano", True)
+        setattr(self.dense, "in_nano", True)
 
 
 def parallel_attention_forward(self, hidden_states, attention_mask,
