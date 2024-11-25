@@ -49,7 +49,7 @@ class OriginalProfileDataList(object):
         cp_flag1 = 0
         cp_flag = 0
         for (index, item) in enumerate(items):
-            # CP 正向FN部分打标记
+            # Mark forward network part for CP
             if forwardflag == 1:
                 if "ConcatD" in item.name and index < (len(items) - 2):
                     if "hcom_send" in items[index + 1].name or "hcom_send" in items[index + 2].name:
@@ -59,9 +59,9 @@ class OriginalProfileDataList(object):
                         cp_flag1 = 0
                         continue
                     item.name = "cp_for_flag_" + item.name
-            # CP 反向部分打标记
+            # Mark the backward part for CP
             if forwardflag == 0:
-                # CP 反向FN重计算部分
+                # Mark froward network part for CP re-computation
                 if cp_flag == 0 and "ConcatD" in item.name and index < (len(items) - 2):
                     if "hcom_send" in items[index + 1].name or "hcom_send" in items[index + 2].name:
                         cp_flag1 = 2
@@ -70,7 +70,7 @@ class OriginalProfileDataList(object):
                         cp_flag1 = 0
                         continue
                     item.name = "cp_re_flag_" + item.name
-                # CP 反向FN部分
+                # Mark backward network part for CP
                 if cp_flag == 0 and "Concat" in item.name and index < (len(items) - 2):
                     if "ZerosLike" in items[index + 1].name:
                         cp_flag = 1
@@ -80,7 +80,7 @@ class OriginalProfileDataList(object):
                 if cp_flag == 1:
                     item.name = "cp_back_flag_" + item.name
 
-            # EP部分打标记
+            # Mark EP part
             if "alltoall" in item.name:
                 alltoall_flag = alltoall_flag + 1
             if alltoall_flag % 2 == 1:

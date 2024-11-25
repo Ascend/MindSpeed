@@ -72,7 +72,7 @@ class ChangeBlock(Block):
     def get_exist_block(self, change_operator_list, base_block, index_id):
         return
 
-    # 计算重计算列表 1是反向 2是正向
+    # calculate the recompute list, 1 for forward, 2 for backward
     def get_re_block(self, list1, list2):
         m, n = len(list1), len(list2)
         list_re = []
@@ -102,7 +102,7 @@ class ChangeBlock(Block):
         while 1:
             list1, i, j, last_mat, first_mat = self.reset_index_name_single(list1, list2, i, j, last_mat)
             if j < n - 1 and index < 3:
-                # 跳过一个base算子
+                # Skip a base operator
                 index += 1
                 i = last_mat[0] + 1
                 j += 1

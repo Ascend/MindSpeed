@@ -10,7 +10,7 @@ _GLOBAL_ATTN_BACKWARD_KERNEL_NAMES = [
 class CpModel(CommunicationModel):
     def __init__(self, hccs_dev_num):
         super(CpModel, self).__init__(hccs_dev_num)
-        # profile建模数据信息表
+        # Profile Modeling Data Information Table
         self.cp_vector_x = []
         self.cp_vector_time = []
         self.cp_attn_x = []
@@ -39,11 +39,9 @@ class CpModel(CommunicationModel):
         dp = config.dp
         s = config.seq_length / 1000
 
-        # CP的通信量为CP-1倍每台机器上的正向KV、反向KV dKV
-        # CP的正向与反向attention都被在通信了,attention的计算量不随CP变化
-        # CP的正向计算VECTOR隐藏于通信中,反向计算VECTOR暴露于通信间,这里只考虑正向
+        # CP's communication volume is CP-1 times the forward KV, backward KV, and dKV per machine.
         if cp > 1:
-            # 这里仅考虑通信隐藏的attention，前向CP-1个，反向CP个
+            # Here we consider only the attention of communication hiding, with forward CP-1 and backward CP.
             self.cp_attn_x.append([s / tp / cp * (cp - 1) / cp])
             self.cp_attn_time.append([cp_profile_time_info.attn_cp_time])
             self.cp_attn_bw_x.append([s / tp / cp])
@@ -66,10 +64,10 @@ class CpModel(CommunicationModel):
             self.main_domain.append_time_in_domain(self.comm, iv_list, comm_time)
 
     def modeling(self):
-        # 通信量模型
+        # traffic of model
         self.comm.modeling()
 
-        # 用于隐藏的attention与vector算子建模
+        # overlap
         self.cp_attn_w, self.cp_attn_b = self.comm.linear_x_y(
             self.cp_attn_x, self.cp_attn_time)
         self.cp_attn_bw_w, self.cp_attn_bw_b = self.comm.linear_x_y(
@@ -188,7 +186,7 @@ class CpModel(CommunicationModel):
             if item.name in _GLOBAL_ATTN_BACKWARD_KERNEL_NAMES and len(attn_gb_list) < cp:
                 attn_gb_list.append(item)
                 attn_bw += float(item.duration_us)
-        # attention有一个是影藏的.attn_bw都需要计算上
+        # Attention, one of them is shadowed. attn_bw needs to be calculated.
         attention = attention / 1000
         attn_bw = attn_bw / 1000
         return attention, attn_bw
@@ -210,9 +208,8 @@ class CpModel(CommunicationModel):
             comm_time = self.main_domain.cal_time_in_domain(self.comm, iv_list)
 
             attn_time = self.cp_attn_w * (s / tp / cp * (cp - 1) / cp) + self.cp_attn_b
-            # 最后一块不做影藏,重计算天然适配
             attn_bw_time = self.cp_attn_bw_w * (s / tp / cp) + self.cp_attn_bw_b
-            # attention和attn_bw需要分开考虑影藏
+            # Attention and attn_bw need to be considered separately.
             cp_time1 = comm_time / 2 - attn_time * pp
             if cp_time1 < 0:
                 cp_time1 = 0
@@ -227,5 +224,5 @@ class CpModel(CommunicationModel):
                                   'cp_vector_time:{}'.format(cp_time, attn_time, attn_bw_time, cp_vector_time))
         if cp_time < 0:
             cp_time = 0.0
-            self.logger.debug(f'CP的通信时间都为等待时间, CP通信部分建模暂时失效')
+            self.logger.debug(f'The communication time of the CP is the waiting time.')
         return cp_time

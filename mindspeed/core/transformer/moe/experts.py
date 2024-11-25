@@ -67,7 +67,7 @@ def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
                                                               (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number),
                                                               ctx=ctx)
-    else:  # get_args().moe_allgather_overlap_comm
+    else: 
         return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
                                                                 (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number))
 

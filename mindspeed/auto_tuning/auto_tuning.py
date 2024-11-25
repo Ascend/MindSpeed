@@ -43,7 +43,7 @@ def auto_tuning(args: Namespace, working_dir: str):
     model_config.disable_cp_flag = False
     logger.info("<==========Finished parsing args==========>")
 
-    # 内存建模
+    # Memory modeling
     MemoryModeling.set_model_cfg(model_config)
     static_list, dynamic_list = MemoryModeling.generate_mem_modeling_profiling_list()
     logger.info("<==========Begin to profile static memory==========>")
@@ -120,7 +120,7 @@ def auto_tuning(args: Namespace, working_dir: str):
 
     profiling_and_parser_end_time = time.time()
 
-    # 性能建模
+    # Performance Modeling
     model_performance = ModelPerformance(hardware_config, model_config, working_dir)
     model_performance.get_profiling_info(profiling_results)
 

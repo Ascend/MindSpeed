@@ -31,7 +31,7 @@ class CpBlock(ChangeBlock):
     def get_exist_block(self, change_operator_list, base_block, index_id):
         self.fw = self.comp_with_get_diff_list(change_operator_list.list_2.fw, base_block.fw, index_id)
         self.bw = self.comp_with_get_diff_list(change_operator_list.list_2.bw, base_block.bw, index_id + 500)
-        # 重计算
+        # recompute
         if len(self.bw) > len(self.fw):
             self.re, self.bw = self.get_re_block(self.bw, self.fw)
 
@@ -43,9 +43,7 @@ class CpBlock(ChangeBlock):
         self.diff_list.fw = self.get_operator_longest_common_subsequence(self.fw, self.diff_list.fw)
         self.diff_list.re = self.get_operator_longest_common_subsequence(self.re, self.diff_list.bw)
         self.diff_list.bw = self.get_operator_longest_common_subsequence(self.bw, self.diff_list.bw)
-    #
 
-    #
     def get_re_block(self, list1, list2):
         m, n = len(list1), len(list2)
         list_re = []
@@ -62,7 +60,7 @@ class CpBlock(ChangeBlock):
         return list_re, list_bw
 
     def comp_with_get_diff_list(self, list1, list2, index_id):
-        # 先对齐
+        # Align first.
         list1, first_mat = self.reset_index_name(list1, list2)
         diff_info = []
         diff_index = index_id
@@ -93,13 +91,13 @@ class CpBlock(ChangeBlock):
             cp_num -= 1
             if cp_num <= 0:
                 break
-            # 确保走完了一次流程
-            # 确保剩余的空间足够进行一轮重新匹配
+            # Ensure that the entire process has been gone through once.
+            # Ensure that there is enough remaining space for one round of re-matching.
             j = 0
             i = last_mat[0] + 1
             index = 0
             temp = last_mat
-            # 重启一轮匹配
+            # Restart a round of matching.
             list1, list2, i, j, last_mat = self.restart_mat(list1, list2, i, j, last_mat)
         return list1
 

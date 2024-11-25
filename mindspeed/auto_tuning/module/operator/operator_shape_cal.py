@@ -112,10 +112,10 @@ def cal_operator_flops(input_shape, output_shape, types):
             x_item *= input_shape_arr_before[1]
         else:
             x_item *= input_shape_arr_before[0]
-        # 输入矩阵A需要进行转置，产生额外FLOPs
+        # The input matrix A needs to be transposed, resulting in additional FLOPs.
         if output_shape_arr[0] != input_shape_arr_before[0]:
             x_item += 2 * mul_shape(input_shape_arr_before)
-        # 输入矩阵B需要进行转置，产生额外FLOPs
+        # The input matrix B needs to be transposed, resulting in additional FLOPs.
         if output_shape_arr[1] != input_shape_arr_after[1]:
             x_item += 2 * mul_shape(input_shape_arr_after)
 
@@ -156,9 +156,9 @@ def cal_operator_duration_with_shape(shape_model_w, shape_model_b, flops):
 
 def model_operator_with_tp(operator_notes_index_list):
     """
-        方式一：相同TP的同一个index-name算子duration随TP线性下降duration ~ w / tp
-        分别求出TP的比例a1，CP的比例a2
-        最后结果是 d = model_w_tp / TP + model_w_cp / CP
+        For operators with the same TP and index-name, the duration decreases linearly with TP, duration ~ w / tp.
+        Calculate the proportion of TP as a1 and the proportion of CP as a2.
+        The final result is d = model_w_tp / TP + model_w_cp / CP.
     """
     result_tp = 0
     for operator_notes_index in operator_notes_index_list:

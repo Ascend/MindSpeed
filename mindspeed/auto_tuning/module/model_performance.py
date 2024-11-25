@@ -46,7 +46,7 @@ class ModelPerformance(object):
         )
         comm_gap = 8
 
-        # 每层 每个microbatch的时间
+        # Time for each micro-batch in each layer.
         mc2_time = self.communication.mc2_model.performance(search_cfg)
         tp_time = self.communication.tp_model.performance(search_cfg)
 
@@ -60,7 +60,7 @@ class ModelPerformance(object):
         ep_time = self.communication.ep_model.performance(search_cfg)
 
         micro_batch_num = global_batch_size / (dp * search_micro_batch_size)
-        # 总层数，总global_batch_size
+        # total layer number，total global_batch_size
         layer_num = math.ceil(micro_batch_num * (num_layers / pp))
         search_model_mbs_ratio = search_micro_batch_size / model_micro_batch_size
         communication_time = (tp_time + cp_time + ep_time) * search_model_mbs_ratio * layer_num
@@ -154,6 +154,6 @@ class ModelPerformance(object):
             if num_experts:
                 operator_time = operator_time + (num_experts / ep - 1) * ep_each_exist_time
 
-        # 换算成一个microbitch在一台机器的总算子时间
+        # Convert to the total operator time for one micro_batch on a single node.
         operator_time = (operator_time * 0.001)
         return operator_time, unsampled_profiling_info

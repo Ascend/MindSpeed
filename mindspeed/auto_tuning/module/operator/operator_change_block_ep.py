@@ -55,12 +55,12 @@ class EpBlock(ChangeBlock):
         self.change_profilelist_into_dictshapelist(change_profile_list.list_2, change_operator_list.list_2)
         self.change_profilelist_into_dictshapelist(change_profile_list.list_4, change_operator_list.list_4)
 
-    # 比较1 2 的最长子序列，返回的是1的值
+    # Compare the longest subsequence of 1 and 2, return the values of 1.
 
     def get_exist_block(self, change_operator_list, base_block, index_id):
         self.fw = self.comp_with_get_diff_list(change_operator_list.list_2.fw, base_block.fw, index_id)
         self.bw = self.comp_with_get_diff_list(change_operator_list.list_2.bw, base_block.bw, index_id + 500)
-        # 重计算
+        # recompute
         if len(self.bw) > len(self.fw):
             self.re, self.bw = self.get_re_block(self.bw, self.fw)
         return
@@ -73,7 +73,7 @@ class EpBlock(ChangeBlock):
                                                          -1)
         self.diff_list.bw = self.comp_with_get_diff_list(change_operator_list.list_4.bw, change_operator_list.list_2.bw,
                                                          -1)
-        # 重计算
+        # recompute
         if len(self.diff_list.bw) > len(self.diff_list.fw):
             self.diff_list.re, self.diff_list.bw = self.get_re_block(self.diff_list.bw, self.diff_list.fw)
             self.diff_list.re = self.comp_with_get_diff_list(self.diff_list.re, self.re, -1)
@@ -81,7 +81,7 @@ class EpBlock(ChangeBlock):
         self.diff_list.bw = self.comp_with_get_diff_list(self.diff_list.bw, self.bw, -1)
         return
 
-    # 计算重计算列表 1是反向 2是正向
+    # calculate the recompute list, 1 for forward, 2 for backward
     def get_re_block(self, list1, list2):
         m, n = len(list1), len(list2)
         list_re = []
@@ -97,9 +97,9 @@ class EpBlock(ChangeBlock):
                 i += 1
         return list_re, list_bw
 
-    # 把列表1与列表2对其
+    # Align list1 with list2
     def comp_with_get_diff_list(self, list1, list2, index_id):
-        # 先对齐
+        # Align first
         list1, first_mat = self.reset_index_name(list1, list2)
         diff_info = []
         diff_index = index_id
@@ -123,7 +123,7 @@ class EpBlock(ChangeBlock):
         self.re = self.get_diff_list_without_index(self.re, self.diff_list.re)
         self.bw = self.get_diff_list_without_index(self.bw, self.diff_list.bw)
 
-        # 1中减去2的子序列
+        # Subtract the subsequence of 2 from 1.
 
     def get_diff_list_without_index(self, list1, list2):
         list_comm = self.get_operator_longest_common_subsequence(list1, list2)
@@ -150,14 +150,14 @@ class EpBlock(ChangeBlock):
         index = 0
         last_mat, this_mat = (0, 0), (-1, 0)
         while 1:
-            # 重启一轮
+            # Restart a round
             if this_mat[0] + n > m or this_mat == last_mat or ep_diff_num <= 0:
                 break
             last_mat = this_mat
             list1, i, j, this_mat = self.reset_index_name_single_ep(list1, list2, i, j, last_mat)
             ep_diff_num -= 1
             if j < n - 1 and index < 3:
-                # 跳过一个base算子
+                # skip one base operator
                 index += 1
                 i = this_mat[0] + 1
                 j += 1
