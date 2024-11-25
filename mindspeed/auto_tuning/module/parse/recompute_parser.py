@@ -69,7 +69,6 @@ class RecomputeParser:
         cur_module_full_name = state['prefix_name'] + '.' + state['name']
         if cur_module_full_name not in self.event_dict.keys():
             self.event_dict[cur_module_full_name] = []
-        # 分开取时间和内存信息，时间在[0,stop_profiling_step)计算均值，内存只取最后一次stop_profiling_step
         if self.profiling_step < self.stop_profiling_step:
             start_event = torch.npu.Event(enable_timing=True)
             self.event_dict[cur_module_full_name].append([start_event])

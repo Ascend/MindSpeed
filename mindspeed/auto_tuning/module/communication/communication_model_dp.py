@@ -5,7 +5,7 @@ from mindspeed.auto_tuning.module.communication.communication_model \
 class DpModel(CommunicationModel):
     def __init__(self, hccs_dev_num):
         super(DpModel, self).__init__(hccs_dev_num)
-        # profile建模数据信息表
+        # Profile modeling data table
 
         self.attention = CommunicationList()
         self.attention_reducescatter = CommunicationList()
@@ -35,7 +35,7 @@ class DpModel(CommunicationModel):
         zero = config.zero1
         experts = config.num_experts if config.num_experts else 1
 
-        # attention层
+        # attention
         if dp * cp > 1:
             comm_x = (dp * cp - 1) / (tp * pp)
             K = dp * cp * tp / self.hccs_dev_num
@@ -52,7 +52,7 @@ class DpModel(CommunicationModel):
             self.main_domain.append_time_in_domain(self.attention_reducescatter, iv_list, reducescatter_time)
             self.main_domain.append_time_in_domain(self.attention_allgather, iv_list, allgather_time)
             self.main_domain.append_time_in_domain(self.comm, iv_list, dp_total_time)
-        # MLP层
+        # MLP
             mlp_x = experts * (dp * cp / ep - 1) / tp / pp
             comm_time = dp_profile_time_info.total_mlpzero_time
             reducescatter_time = dp_profile_time_info.mlp_rs_time
@@ -193,7 +193,7 @@ class DpModel(CommunicationModel):
         zero_reducescatter = 0.0
         zero_allgather = 0.0
         if dp * cp > 1:
-            # attention层：
+            # attention：
             self.main_domain.max_domain = dp * cp * tp
             self.main_domain.min_domain = cp * tp
             comm_x = (dp * cp - 1) / tp / pp
@@ -205,7 +205,7 @@ class DpModel(CommunicationModel):
             other_reducescatter = self.main_domain.cal_time_in_domain(self.attention_reducescatter, iv_list)
             other_allgather = self.main_domain.cal_time_in_domain(self.attention_allgather, iv_list)
 
-            # mlp层
+            # mlp
             self.mlp_domain.max_domain = dp * cp * tp
             self.mlp_domain.min_domain = cp * tp * ep
             mlp_x = experts * (dp * cp / ep - 1) / tp / pp
@@ -222,5 +222,5 @@ class DpModel(CommunicationModel):
                 if pp > 2:
                     overlap_time += (pp - 2) / pp * (other_allgather + zero_allgather)
         dp_time = comm_time + mlp_time - overlap_time
-        # 这里的DP是总的gbs的时间影响
+        # dp_time here is the total gbs time effect
         return dp_time

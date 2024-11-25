@@ -4,7 +4,7 @@ from mindspeed.auto_tuning.module.communication.communication_model import Commu
 class TpModel(CommunicationModel):
     def __init__(self, hccs_dev_num):
         super(TpModel, self).__init__(hccs_dev_num)
-        # profile建模数据信息表
+        # Profile modeling data table
         self.tp_comm_total_time_list = []
         self.tp_comm_wait_time_list = []
         self.tp_comm_overlap_time_list = []
@@ -28,12 +28,15 @@ class TpModel(CommunicationModel):
 
         comm_x = (s / (tp * cp))
         if pp == 1:
-            # 前向最后一个allgather不计算，反向的前2个+最后一个allgather不计算
-            # 不开启PP的情况下TP域共有18个通信，需要剔除4个loss的通信
+            # The last forward allgather is not calculated. The first two reverse allgathers plus the last allgather
+            # are not calculated.
+            # When the PP function is disabled, there are 18 communications in the TP domain. Therefore, four loss
+            # communications need to be excluded.
             comm_time = (total_time - wait_time) * 14 / 18 / pp
             self.tp_comm_overlap_time_list.append([overlap_time * 2 / 3 / pp])
         else:
-            # 开启PP的情况下TP域共有15个通信，需要剔除1个loss的通信
+            # When PP is enabled, there are 15 communications in the TP domain, and one loss communication needs to
+            # be excluded.
             comm_time = (total_time - wait_time) * 14 / 15 / pp
             self.tp_comm_overlap_time_list.append([overlap_time / pp])
         self.comm.append_hccs([comm_x], comm_time)
@@ -58,7 +61,8 @@ class TpModel(CommunicationModel):
         for i, _ in enumerate(config_list):
             if config_list[i].use_ascend_mc2:
                 continue
-            self.logger.debug(tplt.format(i, config_list[i].tp, config_list[i].dp, config_list[i].pp, config_list[i].cp, config_list[i].ep,
+            self.logger.debug(tplt.format(i, config_list[i].tp, config_list[i].dp, config_list[i].pp, config_list[i].cp,
+                                          config_list[i].ep,
                               round(self.comm.hccs_time_list[index][0], 2),
                               round(self.comm.hccs_x_list[index][0], 3),
                               round(self.tp_comm_overlap_time_list[index][0], 2),

@@ -23,10 +23,12 @@ from mindspeed.auto_tuning.module.operator.operator_shape_cal import (model_oper
 class OperatorPerformance(object):
     """
     Operator Performance modeling
-        1. 试跑
-        2. profiler 解析
-        3. 建模【我理解就是试跑结果 放入modeling内所有模块数学建模估算，然后动态调整试跑配置再进行数学建模估算【循环】】
-        4. 返回推荐配置
+        1. Test Run
+        2. Profiling Parser
+        3. Modeling [taking the results from the test run and placing them into all modules within
+        modeling for mathematical modeling estimation, then dynamically adjusting the test run configuration and
+        performing mathematical modeling estimation again [loop]]
+        4. Return recommended configuration
     """
 
     def __init__(self, model_config: ModelConfig, working_dir: str):
@@ -43,14 +45,15 @@ class OperatorPerformance(object):
 
     def model_operator_timer(self, profiling_results):
         """
-        对外接口一，根据profiler结果进行shape 和 duration的建模，当前算子都只取一个microbitch，无论PP是否开启
+        Model shape and duration based on the profiling result. Currently, all operator only takes one micro_batch,
+        no matter whether pp is enabled.
         """
         self.dict_model = dict()
-        # 第 0 轮取到原始数据
+        # 1. get original data
         self.origin_profile_data_list.get_origin_profile_data(profiling_results)
-        # 第 1 轮取到base_block
+        # 2. get base_block
         self.base_block.get_block(self.origin_profile_data_list.data_list)
-        # 第 2 轮取到change_block
+        # 3. get change block
         self.cp_block.get_block(self.origin_profile_data_list, self.base_block)
         if self.origin_profile_data_list.data_list[0].config_info.num_experts:
             self.ep_block.get_block(self.origin_profile_data_list, self.base_block)
@@ -127,7 +130,6 @@ class OperatorPerformance(object):
         self.get_operator_model_dao(operator_list, operator_note_dict)
         self.ep_block.diff_cal_list = self.get_dict_base_shape(operator_list, operator_note_dict)
 
-        # 基于 operator_model_dao 给base添加上shape
 
     def get_dict_base_shape(self, operator_list, operator_note_dict):
         re_list = []
@@ -136,9 +138,10 @@ class OperatorPerformance(object):
             # cp 1  tp 1 2 4 8  -> shape_tp
             # cp 2  tp 1 2 4 8  -> shape_tp
             # shape_cp
-            # shape 建模, 通过收集不同tp 之间profiler的算子的变化规律，推理出算子shape每个位置的变化公式
+            # model the shape, according to the change between profiling result with different tp value, calculate the
+            # change formula for each position in the operator's shape
             results = operator_note_dict[index_name]
-            # 先分ep
+            # take ep first
             result = separate_ep(results)
             input_shape_cal, output_shape_cal = separate_cp_tp(result)
             dict_shape = DictCalShape()
@@ -157,15 +160,23 @@ class OperatorPerformance(object):
             # cp 1  tp 1 2 4 8  -> shape_tp
             # cp 2  tp 1 2 4 8  -> shape_tp
             # shape_cp
-            # shape 建模, 通过收集不同tp 之间profiler的算子的变化规律，推理出算子shape每个位置的变化公式
+            # model the shape, according to the change between profiling result with different tp value, calculate the
+            # change formula for each position in the operator's shape
             results = operator_note_dict[index_name]
-            # input_shape_cal ，格式和shape数组一致，有变化位置为正数，代表不变位，负数代表变化位，假设该数为num，变化规律为 -num/tp
+            # input_shape_cal, has the same format as the shape array, with positive numbers representing unchanged
+            # positions, and negative numbers representing varying positions. Assuming the number is num, the variation
+            # rule is -num/tp.
 
-            # duration 基于相同位置算子 和 tp之间的建模，对于shape变化的算子，初步观察到 随着tp增大[2,4,8], duration 以约2倍的规律下降
-            # tp_model_w 为下降时计算的数，理论上上是 tp=1 时算子的duration, 所以tp = 2时， duration(2) = tp_model_w/2; tp_model_b为冗余系数
+            # duration is modeled based on the same position operators and TPs. For operators with shape changes,
+            # it is initially observed that as TP increases [2, 4, 8], the duration decreases approximately by a
+            # factor of 2.
+            # tp_model_w is the number calculated when the duration decreases. Theoretically, it is the duration of the
+            # operator when tp=1. Therefore, when tp = 2, duration(2) = tp_model_w/2; tp_model_b is the redundancy
+            # coefficient.
             tp_model_w, tp_model_b = model_operator_with_tp(results)
 
-            # duration 基于shape计算的Flops 之间的建模i，对于所有算子，F(duration) = shape_model_w * Flops + shape_model_b
+            # duration is modeled based on the Flops calculated from the shape. For all operators,
+            # F(duration) = shape_model_w * Flops + shape_model_b.
             history_results = self.db.operator_history_dao.get_by_types_and_accelerator_core(
                 operator.accelerator_core, operator.type)
             shape_model_w, shape_model_b = model_operator_with_shape(history_results)
@@ -202,10 +213,10 @@ class OperatorPerformance(object):
         operator_total_num = len(operator_list)
         operator_not_found = []
         for operator_base in operator_list:
-            # 根据tp、cp、ep计算 input_shape 和 output_shape
+            # Calculate input_shape and output_shape based on tp, cp, and ep.
             input_shape = cal_new_shape_tce(operator_base.input_cal, search_cfg)
             output_shape = cal_new_shape_tce(operator_base.output_cal, search_cfg)
-            # 情况二， 根据 input_shape 和 types 在 operator_history 搜索 duration， 并且可以获得搜索结果，直接返回
+            # 1. search duration through operator_history based on input_shape and types
             operators = self.db.operator_history_dao.get_by_types_and_input_shape(operator_base.types, input_shape)
             if len(operators) > 0:
                 operator_list_re.append(Operator(name=operator_base.index_name, types=operator_base.types,
@@ -214,7 +225,7 @@ class OperatorPerformance(object):
                                                  output_shape=output_shape,
                                                  duration=operators[0].duration))
 
-            # 情况三， 根据tp --- duration 建模结果进行预测结果
+            # 2. Predict the results based on the tp --- duration modeling results.
             else:
                 operator_not_found.append([OperatorHistory(types=operator_base.types,
                                                            accelerator_core=operator_base.accelerator_core,
@@ -233,7 +244,8 @@ class OperatorPerformance(object):
             return operator_list_re, operator_not_found
 
         else:
-            # 如果算子数量缺少比例较低，默认通过线性拟合方式补充算子
+            # If the proportion of missing operators is relatively low, by default, supplement the operators using
+            # linear interpolation.
             if re_profiling_flag:
                 self._logger.info(
                     f'The total operator not found proportion is {operator_not_found_total_num / operator_total_num},'
@@ -258,9 +270,9 @@ class OperatorPerformance(object):
 
     def cal_operator_timer(self, search_cfg: SearchConfig) -> tuple:
         """
-            对外接口二，根据tp 变化返回duration
+            External interface, returns the duration based on changes in tp.
         """
-        # 获得模型一层所有的算子
+        # Obtain all operators of a model layer.
         operator_not_found = []
         if len(self.base_block.fw) == 0:
             return [], [], [], 1, 1, 1

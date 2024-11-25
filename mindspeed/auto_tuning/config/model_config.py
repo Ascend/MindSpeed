@@ -7,7 +7,8 @@ from mindspeed.auto_tuning.utils.dtype import DTYPE
 @dataclass
 class ModelConfig:
     ARGS_PARSE_FILENAME = "auto_tuning_model_args.json"
-    # 参数默认值均置为None, 使用未解析的参数进行计算时便会报错, 可以及时发现问题
+    # Set all parameter defaults to None, so that errors will occur when calculations are performed with
+    # unresolved parameters, reflect issues in time.
     # Parallel configs
     tensor_model_parallel_size: int = None  # type: ignore
     context_parallel_size: int = None  # type: ignore

@@ -18,12 +18,12 @@ logger = get_logger('operator_re_profile')
 
 def search_operator(working_dir, search_cfg, communication, profile_count,
                     scale_flag=False):
-    # 拉到一定量的profiling之后其余均使用线性预测的方式
+    # After a certain amount of profiling, the rest operators have not been found will be predicted using
+    # regression method.
     executor = ModelExecutor(TorchRunRunner())
     profiling_results = []
     search_cfg_list = [search_cfg]
     model_config = communication.model_cfg
-    # Not Found list 保存全局变量
     seed = 1234
     random.seed(seed)
     unsampled_profiling_info = []

@@ -80,7 +80,7 @@ class BaseBlock(Block):
         while 1:
             list1, i, j, last_mat, first_mat = self.reset_index_name_single(list1, list2, i, j, last_mat)
             if j < n - 1 and index < 3:
-                # 跳过一个base算子
+                # Skip a base operator.
                 index += 1
                 i = last_mat[0] + 1
                 j += 1

@@ -74,11 +74,9 @@ def search_demo(model_config: ModelConfig,
                 _logger.warning(f"Search: ERROR during perf_modeling_calculation: {type(err).__name__}")
                 tb.print_exc()
 
-            # 自适应重计算修正性能，判断是否需要开自适应重计算
             context = ""
             json_path = os.path.join(working_dir, f'{get_prof_dir(cfg)}.json')
             if not os.path.exists(json_path):
-                # 利用建模结果求解当前场景的context
                 _logger.debug("success modeling context…………")
                 context = get_context_by_ptd_config(base_context, base_search_cfg, cfg, model_config)
             else:
@@ -94,7 +92,6 @@ def search_demo(model_config: ModelConfig,
                           f"layers_per_vpp={cfg.num_layers_per_virtual_pipeline_stage} "
                           f"dp = {cfg.data_parallel_size} cp = {cfg.context_parallel_size} "
                           f"ep = {cfg.expert_model_parallel_size} zero = {cfg.use_distributed_optimizer}")
-            # 背包计算内存预估值
             need_recompute, new_perf, add_mem, recompute_layer = full_recompute_solver(device_mem_cap - mem_estimated, context,
                                                                                        model_config, perf, cfg)
             new_memory = add_mem + mem_estimated
@@ -208,14 +205,14 @@ def full_recompute_solver(oom_cap, model_context, model_cfg, perf, search_config
     ret_list.sort(key=memory_time_rate, reverse=True)
     need_recompute = True
     memory_per_layer = layer_module["memory"] - layer_module["input"]
-    # 1.全部不开重计算
+    # 1.No full recompute
     max_release_mem = warmup_micro_batchs * layers_per_vpp * memory_per_layer - memory_per_layer
 
     if max_release_mem <= oom_cap:
         return False, perf - total_num_micro_batches * num_layers * layer_module["time"], max_release_mem, 0
 
     if search_config.layers_per_vpp:
-        # 2.每PP stage每microbatch重计算层数<=layers_per_vpp的情况
+        # 2.Situation under per pp stage and per mbs recompute layers <= layers_per_vpp
         max_release_mem = (num_model_chunks - 1) * search_config.pp * layers_per_vpp * memory_per_layer
         if max_release_mem <= oom_cap:
             layer_calculate = (oom_cap - max_release_mem) // ((2 * search_config.pp - 1) * memory_per_layer)
@@ -223,7 +220,7 @@ def full_recompute_solver(oom_cap, model_context, model_cfg, perf, search_config
             time_cost += (num_layers - layers_per_vpp + layer_calculate) * total_num_micro_batches * layer_module["time"]
             return True, perf - time_cost, release_mem, layers_per_vpp - layer_calculate
 
-        # 暂时只考虑layer层
+        # Only consider layers temporarily
         layer_calculate = (oom_cap // (memory_per_layer * search_config.pp))
         release_mem += layer_calculate * memory_per_layer * search_config.pp
         if layer_calculate < num_layers:
@@ -268,7 +265,7 @@ def find_recompute_layer(context, ret_list):
                       "input": context["input"], "prefix_name": context["prefix_name"], "name": context["name"]}
         ret_list.append(layer_dict)
 
-        # 第一个append进去的就是layer module
+        # layer module the first to be appened
     if "layers" not in context:
         return
     for layer_context in context["layers"]:
