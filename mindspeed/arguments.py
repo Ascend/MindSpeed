@@ -247,7 +247,13 @@ def _add_distributed_args(parser):
     group.add_argument('--disable-gloo-group', action='store_true',
                        help='Replace the communication method of the DP group in the distributed optimizer from gloo to hccl.')
     group.add_argument('--hccl-slice-size', type=int, default=10 * 1024 * 1024,
-                       help='data slice size on each dp rank in distributed optimizer')                   
+                       help='data slice size on each dp rank in distributed optimizer')
+    group.add_argument('--variable-seq-lengths', action='store_true',
+                       help='Supports variable sequence lengths across batches/microbatches. Set this if the data '
+                            'loader supports variable sequence length generation across batches/microbatches. Because '
+                            'of the additional communication overhead incurred during pipeline parallelism, it should '
+                            'not be set if the sequence length is constant during training. if sequence length is '
+                            'constant during training.')
     return parser
 
 
@@ -474,7 +480,9 @@ def validate_args_wrapper(validate_args):
             if args.overlap_p2p_comm:
                 flag_overlap_p2p_comm = True
 
+        original_variable_seq_lengths = args.variable_seq_lengths
         args = validate_args(args, defaults)
+        args.variable_seq_lengths = original_variable_seq_lengths
         if args.enable_zero3:
             print("[WARNING] zero3 currently does not support model save and load")
             if args.use_ascend_mc2 or args.reuse_fp32_param or args.recompute_granularity is not None or args.use_pipe_experts:
