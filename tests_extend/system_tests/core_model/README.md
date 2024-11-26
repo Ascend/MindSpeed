@@ -115,12 +115,11 @@ coverage html --data-file=.coverage -d <输出目录>
 
 ## 用例补充
 ### 方式一：用例配置文件中直接添加
-举例说明：添加 内存碎片优化 + FA的用例
+举例说明：添加 FA的用例
 **分析**
-- 内存碎片优化只需要设置环境变量：MEMORY_FRAGMENTATION=1
 - FA只需要添加参数：--use-flash-attn
 添加样例只需要在在gpt-usecase.yaml文件的products下添加一条：
-\- { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], memory_fragmentation: [ 1 ], extra_args: [ '"--use-flash-attn"'] }
+\- { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--use-flash-attn"'] }
 **注意**
 - 训练的其他参数见pretrain_gpt_usecase.sh，所有用例执行的入口文件是pretrain_gpt_usecase.py，详细信息看这两个文件
 - use-mcore、tp_size、pp_size是必填项，其他可选，所有的value是 list格式
