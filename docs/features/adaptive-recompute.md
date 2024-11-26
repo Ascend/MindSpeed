@@ -39,5 +39,5 @@ SwapManager 能需要内存管理适配 PTA 的 NPUPluggableAllocator 接口拦�
 ## 注意事项
 
 - 自适应选择重计算当前暂未适配`--use-mcore-models`。
-- 当前自适应选择性重计算与全重计算、选择重计算、重计算独立调度流水线ripipe、激活函数重计算、预取特性swap-attention、内存碎片优化等特性均不兼容。
-由于自适应选择重计算与内存碎片优化两个特性都修改了PyTorch内存管理模块，这两个特性都打开会存在冲突，mindspeed进行了assert判断。
+- 当前自适应选择性重计算与全重计算、选择重计算、重计算独立调度流水线ripipe、激活函数重计算、预取特性swap-attention等特性均不兼容。
+- 由于自适应选择重计算特性修改了PyTorch内存管理模块，打开会存在冲突，mindspeed进行了assert判断。
