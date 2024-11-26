@@ -13,6 +13,7 @@ MoE在预训练前期负载均衡 aux_loss 未起作用时，token 在专家层�
 1. 使用时**建议**开启`--moe-router-load-balancing-type aux_loss`，这样会使得训练过程中token分布快速趋向于平衡。
 2. 开启全局重计算后该功能无效。
 3. 仅支持`--moe-token-dispatcher-type`是all-gather时可用。
+4. 不兼容--recompute-in-bubble特性。
 
 ## 使用方法
 

@@ -889,7 +889,7 @@ def get_data_modulo_expert_parallel_group_gloo_replace(with_context_parallel=Fal
 
     if with_context_parallel:
         assert (
-            ps._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO is not None
+            ps._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO is None
         ), 'data modulo expert parallel group-gloo with context parallel is not initialized'
         return ps._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP
     else:
