@@ -23,6 +23,3 @@ Rotary Position Embedding（RoPE）是一种大模型文本位置信息编码（
 
 使用融合算子可以提升训练性能。
 
-## 注意事项：
-
-暂不兼容 --memory-framentation 内存碎片优化特性。
