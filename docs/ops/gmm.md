@@ -25,7 +25,7 @@ npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0)
     | :---: | :---: |
     |  0  |  1. weight中tensor需为3维，x，y中tensor需为2维<br>2. 必须传group_list，如果调用npu_gmm接口，则最后一个值与x中tensor的第一维相等，如果调用npu_gmm_v2接口，则数值的总和与x中tensor的第一维相等  |
     |  2  |  1. x，weight中tensor需为2维，y中tensor需为2维<br>2. 必须传group_list，如果调用npu_gmm接口，则最后一个值与x中tensor的第一维相等，如果调用npu_gmm_v2接口，则数值的总和与x中tensor的第一维相等  |
-- group_type不支持group_type=1的场景，其中昇腾310P AI处理器支持转置的场景为group_type为0，x为单tensor，weight为单tensor，y为单tensor。
+- group_type不支持group_type=1的场景，其中昇腾310系列处理器支持转置的场景为group_type为0，x为单tensor，weight为单tensor，y为单tensor。
 - x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为false时$x_i$的K轴或当transpose_x为true时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为false时$weight_i$的N轴或当transpose_weight为true时$weight_i$的K轴。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
 

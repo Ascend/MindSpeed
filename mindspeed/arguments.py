@@ -512,6 +512,13 @@ def validate_args_wrapper(validate_args):
                               and args.recompute_num_layers == 1)
             if not recompute_mode:
                 raise AssertionError('--optimize-recomp-communication-level is open in limited recompute condition')
+        if args.num_experts:
+            if args.use_mcore_models:
+                if args.moe_model_type == 'deepspeed_moe':
+                    raise AssertionError('deepspeed_moe is not compatible with --use-mcore-models')
+            else:
+                if args.moe_model_type == 'megatron_moe':
+                    raise AssertionError('megatron_moe only support with --use-mcore-models')
         if args.use_pipe_experts:
             if args.pipe_experts_multi_data <= 0:
                 raise AssertionError('--pipe-experts-multi-data must greater than 0')
