@@ -149,7 +149,6 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend 自适应选择重计算              | [link](docs/features/adaptive-recompute.md)               |
 | Ascend 激活函数重计算               | [link](docs/features/activation-function-recompute.md)    |
 | Ascend 重计算流水线独立调度            | [link](docs/features/recompute_independent_pipelining.md) |
-| Ascend 内存碎片优化                | [link](docs/features/memory-fragmentation.md)             |
 | Ascend Mask归一                | [link](docs/features/generate-mask.md)                    |
 | Ascend BF16 参数副本复用           | [link](docs/features/reuse-fp32-param.md)                 |
 | Ascend swap_attention            | [link](docs/features/swap_attention.md)                   |
