@@ -42,7 +42,6 @@ GPT_ARGS="
     --ulysses-degree-in-cp 2 \
     --use-cp-send-recv-overlap \
     --use-fused-ring-attention-update \
-    --use-mcore-models \
     --use-ascend-mc2 \
     --sequence-parallel \
     --use-fused-rotary-pos-emb \

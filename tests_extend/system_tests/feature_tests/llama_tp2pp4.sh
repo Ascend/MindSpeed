@@ -32,6 +32,7 @@ RECOMPUTE_ARGS="
 "
 
 GPT_ARGS="
+    --use-legacy-models \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \

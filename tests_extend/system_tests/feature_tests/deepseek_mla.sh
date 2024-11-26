@@ -67,7 +67,6 @@ GPT_ARGS="
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
-    --use-mcore-models \
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
     --use-fused-swiglu \

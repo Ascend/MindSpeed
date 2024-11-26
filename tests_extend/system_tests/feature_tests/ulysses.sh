@@ -43,7 +43,6 @@ GPT_ARGS="
     --num-layers-per-virtual-pipeline-stage 1 \
     --context-parallel-size ${CP} \
     --context-parallel-algo ulysses_cp_algo \
-    --use-mcore-models \
     --use-ascend-mc2 \
     --reuse-fp32-param \
     --sequence-parallel \

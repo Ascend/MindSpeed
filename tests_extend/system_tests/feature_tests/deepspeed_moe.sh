@@ -51,6 +51,7 @@ MOE_ARGS="
 "
 
 GPT_ARGS="
+    --use-legacy-models \
     --tensor-model-parallel-size ${TP} \
     --context-parallel-size ${CP} \
     --context-parallel-algo megatron_cp_algo \

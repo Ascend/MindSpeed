@@ -40,7 +40,6 @@ GPT_ARGS="
     --context-parallel-algo megatron_cp_algo \
     --use-cp-send-recv-overlap \
     --use-fused-ring-attention-update \
-    --use-mcore-models \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
     --overlap-param-gather \
@@ -66,9 +65,9 @@ GPT_ARGS="
     --train-iters 1000 \
     --lr-decay-style cosine \
     --untie-embeddings-and-output-weights \
-    --attention-dropout 0.1 \
+    --attention-dropout 0.0 \
     --init-method-std 0.01 \
-    --hidden-dropout 0.1 \
+    --hidden-dropout 0.0 \
     --position-embedding-type rope \
     --normalization RMSNorm \
     --swiglu \
