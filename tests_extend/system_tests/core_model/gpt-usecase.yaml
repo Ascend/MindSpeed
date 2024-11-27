@@ -110,13 +110,13 @@ products:
   - { id: [ 'cp-ulysses-parallel' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --context-parallel-size 2 --context-parallel-algo ulysses_cp_algo"' ] }
 
   # -- CP并行 ~ Ring Attention长序列并行： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/ring-attention-context-parallel.md
-  - { id: [ 'cp-ring-parallel-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --cp-attention-mask-type causal"' ] }
-  - { id: [ 'cp-ring-parallel-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --cp-attention-mask-type general"' ] }
+  - { id: [ 'cp-ring-parallel-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type causal"' ] }
+  - { id: [ 'cp-ring-parallel-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type general"' ] }
   - { id: [ 'cp-ring-parallel-03' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --use-cp-send-recv-overlap"' ] }
 
   # -- CP并行 ~ 混合长序列并行： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/hybrid-context-parallel.md
-  - { id: [ 'cp-hybrid-parallel-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --cp-attention-mask-type general"' ] }
-  - { id: [ 'cp-hybrid-parallel-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --cp-attention-mask-type causal"' ] }
+  - { id: [ 'cp-hybrid-parallel-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --attention-mask-type general"' ] }
+  - { id: [ 'cp-hybrid-parallel-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --attention-mask-type causal"' ] }
 
 
   # -- Alibi : https://gitee.com/ascend/MindSpeed/blob/master/docs/features/alibi.md
@@ -174,7 +174,7 @@ products:
   - { id: [ 'megatron-moe-alltoall' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --disable-bias-linear --moe-token-dispatcher-type alltoall --moe-permutation-async-comm"' ] }
 
   # EOD Reset: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/eod-reset.md
-  - { id: [ 'eod-reset-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --cp-attention-mask-type general --reset-attention-mask --reset-position-ids"' ] }
+  - { id: [ 'eod-reset-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type general --reset-attention-mask --reset-position-ids"' ] }
   - { id: [ 'eod-reset-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-flash-attn --reset-attention-mask --reset-position-ids"' ] }
 
   # Mask归一: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/generate-mask.md

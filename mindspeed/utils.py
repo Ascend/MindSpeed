@@ -108,7 +108,7 @@ def get_batch_on_this_cp_rank(batch):
 
     cp_expanded_by_2d_tp = args.tp_y > 1
     if args.context_parallel_algo == 'megatron_cp_algo':
-        if args.cp_attention_mask_type == 'general':
+        if args.attention_mask_type == 'general':
             batch = _get_batch_on_this_cp_rank_in_megatron_cp_general(batch)
         elif cp_expanded_by_2d_tp:
             batch = _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch)
@@ -117,7 +117,7 @@ def get_batch_on_this_cp_rank(batch):
     elif args.context_parallel_algo == 'ulysses_cp_algo':
         batch = _get_batch_on_this_cp_rank_in_ulysses_cp(batch)
     elif args.context_parallel_algo == 'hybrid_cp_algo':
-        if args.cp_attention_mask_type == 'general':
+        if args.attention_mask_type == 'general':
             batch = _get_batch_on_this_cp_rank_in_hybrid_cp_general(batch)
         else:
             batch = _get_batch_on_this_cp_rank_in_hybrid_cp(batch)
