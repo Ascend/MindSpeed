@@ -26,6 +26,8 @@ Alibi算法给attention score添加了一个预设的线性偏置矩阵（如下
 
 （3）目前alibi位置编码已经支持ring-attention长序列并行，当前只支持mask为causal的场景，以及 `--alibi-fusion-attn-type` 为2，3的压缩模式。暂不支持ulysses长序列并行和混合长序列并行。
 
+（4）开启`--use-fusion-attn-v2`特性和长序列并行时，alibi编码不支持开启dropout。
+
 ## 使用效果
 
 模型外推能力提高。
