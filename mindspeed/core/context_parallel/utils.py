@@ -547,6 +547,4 @@ class AdaptiveCpOps:
 
         CACHED_MASK_LIST = mask_list
         return mask_list
-
-
-adaptive_cp_ops = AdaptiveCpOps()
+        
