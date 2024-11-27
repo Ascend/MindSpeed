@@ -192,7 +192,7 @@ def dot_product_attention_forward(
             cp_global_ranks = get_context_parallel_for_hybrid_ring_global_ranks()
 
         cp_para = dict()
-        cp_para['causal'] = args.cp_attention_mask_type == 'causal'
+        cp_para['causal'] = args.attention_mask_type == 'causal'
         cp_para['cp_group'] = cp_group
         cp_para['cp_size'] = cp_size
         cp_para['rank'] = rank

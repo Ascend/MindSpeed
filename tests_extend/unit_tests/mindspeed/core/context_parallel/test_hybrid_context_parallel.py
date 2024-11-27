@@ -51,7 +51,7 @@ def run_hybridattn_cp(cp_size, u_size, bs, seq_len, dtype, cp_args):
     r_size = cp_size // u_size
     args = parse_args(None, True)
     args.use_cp_send_recv_overlap = send_recv_overlap
-    args.cp_attention_mask_type = 'causal' if causal else 'full'
+    args.attention_mask_type = 'causal' if causal else 'full'
     args.use_flash_attn = True
     if u_size == 1:
         args.context_parallel_algo = 'megatron_cp_algo'

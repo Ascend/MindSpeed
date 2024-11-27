@@ -79,7 +79,7 @@ def _get_ltor_masks_and_position_ids(
         attention_mask = attention_mask < 0.5
     
     seq_length_tensor = torch.tensor([seq_length])
-    actual_seq_len = torch.cat([eod_index, seq_length_tensor])
+    actual_seq_len = torch.cat([eod_index + 1, seq_length_tensor])
 
     return attention_mask, loss_mask, (position_ids, actual_seq_len)
 
