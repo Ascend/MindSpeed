@@ -46,4 +46,7 @@ top1 多种并行方式 提速效果：
 同时开启此优化减少显存占用3%：
 <p align="center"> <img src="../../../sources/images/moe_dynamic_padding_e.png" height="500px" width="800px"></p>
 
+## 注意事项：
+
+暂不兼容 流水线并行特性，即需满足--pipeline_model_parallel_size <= 1。
 
