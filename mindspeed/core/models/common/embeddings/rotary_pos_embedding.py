@@ -156,14 +156,14 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
     args = get_args()
 
     if args.context_parallel_algo == 'megatron_cp_algo':
-        if args.cp_attention_mask_type == 'general':
+        if args.attention_mask_type == 'general':
             pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_megatron_cp(pos_emb, seq_dim)
     elif args.context_parallel_algo == 'ulysses_cp_algo':
         pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
     elif args.context_parallel_algo == 'hybrid_cp_algo':
-        if args.cp_attention_mask_type == 'general':
+        if args.attention_mask_type == 'general':
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp_general(pos_emb, seq_dim)
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp(pos_emb, seq_dim)
