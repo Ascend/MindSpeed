@@ -50,7 +50,7 @@
 
 设置`--context-parallel-algo=megatron_cp_algo`
 
-打开`--reset-attention-mask`和`--reset-position-ids`选项，`--cp-attention-mask-type`为`general`。
+打开`--reset-attention-mask`和`--reset-position-ids`选项，`--attention-mask-type`为`general`。
 
 ### 4. 注意事项
 Ascend EOD Reset训练场景下mask-type为general时，Ring/Hybrid Attention比Ulysses下降较多，为正常现象。

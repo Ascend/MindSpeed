@@ -34,7 +34,7 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 |--context-parallel-size [int] |开启CP对应的数量，默认为1，根据用户需求配置。|
 |--seq-length [int] |输入序列的长度。|
 |--use-cp-send-recv-overlap |建议开启，开启后支持send receive overlap功能。|
-| --cp-attention-mask-type [general/causal] | 可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置general代表全量计算。|
+| --attention-mask-type [general/causal] | 可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置general代表全量计算。|
 |--context-parallel-algo megatron_cp_algo |长序列并行算法选项，默认项为`ulysses_cp_algo`，当设置为`megatron_cp_algo`时开启Ring Attention。|
 |--cp-window-size [int] | 可选，默认为`1`，即使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。|
 
@@ -46,5 +46,5 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 ## 注意事项：
 
 1. 开启Context Parallel时需要同时开启Flash Attention特性，否则特性不支持。
-2. 在使用GPT类模型进行训练的场景下，建议cp-attention-mask-type设置为causal。
+2. 在使用GPT类模型进行训练的场景下，建议attention-mask-type设置为causal。
 3. 在8k的序列长度情况下，由于计算的时间缩短，cp功能分割之后的send receive的时间反而会长于计算时间，造成性能的下降，所以建议配置seq-length / context-parallel-size> 8k以获取最佳效果。具体公式参考：S/(Talpha) >= 1/(Wbeta)，其中，S=seq-length / context-parallel-size， T表示芯片的理论算力，alpha表示计算效率，W表示理论通信带宽，beta表示带宽利用率。

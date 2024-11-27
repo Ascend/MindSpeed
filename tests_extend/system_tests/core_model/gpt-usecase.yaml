@@ -77,7 +77,7 @@ products:
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--context-parallel-size 2 --context-parallel-algo ulysses_cp_algo"' ] }
 
   # Ring Attention Long Sequence Parallelism cp>1 and cp_algo = megatron_cp_algo
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--context-parallel-size 2 --context-parallel-algo megatron_cp_algo --cp-attention-mask-type general"' ] }
+  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type general"' ] }
   - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--context-parallel-size 2 --context-parallel-algo megatron_cp_algo --use-cp-send-recv-overlap"' ] }
   - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--context-parallel-size 2 --context-parallel-algo megatron_cp_algo"' ] }
 
@@ -109,7 +109,7 @@ products:
   - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 4 ],  adaptive_recomputing: [ 1 ], extra_args: [ '"--prefetch --recompute-num-layers 2 --disable-bias-linear"' ] }
   - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 4 ],  adaptive_recomputing: [ 1 ], extra_args: [ '"--prefetch --recompute-num-layers 2  --recompute-method block --disable-bias-linear"' ] }
 
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--context-parallel-size 2 --context-parallel-algo megatron_cp_algo --cp-attention-mask-type general"' ] }
+  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type general"' ] }
   - { use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--decoupled-lr 0.0002"' ], args_meta: [ "decoupled_lr" ] }
 
   # reuse-fp32
@@ -125,8 +125,8 @@ products:
 
 
   # cp parallel
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --cp-attention-mask-type general"' ] }
-  - { use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --cp-attention-mask-type causal --use-cp-send-recv-overlap"' ] }
+  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --attention-mask-type general"' ] }
+  - { use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --attention-mask-type causal --use-cp-send-recv-overlap"' ] }
 
   # recompute-activation-function
   - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
