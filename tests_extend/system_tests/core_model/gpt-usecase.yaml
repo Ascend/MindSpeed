@@ -99,13 +99,13 @@ products:
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --context-parallel-size 2 --context-parallel-algo ulysses_cp_algo"' ] }
 
   # -- CP并行 ~ Ring Attention长序列并行： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/ring-attention-context-parallel.md
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --cp-attention-mask-type causal"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --cp-attention-mask-type general"' ] }
+  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type causal"' ] }
+  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type general"' ] }
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --use-cp-send-recv-overlap"' ] }
 
   # -- CP并行 ~ 混合长序列并行： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/hybrid-context-parallel.md
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --cp-attention-mask-type general"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --cp-attention-mask-type causal"' ] }
+  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --attention-mask-type general"' ] }
+  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 4  --context-parallel-algo hybrid_cp_algo --ulysses-degree-in-cp 2 --attention-mask-type causal"' ] }
 
 
   # -- Alibi : https://gitee.com/ascend/MindSpeed/blob/master/docs/features/alibi.md

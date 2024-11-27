@@ -68,7 +68,7 @@ set_attention_mask(attn_mask)
 # 使能Hybrid Adaptive-CP，Ulysses和Adaptive-CP同时生效
 --context-parallel-algo hybrid_adaptive_cp_algo \
 # 必须设置成general类型的attention mask
---cp-attention-mask-type general \
+--attention-mask-type general \
 ```
 
 当总序列的attention mask占用的内存不大（小于等于64K）且attention mask不发生变化时，只需要设置上面的两个变量；
