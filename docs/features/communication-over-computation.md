@@ -79,4 +79,4 @@ ATB安装方法：
 ## 注意事项
 
 暂不兼容 --use-ascend-mc2 特性 。
-当前暂未适配`--use-mcore-models`。
+当前暂未适配MoE模型。

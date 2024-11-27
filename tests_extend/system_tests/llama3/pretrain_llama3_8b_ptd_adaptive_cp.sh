@@ -32,7 +32,7 @@ GPT_ARGS="
     --global-batch-size 2 \
     --sequence-parallel \
     --context-parallel-size 8 \
-    --cp-attention-mask-type general \
+    --attention-mask-type general \
     --use-cp-send-recv-overlap \
     --context-parallel-algo adaptive_cp_algo \
     --use-fused-ring-attention-update \
