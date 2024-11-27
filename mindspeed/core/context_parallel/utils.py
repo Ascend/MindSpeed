@@ -555,5 +555,3 @@ class AdaptiveCpOps:
         return mask_list
 
 
-adaptive_cp_ops = AdaptiveCpOps()
-
