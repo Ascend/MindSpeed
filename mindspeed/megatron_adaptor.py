@@ -902,24 +902,23 @@ def adaptation_l2(aspm, mindspeed_args):
 
 
 def delete_lock_file(directory, lock):
-    lock.acquire()
-    flag_lock = False
-    if os.path.exists(directory):
-        for root, dirs, files in os.walk(directory):
-            for name in files:
-                if name.endswith('.lock') or name.endswith('lock'):
-                    if os.path.exists(directory):
-                        flag_lock = True
-                        print(f"Process (PID: {os.getpid()}) is deleting Lock directory")
-                        shutil.rmtree(directory)
-                        print(f"Process (PID: {os.getpid()}) deleted Lock directory")
-                        if flag_lock:
-                            break
-                    else:
-                        print(f"Process (PID: {os.getpid()}) Directory {directory} does not exist.")
-            if flag_lock:
-                break
-    lock.release()
+    with lock:
+        flag_lock = False
+        if os.path.exists(directory):
+            for root, dirs, files in os.walk(directory):
+                for name in files:
+                    if name.endswith('.lock') or name.endswith('lock'):
+                        if os.path.exists(directory):
+                            flag_lock = True
+                            print(f"Process (PID: {os.getpid()}) is deleting Lock directory")
+                            shutil.rmtree(directory)
+                            print(f"Process (PID: {os.getpid()}) deleted Lock directory")
+                            if flag_lock:
+                                break
+                        else:
+                            print(f"Process (PID: {os.getpid()}) Directory {directory} does not exist.")
+                if flag_lock:
+                    break
 
 
 def exe_adaptation():
