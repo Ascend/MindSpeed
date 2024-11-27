@@ -558,7 +558,7 @@ def get_attention_mask():
     if args.reset_attention_mask:
         args.sparse_mode = 2
         _GLOBAL_ATTN_MASK = torch.triu(torch.ones([2048, 2048], dtype=bool, device=torch.cuda.current_device()), diagonal=1)
-    elif args.cp_attention_mask_type == 'causal' and _GLOBAL_ATTN_MASK is None:    
+    elif args.attention_mask_type == 'causal' and _GLOBAL_ATTN_MASK is None:    
         generate_attention_mask()
     return _GLOBAL_ATTN_MASK
 
@@ -801,7 +801,7 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
             cp_global_ranks = get_context_parallel_for_hybrid_ring_global_ranks()
 
         cp_para = dict()
-        cp_para['causal'] = args.cp_attention_mask_type == 'causal'
+        cp_para['causal'] = args.attention_mask_type == 'causal'
         cp_para['cp_group'] = cp_group
         cp_para['cp_size'] = cp_size
         cp_para['rank'] = rank
