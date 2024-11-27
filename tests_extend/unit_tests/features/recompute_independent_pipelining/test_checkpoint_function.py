@@ -64,7 +64,7 @@ class TestCheckpointFunction(DistributedTest):
             mock_forward = mock.Mock(wraps=self.forward)
             input_data = torch.randn(3, 4, requires_grad=True)
             output = checkpoint(mock_forward, False, input_data)
-            assert 'ReluBackward' in str(output.grad_fn)
+            assert 'CheckpointFunctionRipipeBackward' in str(output.grad_fn)
 
             expected_output = self.forward(input_data)
             assert torch.allclose(output, expected_output)
@@ -87,7 +87,7 @@ class TestCheckpointFunction(DistributedTest):
             mock_forward = mock.Mock(wraps=self.forward)
             input_data = torch.randn(3, 4, requires_grad=True)
             output = checkpoint(mock_forward, False, input_data)
-            assert 'ReluBackward' in str(output.grad_fn)
+            assert 'CheckpointFunctionRipipeBackward' in str(output.grad_fn)
 
             expected_output = self.forward(input_data)
             assert torch.allclose(output, expected_output)
