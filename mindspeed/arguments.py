@@ -510,6 +510,9 @@ def validate_args_wrapper(validate_args):
             assert num_layers_per_pipeline_stage // args.num_layers_per_virtual_pipeline_stage > 1, \
             'considering args of num_layers and pipeline_model_parallel_size, vpp setting should be meaningful'
 
+        # deepspeed dropless does not support pp
+        if args.moe_no_drop and args.pipeline_model_parallel_size > 1:
+            raise AssertionError("--moe-dropless is not compatible with pp")
 
         if args.use_fused_rmsnorm:
             if args.normalization != "RMSNorm":

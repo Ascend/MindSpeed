@@ -70,10 +70,12 @@
 
 ## 注意事项
 
-在开启`--pipe-experts-multi-data N`时，若`N`过大，导致输入数据切分过细，会引入多余的 cast 和 add 算子，导致额外的开销，引起性能恶化。
-目前 8 机推荐在 num_local_experts = 1 时开启`--pipe-experts-multi-data 4`来获得最佳性能，在 num_local_experts > 1 时，不推荐开启`--pipe-experts-multi-data N`；
-单机，当 num_local_experts 为 1 或 2 时，`N`推荐设置为 2，当 num_local_experts 为 4 及以上时，不推荐开启多副本。
-`--pipe-experts-multi-data N`特性主要被用来提供 num_local_experts 为 1 时无法进行 experts 间的细粒度切分的替代方案。
-虽然兼容 num_local_experts > 1 的场景，开启后可以进一步提高计算通信掩盖比例，但会新引入 cast 和 add 算子操作，当掩盖的收益不足以抵消新引入算子的拖慢时，就会导致性能恶化。
-
-在未开启SP`--sequence-parallel`时，无法开启多流水线`--pipe-experts-multi-stream`。
+1、在开启`--pipe-experts-multi-data N`时，若`N`过大，导致输入数据切分过细，会引入多余的 cast 和 add 算子，导致额外的开销，引起性能恶化。
+2、目前 8 机推荐在 num_local_experts = 1 时开启`--pipe-experts-multi-data 4`来获得最佳性能，在 num_local_experts > 1
+时，不推荐开启`--pipe-experts-multi-data N`。
+3、单机，当 num_local_experts 为 1 或 2 时，`N`推荐设置为 2，当 num_local_experts 为 4 及以上时，不推荐开启多副本。
+4、`--pipe-experts-multi-data N`特性主要被用来提供 num_local_experts 为 1 时无法进行 experts 间的细粒度切分的替代方案。
+5、虽然兼容 num_local_experts > 1 的场景，开启后可以进一步提高计算通信掩盖比例，但会新引入 cast 和 add
+算子操作，当掩盖的收益不足以抵消新引入算子的拖慢时，就会导致性能恶化。
+6、在未开启SP`--sequence-parallel`时，无法开启多流水线`--pipe-experts-multi-stream`。
+7、未适配MoE token dropless特性。
