@@ -803,6 +803,11 @@ def validate_args_wrapper(validate_args):
         if args.moe_train_capacity_factor <= 0.0:
             raise AssertionError("--moe-train-capacity-factor must be greater than 0.0")
 
+        
+        if args.gemm_gradient_accumulation_fusion:
+            if not args.moe_grouped_gemm:
+                raise AssertionError('`--gemm-gradient-accumulation-fusion` only support with `--moe-grouped-gemm`.')
+
         if args.fp16:
             args.gradient_accumulation_fusion = False
             warnings.warn("Unsupported gradient fp16 bf16 for gradient accumulation fusion")

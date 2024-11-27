@@ -385,7 +385,8 @@ def _get_batch_on_this_cp_rank_in_adaptive_cp(batch):
             raise AssertionError("Do not use adaptive cp with full mask")
         if len(attention_mask.shape) != 2:
             raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
-        from mindspeed.core.context_parallel.utils import adaptive_cp_ops
+        from mindspeed.core.context_parallel.utils import AdaptiveCpOps
+        adaptive_cp_ops = AdaptiveCpOps()
         remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attention_mask, cp_size)
         mask_list = adaptive_cp_ops.get_mask_list(attention_mask, scheduling, remapped_seq_order, cp_rank, cp_size)
 
@@ -425,7 +426,8 @@ def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
             raise AssertionError("Do not use adaptive cp with full mask")
         if len(attention_mask.shape) != 2:
             raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
-        from mindspeed.core.context_parallel.utils import adaptive_cp_ops
+        from mindspeed.core.context_parallel.utils import AdaptiveCpOps
+        adaptive_cp_ops = AdaptiveCpOps()
         remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attention_mask, adap_size)
         mask_list = adaptive_cp_ops.get_mask_list(attention_mask, scheduling, remapped_seq_order, adap_rank, adap_size)
 
