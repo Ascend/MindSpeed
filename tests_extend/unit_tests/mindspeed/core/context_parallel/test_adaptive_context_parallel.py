@@ -22,7 +22,7 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_send_r
 from mindspeed.core.context_parallel.utils import (set_scheduling_info, 
                                                    get_scheduling_info, 
                                                    clear_global_info,
-                                                   adaptive_cp_ops,
+                                                   AdaptiveCpOps,
                                                    set_remapped_seq_order)
 
 
@@ -118,6 +118,7 @@ def run_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
     cp_group = torch.distributed.new_group(
         cp_global_ranks, pg_options=megatron.core.parallel_state.get_nccl_options('cp2', {})
     )
+    adaptive_cp_ops = AdaptiveCpOps()
     remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attn_mask, cp_size)
     set_scheduling_info(torch.distributed.get_rank(), scheduling)
     set_remapped_seq_order(remapped_seq_order)
@@ -212,6 +213,7 @@ def run_hybrid_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
     initialize_context_parallel_group_for_hybrid_cp(1, 1, cp_size, {})
     adap_size = get_context_parallel_for_hybrid_ring_world_size()
     adap_rank = get_context_parallel_for_hybrid_ring_rank()
+    adaptive_cp_ops = AdaptiveCpOps()
     remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attn_mask, adap_size)
     set_scheduling_info(torch.distributed.get_rank(), scheduling)
     set_remapped_seq_order(remapped_seq_order)
