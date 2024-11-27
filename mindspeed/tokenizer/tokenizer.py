@@ -73,6 +73,7 @@ class _AutoTokenizer(MegatronTokenizer):
         hf_tokenizer_kwargs["model_max_length"] = model_max_length
         hf_tokenizer_kwargs["use_fast"] = use_fast
         hf_tokenizer_kwargs["trust_remote_code"] = True
+        hf_tokenizer_kwargs["local_files_only"] = True
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path, **hf_tokenizer_kwargs)
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
