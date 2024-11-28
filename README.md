@@ -175,12 +175,30 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】Ascend 高维张量并行                | [link](docs/features/tensor-parallel-2d.md)                           |
 | Gloo 存档落盘优化                | [link](docs/features/hccl-replace-gloo.md)                           |
 
+## Mcore MoE特性
+| 特性                                                       | 介绍                                                                               |
+|----------------------------------------------------------|----------------------------------------------------------------------------------|
+| 【Prototype】Ascend Megatron MoE 负载感知内存均衡算法                           | [link](docs/features/megatron_moe/megatron-moe-adaptive-recompute-activation.md) |
+| 【Prototype】Megatron MoE GMM                                         | [link](docs/features/megatron_moe/megatron-moe-gmm.md)                                                      |
+| 【Prototype】Ascend Megatron MoE Allgather Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md)                                     |
+| 【Prototype】Ascend Megatron MoE Alltoall Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md)                                      |
+| 【Prototype】Megatron MoE Zero Memory 性能优化                  | [link](docs/features/megatron_moe/megatron-moe-zero-memory.md)                                              |
+| 【Prototype】Megatron MoE Allgather Overlap Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-overlap-comm.md)                                   |
+| 【Prototype】Megatron MoE Alltoall Overlap Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-overlap-comm.md)                                    |
+| 【Prototype】Megatron MoE TP拓展EP | [link](docs/features/megatron_moe/megatron-moe-tp-extend-ep.md)                                             |
+| 【Prototype】Ascend 共享专家                     | [link](docs/features/shared-experts.md)                                          |
+
+## DeepSpeed MoE特性
+| 特性                                 | 介绍                                                   |
+|------------------------------------|------------------------------------------------------|
+| DeepSpeed MoE                   | [link](docs/features/deepspeed_moe/deepspeed-moe.md) |
+| Ascend DeepSpeed MoE token 重排性能优化  | [link](docs/features/deepspeed_moe/deepspeed-moe-token-rearrange.md)             |
+| Ascend DeepSpeed MoE dropless 性能优化 | [link](docs/features/deepspeed_moe/deepspeed-moe-efficient-moe.md) |
+| Ascend MLP 通信隐藏              | [link](docs/features/pipeline-experts.md)                 |
+
 ## 关键场景特性
 | 特性                              | 介绍                                                   |
 |---------------------------------|------------------------------------------------------|
-| Megatron Mcore MoE              | [link](docs/features/megatron_moe/megatron-moe.md)   |
-| DeepSpeed MoE                   | [link](docs/features/deepspeed_moe/deepspeed-moe.md) |
-| Ascend 共享专家                     | [link](docs/features/shared-experts.md)              |
 | 【Prototype】Ascend alibi         | [link](docs/features/alibi.md)                       |
 | 【Prototype】Ascend EOD Reset训练场景 | [link](docs/features/eod-reset.md)                   |
 
