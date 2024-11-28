@@ -623,11 +623,11 @@ def fp16_tensor_convert_to_fp32_tensor(self):
                     shard_fp32_main_param_view[-remain * 2:].copy_(
                         workspace_convert_view.view(2, -1).transpose(1, 0).reshape(-1).contiguous())
            
-                if not self.first_sub_flag:
-                    if npu_deterministic:
-                        fp16_tensor_convert_to_fp32_tensor_deterministic(self.shard_fp32_from_float16_groups, self.optimizer)
-                    else:
-                        shard_main_param_int32_view_bucket[:param_data_dp_numel].sub_(32768)
+                if not self.first_sub_flag and not npu_deterministic:
+                    shard_main_param_int32_view_bucket[:param_data_dp_numel].sub_(32768)
+       
+        if not self.first_sub_flag and npu_deterministic:
+            fp16_tensor_convert_to_fp32_tensor_deterministic(self.shard_fp32_from_float16_groups, self.optimizer)
 
 
 def fp32_tensor_convert_to_fp16_tensor(self):
@@ -706,27 +706,45 @@ def fp16_tensor_convert_to_fp32_tensor_deterministic(shard_fp32_from_float16_gro
     assert hasattr(optimizer, "state")
     for shard_fp32_from_float16_group in shard_fp32_from_float16_groups:
         for shard_fp32_param in shard_fp32_from_float16_group:
-            if "exp_avg_sq" in optimizer.state[shard_fp32_param]:
-                shard_int32_tensor = torch.tensor(shard_fp32_param.untyped_storage(), dtype=torch.int32, device=shard_fp32_param.device)
-                assert shard_int32_tensor.numel() == shard_fp32_param.numel()
-                odd_even_tensor = (torch.sign(optimizer.state[shard_fp32_param]["exp_avg_sq"]) > 0).reshape(-1)
-                optimizer.state[shard_fp32_param]["exp_avg_sq"].abs_()
-                shard_int32_tensor.add_(odd_even_tensor)
-                shard_int32_tensor.sub_(32768)
+            if "exp_avg_sq" not in optimizer.state[shard_fp32_param]:
+                continue
+            shard_int32_tensor = shard_fp32_param.view(torch.int32)
+            assert shard_int32_tensor.numel() == shard_fp32_param.numel()
+            loops = shard_int32_tensor.numel() // TRANSPOSE_BF16_BLOCK_SIZE
+            remain = shard_int32_tensor.numel() % TRANSPOSE_BF16_BLOCK_SIZE
+            exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
+            for loop in range(loops):
+                odd_even_tensor = torch.sign(exp_avg_sq_flatten[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE] > 0)
+                shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE].add_(odd_even_tensor)
+            if remain > 0:
+                odd_even_tensor = torch.sign(exp_avg_sq_flatten[-remain:] > 0)
+                shard_int32_tensor[-remain:].add_(odd_even_tensor)
+            shard_int32_tensor.sub_(32768)
+            optimizer.state[shard_fp32_param]["exp_avg_sq"].abs_()
 
 
 def fp32_tensor_convert_to_fp16_tensor_deterministic(shard_fp32_from_float16_groups, optimizer):
     assert hasattr(optimizer, "state")
     for shard_fp32_from_float16_group in shard_fp32_from_float16_groups:
         for shard_fp32_param in shard_fp32_from_float16_group:
-            if "exp_avg_sq" in optimizer.state[shard_fp32_param]:
-                shard_int32_tensor = torch.tensor(shard_fp32_param.untyped_storage(), dtype=torch.int32, device=shard_fp32_param.device)
-                assert shard_int32_tensor.numel() == shard_fp32_param.numel()
-                odd_even_tensor = ((shard_int32_tensor & 131071) == 32768).int()
-                shard_int32_tensor.add_(32768)
-                shard_int32_tensor.sub_(odd_even_tensor)
-                sign_tensor = torch.sign(odd_even_tensor - 0.5).reshape(optimizer.state[shard_fp32_param]["exp_avg_sq"].shape)
-                optimizer.state[shard_fp32_param]["exp_avg_sq"].mul_(sign_tensor)
+            if "exp_avg_sq" not in optimizer.state[shard_fp32_param]:
+                continue
+            shard_int32_tensor = shard_fp32_param.view(torch.int32)
+            assert shard_int32_tensor.numel() == shard_fp32_param.numel()
+            loops = shard_int32_tensor.numel() // TRANSPOSE_BF16_BLOCK_SIZE
+            remain = shard_int32_tensor.numel() % TRANSPOSE_BF16_BLOCK_SIZE
+            exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
+            shard_int32_tensor.add_(32768)
+            for loop in range(loops):
+                odd_even_tensor = ((shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE] & 131071) == 65536).int()
+                shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE].sub_(odd_even_tensor)
+                sign_tensor = torch.sign(odd_even_tensor - 0.5)
+                exp_avg_sq_flatten[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE].mul_(sign_tensor)
+            if remain > 0:
+                odd_even_tensor = ((shard_int32_tensor[-remain:] & 131071) == 65536).int()
+                shard_int32_tensor[-remain:].sub_(odd_even_tensor)
+                sign_tensor = torch.sign(odd_even_tensor - 0.5)
+                exp_avg_sq_flatten[-remain:].mul_(sign_tensor)
 
 
 def get_parameter_state_dp_zero_hccl(self):
