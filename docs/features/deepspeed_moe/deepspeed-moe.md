@@ -73,11 +73,3 @@ MoE特性token重排优化:
 |重要参数| 参数说明  |
 |  ----  | ----  |
 |--enable-token-rearrange-opt |开启token重排|
-
-## 特性优化
-
-| 特性                                 | 介绍                                                   |
-|------------------------------------|------------------------------------------------------|
-| Ascend DeepSpeed MoE token 重排性能优化  | [link](deepspeed-moe-token-rearrange.md)             |
-| Ascend DeepSpeed MoE dropless 性能优化 | [link](deepspeed-moe-efficient-moe.md) |
-| Ascend MLP 通信隐藏              | [link](../pipeline-experts.md)                 |
