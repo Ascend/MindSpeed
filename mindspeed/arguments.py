@@ -435,6 +435,15 @@ def validate_args_wrapper(validate_args):
     def wrapper(args, defaults=None):
         if defaults is None:
             defaults = {}
+        if args.num_experts:
+            if args.use_ascend_coc:
+                raise AssertionError('coc is not compatible with moe models')
+            if args.use_mcore_models:
+                if args.moe_model_type == 'deepspeed_moe':
+                    raise AssertionError('deepspeed_moe is not compatible with --use-mcore-models')
+            else:
+                if args.moe_model_type == 'megatron_moe':
+                    raise AssertionError('megatron_moe only support with --use-mcore-models')
         overlap_param_gather_without_mcore_models = False
         if args.overlap_param_gather and not args.use_mcore_models:
             args.use_mcore_models = True
