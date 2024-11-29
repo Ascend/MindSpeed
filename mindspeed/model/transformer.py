@@ -845,7 +845,7 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
 
     cp_expanded_by_2d_tp = args.tp_2d and args.tp_y > 1
     if cp_expanded_by_2d_tp:
-        tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
+        tp_y_cp_sz = args.tp_y * args.context_parallel_size
     else:
         tp_y_cp_sz = args.context_parallel_size
     if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
@@ -1056,7 +1056,12 @@ def patch_for_attention(config, self):
         kv_projection_size = _args.kv_channels * _args.num_attention_heads
     # qkv bias
     bias = _args.add_qkv_bias or _args.add_bias_linear
-    if _args.context_parallel_size > 1 and _args.context_parallel_algo in ['ulysses_cp_algo',
+    cp = _args.context_parallel_size
+    if _args.tp_2d:
+        tp_y_cp_sz = cp * _args.tp_y
+    else:
+        tp_y_cp_sz = cp
+    if tp_y_cp_sz > 1 and _args.context_parallel_algo in ['ulysses_cp_algo',
                                                                                            'hybrid_cp_algo',
                                                                                            'hybrid_adaptive_cp_algo']:
         if _args.tp_2d:
