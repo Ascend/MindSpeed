@@ -122,18 +122,32 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
             h = torch.matmul(h, w2)
             fc2_output = h
     else:
-        w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
-        w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
+        if permuted_local_hidden_states.nelement() != 0:
+            w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
+            w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 
-        fc1_output = gg.ops.gmm(
-            permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion, original_weight=self.weight1
-        )
+            fc1_output = gg.ops.gmm(
+                permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
+                original_weight=self.weight1
+            )
 
-        self.activation_checkpoint_manager = CheckpointWithoutOutput()
-        intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
-                                                                                False,
-                                                                                fc1_output)
-        fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion, original_weight=self.weight2)
+            self.activation_checkpoint_manager = CheckpointWithoutOutput()
+            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
+                                                                                  False,
+                                                                                  fc1_output)
+            fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
+                                    gemm_fusion=gemm_fusion, original_weight=self.weight2)
+        else:
+            assert torch.count_nonzero(tokens_per_expert) == 0
+            w1 = self.weight1.view(self.config.hidden_size, -1)
+            w2 = self.weight2.view(-1, self.config.hidden_size)
+            h = torch.matmul(permuted_local_hidden_states, w1)
+            self.activation_checkpoint_manager = CheckpointWithoutOutput()
+            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
+                                                                                  False,
+                                                                                  h)
+            h = torch.matmul(intermediate_parallel, w2)
+            fc2_output = h
 
         # discard the output of the activation function,
         # which will be restored by recomputation during backward.
