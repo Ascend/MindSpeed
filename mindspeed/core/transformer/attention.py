@@ -89,8 +89,12 @@ def attention_init(
         is_expert=False,
         tp_comm_buffer_name='proj',
     )
-
-    if args.context_parallel_size > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
+    cp = args.context_parallel_size
+    if args.tp_2d:
+        tp_y_cp_sz = cp * args.tp_y
+    else:
+        tp_y_cp_sz = cp
+    if tp_y_cp_sz > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
                                                                          'hybrid_adaptive_cp_algo']:
         if args.tp_2d:
             tp_y_cp = TensorParallelYUnionCP()
