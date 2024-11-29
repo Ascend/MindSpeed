@@ -17,7 +17,9 @@ ALIGN_SIZE = 512
 class COCColumnSeqParallelFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, weight, bias):
-        set_context(ctx, input_, weight, bias)
+        ctx.save_for_backward(input_)
+        ctx.use_bias = bias is not None
+        ctx.weight = weight
         trans_weight = weight.t()
 
         parallel_num = get_parallel_num(m=reduce(lambda x, y: x * y, input_.shape[:-1]) * min_comm_config.tp_world_size,
@@ -53,7 +55,8 @@ class COCColumnSeqParallelFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input_, weight = ctx.saved_tensors
+        input_ = ctx.saved_tensors[0]
+        weight = ctx.weight
         grad_input_orig_shape = get_output_shape(grad_output, weight, 1, is_gather=True)
         grad_output = reshape_to_2D(grad_output)
 
@@ -127,7 +130,9 @@ class COCColumnSeqParallelFunction(torch.autograd.Function):
 class COCRowSeqParallelFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, weight, bias):
-        set_context(ctx, input_, weight, bias)
+        ctx.save_for_backward(input_)
+        ctx.use_bias = bias is not None
+        ctx.weight = weight
         ctx.world_size = min_comm_config.tp_world_size
         trans_weight = weight.t()
 
@@ -158,7 +163,8 @@ class COCRowSeqParallelFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        total_input, weight = ctx.saved_tensors
+        total_input = ctx.saved_tensors[0]
+        weight = ctx.weight
 
         parallel_num = get_parallel_num(
             m=reduce(lambda x, y: x * y, grad_output.shape[:-1]) * min_comm_config.tp_world_size,
