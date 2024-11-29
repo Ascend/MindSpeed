@@ -1230,7 +1230,12 @@ def patch_for_attention(config, self):
         kv_projection_size = _args.kv_channels * _args.num_attention_heads
     # qkv bias
     bias = _args.add_qkv_bias or _args.add_bias_linear
-    if _args.context_parallel_size > 1 and _args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
+    cp = _args.context_parallel_size
+    if _args.tp_2d:
+        tp_y_cp_sz = cp * _args.tp_y
+    else:
+        tp_y_cp_sz = cp
+    if tp_y_cp_sz > 1 and _args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
                                                                                'hybrid_adaptive_cp_algo']:
         if _args.tp_2d:
             tp_y_cp = TensorParallelYUnionCP()
