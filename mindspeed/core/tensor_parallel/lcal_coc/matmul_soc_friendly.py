@@ -62,7 +62,9 @@ def process_with_k_aligned(left, right, mn_aligned, is_left_transposed, is_right
     if is_left_transposed:
         left = left.contiguous()
     if not mn_aligned and not is_right_transposed:
+        main_grad = right.main_grad
         right = right.t().contiguous().t()
+        right.main_grad = main_grad
     return left, right
 
 
