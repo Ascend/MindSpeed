@@ -10,8 +10,6 @@ from .coc_utils import CommunicationType, COCParallel, get_output_shape
 from .coc_utils import shuffle_as_coc_reduce_scatter, shuffle_as_coc_all_gather
 from .coc_utils import set_context, reshape_to_2D, async_gather_along_first_dim, is_grad_needed, get_parallel_num
 from .rewrite_parallel_linears_sequence_parallel import RewriteColumnSeqParallelFunction, RewriteRowSeqParallelFunction
-from megatron.training import get_args
-from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
 
 ALIGN_SIZE = 512
 
@@ -19,7 +17,9 @@ ALIGN_SIZE = 512
 class COCColumnSeqParallelFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, weight, bias):
-        set_context(ctx, input_, weight, bias)
+        ctx.save_for_backward(input_)
+        ctx.use_bias = bias is not None
+        ctx.weight = weight
         trans_weight = weight.t()
 
         parallel_num = get_parallel_num(m=reduce(lambda x, y: x * y, input_.shape[:-1]) * min_comm_config.tp_world_size,
@@ -55,7 +55,8 @@ class COCColumnSeqParallelFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input_, weight = ctx.saved_tensors
+        input_ = ctx.saved_tensors[0]
+        weight = ctx.weight
         grad_input_orig_shape = get_output_shape(grad_output, weight, 1, is_gather=True)
         grad_output = reshape_to_2D(grad_output)
 
@@ -129,7 +130,9 @@ class COCColumnSeqParallelFunction(torch.autograd.Function):
 class COCRowSeqParallelFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, weight, bias):
-        set_context(ctx, input_, weight, bias)
+        ctx.save_for_backward(input_)
+        ctx.use_bias = bias is not None
+        ctx.weight = weight
         ctx.world_size = min_comm_config.tp_world_size
         trans_weight = weight.t()
 
@@ -160,7 +163,8 @@ class COCRowSeqParallelFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        total_input, weight = ctx.saved_tensors
+        total_input = ctx.saved_tensors[0]
+        weight = ctx.weight
 
         parallel_num = get_parallel_num(
             m=reduce(lambda x, y: x * y, grad_output.shape[:-1]) * min_comm_config.tp_world_size,
