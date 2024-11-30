@@ -315,8 +315,15 @@ class AdaptiveRecomputePolicy:
         pp_size = all_args.pipeline_model_parallel_size or 1
         vpp_size = all_args.virtual_pipeline_model_parallel_size or 1
         per_pp_layers = all_args.num_layers // pp_size
+        per_vpp_layers = all_args.num_layers_per_virtual_pipeline_stage or per_pp_layers
         if not all_args.enable_recompute_layers_per_pp_rank:
-            recompute_num_layers *= vpp_size
+            if recompute_num_layers >= per_vpp_layers:
+                recompute_num_layers = per_pp_layers
+            else:
+                recompute_num_layers *= vpp_size
+        else:
+            if recompute_num_layers >= per_pp_layers:
+                recompute_num_layers = per_pp_layers
         if all_args.recompute_method == 'block':
             self.num_prefetch = recompute_num_layers
         elif all_args.recompute_method == 'uniform':
@@ -722,7 +729,7 @@ def is_activate_adaptive_recompute():
         return False, profiling_step
     max_profiling_step = all_args.train_iters // 10
     profiling_step = all_args.adaptive_recompute_profiling_step
-    if profiling_step > all_args.train_iters:
+    if profiling_step > all_args.train_iters and not all_args.swap_attention:
         raise AssertionError('\"adaptive-recompute-profiling-step\" cannot be greater than train_iters')
     if profiling_step < 5 or profiling_step > max_profiling_step:
         print_rank_0(f"[WARNING] consider set \"adaptive-recompute-profiling-step\" value >=5"
