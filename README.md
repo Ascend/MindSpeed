@@ -90,23 +90,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
      from typing import Union
     ```
 
-2. 在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在model_provider函数中删除`assert(args.context_parallel_size == 1), "Context parallelism is only supported with Megatron Core!"`。
-    ```diff
-    else:
-        assert (
-            args.context_parallel_size == 1
-        ), "Context parallelism is only supported with Megatron Core!"
-
-        model = megatron.legacy.model.GPTModel(
-            config,
-            num_tokentypes=0,
-            parallel_output=True,
-            pre_process=pre_process,
-            post_process=post_process,
-        )
-    ```
-
-3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
+2. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
     ```shell
     bash examples/pretrain_gpt_distributed.sh
     ```

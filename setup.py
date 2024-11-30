@@ -9,7 +9,7 @@ if sys.version_info < (3,):
     raise Exception("Python 2 is not supported by MindSpeed.")
 
 __description__ = 'MindSpeed for LLMs of Ascend'
-__version__ = '0.7.0'
+__version__ = '0.8.0'
 __author__ = 'Ascend'
 __long_description__ = 'MindSpeed for LLMs of Ascend'
 __url__ = 'https://gitee.com/ascend/MindSpeed'
@@ -70,16 +70,15 @@ setuptools.setup(
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
         'Topic :: Software Development :: Libraries :: Python Modules',
         # Supported python versions
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
         # Additional Setting
         'Environment :: Console',
         'Natural Language :: English',
         'Operating System :: OS Independent',
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
     packages=setuptools.find_packages(),
     # Add in any packaged data.
     include_package_data=True,
