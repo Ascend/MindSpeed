@@ -167,6 +167,9 @@ products:
   # MoE Grouped GEMM: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/megatron_moe/megatron-moe-gmm.md
   - { id: [ 'megatron-moe-gemm' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --moe-grouped-gemm --disable-bias-linear"' ] }
 
+  # Moe drop and pad
+  - { id: [ 'moe-drop-pad' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 4 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-model-type megatron_moe --disable-bias-linear --moe-token-dispatcher-type alltoall --moe-pad-expert-input-to-capacity --moe-token-drop-policy"' ] }
+
   # Allgather Dispatcher 分支优化: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md
   - { id: [ 'megatron-moe-allgather' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --moe-token-dispatcher-type allgather --moe-permutation-async-comm"' ] }
 

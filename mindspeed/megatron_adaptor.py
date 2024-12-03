@@ -589,7 +589,7 @@ def memory_fragmentation_adaptation(aspm, args):
         aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
     if (args.adaptive_recompute_enable and not args.memory_fragmentation) or args.swap_attention:
         from .core.memory.adaptive_recomputing.adaptive_recompute import allowed_recomputing_module_wrapper
-        if hasattr(args, "use_mcore_models") and args.use_mcore_models:
+        if hasattr(args, "use_legacy_models") and not args.use_legacy_models:
             from megatron.core.transformer.transformer_layer import TransformerLayer
             allowed_recomputing_module_wrapper(TransformerLayer)
         else:

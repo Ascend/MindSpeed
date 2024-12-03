@@ -119,7 +119,7 @@ def get_all2all_experts_output():
 
 def only_recompute_activation(layer_number):
     args = get_args()
-    vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
+    vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
     vpp_size = args.virtual_pipeline_model_parallel_size
     pp_size = args.transformer_pipeline_model_parallel_size
 

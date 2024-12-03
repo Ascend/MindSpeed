@@ -437,12 +437,14 @@ def validate_args_wrapper(validate_args):
     def wrapper(args, defaults=None):
         if defaults is None:
             defaults = {}
+        replace_model_type_for_deepspeed_moe = False
         if args.num_experts:
             if args.use_ascend_coc:
                 raise AssertionError('coc is not compatible with moe models')
             if args.use_legacy_models:
                 if args.moe_model_type == 'megatron_moe':
                     raise AssertionError('megatron_moe is not compatible with --use-legacy-models')
+                replace_model_type_for_deepspeed_moe = True
             else:
                 if args.moe_model_type == 'deepspeed_moe':
                     raise AssertionError('deepspeed_moe only support with --use-legacy-models')
@@ -490,9 +492,15 @@ def validate_args_wrapper(validate_args):
             if args.overlap_p2p_comm:
                 flag_overlap_p2p_comm = True
 
+        # skip validation for deepspeed_moe with CP
+        origin_use_legacy_models = args.use_legacy_models
+        if replace_model_type_for_deepspeed_moe:
+            args.use_legacy_models = False
         original_variable_seq_lengths = args.variable_seq_lengths
         args = validate_args(args, defaults)
         args.variable_seq_lengths = original_variable_seq_lengths
+        if replace_model_type_for_deepspeed_moe:
+            args.use_legacy_models = origin_use_legacy_models
         if args.enable_zero3:
             print("[WARNING] zero3 currently does not support model save and load")
             if args.use_ascend_mc2 or args.reuse_fp32_param or args.recompute_granularity is not None or args.use_pipe_experts:
@@ -661,9 +669,9 @@ def validate_args_wrapper(validate_args):
             raise AssertionError('--recompute-norm is not compatible with selective recomputation')
         if args.recompute_norm and args.use_legacy_models:
             raise AssertionError('--recompute-norm is only supported with mcore models')
-        if args.use_nanopipe and args.use_mcore_models:
+        if args.use_nanopipe and not args.use_legacy_models:
             raise AssertionError('--use-nanopipe is not available with mcore models')
-        if args.adaptive_recompute_device_swap and args.use_mcore_models:
+        if args.adaptive_recompute_device_swap and not args.use_legacy_models:
             raise AssertionError('--adaptive-recompute-device-swap is not available with mcore models')                 
         if adaptive_recompute_enable:
             assert args.recompute_granularity is None and args.recompute_method is None, \
