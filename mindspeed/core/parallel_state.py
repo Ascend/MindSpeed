@@ -21,6 +21,7 @@ from datetime import timedelta
 
 import torch
 import megatron
+from megatron.core.parallel_state import get_context_parallel_world_size, get_nccl_options
 
 from mindspeed.core.simple_parallel_cfg import SimpleParallelCfg
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
@@ -76,119 +77,148 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             order: str = "tp-cp-ep-dp-pp",
     ):
         from megatron.training.utils import print_rank_0
-        from megatron.training import get_args
-        args = get_args()
 
-        if virtual_pipeline_model_parallel_size is not None:
-            megatron.core.parallel_state._VIRTUAL_PIPELINE_MODEL_PARALLEL_RANK = 0
-            megatron.core.parallel_state._VIRTUAL_PIPELINE_MODEL_PARALLEL_WORLD_SIZE = virtual_pipeline_model_parallel_size
-
-        # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
-        initialize_model_parallel(
-            tensor_model_parallel_size,
-            pipeline_model_parallel_size,
-            None,
-            pipeline_model_parallel_split_rank,
-            use_sharp,
-            context_parallel_size,
-            1,
-            nccl_communicator_config_path,
-            distributed_timeout_minutes,
-            order
-        )
-
-        rank = torch.distributed.get_rank()
-        world_size: int = torch.distributed.get_world_size()
-        num_tensor_model_parallel_groups: int = world_size // tensor_model_parallel_size
-        num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
-        data_parallel_size: int = world_size // (
-                tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
-        )
-
-        if data_parallel_size * context_parallel_size % expert_model_parallel_size != 0:
-            raise RuntimeError(
-                f"data_parallel_size * context_parallel_size ({data_parallel_size * context_parallel_size}) is not "
-                f"divisible by expert_model_parallel_size "
+        if order == "tp-cp-ep-dp-pp":
+            # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
+            initialize_model_parallel(
+                tensor_model_parallel_size,
+                pipeline_model_parallel_size,
+                virtual_pipeline_model_parallel_size,
+                pipeline_model_parallel_split_rank,
+                use_sharp,
+                context_parallel_size,
+                1,
+                nccl_communicator_config_path,
+                distributed_timeout_minutes,
+                order
             )
 
-        nccl_comm_cfgs = {}
-        if nccl_communicator_config_path is not None:
-            import yaml
+            rank = torch.distributed.get_rank()
+            world_size: int = torch.distributed.get_world_size()
+            num_tensor_model_parallel_groups: int = world_size // tensor_model_parallel_size
+            num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
+            data_parallel_size: int = world_size // (
+                    tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
+            )
 
-            with open(nccl_communicator_config_path, "r") as stream:
-                nccl_comm_cfgs = yaml.safe_load(stream)
-
-        all_data_parallel_group_ranks = []
-        all_data_parallel_group_ranks_with_cp = []
-        for i in range(pipeline_model_parallel_size):
-            start_rank = i * num_pipeline_model_parallel_groups
-            end_rank = (i + 1) * num_pipeline_model_parallel_groups
-            for j in range(context_parallel_size * tensor_model_parallel_size):
-                ranks = range(
-                    start_rank + j, end_rank, context_parallel_size * tensor_model_parallel_size
+            if data_parallel_size * context_parallel_size % expert_model_parallel_size != 0:
+                raise RuntimeError(
+                    f"data_parallel_size * context_parallel_size ({data_parallel_size * context_parallel_size}) is not "
+                    f"divisible by expert_model_parallel_size "
                 )
-                all_data_parallel_group_ranks.append(list(ranks))
-            for j in range(tensor_model_parallel_size):
-                ranks_with_cp = range(
-                    start_rank + j, end_rank, tensor_model_parallel_size
-                )
-                all_data_parallel_group_ranks_with_cp.append(list(ranks_with_cp))
 
-        timeout = timedelta(minutes=distributed_timeout_minutes)
+            nccl_comm_cfgs = {}
+            if nccl_communicator_config_path is not None:
+                import yaml
 
-        # Regenerate ep related groups because ep is set to 1 in initialize_model_parallel func
-        tensor_and_data_group_size_with_cp: int = (tensor_model_parallel_size * data_parallel_size
-                                                   * context_parallel_size)
-        num_tensor_and_data_groups_with_cp: int = world_size // tensor_and_data_group_size_with_cp
-        tensor_and_expert_group_size: int = tensor_model_parallel_size * expert_model_parallel_size
-        num_expert_groups: int = data_parallel_size * context_parallel_size // expert_model_parallel_size
-        all_tensor_and_expert_group_ranks = []
-        for i in range(num_tensor_and_data_groups_with_cp):
-            for j in range(num_expert_groups):
-                start_rank = i * tensor_and_data_group_size_with_cp + j * tensor_and_expert_group_size
-                end_rank = i * tensor_and_data_group_size_with_cp + (j + 1) * tensor_and_expert_group_size
-                ranks = range(start_rank, end_rank)
-                all_tensor_and_expert_group_ranks.append(list(ranks))
+                with open(nccl_communicator_config_path, "r") as stream:
+                    nccl_comm_cfgs = yaml.safe_load(stream)
+
+            all_data_parallel_group_ranks = []
+            all_data_parallel_group_ranks_with_cp = []
+            for i in range(pipeline_model_parallel_size):
+                start_rank = i * num_pipeline_model_parallel_groups
+                end_rank = (i + 1) * num_pipeline_model_parallel_groups
+                for j in range(context_parallel_size * tensor_model_parallel_size):
+                    ranks = range(
+                        start_rank + j, end_rank, context_parallel_size * tensor_model_parallel_size
+                    )
+                    all_data_parallel_group_ranks.append(list(ranks))
+                for j in range(tensor_model_parallel_size):
+                    ranks_with_cp = range(
+                        start_rank + j, end_rank, tensor_model_parallel_size
+                    )
+                    all_data_parallel_group_ranks_with_cp.append(list(ranks_with_cp))
+
+            timeout = timedelta(minutes=distributed_timeout_minutes)
+
+            # # Regenerate ep related groups because ep is set to 1 in initialize_model_parallel func
+            rank_generator = megatron.core.parallel_state.RankGenerator(
+                tp=tensor_model_parallel_size,
+                ep=expert_model_parallel_size,
+                dp=data_parallel_size * context_parallel_size,
+                pp=pipeline_model_parallel_size,
+                cp=1,
+                order=order,
+            )
+            for ranks in rank_generator.get_ranks('tp-ep-pp', independent_ep=True):
                 group = torch.distributed.new_group(
                     ranks, timeout=timeout,
-                    pg_options=megatron.core.parallel_state.get_nccl_options('tp_exp', nccl_comm_cfgs)
+                    pg_options=get_nccl_options('mp_exp', nccl_comm_cfgs)
+                )
+                if rank in ranks:
+                    megatron.core.parallel_state._MODEL_AND_EXPERT_PARALLEL_GROUP = group
+
+            all_tensor_and_expert_group_ranks = []
+            for ranks in rank_generator.get_ranks('tp-ep', independent_ep=True):
+                all_tensor_and_expert_group_ranks.append(list(ranks))
+                group = torch.distributed.new_group(
+                    ranks, timeout=timeout, pg_options=get_nccl_options('tp_exp', nccl_comm_cfgs)
                 )
                 if rank in ranks:
                     megatron.core.parallel_state._TENSOR_AND_EXPERT_PARALLEL_GROUP = group
 
-        all_dp_modulo_exp_group_ranks = []
-        for i in range(num_tensor_and_data_groups_with_cp):
-            start_rank = i * tensor_and_data_group_size_with_cp
-            end_rank = (i + 1) * tensor_and_data_group_size_with_cp
-            for j in range(tensor_and_expert_group_size):
-                ranks = range(start_rank + j, end_rank, tensor_and_expert_group_size)
+            all_ep_groups = []
+            for ranks in rank_generator.get_ranks('ep', independent_ep=True):
+                all_ep_groups.append(list(ranks))
+                group = torch.distributed.new_group(
+                    ranks, pg_options=get_nccl_options('exp', nccl_comm_cfgs)
+                )
+                if rank in ranks:
+                    megatron.core.parallel_state._EXPERT_MODEL_PARALLEL_GROUP = group
+
+            all_dp_modulo_exp_group_ranks = []
+            for ranks in rank_generator.get_ranks('dp', independent_ep=True):
                 all_dp_modulo_exp_group_ranks.append(list(ranks))
                 group = torch.distributed.new_group(
-                    ranks, timeout=timeout,
-                    pg_options=megatron.core.parallel_state.get_nccl_options('dp_modulo_exp', nccl_comm_cfgs)
+                    ranks, timeout=timeout, pg_options=get_nccl_options('dp_modulo_exp', nccl_comm_cfgs)
                 )
                 group_gloo = torch.distributed.new_group(ranks, backend="gloo")
                 if rank in ranks:
                     megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP = group
                     megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO = group_gloo
 
-        # Build expert parallel groups
-
-        all_ep_groups = []
-        for dp_cp_ranks in all_data_parallel_group_ranks_with_cp:
-            for i in range(0, len(dp_cp_ranks), expert_model_parallel_size):
-                ranks = dp_cp_ranks[i:i + expert_model_parallel_size]
-                all_ep_groups.append(list(ranks))
-                group = torch.distributed.new_group(
-                    ranks, pg_options=megatron.core.parallel_state.get_nccl_options('exp', nccl_comm_cfgs)
-                )
+            for ranks in rank_generator.get_ranks('dp-cp', independent_ep=True):
+                # Lazy initialization of the group
+                if get_context_parallel_world_size() > 1:
+                    group = torch.distributed.new_group(
+                        ranks,
+                        timeout=timeout,
+                        pg_options=get_nccl_options('dp_modulo_exp_cp', nccl_comm_cfgs),
+                    )
+                    group_gloo = torch.distributed.new_group(ranks, backend="gloo")
+                else:
+                    group = megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP
+                    group_gloo = megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO
                 if rank in ranks:
-                    megatron.core.parallel_state._EXPERT_MODEL_PARALLEL_GROUP = group
+                    megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP = group
+                    megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO = group_gloo
 
-        all_tp_groups = []
-        for i in range(num_tensor_model_parallel_groups):
-            ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
-            all_tp_groups.append(list(ranks))
+            all_tp_groups = []
+            for i in range(num_tensor_model_parallel_groups):
+                ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
+                all_tp_groups.append(list(ranks))
+
+            print_rank_0(f"all tp gourps {all_tp_groups}")
+            print_rank_0(f"all ep groups {all_ep_groups}")
+            print_rank_0(f"all dp groups {all_data_parallel_group_ranks}")
+            print_rank_0(f"all_dp_modulo_exp_group_ranks {all_dp_modulo_exp_group_ranks}")
+            print_rank_0(f"all_tensor_and_expert_group_ranks {all_tensor_and_expert_group_ranks}")
+            print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
+
+        else:
+            initialize_model_parallel(
+                tensor_model_parallel_size,
+                pipeline_model_parallel_size,
+                virtual_pipeline_model_parallel_size,
+                pipeline_model_parallel_split_rank,
+                use_sharp,
+                context_parallel_size,
+                expert_model_parallel_size,
+                nccl_communicator_config_path,
+                distributed_timeout_minutes,
+                order
+            )
 
         initialize_context_parallel_group_for_send_recv_overlap(
             tensor_model_parallel_size,
@@ -210,13 +240,6 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             context_parallel_size,
             nccl_comm_cfgs
         )
-
-        print_rank_0(f"all tp gourps {all_tp_groups}")
-        print_rank_0(f"all ep groups {all_ep_groups}")
-        print_rank_0(f"all dp groups {all_data_parallel_group_ranks}")
-        print_rank_0(f"all_dp_modulo_exp_group_ranks {all_dp_modulo_exp_group_ranks}")
-        print_rank_0(f"all_tensor_and_expert_group_ranks {all_tensor_and_expert_group_ranks}")
-        print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
 
         global _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM
         if _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM is not None:
