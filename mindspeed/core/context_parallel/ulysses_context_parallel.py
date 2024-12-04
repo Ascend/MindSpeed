@@ -87,6 +87,11 @@ class UlyssesContextAttention(torch.nn.Module):
         Returns:
             * output (Tensor): context output
         """
+        seq_world_size = torch.distributed.get_world_size(self.spg)
+        if seq_world_size > key.shape[self.scatter_idx] and query.shape[self.scatter_idx] % key.shape[self.scatter_idx] == 0:
+            key = key.repeat_interleave(query.shape[self.scatter_idx] // key.shape[self.scatter_idx], dim=self.scatter_idx)
+            value = value.repeat_interleave(query.shape[self.scatter_idx] // value.shape[self.scatter_idx], dim=self.scatter_idx)
+            
         # in shape : e.g.,  [s/p:h:]
         query_layer = _SeqAllToAll.apply(self.spg, query, self.scatter_idx, self.gather_idx)
         key_layer = _SeqAllToAll.apply(self.spg, key, self.scatter_idx, self.gather_idx)
