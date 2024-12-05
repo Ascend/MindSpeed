@@ -10,7 +10,7 @@
 
 ### 解决思路:
 
-目前支持的涉及MatMul的算子有MatMul、BatchMatMul、FlashAttention、MC2相关融合算子、coc相关融合算子、GEMM融合算子、matmul_add_fp32融合算子。
+目前支持的涉及MatMul的算子有MatMul、BatchMatMul、FlashAttention、MC2相关融合算子、coc相关融合算子、GEMM相关融合算子、matmul_add_fp32融合算子。
 
 ## 使用方法
 

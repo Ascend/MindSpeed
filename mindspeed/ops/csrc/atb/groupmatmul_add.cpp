@@ -27,6 +27,7 @@
 #include "atb/operation.h"
 #include "atb/train_op_params.h"
 #include "atb/infer_op_params.h"
+#include "../flop_counter/flop_counter.h"
 #endif
 
 using namespace std;
@@ -55,6 +56,9 @@ void groupmatmul_add_fp32(const at::Tensor &x, const at::Tensor &weight, const a
         atb::CreateOperation(param, &op);
         TORCH_CHECK(op != nullptr, "GroupMatmulAdd get op failed!");
         RunAtbCmd(op, paramsetter, "GroupedMatmulInplaceAddOperation");
+        #ifdef FLOP_COUNT
+        FLOP_COUNT(FlopCounter::gmm_add_flop, x, weight, group_list);
+        #endif
         return ;
 #endif
 }
