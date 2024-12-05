@@ -10,5 +10,6 @@ class GroupMatmulAddOpBuilder(AtbOpBuilder):
 
     def sources(self):
         return ['ops/csrc/atb/groupmatmul_add.cpp',
-                'ops/csrc/atb/utils/atb_adapter.cpp']
+                'ops/csrc/atb/utils/atb_adapter.cpp',
+                'ops/csrc/flop_counter/flop_counter.cpp']
     
