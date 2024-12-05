@@ -36,7 +36,9 @@ public:
         const at::Tensor &dy, int64_t head_num, const std::string &input_layout,
         const c10::optional<std::vector<int64_t>> &actual_seq_qlen,
         const c10::optional<std::vector<int64_t>> &actual_seq_kvlen);
-    static int64_t gmm_flop(const at::TensorList &x, const at::TensorList &weight, c10::optional<std::vector<int64_t>> group_list, int64_t group_type_value);
+    static int64_t gmm_flop_int(const at::TensorList &x, const at::TensorList &weight, c10::optional<std::vector<int64_t>> group_list, int64_t group_type_value);
+    static int64_t gmm_flop_tensor(const at::TensorList &x, const at::TensorList &weight, const c10::optional<at::Tensor> &group_list, int64_t group_type_value);
+    static int64_t gmm_add_flop(const at::Tensor &x, const at::Tensor &weight, const at::Tensor &group_list);
 };
 
 #endif // FLOP_COUNTER_MS_H
