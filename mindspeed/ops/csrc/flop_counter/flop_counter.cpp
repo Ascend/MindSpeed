@@ -282,7 +282,7 @@ int64_t FlopCounter::flash_attention_backward_flop(
     return total_flops;
 }
 
-int64_t FlopCounter::gmm_flop(const at::TensorList &x, const at::TensorList &weight, c10::optional<std::vector<int64_t>> group_list, int64_t group_type_value)
+int64_t FlopCounter::gmm_flop_int(const at::TensorList &x, const at::TensorList &weight, c10::optional<std::vector<int64_t>> group_list, int64_t group_type_value)
 {
     int64_t total_flops = 0;
 
@@ -304,6 +304,36 @@ int64_t FlopCounter::gmm_flop(const at::TensorList &x, const at::TensorList &wei
     if (group_type_value == 2) {
         for (int64_t i = 0; i < group_list_real.size(); i++) {
             int64_t after_i = group_list_real[i];
+            total_flops += x_shape.front() * (after_i - before_i) * weight_shape.back() * 2;
+            before_i = after_i;
+        }
+    }
+
+    return total_flops;
+}
+
+int64_t FlopCounter::gmm_flop_tensor(const at::TensorList &x, const at::TensorList &weight, const c10::optional<at::Tensor> &group_list, int64_t group_type_value)
+{
+    int64_t total_flops = 0;
+
+    std::vector<int64_t> x_shape(x[0].sizes().begin(), x[0].sizes().end());
+    std::vector<int64_t> weight_shape(weight[0].sizes().begin(), weight[0].sizes().end());
+    auto group_list_real = group_list.value_or(at::Tensor());
+    auto num_elements = group_list_real.numel();
+
+    int64_t before_i = 0;
+
+    if (group_type_value == 0) {
+        for (int64_t i = 0; i < num_elements; i++) {
+            int64_t after_i = group_list_real[i].item<int64_t>();
+            total_flops += (after_i - before_i) * x_shape.back() * weight_shape.back() * 2;
+            before_i = after_i;
+        }
+    }
+
+    if (group_type_value == 2) {
+        for (int64_t i = 0; i < num_elements; i++) {
+            int64_t after_i = group_list_real[i].item<int64_t>();
             total_flops += x_shape.front() * (after_i - before_i) * weight_shape.back() * 2;
             before_i = after_i;
         }
