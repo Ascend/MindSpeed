@@ -110,7 +110,7 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
     ACLNN_CMD(aclnnGroupedMatmulV2, x_, weight_, bias_, scale_real, offset_real, antiquant_scale_real,
               antiquant_offset_real, group_list_real, split_item_value, group_type_value, result);
     #ifdef FLOP_COUNT
-    FLOP_COUNT(FlopCounter::gmm_flop, x_, weight_, group_list, group_type_value);
+    FLOP_COUNT(FlopCounter::gmm_flop_int, x_, weight_, group_list, group_type_value);
     #endif
     return y;
 }
@@ -160,7 +160,9 @@ std::vector<at::Tensor> npu_gmm(const std::vector<at::Tensor>& x,
               antiquant_offset_real, perToken_scale_real, group_list_real, activation_input_real,
               activation_quant_scale_real, activation_quant_offset_real, split_item_value, group_type_value,
               group_list_type_value, act_type_value, result, activation_feature_out_real, dynQuant_scale_out_real);
-
+    #ifdef FLOP_COUNT
+    FLOP_COUNT(FlopCounter::gmm_flop_tensor, x_, weight_, group_list, group_type_value);
+    #endif
     return y;
 }
 
