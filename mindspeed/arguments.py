@@ -415,6 +415,8 @@ def _add_algorithm_args(parser):
                        help='The algorithm optimize the status of tp communication in the recompute stage.')
     group.add_argument('--optimize-send-recv-comm', action='store_true', 
                        help='optimize send_recv communication in pipeline without interleaving.')
+    group.add_argument('--optimize-vpp-send-recv-comm', action='store_true', 
+                       help='optimize send_recv communication in pipeline with interleaving.')
     group.add_argument('--enable-zero3', action='store_true', default=False,
                        help='Use this flag to enable zero3, including the segmentation of the parameters, gradients, and optimizers of the row-parallel and column-parallel models, as well as the overlap optimization of the gradient reduce sactter and weight all gather.')
     return parser
@@ -493,6 +495,9 @@ def validate_args_wrapper(validate_args):
         original_variable_seq_lengths = args.variable_seq_lengths
         args = validate_args(args, defaults)
         args.variable_seq_lengths = original_variable_seq_lengths
+        if args.optimize_vpp_send_recv_comm and args.num_layers_per_virtual_pipeline_stage is None:
+            raise AssertionError('--optimize-vpp-send-recv-comm can only be used with pipeline with interleaving.')
+
         if args.enable_zero3:
             print("[WARNING] zero3 currently does not support model save and load")
             if args.use_ascend_mc2 or args.reuse_fp32_param or args.recompute_granularity is not None or args.use_pipe_experts:
