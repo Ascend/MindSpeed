@@ -333,7 +333,9 @@ def mcore_pipeline_parallel_adaptation(aspm, mindspeed_args):
                         forward_step_decorator)
     aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._communicate_shapes',
                         _communicate_shapes)
-    if mindspeed_args.optimize_send_recv_comm and mindspeed_args.num_layers_per_virtual_pipeline_stage is not None:
+    aspm.register_patch('megatron.core.pipeline_parallel.schedules.get_tensor_shapes',
+                        get_tensor_shapes_wrapper)
+    if mindspeed_args.optimize_vpp_send_recv_comm:
         from .core.pipeline_parallel.p2p_communication import _p2p_ops_send_recv_overlap
         aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._p2p_ops',
                             _p2p_ops_send_recv_overlap)
