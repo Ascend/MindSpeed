@@ -51,6 +51,7 @@ class TestMC2(DistributedTest):
                                             keep_master_weight_for_test=True,
                                             init_method=transformer_config.init_method,
                                             config=transformer_config).half().npu()
+        setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         output_weight_mc2_close = linear_layer.weight
         output_weight_mc2_open = linear_layer.weight
 
