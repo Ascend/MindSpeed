@@ -51,6 +51,7 @@ class TestMC2(DistributedTest):
                                          skip_bias_add=False,
                                          init_method=transformer_config.init_method,
                                         config=transformer_config).half().npu()
+        setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         loss_weight = torch.rand([args.seq_len, output_size]).half().npu()
         input_ = torch.rand(args.batch_size, args.seq_len, args.input_size_coeff)
         input_ = input_.half().npu()
