@@ -812,7 +812,8 @@ def validate_args_wrapper(validate_args):
         if args.fp16:
             args.gradient_accumulation_fusion = False
             warnings.warn("Unsupported gradient fp16 bf16 for gradient accumulation fusion")
-            
+
+        args.swap_modules = list(set(args.swap_modules.split(',')))
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
         return args
