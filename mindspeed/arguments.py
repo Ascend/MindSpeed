@@ -44,6 +44,7 @@ def process_args(parser):
     parser = _add_auto_parallel_args(parser)
     parser = _add_deepseek_args(parser)
     parser = _auto_tuning_args(parser)
+    parser = _add_hccl_group_buffer_args(parser)
 
     return parser
 
@@ -901,3 +902,10 @@ def _add_2d_tp_args(parser):
     group.add_argument('--enable-backward-overlap-ag-with-matmul', action='store_true', default=False,
                        help='use enable-backward-overlap-ag-with-matmul to overlap all-gather  with matmul in backward')
     return parser
+
+
+def _add_hccl_group_buffer_args(parser):
+    group = parser.add_argument_group(title='hccl-group-buffer')
+    group.add_argument('--hccl-group-buffer', type=str, default=None,
+                       help='the hccl buffer for group')
+    return parser 
