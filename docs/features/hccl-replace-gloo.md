@@ -1,7 +1,16 @@
 # Gloo 存档落盘优化 
 
 ## 问题分析
-在大规模集群下，Gloo 通信存在规模限制和稳定性问题。一方面，容易出现 Gloo 通信组创建失败的情况；另一方面，与 Hccl 通信相比，Gloo 通信较慢。基于以上考虑，设计了 Gloo 通信优化方案。
+在大规模集群下，Gloo 通信存在规模限制和稳定性问题。一方面，容易出现 Gloo 通信组创建失败的情况；另一方面，与 Hccl 通信相比，Gloo 通信较慢。
+
+对于Gloo通信组创建失败报错`Gloo connectFullMesh failed with ...`的问题，本质上是由于N张卡链接到主Master来完成建链，集群规模大时，Master处理能力不足，可能造成建链失败。可通过调整和网络建链相关参数进行规避（云上8k卡场景验证有效）：
+
+```
+net.ipv4.tcp_max_syn_backlog = 65536
+net.core.netdev_max_backlog = 65536
+```
+
+此外，MindSpeed设计了 Gloo 通信优化方案使用Hccl通信替代Gloo。
 
 ## 解决方案
 
