@@ -331,10 +331,12 @@ def _add_training_args(parser):
     group.add_argument('--op-cal-tflops', action='store_true', default=False,
                        help='use for cal mfu and hfu')
     group.add_argument('--optimizer-selection', type=str, default='fused_adamw',
-                       choices=['fused_adamw', 'fused_torch_adamw'],
+                       choices=['fused_adamw', 'fused_torch_adamw', 'fused_ema_adamw'],
                        help='Select from the former fused AdamW optimizer and Torch fused AdamW optimizer')
     group.add_argument('--npu-deterministic', action='store_true', default=False,
                        help='enable deterministic computing for npu')
+    group.add_argument('--ema-decay', type=float, default=0.9999,
+                       help='Set ema_decay of fused_ema_adamw optimizer.')
     return parser
 
 
