@@ -588,6 +588,8 @@ def validate_args_wrapper(validate_args):
 
         if args.moe_alltoall_overlap_comm and not args.moe_token_dispatcher_type == 'alltoall':
             raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall`.')
+        if args.moe_adaptive_recompute_activation and args.moe_token_dispatcher_type == 'alltoall':
+            raise AssertionError('`--moe-adaptive-recompute-activation` only support with `--moe-token-dispatcher-type allgather`.')
 
         if args.moe_allgather_overlap_comm and not args.moe_token_dispatcher_type == 'allgather':
             raise AssertionError('`--moe-allgather-overlap-comm` only support with `--moe-token-dispatcher-type allgather`.')
