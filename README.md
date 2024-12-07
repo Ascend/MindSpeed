@@ -291,3 +291,4 @@ MindSpeed版本分支的维护阶段如下：
 | Data helpers 数据预处理出错               | [link](docs/faq/data_helpers.md)      |
 | Torch extensions 编译卡住              | [link](docs/faq/torch_extensions.md)  |
 | megatron0.7.0版本长稳测试出现grad norm为nan | [link](docs/faq/megatron070_grad_norm_nan.md)  |
+| Gloo建链失败Gloo connectFullMesh failed with ... | [link](docs/features/hccl-replace-gloo.md)  |
