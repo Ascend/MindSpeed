@@ -152,6 +152,23 @@ def optimizer_config_init_wrapper(init_func):
     return optimizer_config_init
 
 
+def get_megatron_optimizer_func_wrapper(func):
+    @wraps(func)
+    def get_megatron_optimizer_func(*args, **kwargs):
+        chained_optimizer = func(*args, **kwargs)
+        args = get_args()
+        if hasattr(chained_optimizer, "chained_optimizers"):
+            for optim in chained_optimizer.chained_optimizers:
+                optim.optimizer.ema_decay = args.ema_decay
+            return chained_optimizer
+        if hasattr(chained_optimizer, "optimizer"):
+            chained_optimizer.optimizer.ema_decay = args.ema_decay
+            return chained_optimizer
+        return chained_optimizer
+
+    return get_megatron_optimizer_func
+
+
 def reuse_fp32_param_init_wrapper(init_func):
     @wraps(init_func)
     def reuse_fp32_param_init(*args, **kwargs):

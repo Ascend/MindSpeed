@@ -23,3 +23,4 @@ from .npu_all_to_all_all_gather_bmm_builder import AllToAllAllGatherBatchMatMulO
 from .adaptive_cp_builder import AdaptiveCpOpBuilder
 from .matmul_add_builder import MatmulAddOpBuilder
 from .groupmatmul_add_builder import GroupMatmulAddOpBuilder
+from .fused_ema_adamw_builder import FusedEmaAdamWOpBuilder

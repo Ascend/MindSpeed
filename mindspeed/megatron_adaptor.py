@@ -562,7 +562,17 @@ def megatron_training_adaptation(aspm, mindspeed_args):
 
 
 def megatron_training_ema_adaptation(aspm, mindspeed_args):
-    if mindspeed_args.use_ema:
+    if mindspeed_args.optimizer_selection == 'fused_ema_adamw':
+        from .checkpointing import generate_state_dict_ema_wrapper
+        from .optimizer.distrib_optimizer import ema_distrib_optimizer_init_wrapper
+        aspm.register_patch('megatron.training.checkpointing.generate_state_dict', generate_state_dict_ema_wrapper)
+        aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
+                            ema_distrib_optimizer_init_wrapper)
+        if hasattr(mindspeed_args, "ema_decay"):
+            from .optimizer.optimizer import get_megatron_optimizer_func_wrapper
+            aspm.register_patch('megatron.core.optimizer.get_megatron_optimizer',
+                                get_megatron_optimizer_func_wrapper)
+    elif mindspeed_args.use_ema:
         from .training import pretrain, train_step
         from .checkpointing import save_checkpoint, _load_base_checkpoint
         aspm.register_patch('megatron.training.training.train_step', train_step)
@@ -852,6 +862,8 @@ def optimizer_selection(aspm, mindspeed_args):
         from .optimizer.adamw import FusedTorchAdamW as AdamW
     elif mindspeed_args.optimizer_selection == 'fused_adamw':
         from .optimizer.adamw import AdamW
+    elif mindspeed_args.optimizer_selection == 'fused_ema_adamw':
+        from .optimizer.ema_adamw import FusedEmaAdamW as AdamW
     aspm.register_patch('apex.optimizers.FusedAdam', AdamW, create_dummy=True)
 
 
