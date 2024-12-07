@@ -20,6 +20,7 @@ from typing import Optional
 from datetime import timedelta
 
 import torch
+import torch_npu
 import megatron
 from megatron.core.parallel_state import get_context_parallel_world_size, get_nccl_options
 
@@ -61,6 +62,56 @@ _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE = None
 _TENSOR_AND_CONTEXT_PARALLEL_GROUP = None
 _TENSOR_AND_CONTEXT_PARALLEL_GLOBAL_RANKS = None
 
+_HCCL_GROUP_BUFFER = None
+
+
+def parse_hccl_buffer_string(hccl_group_buffer):
+    if hccl_group_buffer == None:
+        return {}
+
+    allowed_keys = ["dp", "dp_cp", "cp", "mp", "mp_exp", "tp", "pp", "embd", "tp_dp_cp", 
+                    "tp_dp", "tp_cp", "tp_exp", "exp", "dp_modulo_exp", "pp_new_stream", 
+                    "cp2", "cp_ulysses", "cp_ring", "nd1_dim1", "ag_x_sd_rcv_overlap", 
+                    "nd1_dim2", "ag_y_sd_rcv_overlap", "nd2_dim1", "nd2_dim2"]
+
+    result = {}
+    parts = hccl_group_buffer.split(';')
+    for part in parts:
+        key_value = part.split(':')
+        if len(key_value) == 2:
+            key = key_value[0].strip()
+            value_str = key_value[1].strip()
+            key = key.replace(' ', '')
+            value_str = value_str.replace(' ', '')
+            if key in allowed_keys:
+                try:
+                    value = int(value_str)
+                    if value <= 0:
+                        raise RuntimeError(f"Value {value} must be greater than 0")
+                    result[key] = value
+                except ValueError:
+                    raise RuntimeError(f"{value_str} is not a valid positive integer")
+            else:
+                raise RuntimeError(f"Key {key} is not allowed")
+        else:
+            raise RuntimeError("The str of hccl-group-buffer is not valid")
+    return result
+
+
+def get_nccl_options_wrapper(get_nccl_options):
+    @wraps(get_nccl_options)
+    def wrapper(pg_name, nccl_comm_cfgs):
+        from megatron.training import get_args
+        args = get_args()
+        if args.hccl_group_buffer is not None:
+            global _HCCL_GROUP_BUFFER
+            if _HCCL_GROUP_BUFFER.get(pg_name) is not None:
+                options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+                options.hccl_config = {"hccl_buffer_size":_HCCL_GROUP_BUFFER[pg_name]}
+                return options
+        return get_nccl_options(pg_name, nccl_comm_cfgs)
+    return wrapper
+
 
 def initialize_model_parallel_wrapper(initialize_model_parallel):
     @wraps(initialize_model_parallel)
@@ -77,6 +128,11 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             order: str = "tp-cp-ep-dp-pp",
     ):
         from megatron.training.utils import print_rank_0
+        from megatron.training import get_args
+        args = get_args()
+
+        global _HCCL_GROUP_BUFFER
+        _HCCL_GROUP_BUFFER = parse_hccl_buffer_string(args.hccl_group_buffer)
 
         if order == "tp-cp-ep-dp-pp":
             # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
@@ -248,7 +304,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         for i in range(num_pipeline_model_parallel_groups):
             ranks = range(i, world_size, num_pipeline_model_parallel_groups)
             group = torch.distributed.new_group(
-                ranks, pg_options=megatron.core.parallel_state.get_nccl_options('pp', nccl_comm_cfgs)
+                ranks, pg_options=megatron.core.parallel_state.get_nccl_options('pp_new_stream', nccl_comm_cfgs)
             )
             if rank in ranks:
                 _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group

@@ -184,9 +184,11 @@ def communication_adaptation(aspm, mindspeed_args):
 
 def mcore_models_adaptation_l0(aspm):
     from .core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec_wrapper
+    from .core.parallel_state import get_nccl_options_wrapper
     # Replace FusedLayerNorm with MindSpeed's PTNorm operator in get_gpt-layer
     aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_local_spec',
                         get_gpt_layer_local_spec_wrapper)
+    aspm.register_patch('megatron.core.parallel_state.get_nccl_options', get_nccl_options_wrapper)
 
 
 def mcore_models_adaptation(aspm, mindspeed_args):
