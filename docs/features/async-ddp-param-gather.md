@@ -35,3 +35,6 @@
 
 使用该特性可以提升性能。
 
+## 注意事项
+
+开启该特性后，attention层init的顺序会更正为先创建linear_qkv再创建linear_proj，这是为了修复Megatron的错误init顺序，该bug会导致当linear_qkv和linear_proj被分配在不同bucket时，overlap-param-gather可能会在权重未完成更新时进行下一轮前向计算。

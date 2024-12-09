@@ -51,3 +51,4 @@
 
 1. `--recompute-num-layers [int]`中的[int]层数指的是每一个pp stage的层数。[int]的取值应该小于等于num-layers/pipeline-model-parallel-size.
 2. 暂不兼容自适应选择重计算特性.
+3. 若出现性能严重劣化，可能是跨NUMA内存访问引起，可尝试通过进程绑核缓解，实现方法可参考[mstt绑核工具](https://gitee.com/ascend/mstt/tree/master/profiler/affinity_cpu_bind)
