@@ -484,18 +484,24 @@ def save_profiling_data(policy, config_file):
 
 
 def solve_autopipeline(context):
+    NPUS_PER_NODE = 8
+    optimal_sch = [([0], [0], (0, [0]), 0)]
     if torch.distributed.get_rank() == 0:
         solver = AutoPipelineSolver(context)
         solver.find_top_optimal_schedule()
     torch.distributed.barrier()
-    if torch.distributed.get_rank() == 0:
-        print_rank_0("=============================================")
-        print_rank_0("[INFO] Applied Automated Pipeline Policy: ")
-        print_rank_0("network layer setting: " + str(solver.optimal_sch[0][0]))
-        print_rank_0("recompute policy setting: " + str(solver.optimal_sch[0][1]))
-        print_rank_0("recompute type: " + str(solver.optimal_sch[0][3]))
-        print_rank_0("=============================================")
-        save_profiling_data(solver.optimal_sch, config_file="autopipeline_config.json")
-        return solver.optimal_sch
+    if torch.distributed.get_rank() % NPUS_PER_NODE == 0:
+        if torch.distributed.get_rank() == 0:
+            print_rank_0("=============================================")
+            print_rank_0("[INFO] Applied Automated Pipeline Policy: ")
+            print_rank_0("network layer setting: " + str(solver.optimal_sch[0][0]))
+            print_rank_0("recompute policy setting: " + str(solver.optimal_sch[0][1]))
+            print_rank_0("recompute type: " + str(solver.optimal_sch[0][3]))
+            print_rank_0("=============================================")
+            save_profiling_data(solver.optimal_sch, config_file="autopipeline_config.json")
+            return solver.optimal_sch
+        else:
+            save_profiling_data(optimal_sch, config_file="autopipeline_config.json")
+            return optimal_sch
     else:
-        return [([0], [0], (0, [0]), 0)]
+        return optimal_sch
