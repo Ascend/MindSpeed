@@ -54,7 +54,7 @@ class MoE(torch.nn.Module):
         super(MoE, self).__init__()
         args = get_args()
         pipe_experts = args.use_pipe_experts
-        sequence_parallel = args.sequence_parallel
+        sequence_parallel = sequence_parallel
         pipe_experts_multi_data = args.pipe_experts_multi_data
         pipe_experts_multi_stream = args.pipe_experts_multi_stream
 

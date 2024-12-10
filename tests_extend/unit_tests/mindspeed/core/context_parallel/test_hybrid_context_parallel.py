@@ -114,7 +114,8 @@ def run_hybridattn_cp(cp_size, u_size, bs, seq_len, dtype, cp_args):
         local_attn = FlashSelfAttention(causal=causal, softmax_scale=scale, attention_dropout=0.)
     else:
         # core branch use core.transformer.DotProductAtttention as core attention
-        config = TransformerConfig(num_layers=2, hidden_size=n * d, num_attention_heads=n, use_cpu_initialization=True)
+        config = TransformerConfig(num_layers=2, hidden_size=n * d, num_attention_heads=n, use_cpu_initialization=True,
+                                   context_parallel_size=cp_size)
         local_attn = DotProductAttention(config=config, layer_number=1, 
                                          attn_mask_type=AttnMaskType.causal, attention_type='self', attention_dropout=0.)
     

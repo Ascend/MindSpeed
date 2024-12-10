@@ -89,7 +89,7 @@ def attention_init(
         is_expert=False,
         tp_comm_buffer_name='proj',
     )
-    cp = args.context_parallel_size
+    cp = config.context_parallel_size
     if args.tp_2d:
         tp_y_cp_sz = cp * args.tp_y
     else:

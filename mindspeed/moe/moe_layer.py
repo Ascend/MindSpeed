@@ -143,6 +143,6 @@ class MOELayer(Base):
             else:
                 valid_expert_out = torch.index_select(expert_output.view(E * C, M), dim=0, index=token_rearrange_infos.token_rearranged_ec_idx)
             combined_output = valid_expert_out * token_rearrange_infos.token_exp_weights.unsqueeze(1).type_as(input[0])
-            if all_args.moe_router_topk == 2:
-                combined_output = torch.add(*torch.chunk(combined_output, all_args.moe_router_topk, dim=0))
+            if self.gate.config.moe_router_topk == 2:
+                combined_output = torch.add(*torch.chunk(combined_output, self.gate.config.moe_router_topk, dim=0))
         return combined_output.reshape(input[0].shape)

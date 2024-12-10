@@ -147,22 +147,23 @@ def core_attention_init_wrapper(fn):
         fn(self, *arg, **kwargs)
 
         args = get_args()
-        self.hidden_size_per_partition = self.hidden_size_per_partition // args.context_parallel_size
+        self.hidden_size_per_partition = self.hidden_size_per_partition // arg[1].context_parallel_size
         self.square_alibi_mask = args.square_alibi_mask
         self.fill_neg_inf = args.fill_neg_inf
         self.beta = 1.0
+        self.config = arg[1]
         if self.apply_query_key_layer_scaling:
             self.beta = 1.0 / self.layer_number
         if args.position_embedding_type == 'alibi':
             self.alibi = Alibi()
-            alibi = _build_alibi_tensor(args.seq_length,
-                                        args.num_attention_heads,
+            alibi = _build_alibi_tensor(self.config.seq_length,
+                                        self.config.num_attention_heads,
                                         args.square_alibi_mask,
                                         args.fill_neg_inf
                                         ).to(torch.cuda.current_device())
-            if args.params_dtype == torch.float16:
+            if self.config.params_dtype == torch.float16:
                 alibi = alibi.to(torch.float16)
-            elif args.params_dtype == torch.bfloat16:
+            elif self.config.params_dtype == torch.bfloat16:
                 alibi = alibi.to(torch.bfloat16)
             self.alibi.alibi = alibi
         else:
@@ -204,14 +205,14 @@ def core_attention_forward(self, query_layer, key_layer, value_layer, attention_
             args = get_args()
 
             self.alibi.output_size = output_size
-            alibi = _build_alibi_tensor(args.seq_length,
-                                        args.num_attention_heads,
+            alibi = _build_alibi_tensor(self.config.seq_length,
+                                        self.config.num_attention_heads,
                                         args.square_alibi_mask,
                                         args.fill_neg_inf
                                         ).to(torch.cuda.current_device())
-            if args.params_dtype == torch.float16:
+            if self.config.params_dtype == torch.float16:
                 alibi = alibi.to(torch.float16)
-            elif args.params_dtype == torch.bfloat16:
+            elif self.config.params_dtype == torch.bfloat16:
                 alibi = alibi.to(torch.bfloat16)
             self.alibi.alibi = alibi
 
@@ -353,26 +354,26 @@ def parallel_transformer_init(self, config,
 
             assert not args.squared_relu, "TransformerEngine does not support squared relu activation."
 
-        self.use_fp8 = args.fp8 is not None
+        self.use_fp8 = config.fp8 is not None
         self.fp8_recipe = None
         self.fp8_group = None
         if self.use_fp8:
             assert args.transformer_impl == 'transformer_engine', \
                 'transformer-engine required for fp8 training and inference'
             self.fp8_group = mpu.get_amax_reduction_group()
-            if args.fp8 == "e4m3":
+            if config.fp8 == "e4m3":
                 fp8_format = transformer_engine.common.recipe.Format.E4M3
-            elif args.fp8 == "hybrid":
+            elif config.fp8 == "hybrid":
                 fp8_format = transformer_engine.common.recipe.Format.HYBRID
             else:
                 raise ValueError("The DelayedScaling recipe only supports E4M3 and HYBRID formats.")
             self.fp8_recipe = transformer_engine.common.recipe.DelayedScaling(
-                margin=args.fp8_margin,
-                interval=args.fp8_interval,
+                margin=config.fp8_margin,
+                interval=config.fp8_interval,
                 fp8_format=fp8_format,
-                amax_history_len=args.fp8_amax_history_len,
-                amax_compute_algo=args.fp8_amax_compute_algo,
-                override_linear_precision=(False, False, not args.fp8_wgrad),
+                amax_history_len=config.fp8_amax_history_len,
+                amax_compute_algo=config.fp8_amax_compute_algo,
+                override_linear_precision=(False, False, not config.fp8_wgrad),
             )
 
         self.num_microbatches_in_previous_step = -1
@@ -391,7 +392,7 @@ def parallel_transformer_init(self, config,
         if model_type == ModelType.retro_decoder:
             retro_layer_start = 6 if config.num_layers <= 15 else 9
             self.retro_layer_numbers = \
-                np.arange(retro_layer_start, args.num_layers + 1, 3).tolist()
+                np.arange(retro_layer_start, config.num_layers + 1, 3).tolist()
         if model_type == ModelType.retro_encoder:
             self.retro_layer_numbers = [1]
 
@@ -420,14 +421,14 @@ def parallel_transformer_init(self, config,
                 # This argument is only available from TE v0.10 onwards.
                 extra_transformer_engine_kwargs = {}
                 if self.transformer_engine_v_0_8:
-                    extra_transformer_engine_kwargs["bias"] = args.add_bias_linear
+                    extra_transformer_engine_kwargs["bias"] = config.add_bias_linear
                 if self.transformer_engine_v_0_10:
                     extra_transformer_engine_kwargs["activation"] = "swiglu" if args.swiglu else "gelu"
                 if self.transformer_engine_v_0_11:
-                    extra_transformer_engine_kwargs["normalization"] = args.normalization
+                    extra_transformer_engine_kwargs["normalization"] = config.normalization
                 assert config.attention_softmax_in_fp32, "TransformerEngine only supports softmax compute in FP32."
                 assert (
-                    (bool(int(os.getenv("NVTE_APPLY_QK_LAYER_SCALING", "0"))) and args.fp16) == config.apply_query_key_layer_scaling
+                    (bool(int(os.getenv("NVTE_APPLY_QK_LAYER_SCALING", "0"))) and config.fp16) == config.apply_query_key_layer_scaling
                 ), "Unsupported config for apply_query_key_layer_scaling in TransformerEngine."
                 return transformer_engine.pytorch.TransformerLayer(
                     config.hidden_size,
@@ -483,7 +484,7 @@ def parallel_transformer_init(self, config,
                 if layer_type == LayerType.encoder:
                     offset = pipeline_rank * self.num_layers
                 else:
-                    num_ranks_in_enc = args.pipeline_model_parallel_split_rank
+                    num_ranks_in_enc = config.pipeline_model_parallel_split_rank
                     offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
             else:
                 offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
@@ -1119,13 +1120,13 @@ def parallel_attention_init(self, config, layer_number,
     self.sequence_parallel = config.sequence_parallel
     self.config = config
     self.group_query_attention = args.group_query_attention
-    self.num_query_groups = args.num_query_groups
+    self.num_query_groups = config.num_query_groups
 
     query_projection_size = config.kv_channels * config.num_attention_heads
     if self.group_query_attention:
-        kv_projection_size = args.kv_channels * args.num_query_groups
+        kv_projection_size = config.kv_channels * config.num_query_groups
     else:
-        kv_projection_size = args.kv_channels * args.num_attention_heads
+        kv_projection_size = config.kv_channels * config.num_attention_heads
 
     self.use_flash_attn = args.use_flash_attn \
                           and attention_type == AttnType.self_attn \
@@ -1160,7 +1161,7 @@ def parallel_attention_init(self, config, layer_number,
             query_projection_size + 2 * kv_projection_size,
             config=config,
             init_method=config.init_method,
-            bias=args.add_bias_linear or args.add_qkv_bias,
+            bias=config.add_bias_linear or config.add_qkv_bias,
             gather_output=False)
     else:
         assert attention_type == AttnType.cross_attn
@@ -1200,7 +1201,7 @@ def parallel_attention_init(self, config, layer_number,
         config.hidden_size,
         config=config,
         init_method=config.output_layer_init_method,
-        bias=args.add_bias_linear,
+        bias=config.add_bias_linear,
         input_is_parallel=True,
         skip_bias_add=True)
     # patch for attention
@@ -1217,21 +1218,21 @@ def patch_for_attention(config, self):
     # Per attention head and per partition values.
     self.num_attention_heads_per_partition = config.num_attention_heads // attn_heads_split_num
     if self.group_query_attention:
-        if _args.num_query_groups % attn_heads_split_num != 0:
+        if config.num_query_groups % attn_heads_split_num != 0:
             raise NotImplementedError(
                 "Currently the num_query_groups should be a multiple of the tensor parallel size"
             )
-        self.num_query_groups_per_partition = _args.num_query_groups // attn_heads_split_num
+        self.num_query_groups_per_partition = config.num_query_groups // attn_heads_split_num
     else:
         self.num_query_groups_per_partition = self.num_attention_heads_per_partition
     query_projection_size = config.kv_channels * config.num_attention_heads
     if _args.group_query_attention:
-        kv_projection_size = _args.kv_channels * _args.num_query_groups
+        kv_projection_size = config.kv_channels * config.num_query_groups
     else:
-        kv_projection_size = _args.kv_channels * _args.num_attention_heads
+        kv_projection_size = config.kv_channels * config.num_attention_heads
     # qkv bias
-    bias = _args.add_qkv_bias or _args.add_bias_linear
-    cp = _args.context_parallel_size
+    bias = config.add_qkv_bias or config.add_bias_linear
+    cp = config.context_parallel_size
     if _args.tp_2d:
         tp_y_cp_sz = cp * _args.tp_y
     else:
@@ -1285,7 +1286,7 @@ def patch_for_attention(config, self):
             bias=bias,
             gather_output=False)
     # dense bias
-    bias = _args.add_dense_bias or _args.add_bias_linear
+    bias = _args.add_dense_bias or config.add_bias_linear
     skip_bias_add = _args.skip_bias_add
     # Output.
     if _args.use_nd_matmul:
@@ -1526,38 +1527,38 @@ def switch_mlp_init_wrapper(fn):
 
         if layer_number is None:
             self.block = MoE(
-                global_args.hidden_size,
+                config.hidden_size,
                 MixtralParallelMLPBM(config, ) if global_args.swiglu else ParallelMLP(config, is_expert=False),
                 num_experts=global_args.num_experts,
-                ep_size=global_args.expert_model_parallel_size,
-                k=global_args.moe_router_topk,
+                ep_size=config.expert_model_parallel_size,
+                k=config.moe_router_topk,
                 capacity_factor=global_args.moe_train_capacity_factor,
                 eval_capacity_factor=global_args.moe_train_capacity_factor,
-                aux_loss_coef=global_args.moe_aux_loss_coeff,
+                aux_loss_coef=config.moe_aux_loss_coeff,
                 ep_group=expert_parallel_group,
                 noisy_gate_policy=global_args.noisy_gate_policy,
                 no_drop=global_args.moe_no_drop,
                 dynamic_padding=global_args.moe_dynamic_padding,
                 use_sinkhorn=global_args.moe_use_sinkhorn,
-                sequence_parallel=global_args.sequence_parallel
+                sequence_parallel=config.sequence_parallel
             )
         else:
             if layer_number % global_args.expert_interval == 0:
                 self.block = MoE(
-                    global_args.hidden_size,
+                    config.hidden_size,
                     MixtralParallelMLPBM(config, ) if global_args.swiglu else ParallelMLP(config, is_expert=False),
                     num_experts=global_args.num_experts,
-                    ep_size=global_args.expert_model_parallel_size,
-                    k=global_args.moe_router_topk,
+                    ep_size=config.expert_model_parallel_size,
+                    k=config.moe_router_topk,
                     capacity_factor=global_args.moe_train_capacity_factor,
                     eval_capacity_factor=global_args.moe_train_capacity_factor,
-                    aux_loss_coef=global_args.moe_aux_loss_coeff,
+                    aux_loss_coef=config.moe_aux_loss_coeff,
                     ep_group=expert_parallel_group,
                     noisy_gate_policy=global_args.noisy_gate_policy,
                     no_drop=global_args.moe_no_drop,
                     dynamic_padding=global_args.moe_dynamic_padding,
                     use_sinkhorn=global_args.moe_use_sinkhorn,
-                    sequence_parallel=global_args.sequence_parallel
+                    sequence_parallel=config.sequence_parallel
                 )
             else:
                 self.block = ParallelMLP(config)

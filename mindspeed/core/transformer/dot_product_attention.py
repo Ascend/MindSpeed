@@ -100,13 +100,12 @@ def dot_product_attention_init(
     config.context_parallel_size = cp_size
 
     # add pse
-    args = get_args()
     self.pse = None
     self.pse_type = args.alibi_fusion_attn_type
 
     if args.multi_head_latent_attention:
         self.scale_mask_softmax.scale = True
-        self.hidden_size_per_partition = args.num_attention_heads * args.v_head_dim
+        self.hidden_size_per_partition = config.num_attention_heads * args.v_head_dim
         self.q_head_dim = args.qk_nope_head_dim + args.qk_rope_head_dim
         self.softmax_scale = self.q_head_dim ** (-0.5)
 
@@ -123,14 +122,14 @@ def dot_product_attention_init(
     if self.pse_type is None:
         self.pse_type = 1 # not use pse
     elif self.pse_type == 0:
-        alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(args.seq_length,
-                                                args.num_attention_heads,
-                                                args.params_dtype,
+        alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(config.seq_length,
+                                                config.num_attention_heads,
+                                                config.params_dtype,
                                                 args.alibi_diagonal_opposite,
                                                 1024)
         self.pse = alibi
     elif self.pse_type == 2 or self.pse_type == 3:
-        self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(args.num_attention_heads)
+        self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(config.num_attention_heads)
 
 
 def dot_product_attention_forward_wrapper(fn):
@@ -167,7 +166,7 @@ def dot_product_attention_forward(
     if cp_expanded_by_2d_tp:
         tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
     else:
-        tp_y_cp_sz = args.context_parallel_size
+        tp_y_cp_sz = self.config.context_parallel_size
     if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
                                                                          'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
         in_hybrid_mode = False
@@ -211,7 +210,7 @@ def dot_product_attention_forward(
             cp_para['pse'] = self.pse
             cp_para['pse_type'] = self.pse_type
 
-            if args.context_parallel_size > 1 and not args.tp_2d:
+            if self.config.context_parallel_size > 1 and not args.tp_2d:
                 cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
                 cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
                 cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()

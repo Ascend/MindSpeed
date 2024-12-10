@@ -200,7 +200,7 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
         return custom_forward
 
     global_args = get_args()
-    num_layers_per_pipeline_rank = global_args.num_layers // global_args.pipeline_model_parallel_size
+    num_layers_per_pipeline_rank = self.config.num_layers // self.config.pipeline_model_parallel_size
     if self.recompute_method == 'uniform':
         # Uniformly divide the total number of Transformer layers and
         # checkpoint the input activation of each divided chunk.
@@ -227,7 +227,7 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
         # Transformer layers and skip the rest.
         # A method fully use the device memory removing redundant re-computation.
         vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
-        vpp_size = global_args.virtual_pipeline_model_parallel_size
+        vpp_size = self.config.virtual_pipeline_model_parallel_size
         if vpp_rank is None or not global_args.enable_recompute_layers_per_pp_rank:
             vpp_rank = 0
         if vpp_size is None or not global_args.enable_recompute_layers_per_pp_rank:

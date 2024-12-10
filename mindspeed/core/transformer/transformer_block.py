@@ -90,7 +90,7 @@ def transformer_block_checkpointed_forward(
     # Transformer layers and skip the rest.
     # A method fully use the device memory removing redundant re-computation.
     global_args = get_args()
-    if global_args.recompute_method == 'uniform':
+    if self.config.recompute_method == 'uniform':
         # Uniformly divide the total number of Transformer layers and
         # checkpoint the input activation of each divided chunk.
         # A method to further reduce memory usage reducing checkpoints.
@@ -99,7 +99,7 @@ def transformer_block_checkpointed_forward(
             while l < self.num_layers_per_pipeline_rank:
                 hidden_states = checkpoint_handler(custom(l, l + 1))
 
-                l += global_args.recompute_num_layers
+                l += self.config.recompute_num_layers
         else:
             for l in range(self.num_layers_per_pipeline_rank):
                 hidden_states, context = custom(l, l + 1)(
@@ -109,9 +109,9 @@ def transformer_block_checkpointed_forward(
                     context_mask,
                     rotary_pos_emb,
                 )
-    elif global_args.recompute_method == 'block':
+    elif self.config.recompute_method == 'block':
         vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
-        vpp_size = global_args.virtual_pipeline_model_parallel_size
+        vpp_size = self.config.virtual_pipeline_model_parallel_size
         if vpp_rank is None or not global_args.enable_recompute_layers_per_pp_rank:
             vpp_rank = 0
         if vpp_size is None or not global_args.enable_recompute_layers_per_pp_rank:
