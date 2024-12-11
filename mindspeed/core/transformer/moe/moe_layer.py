@@ -38,7 +38,6 @@ def moe_layer_init_wrapper(init_func):
     def moe_layer_init(*args, **kwargs):
         init_func(*args, **kwargs)
         self = args[0]
-        config = args[1]
         global_args = get_args()
         self.moe_alltoall_overlap_comm = global_args.moe_alltoall_overlap_comm
         self.moe_allgather_overlap_comm = global_args.moe_allgather_overlap_comm
@@ -58,7 +57,7 @@ def moe_layer_init_wrapper(init_func):
 
         self.moe_adaptive_recompute_activation = global_args.moe_adaptive_recompute_activation
         self.recompute_threshold = 0
-        if hasattr(config, 'moe_token_dispatcher_type') and config.moe_token_dispatcher_type == 'allgather':
+        if hasattr(self.config, 'moe_token_dispatcher_type') and self.config.moe_token_dispatcher_type == 'allgather':
             self.moe_adaptive_recompute_activation_scale = global_args.moe_adaptive_recompute_activation_scale
             self.recompute_threshold = parallel_state.get_tensor_model_parallel_world_size() * parallel_state.get_data_parallel_world_size() * \
                 self.config.moe_router_topk * self.moe_adaptive_recompute_activation_scale / self.config.num_moe_experts
