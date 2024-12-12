@@ -316,7 +316,6 @@ def mcore_optimizer_adapation(aspm, args):
 
 
 def mcore_pipeline_parallel_adaptation(aspm, mindspeed_args):
-    from .core.pipeline_parallel.p2p_communication import _communicate_shapes
     from .core.pipeline_parallel.schedules import get_forward_backward_func_wrapper, get_tensor_shapes_wrapper
     from .core.performance.auto_pipeline_perf.schedules import get_forward_backward_func_decorator, \
         backward_step_decorator, forward_step_decorator
@@ -331,15 +330,18 @@ def mcore_pipeline_parallel_adaptation(aspm, mindspeed_args):
                         backward_step_decorator)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step',
                         forward_step_decorator)
-    aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._communicate_shapes',
-                        _communicate_shapes)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.get_tensor_shapes',
                         get_tensor_shapes_wrapper)
     if mindspeed_args.optimize_vpp_send_recv_comm:
         from .core.pipeline_parallel.p2p_communication import _p2p_ops_send_recv_overlap
         aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._p2p_ops',
                             _p2p_ops_send_recv_overlap)
-
+    if mindspeed_args.variable_seq_lengths:
+        from .core.pipeline_parallel.p2p_communication import _communicate_shapes, _communicate
+        aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._communicate',
+                            _communicate)
+        aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._communicate_shapes',
+                            _communicate_shapes)
 
 def mcore_multiparam_pipeline_parallel_adaptation(aspm, mindspeed_args):
     if mindspeed_args.use_multiparameter_pipeline_model_parallel:
