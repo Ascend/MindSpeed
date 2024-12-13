@@ -551,6 +551,13 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-grouped-gemm`.')
         if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
             raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now. only support with moe_tp_extend_ep when tp > 1.')
+        if args.moe_tp_extend_ep:
+            if args.num_experts % (args.tensor_model_parallel_size * args.expert_model_parallel_size) != 0:
+                raise AssertionError('`--moe-tp-extend-ep` only support when num_experts % ( tp * ep ) == 0')
+            if not (args.moe_permutation_async_comm and args.moe_grouped_gemm):
+                raise AssertionError('`--moe-tp-extend-ep` needs `--moe-permutation-async-comm` and `--moe-grouped-gemm`.')
+            if args.moe_expert_capacity_factor is not None:
+                raise AssertionError('`--moe-tp-extend-ep` only support when moe_expert_capacity_factor is None.')
         if args.moe_zero_memory_num_layers is not None:
             num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
             if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:
@@ -709,6 +716,9 @@ def validate_args_wrapper(validate_args):
                                          f'to 0 and smaller than args.num_layers({args.num_layers})')
                 noop_layers.add(int(x))
             args.noop_layers = noop_layers
+        if args.reset_position_ids and args.reset_attention_mask:
+            if args.attention_mask_type != 'general':
+                raise AssertionError('EOD needs `--attention-mask-type` is `general`.')
 
         if args.fp16:
             args.gradient_accumulation_fusion = False
