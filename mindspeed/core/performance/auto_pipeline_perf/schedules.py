@@ -211,8 +211,6 @@ def optimized_forward_backward_pipelining(
                                                              tensor_shape=tensor_shapes[cnt_bwd], config=config)
 
         cnt_fwd += 1
-        #if argument.mbs_idx < len(argument.optimized_mbs_list):
-        #    argument.micro_batch_size = argument.optimized_mbs_list[argument.mbs_idx]
         # Add input_tensor and output_tensor to end of list, then pop from the
         # start of the list for backward pass.
         input_tensors.append(input_tensor)

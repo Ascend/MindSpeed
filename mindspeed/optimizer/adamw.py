@@ -29,7 +29,6 @@ def adamw(params: List[Tensor],
         exp_avg_sq = exp_avg_sqs[i]
 
         # Perform stepweight decay
-        ## param.mul_(1 - lr * weight_decay)
         bias_correction1 = beta1 ** (step - 1)
         bias_correction2 = beta2 ** (step - 1)
 
