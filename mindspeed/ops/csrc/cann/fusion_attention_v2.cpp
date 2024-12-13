@@ -380,6 +380,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, int64_t, int64_t, int
     int64_t seed;
     int64_t offset;
     int64_t numels;
+    //check
+    for(size_t i = 0; i < ac_seq_qlen_tmp.size(); i++){
+        TORCH_CHECK(ac_seq_qlen_tmp[i] <= 1000000 && ac_seq_kvlen_tmp[i] <= 1000000, "The sequence length should not greater than 1M, but got q", ac_seq_qlen_tmp[i],"kv", ac_seq_kvlen_tmp[i]);
+    }
+    
     if (input_layout_str == "TND" && ac_seq_qlen_tmp.size() == ac_seq_kvlen_tmp.size()) {
         numels = N;
         int64_t accum = ac_seq_qlen_tmp[0] * ac_seq_kvlen_tmp[0];
