@@ -318,7 +318,6 @@ elif torch_npu_api_version == 1:
         norm_out = Tensor(op, output_index)
         output_index += 1
 
-        # return outputs
         return y, norm_out
     MatmulAllReduceAddRmsNorm = MatmulAllReduceAddRmsNormV1
 else:

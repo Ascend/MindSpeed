@@ -32,7 +32,6 @@ def mapping_reduce(input_):
 
 def reduce_from_model_parallel_region_bprop(self, input_, output, grad_output):
     return bprop_commn(self, grad_output)
-    # return grad_output
 
 
 def scatter_to_sequence_parallel_region_bprop(self, input_, output, grad_output):
