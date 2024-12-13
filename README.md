@@ -155,9 +155,9 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend flash attention 融合算子    | [link](docs/features/flash-attention.md)                  |
 | 【Prototype】Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
 | 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
-| 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
 | 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
 | 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
+| 【Prototype】Ascend fusion_attention_v2       | [link](docs/features/fusion-attn-v2.md)                              |
 
 ## 通信优化特性
 | 特性                           | 介绍                                                        |
@@ -171,7 +171,6 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】Megatron MoE GMM                                         | [link](docs/features/megatron_moe/megatron-moe-gmm.md)                                                      |
 | 【Prototype】Ascend Megatron MoE Allgather Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md)                                     |
 | 【Prototype】Ascend Megatron MoE Alltoall Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md)                                      |
-| 【Prototype】Megatron MoE TP拓展EP | [link](docs/features/megatron_moe/megatron-moe-tp-extend-ep.md)                                             |
 
 ## DeepSpeed MoE特性
 | 特性                                 | 介绍                                                   |
@@ -240,11 +239,6 @@ MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 
 | MindSpeed版本             | Megatron版本      | PyTorch版本   | torch_npu版本 | CANN版本  | Python版本                               | 硬件型态     |
 |-------------------------|-----------------|------------- |-------------|---------|----------------------------------------|----------|
-| master（主线）              | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.7.0（主线）         | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.6.0（主线）         | Core 0.6.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.0_core_r0.7.0（商用）   | Core 0.7.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.0_core_r0.6.0（商用）   | Core 0.6.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | 1.0.RC3_core_r0.7.0（商用） | Core 0.7.0      |  2.1.0     | 6.0.RC3     | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | 1.0.RC3_core_r0.6.0（商用） | Core 0.6.0      |  2.1.0     | 6.0.RC3     | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | 1.0.RC2（商用）             | Core 0.6.0 |  2.1.0     | 6.0.RC2     | 8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
@@ -268,8 +262,6 @@ MindSpeed版本分支的维护阶段如下：
 
 | **MindSpeed版本**     | **维护策略** | **当前状态** | **发布时间**   | **后续状态**           | **EOL日期** |
 |---------------------|-----------|---------|------------|--------------------|-----------|
-| 1.0.0_core_r0.7.0   |  常规版本  | 开发      | 2024/12/30 | 预计2025/6/30起无维护	   |           |
-| 1.0.0_core_r0.6.0   |  常规版本  | 开发      | 2024/12/30 | 预计2025/6/30起无维护	   |           |
 | 1.0.RC3_core_r0.7.0 |  常规版本  | 维护      | 2024/09/30 | 预计2025/3/30起无维护	   |           |
 | 1.0.RC3_core_r0.6.0 |  常规版本  | 维护      | 2024/09/30 | 预计2025/3/30起无维护	   |           |
 | 1.0.RC2             |  常规版本  | 维护      | 2024/06/30 | 预计2024/12/30起无维护	   |           |
