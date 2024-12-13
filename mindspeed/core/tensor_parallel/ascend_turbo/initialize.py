@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from mindspeed.core.tensor_parallel.layers import RowSeqParallelLinearNoComm
 from .ascend_turbo_cfg import ascend_turbo_cfg
 from .mc2_linears_seq_parallel import ColumnSeqParallelLinear, RowSeqParallelLinear
 
@@ -59,38 +58,18 @@ def row_parallel_forward(self, input_):
     return output, output_bias
 
 
-def row_parallel_mc2_nocomm_forward(self, input_):
-    output = RowSeqParallelLinearNoComm.apply(
-        input_, self.weight, None, ascend_turbo_cfg.get_group()
-    )
-    if not self.skip_bias_add:
-        output = output + self.bias if self.bias is not None else output
-        output_bias = None
-    else:
-        output_bias = self.bias
-
-    return output, output_bias
-
-
 def initialize_cfg_from_framework():
     from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
     from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
 
-    from megatron.training import get_args
     ascend_turbo_cfg.set_group(get_tensor_model_parallel_group)
     ascend_turbo_cfg.set_world_size(get_tensor_model_parallel_world_size)
 
     ascend_turbo_cfg.set_column_parallel_linear(ColumnParallelLinear)
     ascend_turbo_cfg.set_row_parallel_linear(RowParallelLinear)
-    if get_args().optimize_recomp_communication_level > 0:
-        ascend_turbo_cfg.parallel_linear_plugin(
-            column_parallel_forward, row_parallel_mc2_nocomm_forward
-        )
-
-    else:
-        ascend_turbo_cfg.parallel_linear_plugin(
-            column_parallel_forward, row_parallel_forward
-        )
+    ascend_turbo_cfg.parallel_linear_plugin(
+        column_parallel_forward, row_parallel_forward
+    )
 
 
 def initialize_cfg_from_args(args):

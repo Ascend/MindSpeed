@@ -409,10 +409,6 @@ def _add_algorithm_args(parser):
                             'param copies of FP32 to save memory.')
     group.add_argument('--rotary-base', type=float, help='rotary-base.')
 
-    group.add_argument('--optimize-recomp-communication-level', type=int, default=0,
-                       help='The algorithm optimize the level of tp communication in the recompute stage.')
-    group.add_argument('--optimize-recomp-communication-status', type=int, default=0,
-                       help='The algorithm optimize the status of tp communication in the recompute stage.')
     group.add_argument('--optimize-send-recv-comm', action='store_true', 
                        help='optimize send_recv communication in pipeline without interleaving.')
     group.add_argument('--optimize-vpp-send-recv-comm', action='store_true', 
@@ -551,16 +547,6 @@ def validate_args_wrapper(validate_args):
             raise AssertionError('--alibi-fusion-attn-type only support for `0, 2, 3`')
         if args.reuse_fp32_param and not args.bf16:
             raise AssertionError('--reuse-fp32-param only support for `bf16`')
-        if args.optimize_recomp_communication_level > 0:
-            if not hasattr(args, "optimize_recomp_communication_status"):
-                args.optimize_recomp_communication_status = 0
-            if args.num_layers_per_virtual_pipeline_stage is not None:
-                raise AssertionError('--optimize-recomp-communication-level and --num-layers-per-virtual-pipeline-stage'
-                                     ' all open is not allowed')
-            recompute_mode = (args.recompute_granularity == 'full' and args.recompute_method == "uniform"
-                              and args.recompute_num_layers == 1)
-            if not recompute_mode:
-                raise AssertionError('--optimize-recomp-communication-level is open in limited recompute condition')
         if args.use_pipe_experts:
             if args.pipe_experts_multi_data <= 0:
                 raise AssertionError('--pipe-experts-multi-data must greater than 0')
@@ -587,6 +573,13 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-grouped-gemm`.')
         if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
             raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now. only support with moe_tp_extend_ep when tp > 1.')
+        if args.moe_tp_extend_ep:
+            if args.num_experts % (args.tensor_model_parallel_size * args.expert_model_parallel_size) != 0:
+                raise AssertionError('`--moe-tp-extend-ep` only support when num_experts % ( tp * ep ) == 0')
+            if not (args.moe_permutation_async_comm and args.moe_grouped_gemm):
+                raise AssertionError('`--moe-tp-extend-ep` needs `--moe-permutation-async-comm` and `--moe-grouped-gemm`.')
+            if args.moe_expert_capacity_factor is not None:
+                raise AssertionError('`--moe-tp-extend-ep` only support when moe_expert_capacity_factor is None.')
         if args.moe_zero_memory_num_layers is not None:
             num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
             if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:
@@ -698,9 +691,6 @@ def validate_args_wrapper(validate_args):
                 print("[WARNING] disable recompute granularity and recompute method when enabling automated pipeline")
                 args.recompute_granularity = None
                 args.recompute_method = None
-            if args.optimize_recomp_communication_level > 0:
-                print("[WARNING] disable optimize recomp communication level when enabling automated pipeline")
-                args.optimize_recomp_communication_level = 0
             if args.noop_layers:
                 print("[WARNING] disable noop_layers when enabling automated pipeline")
                 args.noop_layers = None
@@ -756,6 +746,9 @@ def validate_args_wrapper(validate_args):
                                          f'to 0 and smaller than args.num_layers({args.num_layers})')
                 noop_layers.add(int(x))
             args.noop_layers = noop_layers
+        if args.reset_position_ids and args.reset_attention_mask:
+            if args.attention_mask_type != 'general':
+                raise AssertionError('EOD needs `--attention-mask-type` is `general`.')
 
         if args.ampipe_degree > 1:
             assert args.use_flash_attn, "ampipe only supports flash attention, please enable '--use-flash-attn'."
