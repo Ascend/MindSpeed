@@ -391,10 +391,7 @@ def row_parallel_nocomm_optimizer_wrapper(forward_func):
     @wraps(forward_func)
     def row_parallel_forward(*args, **kwargs):
         global_args = get_args()
-        if global_args.optimize_recomp_communication_level == 0:
-            output = forward_func(*args, **kwargs)
-        else:
-            output = row_parallel_nocomm(*args, **kwargs)
+        output = forward_func(*args, **kwargs)
         recompute_num_layers = global_args.recompute_num_layers or 0
         if isinstance(output, tuple) and global_args.swap_attention and recompute_num_layers > 0:
             output, bias = output
@@ -405,93 +402,6 @@ def row_parallel_nocomm_optimizer_wrapper(forward_func):
 
         return output
     return row_parallel_forward
-
-
-def row_parallel_nocomm(self, input_):
-    """Forward of RowParallelLinear w/o comm
-
-            Args:
-                input_: 3D tensor whose order of dimension is [sequence, batch, hidden]
-
-            Returns:
-                - output
-                - bias
-    """
-    # Set up backprop all-reduce.
-    if self.input_is_parallel:
-        input_parallel = input_
-    else:
-        assert not self.sequence_parallel
-        input_parallel = scatter_to_tensor_model_parallel_region(input_)
-    # Matrix multiply.
-    if not self.weight.requires_grad:
-        self._forward_impl = linear_with_frozen_weight
-    else:
-        self._forward_impl = linear_with_grad_accumulation_and_async_allreduce
-    output_parallel = self._forward_impl(
-        input=input_parallel,
-        weight=self.weight,
-        bias=None,
-        gradient_accumulation_fusion=self.gradient_accumulation_fusion,
-        async_grad_allreduce=False,
-        sequence_parallel=False,
-    )
-
-    global_args = get_args()
-    output_ = output_parallel
-    if global_args.optimize_recomp_communication_status < 2:
-        if self.sequence_parallel:
-            output_ = reduce_scatter_to_sequence_parallel_region(output_parallel)
-        elif self.explicit_expert_comm:  # non-expert only tensor-parallelism
-            assert self.skip_bias_add
-            output_ = output_parallel
-        else:
-            output_ = reduce_from_tensor_model_parallel_region(output_parallel)
-    global_args.optimize_recomp_communication_status = global_args.optimize_recomp_communication_status + 1 \
-        if global_args.optimize_recomp_communication_status > 0 \
-        else global_args.optimize_recomp_communication_status
-    if not self.skip_bias_add:
-        output = (output_ + self.bias) if self.bias is not None else output_
-        output_bias = None
-    else:
-        output = output_
-        output_bias = self.bias
-    return output, output_bias
-
-
-class RowSeqParallelLinearNoComm(RowSeqParallelLinear):
-    @staticmethod
-    def forward(ctx, input_, weight, bias, group):
-        global_args = get_args()
-        world_size = get_tensor_model_parallel_world_size()
-        rank = torch.distributed.get_rank(group)
-        if global_args.optimize_recomp_communication_status < 2:
-            global_args.optimize_recomp_communication_status = global_args.optimize_recomp_communication_status + 1 \
-                if global_args.optimize_recomp_communication_status > 0 \
-                else global_args.optimize_recomp_communication_status
-            return RowSeqParallelLinear.forward(ctx, input_, weight, bias, group)
-        else:
-            if torch.__version__ > "2.0":
-                global_rank = torch.distributed.get_global_rank(group, rank)
-                hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-                    global_rank
-                )
-            else:
-                hcomm_info = group.get_hccl_comm_name(rank)
-            ctx.save_for_backward(input_, weight)
-            ctx.hcomm_info = hcomm_info
-            ctx.world_size = world_size
-            ctx.use_bias = bias is not None
-            output_ = torch.matmul(input_, weight.t())
-            global_args.optimize_recomp_communication_status = global_args.optimize_recomp_communication_status + 1 \
-                if global_args.optimize_recomp_communication_status > 0 \
-                else global_args.optimize_recomp_communication_status
-
-            return output_[:output_.shape[0] // world_size]
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        return RowSeqParallelLinear.backward(ctx, grad_output)
 
 
 class LinearWithGradAccumulationAndAsyncCommunicationPipeExperts(torch.autograd.Function):

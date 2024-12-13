@@ -29,7 +29,7 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 同时需要确保`--ulysses-degree-in-cp`可以被attention head数整除。
 
-混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置和Double Ring Attention算法。
+混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置。
 
 ## 使用效果
 
