@@ -101,8 +101,8 @@ class GMMOpBuilderPublic(MindSpeedOpBuilder):
 class GMMOpBuilder(GMMOpBuilderPublic):
     OP_NAME = "grouped_matmul"
     OP_PROTO = (
-        "npu_gmm.List(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, int[]? group_list=None, int? group_type=0, bool? gemm_fusion=False) -> Tensor",
-        "npu_gmm.Tensor(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0, bool? gemm_fusion=False) -> Tensor"
+        "npu_gmm.Tensor(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, Tensor? group_list=None, int? group_type=0, bool? gemm_fusion=False) -> Tensor",
+        "npu_gmm.List(Tensor original_weight, Tensor x, Tensor weight, *, Tensor? bias=None, int[]? group_list=None, int? group_type=0, bool? gemm_fusion=False) -> Tensor"
     )
 
     def __init__(self):
@@ -194,7 +194,6 @@ if torch_npu_api_version == 2:
             outputs=["y"]
         )
 
-        # return outputs
         return y
 
 GroupedMatmul = None
@@ -248,7 +247,6 @@ if torch_npu_api_version == 2:
             outputs=[("y", 1)]
         )
 
-        # return outputs
         return y
     GroupedMatmul = GroupedMatmulV2
 elif torch_npu_api_version == 1:
@@ -361,7 +359,6 @@ elif torch_npu_api_version == 1:
         op.output_desc.add().name = "y" + str(output_index)
         y = [Tensor(op, output_index)]
 
-        # return outputs
         return y
     GroupedMatmul = GroupedMatmulV1
 else:
