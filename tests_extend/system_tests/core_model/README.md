@@ -122,8 +122,8 @@ coverage html --data-file=.coverage -d <输出目录>
 \- { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--use-flash-attn"'] }
 **注意**
 - 训练的其他参数见pretrain_gpt_usecase.sh，所有用例执行的入口文件是pretrain_gpt_usecase.py，详细信息看这两个文件
-- use-mcore、tp_size、pp_size是必填项，其他可选，所有的value是 list格式
-- use-mcore=True走的megatron/core代码分支，use-mcore=False走的megatron/legacy分支
+- tp_size、pp_size是必填项，其他可选，所有的value是 list格式
+- use-legacy=True走的megatron/legacy代码分支，use-legacy=False走的megatron/core分支
 - 参数key大小写不敏感，脚本都会转成大写，设置的环境变量都定义为key，额外参数放在extra_args里
 - 实际添加的系统用例个数=各key取值个数的乘积
 

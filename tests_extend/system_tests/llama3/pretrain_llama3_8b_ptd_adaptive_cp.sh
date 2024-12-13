@@ -41,7 +41,6 @@ GPT_ARGS="
     --use-fused-rotary-pos-emb \
     --use-fused-rmsnorm \
     --use-fused-swiglu \
-    --use-mcore-models \
     --tokenizer-type PretrainedFromHF \
     --tokenizer-name-or-path ${TOKENIZER_MODEL} \
     --num-layers 8 \

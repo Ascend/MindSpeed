@@ -40,6 +40,6 @@ MC2算子接口参见[link](https://www.hiascend.com/document/detail/zh/Pytorch/
 
 ## 注意事项
 
-1. mcore场景下（开启`--use-mcore-models`），MoE模型，MLP部分不使能MC2。
+1. mcore场景下（未开启`--use-legacy-models`），MoE模型，MLP部分不使能MC2。
 2. 暂不兼容计算通信并行 CoC 特性 --use-ascend-coc 。
 

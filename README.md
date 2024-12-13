@@ -92,7 +92,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 2. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
     ```shell
-    bash examples/pretrain_gpt_distributed.sh
+    bash examples/gpt3/train_gpt3_175b_distributed.sh
     ```
 
 # 自定义优化级别
@@ -126,7 +126,6 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend Ring Attention 长序列并行         | [link](docs/features/ring-attention-context-parallel.md)  |
 | Ascend 混合长序列并行           | [link](docs/features/hybrid-context-parallel.md)          |
 | 【Prototype】Ascend 自定义空操作层                              | [link](docs/features/noop-layers.md)     |
-| 【Prototype】Adaptive-CP 泛化掩码自适应负载均衡序列并行分布式FA | [link](docs/features/adaptive-cp.md)    |
 | 【Prototype】PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
 
 ## 内存优化特性
@@ -149,10 +148,9 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend flash attention 融合算子    | [link](docs/features/flash-attention.md)                  |
 | 【Prototype】Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
 | 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
-| 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
 | 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
-| 【Prototype】Ascend npu_groupmatmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_groupmatmul_add.md)|
 | 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
+| 【Prototype】Ascend fusion_attention_v2       | [link](docs/features/fusion-attn-v2.md)                              |
 
 ## 通信优化特性
 | 特性                           | 介绍                                                        |
@@ -168,9 +166,6 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】Megatron MoE GMM                                         | [link](docs/features/megatron_moe/megatron-moe-gmm.md)                                                      |
 | 【Prototype】Ascend Megatron MoE Allgather Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md)                                     |
 | 【Prototype】Ascend Megatron MoE Alltoall Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md)                                      |
-| 【Prototype】Megatron MoE Zero Memory 性能优化                  | [link](docs/features/megatron_moe/megatron-moe-zero-memory.md)                                              |
-| 【Prototype】Megatron MoE Allgather Overlap Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-overlap-comm.md)                                   |
-| 【Prototype】Megatron MoE Alltoall Overlap Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-overlap-comm.md)                                    |
 | 【Prototype】Megatron MoE TP拓展EP | [link](docs/features/megatron_moe/megatron-moe-tp-extend-ep.md)                                             |
 | 【Prototype】Ascend 共享专家                     | [link](docs/features/shared-experts.md)                                          |
 

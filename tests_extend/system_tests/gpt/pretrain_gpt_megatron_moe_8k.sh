@@ -59,7 +59,6 @@ GPT_ARGS="
     --pipeline-model-parallel-size ${PP} \
     --disable-bias-linear \
     --reuse-fp32-param \
-    --use-mcore-models \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
     --overlap-param-gather \
