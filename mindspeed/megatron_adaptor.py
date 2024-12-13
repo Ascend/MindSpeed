@@ -496,8 +496,7 @@ def legacy_model_transformer(aspm, args):
     from .model.transformer import parallel_mlp_forward, parallel_transformer_init_wrapper, \
         parallel_transformer_init
     from .model.transformer import core_attention_init_wrapper, core_attention_forward
-    from .core.transformer.transformer import parallel_transformer_layer_forward_wrapper, \
-        parallel_transformer_checkpointed_forward_wrapper
+    from .core.transformer.transformer import parallel_transformer_checkpointed_forward_wrapper
     from .model.transformer import switch_mlp_init_wrapper, switch_mlp_forward_wrapper, \
         parallel_transformer_layer_init_wrapper
     if not args.automated_pipeline and args.noop_layers:
@@ -507,8 +506,6 @@ def legacy_model_transformer(aspm, args):
     aspm.register_patch('megatron.legacy.model.transformer.ParallelMLP.forward', parallel_mlp_forward)
     aspm.register_patch('megatron.legacy.model.transformer.CoreAttention.__init__', core_attention_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.CoreAttention.forward', core_attention_forward)
-    aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformerLayer.forward',
-                        parallel_transformer_layer_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer._checkpointed_forward',
                         parallel_transformer_checkpointed_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.SwitchMLP.__init__', switch_mlp_init_wrapper)
