@@ -506,7 +506,6 @@ def allgather_token_permutation_new(self, global_indices_2_tuple, global_probs_2
             global_local_mask = (global_indices >= self.local_expert_indices[0]) & (global_indices <= self.local_expert_indices[-1])
 
             # masked_select -> reshape
-            # local_indices = global_indices.reshape(-1)[global_local_mask.reshape(-1)]
             local_indices = global_indices.masked_select(global_local_mask)
             self.indices = torch.argsort(local_indices.float(), dim=0)
             num_global_experts = self.num_local_experts * parallel_state.get_expert_model_parallel_world_size()
@@ -525,11 +524,9 @@ def allgather_token_permutation_new(self, global_indices_2_tuple, global_probs_2
         if self.router_topk > 1:  # k > 1
             gp_handle.wait()
             # masked_select -> reshape
-            # self.local_probs = global_probs.reshape(-1)[global_local_mask.reshape(-1)]
             self.local_probs = global_probs.masked_select(global_local_mask)
 
         ghs_handle.wait()
-        # local_hidden_states = global_hidden_states[self.global_local_map, :]
         if cann_version_check:
             local_hidden_states = global_hidden_states[self.global_local_map, :]
         else:
