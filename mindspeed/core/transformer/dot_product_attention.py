@@ -135,7 +135,7 @@ def dot_product_attention_init(
 def dot_product_attention_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params):
-        if attention_mask is None:
+        if attention_mask is None and self.attn_mask_type == AttnMaskType.causal:
             attention_mask = get_attention_mask()
         if get_args().use_flash_attn:
             return dot_product_attention_forward(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params)
@@ -153,12 +153,17 @@ def dot_product_attention_forward(
         attn_mask_type,
         packed_seq_params,
 ):
-    assert packed_seq_params is None
     args = get_args()
-    actual_seq_len = get_actual_seq_len()
+    if packed_seq_params is None:
+        actual_seq_len = get_actual_seq_len()
+        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+    else:
+        actual_seq_len = tuple(packed_seq_params.cu_seqlens_q[1:].cpu().numpy().tolist())
+        seq_length, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2]
 
-    seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
-    
+    sparse_mode = args.sparse_mode
+    if attn_mask_type == AttnMaskType.no_mask:
+        sparse_mode = 0  # default mask
 
     scale = 1.0 / math.sqrt(self.hidden_size_per_attention_head) if self.scale_mask_softmax.scale is None else self.softmax_scale
 
@@ -225,7 +230,8 @@ def dot_product_attention_forward(
 
     else:
         if actual_seq_len is not None: # TND
-            query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
+            if packed_seq_params is None:
+                query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
             shape_order = 'TND'
         else: # SBH
             query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
@@ -242,7 +248,7 @@ def dot_product_attention_forward(
                 next_tokens=args.next_tockens,
                 keep_prob=1 - self.attention_dropout.p,
                 inner_precise=0,
-                sparse_mode=args.sparse_mode,
+                sparse_mode=sparse_mode,
                 actual_seq_qlen=actual_seq_len,
                 actual_seq_kvlen=actual_seq_len
             )[0]
@@ -257,10 +263,10 @@ def dot_product_attention_forward(
                 next_tockens=args.next_tockens,
                 keep_prob=1 - self.attention_dropout.p,
                 inner_precise=0,
-                sparse_mode=args.sparse_mode,
+                sparse_mode=sparse_mode,
                 actual_seq_qlen=actual_seq_len,
                 actual_seq_kvlen=actual_seq_len
                 )[0]
-        if actual_seq_len is not None:
+        if actual_seq_len is not None and packed_seq_params is None:
             output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_length, b=bsz)
     return output
