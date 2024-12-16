@@ -598,8 +598,6 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('`--moe-tp-extend-ep` only support when num_experts % ( tp * ep ) == 0')
             if not (args.moe_permutation_async_comm and args.moe_grouped_gemm):
                 raise AssertionError('`--moe-tp-extend-ep` needs `--moe-permutation-async-comm` and `--moe-grouped-gemm`.')
-            if args.moe_expert_capacity_factor is not None:
-                raise AssertionError('`--moe-tp-extend-ep` only support when moe_expert_capacity_factor is None.')
         if args.moe_zero_memory_num_layers is not None:
             num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
             if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:
