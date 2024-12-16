@@ -18,7 +18,6 @@
 
 同时需要确保`--num-experts`能被`tp * ep`整除。
 
-当前该特性不支持Moe Token drop and pad模式，即`--moe-expert-capacity-factor`需要为None。
 
 ## 适用场景
 
