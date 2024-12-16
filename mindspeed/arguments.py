@@ -503,6 +503,13 @@ def validate_args_wrapper(validate_args):
         args = validate_args(args, defaults)
         args.variable_seq_lengths = original_variable_seq_lengths
         args.context_parallel_size = origin_context_parallel_size
+        model_parallel_size = args.pipeline_model_parallel_size * args.tensor_model_parallel_size
+        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
+        if args.global_batch_size is None:
+            args.global_batch_size = args.micro_batch_size * args.data_parallel_size
+            if args.rank == 0:
+                print('Resetting global batch size to {}'.format(
+                    args.global_batch_size), flush=True)
         if args.optimize_vpp_send_recv_comm and args.num_layers_per_virtual_pipeline_stage is None:
             raise AssertionError('--optimize-vpp-send-recv-comm can only be used with pipeline with interleaving.')
 
