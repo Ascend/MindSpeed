@@ -49,14 +49,15 @@ GPT_ARGS="
     --use-fused-rmsnorm \
     --use-flash-attn \
     --op-cal-tflops \
+    --optimizer-selection fused_torch_adamw \
     --num-layers 4 \
     --hidden-size 8192 \
     --ffn-hidden-size 28672 \
     --num-attention-heads 64 \
     --tokenizer-type Llama2Tokenizer \
     --tokenizer-model ${TOKENIZER_MODEL} \
-    --seq-length 131072 \
-    --max-position-embeddings 131072 \
+    --seq-length 32768 \
+    --max-position-embeddings 32768 \
     --micro-batch-size 1 \
     --global-batch-size 4 \
     --make-vocab-size-divisible-by 1 \
@@ -64,9 +65,9 @@ GPT_ARGS="
     --train-iters 1000 \
     --lr-decay-style cosine \
     --untie-embeddings-and-output-weights \
-    --attention-dropout 0.0 \
+    --attention-dropout 0.1 \
     --init-method-std 0.01 \
-    --hidden-dropout 0.0 \
+    --hidden-dropout 0.1 \
     --position-embedding-type rope \
     --normalization RMSNorm \
     --swiglu \

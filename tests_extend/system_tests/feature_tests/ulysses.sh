@@ -50,8 +50,7 @@ GPT_ARGS="
     --use-fused-swiglu \
     --use-fused-rmsnorm \
     --use-flash-attn \
-    --num-layers 6 \
-    --noop-layers 0,5 \
+    --num-layers 4 \
     --hidden-size 8192 \
     --ffn-hidden-size 28672 \
     --num-attention-heads 64 \

@@ -34,13 +34,16 @@ MOE_ARGS="
     --num-experts 4 \
     --moe-permutation-async-comm \
     --moe-grouped-gemm \
+    --gemm-gradient-accumulation-fusion \
     --moe-token-dispatcher-type allgather \
+    --moe-allgather-overlap-comm \
     --moe-router-topk 2 \
     --moe-aux-loss-coeff 0.02 \
 "
 
 RECOMPUTE_ARGS="
     --moe-adaptive-recompute-activation \
+    --moe-adaptive-recompute-activation-scale 1.5 \
     --recompute-activation-function \
     --recompute-activation-function-num-layers 2 \
     --recompute-norm \
@@ -60,6 +63,7 @@ GPT_ARGS="
     --overlap-grad-reduce \
     --overlap-param-gather \
     --reuse-fp32-param \
+    --optimizer-selection fused_torch_adamw \
     --num-layers 4 \
     --hidden-size 12288 \
     --num-attention-heads 96 \

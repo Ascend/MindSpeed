@@ -14,9 +14,9 @@ CKPT_DIR=./ckpt_llama
 DATA_PATH="/home/dataset/llama2/alpaca_text_document"
 TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
-TP=1
-PP=2
-CP=4
+TP=4
+PP=1
+CP=1
 EP=1
 
 DISTRIBUTED_ARGS="
@@ -28,36 +28,36 @@ DISTRIBUTED_ARGS="
 "
 
 RECOMPUTE_ARGS="
-    --enable-recompute-layers-per-pp-rank \
-    --recompute-activation-function \
-    --recompute-activation-function-layers 1 \
-    --recompute-in-bubble \
+    --swap-attention \
 "
 
 GPT_ARGS="
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
-    --num-layers-per-virtual-pipeline-stage 1 \
-    --context-parallel-size ${CP} \
-    --context-parallel-algo megatron_cp_algo \
-    --cp-window-size 2 \
-    --use-cp-send-recv-overlap \
-    --use-fused-ring-attention-update \
+    --tp-2d \
+    --tp-x 2 \
+    --tp-y 2 \
+    --enable-overlap-ag-with-matmul \
+    --enable-overlap-matmul-with-rs \
+    --enable-backward-overlap-ag-with-matmul \
+    --disable-gloo-group \
+    --optimizer-selection fused_torch_adamw \
+    --use-distributed-optimizer \
+    --overlap-grad-reduce \
+    --overlap-param-gather \
     --reuse-fp32-param \
+    --use-fused-rotary-pos-emb \
     --use-fused-swiglu \
-    --use-fused-rmsnorm \
     --use-flash-attn \
-    --use-fusion-attn-v2 \
-    --alibi-fusion-attn-type 2 \
-    --num-layers 6 \
-    --noop-layers 0,5 \
-    --hidden-size 8192 \
-    --ffn-hidden-size 28672 \
-    --num-attention-heads 64 \
+    --no-gradient-accumulation-fusion \
+    --num-layers 4 \
+    --hidden-size 4096 \
+    --ffn-hidden-size 11008 \
+    --num-attention-heads 32 \
     --tokenizer-type Llama2Tokenizer \
     --tokenizer-model ${TOKENIZER_MODEL} \
-    --seq-length 32768 \
-    --max-position-embeddings 32768 \
+    --seq-length 16384 \
+    --max-position-embeddings 16384 \
     --micro-batch-size 1 \
     --global-batch-size 4 \
     --make-vocab-size-divisible-by 1 \
@@ -65,10 +65,10 @@ GPT_ARGS="
     --train-iters 1000 \
     --lr-decay-style cosine \
     --untie-embeddings-and-output-weights \
-    --attention-dropout 0.0 \
+    --attention-dropout 0.1 \
     --init-method-std 0.01 \
-    --hidden-dropout 0.0 \
-    --position-embedding-type alibi \
+    --hidden-dropout 0.1 \
+    --position-embedding-type rope \
     --normalization RMSNorm \
     --swiglu \
     --no-masked-softmax-fusion \
