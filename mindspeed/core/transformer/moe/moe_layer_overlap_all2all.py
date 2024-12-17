@@ -4,6 +4,8 @@ from megatron.core.parallel_state import get_tensor_model_parallel_group, get_te
 from megatron.core import tensor_parallel, parallel_state
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
+from megatron.core.transformer.moe.moe_utils import save_to_aux_losses_tracker
+from mindspeed.moe.utils import MoEAuxLossAutoScaler
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather
 from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func
 from mindspeed.ops.gmm import GMMFunction
@@ -15,7 +17,6 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
     def forward(ctx, hidden_states, moe_layer: MoELayer):
         args = get_args()
         save_tensors = []
-        save_tensors_for_grad = []
         ctx.input_shape = hidden_states.shape
         hidden_states = hidden_states.detach()
         hidden_states.requires_grad = True
@@ -51,7 +52,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             ctx.shared_experts = None
 
         (share_experts_output, dispatched_input, tokens_per_expert) = moe_layer.token_dispatcher.token_permutation(
-            hidden_states, scores, indices, ctx.shared_experts, save_tensors, save_tensors_for_grad, ctx
+            hidden_states, scores, indices, ctx.shared_experts, save_tensors, ctx
         )
         if isinstance(share_experts_output, tuple):
             share_experts_output, rs_share_experts_output, rs_shared_experts_handle = share_experts_output
@@ -61,11 +62,44 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         (expert_output, mlp_bias), *_ = forward_func(moe_layer.experts, (dispatched_input, tokens_per_expert, ctx))
         save_tensors.append(expert_output)
 
-        output, mlp_bias = moe_layer.token_dispatcher.token_unpermutation(expert_output, mlp_bias, save_tensors, save_tensors_for_grad)
+        output, mlp_bias = moe_layer.token_dispatcher.token_unpermutation(expert_output, mlp_bias, save_tensors)
+
+        if hasattr(args, 'moe_router_load_balancing_type') and args.moe_router_load_balancing_type == "group_limited_greedy":
+            save_tensors.append(moe_layer.router.l_aux)
+            moe_layer.router.l_aux = moe_layer.router.l_aux.detach()
+            moe_layer.router.l_aux.requires_grad = True
+            save_tensors.append(moe_layer.router.l_aux)
+            with torch.enable_grad():
+                save_to_aux_losses_tracker(
+                    "load_balancing_loss",
+                    moe_layer.router.l_aux,
+                    moe_layer.layer_number,
+                    moe_layer.config.num_layers,
+                )
+                save_to_aux_losses_tracker(
+                    "load_balancing_expert_level_loss",
+                    moe_layer.router.l_expert_aux / args.moe_aux_loss_coeff,
+                    moe_layer.layer_number,
+                    moe_layer.config.num_layers,
+                )
+                if hasattr(moe_layer.router, 'l_device_aux'):
+                    save_to_aux_losses_tracker(
+                        "load_balancing_device_level_loss",
+                        moe_layer.router.l_device_aux / args.moe_device_level_aux_loss_coeff,
+                        moe_layer.layer_number,
+                        moe_layer.config.num_layers,
+                    )
+                if hasattr(moe_layer.router, 'l_comm_aux'):
+                    save_to_aux_losses_tracker(
+                        "load_balancing_comm_level_loss",
+                        moe_layer.router.l_comm_aux / args.moe_comm_aux_loss_coeff,
+                        moe_layer.layer_number,
+                        moe_layer.config.num_layers,
+                    )
+                output = MoEAuxLossAutoScaler.apply(output, moe_layer.router.l_aux)
 
         save_tensors.append(output)
         save_tensors.append(hidden_states)
-        save_tensors_for_grad.append(hidden_states)
 
         save_tensors.append(share_experts_output)
         save_tensors.append(moe_layer.token_dispatcher.global_input_tokens_local_experts_indices)
@@ -86,23 +120,35 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         else:
             output_sum = output.detach()
 
-        ctx.saved_tensors_for_grad = save_tensors_for_grad
         return output_sum, mlp_bias
 
     @staticmethod
     def backward(ctx, *args):
         global_args = get_args()
         moe_zero_memory = global_args.moe_zero_memory
-        (route_graph, detach_scores,
-         indices,
-         permute1_graph,
-         permute2_input_detach, permute2_graph,
-         experts_graph,
-         unpermute1_input_detach, unpermute1_graph,
-         unpermute2_input_detach, unpermute2_graph,
-         detach_input, share_experts_graph,
-         global_input_tokens_local_experts_indices,
-         ) = ctx.saved_tensors
+        if hasattr(global_args, 'moe_router_load_balancing_type') and global_args.moe_router_load_balancing_type == "group_limited_greedy":
+            (route_graph, detach_scores,
+             indices,
+             permute1_graph,
+             permute2_input_detach, permute2_graph,
+             experts_graph,
+             unpermute1_input_detach, unpermute1_graph,
+             unpermute2_input_detach, l_aux_graph, l_aux_detach, unpermute2_graph,
+             detach_input, share_experts_graph,
+             global_input_tokens_local_experts_indices,
+             ) = ctx.saved_tensors
+        else:
+            (route_graph, detach_scores,
+             indices,
+             permute1_graph,
+             permute2_input_detach, permute2_graph,
+             experts_graph,
+             unpermute1_input_detach, unpermute1_graph,
+             unpermute2_input_detach, unpermute2_graph,
+             detach_input, share_experts_graph,
+             global_input_tokens_local_experts_indices,
+             ) = ctx.saved_tensors
+            l_aux_graph, l_aux_detach = None, None
 
         ctx.save_for_backward()
 
@@ -262,6 +308,8 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         permute2_input_detach.grad.untyped_storage().resize_(0)
         backward_func(permute1_graph, permute1_backward_input)
         permute1_backward_input.untyped_storage().resize_(0)
+        if l_aux_graph is not None:
+            l_aux_graph.backward(l_aux_detach.grad, retain_graph=True)
         if moe_zero_memory != "disable":
             if ctx.router_topk > 1:
                 from mindspeed.core.transformer.moe.moe_utils import get_prob_backward_need_tensors
