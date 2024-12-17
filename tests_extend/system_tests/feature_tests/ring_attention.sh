@@ -14,9 +14,9 @@ CKPT_DIR=./ckpt_llama
 DATA_PATH="/home/dataset/llama2/alpaca_text_document"
 TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
-TP=2
+TP=1
 PP=2
-CP=2
+CP=4
 EP=1
 
 DISTRIBUTED_ARGS="
@@ -28,7 +28,9 @@ DISTRIBUTED_ARGS="
 "
 
 RECOMPUTE_ARGS="
-    --swap-attention \
+    --enable-recompute-layers-per-pp-rank \
+    --recompute-activation-function \
+    --recompute-activation-function-layers 1 \
     --recompute-in-bubble \
 "
 
@@ -38,20 +40,18 @@ GPT_ARGS="
     --num-layers-per-virtual-pipeline-stage 1 \
     --context-parallel-size ${CP} \
     --context-parallel-algo megatron_cp_algo \
+    --cp-window-size 2 \
     --use-cp-send-recv-overlap \
     --use-fused-ring-attention-update \
     --use-mcore-models \
-    --use-distributed-optimizer \
-    --overlap-grad-reduce \
-    --overlap-param-gather \
     --reuse-fp32-param \
-    --use-fused-rotary-pos-emb \
     --use-fused-swiglu \
     --use-fused-rmsnorm \
     --use-flash-attn \
     --use-fusion-attn-v2 \
     --alibi-fusion-attn-type 2 \
-    --num-layers 4 \
+    --num-layers 6 \
+    --noop-layers 0,5 \
     --hidden-size 8192 \
     --ffn-hidden-size 28672 \
     --num-attention-heads 64 \
@@ -69,7 +69,7 @@ GPT_ARGS="
     --attention-dropout 0.0 \
     --init-method-std 0.01 \
     --hidden-dropout 0.0 \
-    --position-embedding-type rope \
+    --position-embedding-type alibi \
     --normalization RMSNorm \
     --swiglu \
     --no-masked-softmax-fusion \

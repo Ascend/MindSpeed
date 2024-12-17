@@ -14,9 +14,9 @@ CKPT_DIR=./ckpt_llama
 DATA_PATH="/home/dataset/llama2/alpaca_text_document"
 TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
-TP=2
+TP=4
 PP=1
-CP=4
+CP=1
 EP=1
 
 DISTRIBUTED_ARGS="
@@ -28,37 +28,37 @@ DISTRIBUTED_ARGS="
 "
 
 RECOMPUTE_ARGS="
-    --recompute-num-layers 1 \
-    --recompute-activation-function \
-    --recompute-activation-function-num-layers 2 \
     --swap-attention \
 "
 
 GPT_ARGS="
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
-    --context-parallel-size ${CP} \
-    --context-parallel-algo hybrid_cp_algo \
-    --ulysses-degree-in-cp 2 \
-    --use-cp-send-recv-overlap \
-    --use-fused-ring-attention-update \
     --use-mcore-models \
-    --use-ascend-mc2 \
-    --sequence-parallel \
+    --tp-2d \
+    --tp-x 2 \
+    --tp-y 2 \
+    --enable-overlap-ag-with-matmul \
+    --enable-overlap-matmul-with-rs \
+    --enable-backward-overlap-ag-with-matmul \
+    --disable-gloo-group \
+    --optimizer-selection fused_torch_adamw \
+    --use-distributed-optimizer \
+    --overlap-grad-reduce \
+    --overlap-param-gather \
+    --reuse-fp32-param \
     --use-fused-rotary-pos-emb \
     --use-fused-swiglu \
-    --use-fused-rmsnorm \
     --use-flash-attn \
-    --op-cal-tflops \
-    --optimizer-selection fused_torch_adamw \
+    --no-gradient-accumulation-fusion \
     --num-layers 4 \
-    --hidden-size 8192 \
-    --ffn-hidden-size 28672 \
-    --num-attention-heads 64 \
+    --hidden-size 4096 \
+    --ffn-hidden-size 11008 \
+    --num-attention-heads 32 \
     --tokenizer-type Llama2Tokenizer \
     --tokenizer-model ${TOKENIZER_MODEL} \
-    --seq-length 32768 \
-    --max-position-embeddings 32768 \
+    --seq-length 16384 \
+    --max-position-embeddings 16384 \
     --micro-batch-size 1 \
     --global-batch-size 4 \
     --make-vocab-size-divisible-by 1 \
