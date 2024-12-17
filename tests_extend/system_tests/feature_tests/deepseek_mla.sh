@@ -16,7 +16,7 @@ TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
 TP=1     # MLA only support TP1
 PP=2
-CP=1
+CP=2
 EP=2
 
 DISTRIBUTED_ARGS="
@@ -27,18 +27,18 @@ DISTRIBUTED_ARGS="
     --master_port $MASTER_PORT
 "
 
+RECOMPUTE_ARGS="
+    --recompute-activation-function \
+    --swap-attention \
+"
+
 MOE_ARGS="
     --expert-model-parallel-size ${EP} \
     --moe-model-type megatron_moe \
     --moe-token-dispatcher-type alltoall \
-    --moe-alltoall-overlap-comm \
-    --moe-zero-memory level0 \
-    --moe-tp-extend-ep \
-    --moe-grouped-gemm \
     --moe-permutation-async-comm \
-    --use-fused-moe-token-permute-and-unpermute \
     --n-shared-experts 1 \
-    --num-experts 32 \
+    --num-experts 16 \
     --moe-router-topk 4 \
     --moe-aux-loss-coeff 0.02 \
 "
@@ -67,6 +67,8 @@ GPT_ARGS="
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
+    --context-parallel-size ${CP} \
+    --context-parallel-algo megatron_cp_algo \
     --use-mcore-models \
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
@@ -76,11 +78,7 @@ GPT_ARGS="
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
-    --swap-attention \
     --num-layers 4 \
-    --noop-layers 0,3 \
-    --manual-gc \
-    --manual-gc-interval 50 \
     --seq-length 8192 \
     --max-position-embeddings 8192 \
     --train-iters 10000 \
@@ -90,7 +88,7 @@ GPT_ARGS="
     --make-vocab-size-divisible-by 128 \
     --vocab-size 126464 \
     --micro-batch-size 1 \
-    --global-batch-size 32 \
+    --global-batch-size 8 \
     --tokenizer-type Llama2Tokenizer \
     --tokenizer-model ${TOKENIZER_MODEL} \
     --disable-bias-linear \
@@ -135,6 +133,7 @@ OUTPUT_ARGS="
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
+    $RECOMPUTE_ARGS \
     $MOE_ARGS \
     $MLA_ARGS \
     $ROPE_ARGS \
