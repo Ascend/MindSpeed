@@ -728,7 +728,7 @@ def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor, bias: t
 
 
 def alltoall_token_permutation_new(
-        self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor, shared_experts, save_tensors, save_tensors_for_grad, moe_ctx=None
+        self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor, shared_experts, save_tensors, moe_ctx=None
 ):
     self.hidden_shape = hidden_states.shape
     self.probs = probs
@@ -820,14 +820,13 @@ def alltoall_token_permutation_new(
                                                                      global_input_tokens)
     save_tensors.append(global_input_tokens_detach)
     save_tensors.append(global_input_tokens)
-    save_tensors_for_grad.append(global_input_tokens_detach)
     global_input_tokens_detach.untyped_storage().resize_(0)
 
     return share_experts_output, global_input_tokens, tokens_per_expert
 
 
 def alltoall_token_unpermutation_new(
-        self, hidden_states, bias, save_tensors, save_tensors_for_grad
+        self, hidden_states, bias, save_tensors
 ):
     def alltoall_token_unpermutation1(hidden_states):
         assert bias is None, "Bias is not supported in MoEAlltoAllTokenDispatcher"
@@ -858,7 +857,6 @@ def alltoall_token_unpermutation_new(
     hidden_states, unpermute1_input_detach = forward_func(alltoall_token_unpermutation1, hidden_states)
     save_tensors.append(unpermute1_input_detach)
     save_tensors.append(hidden_states)
-    save_tensors_for_grad.append(unpermute1_input_detach)
     unpermute1_input_detach.untyped_storage().resize_(0)
 
     ep_group = parallel_state.get_expert_model_parallel_group()
@@ -901,7 +899,6 @@ def alltoall_token_unpermutation_new(
 
     output, unpermute2_input_detach = forward_func(alltoall_token_unpermutation2, permutated_local_input_tokens)
     save_tensors.append(unpermute2_input_detach)
-    save_tensors_for_grad.append(unpermute2_input_detach)
     if not get_args().use_fused_moe_token_permute_and_unpermute or get_args().moe_zero_memory != "disable":
         unpermute2_input_detach.untyped_storage().resize_(0)
     return output, None
