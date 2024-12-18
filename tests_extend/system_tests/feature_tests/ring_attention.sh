@@ -30,7 +30,7 @@ DISTRIBUTED_ARGS="
 RECOMPUTE_ARGS="
     --enable-recompute-layers-per-pp-rank \
     --recompute-activation-function \
-    --recompute-activation-function-layers 1 \
+    --recompute-activation-function-num-layers 1 \
     --recompute-in-bubble \
 "
 
