@@ -118,8 +118,9 @@ MindSpeed提供了多层次的优化解决方案，分为三个层级，用户�
 
 
 # 特性介绍
-MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性以及关键场景特性。
-【Prototype】表示原型特性，暂未商用发布
+MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性以及关键场景特性。其中【Prototype】表示原型特性，暂未商用发布。
+
+当前大模型训练主要使用bf16数据类型，以下特性若无特殊声明原则上兼容fp16，如遇到fp16场景下相关问题请联系MindSpeed团队或提交issue,我们会快速响应。
 ## Megatron特性支持
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
@@ -136,13 +137,13 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 ## 并行策略特性
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
-| Ulysses 长序列并行                | [link](docs/features/ulysses-context-parallel.md)         |
+| Ascend Ulysses 长序列并行                | [link](docs/features/ulysses-context-parallel.md)         |
 | Ascend Ring Attention 长序列并行         | [link](docs/features/ring-attention-context-parallel.md)  |
 | Ascend 混合长序列并行           | [link](docs/features/hybrid-context-parallel.md)          |
-| 【Prototype】Adaptive-CP 泛化掩码自适应负载均衡序列并行分布式FA | [link](docs/features/adaptive-cp.md)               |
+| Ascend 自定义空操作层                              | [link](docs/features/noop-layers.md)     |
+| Ascend PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
 | 【Prototype】Ascend PP自动并行            | [link](docs/features/automated-pipeline.md)               |
-| 【Prototype】Ascend 自定义空操作层                              | [link](docs/features/noop-layers.md)     |
-| 【Prototype】PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
+
 ## 内存优化特性
 | 特性                           | 介绍                                                        |
 |------------------------------|-----------------------------------------------------------|
@@ -152,7 +153,7 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend Mask归一                | [link](docs/features/generate-mask.md)                    |
 | Ascend BF16 参数副本复用           | [link](docs/features/reuse-fp32-param.md)                 |
 | Ascend swap_attention            | [link](docs/features/swap_attention.md)                   |
-| 【Prototype】Ascend Norm重计算                  | [link](docs/features/norm-recompute.md)          |
+| Ascend Norm重计算                  | [link](docs/features/norm-recompute.md)          |
 
 ## 亲和计算特性
 | 特性                           | 介绍                                                        |
@@ -161,12 +162,11 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend swiglu 融合算子           | [link](docs/features/swiglu.md)                           |
 | Ascend rotary_embedding 融合算子 | [link](docs/features/rotary-embedding.md)                 |
 | Ascend flash attention 融合算子    | [link](docs/features/flash-attention.md)                  |
+| Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
+| Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
 | 【Prototype】Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
-| 【Prototype】Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
-| 【Prototype】Ascend ring_attention_update 融合算子           | [link](docs/features/ring_attention_update.md)|
-| 【Prototype】Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
-| 【Prototype】Ascend npu_groupmatmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_groupmatmul_add.md)|
 | 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
+| 【Prototype】Ascend fusion_attention_v2       | [link](docs/features/fusion-attn-v2.md)                              |
 
 ## 通信优化特性
 | 特性                           | 介绍                                                        |
@@ -177,15 +177,12 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 ## Mcore MoE特性
 | 特性                                                       | 介绍                                                                               |
 |----------------------------------------------------------|----------------------------------------------------------------------------------|
+| Ascend Megatron MoE GMM                                         | [link](docs/features/megatron_moe/megatron-moe-gmm.md)                                                      |
+| Ascend Megatron MoE Allgather Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md)                                     |
+| Ascend Megatron MoE Alltoall Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md)                                      |
+| Ascend Megatron MoE TP拓展EP | [link](docs/features/megatron_moe/megatron-moe-tp-extend-ep.md)                                             |
+| Ascend 共享专家                     | [link](docs/features/shared-experts.md)                                          |
 | 【Prototype】Ascend Megatron MoE 负载感知内存均衡算法                           | [link](docs/features/megatron_moe/megatron-moe-adaptive-recompute-activation.md) |
-| 【Prototype】Megatron MoE GMM                                         | [link](docs/features/megatron_moe/megatron-moe-gmm.md)                                                      |
-| 【Prototype】Ascend Megatron MoE Allgather Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md)                                     |
-| 【Prototype】Ascend Megatron MoE Alltoall Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md)                                      |
-| 【Prototype】Megatron MoE Zero Memory 性能优化                  | [link](docs/features/megatron_moe/megatron-moe-zero-memory.md)                                              |
-| 【Prototype】Megatron MoE Allgather Overlap Dispatcher 性能优化 | [link](docs/features/megatron_moe/megatron-moe-allgather-overlap-comm.md)                                   |
-| 【Prototype】Megatron MoE Alltoall Overlap Dispatcher 性能优化  | [link](docs/features/megatron_moe/megatron-moe-alltoall-overlap-comm.md)                                    |
-| 【Prototype】Megatron MoE TP拓展EP | [link](docs/features/megatron_moe/megatron-moe-tp-extend-ep.md)                                             |
-| 【Prototype】Ascend 共享专家                     | [link](docs/features/shared-experts.md)                                          |
 
 ## DeepSpeed MoE特性
 | 特性                                 | 介绍                                                   |
@@ -198,8 +195,8 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 ## 关键场景特性
 | 特性                              | 介绍                                                   |
 |---------------------------------|------------------------------------------------------|
+| Ascend EOD Reset训练场景 | [link](docs/features/eod-reset.md)                   |
 | 【Prototype】Ascend alibi         | [link](docs/features/alibi.md)                       |
-| 【Prototype】Ascend EOD Reset训练场景 | [link](docs/features/eod-reset.md)                   |
 
 ## 其它特性
 | 特性                           | 介绍                                                        |
@@ -255,9 +252,6 @@ MindSpeed支持命令式开启Profile采集数据，命令配置介绍如下：
 
 | MindSpeed版本             | Megatron版本      | PyTorch版本   | torch_npu版本 | CANN版本  | Python版本                               | 硬件型态     |
 |-------------------------|-----------------|------------- |-------------|---------|----------------------------------------|----------|
-| master（主线）              | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.7.0（主线）         | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.6.0（主线）         | Core 0.6.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | 1.0.0_core_r0.7.0（商用）   | Core 0.7.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | 1.0.0_core_r0.6.0（商用）   | Core 0.6.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | 1.0.RC3_core_r0.7.0（商用） | Core 0.7.0      |  2.1.0     | 6.0.RC3     | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
@@ -300,3 +294,18 @@ MindSpeed版本分支的维护阶段如下：
 | 现象                   | 介绍                               |
 |----------------------|----------------------------------|
 | Data helpers 数据预处理出错 | [link](docs/faq/data_helpers.md) |
+
+# 致谢
+
+MindSpeed-Core 由华为公司的下列部门联合贡献 ：
+
+华为公司：
+
+- 昇腾计算产品部
+- 计算算法部
+- 计算软件平台部 
+- 计算技术开发部
+- 公共开发部：NAIE
+- 网络技术实验室
+
+感谢来自社区的每一个PR，欢迎贡献 MindSpeed-Core！
