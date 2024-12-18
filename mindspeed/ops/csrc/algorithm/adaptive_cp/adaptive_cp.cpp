@@ -417,7 +417,10 @@ void get_mask_list_without_remap(const at::Tensor& attnMask, at::Tensor& output,
     int numUnitToNextRow = cpSize * colGridSize;
 
     uint64_t memmoveCnt = 0;
-    uint64_t outputSize = rowGridSize * colGridSize;
+    if (colGridSize > std::numeric_limits<uint64_t>::max() / rowGridSize) {
+        throw std::runtime_error("sequence length too long or context parallel size too small");
+    }
+    uint64_t outputSize = static_cast<uint64_t>(rowGridSize) * colGridSize;
 
     for (size_t i = 0; i < rowGridSize; i++) {
         if (memmoveCnt + colGridSize > outputSize) {
