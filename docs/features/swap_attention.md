@@ -39,11 +39,6 @@
 
 ![输入图片说明](../../sources/images/swap_attention2.png)
 
-### c. 指定开启预取功能和重计算层数：`--swap-attention`和`--recompute-num-layers [int]`和`--recompute-method block `
-
-开启后，将对前[int]层的attention层的激活值进行预取，和前[int]层的全连接层进行重计算。预取功能和重计算功能配合使用，可以提高计算效率。
-
-![输入图片说明](../../sources/images/swap_attention3.png)
 ## 使用效果
 
 与完全重计算相比 ，有性能收益；
