@@ -127,7 +127,6 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
   $GPT_ARGS \
   $DATA_ARGS \
   $OUTPUT_ARGS \
-  --distributed-backend nccl \
-  | tee logs/train_mixtral.log
+  --distributed-backend nccl
 
 set +x
