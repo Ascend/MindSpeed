@@ -260,7 +260,8 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         # probs: [num_experts, capacity]
         self.capacity = self.probs.size(1)
         num_tokens_per_local_expert = torch.full(
-            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long
+            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long,
+            device=torch.cuda.current_device()
         )
         return num_tokens_per_local_expert
     elif self.config.moe_expert_capacity_factor is not None:
@@ -387,7 +388,8 @@ def preprocess_tp_extend_ep(self, indices: torch.Tensor) -> torch.Tensor:
         # probs: [num_experts, capacity]
         self.capacity = self.probs.size(1)
         num_tokens_per_local_expert = torch.full(
-            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long
+            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long,
+            device=torch.cuda.current_device()
         )
         return num_tokens_per_local_expert
     elif self.config.moe_expert_capacity_factor is not None:
@@ -989,7 +991,8 @@ def alltoall_preprocess_npu(self, indices: torch.Tensor):
         # probs: [num_experts, capacity]
         self.capacity = self.probs.size(1)
         num_tokens_per_local_expert = torch.full(
-            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long
+            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long,
+            device=torch.cuda.current_device()
         )
         return num_tokens_per_local_expert
     elif self.config.moe_expert_capacity_factor is not None:
