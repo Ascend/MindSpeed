@@ -9,7 +9,13 @@ from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
 from .arguments import process_args
 
+
 _ARGS = None
+
+
+def lcm(a, b):
+    import math
+    return (a * b) // math.gcd(a, b)
 
 
 def add_args(args, key, value):
@@ -146,6 +152,8 @@ def torch_adaptation(aspm):
     aspm.register_patch('torch.Tensor.view', ensure_contiguous_wrapper)
     aspm.register_patch('torch.distributed._all_gather_base', all_gather_into_tensor)
     aspm.register_patch('torch.distributed._reduce_scatter_base', reduce_scatter_tensor)
+    if sys.version_info < (3, 9):
+        aspm.register_patch('math.lcm', lcm, create_dummy=True)
 
 
 def communication_adaptation(aspm, mindspeed_args):
@@ -304,6 +312,12 @@ def mcore_optimizer_adapation(aspm, args):
                         reuse_fp32_param_param_and_grad_buffer_init_wrapper)
     aspm.register_patch('megatron.core.optimizer.optimizer_config.OptimizerConfig.__init__',
                         optimizer_config_init_wrapper)
+
+    if args.param_and_grad_buffer_pad:
+        from .core.distributed.param_and_grad_buffer import param_and_grad_buffer_init_pad
+        aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
+                            param_and_grad_buffer_init_pad)
+
     if args.reuse_fp32_param and not args.enable_high_availability:
         from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
         from .optimizer.optimizer import mixed_precision_optimizer_step, reuse_fp32_param_init_wrapper
