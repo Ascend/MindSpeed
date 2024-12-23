@@ -38,25 +38,25 @@ def get_forward_backward_func_wrapper(get_forward_backward_func):
         if arguments.optimize_send_recv_comm and arguments.num_layers_per_virtual_pipeline_stage is None:
             forward_backward_func = flexible_schedules.forward_backward_pipelining_without_interleaving
 
-        if arguments.automated_pipeline_perf and arguments.pp_schedule_list:
+        elif arguments.automated_pipeline_perf and arguments.pp_schedule_list:
             forward_backward_func = flexible_schedules.forward_backward_pipelining_without_interleaving
 
-        if arguments.recompute_in_bubble or arguments.recompute_in_advance:
+        elif arguments.recompute_in_bubble or arguments.recompute_in_advance:
             forward_backward_func = forward_backward_ripipe_pipelining
 
-        if parallel_state.get_pipeline_model_parallel_world_size() > 1 \
+        elif parallel_state.get_pipeline_model_parallel_world_size() > 1 \
             and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None \
             and arguments.use_nanopipe:
             forward_backward_func = flexible_schedules.forward_backward_pipelining_with_interleaving_nano_pipe
 
-        if arguments.enable_high_availability:
-            forward_backward_func = forward_backward_func_wrapper(forward_backward_func)
-
-        if arguments.use_multiparameter_pipeline_model_parallel:
+        elif arguments.use_multiparameter_pipeline_model_parallel:
             pipeline_model_parallel_size = parallel_state.get_pipeline_model_parallel_world_size()
             if pipeline_model_parallel_size > 1 \
                     and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
                 forward_backward_func = multiparameter_schedules.forward_backward_pipelining_with_interleaving
+
+        if arguments.enable_high_availability:
+            forward_backward_func = forward_backward_func_wrapper(forward_backward_func)
 
         return forward_backward_func
 
