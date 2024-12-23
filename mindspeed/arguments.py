@@ -239,6 +239,8 @@ def _add_distributed_args(parser):
 
     group.add_argument('--local-rank', type=int, default=None,
                        help='Local rank passed from distributed launcher for torch2.x.')
+    group.add_argument('--param-and-grad-buffer-pad', type=int, default=None,
+                       help='Use this argument to ensure that all buckets start at a memory address that is needed-byte. Set 512 for Ascend')
     group.add_argument('--use-nanopipe', action='store_true',
                        default=False, help='use nano pipeline parallelism for reduce bubble.')
     group.add_argument('--use-nanopipe-swap', action='store_true',
@@ -807,7 +809,10 @@ def validate_args_wrapper(validate_args):
             raise AssertionError("--expert-interval must be between 1 and num layers")
         if args.moe_train_capacity_factor <= 0.0:
             raise AssertionError("--moe-train-capacity-factor must be greater than 0.0")
-        
+
+        if args.param_and_grad_buffer_pad and args.param_and_grad_buffer_pad <= 0:
+            raise AssertionError('--param-and-grad-buffer-pad must be greater than 0')
+
         if args.gemm_gradient_accumulation_fusion:
             if not args.moe_grouped_gemm:
                 raise AssertionError('`--gemm-gradient-accumulation-fusion` only support with `--moe-grouped-gemm`.')
