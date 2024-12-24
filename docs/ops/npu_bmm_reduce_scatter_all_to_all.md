@@ -31,24 +31,25 @@ $$
 
 ## 输入输出及属性说明：
 输入：
-- x：必选输入，Tensor，数据类型float16，bfloat16，必须为3维。BatchMatMul计算的左矩阵；
-- weight：必选输入，Tensor，数据类型float16, bfloat16，必须为3维，类型与x保持一致。BatchMatMul计算的右矩阵
-- bias：可选输入，Tensor，数据类型float16, float32。x为float16时，bias需为float16；x为bfloat16时，bias需为float32。支持两维或三维。BatchMatMul计算的bias。(由于要进行ReduceScatter通信，因此需要在通信之后再Add)
+- x：必选输入，Tensor，数据类型float16，bfloat16，必须为3维。BatchMatMul计算的左矩阵。
+- weight：必选输入，Tensor，数据类型float16, bfloat16，必须为3维，类型与x保持一致。BatchMatMul计算的右矩阵。
+- bias：可选输入，Tensor，数据类型float16, float32。x为float16时，bias需为float16；x为bfloat16时，bias需为float32。支持两维或三维。BatchMatMul计算的bias。(由于要进行ReduceScatter通信，因此需要在通信之后再Add)。
 
 输出：
 - out：Tensor，数据类型float16, bfloat16，必须为3维。最终计算结果，类型与输入x保持一致。
 
 属性：
 - group_ep：必选属性，str。ep通信域名称，专家并行的通信域。
-- group_ep_worldsize：必选属性，int。ep通信域size，支持2/4/8/16。
+- group_ep_worldsize：必选属性，int。ep通信域size，支持2/4/8/16/32。
 - group_tp：必选属性，str。tp通信域名称，Tensor并行的通信域。
-- group_tp_worldsize：必选属性，int。tp通信域size，支持2/4/8/16。
-- shard_type：可选属性，int，默认值为0。0表示输出在H维度按tp分片，1表示输出在C维度按tp分片。当前仅支持shard_type等于1的场景。
+- group_tp_worldsize：必选属性，int。tp通信域size，支持2/4/8/16/32。
+- shard_type：可选属性，int，默认值为0。0表示输出在H维度按tp分片，1表示输出在C维度按tp分片。
 
 
 ## 输入限制
 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=group_ep_worldsize，tp=group_tp_worldsize）
-按H轴进行ReduceScatter场景，即shard_type为0场景（暂不支持该场景）：
+
+按H轴进行ReduceScatter场景，即shard_type为0场景：
 - x: (E/ep, ep\*C, M/tp) 
 - weight：(E/ep, M/tp, H)
 - bias：(E/ep, 1, H/tp)  两维时为(E/ep, H/tp)
@@ -63,13 +64,13 @@ $$
 数据关系说明：
 - 比如x.size(0)等于E/tp，out.size(0)等于E，则表示，out.size(0) = ep\*x.size(0)，out.size(0)是ep的整数倍；其他关系类似
 - E的取值范围为[2, 512]，且E是ep的整数倍；
-- H的取值范围为：[1, 65535]；
+- H的取值范围为：[1, 65535]，当shard_type为0时，H需为tp的整数倍；
 - M/tp的取值范围为：[1, 65535]；
 - E/ep的取值范围为：[1, 32]；
-- ep、tp均仅支持2、4、8、16；
+- ep、tp均仅支持2、4、8、16、32；
 - group_ep和group_tp名称不能相同；
-- C大于0，上限为算子device内存上限；
-- 不支持跨超节点，只支持超节点内，ep域AlltoAll支持超节点内跨节点，tp域ReduceScatter仅支持超节点内单一节点；
+- C大于0，上限为算子device内存上限，当shard_type为1时，C需为tp的整数倍；
+- 不支持跨超节点，只支持超节点内。
 
 ## npu_bmm_reducescatter_alltoall 类的调用示例(待验证)
 在终端调用命令如下：
