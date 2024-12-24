@@ -37,8 +37,8 @@ $$
 
 ## 输入输出及属性说明：
 输入：
-- x：必选输入，Tensor，数据类型支持float16，bfloat16。该输入进行AllToAll、AllGather集合通信，必须为3维，数据格式支持ND，通信后结果作为BatchMatMul计算的左矩阵；
-- weight：必选输入，Tensor，数据类型支持float16, bfloat16，类型需与x保持一致，必须为3维，数据格式支持ND。BatchMatMul计算的右矩阵
+- x：必选输入，Tensor，数据类型支持float16，bfloat16。该输入进行AllToAll、AllGather集合通信，必须为3维，数据格式支持ND，通信后结果作为BatchMatMul计算的左矩阵。
+- weight：必选输入，Tensor，数据类型支持float16, bfloat16，类型需与x保持一致，必须为3维，数据格式支持ND, BatchMatMul计算的右矩阵。
 - bias：可选输入，Tensor，数据类型支持float16, float32。x为float16时，bias需为float16；x为bfloat16时，bias需为float32，必须为两维或三维，数据格式支持ND。BatchMatMul计算的bias。
 
 输出：
@@ -48,10 +48,10 @@ $$
 
 属性：
 - group_ep：必选属性，str。ep通信域名称，专家并行的通信域。
-- group_ep_worldsize：必选属性，int。ep通信域size，支持2/4/8/16。
+- group_ep_worldsize：必选属性，int。ep通信域size，支持2/4/8/16/32。
 - group_tp：必选属性，str。tp通信域名称，Tensor并行的通信域。
-- group_tp_worldsize：必选属性，int。tp通信域size，支持2/4/8/16。
-- shard_type：可选属性，int，默认值为0，0表示在H维度按tp域进行allgather，1表示在C维度上按tp域进行allgather。当前仅支持shard_type等于1的场景。
+- group_tp_worldsize：必选属性，int。tp通信域size，支持2/4/8/16/32。
+- shard_type：可选属性，int，默认值为0，0表示在H维度按tp域进行allgather，1表示在C维度上按tp域进行allgather。
 - act_type：可选属性，str，激活函数类型，默认值为None，表示无激活函数。支持GELU/Silu/FastGELU/Relu/None等。
 - need_allgather_out：是否需要输出allgather后的结果，默认False，表示不需要输出。
 - need_activation_feature：是否需要输出执行激活函数前的结果（BatchMatMul后），默认False，表示不需要输出。仅在act_type不为None的时候有意义。
@@ -59,9 +59,17 @@ $$
 
 ## 输入shape限制
 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=group_ep_worldsize，tp=group_tp_worldsize）
+按H轴进行AllGather场景，shard_type为0时：
+- x: (E, C, H/tp)
+- weight：(E/ep, H, M/tp)
+- bias：支持两维或三维，三维时shape为：(E/ep, 1, M/tp)，两维时shape为：(E/ep, M/tp)
+- y1Out：(E/ep, ep\*C, M/tp)
+- y2OutOptional：(E/ep, ep\*C, H)
+- y3OutOptional：(E/ep, ep\*C, M/tp)
+按C轴进行AllGather场景，shard_type为1时：
 - x: (E, C/tp, H)；
 - weight：(E/ep, H, M/tp)；
-- bias：(E/ep, 1, M/tp)；  支持两维或三维，两维时shape为：(E/ep, M/tp)
+- bias：支持两维或三维，三维时shape为：(E/ep, 1, M/tp)，两维时shape为：(E/ep, M/tp)
 - y1Out：(E/ep, ep\*tp\*C/tp, M/tp)；
 - y2OutOptional：(E/ep, ep\*tp\*C/tp, H)；
 - y3OutOptional：(E/ep, ep\*tp\*C/tp, M/tp)
@@ -69,13 +77,13 @@ $$
 数据关系说明：
 - 比如x.size(0)等于E，weight.size(0)等于E/ep，则表示，x.size(0) = ep\*weight.size(0)，x.size(0)是ep的整数倍；其他关系类似
 - E的取值范围为[2, 512]，且E是ep的整数倍；
-- H的取值范围为：[1, 65535]；
-- M/tp的取值范围为：[1, 65535]；
+- H的取值范围为：[1, 65535]，当shard_type为0时，H需为tp的整数倍；
+- M/tp的取值为：[1, 65535]；
 - E/ep的取值范围为：[1, 32]；
-- ep、tp均仅支持2、4、8、16；
+- ep、tp均仅支持2、4、8、16、32；
 - group_ep和group_tp名称不能相同；
-- C大于0，上限为算子device内存上限；
-- 不支持跨超节点，只支持超节点内，ep域AlltoAll支持超节点内跨节点，tp域AllGather仅支持超节点内单一节点；
+- C大于0，上限为算子device内存上限，当shard_type为1时，C需为tp的整数倍；
+- 不支持跨超节点，只支持超节点内。
 
 ## npu_alltoall_allgather_bmm 的调用示例
 在终端调用命令如下：
