@@ -24,3 +24,4 @@ from .adaptive_cp_builder import AdaptiveCpOpBuilder
 from .matmul_add_builder import MatmulAddOpBuilder
 from .groupmatmul_add_builder import GroupMatmulAddOpBuilder
 from .fused_ema_adamw_builder import FusedEmaAdamWOpBuilder
+from .smart_swap_builder import SmartSwapBuilder

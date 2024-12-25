@@ -608,6 +608,9 @@ def memory_fragmentation_adaptation(aspm, args):
             allowed_recomputing_module_wrapper(ParallelTransformerLayer)
         from .core.memory.adaptive_recomputing.adaptive_recompute import setup_model_and_optimizer_wrapper
         aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
+    if args.smart_swap and (not args.memory_fragmentation and not adaptive_recompute_enable):
+        from .core.memory.smart_swap.swap_adaptor import change_allocator
+        change_allocator()
 
     if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
         print(f"OOTB_OPTIMIZER_PROFILING success open")
