@@ -397,6 +397,8 @@ def _add_automated_pipeline_args(parser):
     group.add_argument('--memory-fragmentation',
                        action='store_true', default=False,
                        help='Enable the memory fragmentation feature.')
+    group.add_argument('--smart-swap',
+                       action='store_true', default=False, help='Enable the smart swap feature.')
     return parser
 
 
@@ -696,6 +698,9 @@ def validate_args_wrapper(validate_args):
         if args.memory_fragmentation:
             assert not args.use_fused_rotary_pos_emb, \
                 'memory fragmentation is not compatible with use_fused_rotary_pos_emb'
+        if args.smart_swap:
+            assert not adaptive_recompute_enable, 'smart swap is not compatible with adaptive selective recompute'
+            assert not args.memory_fragmentation, 'smart swap is not compatible with memory fragmentation'
         if args.use_flash_attn:
             assert args.sparse_mode == 0 or args.sparse_mode == 2, f"Only supports sparse modes 0 and 2"
         args.create_attention_mask_in_dataloader = False
