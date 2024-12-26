@@ -239,6 +239,8 @@ def _add_distributed_args(parser):
 
     group.add_argument('--local-rank', type=int, default=None,
                        help='Local rank passed from distributed launcher for torch2.x.')
+    group.add_argument('--param-and-grad-buffer-pad', type=int, default=None,
+                       help='Use this argument to ensure that all buckets start at a memory address that is needed-byte. Set 512 for Ascend')
     group.add_argument('--use-nanopipe', action='store_true',
                        default=False, help='use nano pipeline parallelism for reduce bubble.')
     group.add_argument('--use-nanopipe-swap', action='store_true',
@@ -547,6 +549,9 @@ def validate_args_wrapper(validate_args):
         # deepspeed dropless does not support pp
         if args.moe_no_drop and args.pipeline_model_parallel_size > 1:
             raise AssertionError("--moe-no-drop is not compatible with pp")
+
+        if args.param_and_grad_buffer_pad and args.param_and_grad_buffer_pad <= 0:
+            raise AssertionError('--param-and-grad-buffer-pad must be greater than 0')
 
         if args.use_fused_rmsnorm:
             if args.normalization != "RMSNorm":

@@ -9,6 +9,7 @@ from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
 from .arguments import process_args
 
+
 _ARGS = None
 
 
@@ -326,7 +327,7 @@ def mcore_fusions_adaptation(aspm, args):
         aspm.register_patch('megatron.training.initialize._set_random_seed', deter_comp_wrapper)
 
 
-def mcore_optimizer_adapation(aspm):
+def mcore_optimizer_adapation(aspm, mindspeed_args):
     from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
     from .optimizer.optimizer import (step_with_ready_grads, prepare_grads,
                                       reuse_fp32_param_init_wrapper, optimizer_config_init_wrapper)
@@ -344,6 +345,11 @@ def mcore_optimizer_adapation(aspm):
                         reuse_fp32_param_distrib_optimizer_init_wrapper)
     aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
                         reuse_fp32_param_param_and_grad_buffer_init_wrapper)
+
+    if mindspeed_args.param_and_grad_buffer_pad:
+        from .core.distributed.param_and_grad_buffer import param_and_grad_buffer_init_pad
+        aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
+                            param_and_grad_buffer_init_pad)
 
 
 def mcore_pipeline_parallel_adaptation(aspm, mindspeed_args):
@@ -908,7 +914,7 @@ def adaptation_l2(aspm, mindspeed_args):
     Advanced acceleration algorithm
     """
     mcore_models_adaptation(aspm, mindspeed_args)
-    mcore_optimizer_adapation(aspm)
+    mcore_optimizer_adapation(aspm, mindspeed_args)
     mcore_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_multiparam_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_tensor_parallel_adaptation(aspm, mindspeed_args)
