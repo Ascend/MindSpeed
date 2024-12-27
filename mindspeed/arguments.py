@@ -876,4 +876,8 @@ def _add_hccl_group_buffer_args(parser):
     group = parser.add_argument_group(title='hccl-group-buffer')
     group.add_argument('--hccl-group-buffer', type=str, default=None,
                        help='the hccl buffer for group')
+    group.add_argument('--hccl-group-buffer-adaptive', action='store_true', default=False,
+                       help='the hccl buffer for group adaptively')
+    group.add_argument('--hccl-ep-group-buffer-adaptive-factor', type=float, default=-1.0,
+                    help='the ep group buffer factor')
     return parser 
