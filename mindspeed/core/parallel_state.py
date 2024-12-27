@@ -66,15 +66,16 @@ _HCCL_GROUP_BUFFER = None
 
 
 def parse_hccl_buffer_string(hccl_group_buffer):
+    global _HCCL_GROUP_BUFFER
+
     if hccl_group_buffer == None:
-        return {}
+        return
 
     allowed_keys = ["dp", "dp_cp", "cp", "mp", "mp_exp", "tp", "pp", "embd", "tp_dp_cp", 
                     "tp_dp", "tp_cp", "tp_exp", "exp", "dp_modulo_exp", "pp_new_stream", 
-                    "cp2", "cp_ulysses", "cp_ring", "nd1_dim1", "ag_x_sd_rcv_overlap", 
+                    "cp2", "cp_ulysses", "cp_ring", "cp_ring_intra", "cp_ring_intra_overlap", "nd1_dim1", "ag_x_sd_rcv_overlap", 
                     "nd1_dim2", "ag_y_sd_rcv_overlap", "nd2_dim1", "nd2_dim2"]
 
-    result = {}
     parts = hccl_group_buffer.split(';')
     for part in parts:
         key_value = part.split(':')
@@ -88,14 +89,158 @@ def parse_hccl_buffer_string(hccl_group_buffer):
                     value = int(value_str)
                     if value <= 0:
                         raise RuntimeError(f"Value {value} must be greater than 0")
-                    result[key] = value
+                    _HCCL_GROUP_BUFFER[key] = value
                 except ValueError:
                     raise RuntimeError(f"{value_str} is not a valid positive integer")
             else:
                 raise RuntimeError(f"Key {key} is not allowed")
         else:
             raise RuntimeError("The str of hccl-group-buffer is not valid")
-    return result
+
+
+def hccl_buffer_auto_adaptive():
+    import math
+    from megatron.training import get_args
+    args = get_args()
+
+    seq_length = args.seq_length
+    micro_batch_size = args.micro_batch_size
+    hidden_size = args.hidden_size
+
+    context_parallel_size = args.context_parallel_size
+    tensor_model_parallel_size = args.tensor_model_parallel_size
+    expert_model_parallel_size = args.expert_model_parallel_size
+
+    moe_router_topk = args.moe_router_topk
+    moe_token_dispatcher_type = args.moe_token_dispatcher_type
+
+    context_parallel_algo = args.context_parallel_algo
+    num_attention_heads = args.num_attention_heads
+    group_query_attention = args.group_query_attention
+
+    global _HCCL_GROUP_BUFFER
+    #The DP group, DP-CP group, and DP-EP group .Here, we take the default value of 200M.
+
+    #Calculation of the maximum communication volume of the TP group.
+    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall':
+        #No MOE + No SP, AllReduce MaxComm: S/CP * B * H * 2；No MOE + SP, AllGather MaxComm: S/CP * B * H
+        hccl_tp_buffer_size_mlp = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / 1024 / 1024)
+        if args.sequence_parallel:
+            _HCCL_GROUP_BUFFER['tp'] = hccl_tp_buffer_size_mlp
+        else:
+            _HCCL_GROUP_BUFFER['tp'] = hccl_tp_buffer_size_mlp * 2
+        #MOE and AlltoAll MaxComm: (S/CP/TP * B * H * topK).
+        if args.hccl_ep_group_buffer_adaptive_factor > 0:
+            hccl_tp_buffer_size_moe = 2 * math.ceil(args.hccl_ep_group_buffer_adaptive_factor * seq_length / context_parallel_size / tensor_model_parallel_size * micro_batch_size * hidden_size / 1024 / 1024 * moe_router_topk)
+        else:
+            hccl_tp_buffer_size_moe = 200
+        _HCCL_GROUP_BUFFER['tp'] = max(hccl_tp_buffer_size_moe, _HCCL_GROUP_BUFFER['tp'])
+    else:
+        #MOE + SP, AllReduce MaxComm: S/CP * B * H * 2；No MOE + SP, AllGather MaxComm: S/CP * B * H
+        hccl_tp_buffer_size_mlp = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / 1024 / 1024)
+        if args.sequence_parallel:
+            _HCCL_GROUP_BUFFER['tp'] = hccl_tp_buffer_size_mlp
+        else:
+            _HCCL_GROUP_BUFFER['tp'] = hccl_tp_buffer_size_mlp * 2
+
+    #Calculation of the maximum communication volume of the PP group.
+    #P2P MaxComm::S/CP/TP * B *H
+    if args.sequence_parallel:
+        hccl_pp_buffer_size = 2 * math.ceil(seq_length / context_parallel_size / tensor_model_parallel_size * micro_batch_size * hidden_size / 1024 / 1024)
+    else:
+        hccl_pp_buffer_size = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / 1024 / 1024)
+    _HCCL_GROUP_BUFFER['pp'] = hccl_pp_buffer_size
+    _HCCL_GROUP_BUFFER['pp_new_stream'] = hccl_pp_buffer_size
+
+    #MP & MP-EXP groups for optimizer, based on num of zero gradients and max grad_norm. Just set a constant (default 10M).
+    #It won't be used after the distributed optimizer is enabled.
+    _HCCL_GROUP_BUFFER['mp'] = 10
+    _HCCL_GROUP_BUFFER['mp_exp'] = 10
+
+    #Calculation of the maximum communication volume of the EP group.
+    #Moe of alltoall, MaxComm:S/CP/TP * B * H * Topk
+    if args.hccl_ep_group_buffer_adaptive_factor > 0: 
+        hccl_ep_buffer_size = 2 * math.ceil(seq_length / context_parallel_size / tensor_model_parallel_size * micro_batch_size * hidden_size / 1024 / 1024 * moe_router_topk)
+    else:
+        hccl_ep_buffer_size = 200
+    _HCCL_GROUP_BUFFER['exp'] = hccl_ep_buffer_size
+
+    #Calculation of the maximum communication volume of the EP-TP group.
+    #Moe of allgather, MaxComm:S/CP/TP * B * H * EP * TP
+    #Moe of alltoall + moe-tp-extend-ep , MaxComm:S/CP/TP * B * H * topK
+    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'allgather': 
+        if args.hccl_ep_group_buffer_adaptive_factor > 0:
+            hccl_tp_ep_buffer_size = 2 * math.ceil(args.hccl_ep_group_buffer_adaptive_factor * seq_length / context_parallel_size * micro_batch_size * hidden_size * expert_model_parallel_size / 1024 / 1024)
+        else:
+            hccl_tp_ep_buffer_size = 200
+        _HCCL_GROUP_BUFFER['tp_exp'] = hccl_ep_buffer_size
+    elif moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall' and args.moe_tp_extend_ep:
+        if args.hccl_ep_group_buffer_adaptive_factor > 0:
+            hccl_tp_ep_buffer_size = 2 * math.ceil(args.hccl_ep_group_buffer_adaptive_factor * seq_length / context_parallel_size / tensor_model_parallel_size * micro_batch_size * hidden_size * moe_router_topk / 1024 / 1024)
+        else:
+            hccl_tp_ep_buffer_size = 200
+        _HCCL_GROUP_BUFFER['tp_exp'] = hccl_ep_buffer_size
+
+    #TP-CP group in 8.0 for seq count by experts & Router bal_loss. Small comm vol, set const (default 10M).
+    _HCCL_GROUP_BUFFER['tp_cp'] = 10
+
+    #Calculation of the maximum communication volume of the CP、CP2、CP_Ring、CP_Ulysess group.
+    #CP of RingAttention，SendRecv，MaxComm:S/CP * B * (H / headcount * GQA /TP ) * 2
+    #CP of Ulysess，All2All，MaxComm:S/CP * B * (H / TP)
+    #CP_ulysess & CP_ring like CP in max comm. CP2 is half of CP.
+    if context_parallel_algo == 'ulysses_cp_algo' or context_parallel_algo is None:
+        hccl_cp_buffer_size = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / tensor_model_parallel_size / 1024 / 1024)
+        _HCCL_GROUP_BUFFER['cp'] = hccl_cp_buffer_size
+    elif context_parallel_algo == 'megatron_cp_algo' :
+        hccl_cp2_buffer_size = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * group_query_attention / tensor_model_parallel_size / 1024 / 1024)
+        hccl_cp_buffer_size = 2 * 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * group_query_attention / tensor_model_parallel_size / 1024 / 1024)
+        if args.cp_window_size > 1:
+            if args.use_cp_send_recv_overlap:
+                _HCCL_GROUP_BUFFER['cp2'] = hccl_cp2_buffer_size
+                _HCCL_GROUP_BUFFER['cp'] = hccl_cp2_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring_intra'] = hccl_cp2_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring_intra_overlap'] = hccl_cp2_buffer_size
+            else:
+                _HCCL_GROUP_BUFFER['cp'] = hccl_cp_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring_intra'] = hccl_cp_buffer_size
+        else:
+            if args.use_cp_send_recv_overlap:
+                _HCCL_GROUP_BUFFER['cp2'] = hccl_cp2_buffer_size
+                _HCCL_GROUP_BUFFER['cp'] = hccl_cp2_buffer_size
+            else:
+                _HCCL_GROUP_BUFFER['cp'] = hccl_cp_buffer_size
+    elif context_parallel_algo == 'hybrid_cp_algo':
+        ulysses_context_parallel_size = args.ulysses_degree_in_cp
+        ring_context_parallel_size = context_parallel_size / ulysses_context_parallel_size
+        hccl_cp_ulysess_buffer_size = 2 * math.ceil(seq_length / ulysses_context_parallel_size * micro_batch_size * hidden_size / tensor_model_parallel_size / 1024 / 1024)
+        hccl_cp_ring_buffer_size = 2 * math.ceil(seq_length / ring_context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * group_query_attention / tensor_model_parallel_size / 1024 / 1024)
+        if args.cp_window_size > 1:
+            if args.use_cp_send_recv_overlap:
+                _HCCL_GROUP_BUFFER['cp_ulysses'] = hccl_cp_ulysess_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring'] = hccl_cp_ring_buffer_size
+                _HCCL_GROUP_BUFFER['cp2'] = hccl_cp_ring_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring_intra'] = hccl_cp_ring_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring_intra_overlap'] = hccl_cp_ring_buffer_size
+                #The CP group is used to calculate losses. The traffic volume is very small and is given a fixed value of 10M.
+                _HCCL_GROUP_BUFFER['cp'] = 10
+            else:
+                _HCCL_GROUP_BUFFER['cp_ulysses'] = hccl_cp_ulysess_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring'] = hccl_cp_ring_buffer_size * 2
+                _HCCL_GROUP_BUFFER['cp_ring_intra'] = hccl_cp_ring_buffer_size * 2
+                #The CP group is used to calculate losses. The traffic volume is very small and is given a fixed value of 10M.
+                _HCCL_GROUP_BUFFER['cp'] = 10
+        else:
+            if args.use_cp_send_recv_overlap:
+                _HCCL_GROUP_BUFFER['cp_ulysses'] = hccl_cp_ulysess_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring'] = hccl_cp_ring_buffer_size
+                _HCCL_GROUP_BUFFER['cp2'] = hccl_cp_ring_buffer_size
+                #The CP group is used to calculate losses. The traffic volume is very small and is given a fixed value of 10M.
+                _HCCL_GROUP_BUFFER['cp'] = 10
+            else:
+                _HCCL_GROUP_BUFFER['cp_ulysses'] = hccl_cp_ulysess_buffer_size
+                _HCCL_GROUP_BUFFER['cp_ring'] = hccl_cp_ring_buffer_size * 2
+                #The CP group is used to calculate losses. The traffic volume is very small and is given a fixed value of 10M.
+                _HCCL_GROUP_BUFFER['cp'] = 10
 
 
 def get_nccl_options_wrapper(get_nccl_options):
@@ -103,7 +248,7 @@ def get_nccl_options_wrapper(get_nccl_options):
     def wrapper(pg_name, nccl_comm_cfgs):
         from megatron.training import get_args
         args = get_args()
-        if args.hccl_group_buffer is not None:
+        if args.hccl_group_buffer is not None or args.hccl_group_buffer_adaptive:
             global _HCCL_GROUP_BUFFER
             if _HCCL_GROUP_BUFFER.get(pg_name) is not None:
                 options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
@@ -132,7 +277,14 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         args = get_args()
 
         global _HCCL_GROUP_BUFFER
-        _HCCL_GROUP_BUFFER = parse_hccl_buffer_string(args.hccl_group_buffer)
+        _HCCL_GROUP_BUFFER = {}
+
+        if args.hccl_group_buffer_adaptive:
+            hccl_buffer_auto_adaptive()
+            print_rank_0(f"hccl_group_buffer_adaptive: {_HCCL_GROUP_BUFFER}")
+
+        if args.hccl_group_buffer is not None:
+            parse_hccl_buffer_string(args.hccl_group_buffer)
 
         if order == "tp-cp-ep-dp-pp":
             # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
@@ -475,6 +627,7 @@ def initialize_context_parallel_group_for_double_ring(
         nccl_comm_cfgs,
 ):
     from megatron.training import get_args
+    import megatron.core.parallel_state as ps
     args = get_args()
     if args.tp_2d:
         return
@@ -506,10 +659,10 @@ def initialize_context_parallel_group_for_double_ring(
         inter_size = ring_size // window_size
         for wid in range(inter_size):
             intra_ranks = [ring_global_ranks[idx] for idx in range(wid * window_size, (wid + 1) * window_size)]
-            intra_group = torch.distributed.new_group(intra_ranks)
+            intra_group = torch.distributed.new_group(intra_ranks, pg_options=ps.get_nccl_options('cp_ring_intra', nccl_comm_cfgs))
             intra_group_for_send_recv_overlap = None
             if args.use_cp_send_recv_overlap:
-                intra_group_for_send_recv_overlap = torch.distributed.new_group(intra_ranks)
+                intra_group_for_send_recv_overlap = torch.distributed.new_group(intra_ranks, pg_options=ps.get_nccl_options('cp_ring_intra_overlap', nccl_comm_cfgs))
 
             if rank in intra_ranks:
                 _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW = intra_ranks
