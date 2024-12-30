@@ -110,6 +110,6 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --distributed-timeout-minutes 10 \
-    --seed 1234 | tee pretrain_gpt_megatron_moe_alltoall.log
+    --seed 1234
 
 set +x
