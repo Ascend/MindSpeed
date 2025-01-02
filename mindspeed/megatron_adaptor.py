@@ -234,6 +234,10 @@ def mcore_models_adaptation(aspm, mindspeed_args):
         from .core.models.common.embeddings.rotary_pos_embedding import rotary_forward
         aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward', rotary_forward)
 
+    from .core.auto_parallel import compute_language_model_loss_wrapper
+    aspm.register_patch('megatron.core.models.common.language_module.language_module.LanguageModule.compute_language_model_loss',
+                        compute_language_model_loss_wrapper)
+
 
 def mcore_transformer_adaptation_l0(aspm):
     from .core.transformer.custom_layers.transformer_engine import PTNorm

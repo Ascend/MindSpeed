@@ -20,8 +20,7 @@ from megatron.training.global_vars import (set_args, get_tensorboard_writer, get
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import print_rank_last, report_memory
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
-from mindspeed.core.auto_parallel.auto_parallel_apply import search_optimal_configuration
-from mindspeed.core.auto_parallel.auto_parallel_profiling import Profiling, OperateProfile
+from mindspeed.core.auto_parallel import AutoProfiler, search_optimal_configuration
 from mindspeed.core.memory.auto_pipeline.autopipeline import autopipeline_profiling
 from mindspeed.core.performance.auto_pipeline_perf.autopipeline_perf import (autopipelineperf_profiling, check_out_of_memory,
                                                                              calculate_num_of_activations, check_skip_profiling,
@@ -136,19 +135,16 @@ def train_step_decorator(train_step):
         if args_.op_cal_tflops:
             flop_count = get_flops_counter()
             flop_count.start()
-        if args_.profile_operator:
-            op_profile = OperateProfile(args_)
-            ret = train_step(*args, **kwargs)
-            op_profile.step()
-        elif args_.prof_file:
-            profiling = Profiling(args_)
-            train_step = profiling.hook_train_step(train_step)
-            ret = train_step(*args, **kwargs)
+
+        if args_.prof_file:
+            custom_train_step = AutoProfiler(args_.prof_file).hook_train_step(train_step)
+            ret = custom_train_step(*args, **kwargs)
         else:
             ret = train_step(*args, **kwargs)
-            if hasattr(args_, 'profile_npu') and args_.profile_npu \
-                    and (torch.distributed.get_rank() in args_.profile_ranks):
-                args_.prof.step()
+
+        if hasattr(args_, 'profile_npu') and args_.profile_npu \
+            and (torch.distributed.get_rank() in args_.profile_ranks):
+            args_.prof.step()
         if args_.op_cal_tflops:
             counts = flop_count.get_flops()
             set_count(counts)
@@ -531,9 +527,11 @@ def setup_model_and_optimizer_decorator(setup_model_and_optimizer):
         model, optimizer, opt_param_scheduler = setup_model_and_optimizer(*args, **kwargs)
         if argument.recompute_module_list:
             apply_autopipeline(model)
-        if argument.profile_memory and torch.distributed.get_rank() in argument.profile_ranks:
-            profiling = Profiling(argument)
-            profiling.register_recursive_hook("", model)
+
+        if argument.prof_file:
+            auto_profiler = AutoProfiler(argument.prof_file)
+            auto_profiler.register_recursive_hook("", model, auto_profiler.context)
+
         return model, optimizer, opt_param_scheduler
     return wrapper
 

@@ -1,23 +1,8 @@
-# coding=utf-8
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
-# Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 import os
 import glob
 import copy
 import warnings
-import ast
 from typing import Optional
 
 import pandas as pd
@@ -25,12 +10,25 @@ import numpy as np
 import gpytorch
 import torch
 
-from mindspeed.core.auto_parallel import (
-    ARD_NUM_DIMS,
-    KeyField,
-    sample_cache,
-    model_manager
-)
+from .operator_model_cache import KeyField
+from .operator_model_cache import sample_cache
+from .operator_model_cache import model_manager
+from ..utils import logger
+
+
+# Operator dims after merging
+ARD_NUM_DIMS = {
+    'MatMul': 3,
+    'BatchMatMul': 4,
+    'Softmax': 4,
+    'SoftmaxGrad': 4,
+    'RmsNorm': 3,
+    'RmsNormGrad': 3,
+    'LayerNorm': 3,
+    'LayerNormGrad': 3,
+    'FlashAttentionScore': 3,
+    'FlashAttentionScoreGrad': 3
+}
 
 
 class ExactGPModel(gpytorch.models.ExactGP):
@@ -93,19 +91,16 @@ class ExactGPModel(gpytorch.models.ExactGP):
                     self.likelihood.noise.item()
                 ) + '   lengthscale: ' + str(
                     np.round(self.covar_module.base_kernel.lengthscale.detach().cpu().numpy()[0], 5))
-                print(logs)
+                logger.info(logs)
             optimizer.step()
         self.eval()
         self.likelihood.eval()
         self.train_round += 1
 
     def update_data(self, data: pd.DataFrame):
-        """
-        :param data columns = [shape error count]
-        """
         if not self.train_data.empty:
             exits_shapes = self.train_data.loc[:, KeyField.InputShapes].values.tolist()
-            for index, rows in data.iterrows():
+            for _, rows in data.iterrows():
                 shape = getattr(rows, KeyField.InputShapes)
                 # update existent input_shape
                 if shape in exits_shapes:
@@ -165,7 +160,7 @@ class Sampler:
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 pred = model(x / model.x_train_std)
             pred = pred * model.y_train_std.item() + model.y_train_mean.item()
-        relative_error = pred.sample(self.num_sample).cpu().numpy()[:, 0]
+            relative_error = pred.sample(self.num_sample).cpu().numpy()[:, 0]
         sample = direct_time * (relative_error + 1.).flatten()
         negative_indices = np.where(sample <= self.pre_thd)[0]
         if negative_indices.size > 0:
@@ -238,13 +233,13 @@ class DataHandler:
         self.backward_flag = False
 
     @staticmethod
-    def extract_target_data(file):
-        if os.path.isdir(file):
-            file = glob.glob(os.path.join(file, "*.csv"))
-            data = pd.concat((pd.read_csv(f) for f in file), ignore_index=True).loc[:,
+    def extract_target_data(file_path):
+        if os.path.isdir(file_path):
+            csv_files = glob.glob(os.path.join(file_path, "*.csv"))
+            data = pd.concat((pd.read_csv(f) for f in csv_files), ignore_index=True).loc[:,
                    [KeyField.OpType, KeyField.InputShapes, KeyField.OutputShapes, KeyField.Duration]]
         else:
-            data = pd.read_csv(file).loc[:,
+            data = pd.read_csv(file_path).loc[:,
                    [KeyField.OpType, KeyField.InputShapes, KeyField.OutputShapes, KeyField.Duration]]
         data.loc[data['Type'].str.startswith('MatMul'), 'Type'] = 'MatMul'
         data.loc[data['Type'].str.startswith('BatchMatMul'), 'Type'] = 'BatchMatMul'
@@ -263,9 +258,9 @@ class DataHandler:
     @staticmethod
     def convert_dim(data):
         new_input_shape = []
-        for index, tmp_data in data[[KeyField.OpType, KeyField.InputShapes, KeyField.OutputShapes]].iterrows():
+        for _, tmp_data in data[[KeyField.OpType, KeyField.InputShapes, KeyField.OutputShapes]].iterrows():
             op, input_shape, output_shape = tmp_data.tolist()
-            input_shape, output_shape = ast.literal_eval(input_shape), ast.literal_eval(output_shape)
+            input_shape, output_shape = eval(input_shape), eval(output_shape)
             if op == 'LayerNorm' or op == 'LayerNormGrad':
                 input_shape = input_shape.split(';')[0]
             elif op == 'Add' or op == 'Mul':
@@ -321,11 +316,11 @@ class DataHandler:
 
     def handle_transpose(self):
         input_shapes = []
-        for index, sample in self.current_profiling_operator.iterrows():
+        for _, sample in self.current_profiling_operator.iterrows():
             input_shape = sample[KeyField.InputShapes]
-            input_shape = ast.literal_eval(input_shape).split(';')
+            input_shape = eval(input_shape).split(';')
             input_shape = [list(map(lambda x: int(x), s.split(','))) for s in input_shape]
-            output_shape = ast.literal_eval(sample[KeyField.OutputShapes]).split(',')
+            output_shape = eval(sample[KeyField.OutputShapes]).split(',')
             output_shape = [int(s) for s in output_shape]
             if sample[KeyField.OpType] == 'BatchMatMul':
                 if output_shape[1] != input_shape[0][1]:

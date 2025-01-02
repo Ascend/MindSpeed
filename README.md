@@ -206,13 +206,14 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 | 【Prototype】Ascend fused ema adamw优化器 | [link](docs/features/fused_ema_adamw_optimizer.md) |
 
 ## 其它特性
-| 特性                      | 介绍                                                        |
-|-------------------------|-----------------------------------------------------------|
-| Ascend TFLOPS计算         | [link](docs/features/ops_flops_cal.md)                    |
-| Ascend Auto Tuning 并行策略自动搜索系统  | [link](docs/features/auto_tuning.md)                     |
-| 【Prototype】Ascend 确定性计算 | [link](docs/features/npu_deterministic.md)                    |
+| 特性                                         | 介绍                                                        |
+|--------------------------------------------|-----------------------------------------------------------|
+| Ascend TFLOPS计算                            | [link](docs/features/ops_flops_cal.md)                    |
+| Ascend Auto Tuning 并行策略自动搜索系统              | [link](docs/features/auto_tuning.md)                     |
+| 【Prototype】Ascend 确定性计算                    | [link](docs/features/npu_deterministic.md)                    |
 | Ascend PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
-| Ascend PP支持多参数传递                            | [link](docs/features/multi_parameter_pipeline.md)     |
+| Ascend PP支持多参数传递                           | [link](docs/features/multi_parameter_pipeline.md)     |
+| 【Prototype】Ascend Flex-Parallel 多维并行自动调优算法 | [link](docs/features/Automatic_Parallelism.md)  |
 
 # 自定义算子
 部分自定义算子设置为公开接口，公开接口设置说明请参照MindSpeed安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。

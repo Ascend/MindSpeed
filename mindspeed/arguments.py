@@ -885,9 +885,13 @@ def _add_auto_parallel_args(parser):
     group.add_argument('--master-port', type=str, default=None, help='the ip-port of master node')
     group.add_argument('--node-rank', type=int, default=0, 
                        help='the rank of nodes in the cluster, starting from 0 and increment by 1')
-    group.add_argument('--profile-operator', action='store_true', help='')
-    group.add_argument('--profile-memory', action='store_true', help='')
     group.add_argument('--prof-file', type=str, default=None, help='')
+    group.add_argument('--target-nnodes', type=int, default=1,
+                       help='the number of cluster nodes to be searched')
+    group.add_argument('--work-dir', type=str, default='./autoparallel_temp_cache',
+                       help='the storage path for intermediate data')
+    group.add_argument('--search-algo', type=str, choices=['full_precision', 'fast_mode'],
+                       help='search algorithm')
     return parser
 
 
