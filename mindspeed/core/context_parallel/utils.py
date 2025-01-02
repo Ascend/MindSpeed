@@ -25,6 +25,99 @@ ADAPTIVE_CP_MASK_LIST_SET_BY_USER = None
 ADAPTIVE_CP_GRID_MASK_SET_BY_USER = None
 
 
+# SBH -> TND
+def sbh_to_tnd(x, n):
+    s, b, h = x.shape
+    d, t = h // n, int(b * s)
+    return x.transpose(0, 1).view(t, h).view(t, n, d)
+
+
+# TND -> SBH
+def tnd_to_sbh(x, b):
+    t, n, d = x.shape
+    s, h = t // b, int(n * d)
+    return x.view(b, s, n, d).transpose(0, 1).view(s, b, h)
+
+
+def get_selection_indices_for_tnd_softmax_update(t, n, sub_seq_len):
+    full_indices = list(range(t * n))
+    cur_seq_start_idx = 0
+    indices = []
+    seq_start = 0
+    for seq_len in sub_seq_len:
+        for i in range(n):
+            start = seq_start + seq_len * 2 * i + seq_len
+            end = seq_start + seq_len * 2 * (i + 1)
+            indices.extend(full_indices[start:end])
+        seq_start += seq_len * n * 2
+    
+    return torch.tensor(indices)
+
+
+def flatten_softmax(x, sub_seq_len):
+    orig_shape = x.shape 
+    section_len = [s * orig_shape[1] for s in sub_seq_len]
+    splits = x.view(-1, orig_shape[-1]).split(section_len, dim=0)
+    merged = [item.view(orig_shape[1], -1, orig_shape[-1]).transpose(0, 1) for item in splits]
+    merged = torch.cat(merged, dim=0)
+    return merged
+
+
+def unflatten_softmax(x, sub_seq_len):
+    orig_shape = x.shape 
+    section_len = [s * orig_shape[1] for s in sub_seq_len]
+    splits = x.view(-1, orig_shape[-1]).split(section_len, dim=0)
+    merged = [item.view(-1, orig_shape[1], orig_shape[-1]).transpose(0, 1) \
+              .view(-1, orig_shape[-1]) for item in splits]
+    merged = torch.cat(merged, dim=0)
+    return merged.view(*orig_shape)
+
+
+def forward_update_without_fused(prev_attn_out, prev_softmax_max, prev_softmax_sum,
+                                 cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=None, layout='SBH'):
+    if layout == 'TND':
+        cur_softmax_max = flatten_softmax(cur_softmax_max, actual_seq_qlen)
+        cur_softmax_sum = flatten_softmax(cur_softmax_sum, actual_seq_qlen)
+        prev_softmax_max = flatten_softmax(prev_softmax_max, actual_seq_qlen)
+        prev_softmax_sum = flatten_softmax(prev_softmax_sum, actual_seq_qlen)
+    # update softmax_max
+    origin_dtype = prev_attn_out.dtype
+    softmax_max = torch.maximum(prev_softmax_max, cur_softmax_max)
+    prev_scale = torch.exp(prev_softmax_max - softmax_max)
+    cur_scale = torch.exp(cur_softmax_max - softmax_max)
+
+    # update softmax_sum
+    prev_softmax_sum_scaled = prev_softmax_sum * prev_scale
+    cur_softmax_sum_scaled = cur_softmax_sum * cur_scale
+    softmax_sum = prev_softmax_sum_scaled + cur_softmax_sum_scaled
+
+    # out updating scale
+    prev_out_scale = prev_softmax_sum_scaled / softmax_sum
+    cur_out_scale = cur_softmax_sum_scaled / softmax_sum
+
+    # [b, n, s, 8] -> [s, b, h]
+    if layout == 'SBH':
+        n = prev_out_scale.shape[1]
+        h = prev_attn_out.shape[-1]
+        d = h // n
+        prev_out_scale = prev_out_scale[..., 0].unsqueeze(3).repeat(1, 1, 1, d)
+        prev_out_scale = rearrange(prev_out_scale, 'b n s d -> s b (n d)').contiguous()
+        cur_out_scale = cur_out_scale[..., 0].unsqueeze(3).repeat(1, 1, 1, d)
+        cur_out_scale = rearrange(cur_out_scale, 'b n s d -> s b (n d)').contiguous()
+    elif layout == 'TND':
+        d = prev_attn_out.shape[-1]
+        prev_out_scale = prev_out_scale[..., 0].unsqueeze(2).repeat(1, 1, d)
+        cur_out_scale = cur_out_scale[..., 0].unsqueeze(2).repeat(1, 1, d)
+
+    # update output
+    attn_out = prev_attn_out * prev_out_scale + cur_attn_out * cur_out_scale
+    attn_out = attn_out.to(origin_dtype)
+    if layout == 'TND':
+        softmax_max = unflatten_softmax(softmax_max, actual_seq_qlen)
+        softmax_sum = unflatten_softmax(softmax_sum, actual_seq_qlen)
+    return attn_out, softmax_max, softmax_sum
+
+
 class RingP2P:
     def __init__(self, ring_global_ranks, group, group_for_send_recv_overlap=None, is_backward=False) -> None:
         self.group = group
@@ -102,41 +195,61 @@ def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
     """
     _args = get_args()
     if hasattr(_args, 'use_fused_ring_attention_update') and _args.use_fused_ring_attention_update:
+        def accumulate_list(input_list):
+            """
+            借助numpy库将列表转换为numpy数组进行元素累加，再转换回列表并在开头添加0
+            """
+            np_array = np.array(input_list)
+            cumsum_result = np.cumsum(np_array)
+            return torch.tensor([0] + list(cumsum_result), dtype=torch.int64).to(prev_attn_out.device)
+        
+        if layout == "TND":
+            actual_seq_qlen = accumulate_list(actual_seq_qlen)
         return npu_ring_attention_update(prev_attn_out, prev_softmax_max, prev_softmax_sum, cur_attn_out,
                                          cur_softmax_max, cur_softmax_sum, actual_seq_qlen, layout)
-    # update softmax_max
-    origin_dtype = prev_attn_out.dtype
-    softmax_max = torch.maximum(prev_softmax_max, cur_softmax_max)
-    prev_scale = torch.exp(prev_softmax_max - softmax_max)
-    cur_scale = torch.exp(cur_softmax_max - softmax_max)
 
-    # update softmax_sum
-    prev_softmax_sum_scaled = prev_softmax_sum * prev_scale
-    cur_softmax_sum_scaled = cur_softmax_sum * cur_scale
-    softmax_sum = prev_softmax_sum_scaled + cur_softmax_sum_scaled
-
-    # out updating scale
-    prev_out_scale = prev_softmax_sum_scaled / softmax_sum
-    cur_out_scale = cur_softmax_sum_scaled / softmax_sum
-
-    # [b, n, s, 8] -> [s, b, h]
-    # SBH layout
-    n = prev_out_scale.shape[1]
-    h = prev_attn_out.shape[-1]
-    d = h // n
-    prev_out_scale = prev_out_scale[..., 0].unsqueeze(3).repeat(1, 1, 1, d)
-    prev_out_scale = rearrange(prev_out_scale, 'b n s d -> s b (n d)').contiguous()
-    cur_out_scale = cur_out_scale[..., 0].unsqueeze(3).repeat(1, 1, 1, d)
-    cur_out_scale = rearrange(cur_out_scale, 'b n s d -> s b (n d)').contiguous()
-
-    # update output
-    attn_out = prev_attn_out * prev_out_scale + cur_attn_out * cur_out_scale
-    attn_out = attn_out.to(origin_dtype)
-    return attn_out, softmax_max, softmax_sum
+    return forward_update_without_fused(prev_attn_out, prev_softmax_max, prev_softmax_sum, cur_attn_out,
+                                         cur_softmax_max, cur_softmax_sum, actual_seq_qlen, layout)
 
 
-def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
-                                   q_index=None, cur_sub_out_seq_len=None):
+def tnd_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs, q_index, softmax_indices, cur_sub_out_seq_len):
+    cur_attn_out, cur_softmax_max, cur_softmax_sum = cur_attn_outs[0], cur_attn_outs[1], cur_attn_outs[2]
+    attn_out, softmax_max, softmax_sum, rng_states = global_attn_outs
+
+    layout = 'TND'
+
+    if len(cur_attn_outs) > 3:
+        rng_states[kv_block_id] = (cur_attn_outs[4], cur_attn_outs[5], cur_attn_outs[6])
+
+    if q_block_id == kv_block_id:
+        attn_out = cur_attn_out
+        softmax_max = cur_softmax_max
+        softmax_sum = cur_softmax_sum
+    elif kv_block_id <= q_block_id:
+        attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
+            attn_out, softmax_max, softmax_sum,
+            cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=cur_sub_out_seq_len, layout=layout
+        )
+        attn_out, softmax_max, softmax_sum = attn_out_updated, softmax_max_updated, softmax_sum_updated
+    else:
+        n = attn_out.shape[1]
+        t = attn_out.shape[0]
+        prev_softmax_max = softmax_max.view(-1, 8)[softmax_indices].view(-1, n, 8)
+        prev_softmax_sum = softmax_sum.view(-1, 8)[softmax_indices].view(-1, n, 8)
+
+        attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
+            torch.index_select(attn_out, 0, q_index), prev_softmax_max, prev_softmax_sum,
+            cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=cur_sub_out_seq_len, layout=layout
+        )
+        attn_out.index_copy_(0, q_index, attn_out_updated)
+        softmax_max = softmax_max.view(-1, 8).index_copy(0, softmax_indices, softmax_max_updated.view(-1, 8)).view(-1, n, 8)
+        softmax_sum = softmax_sum.view(-1, 8).index_copy(0, softmax_indices, softmax_sum_updated.view(-1, 8)).view(-1, n, 8)
+
+    
+    return [attn_out, softmax_max, softmax_sum, rng_states]
+
+
+def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs):
     cur_attn_out, cur_softmax_max, cur_softmax_sum = cur_attn_outs[0], cur_attn_outs[1], cur_attn_outs[2]
     attn_out, softmax_max, softmax_sum, rng_states = global_attn_outs
     layout = 'SBH'
@@ -150,7 +263,7 @@ def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
     elif kv_block_id <= q_block_id:
         attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
             attn_out, softmax_max, softmax_sum,
-            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout=layout
+            cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=None, layout=layout
         )
         attn_out, softmax_max, softmax_sum = attn_out_updated, softmax_max_updated, softmax_sum_updated
     else:
@@ -163,7 +276,7 @@ def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
                                         2, softmax_sum.shape[2] // 2, softmax_sum.shape[-1])
         attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
             attn_out[1], softmax_max[:, :, 1, :, :], softmax_sum[:, :, 1, :, :],
-            cur_attn_out, cur_softmax_max, cur_softmax_sum, layout=layout
+            cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=None, layout=layout
         )
         attn_out[1].copy_(attn_out_updated)
         softmax_max[:, :, 1, :, :].copy_(softmax_max_updated)
@@ -179,7 +292,7 @@ def causal_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs,
     return [attn_out, softmax_max, softmax_sum, rng_states]
 
 
-def general_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs, cur_sub_out_seq_len=None):
+def general_out_update(q_block_id, kv_block_id, cur_attn_outs, global_attn_outs):
     cur_attn_out, cur_softmax_max, cur_softmax_sum = cur_attn_outs[0], cur_attn_outs[1], cur_attn_outs[2]
     attn_out, softmax_max, softmax_sum, rng_states = global_attn_outs
     layout = 'SBH'

@@ -70,7 +70,7 @@ def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
 
 属性：
 
-- actual_seq_qlen：可选属性，数据类型torch.int64
+- actual_seq_qlen：可选属性，数据类型torch.int64, 数据单调递增，layout为TND的时候使用
 - layout：必选属性，数据类型str
 
 
