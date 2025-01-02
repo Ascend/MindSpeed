@@ -767,9 +767,6 @@ def validate_args_wrapper(validate_args):
                                          f'to 0 and smaller than args.num_layers({args.num_layers})')
                 noop_layers.add(int(x))
             args.noop_layers = noop_layers
-        if args.reset_position_ids and args.reset_attention_mask:
-            if args.attention_mask_type != 'general':
-                raise AssertionError('EOD needs `--attention-mask-type` is `general`.')
 
         if args.tp_2d:
             if args.sequence_parallel:

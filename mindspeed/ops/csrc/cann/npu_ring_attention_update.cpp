@@ -39,10 +39,11 @@ std::vector<at::Tensor> npu_ring_attention_update(const at::Tensor& prev_attn_ou
     auto softmax_sum = at::empty(softmax_sum_shape, prev_softmax_sum.options());
     auto attn_out = at::empty(attn_out_shape, prev_attn_out.options());
     std::string layout_value = layout.value_or("SBH");
+    char* input_layout_ptr = const_cast<char*>(layout_value.c_str());
     at::Tensor actual_seq_qlen_value = actual_seq_qlen.has_value() ? actual_seq_qlen.value() : at::empty(
         {}, prev_softmax_sum.options().dtype(at::ScalarType::Long));
     ACLNN_CMD(aclnnRingAttentionUpdate, prev_attn_out, prev_softmax_max, prev_softmax_sum, cur_attn_out,
-        cur_softmax_max, cur_softmax_sum, actual_seq_qlen_value, layout_value, attn_out, softmax_max, softmax_sum);
+        cur_softmax_max, cur_softmax_sum, actual_seq_qlen_value, input_layout_ptr, attn_out, softmax_max, softmax_sum);
     return {attn_out, softmax_max, softmax_sum};
 }
 
