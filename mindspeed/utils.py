@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 _ACTUAL_SEQ_LEN = None
 _POSITION_IDS = None
 _REARRANGE_IDX_TENSOR = None
+_KV_INDEX = None
+_Q_INDEX = None
 
 
 def generate_rearrange_idx_tensor(tp_y_cp_size):
@@ -49,15 +51,45 @@ def generate_rearrange_idx_tensor(tp_y_cp_size):
 
 
 def get_actual_seq_len():
+    global _ACTUAL_SEQ_LEN
     return _ACTUAL_SEQ_LEN
 
 
-def set_actual_seq_len(actual_seq_len):
+def get_kv_index():
+    global _KV_INDEX
+    return _KV_INDEX
+
+
+def get_q_index():
+    global _Q_INDEX
+    return _Q_INDEX
+
+
+def set_actual_seq_len(seq_lens):
     global _ACTUAL_SEQ_LEN
-    _ACTUAL_SEQ_LEN = actual_seq_len
+    _ACTUAL_SEQ_LEN = seq_lens
+
+    if seq_lens is None:
+        return
+
+    full_indices = list(range(seq_lens[-1]))
+    prev_eod_pos = 0
+    kv_indices = []
+    q_indices = []
+    for eod_pos in seq_lens:
+        mid = (eod_pos + prev_eod_pos) // 2
+        kv_indices.extend(full_indices[prev_eod_pos:mid])
+        q_indices.extend(full_indices[mid:eod_pos])
+        prev_eod_pos = eod_pos
+    
+    global _KV_INDEX
+    _KV_INDEX = torch.tensor(kv_indices).cuda(non_blocking=True)
+    global _Q_INDEX
+    _Q_INDEX = torch.tensor(q_indices).cuda(non_blocking=True)
 
 
 def get_position_ids():
+    global _POSITION_IDS
     return _POSITION_IDS
 
 
@@ -97,10 +129,29 @@ def get_batch_on_this_cp_rank(batch):
 
     args = get_args()
 
+    cp_size = args.context_parallel_size
+
+    if cp_size == 1 and not args.reset_position_ids:
+        return batch
+
+    if args.reset_position_ids and args.attention_mask_type == 'causal':
+        _actual_seq_len = [compute_actual_seq_len(seq) for seq in batch['position_ids']]
+
+        if cp_size > 1:
+            batch = _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, _actual_seq_len)
+            _actual_seq_len = [[x // cp_size for x in lst] for lst in _actual_seq_len]
+
+        actual_seq_len = []
+        offset = 0
+        for seq_len in _actual_seq_len:
+            actual_seq_len.extend([x + offset for x in seq_len])
+            offset += seq_len[-1]
+        set_actual_seq_len(actual_seq_len)
+        set_position_ids(batch['position_ids'].transpose(0, 1).contiguous())
+        return batch
+
     if args.reset_attention_mask:
-        position_ids = batch['position_ids']
-        position_ids = position_ids.transpose(0, 1).contiguous()
-        set_position_ids(position_ids)    
+        set_position_ids(batch['position_ids'].transpose(0, 1).contiguous()) 
 
     tp_y_cp_size = TensorParallelYUnionCP().get_parallel_group_world_size() if args.tp_2d else args.context_parallel_size
     if not tp_y_cp_size > 1:
@@ -125,6 +176,43 @@ def get_batch_on_this_cp_rank(batch):
         batch = _get_batch_on_this_cp_rank_in_adaptive_cp(batch)
     elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
         batch = _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch)
+    return batch
+
+
+def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len):
+    def get_index(batched_actual_seq_len, cp_size, cp_rank):
+        full_indices = list(range(len(batched_actual_seq_len) * batched_actual_seq_len[0][-1]))
+        batched_index = []
+        start = 0
+        offset = 0
+        for actual_seq_len in batched_actual_seq_len:
+            for end in actual_seq_len:
+                end = end + offset
+                chunk_size = (end - start) // (2 * cp_size)
+                batched_index.extend(full_indices[start + cp_rank * chunk_size : start + (cp_rank + 1) * chunk_size])
+                batched_index.extend(full_indices[end - (cp_rank + 1) * chunk_size : end - cp_rank * chunk_size])
+                start = end
+            offset += actual_seq_len[-1]
+
+        return torch.tensor(batched_index, device='npu')
+
+    cp_rank = mpu.get_context_parallel_rank()
+    cp_size = mpu.get_context_parallel_world_size()
+
+    batch_indexs = get_index(actual_seq_len, cp_size, cp_rank)
+
+    for key, val in batch.items():
+        if key == 'attention_mask':
+            continue
+        if val is not None:
+            seq_dim = 1 if key != 'attention_mask' else 2
+            bsz = val.shape[0]
+            val = val.view(-1, *val.shape[seq_dim + 1:])
+            val = val.index_select(0, batch_indexs)
+            val = val.view(bsz, -1, *val.shape[seq_dim + 1:])
+        
+        batch[key] = val
+
     return batch
 
 

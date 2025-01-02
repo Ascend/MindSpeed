@@ -3,7 +3,7 @@
 import torch
 import torch_npu
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
-from .utils import RingP2P, causal_out_update, general_out_update, forward_update
+from .utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, sbh_to_tnd, tnd_to_sbh, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
 
 
 
@@ -25,6 +25,55 @@ def causal_forward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_mask=Non
         cur_k, cur_v = [x.view(-1, *x.shape[2:]) for x in [cur_k, cur_v]]
     
     return cur_q, cur_k, cur_v, cur_attn_mask
+
+
+def tnd_forward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, fetch_ptrs, attn_mask=None):
+    seqlen, half_seqlen, q_index, kv_index = fetch_ptrs
+    actual_seq_qlen, actual_seq_kvlen, sub_out_seq_len = seqlen
+    half_actual_seq_qlen, half_actual_seq_kvlen, half_sub_out_seq_len = half_seqlen
+
+    cur_attn_mask = None
+    if q_block_id == kv_block_id:
+        cur_attn_mask = attn_mask
+        cur_q = q
+        cur_seq_qlen, cur_seq_kvlen = actual_seq_qlen, actual_seq_kvlen
+        cur_sub_out_seq_len = sub_out_seq_len
+    elif kv_block_id <= q_block_id:
+        cur_q = q
+        cur_k, cur_v = [torch.index_select(x, 0, kv_index) for x in [cur_k, cur_v]]
+        cur_seq_qlen, cur_seq_kvlen = actual_seq_qlen, half_actual_seq_kvlen
+        cur_sub_out_seq_len = sub_out_seq_len
+    else:
+        cur_q = torch.index_select(q, 0, q_index)
+        cur_seq_qlen, cur_seq_kvlen = half_actual_seq_qlen, actual_seq_kvlen
+        cur_sub_out_seq_len = half_sub_out_seq_len
+
+    return cur_q, cur_k, cur_v, cur_attn_mask, (cur_seq_qlen, cur_seq_kvlen, cur_sub_out_seq_len)
+
+
+def tnd_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout, 
+                          softmax_values, seq_lens, index_values, attn_mask=None):
+    # fetch backward output
+    actual_seq_qlen, actual_seq_kvlen, half_actual_seq_kvlen, half_actual_seq_qlen = seq_lens
+    softmax_max, softmax_sum, half_softmax_max, half_softmax_sum = softmax_values
+    q_index, kv_index = index_values
+    cur_attn_mask = None
+    if q_block_id >= kv_block_id:
+        if q_block_id == kv_block_id:
+            cur_attn_mask = attn_mask
+            cur_seq_qlen, cur_seq_kvlen = actual_seq_qlen, actual_seq_kvlen
+        else:
+            cur_k, cur_v = [torch.index_select(x, 0, kv_index) for x in [cur_k, cur_v]]
+            cur_seq_qlen, cur_seq_kvlen = actual_seq_qlen, half_actual_seq_kvlen
+
+        cur_q, cur_attn_out, cur_dout = q, attn_out, dout
+        cur_softmax_max, cur_softmax_sum = softmax_max, softmax_sum
+    else:
+        cur_q, cur_attn_out, cur_dout = [torch.index_select(x, 0, q_index) for x in [q, attn_out, dout]]
+        cur_softmax_max, cur_softmax_sum = half_softmax_max, half_softmax_sum
+        cur_seq_qlen, cur_seq_kvlen = half_actual_seq_qlen, actual_seq_kvlen
+
+    return (cur_q, cur_k, cur_v), cur_attn_out, cur_dout, (cur_softmax_max, cur_softmax_sum), cur_attn_mask, (cur_seq_qlen, cur_seq_kvlen)
 
 
 def causal_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout, 
@@ -52,6 +101,26 @@ def causal_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, do
         cur_softmax_max, cur_softmax_sum = [x[:, :, 1, :, :] for x in [softmax_max, softmax_sum]]
     
     return cur_q, cur_k, cur_v, cur_attn_out, cur_dout, cur_softmax_max, cur_softmax_sum, cur_attn_mask
+
+
+def tnd_grad_update(q_block_id, kv_block_id, cur_attn_grads, global_attn_grads,
+                                        q_index, kv_index):
+    cur_dq, cur_dk, cur_dv = cur_attn_grads
+    dq, dk, dv = global_attn_grads
+    if q_block_id == kv_block_id:
+        dq.add_(cur_dq)
+        dk.add_(cur_dk)
+        dv.add_(cur_dv)
+    elif q_block_id > kv_block_id:
+        dq.add_(cur_dq)
+        dk.index_add_(0, kv_index, cur_dk)
+        dv.index_add_(0, kv_index, cur_dv)
+    else:
+        dq.index_add_(0, q_index, cur_dq)
+        dk.add_(cur_dk)
+        dv.add_(cur_dv)
+    
+    return dq, dk, dv
 
 
 def causal_grad_update(q_block_id, kv_block_id, cur_dq, cur_dk, cur_dv, dq, dk, dv):
@@ -374,16 +443,37 @@ class AttentionWithCp(torch.autograd.Function):
         inner_size = len(cp_inner_ranks)
         outer_size = cp_size // inner_size
 
+        is_eod_mask = (actual_seq_kvlen is not None) and (actual_seq_qlen is not None)
+        seq_len, bsz, hidden = q.shape
+
         if softmax_scale is None:
             head_dim = q.shape[-1] // n
             softmax_scale = head_dim ** (-0.5)
         if causal and attn_mask is None:
             attn_mask = torch.ones((2048, 2048), dtype=torch.bool, device=q.device)
             attn_mask = torch.triu(attn_mask, diagonal=1)
-        if causal:
-            # split chunk[i]~chunk[cp_size-i-1] into chunk[i] and chunk[cp_size-i-1],, [2s, b, h] -> [2, s, b, h]
-            q, k, v = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, k, v]]
 
+        if causal:
+            if is_eod_mask:
+                from mindspeed.utils import get_q_index, get_kv_index
+                # SBH -> TND
+                # fa varlen mode require TND layout
+                q, k, v = [sbh_to_tnd(x, n) for x in [q, k, v]]
+
+                # only first half of each sub sequence KV block need to be calculated when i <= rank
+                kv_index = get_kv_index()
+                # only last half of each sub sequence q block need to be calculated when i > rank
+                q_index = get_q_index()
+
+                sub_out_seq_len = (torch.tensor([0] + actual_seq_qlen)[1:] - torch.tensor([0] + actual_seq_qlen)[:-1]).tolist()
+                seq_lens = (actual_seq_qlen, actual_seq_kvlen, sub_out_seq_len)
+                half_seq_lens = [[x // 2 for x in lst] for lst in seq_lens]
+                fetch_ptrs = (seq_lens, half_seq_lens, q_index, kv_index)
+
+                softmax_indices = get_selection_indices_for_tnd_softmax_update(q.shape[0], q.shape[1], half_seq_lens[2]).to(q.device)
+            else:
+                # split chunk[i]~chunk[cp_size-i-1] into chunk[i] and chunk[cp_size-i-1],, [2s, b, h] -> [2, s, b, h]
+                q, k, v = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, k, v]]
         cur_kv = torch.cat((k.unsqueeze(0), v.unsqueeze(0)), dim=0) # [2, 2, s, b, h]
         next_kv = torch.empty_like(cur_kv)
         next_round_kv = torch.empty_like(cur_kv)
@@ -405,23 +495,46 @@ class AttentionWithCp(torch.autograd.Function):
 
                 cur_k, cur_v = cur_kv[0], cur_kv[1] # [2, s, b, h]
                 if causal:
-                    cur_q, cur_k, cur_v, cur_attn_mask = causal_forward_fetch(q_block_id, kv_block_id,
-                                                                            q, cur_k, cur_v, attn_mask)
-
                     # flash attention forward
+                    cur_sub_out_seq_len = None
+                    attn_outs = None
                     if pse is None:
-                        attn_outs = torch_npu.npu_fusion_attention(
-                            cur_q, cur_k, cur_v, n, "SBH",
-                            pse=None,
-                            padding_mask=None,
-                            atten_mask=cur_attn_mask,
-                            scale=softmax_scale,
-                            pre_tockens=cur_k.shape[0],
-                            next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
-                            keep_prob=keep_prob,
-                            sparse_mode=3 if cur_attn_mask is not None else 0
-                        )
+                        if is_eod_mask:
+                            cur_q, cur_k, cur_v, cur_attn_mask, cur_seq_lens = tnd_forward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, 
+                                                                                                            fetch_ptrs, attn_mask)
+                            cur_seq_qlen, cur_seq_kvlen, cur_sub_out_seq_len = cur_seq_lens
+                            # flash attention forward
+                            attn_outs = torch_npu.npu_fusion_attention(
+                                cur_q, cur_k, cur_v, n, "TND",
+                                pse=None,
+                                padding_mask=None,
+                                atten_mask=cur_attn_mask,
+                                scale=softmax_scale,
+                                pre_tockens=cur_k.shape[0],
+                                next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                                keep_prob=keep_prob,
+                                sparse_mode=3 if cur_attn_mask is not None else 0,
+                                actual_seq_qlen=cur_seq_qlen,
+                                actual_seq_kvlen=cur_seq_kvlen
+                            )
+                        else:
+                            cur_q, cur_k, cur_v, cur_attn_mask = causal_forward_fetch(q_block_id, kv_block_id,
+                                                                                    q, cur_k, cur_v, attn_mask)
+    
+                            attn_outs = torch_npu.npu_fusion_attention(
+                                cur_q, cur_k, cur_v, n, "SBH",
+                                pse=None,
+                                padding_mask=None,
+                                atten_mask=cur_attn_mask,
+                                scale=softmax_scale,
+                                pre_tockens=cur_k.shape[0],
+                                next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                                keep_prob=keep_prob,
+                                sparse_mode=3 if cur_attn_mask is not None else 0
+                            )
                     else:
+                        cur_q, cur_k, cur_v, cur_attn_mask = causal_forward_fetch(q_block_id, kv_block_id,
+                                                        q, cur_k, cur_v, attn_mask)
                         q_index_list = [q_block_id, cp_size * 2 - 1 - q_block_id]
                         kv_index_list = [kv_block_id, cp_size * 2 - 1 - kv_block_id]
                         attn_info = [n, pse, pse_type, cur_attn_mask, softmax_scale, keep_prob,
@@ -433,9 +546,11 @@ class AttentionWithCp(torch.autograd.Function):
                             attn_info,
                             s
                         )
-
-                    global_attn_outs = causal_out_update(q_block_id, kv_block_id, attn_outs, global_attn_outs)
-
+                    if is_eod_mask:
+                        global_attn_outs = tnd_out_update(q_block_id, kv_block_id, attn_outs, global_attn_outs,
+                                                          q_index, softmax_indices, cur_sub_out_seq_len)
+                    else:
+                        global_attn_outs = causal_out_update(q_block_id, kv_block_id, attn_outs, global_attn_outs)
                 else:
                     # [2s, b, h], [b, n, 2s, 8], [b, n, 2s, 8]
                     this_mask = AttentionWithCp.compute_mask(
@@ -470,7 +585,7 @@ class AttentionWithCp(torch.autograd.Function):
 
         k, v = cur_kv[0], cur_kv[1]
         attn_out, softmax_max, softmax_sum, rng_states = global_attn_outs
-        if causal:
+        if causal and not is_eod_mask:
             q, k, v = [x.view(-1, *x.shape[2:]) for x in [q, k, v]]
         
         attn_mask = attn_mask if isinstance(attn_mask, list) else [attn_mask]
@@ -496,6 +611,18 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.cp_group_for_intra_window_send_recv_overlap = cp_group_for_intra_window_send_recv_overlap
         ctx.actual_seq_qlen = actual_seq_qlen
         ctx.actual_seq_kvlen = actual_seq_kvlen
+        ctx.is_eod_mask = is_eod_mask
+        ctx.bsz = bsz
+
+        if causal and is_eod_mask:
+            ctx.q_index = q_index
+            ctx.kv_index = kv_index
+            ctx.half_actual_seq_qlen = half_seq_lens[0]
+            ctx.half_actual_seq_kvlen = half_seq_lens[1]
+            ctx.half_sub_out_seq_len = half_seq_lens[2]
+            ctx.sub_out_seq_len = sub_out_seq_len
+            ctx.softmax_indices = softmax_indices
+            return tnd_to_sbh(attn_out, bsz)
 
         return attn_out
 
@@ -518,6 +645,9 @@ class AttentionWithCp(torch.autograd.Function):
         cp_group_for_send_recv_overlap = ctx.cp_group_for_send_recv_overlap
         cp_group_for_intra_window = ctx.cp_group_for_intra_window
         cp_group_for_intra_window_send_recv_overlap = ctx.cp_group_for_intra_window_send_recv_overlap
+        is_eod_mask = ctx.is_eod_mask
+        if causal and is_eod_mask:
+            dout = sbh_to_tnd(dout, n)
         # Reversed order of forward
         inner_size = len(ctx.cp_inner_ranks)
         outer_size = len(ctx.cp_outer_ranks)
@@ -529,40 +659,80 @@ class AttentionWithCp(torch.autograd.Function):
 
 
         if causal:
-            # split chunk[i]~chunk[cp_size-i-1] into chunk[i] and chunk[cp_size-i-1], [2s, b, h] -> [2, s, b, h]
-            q, k, v, attn_out, dout = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, k, v, attn_out, dout]]
-            # [b, n, 2s, 8] -> [b, n, 2, s, 8]
-            softmax_max = softmax_max.view(softmax_max.shape[0], softmax_max.shape[1],
-                                           2, softmax_max.shape[2] // 2, softmax_max.shape[-1])
-            softmax_sum = softmax_sum.view(softmax_sum.shape[0], softmax_sum.shape[1],
-                                           2, softmax_sum.shape[2] // 2, softmax_sum.shape[-1])
+            if is_eod_mask:
+                half_softmax_max = softmax_max.view(-1, 8)[ctx.softmax_indices].view(-1, n, 8)
+                half_softmax_sum = softmax_sum.view(-1, 8)[ctx.softmax_indices].view(-1, n, 8)
+            else:
+                # split chunk[i]~chunk[cp_size-i-1] into chunk[i] and chunk[cp_size-i-1], [2s, b, h] -> [2, s, b, h]
+                q, k, v, attn_out, dout = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, k, v, attn_out, dout]]
+                # [b, n, 2s, 8] -> [b, n, 2, s, 8]
+                softmax_max = softmax_max.view(softmax_max.shape[0], softmax_max.shape[1],
+                                            2, softmax_max.shape[2] // 2, softmax_max.shape[-1])
+                softmax_sum = softmax_sum.view(softmax_sum.shape[0], softmax_sum.shape[1],
+                                            2, softmax_sum.shape[2] // 2, softmax_sum.shape[-1])
 
         def backward_step_helper(q_block_id, kv_block_id, q, cur_k, cur_v):
             if causal:
-                # flash attention backward
-                step_inputs = causal_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout,
-                                                    softmax_max, softmax_sum, attn_mask=attn_mask)
-                cur_q, cur_k, cur_v, cur_attn_out, cur_dout, cur_softmax_max, cur_softmax_sum, cur_attn_mask = step_inputs
                 if pse is None:
-                    attn_grad_outs = torch_npu.npu_fusion_attention_grad(
-                        cur_q, cur_k, cur_v, cur_dout, n,
-                        "SBH",
-                        pse=None,
-                        padding_mask=None,
-                        atten_mask=cur_attn_mask,
-                        softmax_max=cur_softmax_max,
-                        softmax_sum=cur_softmax_sum,
-                        attention_in=cur_attn_out,
-                        scale_value=softmax_scale,
-                        pre_tockens=cur_k.shape[0],
-                        next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
-                        sparse_mode=3 if cur_attn_mask is not None else 0,
-                        keep_prob=keep_prob,
-                        seed=rng_states[kv_block_id][0],
-                        offset=rng_states[kv_block_id][1],
-                        numels=rng_states[kv_block_id][2],
-                    )
+                    # flash attention backward
+                    if is_eod_mask:
+                        softmax_values = (softmax_max, softmax_sum, half_softmax_max, half_softmax_sum)
+                        seq_lens = (ctx.actual_seq_qlen, ctx.actual_seq_kvlen, ctx.half_actual_seq_qlen, ctx.half_actual_seq_kvlen)
+                        index_values = (ctx.q_index, ctx.kv_index)
+                        step_inputs = tnd_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout,
+                                    softmax_values, seq_lens, index_values, attn_mask=attn_mask)
+                        qkv, cur_attn_out, cur_dout, cur_softmax_values, cur_attn_mask, cur_seq_lens = step_inputs
+                        cur_q, cur_k, cur_v = qkv
+                        cur_softmax_max, cur_softmax_sum = cur_softmax_values
+                        cur_seq_qlen, cur_seq_kvlen = cur_seq_lens
+                
+                        # flash attention backward
+                        attn_grad_outs = torch_npu.npu_fusion_attention_grad(
+                            cur_q, cur_k, cur_v, cur_dout, n,
+                            "TND",
+                            pse=None,
+                            padding_mask=None,
+                            atten_mask=cur_attn_mask,
+                            softmax_max=cur_softmax_max,
+                            softmax_sum=cur_softmax_sum,
+                            attention_in=cur_attn_out,
+                            scale_value=softmax_scale,
+                            pre_tockens=cur_k.shape[0],
+                            next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            actual_seq_qlen=cur_seq_qlen,
+                            actual_seq_kvlen=cur_seq_kvlen,
+                            keep_prob=keep_prob,
+                            seed=rng_states[kv_block_id][0],
+                            offset=rng_states[kv_block_id][1],
+                            numels=rng_states[kv_block_id][2],
+                        )
+                    else:
+                        step_inputs = causal_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout,
+                                                            softmax_max, softmax_sum, attn_mask=attn_mask)
+                        cur_q, cur_k, cur_v, cur_attn_out, cur_dout, cur_softmax_max, cur_softmax_sum, cur_attn_mask = step_inputs
+                        attn_grad_outs = torch_npu.npu_fusion_attention_grad(
+                            cur_q, cur_k, cur_v, cur_dout, n,
+                            "SBH",
+                            pse=None,
+                            padding_mask=None,
+                            atten_mask=cur_attn_mask,
+                            softmax_max=cur_softmax_max,
+                            softmax_sum=cur_softmax_sum,
+                            attention_in=cur_attn_out,
+                            scale_value=softmax_scale,
+                            pre_tockens=cur_k.shape[0],
+                            next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                            sparse_mode=3 if cur_attn_mask is not None else 0,
+                            keep_prob=keep_prob,
+                            seed=rng_states[kv_block_id][0],
+                            offset=rng_states[kv_block_id][1],
+                            numels=rng_states[kv_block_id][2],
+                        )
                 else:
+                    step_inputs = causal_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout,
+                                    softmax_max, softmax_sum, attn_mask=attn_mask)
+                    cur_q, cur_k, cur_v, cur_attn_out, cur_dout, cur_softmax_max, cur_softmax_sum, cur_attn_mask = step_inputs
                     q_index_list = [q_block_id, cp_size * 2 - 1 - q_block_id]
                     kv_index_list = [kv_block_id, cp_size * 2 - 1 - kv_block_id]
                     attn_grad_info = [n, pse, pse_type, cur_attn_mask, softmax_scale, keep_prob, rng_states,
@@ -652,7 +822,10 @@ class AttentionWithCp(torch.autograd.Function):
                 
                 dk, dv = cur_dkv[0], cur_dkv[1]
                 # update qkv grades
-                if causal:
+                if is_eod_mask and causal:
+                    tnd_grad_update(q_block_id, kv_block_id, (dq_step, dk_step, dv_step), (dq, dk, dv),
+                                    ctx.q_index, ctx.kv_index)
+                elif causal:
                     causal_grad_update(q_block_id, kv_block_id, dq_step, dk_step, dv_step, dq, dk, dv)
                 else:
                     dq.add_(dq_step)
@@ -679,7 +852,9 @@ class AttentionWithCp(torch.autograd.Function):
 
 
         # [2, s, b, h] -> [2s, b, h]
-        if causal:
+        if causal and is_eod_mask:
+            dq, dk, dv = [tnd_to_sbh(x, ctx.bsz) for x in [dq, dk, dv]]
+        elif causal:
             dq, dk, dv = [x.view(-1, *x.shape[2:]) for x in [dq, dk, dv]]
         return dq, dk, dv, None, None, None, None, None, None, None
 
