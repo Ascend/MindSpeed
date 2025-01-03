@@ -141,11 +141,9 @@ def run_fa_tflops(bs, seq_len, dtype, use_fa2):
 
 class TestDotProductAttn(DistributedTest):
 
-    @pytest.mark.skip(reason='this UT need updata for new version.')
     def test_mc2_tflops(self):
         run_mc2_tflops(2)
 
-    @pytest.mark.skip(reason='this UT need updata for new version.')
     def test_fa_tflops(self):
         fa1_result = run_fa_tflops(1, 2048, torch.bfloat16, False)
 
