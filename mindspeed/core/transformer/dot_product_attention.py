@@ -122,7 +122,7 @@ def dot_product_attention_init(
     if self.pse_type is None:
         self.pse_type = 1 # not use pse
     elif self.pse_type == 0:
-        alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(config.seq_length,
+        alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(args.seq_length,
                                                 config.num_attention_heads,
                                                 config.params_dtype,
                                                 args.alibi_diagonal_opposite,

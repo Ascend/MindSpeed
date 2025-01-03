@@ -156,7 +156,7 @@ def core_attention_init_wrapper(fn):
             self.beta = 1.0 / self.layer_number
         if args.position_embedding_type == 'alibi':
             self.alibi = Alibi()
-            alibi = _build_alibi_tensor(self.config.seq_length,
+            alibi = _build_alibi_tensor(args.seq_length,
                                         self.config.num_attention_heads,
                                         args.square_alibi_mask,
                                         args.fill_neg_inf
@@ -205,7 +205,7 @@ def core_attention_forward(self, query_layer, key_layer, value_layer, attention_
             args = get_args()
 
             self.alibi.output_size = output_size
-            alibi = _build_alibi_tensor(self.config.seq_length,
+            alibi = _build_alibi_tensor(args.seq_length,
                                         self.config.num_attention_heads,
                                         args.square_alibi_mask,
                                         args.fill_neg_inf
