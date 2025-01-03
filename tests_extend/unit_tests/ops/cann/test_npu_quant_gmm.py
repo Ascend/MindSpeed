@@ -49,7 +49,6 @@ class TestNPUGMM:
 
         return torch.cat([x for x in final_out], dim=0)
 
-    @pytest.mark.skip(reason='Cann package need update')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize('group_list_type', [0, 1])
     @pytest.mark.parametrize('is_graph_mode', [True, False])

@@ -6,7 +6,6 @@ from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
 
 
 class TestMatmulAdd():
-    @pytest.mark.skip(reason='not support for current version')
     def test_matmul_add(self):
         for i in range(10):
             x = torch.rand((4096, 8192), dtype=torch.float16).npu()

@@ -269,13 +269,11 @@ def run_hybrid_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
 class TestAdaptiveCP(DistributedTest):
     world_size = 8
 
-    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize("cp_args", ['causal', 'swa'])
     def test_adaptive_context_parallel_seq8192_bs1_bf16(self, cp_args):
         run_adaptive_cp(self.world_size, 1, 8192, torch.bfloat16, cp_args)
 
-    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize("cp_args", ['causal', 'swa'])
     def test_hybrid_adaptive_context_parallel_seq8192_bs1_bf16(self, cp_args):
