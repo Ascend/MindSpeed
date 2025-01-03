@@ -800,6 +800,10 @@ def validate_args_wrapper(validate_args):
             args.gradient_accumulation_fusion = False
             warnings.warn("Unsupported gradient fp16 bf16 for gradient accumulation fusion")
 
+        if not args.use_mcore_models:
+            if args.overlap_param_gather and args.reuse_fp32_param:
+                raise AssertionError('In legacy, `overlap_param_gather` does not support `reuse_fp32_param`.')
+
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
         return args
