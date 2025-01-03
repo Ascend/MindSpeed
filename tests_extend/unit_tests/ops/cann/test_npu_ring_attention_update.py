@@ -53,7 +53,6 @@ def run_one_case(batch_size, head_num, seq_size, head_dim, data_type):
 
 class TestNpuFusedRingAttentionUpdate():
 
-    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.parametrize("bs_hn_seq_hd", [(1, 64, 8192, 128), (1, 32, 8192, 128), (1, 32, 65536, 128), (1, 32, 32768, 128)])
     @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float, torch.float16])
     def test_npu_fused_ring_attention_update(self, bs_hn_seq_hd, dtype):

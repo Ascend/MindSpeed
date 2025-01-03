@@ -55,7 +55,6 @@ class TestNPUGMM:
             y = npu_gmm_v2(x, weight, bias=None, group_list=group_list, group_type=group_type)
         return y
 
-    @pytest.mark.skip(reason='aclnnGroupedMatmulV4 is not in this cann')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize('gropu_list_mode', [GROUP_LIST_VECTOR_CUMSUM, GROUP_LIST_TENSOR_CUMSUM, GROUP_LIST_TENSOR_COUNT])
     @pytest.mark.parametrize('is_graph_mode', [True, False])
@@ -96,7 +95,6 @@ class TestNPUGMM:
         assert torch.allclose(y, output, rtol=0.005, atol=0.005)
 
 
-    @pytest.mark.skip(reason='aclnnGroupedMatmulV4 is not in this cann')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize('gropu_list_mode', [GROUP_LIST_VECTOR_CUMSUM, GROUP_LIST_TENSOR_CUMSUM, GROUP_LIST_TENSOR_COUNT])
     def test_npu_gmm_group_type_2(self, gropu_list_mode):

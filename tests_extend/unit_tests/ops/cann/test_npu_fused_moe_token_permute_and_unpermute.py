@@ -18,7 +18,6 @@ fused_unpermute = unpermute_wrapper(unpermute)
 
 class TestNpuFusedPermuteAndUnpermute():
 
-    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.parametrize('num_tokens', [1024, 2048])
     @pytest.mark.parametrize('hidden_size', [6144, 8192, 12288])
     @pytest.mark.parametrize('topk', [1, 4])
@@ -42,7 +41,6 @@ class TestNpuFusedPermuteAndUnpermute():
         sorted_indices_ori = torch.argsort(sorted_indices_ori, stable=True).to(sorted_indices_fused.dtype)
         assert torch.equal(sorted_indices_ori, sorted_indices_fused)
 
-    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.parametrize('num_tokens', [1024, 2048])
     @pytest.mark.parametrize('hidden_size', [6144, 8192, 12288])
     @pytest.mark.parametrize('topk', [1, 4])
@@ -72,7 +70,6 @@ class TestNpuFusedPermuteAndUnpermute():
         unpermuted_tokens_fused.backward(torch.ones(unpermuted_tokens_fused.shape).to(torch.bfloat16).npu())
         assert torch.allclose(unpermuted_tokens_ori, unpermuted_tokens_fused, **tols)
 
-    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.parametrize('num_tokens', [1024, 2048])
     @pytest.mark.parametrize('hidden_size', [6144, 8192, 12288])
     @pytest.mark.parametrize('topk', [1, 4])
@@ -94,7 +91,6 @@ class TestNpuFusedPermuteAndUnpermute():
         else:
             assert torch.allclose(unpermuted_tokens, tokens, **tols)
 
-    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.parametrize('num_tokens', [1024, 2048])
     @pytest.mark.parametrize('hidden_size', [6144, 8192, 12288])
     @pytest.mark.parametrize('topk', [1, 4])
