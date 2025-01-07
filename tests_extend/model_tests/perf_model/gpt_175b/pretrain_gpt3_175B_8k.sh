@@ -35,7 +35,6 @@ GPT_ARGS="
     --num-layers-per-virtual-pipeline-stage 2 \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --sequence-parallel \

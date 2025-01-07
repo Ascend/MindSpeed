@@ -62,7 +62,6 @@ GPT_ARGS="
     --use-mcore-models \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --use-fused-rotary-pos-emb \
     --use-ascend-mc2 \
     --sequence-parallel \

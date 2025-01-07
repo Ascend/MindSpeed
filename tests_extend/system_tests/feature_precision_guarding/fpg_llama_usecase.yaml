@@ -153,7 +153,7 @@ features:
                      tp_size: 2,
                      pp_size: 2,
                      load_ckpt_dir: ./ckpt_llama_tp2pp2,
-                     extra_args: '"--recompute-granularity full --recompute-method uniform --recompute-num-layers 2 --optimize-recomp-communication-level 2"',
+                     extra_args: '"--recompute-granularity full --recompute-method uniform --recompute-num-layers 2"',
             }
         }
         - { script_file: pretrain_fpg_llama.sh, # 完全重计算 block

@@ -38,7 +38,6 @@ GPT_ARGS="
     --use-fused-rmsnorm \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --use-ascend-mc2 \
     --num-layers 10 \
     --hidden-size 8192 \
