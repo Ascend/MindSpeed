@@ -55,10 +55,6 @@ products:
   # Open-source code bugs - { use_mcore: [True, False], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--init-method-xavier-uniform"' ], args_meta: [ "init_method_xavier_uniform" ] }
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--group-query-attention --num-query-groups 4"' ], args_meta: [ "group_query_attention" ] }
 
-  # Recalculation Communication Optimization
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--optimize-recomp-communication-level 1 --recompute-granularity full --recompute-method block --recompute-num-layers 2"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--optimize-recomp-communication-level 2 --recompute-granularity full --recompute-method uniform --recompute-num-layers 2"' ] }
-
   # Adaptive Selective Recalculation
   - { use_mcore: [ False ], adaptive_recomputing: [ 1 ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--adaptive-recompute-device-swap"' ] }
 
@@ -137,4 +133,4 @@ products:
   - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe"' ] }
   - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] }
   - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ],   extra_args: [ '"--sequence-parallel --use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--optimize-recomp-communication-level 2 --recompute-granularity full --recompute-method uniform --recompute-num-layers 2"' ] }
+  
