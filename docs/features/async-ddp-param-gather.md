@@ -34,4 +34,4 @@
 ## 使用效果
 
 使用该特性可以提升性能。
-
+legacy下，`--overlap-param-gather`暂不支持和`reuse_fp32_param`一起使用。
