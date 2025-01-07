@@ -44,7 +44,6 @@ GPT_ARGS="
     --use-cp-send-recv-overlap \
     --log-throughput \
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --num-layers-per-virtual-pipeline-stage 2 \
     --sequence-parallel \
     --use-distributed-optimizer \

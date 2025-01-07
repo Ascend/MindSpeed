@@ -35,7 +35,6 @@ GPT_ARGS="
     --use-fused-rmsnorm \
     --log-throughput \
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --use-ascend-mc2 \
     --num-layers-per-virtual-pipeline-stage 2 \
     --sequence-parallel \

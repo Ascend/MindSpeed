@@ -43,7 +43,6 @@ GPT_ARGS="
     --swap-attention \
     --recompute-num-layers 37 \
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --num-layers-per-virtual-pipeline-stage 2 \
     --sequence-parallel \
     --use-distributed-optimizer \

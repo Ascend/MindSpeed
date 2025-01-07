@@ -40,7 +40,6 @@ GPT_ARGS="
     --use-distributed-optimizer \
     --num-layers-per-virtual-pipeline-stage 2\
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --sequence-parallel \
     --num-layers 24 \
     --hidden-size 12288 \
