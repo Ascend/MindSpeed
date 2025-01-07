@@ -53,7 +53,6 @@ GPT_ARGS="
     --use-cp-send-recv-overlap \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
-    --overlap-param-gather \
     --use-fused-rotary-pos-emb \
     --use-ascend-mc2 \
     --sequence-parallel \

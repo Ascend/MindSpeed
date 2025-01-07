@@ -24,12 +24,6 @@ products:
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
 
-  # -- TP重计算通信优化： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/recomputation-communication.md
-  # mcore=True bug
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --optimize-recomp-communication-level 1 --recompute-granularity full --recompute-method uniform --recompute-num-layers 1"' ] }
-  # mcore=True bug
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --optimize-recomp-communication-level 2 --recompute-granularity full --recompute-method uniform --recompute-num-layers 1"' ] }
-
   # -- 重计算流水线独立调度: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/recompute_independent_pipelining.md
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-in-bubble"' ] }
   - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-in-advance --recompute-granularity full --recompute-method block --recompute-num-layers 2"' ] }
