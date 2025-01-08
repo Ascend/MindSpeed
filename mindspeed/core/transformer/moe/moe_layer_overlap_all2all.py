@@ -12,6 +12,10 @@ from mindspeed.ops.gmm import GMMFunction
 from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS, only_recompute_activation
 
 
+def gmm_op(x, weight, bias, group_list, group_type):
+    return GMMFunction.builder.load().npu_gmm([x], [weight], bias, group_list, group_type, 0)
+
+
 class MoELayerOverlapAll2All(torch.autograd.Function):
     @staticmethod
     def forward(ctx, hidden_states, moe_layer: MoELayer):
@@ -251,11 +255,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 if global_input_tokens.nelement() != 0:
                     group_list = torch.cumsum(ctx.tokens_per_expert, dim=0)
                     w1 = ctx.weight1.view(ctx.num_local_experts, ctx.hidden_size, -1)
-                    if isinstance(group_list, (torch.Tensor, type(None))):
-                        group_list_data_type = 1
-                    else:
-                        group_list_data_type = 0
-                    mm1_out_ = GMMFunction.builder.load().npu_gmm([global_input_tokens], [w1], [], group_list.tolist(), 0, group_list_data_type)[0]
+                    mm1_out_ = gmm_op(global_input_tokens, w1, [], group_list, 0)[0]
                     group_list.untyped_storage().resize_(0)
                 else:
                     w1 = ctx.weight1.view(ctx.hidden_size, -1)
