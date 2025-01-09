@@ -156,17 +156,18 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 | Ascend Norm重计算                  | [link](docs/features/norm-recompute.md)          |
 
 ## 亲和计算特性
-| 特性                           | 介绍                                                        |
-|------------------------------|-----------------------------------------------------------|
-| Ascend rms_norm 融合算子         | [link](docs/features/rms_norm.md)                         |
-| Ascend swiglu 融合算子           | [link](docs/features/swiglu.md)                           |
-| Ascend rotary_embedding 融合算子 | [link](docs/features/rotary-embedding.md)                 |
-| Ascend flash attention 融合算子    | [link](docs/features/flash-attention.md)                  |
-| Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)|
-| Ascend npu_matmul_add_fp32梯度累加融合算子           | [link](docs/features/npu_matmul_add.md)|
-| 【Prototype】Ascend 计算通信并行优化              | [link](docs/features/communication-over-computation.md)   |
-| 【Prototype】Ascend MC2        | [link](docs/features/mc2.md)                              |
-| 【Prototype】Ascend fusion_attention_v2       | [link](docs/features/fusion-attn-v2.md)                              |
+| 特性                                         | 介绍                                                           |
+|--------------------------------------------|--------------------------------------------------------------|
+| Ascend rms_norm 融合算子                       | [link](docs/features/rms_norm.md)                            |
+| Ascend swiglu 融合算子                         | [link](docs/features/swiglu.md)                              |
+| Ascend rotary_embedding 融合算子               | [link](docs/features/rotary-embedding.md)                    |
+| Ascend flash attention 融合算子                | [link](docs/features/flash-attention.md)                     |
+| Ascend Moe Token Permute and Unpermute 融合算子 | [link](docs/features/moe-token-permute-and-unpermute.md)     |
+| Ascend npu_matmul_add_fp32梯度累加融合算子         | [link](docs/features/npu_matmul_add.md)                      |
+| 【Prototype】Ascend Moe BMM通算融合算子                       | [link](docs/features/megatron_moe/megatron-moe-bmm-fused.md) |
+| 【Prototype】Ascend 计算通信并行优化                 | [link](docs/features/communication-over-computation.md)      |
+| 【Prototype】Ascend MC2                      | [link](docs/features/mc2.md)                                 |
+| 【Prototype】Ascend fusion_attention_v2      | [link](docs/features/fusion-attn-v2.md)                      |
 
 ## 通信优化特性
 | 特性                           | 介绍                                                        |
