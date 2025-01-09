@@ -359,6 +359,9 @@ def alltoall_token_permutation(
         padded_mode=self.drop_and_pad,
     )
 
+    if get_args().moe_bmm_mc2:
+        return permutated_local_input_tokens, tokens_per_expert
+
     # Perform expert parallel AlltoAll communication
     if self.cuda_sync_point == "before_ep_alltoall":
         torch.cuda.current_stream().synchronize()
@@ -396,6 +399,49 @@ def alltoall_token_permutation(
         torch.cuda.current_stream().synchronize()
 
     return global_input_tokens, tokens_per_expert
+
+
+def alltoall_token_unpermutation_with_bmm(
+    self, hidden_states: torch.Tensor, bias: torch.Tensor = None,
+):
+    # if use op bmm_reducescatter_alltoall to skip reducescatter and alltoall
+    output = unpermute(
+        hidden_states,
+        self.reversed_local_input_permutation_mapping,
+        probs=self.probs,
+        padded_mode=self.drop_and_pad,
+        restore_shape=self.hiddden_shape_before_permute,
+    )
+
+    if parallel_state.get_tensor_model_parallel_world_size() > 1:
+        output = tensor_parallel.all_to_all_hp2sp(output)
+
+    output = output.view(self.hidden_shape)
+    return output, None
+
+
+def alltoall_token_permutation_with_bmm(
+    self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor,
+):
+    # if use op alltoall_allgather_bmm to skip alltoall and allgather
+    self.hidden_states = hidden_states.shape
+    self.probs = probs
+    assert probs.dim() == 2, "Experted 2D tensor for probs"
+    assert indices.dim() == 2, "Experted 2D tensor for indices"
+    hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
+    tokens_per_expert = self.preprocess(indices)
+
+    if parallel_state.get_tensor_model_parallel_world_size() > 1:
+        hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
+
+    self.hidden_shape_before_permute = hidden_states.shape
+    permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+        hidden_states,
+        indices,
+        num_out_tokens=self.num_out_tokens,
+        padded_mode=self.drop_and_pad,
+    )
+    return permutated_local_input_tokens, tokens_per_expert
 
 
 def preprocess_tp_extend_ep(self, indices: torch.Tensor) -> torch.Tensor:

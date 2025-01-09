@@ -174,6 +174,8 @@ def _add_moe_args(parser):
     group.add_argument('--moe-zero-memory-num-layers', type=int, default=None,
                        help='the number of layers using moe-zero-memory level1'
                             'in each pp stage.')
+    group.add_argument('--moe-bmm-mc2', action='store_true', default=False,
+                       help='moe_bmm_mc2')
     return parser
 
 
@@ -623,6 +625,14 @@ def validate_args_wrapper(validate_args):
             raise AssertionError('`--moe-dynamic-padding` only support for `--moe-no-drop`.')
         if args.moe_permutation_async_comm and args.moe_model_type != 'megatron_moe':
             raise AssertionError('`--moe-permutation-async-comm` only support for megatron core moe.')
+        if args.moe_bmm_mc2:
+            if args.moe_model_type != 'megatron_moe' or not args.moe_token_dispatcher_type == 'alltoall':
+                raise AssertionError('`--moe-bmm-mc2` only support for megatron core moe and dispatcher is alltoall.')
+            if not args.moe_grouped_gemm:
+                raise AssertionError('`--moe-bmm-mc2` only support when `--moe-grouped-gemm` is true.')
+            if args.moe_tp_extend_ep or args.moe_alltoall_overlap_comm:
+                raise AssertionError(
+                    '`--moe-bmm-mc2` not support with `--moe-tp-extend-ep` and `--moe-alltoall-overlap-comm`.')
 
         if args.context_parallel_size > 1 and args.position_embedding_type == 'alibi':
             assert args.context_parallel_algo == 'megatron_cp_algo', f"alibi only support megatron_cp_algo"
