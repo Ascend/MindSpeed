@@ -192,6 +192,7 @@ class ParallelLinear2D(torch.nn.Module):
             self.enable_overlap_matmul_with_rs,
             self.gradient_accumulation_fusion,
             self.enable_backward_overlap_ag_with_matmul,
+            self.partition_dim,
         )
 
         if not self.skip_bias_add:

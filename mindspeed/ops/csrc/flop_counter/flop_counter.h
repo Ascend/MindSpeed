@@ -27,7 +27,7 @@ public:
     ~FlopCounter() = default;
 
     static int64_t mm_flop(const at::Tensor &tensor1, const at::Tensor &tensor2);
-    static int64_t coc_flop(const at::Tensor &tensor1, const at::Tensor &tensor2, bool trans, bool is_ag_mm);
+    static int64_t coc_flop(const at::Tensor &tensor1, const at::Tensor &tensor2, bool trans, int rankSize, bool is_ag_mm);
     static int64_t bmm_flop(const at::Tensor &self, const at::Tensor &mat2);
     static int64_t flash_attention_forward_flop(const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
         int64_t head_num, const std::string &input_layout, const c10::optional<std::vector<int64_t>> &actual_seq_qlen,

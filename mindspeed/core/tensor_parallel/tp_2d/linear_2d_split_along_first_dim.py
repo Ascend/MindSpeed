@@ -25,6 +25,20 @@ from mindspeed.core.tensor_parallel.comm_utils import sync_gather_along_first_di
 from mindspeed.core.tensor_parallel.comm_utils import sync_reduce_scatter_along_first_dim
 
 
+
+def get_comm_domain_rank(devid, ag_size, rs_size, para_type=0):  # 在RS domain做agv2
+    if para_type == 0:  # TFTF
+        if ag_size == 2:    # RS=8, [0 1 2 ... 7], [8 9 10 ... 15]
+            return str(10 + devid // rs_size), devid % rs_size
+        else:               # RS=2, [0, 8], [1, 9] ... [7, 15]
+            return str(20 + devid % ag_size), devid // ag_size
+    else:               # FTFT
+        if ag_size == 2:    # RS=8, [0 2 4 ... 14], [1 3 5 ... 15]
+            return str(10 + devid % ag_size), devid // ag_size
+        else:               # RS=2, [0 1], [2 3], [4 5]...
+            return str(20 + devid // rs_size), devid % rs_size
+
+
 class Linear2DSplitAlongFirstDim(torch.autograd.Function):
     """2D Linear out axe communication implementation."""
 
@@ -42,7 +56,8 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         enable_overlap_ag_with_matmul=False,
         enable_overlap_matmul_with_rs=False,
         gradient_accumulation_fusion=False,
-        enable_backward_overlap_ag_with_matmul=False
+        enable_backward_overlap_ag_with_matmul=False,
+        partition_dim=0,
     ):
         """
         :param ctx: context to save some tensors or vars for backward use.
@@ -86,6 +101,29 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
 
             if bias is not None:
                 matmul_res += bias
+        elif get_args().coc_fused_kernel:
+            from mindspeed.ops.lcal_functional import coc_ops, TP2DConfig
+            inner_dim_is_ag = True
+            if partition_dim == 0:
+                inner_dim_is_ag = True
+            else:
+                inner_dim_is_ag = False
+            # [s/(x*cp), b, H/y] -> [s/cp, b, H/y] -> [s/(cp*y), b, H/x]
+            s, b, h = activation_input.shape
+            # Convert the tensor shapes to 2D for execution compatibility
+            activation_input = activation_input.view(
+                s * b, h
+            )
+            res_shape_0 = s * ag_comm_intf.get_comm_group_world_size() // rs_comm_intf.get_comm_group_world_size()
+            res_shape_1 = weight.shape[0]
+            matmul_res = torch.empty(res_shape_0, res_shape_1, dtype=activation_input.dtype, device=torch.cuda.current_device())
+            coc_ops.all_gather_matmul_reduce_scatter(activation_input, weight, matmul_res,
+                TP2DConfig(
+                    ag_comm_intf.get_comm_group_world_size(),
+                    rs_comm_intf.get_comm_group_world_size(),
+                    inner_dim_is_ag),
+                bias=bias)
+            return matmul_res.view(-1, b, res_shape_1)
         else:
             # [s/(x*cp), b, H/y] -> [s/cp, b, H/y]
             activation_input = activation_input.contiguous()
@@ -96,6 +134,8 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         matmul_res = matmul_res.contiguous()
         matmul_res = sync_reduce_scatter_along_first_dim(matmul_res, rs_comm_intf)
         return matmul_res
+
+
 
     @staticmethod
     @custom_bwd
@@ -117,35 +157,58 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         """
         # activation_input shape: [s/(x*cp), b, h/y]
         # weight shape: [h/y, E/x]
-        if ctx.enable_backward_overlap_ag_with_matmul:
-            return Linear2DSplitAlongFirstDim._backward_ag_overlap_with_mm(ctx, grad_output)
         activation_input, = ctx.saved_tensors
         weight = ctx.weight
         use_bias = ctx.use_bias
+        s, b, h = grad_output.shape
         # first we prepare the total inputs needed to compute grad_input, grad_weight.
         # [s/(y*cp), b, E/x]---AG(y)---> [s/cp, b, E/x]
         # Use sync AG to avoid communication competition, for the bandwidth is shared for A3.
         grad_output = grad_output.contiguous()
-        total_grad_output = sync_gather_along_first_dim(grad_output, ctx.rs_comm_intf)
+        if ctx.enable_backward_overlap_ag_with_matmul and get_args().coc_fused_kernel:
+            from mindspeed.ops.lcal_functional import coc_ops, CoCConfig
+            # prepare total activation_input for computing grad weight.
+            # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
+            activation_input = activation_input.contiguous()
+            gather_input_handle, gathered_tensors = async_gather_tensors(
+                local_rank_input=activation_input, ag_comm_intf=ctx.ag_comm_intf
+            )
+            
+            # Convert the tensor shapes to 2D for execution compatibility
+            grad_output = grad_output.view(s * b, h)
+            ag_size = ctx.ag_comm_intf.get_comm_group_world_size()
+            rs_size = ctx.rs_comm_intf.get_comm_group_world_size()
+            res_shape_0 = s * b * rs_size
+            
+            res_shape_1 = weight.shape[1]
+            partial_grad_input = torch.empty(res_shape_0, res_shape_1, dtype=grad_output.dtype, device=torch.cuda.current_device())
 
-        # prepare total activation_input for computing grad weight.
-        # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
-        activation_input = activation_input.contiguous()
-        gather_input_handle, gathered_tensors = async_gather_tensors(
-            local_rank_input=activation_input, ag_comm_intf=ctx.ag_comm_intf
-        )
+            total_grad_output = torch.empty(res_shape_0, h, dtype=grad_output.dtype, device=torch.npu.current_device())
+            comm_domain, coc_rank = get_comm_domain_rank(total_grad_output.device.index, ag_size, rs_size)
+            coc_ops.set_comm_config(CoCConfig(coc_rank, rs_size, comm_domain))
+            coc_ops.all_gather_matmul_v2(input1=grad_output, input2=weight, output=partial_grad_input, comm_output=total_grad_output)
+            partial_grad_input = partial_grad_input.view(-1, b, partial_grad_input.shape[1])
+        else:
+            total_grad_output = sync_gather_along_first_dim(grad_output, ctx.rs_comm_intf)
+            # prepare total activation_input for computing grad weight.
+            # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
+            activation_input = activation_input.contiguous()
+            gather_input_handle, gathered_tensors = async_gather_tensors(
+                local_rank_input=activation_input, ag_comm_intf=ctx.ag_comm_intf
+            )
 
-        # [s/cp, b, E/x] @ [E/x, H/y]--> [s/cp, b, H/y] (partial sum)
-        partial_grad_input = total_grad_output.matmul(weight).contiguous()
+            # [s/cp, b, E/x] @ [E/x, H/y]--> [s/cp, b, H/y] (partial sum)
+            partial_grad_input = total_grad_output.matmul(weight).contiguous()
+
+        # Convert the tensor shapes to 2D for execution compatibility
+            sb = total_grad_output.shape[0] * total_grad_output.shape[1]
+        # [s/cp, b, E/x]--view--> [sb/cp, E/x]
+            total_grad_output = total_grad_output.view(sb, total_grad_output.shape[2])
+
         # [s/cp, b, H/y] (partial sum)---RS(X)--->[s/cp, b, H/(xy)] (full sum)
         rs_grad_input_handle, grad_input = async_reduce_scatter_along_first_dim(
             partial_grad_input, comm_intf=ctx.ag_comm_intf
         )
-
-        # Convert the tensor shapes to 2D for execution compatibility
-        sb = total_grad_output.shape[0] * total_grad_output.shape[1]
-        # [s/cp, b, E/x]--view--> [sb/cp, E/x]
-        total_grad_output = total_grad_output.view(sb, total_grad_output.shape[2])
 
         if gather_input_handle:
             gather_input_handle.wait()
@@ -153,7 +216,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
         total_activation_input = gathered_tensors
         # [s/cp, b, h/y]--view--> [sb/cp, h/y]
-        total_activation_input = total_activation_input.view(sb, total_activation_input.shape[2])
+        total_activation_input = total_activation_input.view(-1, total_activation_input.shape[2])
         if ctx.gradient_accumulation_fusion:
             import fused_weight_gradient_mlp_cuda
             total_grad_output = total_grad_output.contiguous()
@@ -197,7 +260,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
 
         if rs_grad_input_handle:
             rs_grad_input_handle.wait()
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None
 
     @staticmethod
     def _do_allgather_left_tensor_and_matmul_overlap(

@@ -3,6 +3,7 @@ import torch_npu
 import pytest
 import numpy as np
 from unit_tests.common import DistributedTest
+from commons import initialize_model_parallel
 
 
 shape_list = [
@@ -61,12 +62,14 @@ def is_similar(actual_output, pred_output):
     return error_ratio
 
 
+@pytest.mark.skip(reason='lcal can not be built because ag-mm-rs is currently not available.')
 class TestCoC(DistributedTest):
     world_size = 8
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_matmul_all_reduce(self):
         from mindspeed.ops.lcal_functional import coc_ops
+        initialize_model_parallel(8)
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]
@@ -93,6 +96,7 @@ class TestCoC(DistributedTest):
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_all_gather_matmul(self):
         from mindspeed.ops.lcal_functional import coc_ops
+        initialize_model_parallel(8)
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]
@@ -119,6 +123,7 @@ class TestCoC(DistributedTest):
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_all_gather_matmul_v2(self):
         from mindspeed.ops.lcal_functional import coc_ops
+        initialize_model_parallel(8)
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]
@@ -148,6 +153,7 @@ class TestCoC(DistributedTest):
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_matmul_reduce_scatter(self):
         from mindspeed.ops.lcal_functional import coc_ops
+        initialize_model_parallel(8)
         for shape_idx in range(total_shape_num):
             for dtype in dtype_list:
                 m, k, n = shape_list[shape_idx][0], shape_list[shape_idx][1], shape_list[shape_idx][2]

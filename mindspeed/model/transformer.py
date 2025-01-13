@@ -806,7 +806,7 @@ def parallel_mlp_init_wrapper(fn):
                 enable_overlap_ag_with_matmul=_args.enable_overlap_ag_with_matmul,
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1,
-                enable_backward_overlap_ag_with_matmul=False)
+                enable_backward_overlap_ag_with_matmul=_args.enable_backward_overlap_ag_with_matmul)
         else:
             self.dense_h_to_4h = tensor_parallel.ColumnParallelLinear(
                 config.hidden_size,
@@ -1274,7 +1274,7 @@ def patch_for_attention(config, self):
             enable_overlap_ag_with_matmul=False,
             enable_overlap_matmul_with_rs=False,
             partition_dim=0,
-            enable_backward_overlap_ag_with_matmul=_args.enable_backward_overlap_ag_with_matmul)
+            enable_backward_overlap_ag_with_matmul=False)
     else:
         self.query_key_value = tensor_parallel.ColumnParallelLinear(
             config.hidden_size,
@@ -1312,7 +1312,8 @@ def patch_for_attention(config, self):
             rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
             enable_overlap_ag_with_matmul=False,
             enable_overlap_matmul_with_rs=False,
-            partition_dim=1)
+            partition_dim=1,
+            enable_backward_overlap_ag_with_matmul=_args.enable_backward_overlap_ag_with_matmul)
     else:
         self.dense = tensor_parallel.RowParallelLinear(
             query_projection_size,

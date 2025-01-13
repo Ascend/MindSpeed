@@ -225,7 +225,7 @@ def self_attention_init_wrapper(fn):
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=0,
-                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
+                enable_backward_overlap_ag_with_matmul=False,
             )
             self.linear_proj = ParallelLinear2D(
                 self.query_projection_size,
@@ -240,7 +240,8 @@ def self_attention_init_wrapper(fn):
                 rs_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=False,
-                partition_dim=1
+                partition_dim=1,
+                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul
             )
 
     return wrapper
