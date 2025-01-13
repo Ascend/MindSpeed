@@ -95,7 +95,7 @@ def param_and_grad_buffer_init_pad(
             element_size = 4 if param_dtype == torch.float else 2
             global_args = get_args()
             align_size = global_args.param_and_grad_buffer_pad // element_size
-            return _pad(bucket_end_index, math.lcm(self.data_parallel_world_size, align_size))
+            return _pad(bucket_end_index, self.data_parallel_world_size * align_size)
         return bucket_end_index
 
     def _pad_start_of_param_if_needed(param_start_index: int) -> int:
