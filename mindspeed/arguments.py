@@ -116,6 +116,8 @@ def _add_profile_args(parser):
                        help="Profile record shape info.")
     group.add_argument("--profile-save-path", type=str, default='./profile_dir',
                        help="Profile save path.")
+    group.add_argument('--profile-ranks', nargs='+', type=int, default=[-1],
+                       help='Global ranks to profile.The default value of -1 means to profile all ranks')
     return parser
 
 
