@@ -143,5 +143,5 @@ def mlp_init_2d_wrapper(fn):
                 enable_overlap_ag_with_matmul=args.enable_overlap_ag_with_matmul,
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1,
-                enable_backward_overlap_ag_with_matmul=False)
+                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul)
     return wrapper
