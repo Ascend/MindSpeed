@@ -93,7 +93,7 @@ def param_and_grad_buffer_init_pad(
             element_size = 4 if param_dtype == torch.float else 2
             global_args = get_args()
             align_size = global_args.param_and_grad_buffer_pad // element_size
-            return _pad(data_index, math.lcm(self.data_parallel_world_size, align_size))
+            return _pad(data_index, self.data_parallel_world_size * align_size)
         return data_index
 
     # First, figure out how many elements should be in the underlying buffer storage.
