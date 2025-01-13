@@ -85,7 +85,8 @@ def train_decorator(train):
         else:
             args_.profile_npu = False
 
-        if args_.profile_npu and (torch.distributed.get_rank() in args_.profile_ranks):
+        is_profile = args_.profile_npu and ((torch.distributed.get_rank() in args_.profile_ranks) or (-1 in args_.profile_ranks))
+        if is_profile:
             active = args_.profile_step_end - args_.profile_step_start
             skip_first = args_.profile_step_start
 
@@ -136,8 +137,9 @@ def train_step_decorator(train_step):
             flop_count.start()
         ret = train_step(*args, **kwargs)
 
-        if hasattr(args_, 'profile_npu') and args_.profile_npu \
-                and (torch.distributed.get_rank() in args_.profile_ranks):
+        is_profile = hasattr(args_, 'profile_npu') and args_.profile_npu \
+                and ((torch.distributed.get_rank() in args_.profile_ranks) or (-1 in args_.profile_ranks))
+        if is_profile:
             args_.prof.step()
         if args_.op_cal_tflops:
             flop_count = get_flops_counter()
