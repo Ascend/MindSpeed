@@ -5,7 +5,8 @@ from torch_npu.utils.collect_env import get_cann_version
 from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import moe_gather, moe_scatter, permute, unpermute
-from megatron.core.tensor_parallel.mappings import _gather_along_first_dim_expert_parallel
+from megatron.core.tensor_parallel.mappings import _gather_along_first_dim_expert_parallel, \
+    reduce_scatter_to_sequence_parallel_region
 from mindspeed.core.transformer.moe.router import gather_from_sequence_parallel_region_to_moe_async
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import forward_func
@@ -776,7 +777,8 @@ def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor, bias: t
 
 
 def alltoall_token_permutation_new(
-        self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor, shared_experts, save_tensors, moe_ctx=None
+        self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor, shared_experts, save_tensors,
+        shared_expert_gate, moe_ctx=None
 ):
     self.hidden_shape = hidden_states.shape
     self.probs = probs
@@ -825,10 +827,18 @@ def alltoall_token_permutation_new(
     # shared experts
     if shared_experts is not None:
         (share_experts_output, _), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
-        if parallel_state.get_tensor_model_parallel_world_size() > 1:
-            share_experts_graph, share_experts_output, rs_shared_experts_handle = async_reduce_scatter(share_experts_output, parallel_state.get_tensor_model_parallel_group(),
-                                                                                                       event=permute1_ep_all_to_all_handle, stream=torch.npu.default_stream())
+        if parallel_state.get_tensor_model_parallel_world_size() > 1 and shared_expert_gate is None:
+            share_experts_graph, share_experts_output, rs_shared_experts_handle = async_reduce_scatter(
+                share_experts_output, parallel_state.get_tensor_model_parallel_group(),
+                event=permute1_ep_all_to_all_handle, stream=torch.npu.default_stream())
             share_experts_output = (share_experts_graph, share_experts_output, rs_shared_experts_handle)
+        if shared_expert_gate is not None:
+            with torch.enable_grad():
+                # tp not support shared expert gate for now
+                if parallel_state.get_tensor_model_parallel_world_size() > 1:
+                    share_experts_output = reduce_scatter_to_sequence_parallel_region(share_experts_output)
+                share_experts_output = torch.nn.functional.sigmoid(
+                    shared_expert_gate(hidden_states)) * share_experts_output
     else:
         share_experts_output = None
 
