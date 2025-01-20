@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import argparse
+import time
 from functools import wraps
 from multiprocessing import Lock
 import torch
@@ -566,6 +567,7 @@ def ascend_adaptation(aspm, args):
     from megatron.legacy.model.transformer import ParallelTransformerLayer
     if args.memory_fragmentation:
         from .core.memory.memory_fragmentation.pluggable_allocator_adpator import change_allocator
+        time.sleep(10)
         change_allocator()
 
         from .core.memory.memory_fragmentation.memory_recorder import memory_recorder_wrapper
@@ -585,6 +587,7 @@ def ascend_adaptation(aspm, args):
     if (adaptive_recompute_enable and not args.memory_fragmentation) or args.swap_attention:
         from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
         if not args.swap_attention:
+            time.sleep(10)
             change_allocator()
         from .core.memory.adaptive_recomputing.adaptive_recompute import allowed_recomputing_module_wrapper
         if hasattr(args, "use_mcore_models") and args.use_mcore_models:
@@ -971,7 +974,7 @@ def exe_adaptation():
     build_directory = _get_build_directory("", True)
     delete_lock = Lock()
     delete_lock_file(build_directory, delete_lock)
-    
+
     from .patch_utils import MindSpeedPatchesManager as aspm
 
     if mindspeed_args.optimization_level >= 0:

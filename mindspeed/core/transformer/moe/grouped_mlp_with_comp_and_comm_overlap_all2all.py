@@ -20,9 +20,9 @@ from megatron.core.parallel_state import get_expert_model_parallel_group, get_te
 from megatron.core.transformer.moe.moe_utils import permute
 from mindspeed.ops.gmm import GMMFunction
 from mindspeed.model.transformer import should_recompute_activation
-from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import forward_func, backward_func
+from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import gmm_op
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
-from mindspeed.core.transformer.moe.moe_utils import only_recompute_activation
+from mindspeed.core.transformer.moe.moe_utils import only_recompute_activation, forward_func, backward_func
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 
 
@@ -32,18 +32,11 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         original_weight1, original_weight2, activation_func, group_list, layer_number = args
         global_args = get_args()
         moe_zero_memory = global_args.moe_zero_memory
-        if isinstance(group_list, (torch.Tensor, type(None))):
-            group_list_data_type = 1
-        else:
-            group_list_data_type = 0
-        ctx.group_list_data_type = group_list_data_type
         ctx.layer_number = layer_number
         use_gmm = (inputs.nelement() != 0)
         ctx.use_gmm = use_gmm
         if use_gmm:
-            mm1_out = \
-                GMMFunction.builder.load().npu_gmm([inputs], [weights1], [], group_list.tolist(), 0, group_list_data_type)[
-                    0]
+            mm1_out = gmm_op(inputs, weights1, [], group_list, 0)[0]
         else:
             mm1_out = torch.matmul(inputs, weights1)
         if moe_zero_memory != "disable":
@@ -54,9 +47,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         if moe_zero_memory == "level1" and not is_only_recompute_activation:
             mm1_out.untyped_storage().resize_(0)
         if use_gmm:
-            mm2_out = \
-                GMMFunction.builder.load().npu_gmm([act_out], [weights2], [], group_list.tolist(), 0, group_list_data_type)[
-                    0]
+            mm2_out = gmm_op(act_out, weights2, [], group_list, 0)[0]
         else:
             mm2_out = torch.matmul(act_out, weights2)
 
@@ -85,7 +76,6 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             inputs, act_inputs, mm2_inputs, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
         else:
             act_inputs, mm2_inputs, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
-        group_list_data_type = ctx.group_list_data_type
         from mindspeed.core.transformer.moe.moe_utils import get_gemm_backward_need_tensors, set_all2all_experts_output
         ((detach_input, indices, router_topk, global_input_tokens_local_experts_indices),
          permute2_input_detach, permute2_graph, output_splits, input_splits) = get_gemm_backward_need_tensors()
@@ -93,9 +83,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         # grad of mm2
         if ctx.use_gmm:
             weights2 = rearrange(weights2, 'n h f -> n f h')
-            grad_mm2_inputs = \
-                GMMFunction.builder.load().npu_gmm([grad_outs], [weights2], [], group_list.tolist(), 0,
-                                                   group_list_data_type)[0]
+            grad_mm2_inputs = gmm_op(grad_outs, weights2, [], group_list, 0)[0]
         else:
             grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
         act_graph = mm2_inputs
@@ -128,8 +116,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
                 else:
                     grad_weights2 = None
             else:
-                grad_weights2 = GMMFunction.builder.load().npu_gmm([mm2_inputs.t()], [grad_outs], [], group_list.tolist(), 2,
-                                                               group_list_data_type)[0]
+                grad_weights2 = gmm_op(mm2_inputs.t(), grad_outs, [], group_list, 2)[0]
         else:
             grad_weights2 = torch.matmul(mm2_inputs.t(), grad_outs)
 
@@ -160,8 +147,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             )
         if ctx.use_gmm:
             weights1 = rearrange(weights1, 'n h f -> n f h')
-            mm1_inputs_grad = GMMFunction.builder.load().npu_gmm([act_inputs.grad], [weights1], [], group_list.tolist(), 0,
-                                                                 group_list_data_type)[0]
+            mm1_inputs_grad = gmm_op(act_inputs.grad, weights1, [], group_list, 0)[0]
         else:
             mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
@@ -216,9 +202,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
                     else:
                         mm1_weights_grad = None
                 else:
-                    mm1_weights_grad = \
-                        GMMFunction.builder.load().npu_gmm([inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
-                                                        group_list_data_type)[0]
+                    mm1_weights_grad = gmm_op(inputs.t(), act_inputs.grad, [], group_list, 2)[0]
             else:
                 mm1_weights_grad = torch.matmul(inputs.t(), act_inputs.grad)
         else:
@@ -246,9 +230,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
                     else:
                         mm1_weights_grad = None
                 else:
-                    mm1_weights_grad = \
-                        GMMFunction.builder.load().npu_gmm([mm1_inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
-                                                        group_list_data_type)[0]
+                    mm1_weights_grad = gmm_op(mm1_inputs.t(), act_inputs.grad, [], group_list, 2)[0]
             else:
                 mm1_weights_grad = torch.matmul(mm1_inputs.t(), act_inputs.grad)
         act_inputs.grad.untyped_storage().resize_(0)
