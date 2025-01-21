@@ -589,7 +589,7 @@ class AdaptiveRecompute:
         if get_adaptive_recomputing_policy().is_find_target_device_memory:
             SwapManager().reset_swap_manager_tensors()
 
-    def prefetch_hook(self, models):
+    def prefetch_hook(self, models, context):
         self.reset_modules()
         all_args = get_args()
         pp = all_args.pipeline_model_parallel_size
@@ -785,7 +785,7 @@ def setup_model_and_optimizer_wrapper(setup_model_and_optimizer):
                 recomputing.register_recursive_hook(models, recomputing.context, recomputing.profiling_prefix, \
                                                     True, prefetch=args.swap_attention)
         if args.swap_attention:
-            recomputing.prefetch_hook(models)
+            recomputing.prefetch_hook(models, recomputing.context)
         print_rank_0("ADAPTIVE-RECOMPUTE: successfully hooking module")
         return models, optimizer, opt_param_scheduler
 
