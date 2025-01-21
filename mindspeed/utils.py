@@ -592,9 +592,9 @@ def checkpoint_backward_wrapper(fn):
 
 
 def extend_seed_all(seed=1234):
-    os.environ['HCCL_DETERMINISTIC'] = 'True'
-    os.environ['CLOSE_MATMUL_K_SHIFT'] = "1"
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['HCCL_DETERMINISTIC'] = 'True'  # 'HCCL_DETERMINISTIC' is a deterministic switch in ops level, set it to 'True' to enable ops level deterministic, set it to 'False' to disable ops level deterministic.
+    os.environ['CLOSE_MATMUL_K_SHIFT'] = '1'  # 'CLOSE_MATMUL_K_SHIFT' is a switch of matmul K-axis shift, set it to '1' to close matmul K-axis shift, set it to '0' to enable matmul K-axis shift.
+    os.environ['PYTHONHASHSEED'] = str(seed)  # 'PYTHONHASHSEED' refers to python hash seed, use a string of non-negative integer to specify the seed.
     torch.use_deterministic_algorithms(True)
     torch_npu.npu.manual_seed_all(seed)
     torch_npu.npu.manual_seed(seed)
