@@ -495,12 +495,14 @@ def legacy_model_rms_norm_adaptation(aspm):
 
 def legacy_model_transformer_l0(aspm):
     from .model.transformer import parallel_mlp_init_wrapper, flash_self_attention_forward, \
-        flash_self_attention_init_wrapper, parallel_transformer_forward_wrapper
+        flash_self_attention_init_wrapper, parallel_transformer_forward_wrapper, flash_self_attention_init_add_config_wrapper
     from .model.transformer import parallel_attention_init, parallel_attention_forward
     aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.forward',
                         parallel_transformer_forward_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelMLP.__init__', parallel_mlp_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.FlashSelfAttention.forward', flash_self_attention_forward)
+    aspm.register_patch('megatron.legacy.model.transformer.FlashSelfAttention.__init__',
+                        flash_self_attention_init_add_config_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.FlashSelfAttention.__init__',
                         flash_self_attention_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelAttention.__init__', parallel_attention_init)
@@ -538,6 +540,7 @@ def megatron_training_adaptation_l0(aspm):
     from .yaml_arguments import core_transformer_config_from_yaml_wrapper, print_args_wrapper
 
     from .core.training import train_decorator, train_step_decorator
+    from .core.transformer.transformer_config import transformer_config_post_init_wrapper
     aspm.register_patch('megatron.training.training.train', train_decorator)
     aspm.register_patch('megatron.training.training.train_step', train_step_decorator)
     aspm.register_patch('megatron.training.yaml_arguments.core_transformer_config_from_yaml',
@@ -553,6 +556,8 @@ def megatron_training_adaptation_l0(aspm):
                         core_transformer_config_from_args_wrapper)
     aspm.register_patch('megatron.training.initialize.set_jit_fusion_options', set_jit_fusion_options_wrapper)
     aspm.register_patch('megatron.training.training.pretrain', pretrain)
+    aspm.register_patch('megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
+                        transformer_config_post_init_wrapper)
 
 
 def megatron_training_adaptation(aspm, mindspeed_args):

@@ -33,6 +33,7 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 | --use-cp-send-recv-overlap                | 建议开启，开启后支持send receive overlap功能。                                                                                                                            |
 | --attention-mask-type [general/causal] | 可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置general代表全量计算。                                                                                                          |
 | --context-parallel-algo megatron_cp_algo  | 长序列并行算法选项，默认项为`ulysses_cp_algo`，当设置为`megatron_cp_algo`时开启Ring Attention。                                                                                     |
+| --megatron-cp-in-bnsd                     | 开启后，FA使用BNSD计算。                                                          |
 
 ## 使用效果
 

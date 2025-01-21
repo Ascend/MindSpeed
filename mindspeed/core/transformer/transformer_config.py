@@ -1,6 +1,10 @@
 # Copyright (c) 2023; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+from dataclasses import make_dataclass, field
+from functools import wraps
+
 import torch.nn.functional as F
+
 from megatron.core.transformer import TransformerConfig
 from megatron.core.utils import init_method_normal, scaled_init_method_normal
 from megatron.training import get_args
@@ -159,3 +163,23 @@ def transformer_config_post_init(self):
             raise ValueError(
                 f'ffn_hidden_size: {self.ffn_hidden_size} must be divisible by extended_tp_size {extended_tp_size}'
             )
+
+
+def transformer_config_post_init_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self):
+        fn(self)
+        args = get_args()
+        fields = []
+        for key, value in vars(args).items():
+            field_name = str(key)
+            field_type = type(value)
+            if not hasattr(self, key):
+                field_def = (field_name, field_type, field(init=False))
+                fields.append(field_def)
+        self.__class__ = make_dataclass(self.__class__.__name__, fields=fields, bases=(self.__class__,))
+
+        for key, value in vars(args).items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+    return wrapper

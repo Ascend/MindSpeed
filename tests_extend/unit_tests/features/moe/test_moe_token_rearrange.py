@@ -18,13 +18,6 @@ from megatron.core.parallel_state import get_expert_model_parallel_group, destro
 
 class TestMOELayer(DistributedTest):
     world_size = 4
-    config = TransformerConfig(
-        num_layers=2,
-        hidden_size=2,
-        num_attention_heads=4,
-        use_cpu_initialization=True,
-        fp16=True,
-    )
     topk_gate = {
         "ne_4_k_1": TopKGate(Config(hidden_size=2, num_experts=4, topk=1)),
         "ne_4_k_2": TopKGate(Config(hidden_size=2, num_experts=4, topk=2)),
@@ -67,7 +60,14 @@ class TestMOELayer(DistributedTest):
         args_base.enable_token_rearrange_opt = False
         args_base.moe_router_topk = topk
         set_args(args_base)
-        self.parallel_mlp = ParallelMLP(self.config)
+        config = TransformerConfig(
+            num_layers=2,
+            hidden_size=2,
+            num_attention_heads=4,
+            use_cpu_initialization=True,
+            fp16=True,
+        )
+        self.parallel_mlp = ParallelMLP(config)
         output_base = self.get_moe_layer_output(args_base.moe_router_topk, input_data, ep, num_experts)
 
         # with token rearraged

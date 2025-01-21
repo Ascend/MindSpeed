@@ -197,6 +197,7 @@ def dot_product_attention_forward(
             cp_global_ranks = get_context_parallel_for_hybrid_ring_global_ranks()
  
         cp_para = dict()
+        cp_para['megatron_cp_in_bnsd'] = self.config.megatron_cp_in_bnsd
         cp_para['causal'] = args.attention_mask_type == 'causal'
         cp_para['cp_group'] = cp_group
         cp_para['cp_size'] = cp_size

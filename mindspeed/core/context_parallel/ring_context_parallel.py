@@ -2,6 +2,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 import torch_npu
+from einops import rearrange
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
 from .utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, sbh_to_tnd, tnd_to_sbh, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
 
@@ -434,6 +435,7 @@ class AttentionWithCp(torch.autograd.Function):
         cp_outer_ranks = cp_para.get("cp_outer_ranks", cp_global_ranks)
         cp_group_for_intra_window = cp_para.get('cp_group_for_intra_window')
         cp_group_for_intra_window_send_recv_overlap = cp_para.get('cp_group_for_intra_window_send_recv_overlap')
+        megatron_cp_in_bnsd = cp_para.get('megatron_cp_in_bnsd')
 
         pse = cp_para.get("pse")
         pse_type = cp_para.get("pse_type")
@@ -520,18 +522,29 @@ class AttentionWithCp(torch.autograd.Function):
                         else:
                             cur_q, cur_k, cur_v, cur_attn_mask = causal_forward_fetch(q_block_id, kv_block_id,
                                                                                     q, cur_k, cur_v, attn_mask)
-    
+
+                            layout = "SBH"
+                            pre_tockens_value = cur_k.shape[0]
+                            if megatron_cp_in_bnsd:
+                                cur_q = rearrange(cur_q, 's b (h d) -> b h s d', h=n).contiguous()
+                                kv_n = cur_v.shape[2] // cur_q.shape[3]
+                                cur_k, cur_v = [rearrange(x, 's b (h d) -> b h s d', h=kv_n).contiguous() for x in [cur_k, cur_v]]
+                                layout = "BNSD"
+                                pre_tockens_value = cur_k.shape[2]
+
                             attn_outs = torch_npu.npu_fusion_attention(
-                                cur_q, cur_k, cur_v, n, "SBH",
+                                cur_q, cur_k, cur_v, n, layout,
                                 pse=None,
                                 padding_mask=None,
                                 atten_mask=cur_attn_mask,
                                 scale=softmax_scale,
-                                pre_tockens=cur_k.shape[0],
-                                next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                                pre_tockens=pre_tockens_value,
+                                next_tockens=0 if cur_attn_mask is not None else pre_tockens_value,
                                 keep_prob=keep_prob,
                                 sparse_mode=3 if cur_attn_mask is not None else 0
                             )
+                            if megatron_cp_in_bnsd:
+                                attn_outs = rearrange(attn_outs[0], 'b h s d -> s b (h d)').contiguous(), attn_outs[1], attn_outs[2]
                     else:
                         cur_q, cur_k, cur_v, cur_attn_mask = causal_forward_fetch(q_block_id, kv_block_id,
                                                         q, cur_k, cur_v, attn_mask)
@@ -611,6 +624,7 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.cp_group_for_intra_window_send_recv_overlap = cp_group_for_intra_window_send_recv_overlap
         ctx.actual_seq_qlen = actual_seq_qlen
         ctx.actual_seq_kvlen = actual_seq_kvlen
+        ctx.megatron_cp_in_bnsd = megatron_cp_in_bnsd
         ctx.is_eod_mask = is_eod_mask
         ctx.bsz = bsz
 
@@ -642,6 +656,7 @@ class AttentionWithCp(torch.autograd.Function):
         rng_states = ctx.rng_states
         pse = ctx.pse
         pse_type = ctx.pse_type
+        megatron_cp_in_bnsd = ctx.megatron_cp_in_bnsd
         cp_group_for_send_recv_overlap = ctx.cp_group_for_send_recv_overlap
         cp_group_for_intra_window = ctx.cp_group_for_intra_window
         cp_group_for_intra_window_send_recv_overlap = ctx.cp_group_for_intra_window_send_recv_overlap
@@ -711,9 +726,18 @@ class AttentionWithCp(torch.autograd.Function):
                         step_inputs = causal_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout,
                                                             softmax_max, softmax_sum, attn_mask=attn_mask)
                         cur_q, cur_k, cur_v, cur_attn_out, cur_dout, cur_softmax_max, cur_softmax_sum, cur_attn_mask = step_inputs
+                        layout = "SBH"
+                        pre_tockens_value = cur_k.shape[0]
+                        if megatron_cp_in_bnsd:
+                            cur_q, cur_dout, cur_attn_out = [rearrange(x, 's b (h d) -> b h s d', h=n).contiguous() for x in [cur_q, cur_dout, cur_attn_out]]
+                            kv_n = cur_v.shape[2] // cur_q.shape[3]
+                            cur_k, cur_v = [rearrange(x, 's b (h d) -> b h s d', h=kv_n).contiguous() for x in [cur_k, cur_v]]
+                            layout = "BNSD"
+                            pre_tockens_value = cur_k.shape[2]
+
                         attn_grad_outs = torch_npu.npu_fusion_attention_grad(
                             cur_q, cur_k, cur_v, cur_dout, n,
-                            "SBH",
+                            layout,
                             pse=None,
                             padding_mask=None,
                             atten_mask=cur_attn_mask,
@@ -721,14 +745,16 @@ class AttentionWithCp(torch.autograd.Function):
                             softmax_sum=cur_softmax_sum,
                             attention_in=cur_attn_out,
                             scale_value=softmax_scale,
-                            pre_tockens=cur_k.shape[0],
-                            next_tockens=0 if cur_attn_mask is not None else cur_k.shape[0],
+                            pre_tockens=pre_tockens_value,
+                            next_tockens=0 if cur_attn_mask is not None else pre_tockens_value,
                             sparse_mode=3 if cur_attn_mask is not None else 0,
                             keep_prob=keep_prob,
                             seed=rng_states[kv_block_id][0],
                             offset=rng_states[kv_block_id][1],
                             numels=rng_states[kv_block_id][2],
                         )
+                        if megatron_cp_in_bnsd:
+                            attn_grad_outs = [rearrange(x, 'b h s d -> s b (h d)').contiguous() for x in [attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]]]
                 else:
                     step_inputs = causal_backward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_out, dout,
                                     softmax_max, softmax_sum, attn_mask=attn_mask)

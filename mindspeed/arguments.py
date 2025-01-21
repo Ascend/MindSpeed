@@ -1,5 +1,6 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
+from dataclasses import make_dataclass, field
 from functools import wraps
 import argparse
 import warnings
@@ -197,6 +198,8 @@ def _add_cp_args(parser):
                        help='use this flag to enable cp send-recv-overlap.')
     group.add_argument("--use-fused-ring-attention-update", action='store_true',
                        help="Use fused ring attention update.")
+    group.add_argument("--megatron-cp-in-bnsd", action='store_true',
+                       help="Megatron CP in bnsd.")
     group.add_argument('--attention-mask-on-cpu', action='store_true',
                        help='store full attention mask on CPU instead of NPU')
     group.add_argument('--adaptive-cp-without-coarse', action='store_true',

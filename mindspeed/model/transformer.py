@@ -1006,6 +1006,16 @@ def flash_self_attention_init_wrapper(fn):
     return wrapper
 
 
+def flash_self_attention_init_add_config_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *arg, **kwargs):
+        if 'config' in kwargs:
+            self.config = kwargs.pop('config')
+        fn(self, *arg, **kwargs)
+
+    return wrapper
+
+
 def flash_self_attention_forward(self, q, k, v, attention_mask):
     """Implements the multihead softmax attention.
     Arguments
@@ -1051,6 +1061,8 @@ def flash_self_attention_forward(self, q, k, v, attention_mask):
             cp_global_ranks = get_context_parallel_for_hybrid_ring_global_ranks()
 
         cp_para = dict()
+        if hasattr(self, 'config'):
+            cp_para['megatron_cp_in_bnsd'] = self.config.megatron_cp_in_bnsd
         cp_para['causal'] = args.attention_mask_type == 'causal'
         cp_para['cp_group'] = cp_group
         cp_para['cp_size'] = cp_size
@@ -1192,7 +1204,7 @@ def parallel_attention_init(self, config, layer_number,
 
     if self.use_flash_attn:
         self.core_attention_flash = FlashSelfAttention(
-            causal=True, attention_dropout=config.attention_dropout
+            causal=True, attention_dropout=config.attention_dropout, config=config
         )
 
     # Output.
