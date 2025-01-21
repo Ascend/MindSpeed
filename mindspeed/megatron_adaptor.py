@@ -8,6 +8,7 @@ from multiprocessing import Lock
 import torch
 from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
+from mindspeed.features_manager import FEATURES_LIST
 from .arguments import process_args
 
 
@@ -1015,6 +1016,13 @@ def exe_adaptation():
     if mindspeed_args.optimization_level >= 2:
         # Advanced acceleration algorithm
         adaptation_l2(aspm, mindspeed_args)
+
+    aspm.apply_patches()
+
+    # New features structure
+    for feature in FEATURES_LIST:
+        if getattr(mindspeed_args, feature.feature_name, None) or feature.default_patches:
+            feature.register_patches(aspm, mindspeed_args)
 
     aspm.apply_patches()
 

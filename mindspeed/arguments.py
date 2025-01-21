@@ -3,6 +3,7 @@
 from functools import wraps
 import argparse
 import warnings
+from mindspeed.features_manager import FEATURES_LIST
 
 
 def extra_args_provider_decorator(extra_args_provider):
@@ -45,6 +46,9 @@ def process_args(parser):
     parser = _add_deepseek_args(parser)
     parser = _auto_tuning_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
+
+    for feature in FEATURES_LIST:
+        feature.register_args(parser)
 
     return parser
 
@@ -873,6 +877,12 @@ def validate_args_wrapper(validate_args):
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
+
+        for feature in FEATURES_LIST:
+            feature.pre_validate_args(args)
+            feature.validate_args(args)
+            feature.post_validate_args(args)
+
         return args
 
     return wrapper

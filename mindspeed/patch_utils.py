@@ -56,18 +56,20 @@ class Patch:
             return
 
         self.orig_module, self.orig_func = Patch.parse_path(self.orig_module_name, self.orig_func_name, self.create_dummy)
-        if self.patch_func is None:
-            self.patch_func = self.orig_func
+
+        final_patch_func = self.orig_func
+        if self.patch_func is not None:
+            final_patch_func = self.patch_func
 
         for wrapper in self.wrappers:
-            self.patch_func = wrapper(self.patch_func)
+            final_patch_func = wrapper(final_patch_func)
 
         if self.orig_func_name is not None:
-            setattr(self.orig_module, self.orig_func_name, self.patch_func)
+            setattr(self.orig_module, self.orig_func_name, final_patch_func)
         for key, value in sys.modules.copy().items():
             if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
                     and id(getattr(value, self.orig_func_name)) == self.orig_func_id:
-                setattr(value, self.orig_func_name, self.patch_func)
+                setattr(value, self.orig_func_name, final_patch_func)
         self.is_applied = True
 
     @staticmethod
