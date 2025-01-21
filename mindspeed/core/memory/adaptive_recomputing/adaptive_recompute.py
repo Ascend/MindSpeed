@@ -306,8 +306,9 @@ class AdaptiveRecomputePolicy:
                 cur_pp_noop_layers.append(i)
         return cur_pp_noop_layers
 
-    def solve_prefetch_policy(self):
+    def solve_prefetch_policy(self, models_list):
         all_args = get_args()
+        swap_models = all_args.swap_models
         noop_layers = list(all_args.noop_layers) if isinstance(all_args.noop_layers, set) else []
         cur_pp_rank = parallel_state.get_pipeline_model_parallel_rank()
         cur_pp_noop_layers = self.get_cur_stage_noop_layers(noop_layers, cur_pp_rank)
@@ -315,15 +316,18 @@ class AdaptiveRecomputePolicy:
         pp_size = all_args.pipeline_model_parallel_size or 1
         vpp_size = all_args.virtual_pipeline_model_parallel_size or 1
         per_pp_layers = all_args.num_layers // pp_size
-        per_vpp_layers = all_args.num_layers_per_virtual_pipeline_stage or per_pp_layers
+        if swap_models and models_list:
+            for model in swap_models.keys():
+                if model not in models_list:
+                    print(f'[WARNING] Manually set swap models are not identified. '
+                          f'By default, all layers of the current rank are used for swap.')
+        if swap_models and len(models_list) < 2:
+            manual_layer = swap_models.get(models_list[0])
+            if manual_layer:
+                per_pp_layers = int(manual_layer)
+
         if not all_args.enable_recompute_layers_per_pp_rank:
-            if recompute_num_layers >= per_vpp_layers:
-                recompute_num_layers = per_pp_layers
-            else:
-                recompute_num_layers *= vpp_size
-        else:
-            if recompute_num_layers >= per_pp_layers:
-                recompute_num_layers = per_pp_layers
+            recompute_num_layers *= vpp_size
         if all_args.recompute_method == 'block':
             self.num_prefetch = recompute_num_layers
         elif all_args.recompute_method == 'uniform':
@@ -331,6 +335,7 @@ class AdaptiveRecomputePolicy:
             self.num_prefetch = recompute_num_layers
         else:
             self.num_prefetch = per_pp_layers
+
         self.interval = 0
         if vpp_size > 1:
             return self.granular_module_allocation(vpp_size, recompute_num_layers, cur_pp_noop_layers)
@@ -595,10 +600,21 @@ class AdaptiveRecompute:
             "pre_layer_ctx": {},
             "cur_layer_name": "module",
         }
-        prefetch_recompute_group, interval, num_prefetch, swap_noop_layers = get_adaptive_recomputing_policy().solve_prefetch_policy()
-        print(f"[DEBUG] swap_list： {prefetch_recompute_group[0]},"
-              f" prefetch_list： {prefetch_recompute_group[1]},"
-              f" recompute_list： {prefetch_recompute_group[2]}")
+
+        def find_model(data, parent_name='not_module'):
+            result = []
+            for item in data:
+                if isinstance(item, dict):
+                    current_name = item.get('name')
+                    if parent_name == 'module' and current_name != 'module':
+                        result.append(current_name)
+                    if 'layers' in item and isinstance(item['layers'], list):
+                        result.extend(find_model(item['layers'], current_name))
+            return result
+
+        models_list = find_model(context['layers'])
+        prefetch_recompute_group, interval, num_prefetch, swap_noop_layers = get_adaptive_recomputing_policy().solve_prefetch_policy(
+            models_list)
         for i in prefetch_recompute_group[0]:
             if not any(filter(None, i)):
                 vpp -= 1

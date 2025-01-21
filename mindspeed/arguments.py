@@ -319,6 +319,8 @@ def _add_training_args(parser):
                             'The default is False.')
     group.add_argument('--swap-modules', type=str, default="input_norm,self_attention,post_attention_norm",
                        help='Swap modules for model. Can be used together with "--swap-attention."')
+    group.add_argument('--swap-models', type=str, default="",
+                       help='Can be used together with "--swap-attention.". For example: "image_encoder,10;text_decoder,10"')                 
     group.add_argument('--use-fusion-attn-v2', action='store_true', default=False,
                        help='use fusion_attention ops version 2')
     group.add_argument('--pipe-experts-multi-data', type=int, default=1,
@@ -805,6 +807,15 @@ def validate_args_wrapper(validate_args):
         if not args.use_mcore_models:
             if args.overlap_param_gather and args.reuse_fp32_param:
                 raise AssertionError('In legacy, `overlap_param_gather` does not support `reuse_fp32_param`.')
+
+        args.swap_modules = args.swap_modules.split(',')
+        if args.swap_models:
+            swap_model_and_num_layers = args.swap_models.split(';')
+            models_dict = {}
+            for swap_model_and_num_layer in swap_model_and_num_layers:
+                model, num_layer = swap_model_and_num_layer.split(',')
+                models_dict[model] = num_layer
+            args.swap_models = models_dict
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)

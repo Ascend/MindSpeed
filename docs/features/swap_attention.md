@@ -27,6 +27,8 @@
 
 可选参数`--swap-modules`：参数类型为string，默认值为"input_norm,self_attention,post_attention_norm"，可根据模型自行配置module，在mcore场景下默认仅预取self_attention module。
 
+可选参数`--swap-models`: 参数类型为string，主要适用场景为多模态，可根据模型自行配置model和模型对应需要swap的总层数，参考：“image_encoder,5;text_decoder,3”，表示对image_encoder模型swap每个pp的前5层，text_decoder模型swap每个pp的前三层
+
 ### a. 仅开启预取功能：`--swap-attention`
 
 开启后，将对每一层的attention层的激活值进行预取，提高计算效率。
@@ -49,3 +51,4 @@
 1. `--recompute-num-layers [int]`中的[int]层数指的是每一个pp stage的层数。[int]的取值应该小于等于num-layers/pipeline-model-parallel-size.
 2. 暂不兼容自适应选择重计算特性.
 3. 若出现性能严重劣化，可能是跨NUMA内存访问引起，可尝试通过进程绑核缓解，实现方法可参考[mstt绑核工具](https://gitee.com/ascend/mstt/tree/master/profiler/affinity_cpu_bind)
+4. 目前swap仅支持internvl 多模态模型，后续会逐步支持opensora-plan等等其他模型.
