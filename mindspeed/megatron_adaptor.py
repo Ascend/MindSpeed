@@ -535,7 +535,7 @@ def legacy_model_transformer(aspm, args):
 def megatron_training_adaptation_l0(aspm):
     from .initialize import _compile_dependencies, set_jit_fusion_options_wrapper
     from .utils import get_batch_on_this_cp_rank
-    from .training import pretrain
+    from .training import pretrain, get_device_wrapper
     from .arguments import parse_args_wrapper, validate_args_wrapper, core_transformer_config_from_args_wrapper
     from .yaml_arguments import core_transformer_config_from_yaml_wrapper, print_args_wrapper
 
@@ -558,6 +558,7 @@ def megatron_training_adaptation_l0(aspm):
     aspm.register_patch('megatron.training.training.pretrain', pretrain)
     aspm.register_patch('megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
                         transformer_config_post_init_wrapper)
+    aspm.register_patch('megatron.training.dist_signal_handler.get_device', get_device_wrapper)
 
 
 def megatron_training_adaptation(aspm, mindspeed_args):
