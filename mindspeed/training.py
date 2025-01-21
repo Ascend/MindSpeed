@@ -451,3 +451,19 @@ def num_floating_point_wrapper(fn):
         return res
 
     return wrapper
+
+
+def get_device_wrapper(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        backend = torch.distributed.get_backend()
+        local_rank = args[0]
+        if backend == 'hccl':
+            if local_rank is None:
+                device = torch.device('cuda')
+            else:
+                device = torch.device(f'cuda:{local_rank}')
+        else:
+            device = func(*args, **kwargs)
+        return device
+    return wrapper
