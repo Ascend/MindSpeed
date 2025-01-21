@@ -151,7 +151,7 @@ def async_gather_tensors(
 def sync_gather_along_first_dim(
     local_rank_input: Tensor,
     comm_intf: CollectiveCommIntf = TPXCollectiveComm,
-    buffer_name="mpu-sync-tp-2d",
+    buffer_name=None,
 ):
     """Gather tensors and concatinate along the first dimension."""
 
@@ -163,7 +163,10 @@ def sync_gather_along_first_dim(
     dim_size = list(local_rank_input.size())
     dim_size[0] *= world_size
 
-    output = get_global_memory_buffer().get_tensor(dim_size, local_rank_input.dtype, buffer_name)
+    if buffer_name is None:
+        output = torch.empty(dim_size, dtype=local_rank_input.dtype, device=torch.cuda.current_device())
+    else:
+        output = get_global_memory_buffer().get_tensor(dim_size, local_rank_input.dtype, buffer_name)
     torch.distributed._all_gather_base(
         output, local_rank_input.contiguous(), group=comm_intf.get_comm_group()
     )

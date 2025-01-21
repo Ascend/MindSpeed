@@ -4,8 +4,8 @@ import torch
 import torch_npu
 from einops import rearrange
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
+from mindspeed.core.context_parallel.context_parallel_kv_cache import ContextParallelKVCache
 from .utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, sbh_to_tnd, tnd_to_sbh, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
-
 
 
 def causal_forward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_mask=None):
@@ -440,6 +440,8 @@ class AttentionWithCp(torch.autograd.Function):
         pse = cp_para.get("pse")
         pse_type = cp_para.get("pse_type")
 
+        cache_policy = cp_para.get("cache_policy")
+
         inner_ring = RingP2P(cp_inner_ranks, cp_group_for_intra_window, cp_group_for_intra_window_send_recv_overlap)
         outer_ring = RingP2P(cp_outer_ranks, cp_group, cp_group_for_send_recv_overlap)
         inner_size = len(cp_inner_ranks)
@@ -485,6 +487,10 @@ class AttentionWithCp(torch.autograd.Function):
         global_attn_outs = [attn_out, softmax_max, softmax_sum, rng_states]
         q_block_id, kv_block_id, kv_block_id_outer = rank, rank, rank
 
+        # kv cache list
+        k_cache_list = []
+        v_cache_list = []
+
         for j in range(outer_size):
             kv_block_id = kv_block_id_outer
             kv_block_offset = (kv_block_id // inner_size) * inner_size
@@ -496,6 +502,15 @@ class AttentionWithCp(torch.autograd.Function):
                     inner_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_kv)
 
                 cur_k, cur_v = cur_kv[0], cur_kv[1] # [2, s, b, h]
+
+                # cache kv or k
+                if j * inner_size + i + 2 != cp_size:
+                    if cache_policy == "full":
+                        k_cache_list.append(cur_kv[0].clone())
+                        v_cache_list.append(cur_kv[1].clone())
+                    elif cache_policy == "half":
+                        k_cache_list.append(cur_kv[0].clone())
+
                 if causal:
                     # flash attention forward
                     cur_sub_out_seq_len = None
@@ -594,16 +609,19 @@ class AttentionWithCp(torch.autograd.Function):
                 cur_kv, next_round_kv = next_round_kv, cur_kv # double buffer
                 kv_block_id_outer = (kv_block_id_outer + cp_size - inner_size) % cp_size
 
+        k_cache_list = k_cache_list if k_cache_list else [cur_kv[0].clone()]
+        v_cache_list = v_cache_list if v_cache_list else [cur_kv[1].clone()]
+        attn_mask = attn_mask if isinstance(attn_mask, list) else [attn_mask]
 
-
-        k, v = cur_kv[0], cur_kv[1]
         attn_out, softmax_max, softmax_sum, rng_states = global_attn_outs
         if causal and not is_eod_mask:
-            q, k, v = [x.view(-1, *x.shape[2:]) for x in [q, k, v]]
+            q = q.view(-1, *q.shape[2:])
+            k_cache_list = [x.view(-1, *x.shape[2:]) for x in k_cache_list]
+            v_cache_list = [x.view(-1, *x.shape[2:]) for x in v_cache_list]
+        k_stack = torch.stack(k_cache_list)
+        v_stack = torch.stack(v_cache_list)
         
-        attn_mask = attn_mask if isinstance(attn_mask, list) else [attn_mask]
-        
-        ctx.save_for_backward(q, k, v, *attn_mask, attn_out, softmax_max, softmax_sum)
+        ctx.save_for_backward(q, k_stack, v_stack, *attn_mask, attn_out, softmax_max, softmax_sum)
         ctx.n = n
         ctx.causal = causal
         ctx.softmax_scale = softmax_scale
@@ -627,6 +645,7 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.megatron_cp_in_bnsd = megatron_cp_in_bnsd
         ctx.is_eod_mask = is_eod_mask
         ctx.bsz = bsz
+        ctx.cache_policy = cache_policy
 
         if causal and is_eod_mask:
             ctx.q_index = q_index
@@ -642,9 +661,8 @@ class AttentionWithCp(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dout):
-        q, k, v, *attn_mask, attn_out, softmax_max, softmax_sum = ctx.saved_tensors
-        if len(attn_mask) == 1:
-            attn_mask = attn_mask[0]
+        q, k_stack, v_stack, *attn_mask, attn_out, softmax_max, softmax_sum = ctx.saved_tensors
+        attn_mask = attn_mask[0] if len(attn_mask) == 1 else attn_mask
 
         n = ctx.n
         causal = ctx.causal
@@ -660,6 +678,7 @@ class AttentionWithCp(torch.autograd.Function):
         cp_group_for_send_recv_overlap = ctx.cp_group_for_send_recv_overlap
         cp_group_for_intra_window = ctx.cp_group_for_intra_window
         cp_group_for_intra_window_send_recv_overlap = ctx.cp_group_for_intra_window_send_recv_overlap
+        cache_policy = ctx.cache_policy
         is_eod_mask = ctx.is_eod_mask
         if causal and is_eod_mask:
             dout = sbh_to_tnd(dout, n)
@@ -679,7 +698,9 @@ class AttentionWithCp(torch.autograd.Function):
                 half_softmax_sum = softmax_sum.view(-1, 8)[ctx.softmax_indices].view(-1, n, 8)
             else:
                 # split chunk[i]~chunk[cp_size-i-1] into chunk[i] and chunk[cp_size-i-1], [2s, b, h] -> [2, s, b, h]
-                q, k, v, attn_out, dout = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, k, v, attn_out, dout]]
+                q, attn_out, dout = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, attn_out, dout]]
+                k_stack = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in k_stack]
+                v_stack = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in v_stack]
                 # [b, n, 2s, 8] -> [b, n, 2, s, 8]
                 softmax_max = softmax_max.view(softmax_max.shape[0], softmax_max.shape[1],
                                             2, softmax_max.shape[2] // 2, softmax_max.shape[-1])
@@ -803,39 +824,25 @@ class AttentionWithCp(torch.autograd.Function):
             return cur_dq, cur_dk, cur_dv
 
 
-        cur_kv_dkv = torch.zeros((2, 2, *k.shape), dtype=k.dtype, device=k.device) # [2, 2, 2, s, b, h]
-        cur_kv_dkv[0].copy_(torch.cat((k.unsqueeze(0), v.unsqueeze(0)), dim=0))
-        next_kv_dkv = cur_kv_dkv.clone()
-        next_round_kv_dkv = cur_kv_dkv.clone()
-
-        cur_kv, cur_dkv = cur_kv_dkv[0], cur_kv_dkv[1]
-        next_kv, next_dkv = next_kv_dkv[0], next_kv_dkv[1]
-        next_round_kv, next_round_dkv = next_round_kv_dkv[0], next_round_kv_dkv[1]
+        cur_dkv = torch.zeros((2, *k_stack[-1].shape), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
+        next_dkv = cur_dkv.clone()
+        next_round_dkv = cur_dkv.clone()
 
         q_block_id, kv_block_id, kv_block_id_outer = rank, ctx.kv_block_id, ctx.kv_block_id
 
+        outer_data = (outer_size, inter_kv_comm)
+        inner_data = (inner_size, intra_kv_comm)
+        cp_kv_cache = ContextParallelKVCache(cache_policy, outer_data, inner_data, k_stack, v_stack)
 
-        dq = torch.zeros_like(q)# [2, s, b, h]
+        dq = torch.zeros_like(q) # [2, s, b, h]
         for j in range(outer_size):
             kv_block_id = kv_block_id_outer
             kv_block_offset = (kv_block_id // inner_size) * inner_size
-            if j > 0:
-                inter_kv_comm.wait()
-                cur_kv, next_round_kv = next_round_kv, cur_kv
 
-            if j + 1 != outer_size:
-                inter_kv_comm.async_send_recv(send_tensor=cur_kv, recv_tensor=next_round_kv)
-
+            cp_kv_cache.communicate_outer_ring_kv(j)
 
             for i in range(inner_size):
-                if i > 0:
-                    intra_kv_comm.wait()
-                    cur_kv, next_kv = next_kv, cur_kv
-
-                if i + 1 != inner_size:
-                    intra_kv_comm.async_send_recv(send_tensor=cur_kv, recv_tensor=next_kv)
-                
-                cur_k, cur_v = cur_kv[0], cur_kv[1]
+                cur_k, cur_v = cp_kv_cache.communicate_inner_ring_kv(i)
 
                 dq_step, dk_step, dv_step = backward_step_helper(q_block_id, kv_block_id, q, cur_k, cur_v)
 
@@ -921,6 +928,7 @@ class AttentionWithCp(torch.autograd.Function):
             return torch.logical_not(mask).unsqueeze(dim=1).npu()  # B 1 S S
         else:
             return attn_mask[kv_block_id] if isinstance(attn_mask, list) else None  
+
 
 def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
                               actual_seq_qlen=None, actual_seq_kvlen=None):

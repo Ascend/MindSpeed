@@ -18,6 +18,8 @@ from megatron.training import get_args
 from megatron.core import mpu, parallel_state
 from mindspeed.core.models.common.embeddings.rotary_pos_embedding import yarn_get_mscale
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
+from mindspeed.core.context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
+from mindspeed.core.context_parallel.context_parallel_kv_cache import get_cache_policy
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ring,
@@ -154,6 +156,37 @@ def dot_product_attention_forward(
         packed_seq_params,
 ):
     args = get_args()
+    sparse_mode = args.sparse_mode
+    if attn_mask_type == AttnMaskType.no_mask:
+        sparse_mode = 0  # default mask
+
+    scale = 1.0 / math.sqrt(
+        self.hidden_size_per_attention_head) if self.scale_mask_softmax.scale is None else self.softmax_scale
+
+    cp_expanded_by_2d_tp = args.tp_2d and args.tp_y > 1
+    if cp_expanded_by_2d_tp:
+        tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
+    else:
+        tp_y_cp_sz = self.config.context_parallel_size
+
+    if tp_y_cp_sz > 1 and args.context_parallel_algo == "ulysses_cp_algo":
+        self.ulysses_comm_para['cache_policy'] = get_cache_policy(
+            self.layer_number, args.context_parallel_kv_cache_policy, args.context_parallel_cache_interval
+        )
+        self.ulysses_comm_para['use_ulysses_allgather_kv'] = args.use_ulysses_allgather_kv
+
+        attn_para = dict()
+        attn_para['packed_seq_params'] = packed_seq_params
+        attn_para['attention_mask'] = attention_mask
+        attn_para['scale'] = scale
+        attn_para['pre_tokens'] = args.pre_tockens
+        attn_para['next_tokens'] = args.next_tockens
+        attn_para['keep_prob'] = 1 - self.attention_dropout.p
+        attn_para['sparse_mode'] = sparse_mode
+        output = ulyssesattn_context_parallel(query, key, value, attn_para, self.ulysses_comm_para)
+
+        return output
+
     if packed_seq_params is None:
         actual_seq_len = get_actual_seq_len()
         seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
@@ -161,17 +194,6 @@ def dot_product_attention_forward(
         actual_seq_len = tuple(packed_seq_params.cu_seqlens_q[1:].cpu().numpy().tolist())
         seq_length, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2]
 
-    sparse_mode = args.sparse_mode
-    if attn_mask_type == AttnMaskType.no_mask:
-        sparse_mode = 0  # default mask
-
-    scale = 1.0 / math.sqrt(self.hidden_size_per_attention_head) if self.scale_mask_softmax.scale is None else self.softmax_scale
-
-    cp_expanded_by_2d_tp = args.tp_2d and args.tp_y > 1
-    if cp_expanded_by_2d_tp:
-        tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
-    else:
-        tp_y_cp_sz = self.config.context_parallel_size
     if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
                                                                          'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
         in_hybrid_mode = False
@@ -222,6 +244,9 @@ def dot_product_attention_forward(
                 cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
                 cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
                 cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
+                cp_para['cache_policy'] = get_cache_policy(
+                    self.layer_number, args.context_parallel_kv_cache_policy, args.context_parallel_cache_interval
+                )
 
             output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p,
                                            actual_seq_len, actual_seq_len)

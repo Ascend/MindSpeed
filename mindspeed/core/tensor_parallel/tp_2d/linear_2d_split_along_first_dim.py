@@ -127,7 +127,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         else:
             # [s/(x*cp), b, H/y] -> [s/cp, b, H/y]
             activation_input = activation_input.contiguous()
-            total_input = sync_gather_along_first_dim(activation_input, ag_comm_intf)
+            total_input = sync_gather_along_first_dim(activation_input, ag_comm_intf, buffer_name="mpu-sync-tp-2d")
             # [s/cp, b, H/y] @ [H/y, e/x] -> [s/cp, b, e/x]
             matmul_res = torch.matmul(total_input, weight.t())
         # [s/cp, b, E/x] -> [s/(y*cp), b, E/x]
@@ -189,7 +189,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
             coc_ops.all_gather_matmul_v2(input1=grad_output, input2=weight, output=partial_grad_input, comm_output=total_grad_output)
             partial_grad_input = partial_grad_input.view(-1, b, partial_grad_input.shape[1])
         else:
-            total_grad_output = sync_gather_along_first_dim(grad_output, ctx.rs_comm_intf)
+            total_grad_output = sync_gather_along_first_dim(grad_output, ctx.rs_comm_intf, buffer_name="mpu-sync-tp-2d")
             # prepare total activation_input for computing grad weight.
             # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
             activation_input = activation_input.contiguous()
@@ -319,7 +319,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
     def _do_mm_overlap_reducescatter(activation_input, weight, bias, ag_comm_intf, rs_comm_intf):
         # [s/(x*cp), b, H/y] -> [s/cp, b, H/y]
         activation_input = activation_input.contiguous()
-        total_input = sync_gather_along_first_dim(activation_input, ag_comm_intf)
+        total_input = sync_gather_along_first_dim(activation_input, ag_comm_intf, buffer_name="mpu-sync-tp-2d")
         # [s/cp, b, H/y] @ [H/y, e/x] -> [s/cp, b, e/x]
         chunk_num = rs_comm_intf.get_comm_group_world_size()
         rs_chunks = []

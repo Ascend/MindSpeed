@@ -64,6 +64,7 @@ def run_hybridattn_cp(cp_size, u_size, bs, seq_len, dtype, cp_args):
     args.context_parallel_size = cp_size
     args.ulysses_degree_in_cp = u_size
     args.seq_length = seq_len
+    args.use_legacy_models = not use_mcore
     set_args(args)
     # clear global attention mask set by last test case
     set_attention_mask(None)
