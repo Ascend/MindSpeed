@@ -600,20 +600,18 @@ class DeviceCachingAllocator {
           break;
         }
         PyGILState_STATE state = PyGILState_Ensure();
-        PyObject *pModule = PyImport_ImportModule("mindspeed.core.memory.adaptive_recomputing.swap_manager");
+        PyObject *pModule = PyImport_ImportModule("mindspeed.core.memory.common");
         if (!pModule) {
           PyGILState_Release(state);
           std::cout << "No MindSpeed Module" << std::endl;
           break;
         }
-        PyObject *pFunc1 = PyObject_GetAttrString(pModule, "SwapManager");
-        PyObject *pClass = PyObject_CallObject(pFunc1, nullptr);
-        PyObject *pFunc2 = PyObject_GetAttrString(pClass, "swap_out_by_size");
+        PyObject *pFunc = PyObject_GetAttrString(pModule, "swap_out_by_size");
 
         PyObject *pArgs = PyTuple_New(1);
         TORCH_CHECK(PyTuple_SetItem(pArgs, 0, PyLong_FromLong(size)) == 0, "PyTuple_SetItem failed.");
 
-        PyObject *pResult = PyObject_CallObject(pFunc2, pArgs);
+        PyObject *pResult = PyObject_CallObject(pFunc, pArgs);
         bool ret = false;
         TORCH_CHECK(PyArg_Parse(pResult, "p", &ret), "PyArg_Parse failed.");
         PyGILState_Release(state);

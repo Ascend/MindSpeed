@@ -144,4 +144,5 @@ def xtest_gpt_usecase(usecase_yaml, usecase_script):
 
 if __name__ == "__main__":
     xtest_gpt_usecase("gpt-usecase.yaml", "pretrain_gpt_usecase.sh")
+    xtest_gpt_usecase("gpt-usecase_adaptive_memory.yaml", "pretrain_gpt_usecase_adaptive_memory.sh")
     xtest_gpt_usecase("gpt-usecase_fp32.yaml", "pretrain_gpt_usecase_fp32.sh")

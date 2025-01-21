@@ -13,6 +13,8 @@ from torch.utils.checkpoint import detach_variable
 from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_world_size,
+    is_pipeline_last_stage,
+    get_virtual_pipeline_model_parallel_rank,
 )
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
@@ -100,7 +102,7 @@ def checkpoint_function_backward(ctx, *args):
         outputs = (outputs,)
 
     # filter out non tensor outputs for backward pass
-    outputs, args = zip(*filter(lambda x: torch.is_tensor(x[0]), zip(outputs, args)))
+    outputs, args = zip(*filter(lambda x: torch.is_tensor(x[0]) and x[0].grad_fn is not None, zip(outputs, args)))
     torch.autograd.backward(outputs, args)
     grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else inp for inp in detached_inputs)
     return (None, None) + grads
@@ -256,8 +258,15 @@ class CheckpointFunctionRipipe(torch.autograd.Function):
             )
         if not hasattr(ctx, 'outputs'):
             if get_pipeline_checkpoint_manager().do_pre_recompute:
-                raise RuntimeError(f"rank-{torch.distributed.get_rank()}: recompute is not done")
-            ctx.recompute_func()
+                global_args = get_args()
+                vpp_rank = get_virtual_pipeline_model_parallel_rank()
+                # For last vpp chunk of last pp stage, we don't advance its recomputation.
+                if global_args.recompute_in_advance and is_pipeline_last_stage():
+                    get_pipeline_checkpoint_manager().recompute_next(vpp_rank)
+                if not hasattr(ctx, 'outputs'):
+                    raise RuntimeError(f"rank-{torch.distributed.get_rank()}: recompute is not done")
+            else:
+                ctx.recompute_func()
 
         outputs = ctx.outputs
         detached_inputs = ctx.detached_inputs

@@ -1,0 +1,15 @@
+# entry file : pretrain_gpt_usecase.py
+
+spec:
+  data_path: /home/dataset/gpt-3.5/alpaca_text_document
+  vocab_file: /home/dataset/model/gpt-3.5/vocab.json
+  merge_file: /home/dataset/model/gpt-3.5/merges.txt
+  checkpoint_path: ./ckpt
+  nnodes: 1
+  max_steps: 60
+  mbs: 1 # micro-batch-size
+  gbs: 8 # global-batch-size
+
+products:
+  - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ], extra_args: [ '"--use-legacy-models --sequence-parallel --adaptive-memory-optimization --use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn"' ] }
+  - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--use-legacy-models --sequence-parallel --adaptive-memory-optimization --use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn"' ] }

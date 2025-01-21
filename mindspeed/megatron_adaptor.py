@@ -434,7 +434,8 @@ def mcore_tensor_parallel_adaptation(aspm, args):
         return (args.swap_attention or
                 args.recompute_in_bubble or
                 args.adaptive_recompute_device_swap or
-                args.recompute_in_advance)
+                args.recompute_in_advance or
+                args.adaptive_memory_optimization)
 
     aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
                         checkpoint_function_backward)
@@ -616,9 +617,20 @@ def memory_fragmentation_adaptation(aspm, args):
             allowed_recomputing_module_wrapper(ParallelTransformerLayer)
         from .core.memory.adaptive_recomputing.adaptive_recompute import setup_model_and_optimizer_wrapper
         aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
-    if args.smart_swap and (not args.memory_fragmentation and not adaptive_recompute_enable):
+    if args.smart_swap and (not args.memory_fragmentation and not args.adaptive_recompute_enable):
         from .core.memory.smart_swap.swap_adaptor import change_allocator
         time.sleep(10)
+        change_allocator()
+    if args.adaptive_memory_optimization and not (args.adaptive_recompute_enable or args.memory_fragmentation or args.swap_attention or args.smart_swap):
+        from .core.memory.adaptive_memory.adaptive_memory_opt import addup_allowed_mem_adapt_module
+        if hasattr(args, "use_legacy_models") and args.use_legacy_models:
+            addup_allowed_mem_adapt_module(ParallelTransformerLayer)
+        else:
+            from megatron.core.transformer.transformer_layer import TransformerLayer
+            addup_allowed_mem_adapt_module(TransformerLayer)
+        from .core.memory.adaptive_memory.adaptive_memory_opt import setup_adapt_memory_optimizer_wrapper
+        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_adapt_memory_optimizer_wrapper)
+        from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
         change_allocator()
 
     if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':

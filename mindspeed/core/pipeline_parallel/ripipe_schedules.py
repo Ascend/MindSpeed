@@ -522,7 +522,8 @@ def forward_backward_ripipe_pipelining(
             if args.recompute_in_advance or args.recompute_in_bubble:
                 vpp_rank = get_model_chunk_id(k, forward=False)
                 parallel_state.set_virtual_pipeline_model_parallel_rank(vpp_rank)
-                pipeline_checkpoint_manager.recompute_next(vpp_rank)
+                if not parallel_state.is_pipeline_last_stage() or args.recompute_in_bubble:
+                    pipeline_checkpoint_manager.recompute_next(vpp_rank)
 
             if bwd_wait_handles is not None:
                 for req in bwd_wait_handles:
@@ -661,7 +662,8 @@ def forward_backward_ripipe_pipelining(
         if args.recompute_in_advance:
             vpp_rank = get_model_chunk_id(num_microbatches_remaining, forward=False)
             parallel_state.set_virtual_pipeline_model_parallel_rank(vpp_rank)
-            pipeline_checkpoint_manager.recompute_next(vpp_rank)
+            if not parallel_state.is_pipeline_last_stage():
+                pipeline_checkpoint_manager.recompute_next(vpp_rank)
         if args.recompute_in_bubble and num_microbatches_recompute > 0:
             old_vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
             parallel_state.set_virtual_pipeline_model_parallel_rank(0)
@@ -711,7 +713,8 @@ def forward_backward_ripipe_pipelining(
             if args.recompute_in_advance and k != (total_num_microbatches - 1):
                 vpp_rank = get_model_chunk_id(k + 1, forward=False)
                 parallel_state.set_virtual_pipeline_model_parallel_rank(vpp_rank)
-                pipeline_checkpoint_manager.recompute_next(vpp_rank)
+                if not parallel_state.is_pipeline_last_stage():
+                    pipeline_checkpoint_manager.recompute_next(vpp_rank)
             # ripipe related, use async communication
             if config.overlap_p2p_comm and bwd_wait_handles is not None:
                 for wait_handle in bwd_wait_handles:

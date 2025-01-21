@@ -408,7 +408,12 @@ def row_parallel_nocomm_optimizer_wrapper(forward_func):
         global_args = get_args()
         output = forward_func(*args, **kwargs)
         recompute_num_layers = global_args.recompute_num_layers or 0
-        if isinstance(output, tuple) and global_args.swap_attention and recompute_num_layers > 0:
+
+        def is_need_avoid_infinite_recompute_loop():
+            return isinstance(output, tuple) and ((global_args.swap_attention and recompute_num_layers > 0)
+                                                  or global_args.adaptive_memory_optimization)
+
+        if is_need_avoid_infinite_recompute_loop():
             output, bias = output
             if bias is not None:
                 # where only recompute mlp, training enters an infinite loop, this * 1 fix this bug

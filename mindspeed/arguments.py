@@ -316,6 +316,8 @@ def _add_training_args(parser):
                             'The default is False.')
     group.add_argument('--swap-modules', type=str, default="input_norm,self_attention,post_attention_norm",
                        help='Swap modules for model. Can be used together with "--swap-attention."')
+    group.add_argument('--adaptive-memory-optimization', action='store_true', default=False,
+                       help='Switch to open adaptive memory optimization feature, default is False.')
     group.add_argument('--use-fusion-attn-v2', action='store_true', default=False,
                        help='use fusion_attention ops version 2')
     group.add_argument('--pipe-experts-multi-data', type=int, default=1,
@@ -724,6 +726,17 @@ def validate_args_wrapper(validate_args):
         if args.smart_swap:
             assert not adaptive_recompute_enable, 'smart swap is not compatible with adaptive selective recompute'
             assert not args.memory_fragmentation, 'smart swap is not compatible with memory fragmentation'
+        if args.adaptive_memory_optimization:
+            assert args.ampipe_degree <= 1, 'adaptive memory optimization is not compatible with ampipe'
+            assert not adaptive_recompute_enable, 'adaptive memory optimization is not compatible with adaptive recomputing'
+            assert args.recompute_granularity is None and args.recompute_method is None, \
+                'adaptive memory optimization is not compatible with recompute_granularity or recompute_method'
+            assert not args.recompute_activation_function, \
+                'adaptive memory optimization is not compatible with recompute_activation_function'
+            assert not args.swap_attention, 'adaptive memory optimization is not compatible with swap_attention feature'
+            assert not args.recompute_in_bubble, 'adaptive memory optimization is not compatible with recompute_in_bubble'
+            assert not args.memory_fragmentation, \
+                'adaptive memory optimization is not compatible with memory_fragmentation'
         if args.use_flash_attn:
             assert args.sparse_mode == 0 or args.sparse_mode == 2, f"Only supports sparse modes 0 and 2"
         args.create_attention_mask_in_dataloader = False
@@ -762,7 +775,7 @@ def validate_args_wrapper(validate_args):
             args.reduce_recompute_for_last_chunk = True
             if args.recompute_method == "uniform":
                 raise AssertionError('recompute_in_advance does not support uniform recompute_method')
-            if not args.recompute_num_layers:
+            if not args.recompute_num_layers and not args.adaptive_memory_optimization:
                 raise AssertionError('recompute_num_layers can not be None or 0 when using recompute_in_advance')
             if args.pipeline_model_parallel_size <= 1 or args.num_layers_per_virtual_pipeline_stage is None:
                 raise AssertionError('recompute_in_advance only support pipelining with interleaving')
