@@ -10,7 +10,7 @@ class AtbOpBuilder(MindSpeedOpBuilder):
 
     def get_atb_path(self):
         if os.getenv('ATB_HOME_PATH') is not None:
-            return os.environ['ATB_HOME_PATH']
+            return os.environ['ATB_HOME_PATH']  # 'ATB_HOME_PATH' refers to home path of Ascend Transformer Boost lib, which is used for ops loading.
         else:
             raise RuntimeError("please install cann-nnal package first")
 
@@ -44,6 +44,6 @@ class AtbOpBuilder(MindSpeedOpBuilder):
 
     def load(self, verbose=True):
         if os.getenv('ASDOPS_HOME_PATH') is None or os.getenv('ASDOPS_OPS_PATH') is None:
-            os.environ['ASDOPS_HOME_PATH'] = self.get_atb_path()
-            os.environ['ASDOPS_OPS_PATH'] = os.path.join(self.get_atb_path(), 'ops')
+            os.environ['ASDOPS_HOME_PATH'] = self.get_atb_path()  # 'ASDOPS_HOME_PATH' refers to home path of Ascend ops, which is used for ops loading.
+            os.environ['ASDOPS_OPS_PATH'] = os.path.join(self.get_atb_path(), 'ops')  # 'ASDOPS_OPS_PATH' refers to ops path of Ascend ops, which is used for ops loading.
         return super().load()
