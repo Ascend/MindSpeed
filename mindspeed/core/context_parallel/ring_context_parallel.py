@@ -422,7 +422,7 @@ class AttentionWithCp(torch.autograd.Function):
     
     @staticmethod
     def forward(ctx, q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
-                actual_seq_qlen=None, actual_seq_kvlen=None):
+                packed_seq_params=None):
         keep_prob = 1. - dropout_p
         causal = cp_para['causal']
         cp_group = cp_para.get("cp_group")
@@ -447,7 +447,9 @@ class AttentionWithCp(torch.autograd.Function):
         inner_size = len(cp_inner_ranks)
         outer_size = cp_size // inner_size
 
-        is_eod_mask = (actual_seq_kvlen is not None) and (actual_seq_qlen is not None)
+        actual_seq_kvlen = packed_seq_params.cu_seqlens_q.tolist() if packed_seq_params else None
+        actual_seq_qlen = packed_seq_params.cu_seqlens_kv.tolist() if packed_seq_params else None
+        is_eod_reset = (actual_seq_kvlen is not None) and (actual_seq_qlen is not None)
         seq_len, bsz, hidden = q.shape
 
         if softmax_scale is None:
@@ -458,16 +460,15 @@ class AttentionWithCp(torch.autograd.Function):
             attn_mask = torch.triu(attn_mask, diagonal=1)
 
         if causal:
-            if is_eod_mask:
-                from mindspeed.utils import get_q_index, get_kv_index
+            if is_eod_reset:
                 # SBH -> TND
                 # fa varlen mode require TND layout
                 q, k, v = [sbh_to_tnd(x, n) for x in [q, k, v]]
 
                 # only first half of each sub sequence KV block need to be calculated when i <= rank
-                kv_index = get_kv_index()
+                kv_index = packed_seq_params.kv_index
                 # only last half of each sub sequence q block need to be calculated when i > rank
-                q_index = get_q_index()
+                q_index = packed_seq_params.q_index
 
                 sub_out_seq_len = (torch.tensor([0] + actual_seq_qlen)[1:] - torch.tensor([0] + actual_seq_qlen)[:-1]).tolist()
                 seq_lens = (actual_seq_qlen, actual_seq_kvlen, sub_out_seq_len)
@@ -516,7 +517,7 @@ class AttentionWithCp(torch.autograd.Function):
                     cur_sub_out_seq_len = None
                     attn_outs = None
                     if pse is None:
-                        if is_eod_mask:
+                        if is_eod_reset:
                             cur_q, cur_k, cur_v, cur_attn_mask, cur_seq_lens = tnd_forward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, 
                                                                                                             fetch_ptrs, attn_mask)
                             cur_seq_qlen, cur_seq_kvlen, cur_sub_out_seq_len = cur_seq_lens
@@ -574,7 +575,7 @@ class AttentionWithCp(torch.autograd.Function):
                             attn_info,
                             s
                         )
-                    if is_eod_mask:
+                    if is_eod_reset:
                         global_attn_outs = tnd_out_update(q_block_id, kv_block_id, attn_outs, global_attn_outs,
                                                           q_index, softmax_indices, cur_sub_out_seq_len)
                     else:
@@ -614,10 +615,12 @@ class AttentionWithCp(torch.autograd.Function):
         attn_mask = attn_mask if isinstance(attn_mask, list) else [attn_mask]
 
         attn_out, softmax_max, softmax_sum, rng_states = global_attn_outs
-        if causal and not is_eod_mask:
+        
+        if causal and not is_eod_reset:
             q = q.view(-1, *q.shape[2:])
             k_cache_list = [x.view(-1, *x.shape[2:]) for x in k_cache_list]
             v_cache_list = [x.view(-1, *x.shape[2:]) for x in v_cache_list]
+
         k_stack = torch.stack(k_cache_list)
         v_stack = torch.stack(v_cache_list)
         
@@ -642,12 +645,12 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.cp_group_for_intra_window_send_recv_overlap = cp_group_for_intra_window_send_recv_overlap
         ctx.actual_seq_qlen = actual_seq_qlen
         ctx.actual_seq_kvlen = actual_seq_kvlen
+        ctx.is_eod_reset = is_eod_reset
         ctx.megatron_cp_in_bnsd = megatron_cp_in_bnsd
-        ctx.is_eod_mask = is_eod_mask
         ctx.bsz = bsz
         ctx.cache_policy = cache_policy
 
-        if causal and is_eod_mask:
+        if causal and is_eod_reset:
             ctx.q_index = q_index
             ctx.kv_index = kv_index
             ctx.half_actual_seq_qlen = half_seq_lens[0]
@@ -679,8 +682,8 @@ class AttentionWithCp(torch.autograd.Function):
         cp_group_for_intra_window = ctx.cp_group_for_intra_window
         cp_group_for_intra_window_send_recv_overlap = ctx.cp_group_for_intra_window_send_recv_overlap
         cache_policy = ctx.cache_policy
-        is_eod_mask = ctx.is_eod_mask
-        if causal and is_eod_mask:
+        is_eod_reset = ctx.is_eod_reset
+        if causal and is_eod_reset:
             dout = sbh_to_tnd(dout, n)
         # Reversed order of forward
         inner_size = len(ctx.cp_inner_ranks)
@@ -693,7 +696,7 @@ class AttentionWithCp(torch.autograd.Function):
 
 
         if causal:
-            if is_eod_mask:
+            if is_eod_reset:
                 half_softmax_max = softmax_max.view(-1, 8)[ctx.softmax_indices].view(-1, n, 8)
                 half_softmax_sum = softmax_sum.view(-1, 8)[ctx.softmax_indices].view(-1, n, 8)
             else:
@@ -711,7 +714,7 @@ class AttentionWithCp(torch.autograd.Function):
             if causal:
                 if pse is None:
                     # flash attention backward
-                    if is_eod_mask:
+                    if is_eod_reset:
                         softmax_values = (softmax_max, softmax_sum, half_softmax_max, half_softmax_sum)
                         seq_lens = (ctx.actual_seq_qlen, ctx.actual_seq_kvlen, ctx.half_actual_seq_qlen, ctx.half_actual_seq_kvlen)
                         index_values = (ctx.q_index, ctx.kv_index)
@@ -855,7 +858,7 @@ class AttentionWithCp(torch.autograd.Function):
                 
                 dk, dv = cur_dkv[0], cur_dkv[1]
                 # update qkv grades
-                if is_eod_mask and causal:
+                if is_eod_reset and causal:
                     tnd_grad_update(q_block_id, kv_block_id, (dq_step, dk_step, dv_step), (dq, dk, dv),
                                     ctx.q_index, ctx.kv_index)
                 elif causal:
@@ -885,7 +888,7 @@ class AttentionWithCp(torch.autograd.Function):
 
 
         # [2, s, b, h] -> [2s, b, h]
-        if causal and is_eod_mask:
+        if causal and is_eod_reset:
             dq, dk, dv = [tnd_to_sbh(x, ctx.bsz) for x in [dq, dk, dv]]
         elif causal:
             dq, dk, dv = [x.view(-1, *x.shape[2:]) for x in [dq, dk, dv]]
@@ -894,17 +897,12 @@ class AttentionWithCp(torch.autograd.Function):
     @classmethod
     def compute_mask(cls, actual_seq_qlen, actual_seq_kvlen, q_block_id, kv_block_id, attn_mask):
         from bisect import bisect_right
-
-        def batch_index(seq1d):
-            seq_len = seq1d[-1] // AttentionWithCp.batch_size
-            end_points = list(range(seq_len, seq1d[-1] + 1, seq_len))
-            indexes = [0] + [bisect_right(seq1d, p) for p in end_points]
-            seq_batch = [seq1d[indexes[i]:indexes[i + 1]] for i in range(len(indexes) - 1)]
-            return [[elem - i * seq_len for elem in seq] for i, seq in enumerate(seq_batch)]
+        from mindspeed.utils import batch_index
 
         if actual_seq_qlen:  
-            actual_seq_qlen = batch_index(actual_seq_qlen)
-            actual_seq_kvlen = batch_index(actual_seq_kvlen)
+            seq_len = actual_seq_qlen[-1] // AttentionWithCp.batch_size
+            actual_seq_qlen = batch_index(actual_seq_qlen, seq_len)
+            actual_seq_kvlen = batch_index(actual_seq_kvlen, seq_len)
             block_size = cls.block_size
             actual_seq_qlen = [[0] + lst for lst in actual_seq_qlen]
             sub_seq_qlen = [torch.tensor(x[1:]) - torch.tensor(x[:-1]) for x in actual_seq_qlen]
@@ -931,11 +929,11 @@ class AttentionWithCp(torch.autograd.Function):
 
 
 def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
-                              actual_seq_qlen=None, actual_seq_kvlen=None):
+                              packed_seq_params=None):
     AttentionWithCp.block_size = q.shape[0]
     AttentionWithCp.batch_size = q.shape[1]
     out = AttentionWithCp.apply(
         q, k, v, n, cp_para, softmax_scale, attn_mask, dropout_p,
-        actual_seq_qlen, actual_seq_kvlen
+        packed_seq_params
     )
     return out

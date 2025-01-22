@@ -380,3 +380,87 @@ def attention_forward_wrapper(fn):
         return output, bias
 
     return wrapper
+
+
+def attention_forward(
+    self,
+    hidden_states,
+    attention_mask,
+    key_value_states=None,
+    inference_params=None,
+    rotary_pos_emb=None,
+    packed_seq_params=None,
+):
+
+    # For self attention we just duplicate the rotary_pos_emb if it isn't already
+    if rotary_pos_emb is not None and not isinstance(rotary_pos_emb, tuple):
+        rotary_pos_emb = (rotary_pos_emb,) * 2
+
+    # =====================
+    # Query, Key, and Value
+    # =====================
+    # Get the query, key and value tensors based on the type of attention -
+    # self or cross attn.
+    query, key, value = self.get_query_key_value_tensors(hidden_states, key_value_states)
+
+    # ===================================================
+    # Adjust key, value, and rotary_pos_emb for inference
+    # ===================================================
+    key, value, rotary_pos_emb, attn_mask_type = self._adjust_key_value_for_inference(
+        inference_params, key, value, rotary_pos_emb
+    )
+
+    if packed_seq_params is not None:
+        query = query.squeeze(1)
+        key = key.squeeze(1)
+        value = value.squeeze(1)
+
+    # ================================================
+    # relative positional embedding (rotary embedding)
+    # ================================================
+    if rotary_pos_emb is not None:
+        q_pos_emb, k_pos_emb = rotary_pos_emb
+
+        if packed_seq_params is not None:
+            cu_seqlens_q = packed_seq_params
+            cu_seqlens_kv = packed_seq_params
+        else:
+            cu_seqlens_q = cu_seqlens_kv = None
+        query = apply_rotary_pos_emb(
+            query, q_pos_emb, config=self.config, cu_seqlens=cu_seqlens_q,
+        )
+        key = apply_rotary_pos_emb(
+            key, k_pos_emb, config=self.config, cu_seqlens=cu_seqlens_kv,
+        )
+
+
+    # ==================================
+    # core attention computation
+    # ==================================
+
+    if self.checkpoint_core_attention and self.training:
+        core_attn_out = self._checkpointed_attention_forward(
+            query,
+            key,
+            value,
+            attention_mask,
+            attn_mask_type=attn_mask_type,
+            packed_seq_params=packed_seq_params,
+        )
+    else:
+        core_attn_out = self.core_attention(
+            query,
+            key,
+            value,
+            attention_mask,
+            attn_mask_type=attn_mask_type,
+            packed_seq_params=packed_seq_params,
+        )
+
+    # =================
+    # Output. [sq, b, h]
+    # =================
+
+    output, bias = self.linear_proj(core_attn_out)
+
+    return output, bias

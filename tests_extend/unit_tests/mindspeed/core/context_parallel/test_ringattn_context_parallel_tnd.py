@@ -10,6 +10,7 @@ from unit_tests.common import DistributedTest
 
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
+from megatron.core.packed_seq_params import PackedSeqParams
 
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ulysses,
@@ -26,6 +27,7 @@ from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.core.context_parallel.utils import sbh_to_tnd, tnd_to_sbh
 from mindspeed.utils import set_actual_seq_len
+from mindspeed.utils import compute_qkv_index
 
 
 
@@ -86,6 +88,8 @@ def run_ringattn_cp(cp_size, dtype, cp_args):
     args.cp_window_size = cp_window_size
     args.context_parallel_algo = 'megatron_cp_algo'
     args.use_fused_ring_attention_update = True
+    args.attention_mask_type = 'causal'
+    args.context_parallel_size = cp_size
     set_args(args)
     initialize_model_parallel(context_parallel_size=cp_size)
     set_random_seed(1234)
@@ -198,10 +202,15 @@ def run_ringattn_cp(cp_size, dtype, cp_args):
     cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
     cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
 
-
-    out_ = ringattn_context_parallel(q_, k_, v_, n, cp_para,
-                                         softmax_scale=scale, attn_mask=None,
-                                         actual_seq_qlen=local_actual_seq_len, actual_seq_kvlen=local_actual_seq_len)
+    packed_seq_params = PackedSeqParams(
+        cu_seqlens_q=torch.tensor(local_actual_seq_len).npu(), 
+        cu_seqlens_kv=torch.tensor(local_actual_seq_len).npu()
+    )
+    q_index, kv_index = compute_qkv_index(local_actual_seq_len)
+    packed_seq_params.q_index = q_index
+    packed_seq_params.kv_index = kv_index
+    out_ = ringattn_context_parallel(q_, k_, v_, n, cp_para, softmax_scale=scale, 
+                                    attn_mask=None, packed_seq_params = packed_seq_params)
     out_.backward(dout_)
 
     # same as transformer_engine

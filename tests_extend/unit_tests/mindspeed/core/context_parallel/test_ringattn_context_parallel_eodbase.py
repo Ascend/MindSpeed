@@ -8,6 +8,7 @@ import torch.distributed as dist
 from mindspeed import megatron_adaptor
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
+from megatron.core.packed_seq_params import PackedSeqParams
 from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ulysses,
                                              get_context_parallel_group_for_hybrid_ring,
@@ -117,8 +118,12 @@ def run_ringattn_cp(cp_size, bs, seq_len, dtype, cp_args):
     cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
             if args.use_cp_send_recv_overlap else None
 
+    packed_seq_params = PackedSeqParams(
+        cu_seqlens_q=torch.tensor(concatenated).npu(), 
+        cu_seqlens_kv=torch.tensor(concatenated).npu()
+    )
     out_ = ringattn_context_parallel(q_, k_, v_, n, cp_para, softmax_scale=scale, 
-                                    attn_mask=None, actual_seq_qlen=concatenated, actual_seq_kvlen=concatenated)
+                                    attn_mask=None, packed_seq_params = packed_seq_params)
     out_.backward(dout_)
 
     output_list = [torch.empty_like(out_) for i in range(cp_size)]

@@ -147,14 +147,32 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
         )
     # emb [seq_length, .., dim]
     emb = emb[:, None, None, :]
-    position_ids = get_position_ids()
-    s, b = position_ids.shape
-    emb = emb[position_ids.view(-1)].squeeze(1).reshape(s, b, 1, -1)
 
-    if parallel_state.get_context_parallel_world_size() > 1:
-        # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
-        emb = get_pos_emb_on_this_cp_rank(emb, 0)
     return emb
+
+
+def apply_rotary_pos_emb_thd(
+    t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False
+) -> Tensor:
+
+    """A baseline implementation of applying RoPE for `thd` format.
+
+    Args:
+        t (Tensor): Input tensor T is of shape [t, h, d]
+        cu_seqlens(Tensor):  Cumulative sum of sequence lengths in a batch for `t`,
+        with shape [b + 1] and dtype torch.int32.
+        freqs (Tensor): Rotary Positional embedding tensor freq is of shape [max_s, 1, 1, d]
+
+    Returns:
+        Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
+    """
+    args = get_args()
+
+    position_ids = cu_seqlens.position_ids
+    block_size, bsz = position_ids.shape
+    freqs = freqs[position_ids.view(-1)].reshape(block_size, bsz, 1, -1)
+
+    return apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved)
 
 
 def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):

@@ -156,6 +156,8 @@ def dot_product_attention_forward(
         packed_seq_params,
 ):
     args = get_args()
+    seq_len, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+
     sparse_mode = args.sparse_mode
     if attn_mask_type == AttnMaskType.no_mask:
         sparse_mode = 0  # default mask
@@ -186,13 +188,6 @@ def dot_product_attention_forward(
         output = ulyssesattn_context_parallel(query, key, value, attn_para, self.ulysses_comm_para)
 
         return output
-
-    if packed_seq_params is None:
-        actual_seq_len = get_actual_seq_len()
-        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
-    else:
-        actual_seq_len = tuple(packed_seq_params.cu_seqlens_q[1:].cpu().numpy().tolist())
-        seq_length, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2]
 
     if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
                                                                          'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
@@ -249,17 +244,21 @@ def dot_product_attention_forward(
                 )
 
             output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p,
-                                           actual_seq_len, actual_seq_len)
+                                           packed_seq_params)
         else:
             cp_para['scheduling_info'] = get_scheduling_info()
             output = adaptive_attn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p)
 
     else:
-        if actual_seq_len is not None: # TND
-            if packed_seq_params is None:
-                query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
+        if packed_seq_params is not None: # TND
+            cp_size = mpu.get_context_parallel_world_size()
+            actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
+            actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
+            query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
             shape_order = 'TND'
         else: # SBH
+            actual_seq_qlen = None
+            actual_seq_kvlen = None
             query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
             shape_order = 'SBH'
         if args.use_fusion_attn_v2:
@@ -275,8 +274,8 @@ def dot_product_attention_forward(
                 keep_prob=1 - self.attention_dropout.p,
                 inner_precise=0,
                 sparse_mode=sparse_mode,
-                actual_seq_qlen=actual_seq_len,
-                actual_seq_kvlen=actual_seq_len
+                actual_seq_qlen=actual_seq_qlen,
+                actual_seq_kvlen=actual_seq_kvlen
             )[0]
         else:
             output = torch_npu.npu_fusion_attention(
@@ -290,9 +289,9 @@ def dot_product_attention_forward(
                 keep_prob=1 - self.attention_dropout.p,
                 inner_precise=0,
                 sparse_mode=sparse_mode,
-                actual_seq_qlen=actual_seq_len,
-                actual_seq_kvlen=actual_seq_len
+                actual_seq_qlen=actual_seq_qlen,
+                actual_seq_kvlen=actual_seq_kvlen
                 )[0]
-        if actual_seq_len is not None and packed_seq_params is None:
-            output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_length, b=bsz)
+        if packed_seq_params is not None:
+            output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_len, b=bsz)
     return output

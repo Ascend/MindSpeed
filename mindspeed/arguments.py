@@ -674,6 +674,7 @@ def validate_args_wrapper(validate_args):
             assert args.ulysses_degree_in_cp is not None, "--ulysses-degree-in-cp must be specified in hybrid_cp_algo"
             ring_degree, remainder = divmod(args.context_parallel_size, args.ulysses_degree_in_cp)
             assert ring_degree > 1 and remainder == 0, "--ulysses-degree-in-cp must be devisible by --context-parallel-size"
+            args.ring_degree = ring_degree
 
             head, remainder = divmod(args.num_attention_heads, args.ulysses_degree_in_cp * args.tensor_model_parallel_size)
             assert head >= 1 and remainder == 0, f"num_attention_heads must be divisible by ulysse-degree-in-cp * tensor_model_parallel_size in hybrid cp"
@@ -888,6 +889,9 @@ def validate_args_wrapper(validate_args):
         if args.fp16:
             args.gradient_accumulation_fusion = False
             warnings.warn("Unsupported gradient fp16 bf16 for gradient accumulation fusion")
+        
+        if args.reset_attention_mask and args.attention_mask_type == 'causal':
+            assert args.context_parallel_algo == 'megatron_cp_algo', 'accelerated eod reset mode only support ring attention'
 
         if args.context_parallel_kv_cache_policy:
             if args.context_parallel_size == 1:

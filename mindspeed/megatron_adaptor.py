@@ -234,10 +234,20 @@ def mcore_models_adaptation(aspm, mindspeed_args):
     
     if getattr(mindspeed_args, 'reset_attention_mask', False):
         from .core.datasets.gpt_dataset import _get_ltor_masks_and_position_ids, collate_wrapper
+        from .utils import get_batch_on_this_cp_rank_wrapper
         aspm.register_patch('megatron.core.datasets.gpt_dataset._get_ltor_masks_and_position_ids', _get_ltor_masks_and_position_ids)
         aspm.register_patch('torch.utils.data._utils.collate.default_collate', collate_wrapper)
+        aspm.register_patch('megatron.training.utils.get_batch_on_this_cp_rank', get_batch_on_this_cp_rank_wrapper)
 
-    if getattr(mindspeed_args, 'reset_position_ids', False):
+        from mindspeed.core.pipeline_parallel.p2p_communication import _p2p_ops_eod 
+        aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._p2p_ops', _p2p_ops_eod)
+        from mindspeed.core.models.gpt.gpt_model import gpt_forward_wrapper
+        aspm.register_patch('megatron.core.models.gpt.gpt_model.GPTModel.forward', gpt_forward_wrapper)        
+        from .core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_thd
+        aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_thd', apply_rotary_pos_emb_thd)
+        from .core.transformer.attention import attention_forward
+        aspm.register_patch('megatron.core.transformer.attention.Attention.forward', attention_forward)
+
         from .core.models.common.embeddings.rotary_pos_embedding import rotary_forward
         aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward', rotary_forward)
 
@@ -414,14 +424,9 @@ def mcore_tensor_parallel_adaptation_l0(aspm):
 
 def mcore_tensor_parallel_adaptation_l1(aspm):
     from .core.tensor_parallel.cross_entropy import calculate_predicted_logits
-    from .utils import checkpoint_forward_wrapper, checkpoint_backward_wrapper
     # use logical negation followed by multiplication to achieve the same effect as setting selected elements to zero
     aspm.register_patch('megatron.core.tensor_parallel.cross_entropy.VocabParallelCrossEntropy.calculate_predicted_logits',
                         calculate_predicted_logits)
-    aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.forward',
-                        checkpoint_forward_wrapper)
-    aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
-                        checkpoint_backward_wrapper)
 
 
 def mcore_tensor_parallel_adaptation(aspm, args):

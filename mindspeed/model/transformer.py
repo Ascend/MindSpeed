@@ -20,6 +20,7 @@ import threading
 from functools import wraps
 from contextlib import nullcontext
 from typing import Any
+import warnings
 
 import torch
 import torch_npu
@@ -565,35 +566,68 @@ def set_attention_mask(attn_mask):
     _GLOBAL_ATTN_MASK = attn_mask
 
 
-def generate_attention_mask():
+def generate_attention_mask(compress, device):
     global _GLOBAL_ATTN_MASK
     args = get_args()
-    if args.ampipe_degree > 1 and args.context_parallel_size <= 1 and _GLOBAL_ATTN_MASK is None:
-        args.sparse_mode = 0
-        _GLOBAL_ATTN_MASK = torch.triu(
-            torch.ones((args.seq_length, args.seq_length), device=torch.cuda.current_device(), dtype=torch.bool),
-            diagonal=1)
-    elif args.use_flash_attn and (args.seq_length > 2048 or args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']):
-        args.sparse_mode = 2
-        _GLOBAL_ATTN_MASK = torch.triu(torch.ones([2048, 2048], dtype=bool, device=torch.cuda.current_device()), diagonal=1)
+    if not args.use_flash_attn:
+        warnings.warn("Flash Attention is highly recommended")
+        _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device), diagonal=-(args.pre_tockens + 1)) \
+                                + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device), diagonal=args.next_tockens + 1))
+        return
+
+    if compress:
+        seq_len = 2048
     else:
-        args.sparse_mode = 0
-        if args.attention_mask_on_cpu:
-            _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device='cpu'), diagonal=-(args.pre_tockens + 1)) \
-                                 + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device='cpu'), diagonal=args.next_tockens + 1))
-        else:
-            _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=torch.cuda.current_device()), diagonal=-(args.pre_tockens + 1)) \
-                                 + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=torch.cuda.current_device()), diagonal=args.next_tockens + 1))
+        seq_len = args.seq_length
+    
+    _GLOBAL_ATTN_MASK = torch.triu(
+                            torch.ones((seq_len, seq_len), 
+                            device=device, dtype=torch.bool), diagonal=1)
 
 
 def get_attention_mask():
     global _GLOBAL_ATTN_MASK
+    if _GLOBAL_ATTN_MASK is not None:
+        return _GLOBAL_ATTN_MASK
+
     args = get_args()
-    if args.reset_attention_mask and args.context_parallel_algo not in ['adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
+    should_generate_mask = False
+    device = 'npu'
+
+    if args.attention_mask_type == 'causal':
         args.sparse_mode = 2
-        _GLOBAL_ATTN_MASK = torch.triu(torch.ones([2048, 2048], dtype=bool, device=torch.cuda.current_device()), diagonal=1)
-    elif args.attention_mask_type == 'causal' and _GLOBAL_ATTN_MASK is None:
-        generate_attention_mask()
+        should_generate_mask = True
+        compress = True
+
+    # ampipe开启在同时不开cp时需要生成全量mask，开cp时生成causal mask
+    if args.ampipe_degree > 1 and args.context_parallel_size <= 1:
+        args.sparse_mode = 0
+        should_generate_mask = True
+        compress = False
+
+    # EoD 模式 Ring Attention的实现
+    # general 为基线方案，causal 为加速方案
+    # 如果 cp > 1 且使用了Ring Attention 并行（包括Hybrid并行）。则Mask为动态生成的，不需要额外的Mask
+    if args.reset_attention_mask:
+        if args.attention_mask_type == 'general':
+            args.sparse_mode = 2
+            if args.context_parallel_size == 1 or args.context_parallel_algo == 'ulysses_cp_algo':
+                should_generate_mask = True
+                compress = True
+            else:
+                args.sparse_mode = 1
+                should_generate_mask = False
+        else:
+            should_generate_mask = True
+            compress = True
+
+
+    if args.attention_mask_on_cpu:
+        device = 'cpu'
+
+    if should_generate_mask:
+        generate_attention_mask(compress, device)
+
     return _GLOBAL_ATTN_MASK
 
 

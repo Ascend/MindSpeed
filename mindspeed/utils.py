@@ -6,6 +6,7 @@ import hashlib
 import logging
 from typing import List
 import functools
+from functools import wraps
 import random
 import os
 import re
@@ -65,12 +66,10 @@ def get_q_index():
     return _Q_INDEX
 
 
-def set_actual_seq_len(seq_lens):
-    global _ACTUAL_SEQ_LEN
-    _ACTUAL_SEQ_LEN = seq_lens
-
-    if seq_lens is None:
-        return
+def compute_qkv_index(seq_lens):
+    args = get_args()
+    if args.attention_mask_type == 'general' or get_ring_degree() == 1:
+        return None, None
 
     full_indices = list(range(seq_lens[-1]))
     prev_eod_pos = 0
@@ -82,10 +81,29 @@ def set_actual_seq_len(seq_lens):
         q_indices.extend(full_indices[mid:eod_pos])
         prev_eod_pos = eod_pos
     
-    global _KV_INDEX
-    _KV_INDEX = torch.tensor(kv_indices).cuda(non_blocking=True)
-    global _Q_INDEX
-    _Q_INDEX = torch.tensor(q_indices).cuda(non_blocking=True)
+    kv_index = torch.tensor(kv_indices).cuda(non_blocking=True)
+    q_index = torch.tensor(q_indices).cuda(non_blocking=True)
+
+    return q_index, kv_index
+
+
+def get_ring_degree():
+    args = get_args()
+    cp_size = args.context_parallel_size
+    if cp_size == 1:
+        return 1
+    
+    if args.context_parallel_algo == 'megatron_cp_algo':
+        return cp_size
+    elif args.context_parallel_algo == 'ulysses_cp_algo':
+        return 1
+    else:
+        return args.ring_degree
+
+
+def set_actual_seq_len(actual_seq_len):
+    global _ACTUAL_SEQ_LEN
+    _ACTUAL_SEQ_LEN = actual_seq_len
 
 
 def get_position_ids():
@@ -114,6 +132,16 @@ def print_rank_0_once(message):
         print(message, flush=True)
 
 
+def get_batch_on_this_cp_rank_wrapper(fn):
+    @wraps(fn)
+    def wrapper(batch):
+        batch = fn(batch)
+        set_position_ids(batch['position_ids'].transpose(0, 1).contiguous())
+        return batch
+    
+    return wrapper 
+
+
 def get_batch_on_this_cp_rank(batch):
     """ Slice batch input along sequence dimension into multiple chunks,
         which are parallelized across GPUs in a context parallel group.
@@ -131,34 +159,17 @@ def get_batch_on_this_cp_rank(batch):
 
     cp_size = args.context_parallel_size
 
-    if cp_size == 1 and not args.reset_position_ids:
+    if cp_size == 1:
         return batch
-
-    if args.reset_position_ids and args.attention_mask_type == 'causal':
-        _actual_seq_len = [compute_actual_seq_len(seq) for seq in batch['position_ids']]
-
-        if cp_size > 1:
-            batch = _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, _actual_seq_len)
-            _actual_seq_len = [[x // cp_size for x in lst] for lst in _actual_seq_len]
-
-        actual_seq_len = []
-        offset = 0
-        for seq_len in _actual_seq_len:
-            actual_seq_len.extend([x + offset for x in seq_len])
-            offset += seq_len[-1]
-        set_actual_seq_len(actual_seq_len)
-        set_position_ids(batch['position_ids'].transpose(0, 1).contiguous())
-        return batch
-
-    if args.reset_attention_mask:
-        set_position_ids(batch['position_ids'].transpose(0, 1).contiguous()) 
 
     tp_y_cp_size = TensorParallelYUnionCP().get_parallel_group_world_size() if args.tp_2d else args.context_parallel_size
     if not tp_y_cp_size > 1:
         return batch
 
     cp_expanded_by_2d_tp = args.tp_y > 1
-    if args.context_parallel_algo == 'megatron_cp_algo':
+    if args.reset_attention_mask and args.attention_mask_type == 'causal':
+        batch = _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, get_actual_seq_len())
+    elif args.context_parallel_algo == 'megatron_cp_algo':
         if args.attention_mask_type == 'general':
             batch = _get_batch_on_this_cp_rank_in_megatron_cp_general(batch)
         elif cp_expanded_by_2d_tp:
@@ -198,8 +209,11 @@ def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len)
 
     cp_rank = mpu.get_context_parallel_rank()
     cp_size = mpu.get_context_parallel_world_size()
+    args = get_args()
 
-    batch_indexs = get_index(actual_seq_len, cp_size, cp_rank)
+    actual_seq_len_lst = list(actual_seq_len * get_ring_degree())
+    batched_index = batch_index(actual_seq_len_lst, args.seq_length)
+    index = get_index(batched_index, cp_size, cp_rank)
 
     for key, val in batch.items():
         if key == 'attention_mask':
@@ -208,7 +222,7 @@ def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len)
             seq_dim = 1 if key != 'attention_mask' else 2
             bsz = val.shape[0]
             val = val.view(-1, *val.shape[seq_dim + 1:])
-            val = val.index_select(0, batch_indexs)
+            val = val.index_select(0, index)
             val = val.view(bsz, -1, *val.shape[seq_dim + 1:])
         
         batch[key] = val
@@ -397,7 +411,9 @@ def get_batch_on_this_tp_rank(data_iterator):
         
         if args.reset_attention_mask:
             actual_seq_len = broadcast_dynamic(data['actual_seq_len'])
-            set_actual_seq_len(actual_seq_len.tolist())
+            if args.attention_mask_type == 'causal':
+                actual_seq_len /= get_ring_degree()
+            set_actual_seq_len(actual_seq_len)
 
     else:
         tokens = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
@@ -450,7 +466,9 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         if args.reset_attention_mask:
             actual_seq_len = broadcast_dynamic(None)
-            set_actual_seq_len(actual_seq_len.tolist())
+            if args.attention_mask_type == 'causal':
+                actual_seq_len /= get_ring_degree()
+            set_actual_seq_len(actual_seq_len)
 
     return batch
 
@@ -572,22 +590,6 @@ def _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch):
         batch[key] = val
 
     return batch
-
-
-def checkpoint_forward_wrapper(fn):
-    def wrapper(ctx, run_function, distribute_saved_activations, *args):
-        ctx.actual_seq_len = get_actual_seq_len()
-        return fn(ctx, run_function, distribute_saved_activations, *args)
-
-    return wrapper
-
-
-def checkpoint_backward_wrapper(fn):
-    def wrapper(ctx, *args):
-        set_actual_seq_len(ctx.actual_seq_len)
-        return fn(ctx, *args)
-    
-    return wrapper
 
 
 def _gather_hccl(send_tensor, recv_tensors, data_parallel_group):
@@ -714,3 +716,11 @@ def extend_seed_all(seed=1234):
     torch.use_deterministic_algorithms(True)
     torch_npu.npu.manual_seed_all(seed)
     torch_npu.npu.manual_seed(seed)
+
+
+def batch_index(seq1d, seq_len):
+    from bisect import bisect_right
+    end_points = list(range(seq_len, seq1d[-1] + 1, seq_len))
+    indexes = [0] + [bisect_right(seq1d, p) for p in end_points]
+    seq_batch = [seq1d[indexes[i]:indexes[i + 1]] for i in range(len(indexes) - 1)]
+    return [[elem - i * seq_len for elem in seq] for i, seq in enumerate(seq_batch)]
