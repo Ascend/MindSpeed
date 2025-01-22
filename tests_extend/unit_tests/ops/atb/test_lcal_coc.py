@@ -62,7 +62,6 @@ def is_similar(actual_output, pred_output):
     return error_ratio
 
 
-@pytest.mark.skip(reason='lcal can not be built because ag-mm-rs is currently not available.')
 class TestCoC(DistributedTest):
     world_size = 8
 
