@@ -410,11 +410,6 @@ def attention_forward(
         inference_params, key, value, rotary_pos_emb
     )
 
-    if packed_seq_params is not None:
-        query = query.squeeze(1)
-        key = key.squeeze(1)
-        value = value.squeeze(1)
-
     # ================================================
     # relative positional embedding (rotary embedding)
     # ================================================

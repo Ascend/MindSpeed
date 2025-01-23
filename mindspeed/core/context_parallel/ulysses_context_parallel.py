@@ -172,27 +172,25 @@ class AttnQKVReshape:
 
         # attention parameters
         packed_seq_params = self.attn_para.get('packed_seq_params')
-        if packed_seq_params is None:
-            actual_seq_len = mindspeed.utils.get_actual_seq_len()
-            seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
-        else:
-            actual_seq_len = tuple(packed_seq_params.cu_seqlens_q[1:].cpu().numpy().tolist())
-            seq_length, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2]
+        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
 
         # reshape [s, b, h, d] to SBH([s, b, h*d]) or TND([s*b, h, d])
-        if actual_seq_len is not None: # TND
-            if packed_seq_params is None:
-                query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
+        if packed_seq_params is not None: # TND
+            actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
+            actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
+            query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
             shape_order = 'TND'
         else: # SBH
+            actual_seq_qlen = None
+            actual_seq_kvlen = None
             query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
             shape_order = 'SBH'
 
         self.attn_para['n_head'] = n_head
         self.attn_para['shape_order'] = shape_order
         self.attn_para['seq_length'] = seq_length
-        self.attn_para['actual_seq_qlen'] = actual_seq_len
-        self.attn_para['actual_seq_kvlen'] = actual_seq_len
+        self.attn_para['actual_seq_qlen'] = actual_seq_qlen
+        self.attn_para['actual_seq_kvlen'] = actual_seq_kvlen
 
         return query, key, value, self.attn_para
 
@@ -214,15 +212,13 @@ class AttnQKVReshape:
 
         # attention parameters
         packed_seq_params = self.attn_para.get('packed_seq_params')
-        actual_seq_len = self.attn_para.get('actual_seq_qlen')
         seq_length = self.attn_para.get('seq_length')
         n_head = self.attn_para.get('n_head')
 
         # reshape SBH([s, b, h*d]) or TND([s*b, h, d]) back to [s, b, h, d]
-        if actual_seq_len is not None:  # TND
-            if packed_seq_params is None:
-                s, b = seq_length, dq.shape[0] // seq_length
-                dq, dk, dv = [rearrange(x, '(b s) h d -> s b h d', s=s, b=b) for x in [dq, dk, dv]]
+        if packed_seq_params is not None:  # TND
+            s, b = seq_length, dq.shape[0] // seq_length
+            dq, dk, dv = [rearrange(x, '(b s) h d -> s b h d', s=s, b=b) for x in [dq, dk, dv]]
         else:  # SBH
             h, d = n_head, dq.shape[2] // n_head
             dq, dk, dv = [rearrange(x, 's b (h d) -> s b h d', h=h, d=d) for x in [dq, dk, dv]]
@@ -349,7 +345,6 @@ class RepeatAll2AllComm:
 
         # attention parameters
         packed_seq_params = self.attn_para.get('packed_seq_params')
-        actual_seq_len = self.attn_para.get('actual_seq_qlen')
 
         # if repeat, [s, b, h, d] -> [s, b, h*cp, d]
         if do_repeat:
@@ -359,9 +354,8 @@ class RepeatAll2AllComm:
         output = single_all_to_all(input_tensor, scatter_idx, gather_idx, spg)
 
         # reshape [s, b, h, d] to SBH([s, b, h*d]) or TND([s*b, h, d])
-        if actual_seq_len is not None:  # TND
-            if packed_seq_params is None:
-                output = rearrange(output, 's b h d -> (b s) h d')
+        if packed_seq_params is not None:
+            output = rearrange(output, 's b h d -> (b s) h d')
         else:  # SBH
             output = rearrange(output, 's b h d -> s b (h d)')
 
@@ -459,15 +453,13 @@ class AllGatherComm:
 
         # attention parameters
         packed_seq_params = self.attn_para.get('packed_seq_params')
-        actual_seq_len = self.attn_para.get('actual_seq_qlen')
 
         # allgather re-communication, [s, b, h, d] -> [s*cp, b, h, d]
         output = sync_gather_along_first_dim(input_tensor, self.ulysses_collective_comm)
 
         # reshape [s, b, h, d] to SBH([s, b, h*d]) or TND([s*b, h, d])
-        if actual_seq_len is not None:  # TND
-            if packed_seq_params is None:
-                output = rearrange(output, 's b h d -> (b s) h d')
+        if packed_seq_params is not None:  # TND
+            output = rearrange(output, 's b h d -> (b s) h d')
         else:  # SBH
             output = rearrange(output, 's b h d -> s b (h d)')
 
@@ -557,7 +549,7 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
         attn_out, softmax_max, softmax_sum = res[0], res[1], res[2]
 
         # if TND, reshape TND([b*s, h, d]) to SBH([s, b, h*d])
-        if actual_seq_len is not None and packed_seq_params is None:
+        if packed_seq_params is not None:
             s, b = seq_length, attn_out.shape[0] // seq_length
             attn_out = rearrange(attn_out, '(b s) h d -> s b (h d)', s=s, b=b)
 
@@ -615,7 +607,7 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
         dout = single_all_to_all(dout, scatter_idx, gather_idx, spg)
 
         # if TND, reshape SBH([s, b, h*d]) to TND([b*s, h, d])
-        if actual_seq_len is not None and packed_seq_params is None:
+        if packed_seq_params is not None:
             h, d = n_head, dout.shape[2] // n_head
             dout = rearrange(dout, 's b (h d) -> (b s) h d', h=h, d=d)
             attn_out = rearrange(attn_out, 's b (h d) -> (b s) h d', h=h, d=d)
