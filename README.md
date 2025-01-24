@@ -205,6 +205,7 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 | 特性                                   | 介绍                                                 |
 |--------------------------------------|----------------------------------------------------|
 | 【Prototype】Ascend fused ema adamw优化器 | [link](docs/features/fused_ema_adamw_optimizer.md) |
+| 【Prototype】Ascend conv3d 序列并行        | [link](docs/features/conv3d_sequence_paralle.md) |
 
 ## 其它特性
 | 特性                                         | 介绍                                                        |
