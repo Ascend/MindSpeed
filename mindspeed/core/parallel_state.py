@@ -232,14 +232,21 @@ def hccl_buffer_auto_adaptive():
 def get_nccl_options_wrapper(get_nccl_options):
     @wraps(get_nccl_options)
     def wrapper(pg_name, nccl_comm_cfgs):
-        from megatron.training import get_args
-        args = get_args()
-        if args.hccl_group_buffer is not None or args.hccl_group_buffer_adaptive:
-            global _HCCL_GROUP_BUFFER
-            if _HCCL_GROUP_BUFFER.get(pg_name) is not None:
-                options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
-                options.hccl_config = {"hccl_buffer_size":_HCCL_GROUP_BUFFER[pg_name]}
-                return options
+        if hasattr(torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options, "hccl_config"):
+            from megatron.training import get_args
+            args = get_args()
+            options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+            hccl_config = {"group_name": str(pg_name)}
+            try:
+                options.hccl_config = hccl_config
+            except Exception:
+                hccl_config = {}
+            if args.hccl_group_buffer is not None or args.hccl_group_buffer_adaptive:
+                global _HCCL_GROUP_BUFFER
+                if _HCCL_GROUP_BUFFER.get(pg_name) is not None:
+                    hccl_config["hccl_buffer_size"] = _HCCL_GROUP_BUFFER[pg_name]
+            options.hccl_config = hccl_config
+            return options
         return get_nccl_options(pg_name, nccl_comm_cfgs)
     return wrapper
 
