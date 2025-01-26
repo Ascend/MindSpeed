@@ -628,13 +628,20 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr>
 <tbody>
   <tr>
-    <td rowspan="5"> Ascend conv3d 序列并行   </td>
-    <td><a href="docs/features/conv3d_sequence_parallel.md">link</a></td>
+    <td rowspan="5"> Ascend PP支持动态形状</td>
+    <td><a href="docs/features/variable_seq_lengths.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
+  <tr>
+    <td rowspan="5"> Ascend PP支持多参数传递</td>
+    <td><a href="docs/features/multi_parameter_pipeline.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
-<tbody>
 </table>
 
 ## 其它特性
@@ -670,22 +677,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend PP支持动态形状</td>
-    <td><a href="docs/features/variable_seq_lengths.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend PP支持多参数传递</td>
-    <td><a href="docs/features/multi_parameter_pipeline.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 </table>
 
