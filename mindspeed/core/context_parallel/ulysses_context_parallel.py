@@ -174,6 +174,13 @@ class AttnQKVReshape:
         packed_seq_params = self.attn_para.get('packed_seq_params')
         seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
 
+        self.attn_para['n_head'] = n_head
+        self.attn_para['q_seq_len'] = seq_length
+        self.attn_para['k_head'] = key.shape[2]
+        self.attn_para['v_head'] = value.shape[2]
+        self.attn_para['k_seq_len'] = key.shape[0]
+        self.attn_para['v_seq_len'] = value.shape[0]
+
         # reshape [s, b, h, d] to SBH([s, b, h*d]) or TND([s*b, h, d])
         if packed_seq_params is not None: # TND
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
@@ -186,9 +193,7 @@ class AttnQKVReshape:
             query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
             shape_order = 'SBH'
 
-        self.attn_para['n_head'] = n_head
         self.attn_para['shape_order'] = shape_order
-        self.attn_para['seq_length'] = seq_length
         self.attn_para['actual_seq_qlen'] = actual_seq_qlen
         self.attn_para['actual_seq_kvlen'] = actual_seq_kvlen
 
@@ -212,16 +217,28 @@ class AttnQKVReshape:
 
         # attention parameters
         packed_seq_params = self.attn_para.get('packed_seq_params')
-        seq_length = self.attn_para.get('seq_length')
+        q_seq_len = self.attn_para.get('q_seq_len')
+        k_seq_len = self.attn_para.get('k_seq_len')
+        v_seq_len = self.attn_para.get('v_seq_len')
         n_head = self.attn_para.get('n_head')
+        k_head = self.attn_para.get('k_head')
+        v_head = self.attn_para.get('v_head')
 
         # reshape SBH([s, b, h*d]) or TND([s*b, h, d]) back to [s, b, h, d]
         if packed_seq_params is not None:  # TND
-            s, b = seq_length, dq.shape[0] // seq_length
-            dq, dk, dv = [rearrange(x, '(b s) h d -> s b h d', s=s, b=b) for x in [dq, dk, dv]]
+            s, b = q_seq_len, dq.shape[0] // q_seq_len
+            dq = rearrange(dq, '(b s) h d -> s b h d', s=s, b=b)
+            s, b = k_seq_len, dk.shape[0] // k_seq_len
+            dk = rearrange(dk, '(b s) h d -> s b h d', s=s, b=b)
+            s, b = v_seq_len, dv.shape[0] // v_seq_len
+            dv = rearrange(dv, '(b s) h d -> s b h d', s=s, b=b)
         else:  # SBH
             h, d = n_head, dq.shape[2] // n_head
-            dq, dk, dv = [rearrange(x, 's b (h d) -> s b h d', h=h, d=d) for x in [dq, dk, dv]]
+            dq = rearrange(dq, 's b (h d) -> s b h d', h=h, d=d)
+            h, d = k_head, dk.shape[2] // k_head
+            dk = rearrange(dk, 's b (h d) -> s b h d', h=h, d=d)
+            h, d = v_head, dv.shape[2] // v_head
+            dv = rearrange(dv, 's b (h d) -> s b h d', h=h, d=d)
 
         return dq, dk, dv
 
@@ -520,7 +537,7 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
         shape_order = attn_para.get('shape_order')
         actual_seq_len = attn_para.get('actual_seq_qlen')
         actual_seq_kvlen = attn_para.get('actual_seq_kvlen')
-        seq_length = attn_para.get('seq_length')
+        seq_length = attn_para.get('q_seq_len')
 
         # kv cache
         if cache_policy == "full":
