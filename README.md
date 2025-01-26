@@ -204,6 +204,8 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 ## 多模态特性
 | 特性                                   | 介绍                                                 |
 |--------------------------------------|----------------------------------------------------|
+| Ascend PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
+| Ascend PP支持多参数传递                           | [link](docs/features/multi_parameter_pipeline.md)     |
 | 【Prototype】Ascend fused ema adamw优化器 | [link](docs/features/fused_ema_adamw_optimizer.md) |
 | 【Prototype】Ascend conv3d 序列并行        | [link](docs/features/conv3d_sequence_paralle.md) |
 
@@ -213,8 +215,6 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 | Ascend TFLOPS计算                            | [link](docs/features/ops_flops_cal.md)                    |
 | Ascend Auto Tuning 并行策略自动搜索系统              | [link](docs/features/auto_tuning.md)                     |
 | 【Prototype】Ascend 确定性计算                    | [link](docs/features/npu_deterministic.md)                    |
-| Ascend PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
-| Ascend PP支持多参数传递                           | [link](docs/features/multi_parameter_pipeline.md)     |
 | 【Prototype】Ascend Flex-Parallel 多维并行自动调优算法 | [link](docs/features/Automatic_Parallelism.md)  |
 
 # 自定义算子
