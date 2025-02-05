@@ -10,8 +10,7 @@ MindSpeed将swiglu操作合并成一个融合算子，减少数据传输和临�
 模型使用swiglu作为MLP层激活函数，脚本中设置了`--swiglu`。
 
 ## 使用方法
-设置`--use-fused-swiglu`即可调用swiglu融合算子。mcore分支下仅支持使能该融合算子。
-
+Legacy分支下，设置`--use-fused-swiglu`即可调用swiglu融合算子。mcore分支下默认使能该融合算子，与竞品策略保持一致。
 ## 使用效果 
 开启融合算子可以节省内存，提升性能。
 
