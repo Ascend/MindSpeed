@@ -5,8 +5,8 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 
 class UnalignedLinearFeature(MindSpeedFeature):
 
-    def __init__(self, feature_name):
-        super().__init__(feature_name)
+    def __init__(self):
+        super().__init__('unaligned-linear')
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
