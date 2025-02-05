@@ -301,6 +301,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, int64_t, int64_t, int
     c10::optional<at::IntArrayRef> q_start_idx_val(q_start_idx_val_tmp);
     c10::optional<at::IntArrayRef> kv_start_idx_val(kv_start_idx_val_tmp);
 
+    TORCH_CHECK(head_num > 0, "head_num must > 0, but got ", head_num);
     TORCH_CHECK(query.dim() == 3 || query.dim() == 4, "The shapes of the input query should be 3 or 4 dimensional, but got ",
         query.dim(), "-dimensional");
     TORCH_CHECK(key.dim() == 3 || key.dim() == 4, "The shapes of the input key should be 3 or 4 dimensional, but got ", key.dim(),
@@ -337,39 +338,53 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, int64_t, int64_t, int
     int64_t D = 0;
     int64_t H = 0;
     int64_t T = 0;
+    int64_t D2 = 0; // D2 for value head-dim
+    c10::SmallVector<int64_t> atten_score_shape;
 
     if (input_layout_str == "BSH") {
         B = query.size(0);
         S0 = query.size(1);
         S1 = key.size(1);
         H = query.size(2);
+        D = H / head_num;
+        D2 = (!D || !key.size(2)) ? 0 : value.size(2) / (key.size(2) / D);
+        atten_score_shape = {B, S0, head_num * D2};
     } else if (input_layout_str == "SBH") {
         B = query.size(1);
         S0 = query.size(0);
         S1 = key.size(0);
         H = query.size(2);
+        D = H / head_num;
+        D2 = (!D || !key.size(2)) ? 0 : value.size(2) / (key.size(2) / D);
+        atten_score_shape = {S0, B, head_num * D2};
     } else if (input_layout_str == "BNSD") {
         B = query.size(0);
         N = query.size(1);
         S0 = query.size(2);
         S1 = key.size(2);
         D = query.size(3);
+        D2 = value.size(3);
+        atten_score_shape = {B, N, S0, D2};
     } else if (input_layout_str == "BSND") {
         B = query.size(0);
         N = query.size(2);
         S0 = query.size(1);
         S1 = key.size(1);
         D = query.size(3);
+        D2 = value.size(3);
+        atten_score_shape = {B, S0, N, D2};
     } else if (input_layout_str == "TND") {
         T = query.size(0);
         N = query.size(1);
         D = query.size(2);
+        D2 = value.size(2);
+        atten_score_shape = {T, N, D2};
     }
 
     double scale_value = scale;
 
     at::Tensor format_query = format_trans(query);
-    at::Tensor attention_score = at::empty(format_query.sizes(), format_query.options());
+    at::Tensor attention_score = at::empty(atten_score_shape, query.options());
     at::Tensor format_key = format_trans(key);
     at::Tensor format_value = format_trans(value);
 
