@@ -882,7 +882,7 @@ def validate_args_wrapper(validate_args):
             args.gradient_accumulation_fusion = False
             warnings.warn("Unsupported gradient fp16 bf16 for gradient accumulation fusion")
         
-        if args.reset_attention_mask and args.attention_mask_type == 'causal':
+        if args.context_parallel_size > 1 and args.reset_attention_mask and args.attention_mask_type == 'causal':
             assert args.context_parallel_algo == 'megatron_cp_algo', 'accelerated eod reset mode only support ring attention'
 
         if args.context_parallel_kv_cache_policy:
