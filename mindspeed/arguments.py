@@ -259,8 +259,6 @@ def _add_data_args(parser):
 def _add_distributed_args(parser):
     group = parser.add_argument_group(title='distributed')
 
-    group.add_argument('--local-rank', type=int, default=None,
-                       help='Local rank passed from distributed launcher for torch2.x.')
     group.add_argument('--param-and-grad-buffer-pad', type=int, default=None,
                        help='Use this argument to ensure that all buckets start at a memory address that is needed-byte. Set 512 for Ascend')
     group.add_argument('--use-nanopipe', action='store_true',
@@ -477,10 +475,6 @@ def validate_args_wrapper(validate_args):
             else:
                 if args.moe_model_type == 'deepspeed_moe':
                     raise AssertionError('deepspeed_moe only support with --use-legacy-models')
-        overlap_param_gather_without_mcore_models = False
-        if args.overlap_param_gather and args.use_legacy_models:
-            args.use_legacy_models = False
-            overlap_param_gather_without_mcore_models = True
 
         #validate optimizer
         if args.optimizer_selection == 'fused_adamw': 
@@ -610,10 +604,10 @@ def validate_args_wrapper(validate_args):
                       "and --pipe-experts-multi-data is set to 1, "
                       "--use-pipe-experts will be turned off.")
                 args.use_pipe_experts = False
-        if args.moe_alltoall_overlap_comm and not args.moe_token_dispatcher_type == 'alltoall':
-            raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall`.')
+        if args.moe_alltoall_overlap_comm and not args.moe_token_dispatcher_type == 'alltoall_seq':
+            raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall_seq`.')
         
-        if args.moe_adaptive_recompute_activation and args.moe_token_dispatcher_type == 'alltoall':
+        if args.moe_adaptive_recompute_activation and args.moe_token_dispatcher_type == 'alltoall_seq':
             raise AssertionError('`--moe-adaptive-recompute-activation` only support with `--moe-token-dispatcher-type allgather`.')
         
         if args.moe_allgather_overlap_comm and not args.moe_token_dispatcher_type == 'allgather':
@@ -701,8 +695,6 @@ def validate_args_wrapper(validate_args):
         # Mandatory modification to SBH, subsequent abandonment of other formats such as BSH,BSND
         if args.shape_order != 'SBH':
             args.shape_order = 'SBH'
-        if overlap_param_gather_without_mcore_models:
-            args.use_legacy_models = True
         if args.transformer_impl == 'transformer_engine':
             args.transformer_impl = 'local'
         if args.fp8:

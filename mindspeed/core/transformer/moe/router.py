@@ -73,7 +73,6 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
         indices (torch.Tensor): the indices tensor after top-k selection.
     """
     logits = logits.view(-1, self.config.num_moe_experts)
-
     # Apply Z-Loss
     logits = self.apply_z_loss(logits)
 

@@ -112,7 +112,8 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $DATA_ARGS \
     $OUTPUT_ARGS \
     --exit-interval 50 \
-    --save $CKPT_DIR
+    --save $CKPT_DIR \
+    --ckpt-format torch \
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \

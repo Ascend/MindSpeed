@@ -96,7 +96,7 @@ class TestDistributedOptimizer(DistributedTest):
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
         truth_params = copy.deepcopy(list(itertools.chain(*optimizer.float16_groups)))
-       
+
         # reuse
         init_mock_args(args, reuse_fp32_param=True)
         _, optimizer = setup_model_and_optimizer(seed=2)
@@ -106,7 +106,7 @@ class TestDistributedOptimizer(DistributedTest):
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
         reuse_params = copy.deepcopy(list(itertools.chain(*optimizer.float16_groups)))
-       
+
         for p, reuse_p in zip(truth_params, reuse_params):
             if is_deterministic:
                 assert torch.allclose(p.data, reuse_p.data, rtol=0, atol=0)
@@ -124,7 +124,7 @@ class TestDistributedOptimizer(DistributedTest):
         args.overlap_grad_reduce = overlap_grad_reduce
         args.overlap_param_gather = overlap_param_gather
         set_args(args)
-       
+
         # truth
         init_mock_args(args, use_distributed_optimizer=True)
         initialize_model_parallel(*tp_pp)
@@ -135,6 +135,8 @@ class TestDistributedOptimizer(DistributedTest):
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
             if overlap_param_gather:
+                for model_chunk in optimizer.model_chunks:
+                    model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
         truth_params = copy.deepcopy(list(itertools.chain(*optimizer.model_float16_groups)))
        
@@ -148,6 +150,8 @@ class TestDistributedOptimizer(DistributedTest):
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
             if overlap_param_gather:
+                for model_chunk in optimizer.model_chunks:
+                    model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
         reuse_params = copy.deepcopy(list(itertools.chain(*optimizer.model_float16_groups)))
        

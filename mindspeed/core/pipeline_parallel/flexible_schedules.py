@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
 import contextlib
 from functools import wraps
@@ -40,7 +40,11 @@ from megatron.core.pipeline_parallel.p2p_communication import (
     _batched_p2p_ops,
     _p2p_ops
 )
-from megatron.core.parallel_state import get_pipeline_model_parallel_group
+from megatron.core.parallel_state import (
+    get_pipeline_model_parallel_group,
+    get_pipeline_model_parallel_next_rank,
+    get_pipeline_model_parallel_prev_rank,
+)
 from megatron.training import get_args
 from mindspeed.core.parallel_state import get_pipeline_parallel_group_for_new_stream
 from mindspeed.core.weight_grad_store import WeightGradStore
@@ -242,7 +246,9 @@ def _communicate(
         tensor_recv_prev=tensor_recv_prev,
         tensor_send_next=tensor_send_next,
         tensor_recv_next=tensor_recv_next,
-        group=group
+        group=group,
+        prev_pipeline_rank=get_pipeline_model_parallel_prev_rank(),
+        next_pipeline_rank=get_pipeline_model_parallel_next_rank(),
     )
 
     if wait_on_reqs and len(reqs) > 0:
@@ -386,6 +392,7 @@ def forward_backward_pipelining_without_interleaving(
         micro_batch_size=micro_batch_size,
         decoder_seq_length=decoder_seq_length,
         config=config,
+        encoder_decoder_xattn=False,
     )
     send_tensor_shapes = get_tensor_shapes(
         rank=rank,
@@ -394,6 +401,7 @@ def forward_backward_pipelining_without_interleaving(
         micro_batch_size=micro_batch_size,
         decoder_seq_length=decoder_seq_length,
         config=config,
+        encoder_decoder_xattn=False,
     )
 
     # Input, output tensors only need to be saved when doing backward passes

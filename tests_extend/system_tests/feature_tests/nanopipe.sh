@@ -94,6 +94,7 @@ OUTPUT_ARGS="
     --save-interval 10000 \
     --eval-interval 10000 \
     --eval-iters 10 \
+    --ckpt-format torch \
 "
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \

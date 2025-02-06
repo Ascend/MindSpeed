@@ -134,6 +134,8 @@ def te_adaptation(aspm):
     aspm.register_patch('transformer_engine.pytorch.LayerNormLinear', torch.nn.Module, create_dummy=True)
     aspm.register_patch('transformer_engine.pytorch.DotProductAttention', torch.nn.Module, create_dummy=True)
     aspm.register_patch('transformer_engine.pytorch.Linear', torch.nn.Module, create_dummy=True)
+    aspm.register_patch('transformer_engine.pytorch.distributed.CudaRNGStatesTracker', torch.nn.Module,
+                        create_dummy=True)
     aspm.register_patch('transformer_engine.common.recipe.DelayedScaling', torch.nn.Module, create_dummy=True)
     aspm.register_patch('flash_attn.flash_attn_interface.flash_attn_unpadded_func', create_dummy=True)
 
@@ -213,10 +215,7 @@ def mcore_models_adaptation(aspm, mindspeed_args):
     from .core.models.common.embeddings.rotary_pos_embedding import rotary_embedding_get_rotary_seq_len_wrapper
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len',
                         rotary_embedding_get_rotary_seq_len_wrapper)
-    # Fix DDP scaling factor with Context Parallel
-    from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_with_cp
-    aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
-                        distributed_data_parallel_init_with_cp)
+
 
     if not mindspeed_args.automated_pipeline and mindspeed_args.noop_layers:
         from .core.transformer.transformer_block import _build_layers
@@ -522,8 +521,7 @@ def legacy_model_transformer(aspm, args):
     from .core.transformer.transformer import parallel_transformer_checkpointed_forward_wrapper
     from .model.transformer import switch_mlp_init_wrapper, switch_mlp_forward_wrapper, \
         parallel_transformer_layer_init_wrapper
-    if not args.automated_pipeline and args.noop_layers:
-        aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.__init__', parallel_transformer_init)
+    aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.__init__', parallel_transformer_init)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelTransformer.__init__',
                         parallel_transformer_init_wrapper)
     aspm.register_patch('megatron.legacy.model.transformer.ParallelMLP.forward', parallel_mlp_forward)
@@ -676,7 +674,7 @@ def mcore_moe_adaptation(pm, args):
     pm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step',
                         forward_step)
     if args.moe_permutation_async_comm:
-        if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall':
+        if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall_seq':
             from .core.transformer.moe.experts import sequential_mlp_forward
             from .core.transformer.moe.moe_utils import permute, unpermute
             if args.moe_tp_extend_ep:
@@ -689,7 +687,7 @@ def mcore_moe_adaptation(pm, args):
                 pm.register_patch('megatron.core.transformer.moe.moe_layer.BaseMoELayer.__init__',
                                   base_moe_init_wrapper)
                 pm.register_patch(
-                    'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess',
+                    'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
                     preprocess_tp_extend_ep)
                 pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.routing', routing_tp_extend_ep)
 
@@ -701,20 +699,20 @@ def mcore_moe_adaptation(pm, args):
                     pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init)
                     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', group_mlp_forward)
                     pm.register_patch(
-                        'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
+                        'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation',
                         alltoall_token_permutation_new)
                     pm.register_patch(
-                        'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_unpermutation',
+                        'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                         alltoall_token_unpermutation_new)
                 else:
-                    pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
+                    pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation',
                                       alltoall_token_permutation_tp_extend_ep)
-                    pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_unpermutation',
+                    pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                                       alltoall_token_unpermutation_tp_extend_ep)
             else:
                 from .core.transformer.moe.token_dispatcher import preprocess, alltoall_token_permutation, \
                     alltoall_token_unpermutation_with_bmm
-                pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess',
+                pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
                                   preprocess)
                 if args.moe_alltoall_overlap_comm:
                     from .core.transformer.moe.token_dispatcher import alltoall_token_permutation_new, \
@@ -724,17 +722,17 @@ def mcore_moe_adaptation(pm, args):
                     pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init)
                     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', group_mlp_forward)
                     pm.register_patch(
-                        'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
+                        'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation',
                         alltoall_token_permutation_new)
                     pm.register_patch(
-                        'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_unpermutation',
+                        'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                         alltoall_token_unpermutation_new)
                 else:
-                    pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
+                    pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation',
                                       alltoall_token_permutation)
                     if args.moe_bmm_mc2:
                         pm.register_patch(
-                            'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_unpermutation',
+                            'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                             alltoall_token_unpermutation_with_bmm)
             pm.register_patch('megatron.core.transformer.moe.experts.SequentialMLP.forward', sequential_mlp_forward)
             pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute)
@@ -773,17 +771,17 @@ def mcore_moe_adaptation(pm, args):
         from .core.transformer.moe.moe_layer import moe_layer_init_wrapper
         pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
     else:
-        if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall':
+        if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall_seq':
             from .core.transformer.moe.token_dispatcher import alltoall_preprocess_npu, \
                 alltoall_token_unpermutation_with_bmm, alltoall_token_permutation_with_bmm
-            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess',
+            pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
                     alltoall_preprocess_npu)
             if args.moe_bmm_mc2:
                 pm.register_patch(
-                    'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
+                    'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation',
                     alltoall_token_permutation_with_bmm)
                 pm.register_patch(
-                    'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_unpermutation',
+                    'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                     alltoall_token_unpermutation_with_bmm)
         else:
             from .core.transformer.moe.token_dispatcher import allgather_token_permutation_npu
@@ -814,7 +812,8 @@ def deepspeed_moe_adaptation(pm, args):
                           linear_with_grad_accumulation_and_async_allreduce_moe)
     if args.use_pipe_experts:
         from .core.distributed.param_and_grad_buffer import pipe_register_grad_ready
-        pm.register_patch('megatron.core.distributed.ParamAndGradBuffer.register_grad_ready', pipe_register_grad_ready)
+        pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.register_grad_ready',
+                          pipe_register_grad_ready)
     if args.ampipe_degree > 1:
         from mindspeed.model.language_model import embedding_forward_ampipe
         from mindspeed.model.transformer import parallel_transformer_forward_ampipe
@@ -916,6 +915,20 @@ def optimizer_selection(aspm, mindspeed_args):
     aspm.register_patch('apex.optimizers.FusedAdam', AdamW, create_dummy=True)
 
 
+def coalescing_manager_adaptation(aspm, mindspeed_args):
+    from .core.distributed.param_and_grad_buffer import (start_param_sync, finish_param_sync,
+                                                         start_grad_sync, finish_grad_sync)
+    # optim relative.
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_param_sync',
+                        start_param_sync)
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_param_sync',
+                        finish_param_sync)
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_grad_sync',
+                        start_grad_sync)
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_grad_sync',
+                        finish_grad_sync)
+
+
 def adaptation_l0(aspm, mindspeed_args):
     """
     The minimum patch set for megatron to adapt to NPU
@@ -936,6 +949,7 @@ def adaptation_l0(aspm, mindspeed_args):
     # context parallel(ring attention) requires mcore parallel state patch
     mcore_parallel_state_adaptation(aspm)
     communication_adaptation(aspm, mindspeed_args)
+    coalescing_manager_adaptation(aspm, mindspeed_args)
 
 
 def adaptation_l1(aspm, mindspeed_args):

@@ -1,7 +1,7 @@
 # entry file : pretrain_gpt_usecase.py
 
 spec:
-  data_path: /home/dataset/gpt-3.5/alpaca_text_document
+  data_path: /home/dataset/model/gpt-3.5/alpaca_text_document
   vocab_file: /home/dataset/model/gpt-3.5/vocab.json
   merge_file: /home/dataset/model/gpt-3.5/merges.txt
   checkpoint_path: ./ckpt
@@ -12,66 +12,60 @@ spec:
 
 products:
   # -- 重计算 ： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/recomputation.md
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --recompute-activations"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --recompute-granularity full --recompute-method uniform --recompute-num-layers 1"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
+  - { id: [ 'recomputation-01' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --recompute-activations"' ] }
+  - { id: [ 'recomputation-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --recompute-granularity full --recompute-method uniform --recompute-num-layers 1"' ] }
+  - { id: [ 'recomputation-03' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
 
   # -- 自适应选择重计算： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/adaptive-recompute.md
-  - { use_mcore: [ True, False ], adaptive_recomputing: [ 1 ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --adaptive-recompute-device-swap"' ] }
+  - { id: [ 'adaptive-recompute' ], use_mcore: [ False ], adaptive_recomputing: [ 1 ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --adaptive-recompute-device-swap"' ] }
 
   # -- 激活函数重计算： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/activation-function-recompute.md
-  - { use_mcore: [ True, False ],  tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
-
-  # -- TP重计算通信优化： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/recomputation-communication.md
-  # mcore=True bug
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --optimize-recomp-communication-level 1 --recompute-granularity full --recompute-method uniform --recompute-num-layers 1"' ] }
-  # mcore=True bug
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --optimize-recomp-communication-level 2 --recompute-granularity full --recompute-method uniform --recompute-num-layers 1"' ] }
+  - { id: [ 'activation-function-recompute-01' ], use_mcore: [ True, False ],  tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
+  - { id: [ 'activation-function-recompute-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
+  - { id: [ 'activation-function-recompute-03' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-activation-function --recompute-activation-function-num-layers 2"' ] }
 
   # -- 重计算流水线独立调度: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/recompute_independent_pipelining.md
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-in-bubble"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-in-advance --recompute-granularity full --recompute-method block --recompute-num-layers 2"' ] }
+  - { id: [ 'recompute-independent-pipelining-01' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-in-bubble"' ] }
+  - { id: [ 'recompute-independent-pipelining-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --recompute-in-advance --recompute-granularity full --recompute-method block --recompute-num-layers 2"' ] }
 
 
   # -- 分布式优化器：https://gitee.com/ascend/MindSpeed/blob/master/docs/features/distributed-optimizer.md
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
+  - { id: [ 'distributed-optimizer-01' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer"' ] }
+  - { id: [ 'distributed-optimizer-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce"' ] }
+  - { id: [ 'distributed-optimizer-03' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
 
   # -- 异步DDP：https://gitee.com/ascend/MindSpeed/blob/master/docs/features/async-ddp.md
-  - { use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--use-distributed-optimizer --overlap-grad-reduce"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce"' ] }
+  - { id: [ 'async-ddp-01' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--use-distributed-optimizer --overlap-grad-reduce"' ] }
+  - { id: [ 'async-ddp-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce"' ] }
 
   # -- 权重更新通信隐藏： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/async-ddp-param-gather.md
-  - { use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
+  - { id: [ 'async-ddp-param-gather-01' ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
+  - { id: [ 'async-ddp-param-gather-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
 
   # -- 内存碎片优化： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/memory-fragmentation.md
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], training_dtype: [ bf16, fp16 ],  memory_fragmentation: [ 1 ] }
+  - { id: [ 'memory-fragmentation' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], training_dtype: [ bf16, fp16 ],  memory_fragmentation: [ 1 ] }
 
 
   # -- 计算通信并行 ~ CoC ： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/communication-over-computation.md
   #  需要安装cann-nnal包
   - { id: [ 'coc-01' ], use_mcore: [ True, False ],  tp_size: [ 8 ], pp_size: [ 1 ], coc_parallel_num: [ 2, 4, 8 ], extra_args: [ '"--sequence-parallel --use-ascend-coc"' ] }
-  # - { id: [ 'coc-02' ], use_mcore: [ True, False ],  tp_size: [ 8 ], pp_size: [ 1 ], coc_parallel_num: [ 2, 4, 8 ], extra_args: [ '"--sequence-parallel --use-ascend-coc --coc-fused-kernel"' ] }
+  - { id: [ 'coc-02' ], use_mcore: [ True, False ],  tp_size: [ 8 ], pp_size: [ 1 ], coc_parallel_num: [ 2, 4, 8 ], extra_args: [ '"--sequence-parallel --use-ascend-coc --coc-fused-kernel"' ] }
 
   # -- 计算通信并行 ~ MC2 : https://gitee.com/ascend/MindSpeed/blob/master/docs/features/mc2.md
   # mcore=True bug
   - { id: [ 'mc2' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-ascend-mc2"' ] }
 
   # Moe Token Permute and Unpermute 融合优化: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/moe-token-permute-and-unpermute.md
-  - { id: [ 'fused-permute' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --disable-bias-linear --moe-token-dispatcher-type alltoall --use-fused-moe-token-permute-and-unpermute"' ] }
+  - { id: [ 'fused-permute' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --disable-bias-linear --moe-token-dispatcher-type alltoall --use-fused-moe-token-permute-and-unpermute"' ] }
 
   # Ring Attention Update 融合优化: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/ring_attention_update.md
-  # - { id: [ 'ring-attn-update' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --use-fused-ring-attention-update"' ] }
+  - { id: [ 'ring-attn-update' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  seq_len: [ 32768 ], extra_args: [ '"--sequence-parallel --use-flash-attn --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --use-fused-ring-attention-update"' ] }
 
   # -- BF16参数副本复用： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/reuse-fp32-param.md
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], extra_args: [ '"--sequence-parallel --reuse-fp32-param"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --reuse-fp32-param --use-distributed-optimizer"' ] }
+  - { id: [ 'reuse-fp32-param-01' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], extra_args: [ '"--sequence-parallel --reuse-fp32-param"' ] }
+  - { id: [ 'reuse-fp32-param-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --reuse-fp32-param --use-distributed-optimizer"' ] }
   # # 覆盖--reuse-fp32-param --use-distributed-optimizer DP=1场景
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], extra_args: [ '"--sequence-parallel --reuse-fp32-param --use-distributed-optimizer"' ] }
+  - { id: [ 'reuse-fp32-param-03' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], extra_args: [ '"--sequence-parallel --reuse-fp32-param --use-distributed-optimizer"' ] }
 
 
   # -- rms_norm融合优化：https://gitee.com/ascend/MindSpeed/blob/master/docs/features/rms_norm.md
@@ -83,7 +77,7 @@ products:
   # -- Rotary Postion Embedding 融合优化：https://gitee.com/ascend/MindSpeed/blob/master/docs/features/rotary-embedding.md
   #--rotary-interleaved仅支持mcore
   - { id: [ 'fused-rope-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --position-embedding-type rope --rotary-interleaved --no-rope-fusion"' ] }
-  # - { id: [ 'fused-rope-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --position-embedding-type rope --use-fused-rotary-pos-emb"' ] }
+  - { id: [ 'fused-rope-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --position-embedding-type rope --use-fused-rotary-pos-emb"' ] }
 
   # -- flash attention 适配: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/flash-attention.md
   - { id: [ 'fa' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --use-flash-attn"' ] }
@@ -94,11 +88,11 @@ products:
   # -- nanopipe流水线并行: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/nanopipe-pipeline-parallel.md
   # 要求: batch_num_per_pipe = (gbs/mbs) // DP  >= 2PP
   # mcore=True bug
-  - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], mbs: [2], extra_args: [ '"--use-nanopipe"' ] }
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --use-nanopipe"' ] }
+  - { id: [ 'nanopipe-pipeline-parallel-01' ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], mbs: [2], extra_args: [ '"--use-nanopipe"' ] }
+  - { id: [ 'nanopipe-pipeline-parallel-02' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --use-nanopipe"' ] }
 
-  - { use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ], extra_args: [ '"--optimize-send-recv-comm"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], extra_args: [ '"--sequence-parallel --optimize-send-recv-comm"' ] }
+  - { id: [ 'optimize-vpp-send-recv-comm-01' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ], extra_args: [ '"--micro-batch-size 2 --global-batch-size 16 --optimize-vpp-send-recv-comm --num-layers-per-virtual-pipeline-stage 1"' ] }
+  - { id: [ 'optimize-vpp-send-recv-comm-02' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ], extra_args: [ '"--micro-batch-size 2 --global-batch-size 16 --sequence-parallel --optimize-vpp-send-recv-comm --num-layers-per-virtual-pipeline-stage 1"' ] }
 
   # -- PP自动并行: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/automated-pipeline.md
   # - { id: [ 'pp-parallel' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 4 ],  extra_args: [ '"--sequence-parallel --automated-pipeline  --disable-bias-linear"' ] }
@@ -128,88 +122,87 @@ products:
   - { id: [ 'alibi-06' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--position-embedding-type alibi --square-alibi-mask --context-parallel-algo megatron_cp_algo --use-fusion-attn-v2 --alibi-fusion-attn-type 3 --alibi-diagonal-opposite"' ] }
 
   # -- MoE
-  - { id: [ 'moe-01' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 1"' ] }
+  - { id: [ 'moe-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 1"' ] }
   # alltoall torch.argsort the operator is not supported.
   - { id: [ 'moe-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-token-dispatcher-type alltoall --disable-bias-linear"' ] }
-  - { id: [ 'moe-03' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --use-distributed-optimizer --moe-router-load-balancing-type sinkhorn --moe-router-topk 1"' ] }
-  - { id: [ 'moe-04' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --disable-bias-linear --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type aux_loss --moe-router-topk 2 --moe-aux-loss-coeff 1e-2"' ] }
+  - { id: [ 'moe-03' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --use-distributed-optimizer --moe-router-load-balancing-type sinkhorn --moe-router-topk 1"' ] }
+  - { id: [ 'moe-04' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --disable-bias-linear --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type aux_loss --moe-router-topk 2 --moe-aux-loss-coeff 1e-2"' ] }
 
   # -- DeepSpeed MoE 相关特性： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/moe.md
   # TP>1 bug
-  - { id: [ 'deepspeed-moe-01' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] }
-  - { id: [ 'deepspeed-moe-02' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe"' ] }
-  - { id: [ 'deepspeed-moe-03' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] }
-  - { id: [ 'deepspeed-moe-04' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe"' ] }
+  - { id: [ 'deepspeed-moe-01' ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] }
+  - { id: [ 'megatron-moe-02' ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe"' ] }
+  - { id: [ 'deepspeed-moe-03' ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] }
+  - { id: [ 'megatron-moe-04' ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 4 ],  extra_args: [ '"--use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe"' ] }
 
   # -- pipe-experts 权重更新通信隐藏: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/pipeline-experts.md
-  - { id: [ 'deepspeed-moe-pipe-experts-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-stream --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] } #mcore=False异常
-  - { id: [ 'deepspeed-moe-pipe-experts-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] } #mcore=False异常
-  - { id: [ 'deepspeed-moe-pipe-experts-03' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-stream --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] } #mcore=False异常
+  - { id: [ 'deepspeed-moe-pipe-experts-01' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-stream --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] } #mcore=False异常
+  - { id: [ 'deepspeed-moe-pipe-experts-02' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] } #mcore=False异常
+  - { id: [ 'deepspeed-moe-pipe-experts-03' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-stream --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe"' ] } #mcore=False异常
 
   # -- Ampipe 流水通信隐藏: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/ampipe.md
-  # use_mcore=False bug exists
-  - { id: [ 'deepspeed-moe-ampipe-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2"' ] }
-  - { id: [ 'deepspeed-moe-ampipe-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
-  - { id: [ 'deepspeed-moe-ampipe-03' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --use-cp-send-recv-overlap --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
-  - { id: [ 'deepspeed-moe-ampipe-04' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 4 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
-  - { id: [ 'deepspeed-moe-ampipe-05' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-stream --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
+  - { id: [ 'deepspeed-moe-ampipe-01' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2"' ] }
+  - { id: [ 'deepspeed-moe-ampipe-02' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
+  - { id: [ 'deepspeed-moe-ampipe-03' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --use-cp-send-recv-overlap --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
+  - { id: [ 'deepspeed-moe-ampipe-04' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 4 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
+  - { id: [ 'deepspeed-moe-ampipe-05' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ],  extra_args: [ '"--sequence-parallel --use-pipe-experts --pipe-experts-multi-stream --pipe-experts-multi-data 2 --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --use-flash-attn --disable-bias-linear --enable-token-rearrange-opt --ampipe-degree 2 --ampipe-tp-sp-comm-overlap"' ] }
 
   # -- DeepSpeed MoE token重排性能优化：https://gitee.com/ascend/MindSpeed/blob/master/docs/features/deepspeed_moe/deepspeed-moe-token-rearrange.md
-  - { id: [ 'deepspeed-moe-token-rearrange-01' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ], extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --enable-token-rearrange-opt"' ] }
-  - { id: [ 'deepspeed-moe-token-rearrange-02' ], use_mcore: [ True, False ], tp_size: [ 1 ], pp_size: [ 4 ], extra_args: [ '"--use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --enable-token-rearrange-opt"' ] }
+  - { id: [ 'deepspeed-moe-token-rearrange-01' ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ], extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --enable-token-rearrange-opt"' ] }
+  - { id: [ 'deepspeed-moe-token-rearrange-02' ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 4 ], extra_args: [ '"--use-pipe-experts --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type deepspeed_moe --enable-token-rearrange-opt"' ] }
 
   # MOE token dropless性能优化: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/deepspeed_moe/deepspeed-moe-efficient-moe.md
-  - { id: [ 'deepspeed-moe-dropless' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --disable-bias-linear --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 2 --moe-no-drop --moe-dynamic-padding --moe-use-sinkhorn"' ] }
+  - { id: [ 'deepspeed-moe-dropless' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --disable-bias-linear --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 2 --moe-no-drop --moe-dynamic-padding --moe-use-sinkhorn --moe-model-type deepspeed_moe"' ] }
 
   # MoE 负载感知内存均衡算法 https://gitee.com/ascend/MindSpeed/blob/master/docs/features/megatron_moe/megatron-moe-adaptive-recompute-activation.md
-  - { id: [ 'megatron-moe-adaptive' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --disable-bias-linear --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type aux_loss --moe-router-topk 2 --moe-aux-loss-coeff 1e-2 --moe-adaptive-recompute-activation"' ] }
+  - { id: [ 'megatron-moe-adaptive' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 1 ], extra_args: [ '"--sequence-parallel --disable-bias-linear --num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type aux_loss --moe-router-topk 2 --moe-aux-loss-coeff 1e-2 --moe-adaptive-recompute-activation"' ] }
 
   # MoE Grouped GEMM: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/megatron_moe/megatron-moe-gmm.md
-  - { id: [ 'megatron-moe-gemm' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --moe-grouped-gemm --disable-bias-linear"' ] }
+  - { id: [ 'megatron-moe-gemm' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --moe-grouped-gemm --disable-bias-linear"' ] }
 
   # Moe drop and pad
-  - { id: [ 'moe-drop-pad' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 4 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-model-type megatron_moe --disable-bias-linear --moe-token-dispatcher-type alltoall --moe-pad-expert-input-to-capacity --moe-token-drop-policy"' ] }
+  - { id: [ 'moe-drop-pad' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 4 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-model-type megatron_moe --disable-bias-linear --moe-token-dispatcher-type alltoall --moe-pad-expert-input-to-capacity --moe-expert-capacity-factor 1.0 --moe-token-drop-policy probs"' ] }
 
   # Allgather Dispatcher 分支优化: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md
-  - { id: [ 'megatron-moe-allgather' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --moe-token-dispatcher-type allgather --moe-permutation-async-comm"' ] }
+  - { id: [ 'megatron-moe-allgather' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --moe-token-dispatcher-type allgather --moe-permutation-async-comm"' ] }
 
   # Alltoall Dispatcher 分支优化: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md
-  - { id: [ 'megatron-moe-alltoall' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --disable-bias-linear --moe-token-dispatcher-type alltoall --moe-permutation-async-comm"' ] }
+  - { id: [ 'megatron-moe-alltoall' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --num-experts 8 --expert-model-parallel-size 2 --moe-router-topk 2 --moe-aux-loss-coeff 0.01 --moe-train-capacity-factor 1.1 --noisy-gate-policy RSample --moe-model-type megatron_moe --disable-bias-linear --moe-token-dispatcher-type alltoall_seq --moe-permutation-async-comm"' ] }
 
   # EOD Reset: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/eod-reset.md
   - { id: [ 'eod-reset-01' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --context-parallel-size 2 --context-parallel-algo megatron_cp_algo --attention-mask-type general --reset-attention-mask --reset-position-ids"' ] }
-  - { id: [ 'eod-reset-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-flash-attn --reset-attention-mask --reset-position-ids"' ] }
+  - { id: [ 'eod-reset-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ],  extra_args: [ '"--sequence-parallel --use-flash-attn --attention-mask-type general --reset-attention-mask --reset-position-ids"' ] }
 
   # Mask归一: https://gitee.com/ascend/MindSpeed/blob/master/docs/features/generate-mask.md
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --no-create-attention-mask-in-dataloader"' ] }
+  - { id: [ 'generate-mask' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --no-create-attention-mask-in-dataloader"' ] }
 
   # -- others
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], training_dtype: [ bf16, fp16 ], extra_args: [ '"--sequence-parallel --test-mode --use-cpu-initialization --no-overlap-p2p-communication"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --no-mmap-bin-files"' ] }
+  - { id: [ 'others-01' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], training_dtype: [ bf16, fp16 ], extra_args: [ '"--sequence-parallel --test-mode --use-cpu-initialization --no-overlap-p2p-communication"' ] }
+  - { id: [ 'no-mmap-bin' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --no-mmap-bin-files"' ] }
   #--decoupled-lr 仅支持mcore
-  - { use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--decoupled-lr 0.0002"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --qk-layernorm --test-mode"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --group-query-attention --num-query-groups 4"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --swiglu"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --untie-embeddings-and-output-weights"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --eval-interval 10 --exit-duration-in-mins 5"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --exit-signal-handler"' ] }
-  - { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--lr-decay-style constant --weight-decay-incr-style linear --start-weight-decay 1e-3 --end-weight-decay 1e-2"', '"--lr-decay-style cosine --weight-decay-incr-style constant"', '"--lr-decay-style inverse-square-root --weight-decay-incr-style cosine --start-weight-decay 1e-3 --end-weight-decay 1e-2"' ] }
+  - { id: [ 'decoupled-lr' ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], vp_size: [ 1 ], extra_args: [ '"--micro-batch-size 2 --global-batch-size 16 --decoupled-lr 0.0002"' ] }
+  - { id: [ 'qk-layernorm' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --qk-layernorm --test-mode"' ] }
+  - { id: [ 'gqa' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --group-query-attention --num-query-groups 4"' ] }
+  - { id: [ 'swiglu' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --swiglu"' ] }
+  - { id: [ 'untie-embed' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --untie-embeddings-and-output-weights"' ] }
+  - { id: [ 'exit-duration' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --eval-interval 10 --exit-duration-in-mins 5"' ] }
+  - { id: [ 'exit-signal-handler' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--sequence-parallel --exit-signal-handler"' ] }
+  - { id: [ 'weight-decay' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--lr-decay-style constant --weight-decay-incr-style linear --start-weight-decay 1e-3 --end-weight-decay 1e-2"', '"--lr-decay-style cosine --weight-decay-incr-style constant"', '"--lr-decay-style inverse-square-root --weight-decay-incr-style cosine --start-weight-decay 1e-3 --end-weight-decay 1e-2"' ] }
 
 
   # 模型加载用例
-  - { use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--auto-detect-ckpt-format --use-distributed-optimizer"' ] }
-  - { checkpoint_resume_test: [ 1 ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--auto-detect-ckpt-format --use-checkpoint-args --use-distributed-optimizer"' ] }
+  - { id: [ 'load_ckpt-010' ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--auto-detect-ckpt-format --use-distributed-optimizer"' ] }
+  - { id: [ 'load_ckpt-011' ], checkpoint_resume_test: [ 1 ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--auto-detect-ckpt-format --use-checkpoint-args --use-distributed-optimizer"' ] }
 
-  - { use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 2 ] }
-  - { checkpoint_resume_test: [ 1 ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 2 ] }
+  - { id: [ 'load_ckpt-020' ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 2 ] }
+  - { id: [ 'load_ckpt-021' ], checkpoint_resume_test: [ 1 ], use_mcore: [ False ], tp_size: [ 1 ], pp_size: [ 2 ] }
 
-  - { use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 2"' ] }
-  - { checkpoint_resume_test: [ 1 ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 2"' ] }
+  - { id: [ 'load_ckpt-030' ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 2"' ] }
+  - { id: [ 'load_ckpt-031' ], checkpoint_resume_test: [ 1 ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 2 ], extra_args: [ '"--num-experts 8 --expert-model-parallel-size 2 --moe-router-load-balancing-type sinkhorn --moe-router-topk 2"' ] }
 
   # --distribute-saved-activations=True, sequence parallel must be disable
-  - { use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
-  - { checkpoint_resume_test: [ 1 ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
+  - { id: [ 'load_ckpt-040' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
+  - { id: [ 'load_ckpt-041' ], checkpoint_resume_test: [ 1 ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
 
-  - { use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
-  - { checkpoint_resume_test: [ 1 ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
+  - { id: [ 'load_ckpt-050' ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }
+  - { id: [ 'load_ckpt-051' ], checkpoint_resume_test: [ 1 ], use_mcore: [ False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--distribute-saved-activations --recompute-granularity full --recompute-method block --recompute-num-layers 1"' ] }

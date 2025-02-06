@@ -109,7 +109,8 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
        --seq-length 1024 \
        --max-position-embeddings 1024 \
        --train-samples ${TRAIN_SAMPLES:-1280} \
-       --timing-log-level 2 \
+       --timing-log-level 0 \
+       --ckpt-format torch \
        --save ${CHECKPOINT_PATH} \
        --load ${CHECKPOINT_PATH} \
        --data-path ${DATA_PATH} \

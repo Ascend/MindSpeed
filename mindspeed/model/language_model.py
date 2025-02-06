@@ -56,6 +56,7 @@ def parallel_lm_logits(
         bias=bias,
         gradient_accumulation_fusion=args.gradient_accumulation_fusion,
         async_grad_allreduce=async_grad_allreduce,
+        allreduce_dgrad=async_grad_allreduce,
         sequence_parallel=args.sequence_parallel)
     # Gather if needed.
     if parallel_output:

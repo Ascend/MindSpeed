@@ -16,7 +16,7 @@
 """Expert parallel groups."""
 import os
 from functools import wraps
-from typing import Optional
+from typing import Optional, Callable, List
 from datetime import timedelta
 
 import torch
@@ -271,6 +271,10 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             nccl_communicator_config_path: Optional[str] = None,
             distributed_timeout_minutes: int = 30,
             order: str = "tp-cp-ep-dp-pp",
+            encoder_tensor_model_parallel_size: Optional[int] = 0,
+            encoder_pipeline_model_parallel_size: Optional[int] = 0,
+            get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+            get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
     ):
         from megatron.training.utils import print_rank_0
         from megatron.training import get_args
@@ -298,9 +302,12 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 1,
                 nccl_communicator_config_path,
                 distributed_timeout_minutes,
-                order
+                order,
+                encoder_tensor_model_parallel_size,
+                encoder_pipeline_model_parallel_size,
+                get_embedding_ranks,
+                get_position_embedding_ranks,
             )
-
             rank = torch.distributed.get_rank()
             world_size: int = torch.distributed.get_world_size()
             num_tensor_model_parallel_groups: int = world_size // tensor_model_parallel_size
@@ -425,7 +432,11 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 expert_model_parallel_size,
                 nccl_communicator_config_path,
                 distributed_timeout_minutes,
-                order
+                order,
+                encoder_tensor_model_parallel_size,
+                encoder_pipeline_model_parallel_size,
+                get_embedding_ranks,
+                get_position_embedding_ranks,
             )
 
         initialize_context_parallel_group_for_send_recv_overlap(

@@ -84,9 +84,11 @@ def step_optimizer(model, optimizer_config, ddp_config, seed: int = None):
         optimizer_config,
         grad_scaler,
         init_state_fn,
+        model,
     ]
     model_parallel_rank = torch.distributed.get_rank(mpu.get_model_parallel_group())
     per_model_buffers = {}
+
 
     for model_idx, model_chunk in enumerate(model):
         if hasattr(model_chunk, 'buffers'):

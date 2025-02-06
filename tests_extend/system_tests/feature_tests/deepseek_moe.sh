@@ -30,7 +30,7 @@ DISTRIBUTED_ARGS="
 MOE_ARGS="
     --expert-model-parallel-size ${EP} \
     --moe-model-type megatron_moe \
-    --moe-token-dispatcher-type alltoall \
+    --moe-token-dispatcher-type alltoall_seq \
     --moe-alltoall-overlap-comm \
     --moe-zero-memory level0 \
     --moe-tp-extend-ep \
@@ -51,7 +51,6 @@ GPT_ARGS="
     --use-fused-rotary-pos-emb \
     --use-fused-swiglu \
     --use-fused-rmsnorm \
-    --use-ascend-mc2 \
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \

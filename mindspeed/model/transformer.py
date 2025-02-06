@@ -1,6 +1,6 @@
 # coding=utf-8
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
-# Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2023 Alibaba PAI and Nvidia Megatron-LM Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -308,7 +308,7 @@ def parallel_transformer_init(self, config,
                  pre_process=True,
                  post_process=True,
                  drop_path_rate=0.0):
-        super(ParallelTransformer, self).__init__()
+        super(ParallelTransformer, self).__init__(config)
 
         args = get_args()
 

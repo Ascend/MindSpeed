@@ -1,7 +1,7 @@
 # entry file : pretrain_gpt_usecase.py
 
 spec:
-  data_path: /home/dataset/gpt-3.5/alpaca_text_document
+  data_path: /home/dataset/model/gpt-3.5/alpaca_text_document
   vocab_file: /home/dataset/model/gpt-3.5/vocab.json
   merge_file: /home/dataset/model/gpt-3.5/merges.txt
   checkpoint_path: ./ckpt

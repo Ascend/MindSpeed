@@ -16,7 +16,7 @@ from mindspeed.core.distributed.param_and_grad_buffer import pipe_register_grad_
 from mindspeed.patch_utils import MindSpeedPatchesManager as pm
 
 from megatron.core.transformer import TransformerConfig
-from megatron.core.distributed import ParamAndGradBuffer
+from megatron.core.distributed.param_and_grad_buffer import ParamAndGradBuffer, _ParamAndGradBucketGroup
 from megatron.core.tensor_parallel.layers import RowParallelLinear, ColumnParallelLinear
 from megatron.legacy.model.transformer import ParallelMLP
 from megatron.training.global_vars import set_args
@@ -44,7 +44,7 @@ mg_row_parallel_forward = get_copied_function(RowParallelLinear.forward)
 mg_column_parallel_forward = get_copied_function(ColumnParallelLinear.forward)
 mg_linear_with_grad_accumulation_and_async_allreduce = get_copied_function(
     linear_with_grad_accumulation_and_async_allreduce)
-mg_register_grad_ready = get_copied_function(ParamAndGradBuffer.register_grad_ready)
+mg_register_grad_ready = get_copied_function(_ParamAndGradBucketGroup.register_grad_ready)
 
 
 def switch_patch(use_pipe_experts):
@@ -55,7 +55,7 @@ def switch_patch(use_pipe_experts):
                           ms_column_parallel_forward, True)
         pm.register_patch('megatron.core.tensor_parallel.layers.linear_with_grad_accumulation_and_async_allreduce',
                           ms_linear_with_grad_accumulation_and_async_allreduce, True)
-        pm.register_patch('megatron.core.distributed.ParamAndGradBuffer.register_grad_ready',
+        pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.register_grad_ready',
                           ms_register_grad_ready, True)
     else:
         pm.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear.forward',
@@ -64,7 +64,7 @@ def switch_patch(use_pipe_experts):
                           mg_column_parallel_forward, True)
         pm.register_patch('megatron.core.tensor_parallel.layers.linear_with_grad_accumulation_and_async_allreduce',
                           mg_linear_with_grad_accumulation_and_async_allreduce, True)
-        pm.register_patch('megatron.core.distributed.ParamAndGradBuffer.register_grad_ready',
+        pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.register_grad_ready',
                           mg_register_grad_ready, True)
     pm.apply_patches()
 

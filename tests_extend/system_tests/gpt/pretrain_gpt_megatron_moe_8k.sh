@@ -34,7 +34,7 @@ MOE_ARGS_1="
     --num-experts 4 \
     --moe-permutation-async-comm \
     --moe-grouped-gemm \
-    --moe-token-dispatcher-type alltoall \
+    --moe-token-dispatcher-type alltoall_seq \
     --moe-router-topk 2 \
 "
 

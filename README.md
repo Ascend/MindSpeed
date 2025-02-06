@@ -86,11 +86,11 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 ### 3. 获取 Megatron-LM 并指定分支
 
-☀️ 获取并切换 Megatron-LM 版本至 core_r0.8.0 的release版本，如下所示：
+☀️ 获取并切换 Megatron-LM 版本至 core_r0.9.0 的release版本，如下所示：
  ```shell
  git clone https://github.com/NVIDIA/Megatron-LM.git
  cd Megatron-LM
- git checkout core_r0.8.0
+ git checkout core_r0.9.0
  ```
 
 # 快速上手
@@ -105,7 +105,17 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
      from typing import Union
     ```
 
-2. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
+2. 如果使用Python3.8.x, 那么需要修改`Megatron-LM/megatron/core/dist_checkpointing/strategies/base.py`文件，在开始处加入`from __future__ import annotations`
+    
+    ```diff
+     """ Strategies base interfaces. """
+
+    +from __future__ import annotations
+     from abc import ABC, abstractmethod
+     from collections import defaultdict
+    ```
+
+3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
     ```shell
     bash examples/gpt3/train_gpt3_175b_distributed.sh
     ```
@@ -839,7 +849,8 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 | MindSpeed版本             | Megatron版本      | PyTorch版本   | torch_npu版本 | CANN版本  | Python版本                               | 硬件型态     |
 |-------------------------|-----------------|------------- |-------------|---------|----------------------------------------|----------|
-| master（主线）              | Core 0.8.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+| master（主线）              | Core 0.9.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+| core_r0.8.0（主线）         | Core 0.8.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.7.0（主线）         | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.6.0（主线）         | Core 0.6.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | 1.0.0_core_r0.7.0（商用）   | Core 0.7.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |

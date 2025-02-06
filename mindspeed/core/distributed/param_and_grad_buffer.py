@@ -10,6 +10,7 @@ from logging import getLogger
 from contextlib import nullcontext
 import torch
 from megatron.training import get_args
+from megatron.core.distributed.param_and_grad_buffer import shard_buffer
 from megatron.core.distributed.param_and_grad_buffer import BufferType
 from megatron.core import parallel_state
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
@@ -40,6 +41,161 @@ def reuse_fp32_param_param_and_grad_buffer_init_wrapper(init_func):
         if global_args.reuse_fp32_param and global_args.use_distributed_optimizer:
             math.ceil = math_ceil
     return reuse_fp32_param_param_and_grad_buffer_init
+
+
+# The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
+def start_param_sync(self, force_sync: bool = False):
+    """
+    Initiates all necessary param all-gathers for this bucket.
+
+    When ddp_config.overlap_param_gather is set to True, dispatches an asynchronous
+    communication call (unless force_sync is True). When ddp_config.overlap_param_gather
+    is set to False, makes synchronous call.
+
+    Args:
+        force_sync (bool, optional): force synchronous collective regardless of
+            other settings if true.
+    """
+    assert self.ddp_config.use_distributed_optimizer
+
+    if force_sync:
+        if self.param_gather_handle is not None:
+            self.param_gather_handle.wait()
+            self.param_gather_handle = None
+            return
+    else:
+        assert self.param_gather_handle is None
+
+    async_op = self.ddp_config.overlap_param_gather and not force_sync
+
+    self.param_gather_handle = []
+    for bucket in self.buckets:
+        local_data_view = shard_buffer(bucket.param_data, self.data_parallel_world_size)[
+            self.data_parallel_rank
+        ]
+        handle = torch.distributed._all_gather_base(
+            bucket.param_data,
+            local_data_view,
+            group=self.data_parallel_group,
+            async_op=async_op,
+        )
+        self.param_gather_handle.append(handle)
+    if not async_op:
+        self.param_gather_handle = None
+    self.param_gather_dispatched = True
+
+
+# The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
+def finish_param_sync(self, skip_next_bucket_dispatch: bool = False):
+    """
+    Finishes param sync communication operation for this bucket. Dispatches
+    next bucket's param sync if available, unless skip_next_bucket_dispatch
+    is True.
+
+    When ddp_config.overlap_param_gather is set to True, waits for asynchronous
+    communication call to complete (and dispatches one if one is not already
+    outstanding). Throws assertion error if ddp_config.overlap_param_gather is set to
+    False.
+
+    Args:
+        skip_next_bucket_dispatch (bool, optional): if true, dispatch next
+            bucket's communication if available.
+    """
+    assert self.ddp_config.use_distributed_optimizer
+    assert self.ddp_config.overlap_param_gather
+
+    # If current bucket's param AG has not been dispatched, dispatch it now (e.g., first
+    # AG bucket in first model chunk if ddp_config.align_param_gather is False).
+    if not self.param_gather_dispatched:
+        self.start_param_sync()
+
+    if self.param_gather_handle is not None:
+        for handle in self.param_gather_handle:
+            handle.wait()
+        self.param_gather_handle = None
+        # Dispatch next bucket's asynchronous param AG.
+        if self.next_param_gather_bucket_group is not None and not skip_next_bucket_dispatch:
+            self.next_param_gather_bucket_group.start_param_sync()
+
+
+# The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
+def start_grad_sync(self):
+    """
+    Initiates grad sync (all-reduce or reduce-scatter) communication operations
+    for all buckets in the bucket group.
+
+    When ddp_config.overlap_grad_reduce is set to True, dispatches an asynchronous
+    communication call. When ddp_config.overlap_grad_reduce is set to False, makes
+    synchronous call.
+    """
+    assert (
+        self.grad_reduce_handle is None
+    ), 'Should not have multiple communication calls outstanding at once'
+
+    if self.ddp_config.check_for_nan_in_grad:
+        self.check_for_nan_in_grad()
+
+    # gradient_scaling_factor already takes into account whether we are computing
+    # an average or sum in the data-parallel collective.
+    for bucket in self.buckets:
+        if bucket.gradient_scaling_factor != 1.0:
+            bucket.grad_data *= bucket.gradient_scaling_factor
+
+    # Decide reduce_op.
+    reduce_op = torch.distributed.ReduceOp.SUM
+    if self.ddp_config.average_in_collective:
+        reduce_op = torch.distributed.ReduceOp.AVG
+
+    # Use async communications only when overlap_grad_reduce is True.
+    async_op = self.ddp_config.overlap_grad_reduce
+    # Coalesce communication kernels across buckets in the bucket group.
+    self.grad_reduce_handle = []
+    for bucket in self.buckets:
+        if self.ddp_config.use_distributed_optimizer:
+            local_data_view = shard_buffer(bucket.grad_data, self.data_parallel_world_size)[
+                self.data_parallel_rank
+            ]
+            handle = torch.distributed._reduce_scatter_base(
+                local_data_view,
+                bucket.grad_data,
+                op=reduce_op,
+                group=self.data_parallel_group,
+                async_op=async_op,
+            )
+        else:
+            handle = torch.distributed.all_reduce(
+                bucket.grad_data,
+                op=reduce_op,
+                group=self.data_parallel_group,
+                async_op=async_op,
+            )
+        self.grad_reduce_handle.append(handle)
+    if not async_op:
+        self.grad_reduce_handle = None
+
+
+# The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
+def finish_grad_sync(self):
+    """
+    Finishes grad sync (all-reduce or reduce-scatter) communication operations
+    for all buckets in the bucket group.
+
+    When ddp_config.overlap_grad_reduce is set to True, waits for asynchronous
+    communication call to complete. When ddp_config.overlap_grad_reduce is set to False,
+    makes synchronous call.
+    """
+    # If overlap_grad_reduce is False, start (and finish) synchronous communication call here.
+    self.param_gather_dispatched = False
+    if not self.ddp_config.overlap_grad_reduce:
+        self.start_grad_sync()
+        return
+    assert self.grad_reduce_handle is not None, (
+        f'Communication call has not been issued for this bucket '
+        f'({len(self.params_with_grad)}/{len(self.params)} params have grad available)'
+    )
+    for handle in self.grad_reduce_handle:
+        handle.wait()
+    self.grad_reduce_handle = None
 
 
 def param_and_grad_buffer_init_pad(

@@ -59,15 +59,6 @@ def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next
             tensor_send_next.size(), device=torch.cuda.current_device(), dtype=torch.int64
         )
 
-    if config.use_ring_exchange_p2p:
-        torch.distributed.ring_exchange(
-            tensor_send_prev=send_prev_shape_tensor,
-            tensor_recv_prev=recv_prev_shape_tensor,
-            tensor_send_next=send_next_shape_tensor,
-            tensor_recv_next=recv_next_shape_tensor,
-            group=get_pipeline_model_parallel_group(),
-        )
-
     # Send tensors in both the forward and backward directions as appropriate.
     if config.use_ring_exchange_p2p:
 
@@ -111,14 +102,14 @@ def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next
 
 
 def _communicate(
-    *,
-    tensor_send_next: Optional[torch.Tensor],
-    tensor_send_prev: Optional[torch.Tensor],
-    recv_prev: bool,
-    recv_next: bool,
-    tensor_shape: Shape,
-    config: ModelParallelConfig,
-    wait_on_reqs: bool = True
+        *,
+        tensor_send_next: Optional[torch.Tensor],
+        tensor_send_prev: Optional[torch.Tensor],
+        recv_prev: bool,
+        recv_next: bool,
+        tensor_shape: Shape,
+        config: ModelParallelConfig,
+        wait_on_reqs: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Communicate tensors between stages. Used as helper method in other
     communication methods that are used in megatron/schedules.py.
@@ -153,10 +144,8 @@ def _communicate(
 
     """
 
-    # Create placeholder tensors for receive in forward and backward directions
-    # if needed.
-    tensor_recv_prev = None
-    tensor_recv_next = None
+    tensor_recv_prev_func = None
+    tensor_recv_next_func = None
 
     if not config.variable_seq_lengths:
         recv_prev_shape = tensor_shape
@@ -167,6 +156,22 @@ def _communicate(
             tensor_send_next, tensor_send_prev, recv_prev, recv_next, config, tensor_dim,
         )
 
+    def create_tensor_recv_prev():
+        return torch.empty(
+            recv_prev_shape,
+            requires_grad=True,
+            device=torch.cuda.current_device(),
+            dtype=config.pipeline_dtype,
+        )
+
+    def create_tensor_recv_next():
+        return torch.empty(
+            recv_next_shape,
+            requires_grad=True,
+            device=torch.cuda.current_device(),
+            dtype=config.pipeline_dtype,
+        )
+
     if recv_prev:
         if config.pipeline_dtype is None:
             raise RuntimeError("pipeline_dtype must be provided if recv_prev is True")
@@ -175,12 +180,8 @@ def _communicate(
                 "tensor_shape must be specified if recv_prev is True. "
                 "Common tensor_shape is (seq_length, micro_batch_size, hidden_size)"
             )
-        tensor_recv_prev = torch.empty(
-            recv_prev_shape,
-            requires_grad=True,
-            device=torch.cuda.current_device(),
-            dtype=config.pipeline_dtype,
-        )
+        tensor_recv_prev_func = create_tensor_recv_prev
+
     if recv_next:
         if config.pipeline_dtype is None:
             raise RuntimeError("dtype must be provided if recv_next is True")
@@ -189,12 +190,7 @@ def _communicate(
                 "tensor_shape must be specified if recv_next is True. "
                 "Common tensor_shape is (seq_length, micro_batch_size, hidden_size)"
             )
-        tensor_recv_next = torch.empty(
-            recv_next_shape,
-            requires_grad=True,
-            device=torch.cuda.current_device(),
-            dtype=config.pipeline_dtype,
-        )
+        tensor_recv_next_func = create_tensor_recv_next
 
     # Send tensors in both the forward and backward directions as appropriate.
     if config.use_ring_exchange_p2p:
@@ -210,13 +206,49 @@ def _communicate(
     else:
         p2p_func = _p2p_ops
 
-    reqs = p2p_func(
-        tensor_send_prev=tensor_send_prev,
-        tensor_recv_prev=tensor_recv_prev,
-        tensor_send_next=tensor_send_next,
-        tensor_recv_next=tensor_recv_next,
-        group=get_pipeline_model_parallel_group(),
-    )
+    # Each rank can now be part of several different pipeline parallel groups
+    # (specifically, this can occur when encoder tensor parallelism != decoder
+    # tensor parallelism, and hence a rank in the encoder is going to feed
+    # several different decoder ranks. We therefore have to receive or send tensors
+    # from several groups. For convenience, I wrap everything into lists.
+    pp_group = get_pipeline_model_parallel_group()
+    next_rank = get_pipeline_model_parallel_next_rank()
+    prev_rank = get_pipeline_model_parallel_prev_rank()
+    if not isinstance(pp_group, list):
+        pp_group = [pp_group]
+        assert not isinstance(next_rank, list)
+        next_rank = [next_rank]
+        assert not isinstance(prev_rank, list)
+        prev_rank = [prev_rank]
+
+    reqs = []
+    tensor_recv_prev_list = []
+    tensor_recv_next_list = []
+
+    for group, nr, pr in zip(pp_group, next_rank, prev_rank):
+        if tensor_recv_prev_func is not None:
+            tensor_recv_prev = tensor_recv_prev_func()
+            tensor_recv_prev_list.append(tensor_recv_prev)
+        else:
+            tensor_recv_prev = None
+
+        if tensor_recv_next_func is not None:
+            tensor_recv_next = tensor_recv_next_func()
+            tensor_recv_next_list.append(tensor_recv_next)
+        else:
+            tensor_recv_next = None
+
+        reqs.extend(
+            p2p_func(
+                tensor_send_prev=tensor_send_prev,
+                tensor_recv_prev=tensor_recv_prev,
+                tensor_send_next=tensor_send_next,
+                tensor_recv_next=tensor_recv_next,
+                group=group,
+                prev_pipeline_rank=pr,
+                next_pipeline_rank=nr,
+            )
+        )
 
     if wait_on_reqs and len(reqs) > 0:
         for req in reqs:
@@ -227,6 +259,22 @@ def _communicate(
         # To protect against race condition when using batch_isend_irecv().
         # User should assert that we have a modern enough PyTorch to not need this
         torch.cuda.synchronize()
+
+    def _handle_tensor_list(x):
+        """This basically handles all the cases that we expect to see. Either the list None,
+        or it's a singleton (the usual cases, since most ranks only belong to one pipeline group),
+        or everything returned is None, or everything returned is not None, and it has to be summed
+        together."""
+        if len(x) == 0:
+            return None
+        if len(x) == 1:
+            return x[0]
+        if all(xx is None for xx in x):
+            return None
+        return torch.stack(x, dim=0).sum(dim=0, dtype=torch.float32).to(x[0].dtype)
+
+    tensor_recv_prev = _handle_tensor_list(tensor_recv_prev_list)
+    tensor_recv_next = _handle_tensor_list(tensor_recv_next_list)
 
     return tensor_recv_prev, tensor_recv_next, reqs
 
@@ -394,7 +442,9 @@ def _p2p_ops_send_recv_overlap(
     tensor_recv_prev: Optional[torch.Tensor],
     tensor_send_next: Optional[torch.Tensor],
     tensor_recv_next: Optional[torch.Tensor],
-    group: torch.distributed.ProcessGroup
+    group: torch.distributed.ProcessGroup,
+    prev_pipeline_rank: int,
+    next_pipeline_rank: int,
 ):
     ops = []
     if get_pipeline_model_parallel_rank() % 2 == 0:
@@ -402,7 +452,7 @@ def _p2p_ops_send_recv_overlap(
             send_prev_op = torch.distributed.P2POp(
                 torch.distributed.isend,
                 tensor_send_prev,
-                get_pipeline_model_parallel_prev_rank(),
+                prev_pipeline_rank,
                 group,
             )
             ops.append(send_prev_op)
@@ -410,7 +460,7 @@ def _p2p_ops_send_recv_overlap(
             recv_prev_op = torch.distributed.P2POp(
                 torch.distributed.irecv,
                 tensor_recv_prev,
-                get_pipeline_model_parallel_prev_rank(),
+                prev_pipeline_rank,
                 group,
             )
             ops.append(recv_prev_op)
@@ -418,7 +468,7 @@ def _p2p_ops_send_recv_overlap(
             send_next_op = torch.distributed.P2POp(
                 torch.distributed.isend,
                 tensor_send_next,
-                get_pipeline_model_parallel_next_rank(),
+                next_pipeline_rank,
                 group,
             )
             ops.append(send_next_op)
@@ -426,7 +476,7 @@ def _p2p_ops_send_recv_overlap(
             recv_next_op = torch.distributed.P2POp(
                 torch.distributed.irecv,
                 tensor_recv_next,
-                get_pipeline_model_parallel_next_rank(),
+                next_pipeline_rank,
                 group,
             )
             ops.append(recv_next_op)

@@ -106,6 +106,7 @@ def track_moe_metrics_megatron_original_mock(loss_scale, writer, total_loss_dict
 
 
 class TestNoopLayer(DistributedTest):
+    world_size = 8
 
     def init_parallel_transformer(self):
         args = get_args()
@@ -151,10 +152,11 @@ class TestNoopLayer(DistributedTest):
         args = get_args()
         destroy_model_parallel()
         # Pytorch distributed.
-        _initialize_distributed()
+        _initialize_distributed(None, None)
 
         # Random seeds for reproducibility.
         _set_random_seed(args.seed, args.data_parallel_random_init)
+
 
     @pytest.mark.parametrize("tp_pp_vp_stage", [(2, 2, 1), (2, 2, None), (2, 1, None), (1, 2, None), (1, 1, None)])
     @pytest.mark.parametrize("num_layers", [24, 10])

@@ -8,7 +8,7 @@ from unit_tests.common import DistributedTest
 
 from megatron.core import parallel_state
 from megatron.core.distributed import DistributedDataParallelConfig
-from megatron.core.distributed.param_and_grad_buffer import Bucket
+from megatron.core.distributed.param_and_grad_buffer import _ParamAndGradBucket, _ParamAndGradBucketGroup
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 
@@ -47,40 +47,49 @@ class TestOverlapGradReduce(DistributedTest):
             check_for_nan_in_grad=False,
         )
 
-        ref = Bucket(
-            ddp_config=ddp_config,
+        ref_bucket = _ParamAndGradBucket(
             params=params,
             param_data=data,
             grad_data=grad_data,
             offset=torch.cuda.current_device(),
             numel_unpadded=count,
-            data_parallel_group=parallel_state.get_data_parallel_group(),
-            data_parallel_world_size=parallel_state.get_data_parallel_world_size(),
             gradient_scaling_factor=1.0,
+            bucket_id=0,
         )
 
+        ref = _ParamAndGradBucketGroup(
+            [ref_bucket],
+            ddp_config,
+            parallel_state.get_data_parallel_group(),
+            parallel_state.get_data_parallel_world_size(),
+        )
         # test overlap_grad_reduce
         ddp_config.overlap_grad_reduce = True
-        overlap = Bucket(
-            ddp_config=ddp_config,
+
+        overlap_bucket = _ParamAndGradBucket(
             params=params_overlap,
             param_data=data_overlap,
             grad_data=grad_data_overlap,
             offset=torch.cuda.current_device(),
             numel_unpadded=count,
-            data_parallel_group=parallel_state.get_data_parallel_group(),
-            data_parallel_world_size=parallel_state.get_data_parallel_world_size(),
             gradient_scaling_factor=1.0,
+            bucket_id=0,
         )
 
+        overlap = _ParamAndGradBucketGroup(
+            [overlap_bucket],
+            ddp_config,
+            parallel_state.get_data_parallel_group(),
+            parallel_state.get_data_parallel_world_size(),
+        )
         ref.start_grad_sync()
 
         overlap.start_grad_sync()
         overlap.finish_grad_sync()
 
         if dtype == torch.bfloat16:
-            ref.param_data = ref.param_data.float()
-            overlap.param_data = overlap.param_data.float()
+            ref_bucket.param_data = ref_bucket.param_data.float()
+            overlap_bucket.param_data = overlap_bucket.param_data.float()
 
-        assert torch.allclose(ref.param_data, overlap.param_data, rtol=0.0001, atol=0.0001), '{}\n{}'.format(
-            ref.param_data, overlap.param_data)
+        assert torch.allclose(ref_bucket.param_data, overlap_bucket.param_data, rtol=0.0001, atol=0.0001), '{}\n{}'.format(
+            ref_bucket.param_data, overlap_bucket.param_data)

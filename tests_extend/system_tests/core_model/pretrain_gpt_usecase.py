@@ -129,6 +129,7 @@ def xtest_gpt_usecase(usecase_yaml, usecase_script):
 
                 log_save_path = os.path.join(logs_dir, f"usecase-{case_id}-{casegroup_index}.log")
                 # run usecase
+                print(f"sh {script_path} {param_str} {sepc_param} 2>&1 | tee {log_save_path}")
                 os.system(f"sh {script_path} {param_str} {sepc_param} 2>&1 | tee {log_save_path}")
                 print("==================== ENDING =======================")
             except Exception as e:

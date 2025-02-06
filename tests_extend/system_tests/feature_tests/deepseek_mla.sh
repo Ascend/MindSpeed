@@ -35,7 +35,7 @@ RECOMPUTE_ARGS="
 MOE_ARGS="
     --expert-model-parallel-size ${EP} \
     --moe-model-type megatron_moe \
-    --moe-token-dispatcher-type alltoall \
+    --moe-token-dispatcher-type alltoall_seq \
     --moe-permutation-async-comm \
     --moe-pad-expert-input-to-capacity \
     --moe-expert-capacity-factor 1.5 \
@@ -75,7 +75,6 @@ GPT_ARGS="
     --use-fused-rotary-pos-emb \
     --use-fused-swiglu \
     --use-fused-rmsnorm \
-    --use-ascend-mc2 \
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \

@@ -92,6 +92,7 @@ class TestCoC(DistributedTest):
                     err_rate = is_similar(orig_output, output)
                     assert err_rate < 5e-3
 
+    @pytest.mark.skip(reason='lcal can not be built because ag-mm-rs is currently not available.')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_all_gather_matmul(self):
         from mindspeed.ops.lcal_functional import coc_ops

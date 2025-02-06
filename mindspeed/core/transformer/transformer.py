@@ -1,3 +1,5 @@
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reversed.
+# Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
 import enum
 import os
 from functools import wraps
@@ -275,7 +277,7 @@ def norm_recompute_forward(
 
     if self.training:
         self.norm_ckpt2.discard_output()
-    mlp_output_with_bias[0].register_hook(self.norm_ckpt2.recompute)
+        mlp_output_with_bias[0].register_hook(self.norm_ckpt2.recompute)
 
     with self.bias_dropout_add_exec_handler():
         hidden_states = self.mlp_bda(self.training, self.config.bias_dropout_fusion)(
