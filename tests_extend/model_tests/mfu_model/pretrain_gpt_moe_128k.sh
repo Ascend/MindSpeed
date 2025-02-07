@@ -39,7 +39,6 @@ GPT_ARGS="
     --num-layers-per-virtual-pipeline-stage 2 \
     --use-fused-rotary-pos-emb \
     --use-cp-send-recv-overlap \
-    --use-ascend-mc2 \
     --overlap-grad-reduce \
     --sequence-parallel \
     --num-layers 24 \
