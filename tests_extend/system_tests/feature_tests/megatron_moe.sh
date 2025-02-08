@@ -57,7 +57,6 @@ GPT_ARGS="
     --num-layers-per-virtual-pipeline-stage 1 \
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
-    --use-ascend-mc2 \
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \

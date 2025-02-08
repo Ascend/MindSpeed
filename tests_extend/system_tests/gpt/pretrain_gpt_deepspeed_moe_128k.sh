@@ -56,7 +56,6 @@ GPT_ARGS="
     --overlap-grad-reduce \
     --overlap-param-gather \
     --use-fused-rotary-pos-emb \
-    --use-ascend-mc2 \
     --sequence-parallel \
     --num-layers 2 \
     --hidden-size 12288 \
