@@ -4,9 +4,10 @@ import torch
 import torch_npu
 from megatron.core.transformer.moe.moe_utils import permute_with_padded_tokens, unpermute_with_padded_tokens
 from megatron.training import get_args
-from megatron.core import parallel_state
+from megatron.core import mpu, parallel_state
 from megatron.core.transformer.moe.moe_utils import (reduce_aux_losses_tracker_across_ranks,
-                                                     clear_aux_losses_tracker, )
+                                                     clear_aux_losses_tracker)
+
 
 AG_TP_HIDDEN_STATUS = None
 AG_SHARED_EXPERTS_INPUTS = []
@@ -17,6 +18,7 @@ SWAP_STREAM2 = None
 SWAP_TENSOR = None
 MATMUL_OUTPUT_GRAD = None
 UNPERMUTED_TOKENS = None
+PERMUTE_WITH_EP_LOCAL_INPUT_TOKENS = None
 
 
 def get_swap_stream():
@@ -87,6 +89,18 @@ def get_gemm_backward_need_tensors():
     global GEMM_BACKWARD_NEED_TENSORS
     result = GEMM_BACKWARD_NEED_TENSORS
     GEMM_BACKWARD_NEED_TENSORS = None
+    return result
+
+
+def set_permute_with_ep_local_input_tokens(_inputs):
+    global PERMUTE_WITH_EP_LOCAL_INPUT_TOKENS
+    PERMUTE_WITH_EP_LOCAL_INPUT_TOKENS = _inputs
+
+
+def get_permute_with_ep_local_input_tokens():
+    global PERMUTE_WITH_EP_LOCAL_INPUT_TOKENS
+    result = PERMUTE_WITH_EP_LOCAL_INPUT_TOKENS
+    PERMUTE_WITH_EP_LOCAL_INPUT_TOKENS = None
     return result
 
 
@@ -207,6 +221,55 @@ def permute(tokens, indices, num_out_tokens: int = None, padded_mode: bool = Fal
     return permuted_tokens, sorted_indices
 
 
+def permute_with_ep(tokens: torch.Tensor,
+                    indices: torch.Tensor,
+                    probs: torch.Tensor,
+                    topk: int = 1,
+                    gb_inputs_splits=None):
+    if topk > 1:
+        if indices.size(1) != topk:
+            raise RuntimeError("indices.size(1) should be equal to topk")
+    flatten_indices = indices.view(-1)
+    sorted_indices = torch.sort(flatten_indices.float(), stable=True)[1]
+    ep_rank = mpu.get_expert_model_parallel_rank()
+    import numpy as np
+    gb_inputs_splits_sum = np.cumsum(gb_inputs_splits)
+    start = 0
+    if ep_rank > 0:
+        start = gb_inputs_splits_sum[ep_rank - 1]
+    end = gb_inputs_splits_sum[ep_rank]
+    result_indices = sorted_indices[start : end]
+    permuted_tokens = tokens.index_select(0, result_indices // topk)
+    flatten_probs = probs.view(-1)
+    permuted_probs = flatten_probs.index_select(0, result_indices)
+    return permuted_tokens, permuted_probs, result_indices
+
+
+def unpermute_with_ep(
+        unpermute_with_ep_input_tensors_list,
+        probs: torch.Tensor = None,
+        padded_mode: bool = False,
+        restore_shape: torch.Size = None,
+        topk: int = 1,
+):
+    permuted_tokens, sorted_indices, permuted_probs = unpermute_with_ep_input_tensors_list
+    if padded_mode:
+        return unpermute_with_padded_tokens(
+            permuted_tokens, sorted_indices, probs, restore_shape=restore_shape
+        )
+
+    assert sorted_indices.numel() == permuted_tokens.size(0)
+    if permuted_probs is not None:
+        permuted_tokens = permuted_tokens * permuted_probs.unsqueeze(-1)
+    unpermuted_tokens = torch.zeros(restore_shape[0], permuted_tokens.size(-1),
+                                    dtype=permuted_tokens.dtype, device=permuted_tokens.device)
+    sorted_indices = sorted_indices // topk
+    unpermuted_tokens = unpermuted_tokens.scatter_add_(0,
+                                                       sorted_indices.unsqueeze(1).expand(-1, permuted_tokens.shape[1]),
+                                                       permuted_tokens)
+    return unpermuted_tokens
+
+	
 def unpermute(
     permuted_tokens: torch.Tensor,
     sorted_indices: torch.Tensor,
@@ -310,3 +373,4 @@ def track_moe_metrics(
                     )
 
     clear_aux_losses_tracker()
+

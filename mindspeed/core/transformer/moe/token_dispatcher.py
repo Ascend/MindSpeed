@@ -3,13 +3,16 @@
 import torch
 from torch_npu.utils.collect_env import get_cann_version
 from megatron.training import get_args
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core import parallel_state, tensor_parallel, mpu
 from megatron.core.transformer.moe.moe_utils import moe_gather, moe_scatter, permute, unpermute
 from megatron.core.tensor_parallel.mappings import _gather_along_first_dim_expert_parallel, reduce_scatter_to_sequence_parallel_region
 from mindspeed.core.transformer.moe.router import gather_from_sequence_parallel_region_to_moe_async
-from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_reduce_scatter
+from mindspeed.core.transformer.moe.comm_utils import (async_all_to_all, async_reduce_scatter,
+                                                       async_all_gather, reduce_scatter, all_gather)
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import forward_func
 from mindspeed.core.transformer.moe.unpermute_without_activation import UnpermuteWithoutActivation
+from mindspeed.core.transformer.moe.moe_utils import (AG_SHARED_EXPERTS_INPUTS, 
+                                                      permute_with_ep, unpermute_with_ep)
 
 
 def is_less_or_equal_rc2_cann_version():
@@ -449,7 +452,8 @@ def alltoall_token_permutation_with_bmm(
     return permutated_local_input_tokens, tokens_per_expert
 
 
-def preprocess_tp_extend_ep(self, indices: torch.Tensor) -> torch.Tensor:
+def preprocess_tp_extend_ep(self, indices: torch.Tensor, *args) -> torch.Tensor:
+    moe_hierarchical_alltoallv = get_args().moe_hierarchical_alltoallv
     num_local_tokens_per_expert = torch.histc(
         indices, bins=self.num_experts, min=0, max=self.num_experts
     )
@@ -472,15 +476,38 @@ def preprocess_tp_extend_ep(self, indices: torch.Tensor) -> torch.Tensor:
         # ===================================================
         # Calculate input_splits, output_splits for alltoall-v.
         # ===================================================
-        self.input_splits = (
-            num_local_tokens_per_expert.reshape(tp_extended_ep_size, self.num_local_experts)
-            .sum(axis=1)
-            .to(torch.device("cpu"))
-            .numpy()
-        )
-        num_global_tokens_per_expert = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
-            num_local_tokens_per_expert
-        ).reshape(tp_extended_ep_size, self.num_experts)
+        if moe_hierarchical_alltoallv:
+            tp_group = parallel_state.get_tensor_model_parallel_group()
+            self.input_splits_tp_ep = (
+                num_local_tokens_per_expert.reshape(tp_extended_ep_size, self.num_local_experts)
+                .sum(axis=1)
+                .to(torch.device("cpu"))
+                .numpy()
+            )
+            expert_parallel_rank = mpu.get_expert_model_parallel_rank()
+            tp_size = parallel_state.get_tensor_model_parallel_world_size()
+            offset = expert_parallel_rank * tp_size
+            self.input_splits = [self.input_splits_tp_ep[i + offset] for i in range(tp_size)]
+            self.input_splits_tp_ep = self.input_splits_tp_ep.reshape(ep_size, tp_size).sum(axis=1)
+            num_global_tokens_per_expert = \
+                all_gather(num_local_tokens_per_expert, group=tp_group).reshape(tp_size, self.num_experts)
+            # shared_experts allgather with tp
+            if get_args().n_shared_experts and parallel_state.get_tensor_model_parallel_world_size() > 1:
+                _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
+                    args[0], parallel_state.get_tensor_model_parallel_group(), is_use_get_global_memory_buffer=True
+                )
+                AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
+        else:
+            self.input_splits_tp_ep = None
+            self.input_splits = (
+                num_local_tokens_per_expert.reshape(tp_extended_ep_size, self.num_local_experts)
+                .sum(axis=1)
+                .to(torch.device("cpu"))
+                .numpy()
+            )
+            num_global_tokens_per_expert = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
+                num_local_tokens_per_expert
+            ).reshape(tp_extended_ep_size, self.num_experts)
         self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
                                                   :, self.local_expert_indices
                                                   ]
@@ -504,11 +531,18 @@ def preprocess_tp_extend_ep(self, indices: torch.Tensor) -> torch.Tensor:
             self.comm_stream = torch.cuda.Stream()
         self.comm_stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(self.comm_stream):
-            expert_ids_per_ep_rank = torch.tensor(
-                [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
-                dtype=torch.int32,
-                device=torch.cuda.current_device(),
-            )
+            if moe_hierarchical_alltoallv:
+                expert_ids_per_ep_rank = torch.tensor(
+                    [i % self.num_local_experts for i in range(self.config.num_moe_experts // ep_size)],
+                    dtype=torch.int32,
+                    device=torch.cuda.current_device(),
+                )
+            else:
+                expert_ids_per_ep_rank = torch.tensor(
+                    [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
+                    dtype=torch.int32,
+                    device=torch.cuda.current_device(),
+                )
             self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
                 expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
             )
@@ -807,41 +841,79 @@ def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor, bias: t
 def alltoall_token_permutation_new(
         self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor, shared_experts, save_tensors, shared_expert_gate, moe_ctx=None
 ):
+    moe_hierarchical_alltoallv = get_args().moe_hierarchical_alltoallv
     self.hidden_shape = hidden_states.shape
     self.probs = probs
     assert probs.dim() == 2, "Expected 2D tensor for probs"
     assert indices.dim() == 2, "Expected 2D tensor for indices"
+    if moe_hierarchical_alltoallv:
+        ep_group = parallel_state.get_expert_model_parallel_group()
+        _, indices, indices_handle = async_all_gather(indices, group=ep_group)
+        indices_handle.wait()
+        save_tensors.append(indices)
+        _, hidden_states_ep, hidden_states_ep_handle = async_all_gather(hidden_states, group=ep_group)
+    else:
+        indices_ep, hidden_states_ep, hidden_states_ep_handle = None, None, None
+        save_tensors.append(indices_ep)
 
-    def alltoall_token_permutation1(hidden_states, indices):
-        tokens_per_expert = self.preprocess(indices)
+    def alltoall_token_permutation1(hidden_states, indices, *args):
+        if moe_hierarchical_alltoallv:
+            _, self.probs, probs_handle = async_all_gather(self.probs, group=ep_group)
+            tokens_per_expert = self.preprocess(indices, hidden_states)
+            args[1].wait()  # hidden_states_ep_handle
+            save_tensors.append(args[0])  # hidden_states_ep
+            # hidden_states: [S/TP, B, H] -> [S*B/TP, H]
+            hidden_states = args[0].view(-1, self.hidden_shape[-1])
+            self.hidden_shape_before_permute = hidden_states.shape
+            # Permutation 1: input to AlltoAll input
+            if self.cuda_sync_point == "before_permutation_1":
+                torch.cuda.current_stream().synchronize()
+            probs_handle.wait()
+            self.probs = self.probs.detach()
+            self.probs.requires_grad = True
+            save_tensors.append(self.probs)
+            permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute_with_ep(
+                hidden_states, indices, probs=self.probs, topk=self.router_topk,
+                gb_inputs_splits=self.input_splits_tp_ep,
+            )
+            self.permuted_probs = permuted_probs
+        else:
+            tokens_per_expert = self.preprocess(indices)
+            save_tensors.append(args[0])
+            if get_args().moe_experts_pipeline_degree:
+                tokens_per_expert = tokens_per_expert.cpu()
 
-        # Flatten the input tensor
-        # hidden_states: [S/TP, B, H] -> [S*B/TP, H]
-        hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
+            # Flatten the input tensor
+            # hidden_states: [S/TP, B, H] -> [S*B/TP, H]
+            hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
 
-        # Perform tensor parallel AlltoAll communication
-        # hidden_states: [S*B/TP, H] -> [S*B, H/TP]
-        if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
-            hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
+            # Perform tensor parallel AlltoAll communication
+            # hidden_states: [S*B/TP, H] -> [S*B, H/TP]
+            if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
+                hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
 
-        # Permutation 1: input to AlltoAll input
-        self.hiddden_shape_before_permute = hidden_states.shape
-        if self.cuda_sync_point == "before_permutation_1":
-            torch.cuda.current_stream().synchronize()
-        permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
-            hidden_states,
-            indices,
-            num_out_tokens=self.num_out_tokens,
-            padded_mode=self.drop_and_pad,
-        )
+            # Permutation 1: input to AlltoAll input
+            self.hiddden_shape_before_permute = hidden_states.shape
+            if self.cuda_sync_point == "before_permutation_1":
+                torch.cuda.current_stream().synchronize()
+            scores_ep = None
+            save_tensors.append(scores_ep)
+            permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+                hidden_states,
+                indices,
+                num_out_tokens=self.num_out_tokens,
+                padded_mode=self.drop_and_pad,
+            )
         return tokens_per_expert, permutated_local_input_tokens
 
     (tokens_per_expert, permutated_local_input_tokens), *_ = forward_func(alltoall_token_permutation1,
-                                                                          (hidden_states, indices))
+                                                                          (hidden_states, indices,
+                                                                           hidden_states_ep, hidden_states_ep_handle))
 
     # permute 1
     save_tensors.append(permutated_local_input_tokens)
 
+    # Perform expert parallel AlltoAll communication
     ep_group = parallel_state.get_expert_model_parallel_group()
     if get_args().moe_tp_extend_ep:
         ep_group = parallel_state.get_tensor_and_expert_parallel_group()
@@ -849,12 +921,21 @@ def alltoall_token_permutation_new(
     # Perform expert parallel AlltoAll communication
     if self.cuda_sync_point == "before_ep_alltoall":
         torch.cuda.current_stream().synchronize()
-    _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
-        permutated_local_input_tokens,
-        self.output_splits,
-        self.input_splits,
-        ep_group,
-    )
+    if moe_hierarchical_alltoallv:
+        tp_group = parallel_state.get_tensor_model_parallel_group()
+        _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
+            permutated_local_input_tokens,
+            self.output_splits,
+            self.input_splits,
+            tp_group,
+        )
+    else:
+        _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
+            permutated_local_input_tokens,
+            self.output_splits,
+            self.input_splits,
+            ep_group,
+        )
 
     # shared experts
     if shared_experts is not None:
@@ -872,8 +953,9 @@ def alltoall_token_permutation_new(
     else:
         share_experts_output = None
 
-    permute1_ep_all_to_all_handle.wait()
-    permutated_local_input_tokens.untyped_storage().resize_(0)
+    if permute1_ep_all_to_all_handle is not None:
+        permute1_ep_all_to_all_handle.wait()
+        permutated_local_input_tokens.untyped_storage().resize_(0)
 
     def alltoall_token_permutation2(global_input_tokens):
         # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
@@ -895,9 +977,10 @@ def alltoall_token_permutation_new(
                 )
         # Perform tensor parallel AllGather on the hidden dimension to obtain the input tokens.
         # global_input_tokens: [SEQL, H/TP] -> [SEQL, H]
-        if (not get_args().moe_tp_extend_ep and
-                parallel_state.get_tensor_model_parallel_world_size() > 1 and
-                self.config.moe_grouped_gemm):
+        need_tp_comm = (not get_args().moe_tp_extend_ep and
+                        parallel_state.get_tensor_model_parallel_world_size() > 1 and
+                        self.config.moe_grouped_gemm) and get_args().moe_experts_pipeline_degree == 0
+        if need_tp_comm:
             global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
                 global_input_tokens
             )
@@ -919,12 +1002,14 @@ def alltoall_token_permutation_new(
 def alltoall_token_unpermutation_new(
         self, hidden_states, bias, save_tensors
 ):
+    moe_hierarchical_alltoallv = get_args().moe_hierarchical_alltoallv
+
     def alltoall_token_unpermutation1(hidden_states):
         assert bias is None, "Bias is not supported in MoEAlltoAllTokenDispatcher"
 
         # Perform tensor parallel Reduce-Scatter
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
-        if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
+        if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1 and get_args().moe_experts_pipeline_degree == 0:
             hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(hidden_states)
 
         # Unpermutation 2: expert output to AlltoAll input
@@ -943,25 +1028,39 @@ def alltoall_token_unpermutation_new(
                     .contiguous()
                 )
         return hidden_states
-
-    hidden_states, unpermute1_input_detach = forward_func(alltoall_token_unpermutation1, hidden_states)
-    save_tensors.append(unpermute1_input_detach)
-    save_tensors.append(hidden_states)
-    unpermute1_input_detach.untyped_storage().resize_(0)
+    if get_args().moe_experts_pipeline_degree:
+        with torch.enable_grad():
+            hidden_states = alltoall_token_unpermutation1(hidden_states)
+        save_tensors.append(hidden_states)
+    else:
+        hidden_states, unpermute1_input_detach = forward_func(alltoall_token_unpermutation1, hidden_states)
+        save_tensors.append(unpermute1_input_detach)
+        save_tensors.append(hidden_states)
+        unpermute1_input_detach.untyped_storage().resize_(0)
 
     ep_group = parallel_state.get_expert_model_parallel_group()
     if get_args().moe_tp_extend_ep:
         ep_group = parallel_state.get_tensor_and_expert_parallel_group()
     # Perform expert parallel AlltoAll communication
     # hidden_states: [SEQL, H] -> [SEQL, H/TP]
-    _, permutated_local_input_tokens, handle = async_all_to_all(
-        hidden_states,
-        self.input_splits,
-        self.output_splits,
-        ep_group
-    )
-    handle.wait()
-    hidden_states.untyped_storage().resize_(0)
+    if moe_hierarchical_alltoallv:
+        tp_group = parallel_state.get_tensor_model_parallel_group()
+        _, permutated_local_input_tokens, handle = async_all_to_all(
+            hidden_states,
+            self.input_splits,
+            self.output_splits,
+            tp_group
+        )
+    else:
+        _, permutated_local_input_tokens, handle = async_all_to_all(
+            hidden_states,
+            self.input_splits,
+            self.output_splits,
+            ep_group
+        )
+    if handle is not None:
+        handle.wait()
+        hidden_states.untyped_storage().resize_(0)
 
     def alltoall_token_unpermutation2(permutated_local_input_tokens):
         # Unpermutation 1: AlltoAll output to output
@@ -972,14 +1071,26 @@ def alltoall_token_unpermutation_new(
                 self.probs
             )
         else:
-            output = unpermute(
-                permutated_local_input_tokens,
-                self.reversed_local_input_permutation_mapping,
-                probs=self.probs,
-                padded_mode=self.drop_and_pad,
-                restore_shape=self.hiddden_shape_before_permute,
-            )
-
+            if moe_hierarchical_alltoallv:
+                unpermute_with_ep_input_tensors_list = [permutated_local_input_tokens,
+                                                        self.reversed_local_input_permutation_mapping,
+                                                        self.permuted_probs]
+                output = unpermute_with_ep(
+                    unpermute_with_ep_input_tensors_list,
+                    restore_shape=self.hidden_shape_before_permute,
+                    probs=self.probs,
+                    topk=self.router_topk
+                )
+            else:
+                output = unpermute(
+                    permutated_local_input_tokens,
+                    self.reversed_local_input_permutation_mapping,
+                    probs=self.probs,
+                    padded_mode=self.drop_and_pad,
+                    restore_shape=self.hiddden_shape_before_permute,
+                )
+        if moe_hierarchical_alltoallv:
+            return output
         # Perform tensor parallel AlltoAll communication
         # output: [S*B, H/TP] -> [S*B/TP, H]
         if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
@@ -991,9 +1102,17 @@ def alltoall_token_unpermutation_new(
 
     output, unpermute2_input_detach = forward_func(alltoall_token_unpermutation2, permutated_local_input_tokens)
     save_tensors.append(unpermute2_input_detach)
-    if not self.drop_and_pad \
-            and not get_args().use_fused_moe_token_permute_and_unpermute or get_args().moe_zero_memory != "disable":
+    should_resize = not self.drop_and_pad and not moe_hierarchical_alltoallv and \
+                    not get_args().use_fused_moe_token_permute_and_unpermute or get_args().moe_zero_memory != "disable"
+    if should_resize:
         unpermute2_input_detach.untyped_storage().resize_(0)
+    save_tensors.append(output)
+
+    if moe_hierarchical_alltoallv:
+        ep_group = parallel_state.get_expert_model_parallel_group()
+        _, output, output_handle = async_reduce_scatter(output, group=ep_group)
+        output_handle.wait()
+        output = output.view(self.hidden_shape)
     return output, None
 
 

@@ -4,6 +4,7 @@ from dataclasses import make_dataclass, field
 from functools import wraps
 import argparse
 import warnings
+import torch
 from mindspeed.features_manager import FEATURES_LIST
 
 
@@ -76,6 +77,8 @@ def _add_deepseek_args(parser):
     group.add_argument('--rope-scaling-mscale-all-dim', type=float, default=0.0, help='Yarn rope: rope mscale all dim')
     group.add_argument('--rope-scaling-original-max-position-embeddings', type=int, default=None,
                        help='Yarn rope: rope original max position embeddings')
+    group.add_argument('--moe-hierarchical-alltoallv', action='store_true',
+                       help='Reduce communication cost between nodes')
 
     return parser
 
@@ -173,6 +176,8 @@ def _add_moe_args(parser):
                        help='moe_alltoall_overlap_comm')
     group.add_argument('--moe-allgather-overlap-comm', action='store_true', default=False,
                        help='moe_allgather_overlap_comm')
+    group.add_argument('--moe-experts-pipeline-degree', type=int, default=0,
+                       help='Group experts into pipeline stages to overlap computation and communication.')
     group.add_argument("--moe-zero-memory", type=str, default='disable',
                        choices=['disable', 'level0', 'level1'],
                        help="Save activation memory in moe layer.")
@@ -626,8 +631,21 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
             if not args.moe_grouped_gemm:
                 raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-grouped-gemm`.')
-        if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
-            raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now. only support with moe_tp_extend_ep when tp > 1.')
+        if not (args.moe_tp_extend_ep or args.moe_experts_pipeline_degree) and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
+            raise AssertionError('`--moe-alltoall-overlap-comm` do not support tp for now. only support with moe_tp_extend_ep or moe_experts_pipeline_degree when tp > 1.')
+        if args.moe_experts_pipeline_degree:
+            if args.moe_experts_pipeline_degree < 2:
+                raise AssertionError("`--moe-experts-pipeline-degree` should be at least 2. ")
+            if args.moe_experts_pipeline_degree > args.num_experts or args.num_experts % args.moe_experts_pipeline_degree != 0:
+                raise AssertionError("`--moe-experts-pipeline-degree` must smaller than `--num-experts` and `--num-experts` divided by `--moe-experts-pipeline-degree` is an integer.")
+            if args.moe_zero_memory != "disable":
+                raise AssertionError("`--moe-experts-pipeline-degree` is not compatible with `--moe-zero-memory`")
+            if not args.tensor_model_parallel_size or args.tensor_model_parallel_size <= 1:
+                raise AssertionError("`--moe-experts-pipeline-degree` only support when '--tensor-model-parallel-size' is bigger than 1.")
+            if args.expert_model_parallel_size > 1:
+                raise AssertionError("`--moe-experts-pipeline-degree` is not compatible with expert model parallel.")
+            if args.moe_tp_extend_ep:
+                raise AssertionError("`--moe-experts-pipeline-degree` is not compatible with `--moe-tp-extend-ep`.")
         if args.moe_tp_extend_ep:
             if args.num_experts % (args.tensor_model_parallel_size * args.expert_model_parallel_size) != 0:
                 raise AssertionError('`--moe-tp-extend-ep` only support when num_experts % ( tp * ep ) == 0')
@@ -635,6 +653,11 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('`--moe-tp-extend-ep` needs `--moe-permutation-async-comm` and `--moe-grouped-gemm`.')
             if args.moe_expert_capacity_factor is not None:
                 raise AssertionError('`--moe-tp-extend-ep` only support when moe_expert_capacity_factor is None.')
+        if args.moe_hierarchical_alltoallv:
+            tp = args.tensor_model_parallel_size
+            ep = args.expert_model_parallel_size
+            if (not args.moe_tp_extend_ep) or tp <= 1 or tp != torch.npu.device_count():
+                raise AssertionError('`--moe-hierarchical-alltoallv` must have `--moe-tp-extend-ep` on and tp > 1 and cross-device communication')
         if args.moe_zero_memory_num_layers is not None:
             num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
             if args.moe_zero_memory_num_layers < 0 or args.moe_zero_memory_num_layers > num_layers_per_pipeline_stage:

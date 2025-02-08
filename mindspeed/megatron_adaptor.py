@@ -698,6 +698,7 @@ def mcore_moe_adaptation(pm, args):
                         alltoall_token_unpermutation_new
                     from .core.transformer.moe.experts import group_mlp_forward
                     from .core.transformer.mlp import mlp_init
+                    from .core.transformer.moe.moe_layer import moe_layer_init
                     pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init)
                     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', group_mlp_forward)
                     pm.register_patch(
@@ -706,6 +707,7 @@ def mcore_moe_adaptation(pm, args):
                     pm.register_patch(
                         'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_unpermutation',
                         alltoall_token_unpermutation_new)
+                    pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init)
                 else:
                     pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
                                       alltoall_token_permutation_tp_extend_ep)
@@ -721,6 +723,7 @@ def mcore_moe_adaptation(pm, args):
                         alltoall_token_unpermutation_new
                     from .core.transformer.moe.experts import group_mlp_forward
                     from .core.transformer.mlp import mlp_init
+                    from .core.transformer.moe.moe_layer import moe_layer_init
                     pm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init)
                     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', group_mlp_forward)
                     pm.register_patch(
@@ -729,6 +732,7 @@ def mcore_moe_adaptation(pm, args):
                     pm.register_patch(
                         'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_unpermutation',
                         alltoall_token_unpermutation_new)
+                    pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init)
                 else:
                     pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.token_permutation',
                                       alltoall_token_permutation)

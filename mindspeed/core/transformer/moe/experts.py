@@ -5,13 +5,13 @@ import torch
 import torch.nn.functional as F
 from megatron.core import parallel_state, tensor_parallel
 from megatron.training import get_args
-from megatron.core.transformer.moe import grouped_gemm_util as gg
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.grouped_gemm_util import fused_alltoall_gather_bmm, fused_bmm_reducescatter_alltoall
 from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_all2all import grouped_mlp_with_comp_and_comm_overlap_all2all
 from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_allgather import grouped_mlp_with_comp_and_comm_overlap_allgather
+from mindspeed.core.transformer.moe import grouped_gemm_util as gg
 
 
 def get_zeros_with_tp(input_):
@@ -66,11 +66,11 @@ def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx
     group_list = torch.cumsum(tokens_per_expert, dim=0)
     if get_args().moe_alltoall_overlap_comm:
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                              (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number),
+                                                              (self.weight1, self.weight2, self.activation_func, group_list, ctx.layer_number),
                                                               ctx=ctx)
-    else: 
+    else:
         return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number))
+                                                                (self.weight1, self.weight2, self.activation_func, group_list, ctx.layer_number))
 
 
 def groupedmlp_init_wrapper(fn):

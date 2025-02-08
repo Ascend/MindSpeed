@@ -30,6 +30,9 @@ class Ops:
         return npu_gmm(a, b, bias=None, group_list=group_list, group_type=0, gemm_fusion=gemm_fusion, original_weight=original_weight)
 
 
+ops = Ops
+
+
 def get_device_capability():
     return 9, 0
 

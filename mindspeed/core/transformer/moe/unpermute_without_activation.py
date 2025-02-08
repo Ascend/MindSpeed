@@ -6,18 +6,19 @@ import torch.distributed
 import torch.distributed as dist
 import torch_npu
 from megatron.training import get_args
-from mindspeed.core.transformer.moe.moe_utils import set_swap_status, get_swap_status, set_prob_backward_need_tensors, get_swap_stream
+from mindspeed.core.transformer.moe.moe_utils import (set_swap_status, get_swap_status,
+                                                      set_prob_backward_need_tensors, get_swap_stream)
 
 
 class UnpermuteWithoutActivation(torch.autograd.Function):
     @staticmethod
     def forward(ctx,
-        permuted_tokens: torch.Tensor,
-        sorted_indices: torch.Tensor,
-        probs: torch.Tensor = None,
-        padded_mode: bool = False,
-        restore_shape: torch.Size = None,
-    ):
+                permuted_tokens: torch.Tensor,
+                sorted_indices: torch.Tensor,
+                probs: torch.Tensor = None,
+                padded_mode: bool = False,
+                restore_shape: torch.Size = None,
+                ):
         """Unpermute a tensor of permuted tokens based on sorted indices, and optionally merge the tokens with their corresponding probabilities.
 
         Args:
@@ -30,6 +31,7 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
         Returns:
             torch.Tensor: The unpermuted tokens, optionally merged with probabilities.
         """
+        moe_hierarchical_alltoallv = get_args().moe_hierarchical_alltoallv
         if padded_mode:
             raise ValueError("moe-zero-memory temporally does not support padded mode")
 
@@ -50,8 +52,16 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
                 num_unpermuted_tokens = permuted_tokens.size(0)
                 ctx.topk = 1
             ctx.save_for_backward(*saved_tensors)
-
-            if not get_args().use_fused_moe_token_permute_and_unpermute:
+            if moe_hierarchical_alltoallv:
+                unpermuted_tokens = torch.zeros(
+                    [ctx.topk * probs.shape[0], permuted_tokens.shape[-1]],
+                    dtype=permuted_tokens.dtype,
+                    device=permuted_tokens.device,
+                )
+                unpermuted_tokens = \
+                    unpermuted_tokens.scatter(0, sorted_indices.unsqueeze(1).expand(-1, permuted_tokens.shape[1]),
+                                              permuted_tokens)
+            elif not get_args().use_fused_moe_token_permute_and_unpermute:
                 unpermuted_tokens = torch.zeros(
                     [num_unpermuted_tokens, permuted_tokens.shape[-1]],
                     dtype=permuted_tokens.dtype,
@@ -90,6 +100,7 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *args):
+        moe_hierarchical_alltoallv = get_args().moe_hierarchical_alltoallv
         if ctx.topk > 1:
             (indices, probs) = ctx.saved_tensors
         else:
@@ -114,7 +125,7 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
 
         unpermuted_tokens_grad = unpermuted_tokens_grad.reshape(ctx.unpermuted_tokens_shape)
 
-        if not get_args().use_fused_moe_token_permute_and_unpermute:
+        if not get_args().use_fused_moe_token_permute_and_unpermute or moe_hierarchical_alltoallv:
             permuted_tokens_grad = unpermuted_tokens_grad.index_select(0, indices)
         else:
             permuted_tokens_grad = torch.zeros(size=ctx.permuted_tokens_shape, dtype=unpermuted_tokens_grad.dtype,

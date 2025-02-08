@@ -1,12 +1,20 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import types
+import copy
 from copy import deepcopy
 from functools import wraps
 import torch
 from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
+from megatron.core.transformer.moe.moe_layer import MoELayer
+from megatron.core.transformer.moe.router import TopKRouter
+from megatron.core.transformer.moe.experts import GroupedMLP, SequentialMLP
+from megatron.core.transformer.moe.token_dispatcher import (
+    MoEAllGatherTokenDispatcher,
+    MoEAlltoAllTokenDispatcher,
+)
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import MoELayerOverlapAll2All
 from mindspeed.core.transformer.moe.moe_layer_overlap_allgather import MoELayerOverlapAllGather
 
@@ -33,9 +41,40 @@ def base_moe_init_wrapper(init_func):
     return base_moe_init
 
 
+def moe_layer_init(self, config, submodules=None, layer_number=None):
+    self.submodules = submodules
+    super(MoELayer, self).__init__(config=config, layer_number=layer_number)
+    self.router = TopKRouter(config=self.config)
+    moe_experts_pipeline_degree = get_args().moe_experts_pipeline_degree
+    if self.config.moe_grouped_gemm:
+        if moe_experts_pipeline_degree == 0:
+            self.experts = GroupedMLP(self.num_local_experts, self.config)
+        else:
+            expert = GroupedMLP(self.num_local_experts // moe_experts_pipeline_degree, self.config)
+            self.experts = torch.nn.ModuleList([copy.deepcopy(expert) for i in range(moe_experts_pipeline_degree)])
+    else:
+        if not isinstance(self.submodules, MLPSubmodules):
+            raise TypeError("submodules should be instance of MLPSubmodules")
+        self.experts = SequentialMLP(self.num_local_experts, self.config, self.submodules)
+    if config.moe_token_dispatcher_type == "allgather":
+        self.token_dispatcher = MoEAllGatherTokenDispatcher(
+            self.num_local_experts, self.local_expert_indices, config=self.config
+        )
+    elif config.moe_token_dispatcher_type == "alltoall":
+        self.token_dispatcher = MoEAlltoAllTokenDispatcher(
+            self.num_local_experts, self.local_expert_indices, config=self.config
+        )
+    else:
+        raise ValueError(
+            f"Unsupported token dispatcher type: {config.moe_token_dispatcher_type}"
+        )
+
+    return moe_layer_init
+
+
 def moe_layer_init_wrapper(init_func):
     @wraps(init_func)
-    def moe_layer_init(*args, **kwargs):
+    def wrapper(*args, **kwargs):
         init_func(*args, **kwargs)
         self = args[0]
         global_args = get_args()
@@ -64,7 +103,7 @@ def moe_layer_init_wrapper(init_func):
             self.token_dispatcher.all_tokens_per_expert = None
         self.forward = types.MethodType(moe_adaptive_forward, self)
 
-    return moe_layer_init
+    return wrapper
 
 
 def moe_adaptive_forward(self, hidden_states: torch.Tensor):
