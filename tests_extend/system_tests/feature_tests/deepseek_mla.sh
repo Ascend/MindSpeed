@@ -76,7 +76,6 @@ GPT_ARGS="
     --use-fused-rotary-pos-emb \
     --use-fused-swiglu \
     --use-fused-rmsnorm \
-    --use-ascend-mc2 \
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \

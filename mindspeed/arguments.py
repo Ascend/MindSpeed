@@ -450,6 +450,8 @@ def validate_args_wrapper(validate_args):
         if args.num_experts:
             if args.use_ascend_coc:
                 raise AssertionError('coc is not compatible with moe models')
+            if args.use_ascend_mc2:
+                raise AssertionError('mc2 is not compatible with moe models')
             if args.use_mcore_models:
                 if args.moe_model_type == 'deepspeed_moe':
                     raise AssertionError('deepspeed_moe is not compatible with --use-mcore-models')
