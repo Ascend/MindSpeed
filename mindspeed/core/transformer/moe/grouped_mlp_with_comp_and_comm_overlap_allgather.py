@@ -24,7 +24,7 @@ from mindspeed.core.transformer.moe.moe_utils import (get_gemm_backward_need_ten
                                                       set_rs_global_hidden_states_grad_with_handle)
 from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
-from mindspeed.core.transformer.moe.token_dispatcher import cann_version_check
+from mindspeed.core.transformer.moe.legacy_a2a_token_dispatcher import cann_version_check
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 
 

@@ -6,7 +6,7 @@ from megatron.core.parallel_state import (get_expert_model_parallel_group, get_t
                                           get_tensor_model_parallel_group, get_tensor_model_parallel_world_size)
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
-from mindspeed.core.transformer.moe.token_dispatcher import cann_version_check
+from mindspeed.core.transformer.moe.legacy_a2a_token_dispatcher import cann_version_check
 from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_utils import (forward_func, backward_func, set_gemm_backward_need_tensors,
