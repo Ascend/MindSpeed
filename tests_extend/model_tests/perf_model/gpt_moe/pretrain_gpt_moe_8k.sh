@@ -30,7 +30,6 @@ DISTRIBUTED_ARGS="
 "
 
 GPT_ARGS="
-    --use-ascend-mc2 \
     --reuse-fp32-param \
     --enable-token-rearrange-opt \
     --use-fused-rotary-pos-emb \

@@ -34,7 +34,6 @@ GPT_ARGS="
     --pipeline-model-parallel-size ${PP} \
     --use-distributed-optimizer \
     --num-layers-per-virtual-pipeline-stage 2\
-    --use-ascend-mc2 \
     --use-fused-rotary-pos-emb \
     --overlap-grad-reduce \
     --overlap-param-gather \
