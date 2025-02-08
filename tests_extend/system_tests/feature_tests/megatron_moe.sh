@@ -58,7 +58,6 @@ GPT_ARGS="
     --use-mcore-models \
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
-    --use-ascend-mc2 \
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
