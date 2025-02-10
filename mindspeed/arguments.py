@@ -44,6 +44,7 @@ def process_args(parser):
     parser = _add_deepseek_args(parser)
     parser = _add_high_availability_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
+    parser = _add_layerzero_args(parser)
 
     return parser
 
@@ -423,6 +424,15 @@ def _add_algorithm_args(parser):
                        help='optimize send_recv communication in pipeline with interleaving.')
     group.add_argument('--enable-zero3', action='store_true', default=False,
                        help='Use this flag to enable zero3, including the segmentation of the parameters, gradients, and optimizers of the row-parallel and column-parallel models, as well as the overlap optimization of the gradient reduce sactter and weight all gather.')
+    return parser
+
+
+def _add_layerzero_args(parser):
+    group = parser.add_argument_group(title='layerzero')
+    group.add_argument('--layerzero', action='store_true', default=False,
+                       help='Use this flag to enable layerzero, including the segmentation of the parameters, gradients, and optimizers of the row-parallel and column-parallel models, as well as the overlap optimization of the gradient reduce sactter and weight all gather.')
+    group.add_argument('--layerzero-config', type=str,
+                       help='Use this yaml file to config layerzero behaviours')
     return parser
 
 

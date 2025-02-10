@@ -877,6 +877,24 @@ def tensor_2d_adaptation(aspm, args):
                             transformer_config_post_init)
 
 
+def megatron_training_adaptation_with_layerzero(aspm, mindspeed_args):
+    '''This function is used to add layerzero feature within mindspeed
+    layerzero manages the paramter in a different manner compared to Megatron Optimizer
+    
+    So if layerzero is on, setup_model_and_optimizer will return a module wrapped by layerzero and the Optimizer will be replaced. 
+    '''
+    if mindspeed_args.layerzero:
+        from mindspeed.core.distributed.layerzero import (layerzero_setup_model_and_optimizer_wrapper, 
+                                                        layerzero_initialize_model_parallel_wrapper, 
+                                                        mga_finalize_model_grads_wrapper,
+                                                        save_checkpoint,
+                                                        )
+        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', layerzero_setup_model_and_optimizer_wrapper)
+        aspm.register_patch('megatron.core.parallel_state.initialize_model_parallel', layerzero_initialize_model_parallel_wrapper)
+        aspm.register_patch('megatron.core.distributed.finalize_model_grads', mga_finalize_model_grads_wrapper)
+        aspm.register_patch('megatron.training.checkpointing.save_checkpoint', save_checkpoint)
+
+
 def optimizer_selection(aspm, mindspeed_args):
     if mindspeed_args.optimizer_selection == 'fused_torch_adamw':
         from .optimizer.adamw import FusedTorchAdamW as AdamW
@@ -990,7 +1008,8 @@ def exe_adaptation():
     if mindspeed_args.optimization_level >= 2:
         # Advanced acceleration algorithm
         adaptation_l2(aspm, mindspeed_args)
-
+    if mindspeed_args.layerzero:
+        megatron_training_adaptation_with_layerzero(aspm, mindspeed_args)
     aspm.apply_patches()
 
     # accelerate package will check TE on sys.modules，so we need remove this patch
