@@ -45,6 +45,7 @@ def process_args(parser):
     parser = _add_high_availability_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
     parser = _add_layerzero_args(parser)
+    parser = _add_dist_train_args(parser)
 
     return parser
 
@@ -436,6 +437,12 @@ def _add_layerzero_args(parser):
     return parser
 
 
+def _add_dist_train_args(parser):
+    group = parser.add_argument_group(title='dist_train')
+    group.add_argument('--dist-train', action='store_true', help='Enable dist-train feature.')
+    return parser
+
+
 def core_transformer_config_from_args_wrapper(fn):
     @wraps(fn)
     def wrapper(args):
@@ -452,6 +459,20 @@ def core_transformer_config_from_args_wrapper(fn):
 def validate_args_wrapper(validate_args):
     @wraps(validate_args)
     def wrapper(args, defaults=None):
+        if args.dist_train:
+            if not hasattr(args, 'mm_model'):
+                raise ValueError('DistTrain must work with MindSpeed-MM')
+            from mindspeed.multi_modal.dist_train.config.dist_train_config import validate_configs_world_size, \
+                get_dist_model_config, merge_dist_train_args
+            merge_dist_train_args(args.mm_model)
+            validate_configs_world_size(args)
+            cfg = get_dist_model_config(rank=args.rank)
+            args.world_size = cfg.world_size
+            args.tensor_model_parallel_size = cfg.tensor_model_parallel_size
+            args.pipeline_model_parallel_size = cfg.pipeline_model_parallel_size
+            args.context_parallel_size = cfg.context_parallel_size
+        need_seq = args.sequence_parallel
+
         if defaults is None:
             defaults = {}
         if args.num_experts:
@@ -510,6 +531,15 @@ def validate_args_wrapper(validate_args):
                 flag_overlap_p2p_comm = True
         original_variable_seq_lengths = args.variable_seq_lengths
         args = validate_args(args, defaults)
+
+        if args.dist_train:
+            from mindspeed.multi_modal.dist_train.config.dist_train_config import get_all_config
+            if args.tensor_model_parallel_size > 1 and need_seq:
+                args.sequence_parallel = True
+            if any(cfg.main_dp for cfg in get_all_config().values()):
+                from mindspeed.multi_modal.dist_train.inner_data_parallel.utils import get_global_data_parallel_size
+                args.data_parallel_size = get_global_data_parallel_size()
+
         args.variable_seq_lengths = original_variable_seq_lengths
         # high availability feature
         if args.enable_high_availability:
