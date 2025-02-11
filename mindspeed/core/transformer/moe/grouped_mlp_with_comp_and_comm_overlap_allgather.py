@@ -26,29 +26,23 @@ from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.token_dispatcher import cann_version_check
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
+from .moe_layer_overlap_all2all import gmm_op
 
 
 class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inputs, weights1, weights2, args):
         original_weight1, original_weight2, activation_func, group_list, layer_number = args
-        if isinstance(group_list, (torch.Tensor, type(None))):
-            group_list_data_type = 1
-        else:
-            group_list_data_type = 0
-        ctx.group_list_data_type = group_list_data_type
         use_gmm = (inputs.nelement() != 0)
         ctx.use_gmm = use_gmm
         if use_gmm:
-            mm1_out = GMMFunction.builder.load().npu_gmm([inputs], [weights1], [], group_list.tolist(), 0,
-                                                         group_list_data_type)[0]
+            mm1_out = gmm_op(inputs, weights1, [], group_list, 0)[0]
         else:
             mm1_out = torch.matmul(inputs, weights1)
         inputs.untyped_storage().resize_(0)
         act_out, detached_act_inputs = forward_func(activation_func, mm1_out)
         if use_gmm:
-            mm2_out = GMMFunction.builder.load().npu_gmm([act_out], [weights2], [], group_list.tolist(), 0,
-                                                         group_list_data_type)[0]
+            mm2_out = gmm_op(act_out, weights2, [], group_list, 0)[0]
         else:
             mm2_out = torch.matmul(act_out, weights2)
         if should_recompute_activation(layer_number):
@@ -63,15 +57,12 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         grad_outs = grad_outs[0]
         layer_number = ctx.layer_number
         act_inputs, act_graph, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
-        group_list_data_type = ctx.group_list_data_type
         token_unpermutation_graph, global_hidden_states_detach, indices, global_local_map = get_gemm_backward_need_tensors()
 
         # grad of mm2
         if ctx.use_gmm:
             weights2 = rearrange(weights2, 'n h f -> n f h')
-            grad_mm2_inputs = \
-                GMMFunction.builder.load().npu_gmm([grad_outs], [weights2], [], group_list.tolist(), 0,
-                                                   group_list_data_type)[0]
+            grad_mm2_inputs = gmm_op(grad_outs, weights2, [], group_list, 0)[0]
         else:
             grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
         if should_recompute_activation(layer_number):
@@ -105,8 +96,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
                 else:
                     grad_weights2 = None
             else:
-                grad_weights2 = GMMFunction.builder.load().npu_gmm([mm2_inputs.t()], [grad_outs], [], group_list.tolist(), 2,
-                                                               group_list_data_type)[0]
+                grad_weights2 = gmm_op(mm2_inputs.t(), grad_outs, [], group_list, 2)[0]
         else:
             grad_weights2 = torch.matmul(mm2_inputs.t(), grad_outs)
 
@@ -129,8 +119,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         if ctx.use_gmm:
             # grad of mm1-inputs
             weights1 = rearrange(weights1, 'n h f -> n f h')
-            mm1_inputs_grad = GMMFunction.builder.load().npu_gmm([act_inputs.grad], [weights1], [], group_list.tolist(),
-                                                                 0, group_list_data_type)[0]
+            mm1_inputs_grad = gmm_op(act_inputs.grad, weights1, [], group_list, 0)[0]
         else:
             mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
@@ -184,9 +173,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
                 else:
                     mm1_weights_grad = None
             else:
-                mm1_weights_grad = \
-                    GMMFunction.builder.load().npu_gmm([mm1_inputs.t()], [act_inputs.grad], [], group_list.tolist(), 2,
-                                                    group_list_data_type)[0]
+                mm1_weights_grad = gmm_op(mm1_inputs.t(), act_inputs.grad, [], group_list, 2)[0]
         else:
             mm1_weights_grad = torch.matmul(mm1_inputs.t(), act_inputs.grad)
 

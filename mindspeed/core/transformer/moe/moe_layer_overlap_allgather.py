@@ -19,6 +19,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         args = get_args()
         save_tensors = []
         ctx.input_shape = hidden_states.shape
+        moe_layer.experts.layer_number = moe_layer.layer_number
         # input detach graph, leaf node
         hidden_states = hidden_states.detach()
         hidden_states.requires_grad = True
@@ -44,7 +45,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             if isinstance(indices, tuple):
                 global_indices, gi_handle = indices
             else:
-                _, global_indices, gi_handle = async_all_gather(indices, get_tensor_model_parallel_group())
+                _, global_indices, gi_handle = async_all_gather(indices, get_tensor_and_expert_parallel_group())
 
             global_indices_tuple = (global_indices, gi_handle)
 

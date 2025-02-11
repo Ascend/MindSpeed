@@ -16,7 +16,7 @@ from mindspeed.core.transformer.moe import grouped_gemm_util as gg
 
 def get_zeros_with_tp(input_):
     world_size = parallel_state.get_tensor_model_parallel_world_size()
-    zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size, )
+    zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size,)
     return torch.zeros(zeros_shape, dtype=input_.dtype, layout=input_.layout, device=input_.device)
 
 
@@ -66,11 +66,13 @@ def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx
     group_list = torch.cumsum(tokens_per_expert, dim=0)
     if get_args().moe_alltoall_overlap_comm:
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                              (self.weight1, self.weight2, self.activation_func, group_list, ctx.layer_number),
+                                                              (self.weight1, self.weight2, self.activation_func,
+                                                               group_list, ctx.layer_number),
                                                               ctx=ctx)
     else:
         return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                (self.weight1, self.weight2, self.activation_func, group_list, ctx.layer_number))
+                                                                (self.weight1, self.weight2, self.activation_func,
+                                                                 group_list, self.layer_number))
 
 
 def groupedmlp_init_wrapper(fn):
