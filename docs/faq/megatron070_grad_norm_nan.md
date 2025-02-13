@@ -11,28 +11,28 @@ ad norm: 36.838 ] number of skipped iterations:   О | number of nan iterations:
 Traceback (most recent call last):
 File "pretrain_gpt.py”, line 247, in <module>
 pretrain(
-File "/home/w00642655/Megatron-LM/megatron/training/training.py”, Line 274, in pretrain
+File "/home/Megatron-LM/megatron/training/training.py”, Line 274, in pretrain
 iteration, num floating point operations so far = train(
-File "/home/w00642655/Megatron-LM/megatron/training/training.py”, Line 1027, in train
+File "/home/Megatron-LM/megatron/training/training.py”, Line 1027, in train
 train step(forward step func,
-File "/home/w00642655/Megatron-LM/megatron/training/training.py”, Line 550, in train_step
+File "/home/Megatron-LM/megatron/training/training.py”, Line 550, in train_step
 losses reduced = forward backward func(
-File "/home/w00642655/Megatron-LM/megatron/core/pipeline parallel/schedules.py”, line 1400, in forward backward
+File "/home/Megatron-LM/megatron/core/pipeline parallel/schedules.py”, line 1400, in forward backward
 pipelining without interleaving
 config.finalize model grads func(
-File "/home/w00642655/Megatron-LM/megatron/core/distributed/finalize model_grads.py”, Line 113, in finalize mode
+File "/home/Megatron-LM/megatron/core/distributed/finalize model_grads.py”, Line 113, in finalize mode
 l grads
 model chunk.finish grad sync()
-File "/home/w00642655/Megatron-LM/megatron/core/distributed/distributed data parallel.py”, Line 248, in finish_g
+File "/home/Megatron-LM/megatron/core/distributed/distributed data parallel.py”, Line 248, in finish_g
 rad sync
 buffer.finish grad sync()
-File "/home/w00642655/Megatron-LM/megatron/core/distributed/param and_grad buffer.py”, Line 513, in finish_grad
+File "/home/Megatron-LM/megatron/core/distributed/param and_grad buffer.py”, Line 513, in finish_grad
 sync
 bucket.finish grad sync()
-File "/home/w00642655/Megatron-LM/megatron/core/distributed/param and_grad buffer.py”, Line 151, in finish_grad
+File "/home/Megatron-LM/megatron/core/distributed/param and_grad buffer.py”, Line 151, in finish_grad
 sync
 self.start grad sync()
-File “/home/w00642655/Megatron-LM/megatron/core/distributed/param and grad buffer.py”, Line 114, in start_grad_s
+File “/home/Megatron-LM/megatron/core/distributed/param and grad buffer.py”, Line 114, in start_grad_s
 ync
 assert not norm.isnan( ), (
 AssertionError: Rank 13: found NaN in local grad norm in backward pass before data-parallel communication collectie
