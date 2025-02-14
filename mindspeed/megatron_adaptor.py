@@ -673,6 +673,9 @@ def mcore_moe_adaptation(pm, args):
     from .core.pipeline_parallel.schedules import forward_step
     pm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step',
                         forward_step)
+    if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall':
+        from .core.transformer.moe.token_dispatcher import preprocess
+        pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess', preprocess)
     if args.moe_permutation_async_comm:
         if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall_seq':
             from .core.transformer.moe.experts import sequential_mlp_forward
@@ -737,7 +740,7 @@ def mcore_moe_adaptation(pm, args):
             pm.register_patch('megatron.core.transformer.moe.experts.SequentialMLP.forward', sequential_mlp_forward)
             pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute)
             pm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute)
-        else:
+        elif hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'allgather':
             from .core.transformer.moe.router import aux_loss_load_balancing
             pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.aux_loss_load_balancing', aux_loss_load_balancing)
 
@@ -783,7 +786,7 @@ def mcore_moe_adaptation(pm, args):
                 pm.register_patch(
                     'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                     alltoall_token_unpermutation_with_bmm)
-        else:
+        elif hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'allgather':
             from .core.transformer.moe.legacy_a2a_token_dispatcher import allgather_token_permutation_npu
             pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation', allgather_token_permutation_npu)
     
