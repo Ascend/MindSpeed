@@ -204,8 +204,6 @@ MindSpeed特性由六大模块组成，分别为：megetron特性支持、并行
 | Ascend TFLOPS计算                              | [link](docs/features/ops_flops_cal.md)                    |
 | 【Prototype】Ascend 确定性计算                              | [link](docs/features/npu_deterministic.md)             |
 | 高可用特性                                | [link](docs/features/high_availability.md)                |
-| Ascend PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
-| Ascend PP支持多参数传递                            | [link](docs/features/multi_parameter_pipeline.md)     |
 
 # 自定义算子
 部分自定义算子设置为公开接口，公开接口设置说明请参照MindSpeed安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。
