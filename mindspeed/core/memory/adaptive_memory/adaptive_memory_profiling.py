@@ -54,6 +54,8 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
         self.layer0_ctx = None
 
     def addup_allowed_mem_adapt_profiling_module(self, module):
+        if not issubclass(module, torch.nn.Module):
+            raise TypeError("Allowed adapt module must be subclass of torch.nn.Module")
         self.allowed_adapt_module.append(module)
 
     @staticmethod

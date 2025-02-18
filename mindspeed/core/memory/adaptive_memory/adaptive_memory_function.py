@@ -110,6 +110,8 @@ def wrap_function(function, *args):
 
 
 def adapt_mem_func_wrapper(fc_class, *args):
+    if not issubclass(fc_class, torch.autograd.Function):
+        raise TypeError("adapt_mem_func_wrapper only support subclass of torch.autograd.Function")
     cnt = ForwardCounter().get_count()
     is_first_layer = FuncLocationMgr().is_first_layer
     if AdaptiveStepMgr().is_recompute_profiling_step() and is_first_layer:
