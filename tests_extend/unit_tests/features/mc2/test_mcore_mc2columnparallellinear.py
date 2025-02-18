@@ -29,7 +29,7 @@ def set_mc2_args(args):
 class TestMC2(DistributedTest):
     world_size = 8
 
-    def test_Mcore_MC2ColumnParallelLinear(self):
+    def test_mcore_mc2_column_parallel_linear(self):
         args = parse_args(None, True)
         args = set_mc2_args(args)
         set_args(args)
@@ -84,3 +84,51 @@ class TestMC2(DistributedTest):
         assert torch.allclose(output_mc2_close, output_mc2_open, rtol=0.005, atol=0.005)
         assert torch.allclose(output_weight_grad_mc2_close, output_weight_grad_mc2_open, rtol=0.005, atol=0.005)
         assert torch.allclose(linear_layer_mc2_close.bias.grad, linear_layer_mc2_open.bias.grad, rtol=0.005, atol=0.005)
+
+    def test_mcore_mc2_column_parallel_linear_frozen(self):
+        args = parse_args(None, True)
+        args = set_mc2_args(args)
+        set_args(args)
+
+        transformer_config = TransformerConfig(num_layers=1,
+                                               hidden_size=12,
+                                               num_attention_heads=4,
+                                               use_cpu_initialization=True)
+        transformer_config.sequence_parallel = args.sequence_parallel
+        input_size = args.input_size_coeff * args.tensor_model_parallel_size
+        output_size = args.vocab_size
+        input_ = torch.rand(args.seq_len, args.batch_size, input_size).half().npu()
+
+        # get output_weight
+        linear_layer = ColumnParallelLinear(input_size,
+                                            output_size,
+                                            keep_master_weight_for_test=True,
+                                            init_method=transformer_config.init_method,
+                                            config=transformer_config).half().npu()
+        linear_layer.weight.requires_grad_(False)
+        setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
+        output_weight_mc2_close = linear_layer.weight
+        output_weight_mc2_open = linear_layer.weight
+
+        # close mc2 forward and backward
+        set_random_seed(args.seed)
+        linear_layer_mc2_close = ColumnParallelLinear(input_size,
+                                                      output_size,
+                                                      keep_master_weight_for_test=True,
+                                                      init_method=transformer_config.init_method,
+                                                      config=transformer_config).half().npu()
+        linear_layer_mc2_close.weight.requires_grad_(False)
+        output_mc2_close, _ = linear_layer_mc2_close(input_, output_weight_mc2_close)
+
+        # open mc2 forward and backward
+        initialize_cfg_from_args(args)
+        set_random_seed(args.seed)
+        linear_layer_mc2_open = ColumnParallelLinear(input_size,
+                                                     output_size,
+                                                     keep_master_weight_for_test=True,
+                                                     init_method=transformer_config.init_method,
+                                                     config=transformer_config).half().npu()
+        output_mc2_open, _ = linear_layer_mc2_open(input_, output_weight_mc2_open)
+
+        # result compare
+        assert torch.allclose(output_mc2_close, output_mc2_open, rtol=0.005, atol=0.005)
