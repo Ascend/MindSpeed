@@ -643,6 +643,7 @@ def memory_fragmentation_adaptation(aspm, args):
         from .core.memory.adaptive_memory.adaptive_memory_opt import setup_adapt_memory_optimizer_wrapper
         aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_adapt_memory_optimizer_wrapper)
         from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
+        time.sleep(10)
         change_allocator()
 
     if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
