@@ -14,7 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from .ascend_turbo_cfg import ascend_turbo_cfg
-from .mc2_linears_seq_parallel import ColumnSeqParallelLinear, RowSeqParallelLinear
+from .mc2_linears_seq_parallel import (ColumnSeqParallelLinear, RowSeqParallelLinear,
+                                       ColumnSeqParallelLinearWithFrozenWeight, RowSeqParallelLinearWithFrozenWeight)
 
 
 def column_parallel_forward(self, input_, weight=None):
@@ -36,18 +37,28 @@ def column_parallel_forward(self, input_, weight=None):
 
     bias = self.bias if not self.skip_bias_add else None
 
-    output = ColumnSeqParallelLinear.apply(
-        input_, weight, bias, ascend_turbo_cfg.get_group()
-    )
+    if not weight.requires_grad:
+        output = ColumnSeqParallelLinearWithFrozenWeight.apply(
+            input_, weight, bias, ascend_turbo_cfg.get_group()
+        )
+    else:
+        output = ColumnSeqParallelLinear.apply(
+            input_, weight, bias, ascend_turbo_cfg.get_group()
+        )
 
     output_bias = self.bias if self.skip_bias_add else None
     return output, output_bias
 
 
 def row_parallel_forward(self, input_):
-    output = RowSeqParallelLinear.apply(
-        input_, self.weight, None, ascend_turbo_cfg.get_group()
-    )
+    if not self.weight.requires_grad:
+        output = RowSeqParallelLinearWithFrozenWeight.apply(
+            input_, self.weight, None, ascend_turbo_cfg.get_group()
+        )
+    else:
+        output = RowSeqParallelLinear.apply(
+            input_, self.weight, None, ascend_turbo_cfg.get_group()
+        )
 
     if not self.skip_bias_add:
         output = output + self.bias if self.bias is not None else output
