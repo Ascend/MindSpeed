@@ -154,6 +154,7 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 | Ascend BF16 参数副本复用           | [link](docs/features/reuse-fp32-param.md)                 |
 | Ascend swap_attention            | [link](docs/features/swap_attention.md)                   |
 | Ascend Norm重计算                  | [link](docs/features/norm-recompute.md)          |
+| Ascend Hccl Buffer自适应                  | [link](docs/features/hccl-group-buffer-set.md)          |
 
 ## 亲和计算特性
 | 特性                                         | 介绍                                                           |
