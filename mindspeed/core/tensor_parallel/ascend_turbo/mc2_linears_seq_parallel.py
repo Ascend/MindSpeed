@@ -231,3 +231,122 @@ class RowSeqParallelLinear(torch.autograd.Function):
             grad_bias = None
 
         return grad_input, grad_weight, grad_bias, None
+
+
+class ColumnSeqParallelLinearWithFrozenWeight(ColumnSeqParallelLinear):
+    @staticmethod
+    def forward(ctx, input_, weight, bias, group):
+        ctx.input_shape = input_.shape
+        ctx.use_bias = bias is not None
+        ctx.weight = weight
+
+        rank = torch.distributed.get_rank(group)
+        hcomm_info = None
+        if torch.__version__ > "2.0":
+            global_rank = torch.distributed.get_global_rank(group, rank)
+            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(
+                global_rank
+            )
+
+        else:
+            hcomm_info = group.get_hccl_comm_name(rank)
+
+        x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
+
+        world_size = ascend_turbo_cfg.get_world_size()
+        # npu_all_gather_base_mm currently do not support bias
+        output, all_gather_grad_output = torch_npu.npu_all_gather_base_mm(
+            x,
+            weight.t(),
+            hcomm_info,
+            world_size,
+            bias=None,
+            gather_index=0,
+            gather_output=(not ascend_turbo_cfg.all_gather_recomputation),
+        )
+
+        if bias is not None:
+            output = output + bias
+
+        output = output.view(
+            int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]
+        )
+        ctx.hcomm_info = hcomm_info
+        ctx.world_size = world_size
+        ctx.group = group
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input_shape = ctx.input_shape
+        weight = ctx.weight
+
+        hcomm_info = ctx.hcomm_info
+        world_size = ctx.world_size
+        grad_output_ = grad_output.reshape(
+            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
+        )
+
+        sub_grad_input = torch_npu.npu_mm_reduce_scatter_base(
+            grad_output_, weight, hcomm_info, world_size, bias=None
+        )
+
+        sub_grad_input = sub_grad_input.view(input_shape)
+
+        return sub_grad_input, None, None, None
+
+
+class RowSeqParallelLinearWithFrozenWeight(RowSeqParallelLinear):
+    @staticmethod
+    def forward(ctx, input_, weight, bias, group):
+        ctx.input_shape = input_.shape
+        ctx.use_bias = bias is not None
+        ctx.weight = weight
+
+        rank = torch.distributed.get_rank(group)
+        world_size = ascend_turbo_cfg.get_world_size()
+        hcomm_info = None
+        if torch.__version__ > "2.0":
+            global_rank = torch.distributed.get_global_rank(group, rank)
+            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(
+                global_rank
+            )
+        else:
+            hcomm_info = group.get_hccl_comm_name(rank)
+
+        x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
+
+        # npu_mm_reduce_scatter_base currently do not support bias
+        output = torch_npu.npu_mm_reduce_scatter_base(
+            x, weight.t(), hcomm_info, world_size, reduce_op="sum", bias=None
+        )
+
+        if bias is not None:
+            output = output + bias
+
+        ctx.hcomm_info = hcomm_info
+        ctx.world_size = world_size
+
+        output = output.view(
+            int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]
+        )
+
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input_shape = ctx.input_shape
+        weight = ctx.weight
+        hcomm_info = ctx.hcomm_info
+        world_size = ctx.world_size
+        grad_output_ = grad_output.reshape(
+            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
+        )
+
+        grad_input, _ = torch_npu.npu_all_gather_base_mm(
+            grad_output_, weight, hcomm_info, world_size, bias=None, gather_index=0
+        )
+
+        grad_input = grad_input.view(input_shape)
+
+        return grad_input, None, None, None
