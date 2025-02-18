@@ -525,6 +525,22 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td style="text-align: center; vertical-align: middle">❌</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
+  <tbody>
+  <tr>
+    <td rowspan="5"> Ascend Megatron MoE 分层通信 </td>
+    <td><a href="docs/features/hierarchical-alltoallv.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
+  </tr>
+  <tbody>
+  <tr>
+    <td rowspan="5"> Ascend Megatron MoE 大专家流水 </td>
+    <td><a href="docs/features/moe-experts-pipeline-degree.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
+  </tr>
 </table>
 
 
