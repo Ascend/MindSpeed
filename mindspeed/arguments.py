@@ -656,7 +656,8 @@ def validate_args_wrapper(validate_args):
         if args.moe_hierarchical_alltoallv:
             tp = args.tensor_model_parallel_size
             ep = args.expert_model_parallel_size
-            if (not args.moe_tp_extend_ep) or tp <= 1 or tp != torch.npu.device_count():
+            if ((not args.moe_tp_extend_ep) or tp <= 1 or tp > torch.npu.device_count() or
+                    ep * tp <= torch.npu.device_count() or args.world_size <= torch.npu.device_count()):
                 raise AssertionError('`--moe-hierarchical-alltoallv` must have `--moe-tp-extend-ep` on and tp > 1 and cross-device communication')
         if args.moe_zero_memory_num_layers is not None:
             num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
