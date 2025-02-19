@@ -86,7 +86,6 @@ class FusedEmaAdamW(Optimizer):
             self.num_updates = 0
         else:
             self.num_updates = -1
-        self.collected_params = []
 
     def zero_grad(self):
         if self.set_grad_none:
@@ -102,15 +101,26 @@ class FusedEmaAdamW(Optimizer):
                 continue
             for p in group['params']:
                 state = self.state[p]
+                if "ema_params" not in state:
+                    continue
                 if p.requires_grad:
                     p.data.copy_(state['ema_params'].data)
 
     def store(self, parameters):
-        self.collected_params = [param.clone() for param in parameters]
+        self.collected_params_group = []
+        for group in parameters:
+            if len(group['params']) == 0:
+                continue
+            collected_params = [param.detach().cpu().clone() for param in group['params']]
+            self.collected_params_group.append(collected_params)
 
     def restore(self, parameters):
-        for c_param, param in zip(self.collected_params, parameters):
-            param.data.copy_(c_param.data)
+        for c_group, group in zip(self.collected_params_group, parameters):
+            if len(group['params']) == 0:
+                continue
+            for c_param, param in zip(c_group, group['params']):
+                param.data.copy_(c_param.data)
+        del self.collected_params_group
 
     @torch.no_grad()
     def step(self, closure=None):
