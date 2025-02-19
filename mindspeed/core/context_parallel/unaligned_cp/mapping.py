@@ -106,16 +106,67 @@ def _all_to_all(
     """
     assert 3 <= input_.dim() <= 4
     world_size = dist.get_world_size(group)
+    if world_size == 1:
+        return input_
+
     scatter_size = input_.size(scatter_dim)
     if gather_size is None:
         gather_size = input_.size(gather_dim) * world_size
+    gather_mod = gather_size % world_size
+    scatter_mod = scatter_size % world_size
 
-    if gather_size % world_size == 0 and scatter_size % world_size == 0:
+    if gather_mod == 0 and scatter_mod == 0:
         # In the case of aligned data (both scatter_size and gather_size are divisible by world_size),
-        # _aligned_all_to_all function performs better than _unaligned_all_to_all function
+        # _aligned_all_to_all function performs better than _partial_unaligned_all_to_all function
         return _aligned_all_to_all(input_, group, scatter_dim, gather_dim)
+    elif gather_mod != 0 and scatter_mod != 0:
+        return _full_unaligned_all_to_all(input_, group, scatter_dim, gather_dim, gather_size)
     else:
-        return _unaligned_all_to_all(input_, group, scatter_dim, gather_dim, gather_size)
+        return _partial_unaligned_all_to_all(input_, group, scatter_dim, gather_dim, gather_size)
+
+
+def _full_unaligned_all_to_all(
+    input_: torch.Tensor,
+    group: dist.ProcessGroup,
+    scatter_dim: int,
+    gather_dim: int,
+    gather_size: Optional[int] = None
+):
+    """
+    Helper function to perform the all-to-all operation. It scatters the input tensor along the specified scatter
+    dimension and then gathers it along the specified gather dimension. This function supports unaligned scatter
+    and gather sizes.
+
+    Args:
+        input_ (torch.Tensor): The input tensor to be processed.
+        world_size (int): The number of processes in the process group.
+        group (dist.ProcessGroup): The process group to perform the operation within.
+        scatter_dim (int): The index of the dimension that needs to be scattered.
+        gather_dim (int): The index of the dimension that needs to be gathered.
+        gather_size (Optional[int]): The total size of the output tensor along the `gather_dim`. If not provided, it
+        will be calculated as the product of the original size of the `gather_dim` of the input tensor and the
+        `world_size`.
+
+    Returns:
+        torch.Tensor: The resulting tensor after performing the all-to-all operation.
+    """
+    world_size = dist.get_world_size(group)
+    rank = dist.get_rank(group)
+
+    scatter_sizes = cal_split_sizes(dim_size=input_.size(scatter_dim), world_size=world_size)
+    input_list = [t.contiguous() for t in torch.split(input_, scatter_sizes, scatter_dim)]
+
+    gather_sizes = cal_split_sizes(dim_size=gather_size, world_size=world_size)
+    output_list = []
+    tensor_shape_base = input_list[rank].size()
+    for i in range(world_size):
+        tensor_shape = list(tensor_shape_base)
+        tensor_shape[gather_dim] = gather_sizes[i]
+        output_list.append(torch.empty(tensor_shape, dtype=input_.dtype, device=input_.device))
+
+    dist.all_to_all(output_list, input_list, group=group)
+
+    return torch.cat(output_list, dim=gather_dim).contiguous()
 
 
 def _aligned_all_to_all(
@@ -166,7 +217,7 @@ def _aligned_all_to_all(
     return output
 
 
-def _unaligned_all_to_all(
+def _partial_unaligned_all_to_all(
     input_: torch.Tensor,
     group: dist.ProcessGroup,
     scatter_dim: int,
@@ -178,7 +229,7 @@ def _unaligned_all_to_all(
     dimension and then gathers it along the specified gather dimension. The function supports aligned and unaligned
     data.
     Special note: In the case of aligned data (both scatter_size and gather_size are divisible by world_size),
-    _unaligned_all_to_all function performs worse than _aligned_all_to_all function. Therefore, in the case of
+    _partial_unaligned_all_to_all function performs worse than _aligned_all_to_all function. Therefore, in the case of
     aligning data, it is recommended to use _aligned_all_to_all function.
     """
     world_size = dist.get_world_size(group)
@@ -491,7 +542,9 @@ def all_to_all(
         process_group (dist.ProcessGroup): The process group to perform the operation within.
         scatter_dim (int, optional): The index of the dimension that needs to be scattered. Defaults to 2.
         gather_dim (int, optional): The index of the dimension that needs to be gathered. Defaults to 1.
-        gather_size (Optional[int]): The size of the gather dimension. Default is None.
+        gather_size (Optional[int]): The total size of the output tensor along the `gather_dim`. If not provided, it
+        will be calculated as the product of the original size of the `gather_dim` of the input tensor and the
+        `world_size`.
 
     Returns:
         torch.Tensor: The resulting tensor after performing the all-to-all operation.

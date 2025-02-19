@@ -3,6 +3,8 @@ import os
 from typing import Optional, List
 import time
 import random
+from functools import reduce
+import operator
 
 import numpy as np
 import pytest
@@ -21,6 +23,13 @@ from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
+
+
+def normalize_tensor(tensor):
+    min_val = tensor.min()
+    max_val = tensor.max()
+    normalized_tensor = (tensor - min_val) / (max_val - min_val)
+    return normalized_tensor
 
 
 def seed_all(seed=1234, mode=False):
@@ -122,13 +131,13 @@ class TestUnevenSplitGather(DistributedTest):
         total_save_time = 0
         input_shapes = [[32, 64, 32], [32, 64, 32, 32],
                         [29, 51, 57], [29, 51, 65, 57]]
+        group = mpu.get_tensor_model_parallel_group()
+        gather_idx, scatter_idx = gather_scatter_idx
         for input_shape in input_shapes:
             input_ = torch.randn(input_shape).cuda().to(dtype)
-            gather_idx, scatter_idx = gather_scatter_idx
             num_dims = input_.dim()
             if gather_idx >= num_dims or scatter_idx >= num_dims:
                 return
-            group = mpu.get_tensor_model_parallel_group()
             scatter_size_list = None
             gather_sizes_list = None
             if (input_.size(scatter_idx) % self.world_size) != 0:
@@ -139,6 +148,43 @@ class TestUnevenSplitGather(DistributedTest):
                 input_, scatter_idx, gather_idx, group, scatter_size_list, gather_sizes_list)
         # The average time saved by calling the all_to_all function once should be greater than 0
         assert (total_save_time / len(input_shapes)) > 0
+
+    @pytest.mark.parametrize("gather_scatter_idx", [(3, 0), (3, 1), (3, 2),
+                                                    (2, 0), (2, 1), (2, 3),
+                                                    (1, 0), (1, 2), (1, 3),
+                                                    (0, 1), (0, 2), (0, 3)])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_all_to_all_full_unaligned(self, gather_scatter_idx, dtype):
+        group = mpu.get_tensor_model_parallel_group()
+        rank = dist.get_rank(group)
+        unscatter_gathered_shapes = [[9, 21, 15], [9, 21, 15, 10]]
+        group = mpu.get_tensor_model_parallel_group()
+        gather_idx, scatter_idx = gather_scatter_idx
+        for unscatter_gathered_shape in unscatter_gathered_shapes:
+            num_dims = len(unscatter_gathered_shape)
+            if gather_idx >= num_dims or scatter_idx >= num_dims:
+                return
+            gather_size = unscatter_gathered_shape[gather_idx]
+            scatter_size = unscatter_gathered_shape[scatter_idx]
+            gather_size_list = cal_split_sizes(dim_size=gather_size, world_size=self.world_size)
+            scatter_size_list = cal_split_sizes(dim_size=scatter_size, world_size=self.world_size)
+            input_shape = unscatter_gathered_shape
+            input_shape[gather_idx] = gather_size_list[rank]
+            total_elements = reduce(operator.mul, input_shape, 1)
+            input_ = normalize_tensor(torch.arange(total_elements).reshape(input_shape)).cuda().to(dtype) + rank
+
+            expected_output_list = []
+            for mock_rank in range(self.world_size):
+                input_shape[gather_idx] = gather_size_list[mock_rank]
+                total_elements = reduce(operator.mul, input_shape, 1)
+                mock_input_tensor = normalize_tensor(torch.arange(total_elements).reshape(input_shape)).cuda().to(dtype) + mock_rank
+                if mock_rank == rank:
+                    assert torch.equal(mock_input_tensor, input_)
+                tensor_list = torch.split(mock_input_tensor, scatter_size_list, dim=scatter_idx)
+                expected_output_list.append(tensor_list[rank].contiguous())
+            expected = torch.cat(expected_output_list, dim=gather_idx).contiguous()
+            result = all_to_all(input_, group, scatter_dim=scatter_idx, gather_dim=gather_idx, gather_size=gather_size)
+            assert torch.equal(result, expected)
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     @pytest.mark.parametrize("input_shape", [[32, 64, 32], [32, 64, 32, 32],
@@ -161,17 +207,17 @@ class TestUnevenSplitGather(DistributedTest):
             all_to_all_time2, standard_output2 = measure_time(
                 _all_to_all_standard, standard_output1, group, gather_idx, scatter_idx,
                 gather_sizes_list, scatter_size_list)
-            assert torch.allclose(input_, standard_output2), "The input_ and standard_output2 should be close."
+            assert torch.equal(input_, standard_output2), "The input_ and standard_output2 should be close."
             all_to_all_single_time1, output1 = measure_time(
                 all_to_all, input_clone, group, scatter_idx, gather_idx)
             all_to_all_single_time2, output2 = measure_time(
                 all_to_all, output1, group, gather_idx, scatter_idx, gather_size=input_clone.size(scatter_idx)
                 if input_clone.size(scatter_idx) % self.world_size != 0 else None)
-            assert torch.allclose(input_clone, output2), "The input_clone and output2 should be close."
+            assert torch.equal(input_clone, output2), "The input_clone and output2 should be close."
             if i < TestUnevenSplitGather.warm_up_time:
                 continue
-            assert torch.allclose(standard_output1, output1), "The standard_output1 and output1 should be close."
-            assert torch.allclose(standard_output2, output2), "The standard_output2 and output2 should be close."
+            assert torch.equal(standard_output1, output1), "The standard_output1 and output1 should be close."
+            assert torch.equal(standard_output2, output2), "The standard_output2 and output2 should be close."
             save_time += (all_to_all_time1 + all_to_all_time2 - all_to_all_single_time1 - all_to_all_single_time2) / 2
         return save_time / (TestUnevenSplitGather.total_time - TestUnevenSplitGather.warm_up_time)
 
@@ -182,4 +228,4 @@ class TestUnevenSplitGather(DistributedTest):
             split_sizes = cal_split_sizes(dim_size=x.size(dim), world_size=dist.get_world_size(group))
         x_split = split_forward_gather_backward(x, group, dim=dim, split_sizes=split_sizes, grad_scale="down")
         x_gather = gather_forward_split_backward(x_split, group, dim=dim, gather_sizes=split_sizes, grad_scale="up")
-        assert torch.allclose(x, x_gather), f"Output:{x_gather} results do not match the input:{x}"
+        assert torch.equal(x, x_gather), f"Output:{x_gather} results do not match the input:{x}"
