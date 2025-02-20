@@ -20,12 +20,15 @@ from megatron.core.utils import log_on_each_pipeline_stage
 logger = getLogger(__name__)
 
 
-def pipe_register_grad_ready(self, param: torch.nn.Parameter):
-    assert (self.ddp_config.overlap_grad_reduce), 'register_grad_ready() should only be called when overlap_grad_reduce is True'
-    from mindspeed.moe.pipe_experts import FLAG_GRAD_REDUCE
-    if self.is_last_microbatch and FLAG_GRAD_REDUCE:
-        bucket = self.param_to_bucket[param]
-        bucket.register_grad_ready(param)
+def pipe_register_grad_ready_wrapper(register_grad_ready):
+    @wraps(register_grad_ready)
+    def wrapper(self, param: torch.nn.Parameter):
+        assert (self.ddp_config.overlap_grad_reduce), 'register_grad_ready() should only be called when overlap_grad_reduce is True'
+        from mindspeed.moe.pipe_experts import FLAG_GRAD_REDUCE
+        if self.is_last_microbatch and FLAG_GRAD_REDUCE:
+            register_grad_ready(self, param)
+
+    return wrapper
 
 
 def reuse_fp32_param_param_and_grad_buffer_init_wrapper(init_func):

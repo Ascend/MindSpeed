@@ -923,6 +923,10 @@ def validate_args_wrapper(validate_args):
                     '--use-ulysses-allgather-kv needs to enable --group-query-attention.'
                 )
 
+        if args.save or args.load:
+            if args.ckpt_format != "torch":
+                raise AssertionError('Only ckpt-format = torch is supported.')
+
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
 

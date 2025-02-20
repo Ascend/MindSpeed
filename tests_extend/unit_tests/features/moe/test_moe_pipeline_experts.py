@@ -12,7 +12,7 @@ from mindspeed.moe.utils import _AllToAll
 from mindspeed.moe.mixtral_parallel_mlpbm import MixtralParallelMLPBM
 from mindspeed.core.tensor_parallel.layers import (row_parallel_moe, column_parallel_moe,
                                                    linear_with_grad_accumulation_and_async_allreduce_moe)
-from mindspeed.core.distributed.param_and_grad_buffer import pipe_register_grad_ready
+from mindspeed.core.distributed.param_and_grad_buffer import pipe_register_grad_ready_wrapper
 from mindspeed.patch_utils import MindSpeedPatchesManager as pm
 
 from megatron.core.transformer import TransformerConfig
@@ -38,7 +38,7 @@ ms_row_parallel_forward = get_copied_function(row_parallel_moe)
 ms_column_parallel_forward = get_copied_function(column_parallel_moe)
 ms_linear_with_grad_accumulation_and_async_allreduce = get_copied_function(
     linear_with_grad_accumulation_and_async_allreduce_moe)
-ms_register_grad_ready = get_copied_function(pipe_register_grad_ready)
+ms_register_grad_ready = pipe_register_grad_ready_wrapper(_ParamAndGradBucketGroup.register_grad_ready)
 
 mg_row_parallel_forward = get_copied_function(RowParallelLinear.forward)
 mg_column_parallel_forward = get_copied_function(ColumnParallelLinear.forward)

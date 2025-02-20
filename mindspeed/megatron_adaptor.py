@@ -815,9 +815,9 @@ def deepspeed_moe_adaptation(pm, args):
         pm.register_patch('megatron.core.tensor_parallel.layers.linear_with_grad_accumulation_and_async_allreduce',
                           linear_with_grad_accumulation_and_async_allreduce_moe)
     if args.use_pipe_experts:
-        from .core.distributed.param_and_grad_buffer import pipe_register_grad_ready
+        from .core.distributed.param_and_grad_buffer import pipe_register_grad_ready_wrapper
         pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.register_grad_ready',
-                          pipe_register_grad_ready)
+                          pipe_register_grad_ready_wrapper)
     if args.ampipe_degree > 1:
         from mindspeed.model.language_model import embedding_forward_ampipe
         from mindspeed.model.transformer import parallel_transformer_forward_ampipe
