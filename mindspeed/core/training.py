@@ -21,6 +21,10 @@ from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import print_rank_last, report_memory
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from mindspeed.core.auto_parallel import AutoProfiler, search_optimal_configuration
+from megatron.core.pipeline_parallel import get_forward_backward_func
+from megatron.training.utils import unwrap_model
+
+from mindspeed.core.auto_parallel.auto_parallel_apply import search_optimal_configuration
 from mindspeed.core.memory.auto_pipeline.autopipeline import autopipeline_profiling
 from mindspeed.core.performance.auto_pipeline_perf.autopipeline_perf import (autopipelineperf_profiling, check_out_of_memory,
                                                                              calculate_num_of_activations, check_skip_profiling,
@@ -32,6 +36,7 @@ from mindspeed.core.performance.auto_pipeline_perf.schedulepipeline_solver impor
 from mindspeed.core.memory.auto_pipeline.autopipeline_apply import apply_autopipeline
 from mindspeed.core.memory.auto_pipeline.autopipeline_solver import solve_autopipeline, broadcast_policy_in_ranks, destroy_global_vars
 from mindspeed.arguments import parse_args_wrapper
+from mindspeed.core.data_parallel.async_log_allreduce import get_async_reduced_loss_value
 
 POLICY = None
 OPTIMIZED_MBS_LIST = None
@@ -548,3 +553,91 @@ def save_checkpoint_and_time_decorator(save_checkpoint_and_time):
         if global_args.use_distributed_optimizer and global_args.overlap_param_gather:
             optimizer.enable_pre_hook()
     return wrapper
+
+
+def train_step(forward_step_func, data_iterator,
+               model, optimizer, opt_param_scheduler, config):
+    """Single training step."""
+    args = get_args()
+    timers = get_timers()
+
+    # Set grad to zero.
+    for model_chunk in model:
+        model_chunk.zero_grad_buffer()
+    optimizer.zero_grad()
+
+    # Forward pass.
+    forward_backward_func = get_forward_backward_func()
+    losses_reduced = forward_backward_func(
+        forward_step_func=forward_step_func,
+        data_iterator=data_iterator,
+        model=model,
+        num_microbatches=get_num_microbatches(),
+        seq_length=args.seq_length,
+        micro_batch_size=args.micro_batch_size,
+        decoder_seq_length=args.decoder_seq_length,
+        forward_only=False)
+
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 1:
+        torch.cuda.empty_cache()
+
+    # Vision gradients.
+    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
+        unwrapped_model = unwrap_model(model[0])
+        unwrapped_model.cancel_gradients_last_layer(args.curr_iteration)
+
+    # Update parameters.
+    timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
+    update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+    timers('optimizer').stop()
+
+    # Vision momentum.
+    if getattr(args, 'vision_pretraining', False) and args.vision_pretraining_type == "dino":
+        unwrapped_model = unwrap_model(model[0])
+        unwrapped_model.update_momentum(args.curr_iteration)
+
+    # Update learning rate.
+    if update_successful:
+        increment = get_num_microbatches() * \
+                    args.micro_batch_size * \
+                    args.data_parallel_size
+        opt_param_scheduler.step(increment=increment)
+        skipped_iter = 0
+    else:
+        skipped_iter = 1
+
+    # Empty unused memory.
+    if args.empty_unused_memory_level >= 2:
+        torch.cuda.empty_cache()
+
+    if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
+        # Average loss across microbatches.
+        loss_reduced = {}
+        if args.async_log_allreduce:
+            # when async_log_allreduce is on, loss_reduced is list[tuple(dict,torch.distributed.group)]
+            losses_reduced_keys = losses_reduced[0][0].keys()
+        else:
+            losses_reduced_keys = losses_reduced[0].keys()
+
+        for key in losses_reduced_keys:
+            numerator = 0
+            denominator = 0
+            for x in losses_reduced:
+                if args.async_log_allreduce:
+                    val = get_async_reduced_loss_value(x, key)
+                else: 
+                    val = x[key]
+                # there is one dict per microbatch. in new reporting, we average
+                # over the total number of tokens across the global batch.
+                if isinstance(val, tuple) or isinstance(val, list):
+                    numerator += val[0]
+                    denominator += val[1]
+                else:
+                    # legacy behavior. we average over the number of microbatches,
+                    # and so the denominator is 1.
+                    numerator += val
+                    denominator += 1
+            loss_reduced[key] = numerator / denominator
+        return loss_reduced, skipped_iter, grad_norm, num_zeros_in_grad
+    return {}, skipped_iter, grad_norm, num_zeros_in_grad

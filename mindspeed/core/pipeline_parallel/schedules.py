@@ -24,6 +24,7 @@ from megatron.core.utils import get_attr_wrapped_model, get_model_config, get_mo
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
 from megatron.core.pipeline_parallel.schedules import set_current_microbatch
 from mindspeed.core.pipeline_parallel import flexible_schedules
+from mindspeed.core.pipeline_parallel import flexible_schedules, overlap_p2p_schedules
 from mindspeed.core.pipeline_parallel.ripipe_schedules import forward_backward_ripipe_pipelining
 from mindspeed.core.pipeline_parallel import multiparameter_schedules
 
@@ -42,6 +43,9 @@ def get_forward_backward_func_wrapper(get_forward_backward_func):
 
         if (arguments.recompute_in_bubble or arguments.recompute_in_advance) and torch.is_grad_enabled():
             return forward_backward_ripipe_pipelining
+
+        if arguments.overlap_warmup_cooldown_communication:
+            return overlap_p2p_schedules.forward_backward_pipelining_with_interleaving_overlap_warmup_cooldown_p2p
 
         if parallel_state.get_pipeline_model_parallel_world_size() > 1 \
             and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None \

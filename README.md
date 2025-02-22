@@ -176,6 +176,7 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 | Ascend nano-pipe流水线并行        | [link](docs/features/nanopipe-pipeline-parallel.md)       |
 | 【Prototype】Ascend 高维张量并行                | [link](docs/features/tensor-parallel-2d.md)                           |
 | Ascend Gloo 存档落盘优化                | [link](docs/features/hccl-replace-gloo.md)                           |
+| 【Prototype】通信掩盖优化                | [link](docs/features/overlap_p2p_communication_and_async_log_allreduce.md)                           |
 
 ## Mcore MoE特性
 | 特性                                                       | 介绍                                                                               |

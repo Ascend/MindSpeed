@@ -554,7 +554,7 @@ def megatron_training_adaptation_l0(aspm):
 
 def megatron_training_adaptation(aspm, mindspeed_args):
     from .core.performance.auto_pipeline_perf.global_vars import get_num_microbatches_wrapper
-    from .core.training import training_log
+    from .core.training import training_log, train_step
     from .utils import get_batch_on_this_tp_rank
     from .tokenizer import build_tokenizer_wrapper
     from .core.training import pretrain_decorator, setup_model_and_optimizer_decorator
@@ -564,6 +564,10 @@ def megatron_training_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.training.utils.get_batch_on_this_tp_rank', get_batch_on_this_tp_rank)
     if mindspeed_args.op_cal_tflops:
         aspm.register_patch('megatron.training.training.training_log', training_log)
+    if mindspeed_args.async_log_allreduce:
+        from mindspeed.core.data_parallel.async_log_allreduce import forward_step_wrapper
+        aspm.register_patch('megatron.training.training.train_step', train_step)
+        aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step', forward_step_wrapper)
     aspm.register_patch('megatron.training.tokenizer.tokenizer.build_tokenizer', build_tokenizer_wrapper)
 
 

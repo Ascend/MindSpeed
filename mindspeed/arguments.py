@@ -45,6 +45,7 @@ def process_args(parser):
     parser = _add_deepseek_args(parser)
     parser = _auto_tuning_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
+    parser = _add_communication_overlap_args(parser)
 
     return parser
 
@@ -429,6 +430,20 @@ def _add_algorithm_args(parser):
     return parser
 
 
+def _add_communication_overlap_args(parser):
+    group = parser.add_argument_group(title='overlap_p2p_comm_or_async_log_allreduce_')
+    group.add_argument('--overlap-warmup-cooldown-communication', action='store_true',
+                       help='Divide send and receive into different streams. '
+                            'Overlap communication with computation during the warmup and cooldown phases.'
+                            'Invoke the receive operator in advance to reduce the waiting time on the send side.'
+                            'This is useful in cross-DataCenter (DC) training.')
+    group.add_argument('--use-multi-stream', action='store_true',
+                       help='Use multiple streams for data sending/receiving in p2p communincation. This is useful in cross-DataCenter (DC) training and must be set together with the --overlap-warmup-cooldown-communication option.')
+    group.add_argument('--async-log-allreduce', action='store_true',
+                       help='Transform the AllReduce operation used for transmitting log information into an asynchronous operation to reduce communication overhead. This is useful in cross-DataCenter (DC) training.')
+    return parser
+
+
 def core_transformer_config_from_args_wrapper(fn):
     @wraps(fn)
     def wrapper(args):
@@ -531,8 +546,12 @@ def validate_args_wrapper(validate_args):
         # num_layers_per_virtual_pipeline_stage should be meaningful
         if args.num_layers_per_virtual_pipeline_stage is not None:
             num_layers_per_pipeline_stage = args.num_layers // args.pipeline_model_parallel_size
-            assert num_layers_per_pipeline_stage // args.num_layers_per_virtual_pipeline_stage > 1, \
-            'considering args of num_layers and pipeline_model_parallel_size, vpp setting should be meaningful'
+            if args.overlap_warmup_cooldown_communication:
+                assert num_layers_per_pipeline_stage // args.num_layers_per_virtual_pipeline_stage >= 1, \
+                'considering args of num_layers and pipeline_model_parallel_size, vpp setting should be meaningful.'
+            else:
+                assert num_layers_per_pipeline_stage // args.num_layers_per_virtual_pipeline_stage > 1, \
+                'considering args of num_layers and pipeline_model_parallel_size, vpp setting should be meaningful'
 
         # deepspeed dropless does not support pp
         if args.moe_no_drop and args.pipeline_model_parallel_size > 1:
@@ -839,6 +858,17 @@ def validate_args_wrapper(validate_args):
         if not args.use_mcore_models:
             if args.overlap_param_gather and args.reuse_fp32_param:
                 raise AssertionError('In legacy, `overlap_param_gather` does not support `reuse_fp32_param`.')
+        
+        if not args.overlap_warmup_cooldown_communication and args.use_multi_stream:
+            raise AssertionError("--use-multi-stream option must be enabled together with --overlap-warmup-cooldown-communication. Enabling --use-multi-stream alone will have no effect.")
+        
+        if args.overlap_warmup_cooldown_communication:
+            if args.recompute_in_bubble:
+                raise AssertionError("Enabling --recompute-in-bubble will cause the '--overlap-warmup-cooldown-communication' option to have no effect.")
+            if args.optimize_send_recv_comm:
+                raise AssertionError("Enabling --optimize-send-recv-comm will cause the '--overlap-warmup-cooldown-communication' option to have no effect.")
+            if args.automated_pipeline_perf:
+                raise AssertionError("Enabling --automated-pipeline-perf will cause the '--overlap-warmup-cooldown-communication' option to have no effect.")
 
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)

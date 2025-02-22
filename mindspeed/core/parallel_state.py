@@ -442,6 +442,9 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 ranks, pg_options=megatron.core.parallel_state.get_nccl_options('pp_new_stream', nccl_comm_cfgs)
             )
             if rank in ranks:
+                if args.overlap_warmup_cooldown_communication:
+                    # Directly initialize the PP group and trigger the lazy initialization mechanism in advance.
+                    torch.distributed.barrier(group=group)
                 _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
 
         from megatron.training import get_args
@@ -986,6 +989,9 @@ def initialize_model_parallel(
             ranks, timeout=timeout, pg_options=ps.get_nccl_options('pp', nccl_comm_cfgs)
         )
         if rank in ranks:
+            if args.overlap_warmup_cooldown_communication:
+                # Directly initialize the PP group and trigger the lazy initialization mechanism in advance.
+                torch.distributed.barrier(group=group)
             ps._PIPELINE_MODEL_PARALLEL_GROUP = group
             ps._PIPELINE_GLOBAL_RANKS = ranks
         # Setup embedding group (to exchange gradients between
