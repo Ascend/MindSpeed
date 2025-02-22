@@ -134,6 +134,16 @@ def dot_product_attention_init(
         self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(config.num_attention_heads)
 
 
+def dot_product_attention_init_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        fn(self, *args, **kwargs)
+        if self.config.num_query_groups is None:
+            self.config.num_query_groups = self.config.num_attention_heads
+        self.num_attention_heads_per_partition = self.config.num_attention_heads * self.num_query_groups_per_partition // self.config.num_query_groups
+    return wrapper
+
+
 def dot_product_attention_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params):

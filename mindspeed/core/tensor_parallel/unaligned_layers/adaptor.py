@@ -7,7 +7,7 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
     _initialize_affine_weight_gpu, set_tensor_model_parallel_attributes, _grad_accum_fusion_available, \
     linear_with_grad_accumulation_and_async_allreduce, linear_with_frozen_weight
 from megatron.core.tensor_parallel.mappings import scatter_to_tensor_model_parallel_region, \
-    reduce_from_tensor_model_parallel_region, scatter_to_sequence_parallel_region, gather_from_tensor_model_parallel_region
+    reduce_from_tensor_model_parallel_region, scatter_to_sequence_parallel_region, gather_from_tensor_model_parallel_region, copy_to_tensor_model_parallel_region
 
 from .unaligned_column_parallel_linear import UnalignedColumnParallelLinear
 from .unaligned_row_parallel_linear import UnalignedRowParallelLinear
@@ -29,9 +29,11 @@ class UnalignedColumnParallelLinearAdaptor(UnalignedColumnParallelLinear, Column
         else:
             kwargs['parallel_group'] = get_tensor_model_parallel_group()
 
-        kwargs['fusion_number'] = 3 if kwargs['tp_comm_buffer_name'] == 'qkv' else 1
-        if kwargs['tp_comm_buffer_name'] is not None and not kwargs['tp_comm_buffer_name'].startswith('fc'):
-            kwargs['fusion_number'] *= config.kv_channels
+        if kwargs['tp_comm_buffer_name'] == 'qkv':
+            kwargs['fusion_number'] = (config.hidden_size + 2 * config.kv_channels * config.num_query_groups) // config.num_query_groups
+        else:
+            kwargs['fusion_number'] = 1
+
         if not config.variable_seq_lengths:
             kwargs['seq_length'] = get_args().seq_length
 
@@ -40,6 +42,8 @@ class UnalignedColumnParallelLinearAdaptor(UnalignedColumnParallelLinear, Column
         kwargs['set_tensor_model_parallel_attributes'] = set_tensor_model_parallel_attributes
         kwargs['linear_with_grad_accumulation_and_async_allreduce'] = linear_with_grad_accumulation_and_async_allreduce
         kwargs['gather_from_tensor_model_parallel_region'] = gather_from_tensor_model_parallel_region
+        kwargs['copy_to_tensor_model_parallel_region'] = copy_to_tensor_model_parallel_region
+        kwargs['linear_with_frozen_weight'] = linear_with_frozen_weight
         super(UnalignedColumnParallelLinearAdaptor, self).__init__(*args, **kwargs)
 
 
@@ -56,8 +60,12 @@ class UnalignedRowParallelLinearAdaptor(UnalignedRowParallelLinear, RowParallelL
             kwargs['parallel_group'] = get_tensor_and_expert_parallel_group()
         else:
             kwargs['parallel_group'] = get_tensor_model_parallel_group()
-        if kwargs['tp_comm_buffer_name'] is not None and not kwargs['tp_comm_buffer_name'].startswith('fc'):
-            kwargs['fusion_number'] = config.kv_channels
+
+        if kwargs['tp_comm_buffer_name'] is not None and not kwargs['tp_comm_buffer_name'].startswith('fc'): # attention.linear_proj
+            kwargs['fusion_number'] = config.hidden_size // config.num_query_groups
+        else:
+            kwargs['fusion_number'] = 1
+
         if not config.variable_seq_lengths:
             kwargs['seq_length'] = get_args().seq_length
 
