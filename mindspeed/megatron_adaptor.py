@@ -600,7 +600,10 @@ def ascend_adaptation(aspm, args):
         aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
     if args.smart_swap and (not args.memory_fragmentation and not adaptive_recompute_enable):
         from .core.memory.smart_swap.swap_adaptor import change_allocator
+        time.sleep(10)
         change_allocator()
+        from .core.memory.smart_swap.swap_megatron_adaptor import train_step_wrapper
+        aspm.register_patch('megatron.training.training.train_step', train_step_wrapper)
 
     if adaptive_recompute_enable or args.memory_fragmentation:
         import megatron.training.initialize

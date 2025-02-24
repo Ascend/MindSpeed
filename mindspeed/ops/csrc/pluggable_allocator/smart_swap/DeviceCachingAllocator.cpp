@@ -11,14 +11,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include <iostream>
-#include <chrono>
-#include <thread>
-
-#include "swap_log.h"
-#include "SwapException.h"
 #include "DeviceCachingAllocator.h"
 
+#include <chrono>
+
+#include "swap_log.h"
+#include "NPUSwapManager.h"
 
 Block *DeviceCachingAllocator::malloc(int device, size_t orig_size, aclrtStream stream)
 {

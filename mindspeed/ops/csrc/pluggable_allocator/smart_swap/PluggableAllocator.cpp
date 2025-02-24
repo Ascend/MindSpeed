@@ -12,20 +12,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include <algorithm>
-#include <bitset>
-#include <deque>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <regex>
-#include <set>
-#include <vector>
+#include "PluggableAllocator.h"
 
 #include <c10/util/irange.h>
 
 #include "swap_log.h"
-#include "PluggableAllocator.h"
+#include "NPUSwapManager.h"
 
 void local_raw_delete(void *ptr)
 {

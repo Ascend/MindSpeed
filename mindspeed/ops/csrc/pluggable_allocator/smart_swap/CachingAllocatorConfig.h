@@ -14,8 +14,9 @@
 // limitations under the License.
 #pragma once
 
-#include "common.h"
-#include "SwapException.h"
+#include <limits>
+#include <vector>
+#include <string>
 
 class CachingAllocatorConfig {
 public:

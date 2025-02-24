@@ -16,7 +16,6 @@
 #include "common.h"
 #include "EventPool.h"
 #include "CachingAllocatorConfig.h"
-#include "NPUVmmApi.h"
 
 class DeviceCachingAllocator {
 private:

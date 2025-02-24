@@ -14,11 +14,6 @@
 // limitations under the License.
 #pragma once
 
-#include <ATen/Tensor.h>
-#include <c10/core/ScalarType.h>
-#include <c10/core/StorageImpl.h>
-#include <c10/util/SmallVector.h>
-#include <c10/util/intrusive_ptr.h>
 #include <deque>
 #include <exception>
 #include <iostream>
@@ -27,6 +22,12 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <ATen/Tensor.h>
+#include <c10/core/ScalarType.h>
+#include <c10/core/StorageImpl.h>
+#include <c10/util/SmallVector.h>
+#include <c10/util/intrusive_ptr.h>
 #include <torch_npu/csrc/core/npu/NPUEvent.h>
 
 namespace c10_npu {
