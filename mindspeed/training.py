@@ -41,6 +41,7 @@ from megatron.training.global_vars import (
     get_tensorboard_writer,
     get_wandb_writer,
     get_one_logger)
+from megatron.training.async_utils import maybe_finalize_async_save
 
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
 
@@ -152,17 +153,26 @@ def train_step(forward_step_func, data_iterator,
     return {}, skipped_iter, grad_norm, num_zeros_in_grad
 
 
-def pretrain(train_valid_test_dataset_provider,
-             model_provider,
-             model_type,
-             forward_step_func,
-             process_non_loss_data_func=None,
-             extra_args_provider=None,
-             args_defaults={}):
+def pretrain(
+    train_valid_test_dataset_provider,
+    model_provider,
+    model_type,
+    forward_step_func,
+    process_non_loss_data_func=None,
+    extra_args_provider=None,
+    args_defaults={},
+    get_embedding_ranks=None,
+    get_position_embedding_ranks=None,
+):
+
 
     # Initalize and get arguments, timers, and Tensorboard writer.
-    initialize_megatron(extra_args_provider=extra_args_provider,
-                        args_defaults=args_defaults)
+    initialize_megatron(
+        extra_args_provider=extra_args_provider,
+        args_defaults=args_defaults,
+        get_embedding_ranks=get_embedding_ranks,
+        get_position_embedding_ranks=get_position_embedding_ranks
+    )
 
     if (os.getenv("OOTB_OPTIMIZER_PARSE_ARGS", "FALSE") == "TRUE"):
         working_dir = get_args().profile_save_path
@@ -210,11 +220,22 @@ def pretrain(train_valid_test_dataset_provider,
     # Track E2E metrics on pretrain start
     one_logger_utils.on_pretrain_start()
 
+    # Context used for persisting some state between checkpoint saves.
+    if args.non_persistent_ckpt_type == 'local':
+        raise RuntimeError('LocalCheckpointManagers are not yet integrated')
+        checkpointing_context = {
+            'local_checkpoint_manager': BasicLocalCheckpointManager(
+                args.non_persistent_local_ckpt_dir
+            )
+        }
+    else:
+        checkpointing_context = {}
+
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
     app_metrics['app_build_optimizer_start_time'] = one_logger_utils.get_timestamp_in_ms()
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
-        model_provider, model_type)
+        model_provider, model_type, checkpointing_context=checkpointing_context)
 
     timers('model-and-optimizer-setup').stop()
     print_datetime('after model, optimizer, and learning rate '
@@ -258,6 +279,11 @@ def pretrain(train_valid_test_dataset_provider,
                                         args.do_valid, args.do_test, args.dataloader_type,
                                         args.retro_project_dir, args.retro_cyclic_train_iters)
 
+    if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
+        ft_integration.get_rank_monitor_client().init_workload_monitoring()
+        ft_timeouts = ft_integration.get_rank_monitor_client().timeouts
+        print_rank_0(f"Fault tolerance client initialized. Timeouts: {ft_timeouts}")
+
     # Print setup timing.
     print_rank_0('done with setup ...')
     timers.log(['model-and-optimizer-setup',
@@ -265,9 +291,6 @@ def pretrain(train_valid_test_dataset_provider,
 
     one_logger = get_one_logger()
     one_logger and one_logger.log_metrics(app_metrics)
-
-    # Context used for persisting some state between checkpoint saves.
-    checkpointing_context = {}
 
     if not args.skip_train:
         print_rank_0('training ...')
@@ -289,7 +312,10 @@ def pretrain(train_valid_test_dataset_provider,
 
         if args.save and iteration != 0 and iteration % args.save_interval != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
-                            num_floating_point_operations_so_far, checkpointing_context)
+                            num_floating_point_operations_so_far, checkpointing_context,
+                            train_data_iterator=train_data_iterator,
+                            ft_client=ft_integration.get_rank_monitor_client(
+                                ft_integration.StateMachineActions.SAVE_CHECKPOINT))
 
         one_logger and one_logger.log_metrics({
             'app_train_loop_finish_time': one_logger_utils.get_timestamp_in_ms()
@@ -313,6 +339,11 @@ def pretrain(train_valid_test_dataset_provider,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
                                    verbose=True, write_to_tensorboard=not args.skip_train)
+
+    wandb_writer = get_wandb_writer()
+    if wandb_writer:
+        wandb_writer.finish()
+    maybe_finalize_async_save(blocking=True)
 
     if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
         # profiling parser

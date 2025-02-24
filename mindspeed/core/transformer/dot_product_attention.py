@@ -138,7 +138,8 @@ def dot_product_attention_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params):
         if attention_mask is None and self.attn_mask_type == AttnMaskType.causal:
-            attention_mask = get_attention_mask()
+            if not getattr(self.config, 'is_llava', False):
+                attention_mask = get_attention_mask()
         if get_args().use_flash_attn:
             return dot_product_attention_forward(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params)
         return fn(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params)

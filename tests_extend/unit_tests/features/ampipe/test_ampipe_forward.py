@@ -276,7 +276,6 @@ class TestAmpipeForward(DistributedTest):
             num_moe_experts=self.args.num_experts
         )
 
-        # rank = dist.get_rank()
         b, s = batch_size, self.args.seq_length // tp_size
         hidden_states = torch.randn(s, b, self.args.hidden_size, dtype=dtype, device=torch.npu.current_device())
         attention_mask = torch.triu(
@@ -323,6 +322,7 @@ class TestAmpipeForward(DistributedTest):
         # compare backward results with and without ampipe
         assert torch.allclose(hidden_states_base_grad, hidden_states_ampipe_grad, **tols)
 
+    @pytest.mark.skip(reason='Because DeepSpeed MoE was removed, the corresponding test case has been skipped.')
     @pytest.mark.parametrize("tp_ep", [
             (2, 2),
             (2, 4),
@@ -332,6 +332,7 @@ class TestAmpipeForward(DistributedTest):
     def test_ampipe_sp_no_cp_bf16(self, tp_ep):
         self.compare_ampipe_and_original(tp_ep, 1, dtype=torch.bfloat16, ampipe_degree=2)
 
+    @pytest.mark.skip(reason='Because DeepSpeed MoE was removed, the corresponding test case has been skipped.')
     @pytest.mark.parametrize("tp_ep", [
             (2, 2),
             (2, 4),

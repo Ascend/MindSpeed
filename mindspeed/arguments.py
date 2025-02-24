@@ -527,8 +527,16 @@ def validate_args_wrapper(validate_args):
         args = validate_args(args, defaults)
         args.variable_seq_lengths = original_variable_seq_lengths
         args.context_parallel_size = origin_context_parallel_size
-        model_parallel_size = args.pipeline_model_parallel_size * args.tensor_model_parallel_size
-        args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
+
+        encoder_model_parallel_size = args.encoder_tensor_model_parallel_size * args.encoder_pipeline_model_parallel_size * args.context_parallel_size
+        decoder_model_parallel_size = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
+        total_model_parallel_size = encoder_model_parallel_size + decoder_model_parallel_size
+        # Total model size.
+        assert args.world_size % total_model_parallel_size == 0, (
+            f"world size ({args.world_size}) is not divisible by total_model_parallel_size ({encoder_model_parallel_size=} + {decoder_model_parallel_size=})"
+        )
+        
+        args.data_parallel_size = args.world_size // total_model_parallel_size
         if args.global_batch_size is None:
             args.global_batch_size = args.micro_batch_size * args.data_parallel_size
             if args.rank == 0:

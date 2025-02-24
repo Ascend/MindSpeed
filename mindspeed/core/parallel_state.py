@@ -348,15 +348,81 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             timeout = timedelta(minutes=distributed_timeout_minutes)
 
             # # Regenerate ep related groups because ep is set to 1 in initialize_model_parallel func
-            rank_generator = megatron.core.parallel_state.RankGenerator(
+            if encoder_pipeline_model_parallel_size is None:
+                encoder_pipeline_model_parallel_size = 0
+            if encoder_tensor_model_parallel_size == 0 and encoder_pipeline_model_parallel_size > 0:
+                encoder_tensor_model_parallel_size = tensor_model_parallel_size
+            
+            encoder_model_size = (
+                encoder_tensor_model_parallel_size
+                * encoder_pipeline_model_parallel_size
+                * context_parallel_size
+            )
+
+            decoder_model_size = (
+                tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
+            )
+            
+            total_model_size = encoder_model_size + decoder_model_size
+            
+            data_parallel_size: int = world_size // total_model_size
+
+            encoder_world_size = encoder_model_size * data_parallel_size
+            decoder_world_size = decoder_model_size * data_parallel_size
+            
+            if encoder_world_size > 0:
+                encoder_rank_generator =  megatron.core.parallel_state.RankGenerator(
+                    tp=encoder_tensor_model_parallel_size,
+                    ep=1,
+                    dp=data_parallel_size * context_parallel_size,
+                    pp=encoder_pipeline_model_parallel_size,
+                    cp=1,
+                    order=order,
+                    rank_offset=0,
+                )
+            else:
+                encoder_rank_generator = None
+
+            decoder_rank_generator = megatron.core.parallel_state.RankGenerator(
                 tp=tensor_model_parallel_size,
                 ep=expert_model_parallel_size,
                 dp=data_parallel_size * context_parallel_size,
                 pp=pipeline_model_parallel_size,
                 cp=1,
                 order=order,
+                rank_offset=encoder_world_size,
             )
-            for ranks in rank_generator.get_ranks('tp-ep-pp', independent_ep=True):
+
+            def generator_wrapper(group_type, **kwargs):
+                """The `RankGenerator` class produces a hyper-rectangle for a given set of
+                tensor, pipeline, data, expert, and context parallelism. If we have an encoder,
+                in addition to the default decoder, we essentially instantiate two `RankGenerator`
+                classes to construct the parallelism for each module separately, and we then have
+                to stitch them together for the right groups. For now, this means pp and tp-pp."""
+                d_ranks = decoder_rank_generator.get_ranks(group_type, **kwargs)
+                if encoder_rank_generator is None:
+                    for x in d_ranks:
+                        yield x
+                    return
+                e_ranks = encoder_rank_generator.get_ranks(group_type, **kwargs)
+                if group_type == 'pp':
+                    # Map 1 encoder tp rank to several decoder tp ranks, because
+                    # these won't be the same size.
+                    for x, y in zip(cycle(e_ranks), d_ranks):
+                        yield x + y
+                elif group_type == 'tp-pp':
+                    # For this group, we can just return the concatenated
+                    # groups together, because their sizes are the same.
+                    assert len(e_ranks) == len(d_ranks)
+                    for x, y in zip(e_ranks, d_ranks):
+                        yield x + y
+                else:
+                    for x in e_ranks:
+                        yield x
+                    for x in d_ranks:
+                        yield x
+
+            for ranks in generator_wrapper('tp-ep-pp', independent_ep=True):
                 group = torch.distributed.new_group(
                     ranks, timeout=timeout,
                     pg_options=get_nccl_options('mp_exp', nccl_comm_cfgs)
@@ -365,7 +431,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     megatron.core.parallel_state._MODEL_AND_EXPERT_PARALLEL_GROUP = group
 
             all_tensor_and_expert_group_ranks = []
-            for ranks in rank_generator.get_ranks('tp-ep', independent_ep=True):
+            for ranks in generator_wrapper('tp-ep', independent_ep=True):
                 all_tensor_and_expert_group_ranks.append(list(ranks))
                 group = torch.distributed.new_group(
                     ranks, timeout=timeout, pg_options=get_nccl_options('tp_exp', nccl_comm_cfgs)
@@ -374,7 +440,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     megatron.core.parallel_state._TENSOR_AND_EXPERT_PARALLEL_GROUP = group
 
             all_ep_groups = []
-            for ranks in rank_generator.get_ranks('ep', independent_ep=True):
+            for ranks in generator_wrapper('ep', independent_ep=True):
                 all_ep_groups.append(list(ranks))
                 group = torch.distributed.new_group(
                     ranks, pg_options=get_nccl_options('exp', nccl_comm_cfgs)
@@ -383,7 +449,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     megatron.core.parallel_state._EXPERT_MODEL_PARALLEL_GROUP = group
 
             all_dp_modulo_exp_group_ranks = []
-            for ranks in rank_generator.get_ranks('dp', independent_ep=True):
+            for ranks in generator_wrapper('dp', independent_ep=True):
                 all_dp_modulo_exp_group_ranks.append(list(ranks))
                 group = torch.distributed.new_group(
                     ranks, timeout=timeout, pg_options=get_nccl_options('dp_modulo_exp', nccl_comm_cfgs)
@@ -393,7 +459,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP = group
                     megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO = group_gloo
 
-            for ranks in rank_generator.get_ranks('dp-cp', independent_ep=True):
+            for ranks in generator_wrapper('dp-cp', independent_ep=True):
                 # Lazy initialization of the group
                 if get_context_parallel_world_size() > 1:
                     group = torch.distributed.new_group(
@@ -414,12 +480,15 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
                 all_tp_groups.append(list(ranks))
 
-            print_rank_0(f"all tp gourps {all_tp_groups}")
+            if encoder_tensor_model_parallel_size == 0 and encoder_pipeline_model_parallel_size == 0:
+                print_rank_0(f"all tp gourps {all_tp_groups}")
+                print_rank_0(f"all dp groups {all_data_parallel_group_ranks}")
+                print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
+
             print_rank_0(f"all ep groups {all_ep_groups}")
-            print_rank_0(f"all dp groups {all_data_parallel_group_ranks}")
             print_rank_0(f"all_dp_modulo_exp_group_ranks {all_dp_modulo_exp_group_ranks}")
             print_rank_0(f"all_tensor_and_expert_group_ranks {all_tensor_and_expert_group_ranks}")
-            print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
+
 
         else:
             initialize_model_parallel(
