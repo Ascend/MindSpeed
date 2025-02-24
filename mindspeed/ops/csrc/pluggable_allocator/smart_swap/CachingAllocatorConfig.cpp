@@ -14,6 +14,8 @@
 // limitations under the License.
 #include "CachingAllocatorConfig.h"
 
+#include "common.h"
+
 void CachingAllocatorConfig::lexArgs(const char *env, std::vector<std::string> &config)
 {
     std::vector<char> buf;

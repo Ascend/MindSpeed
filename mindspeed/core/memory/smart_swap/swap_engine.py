@@ -35,8 +35,9 @@ class SwapEngine:
         self.config = config
         self.rank = swap_policy_config.rank
         self.output_root_path = swap_policy_config.output_root_path
-        if not os.path.exists(self.output_root_path) and self.rank == 0:
-            os.makedirs(self.output_root_path)
+        if swap_policy_config.save_policy or swap_policy_config.save_profiler_data:
+            if not os.path.exists(self.output_root_path) and self.rank == 0:
+                os.makedirs(self.output_root_path)
         self.duration_time = None
         self.step_parameters = {}
         self.all_step_duration = {}
@@ -91,10 +92,11 @@ class SwapEngine:
     def record_tensor_types(self):
         self.map_unique_ptr2tensor_type.clear()
         # 针对优化器状态的特殊类tensor，将其记录在C++侧的map映射中，方便其执行匹配
-        tensors = self.get_optimizer_tensors_fcn(self.optimizer)
-        unique_ptrs = record_tensor_ptr_with_types(tensors, SwapTensorType.OPTIM, 1, False)
-        for unique_ptr in unique_ptrs:
-            self.map_unique_ptr2tensor_type[UniqueSwapPtr(unique_ptr)] = SwapTensorType.OPTIM
+        if self.optimizer and self.get_optimizer_tensors_fcn:
+            tensors = self.get_optimizer_tensors_fcn(self.optimizer)
+            unique_ptrs = record_tensor_ptr_with_types(tensors, SwapTensorType.OPTIM, 1, False)
+            for unique_ptr in unique_ptrs:
+                self.map_unique_ptr2tensor_type[UniqueSwapPtr(unique_ptr)] = SwapTensorType.OPTIM
 
     def is_similar_with_policy_profiler(self, profiler_op_step: ProfilerDataOneStep):
         if self.newest_policy_result.policy_step is None:

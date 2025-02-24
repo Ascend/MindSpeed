@@ -628,6 +628,8 @@ def memory_fragmentation_adaptation(aspm, args):
         from .core.memory.smart_swap.swap_adaptor import change_allocator
         time.sleep(10)
         change_allocator()
+        from .core.memory.smart_swap.swap_megatron_adaptor import train_step_wrapper
+        aspm.register_patch('megatron.training.training.train_step', train_step_wrapper)
 
     if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
         print(f"OOTB_OPTIMIZER_PROFILING success open")
