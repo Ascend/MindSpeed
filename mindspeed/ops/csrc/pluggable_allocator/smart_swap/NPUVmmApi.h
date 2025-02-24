@@ -13,36 +13,16 @@
 // limitations under the License.
 #pragma once
 
-#include <typeindex>
-#include <typeinfo>
-#include <type_traits>
 #include <mutex>
-#include <atomic>
-#include <condition_variable>
-#include <unordered_map>
-#include <utility>
-#include <iostream>
-#include <sstream>
 #include <vector>
-#include <execinfo.h>
 #include <cstdlib>
-#include <cstdarg>
-#include <unistd.h>
-#include <sys/syscall.h>
 #include <cstdio>
 
-#include <c10/util/intrusive_ptr.h>
 #include <third_party/acl/inc/acl/acl_base.h>
 #include <third_party/acl/inc/acl/acl_rt.h>
-#include <torch_npu/csrc/core/npu/interface/AclInterface.h>
-#include <torch_npu/csrc/core/npu/interface/AsyncTaskQueueInterface.h>
-#include <torch_npu/csrc/core/npu/NPUCachingAllocator.h>
-#include <torch_npu/csrc/core/npu/NPUGuard.h>
-#include <torch_npu/csrc/core/npu/sys_ctrl/npu_sys_ctrl.h>
-#include <torch_npu/csrc/core/npu/NPUEvent.h>
+#include <torch_npu/csrc/core/npu/NPUFunctions.h>
 
 #include "SwapException.h"
-#include "NPUSwapManager.h"
 
 using CUmemGenericAllocationHandle = unsigned long long;
 

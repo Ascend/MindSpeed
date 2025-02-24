@@ -32,6 +32,11 @@ class SmartSwapBuilder(MindSpeedOpBuilder):
     def cxx_args(self):
         args = super().cxx_args()
         args += ["-D_GLIBCXX_USE_CXX11_ABI=0", "-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"]
+
+        remove_arg = "-fvisibility=hidden"
+        while remove_arg in args:
+            args.remove(remove_arg)
+
         return args
 
     def extra_ldflags(self):

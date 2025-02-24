@@ -13,16 +13,14 @@
 // limitations under the License.
 #pragma once
 
-#include <mutex>
-#include <unordered_map>
-#include <climits>
+#include <limits>
 #include <vector>
+#include <memory>
 
 #include <c10/util/flat_hash_map.h>
 #include <third_party/acl/inc/acl/acl_base.h>
 #include <third_party/acl/inc/acl/acl_rt.h>
 #include <torch_npu/csrc/core/npu/NPUStream.h>
-#include <torch_npu/csrc/core/npu/NPUException.h>
 #include <torch_npu/csrc/core/npu/NPUCachingAllocator.h>
 
 #include "NPUVmmApi.h"
