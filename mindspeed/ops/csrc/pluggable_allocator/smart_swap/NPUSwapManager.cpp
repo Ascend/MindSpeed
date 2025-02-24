@@ -12,14 +12,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "swap_log.h"
-#include "SwapException.h"
 #include "NPUSwapManager.h"
-#include <fstream>
-#include <iostream>
-#include <regex>
+
 #include <sstream>
-#include <string>
+
 #include <ATen/record_function.h>
 #include <torch_npu/csrc/core/NPUStorageImpl.h>
 #include <torch_npu/csrc/core/npu/NPUCachingAllocator.h>
@@ -27,6 +23,9 @@
 #include <torch_npu/csrc/core/npu/CachingHostAllocator.h>
 #include <torch_npu/csrc/core/npu/NPUMemorySwap.h>
 #include <torch_npu/csrc/framework/OpHook.h>
+
+#include "swap_log.h"
+#include "SwapException.h"
 
 namespace c10_npu {
 namespace swap {

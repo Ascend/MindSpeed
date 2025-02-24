@@ -631,6 +631,8 @@ def memory_fragmentation_adaptation(aspm, args):
         from .core.memory.smart_swap.swap_adaptor import change_allocator
         time.sleep(10)
         change_allocator()
+        from .core.memory.smart_swap.swap_megatron_adaptor import train_step_wrapper
+        aspm.register_patch('megatron.training.training.train_step', train_step_wrapper)
     if args.adaptive_memory_optimization and not (args.adaptive_recompute_enable or args.memory_fragmentation or args.swap_attention or args.smart_swap):
         from .core.memory.adaptive_memory.adaptive_memory_opt import addup_allowed_mem_adapt_module
         if hasattr(args, "use_legacy_models") and args.use_legacy_models:

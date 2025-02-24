@@ -15,8 +15,6 @@
 #include <pybind11/pybind11.h>
 #include <torch/extension.h>
 #include <torch/types.h>
-#include <iostream>
-#include <set>
 
 #include "PluggableAllocator.h"
 #include "NPUSwapManager.h"

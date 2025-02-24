@@ -47,10 +47,10 @@ class SwapManager:
         optimizer=None,
         get_optimizer_tensors_fcn=None,
         get_shared_tensors_fcn=None,
-        enable_profiler=True,
         custom_policy_fcn=None,
     ):
-        swap_policy_config.rank = torch.distributed.get_rank()
+        if torch.distributed.is_initialized():
+            swap_policy_config.rank = torch.distributed.get_rank()
 
         option = {"OP_HOOK_ENABLE": "enable"}
         torch.npu.set_option(option)
@@ -63,7 +63,6 @@ class SwapManager:
         self.num_micro_batch_fcn = num_micro_batch_fcn
         self.models = models
         self.get_shared_tensors_fcn = get_shared_tensors_fcn
-        self.enable_profiler = enable_profiler
         self.swap_hook_registers: list = []
         self.swap_engine = SwapEngine(models, optimizer, get_optimizer_tensors_fcn, self.config, custom_policy_fcn)
         self.start_time = time.time()
@@ -95,7 +94,6 @@ class SwapManager:
         self.config.micro_batch_num = self.num_micro_batch_fcn()
         self.config.fwd_op_layer_info = []
         self.config.bwd_op_layer_info = []
-        self.config.enable_profiler = self.enable_profiler
         self.register_model_hooks(self.models)
         self.record_shared_memory(self.models)
         self.start_time = time.time()
@@ -118,8 +116,9 @@ class SwapManager:
         record_tensor_ptr_with_types(tensors, SwapTensorType.MODEL, 0, False)
 
     def record_shared_memory(self, models):
-        tensors = self.get_shared_tensors_fcn(models)
-        record_tensor_ptr_with_types(tensors, SwapTensorType.SHARED_MEMORY, 0, True)
+        if models and self.get_shared_tensors_fcn:
+            tensors = self.get_shared_tensors_fcn(models)
+            record_tensor_ptr_with_types(tensors, SwapTensorType.SHARED_MEMORY, 0, True)
 
     def init_for_new_op_seq(self):
         self.print_with_rank("Call init_for_new_op_seq")
@@ -128,7 +127,7 @@ class SwapManager:
         self.is_new_op_sequence = True
         self.cur_warmup_step = 0
 
-    def run_at_each_step_end(self):
+    def step(self):
         end_time = time.time()
         self.config.one_step_duration = end_time - self.start_time
         for swap_hook_register in self.swap_hook_registers:

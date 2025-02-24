@@ -122,7 +122,7 @@ class PolicyGenerator:
         p1 = 0
         p2 = len(self.memory_reduction_list) - 1
         if cmp not in ["ge", "lt"]:
-            raise Exception("For now only support cmp='ge' or cmp='lt' ")
+            raise ValueError("For now only support cmp='ge' or cmp='lt' ")
         while p1 < p2 - 1:
             mid = (p1 + p2) // 2
             mid_opid = self.memory_reduction_list[mid].op_id
