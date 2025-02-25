@@ -913,6 +913,12 @@ def tensor_2d_adaptation(aspm, args):
         from .core.transformer.transformer_config import transformer_config_post_init
         aspm.register_patch('megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
                             transformer_config_post_init)
+        from mindspeed.model.language_model import model_parallel_config_post_init_wrapper
+        aspm.register_patch('megatron.core.model_parallel_config.ModelParallelConfig.__post_init__',
+                            model_parallel_config_post_init_wrapper)
+        from mindspeed.core.models.gpt.gpt_layer_specs import get_mlp_module_spec_wrapper
+        aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs._get_mlp_module_spec',
+                            get_mlp_module_spec_wrapper)
         from mindspeed.core.transformer.attention import self_attention_init_tp2d_wrapper
         aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_tp2d_wrapper)
 

@@ -24,6 +24,11 @@ import torch
 import torch_npu
 import torch.distributed
 import torch.nn.functional as F
+
+from megatron.core.transformer import TransformerConfig
+from .comm_group_api import TPXCollectiveComm
+from .comm_group_api import TPYCollectiveComm
+
 try:
     import fused_weight_gradient_mlp_cuda
 except Exception:
@@ -1591,60 +1596,46 @@ class Mc2RowSeqParallelLinear(torch.autograd.Function):
         return grad_input, grad_weight, grad_bias, None
 
 
-def _initialize_affine_weight_cpu_2d(
-    weight,
-    output_size,
-    input_size,
-    input_size_per_partition,
-    output_size_per_partition,
-    partition_dim,
-    init_method,
-    stride=1,
-    return_master_weight=False,
-    *,
-    params_dtype=torch.float32
-):
+def _initialize_affine_weight_cpu_2d(weight, partition_dim, stride=1, return_master_weight=False, *,
+                                     config: TransformerConfig):
     """Initialize affine weight for model parallel when use tp-2d"""
     set_tensor_model_parallel_attributes(
         tensor=weight, is_parallel=True, dim=partition_dim, stride=stride
     )
 
+    if partition_dim == 1:
+        row_num = TPYCollectiveComm.get_comm_group_world_size()
+        col_num = TPXCollectiveComm.get_comm_group_world_size()
+    else:
+        row_num = TPXCollectiveComm.get_comm_group_world_size()
+        col_num = TPYCollectiveComm.get_comm_group_world_size()
+
     # Initialize master weight
-    master_weight = torch.empty(output_size, input_size, dtype=torch.float, requires_grad=False)
-    init_method(master_weight)
+    split_input_size, split_output_size = weight.size()
+    input_size = split_input_size * row_num
+    output_size = split_output_size * col_num
 
-    master_weight = master_weight.to(dtype=params_dtype)
-    # Split and copy
-    rank = ps.get_tensor_model_parallel_rank()
-    world_size = ps.get_tensor_model_parallel_world_size()
+    master_weight = torch.empty(input_size, output_size, dtype=torch.float, requires_grad=False)
+    config.init_method(master_weight)
 
-    def compute_target_rank(rank, row_num, col_num):
-        return rank % row_num * col_num + rank // row_num
+    master_weight = master_weight.to(dtype=config.params_dtype)
 
-    # The weight positions of nd and megatron are different. So weight needs to be rearranged.
-    # This rearrangement is only to make the calculations of nd and megatron consistent.
-    # Even if this rearrangement is removed, it will not affect the correctness of nd calculation.
-    if partition_dim == 0:
-        row_num = input_size // input_size_per_partition
-        col_num = output_size // output_size_per_partition
+    x = TPXCollectiveComm.get_comm_rank()
+    y = TPYCollectiveComm.get_comm_rank()
+
+    rows = torch.chunk(master_weight, row_num, dim=0)
+    if partition_dim == 1:
+        row_idx = y
+        col_idx = x
     else:
-        col_num = input_size // input_size_per_partition
-        row_num = output_size // output_size_per_partition
-    weight_list = torch.split(master_weight, master_weight.size()[partition_dim] // world_size, dim=partition_dim)
-    tensor_list = [weight_list[compute_target_rank(i, row_num, col_num)] for i in range(world_size)]
-    master_weight = torch.cat(tensor_list, dim=partition_dim)
-    weight_list_1 = torch.split(master_weight, input_size_per_partition, dim=1)
-    if partition_dim == 0:
-        weight_1 = weight_list_1[rank // col_num]
-    else:
-        weight_1 = weight_list_1[rank % col_num]
-    weight_list_2 = torch.split(weight_1, output_size_per_partition, dim=0)
-    if partition_dim == 0:
-        my_weight_list = weight_list_2[rank % col_num:: world_size]
-    else:
-        my_weight_list = weight_list_2[rank // col_num:: world_size]
-    with torch.no_grad():
-        torch.cat(my_weight_list, dim=partition_dim, out=weight)
+        row_idx = x
+        col_idx = y
+
+    row = rows[row_idx]
+    cols = torch.chunk(row, col_num, dim=1)
+    final_weight = cols[col_idx].contiguous()
+    weight.data.copy_(final_weight)
+
     if return_master_weight:
         return master_weight
 

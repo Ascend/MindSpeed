@@ -134,3 +134,28 @@ def embedding_forward_ampipe(self, input_ids, position_ids, tokentype_ids=None):
         embeddings = self.embedding_dropout(embeddings)
 
     return embeddings
+
+
+def model_parallel_config_post_init_wrapper(init_func):
+    @wraps(init_func)
+    def wrapper(self, *args, **kwargs):
+        if self.pipeline_model_parallel_size > 1:
+            if self.pipeline_dtype is None:
+                raise ValueError(
+                    "When using pipeline parallelism, pipeline_dtype must be specified"
+                )
+
+        if self.autocast_dtype is None:
+            self.autocast_dtype = self.params_dtype
+
+        if self.defer_embedding_wgrad_compute and self.pipeline_model_parallel_size == 1:
+            raise ValueError(
+                "Cannot defer embedding wgrad compute when pipeline model parallel is not used"
+            )
+
+        if self.defer_embedding_wgrad_compute and not self.gradient_accumulation_fusion:
+            raise ValueError(
+                "Cannot defer embedding wgrad compute when gradient accumulation fusion is not used"
+            )
+
+    return wrapper

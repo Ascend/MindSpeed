@@ -244,9 +244,9 @@ def sync_reduce_scatter_along_last_dim(
     if world_size == 1:
         return local_rank_input
 
-    local_rank_input = local_rank_input.transpose(0, 2)
+    local_rank_input = local_rank_input.transpose(0, -1)
     output = sync_reduce_scatter_along_first_dim(local_rank_input, rs_comm_intf)
-    return output.transpose(0, 2).contiguous()
+    return output.transpose(0, -1).contiguous()
 
 
 def async_reduce_scatter_along_last_dim(

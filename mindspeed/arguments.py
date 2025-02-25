@@ -907,7 +907,8 @@ def validate_args_wrapper(validate_args):
             if args.tensor_model_parallel_size // args.tp_x != args.tp_y:
                 raise AssertionError('need satisfy tp = tp_x * tp_y')
             if args.expert_model_parallel_size > 1:
-                raise AssertionError('2d tp does not support moe')
+                if args.moe_token_dispatcher_type != "allgather":
+                    raise AssertionError('2d tp only support allgather megatron-moe now')
 
         if args.expert_interval <= 0 or args.expert_interval > args.num_layers:
             raise AssertionError("--expert-interval must be between 1 and num layers")

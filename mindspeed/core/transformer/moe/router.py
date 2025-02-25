@@ -1,6 +1,7 @@
 # Copyright (c) 2022; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
+from megatron.training import get_args
 from megatron.core.parallel_state import get_tensor_and_expert_parallel_group
 from megatron.core.tensor_parallel.mappings import _reduce_scatter_along_first_dim_moe
 from megatron.core.transformer.moe.moe_utils import topk_softmax_with_capacity
@@ -51,7 +52,7 @@ def aux_loss_load_balancing(self, logits: torch.Tensor):
         use_pre_softmax=self.config.moe_router_pre_softmax,
     )
     global_indices = indices
-    if self.config.sequence_parallel or (self.config.expert_model_parallel_size > 1):
+    if self.config.sequence_parallel or (self.config.expert_model_parallel_size > 1 and not get_args().tp_2d):
         with torch.no_grad():
             global_indices = gather_from_sequence_parallel_region_to_moe_async(indices)
 

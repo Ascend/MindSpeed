@@ -19,6 +19,7 @@ from megatron.core.utils import divide
 from mindspeed.core.tensor_parallel.comm_group_api import CollectiveCommIntf
 from mindspeed.core.tensor_parallel.comm_group_api import OverlapCollectiveIntf
 from mindspeed.core.tensor_parallel.layers import _initialize_affine_weight_cpu_2d
+from mindspeed.core.tensor_parallel.tp_2d.linear_2d_moe_split_along_first_dim import MoELinear2DFC1, MoELinear2DFC2
 from mindspeed.core.tensor_parallel.tp_2d.linear_2d_split_along_first_dim import Linear2DSplitAlongFirstDim
 
 
@@ -142,34 +143,25 @@ class ParallelLinear2D(torch.nn.Module):
             self.register_parameter("bias", None)
 
         if init_with_cpu and self.mp_config.perform_initialization:
-            _initialize_affine_weight_cpu_2d(
-                self.weight,
-                self.output_size,
-                self.input_size,
-                self.input_size_per_partition,
-                self.output_size_per_partition,
-                self.partition_dim,
-                self.para_init_method,
-                stride=self.stride,
-                return_master_weight=self.keep_master_weight_for_test,
-                params_dtype=self.mp_config.params_dtype,
-            )
+            _initialize_affine_weight_cpu_2d(self.weight, self.partition_dim, stride=self.stride,
+                                             return_master_weight=self.keep_master_weight_for_test,
+                                             config=self.mp_config)
         elif self.mp_config.perform_initialization:
             _initialize_affine_weight_gpu(
                 self.weight,
                 self.para_init_method,
                 partition_dim=self.partition_dim,
                 stride=self.stride,
-                expert_parallel=False,
+                expert_parallel=(self.is_expert and self.expert_parallel),
             )
 
-        setattr(self.weight, "allreduce", True)
+        setattr(self.weight, "allreduce", not (self.is_expert and self.expert_parallel))
 
         if self.add_bias and self.mp_config.perform_initialization:
             with torch.no_grad():
                 self.bias.zero_()
 
-            setattr(self.bias, "allreduce", True)
+            setattr(self.bias, "allreduce", not (self.is_expert and self.expert_parallel))
             setattr(self.bias, "sequence_parallel", False)
 
     def set_extra_state(self, state: Any):
@@ -180,7 +172,14 @@ class ParallelLinear2D(torch.nn.Module):
         return None
 
     def forward(self, activation_input):
-        matmul_output = Linear2DSplitAlongFirstDim.apply(
+        if self.is_expert:
+            if self.partition_dim == 0:
+                linear_func = MoELinear2DFC1
+            else:
+                linear_func = MoELinear2DFC2
+        else:
+            linear_func = Linear2DSplitAlongFirstDim
+        matmul_output = linear_func.apply(
             activation_input,
             self.weight,
             self.bias,

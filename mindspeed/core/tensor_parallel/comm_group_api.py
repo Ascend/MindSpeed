@@ -27,6 +27,9 @@ from mindspeed.core.parallel_state import get_tensor_model_parallel_group_for_nd
 from mindspeed.core.parallel_state import get_tensor_model_parallel_group_for_nd1_dim2
 from mindspeed.core.parallel_state import get_tensor_model_parallel_group_for_nd1_dim2_rank
 from mindspeed.core.parallel_state import get_tensor_model_parallel_group_for_nd1_dim2_world_size
+from mindspeed.core.parallel_state import get_tp_x_ep_group
+from mindspeed.core.parallel_state import get_tp_x_ep_group_rank
+from mindspeed.core.parallel_state import get_tp_x_ep_group_world_size
 from mindspeed.core.parallel_state import get_tp_x_ring_global_ranks
 from mindspeed.core.parallel_state import get_tp_x_sd_rcv_overlap_group
 from mindspeed.core.parallel_state import get_tp_y_ring_global_ranks
@@ -92,6 +95,23 @@ class TPXCollectiveComm(CollectiveCommIntf):
     @classmethod
     def get_comm_group(cls):
         return get_tensor_model_parallel_group_for_nd1_dim1()
+
+
+class TPXEPCollectiveComm(CollectiveCommIntf):
+    def __init__(self, name="tp-x-ep"):
+        super().__init__(name)
+
+    @classmethod
+    def get_comm_rank(cls):
+        return get_tp_x_ep_group_rank()
+
+    @classmethod
+    def get_comm_group_world_size(cls):
+        return get_tp_x_ep_group_world_size()
+
+    @classmethod
+    def get_comm_group(cls):
+        return get_tp_x_ep_group()
 
 
 class TPXOverlapCollectiveComm(TPXCollectiveComm, OverlapCollectiveIntf):

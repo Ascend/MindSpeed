@@ -135,7 +135,19 @@ $$
 上述3个forward计算优化参数`--enable-overlap-ag-with-matmul`、`--enable-overlap-matmul-with-rs`、`--coc-fused-kernel`只能同时开启1个。
 
 注意事项：
-当前高维张量并行特性不与`--sequence-parallel`、`--use-fused-rmsnorm`、MoE等特性相兼容，请根据实际情况调整配置。
+
+Megatron-MOE支持情况如表1所示
+
+**表1** 高维张量并行支持Megatron-MOE
+
+| Dispather | MLP            | 支持情况 | 性能优化 |
+|-----------|----------------|------|------|
+| AllGather | Sequential MLP | ✅    | ❌    |
+| AllGather | Grouped MLP    | ✅    | ❌    |
+| All2All   | Sequential MLP | ❌    | ❌    |
+| All2All   | Grouped MLP    | ❌    | ❌    |
+
+当前高维张量并行特性不与`--sequence-parallel`、`--use-fused-rmsnorm`等特性相兼容，请根据实际情况调整配置。
 
 ## 使用效果
 

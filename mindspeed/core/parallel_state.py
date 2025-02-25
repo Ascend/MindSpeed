@@ -41,6 +41,9 @@ _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV = None
 _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW = None
 _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP = None
 
+_TP_X_EP_GROUP = None
+_TP_X_EP_GROUP_WORLD_SIZE = None
+_TP_X_EP_GROUP_RANK = None
 _TP_X_PARALLEL_RING_RANKS = None
 _TP_Y_PARALLEL_RING_RANKS = None
 
@@ -286,6 +289,9 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         if args.hccl_group_buffer is not None:
             parse_hccl_buffer_string(args.hccl_group_buffer)
 
+        data_parallel_size = 1 # dp 1
+        rank = torch.distributed.get_rank()
+        all_ep_groups = []
         if order == "tp-cp-ep-dp-pp":
             # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
             initialize_model_parallel(
@@ -301,7 +307,6 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 order
             )
 
-            rank = torch.distributed.get_rank()
             world_size: int = torch.distributed.get_world_size()
             num_tensor_model_parallel_groups: int = world_size // tensor_model_parallel_size
             num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
@@ -366,7 +371,6 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 if rank in ranks:
                     megatron.core.parallel_state._TENSOR_AND_EXPERT_PARALLEL_GROUP = group
 
-            all_ep_groups = []
             for ranks in rank_generator.get_ranks('ep', independent_ep=True):
                 all_ep_groups.append(list(ranks))
                 group = torch.distributed.new_group(
@@ -465,13 +469,16 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         args = get_args()
         nd1_dim1_sz = args.nd1_dim1_size if args.use_nd_matmul else args.tp_x
         nd2_dim1_sz = args.nd2_dim1_size if args.use_nd_matmul else args.tp_y
-        initialize_ndmm_parallel_group(
+        tp_x_groups = initialize_ndmm_parallel_group(
             nccl_comm_cfgs,
             tensor_model_parallel_size=tensor_model_parallel_size,
             nd1_dim1_size=nd1_dim1_sz,
             nd2_dim1_size=nd2_dim1_sz,
         )
+
         if args.tp_2d:
+            from mindspeed.core.tensor_parallel_x_union_cp import TensorParallelXUnionCP
+
             tp_y_cp_group = TensorParallelYUnionCP(
                 parallel_cfg=SimpleParallelCfg(
                     dp=data_parallel_size,
@@ -487,6 +494,54 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 nccl_comm_cfgs=nccl_comm_cfgs
             )
             print(f'tp_y_cp_group.global_ranks={tp_y_cp_group.global_ranks} for rank {rank}')
+
+            tp_x_cp_group = TensorParallelXUnionCP(
+                parallel_cfg=SimpleParallelCfg(
+                    dp=data_parallel_size,
+                    pp=pipeline_model_parallel_size,
+                    tp=tensor_model_parallel_size,
+                    cp=context_parallel_size,
+                    ep=expert_model_parallel_size,
+                    tp_x=get_args().tp_x,
+                    tp_y=get_args().tp_y,
+                ),
+                pg_name="tp-x-cp",
+                overlap_gp_name=None,
+                nccl_comm_cfgs=nccl_comm_cfgs
+            )
+            print(f'tp_x_cp_group.global_ranks={tp_x_cp_group.global_ranks} for rank {rank}')
+
+            if expert_model_parallel_size > 1:
+                all_tp_x_ep_groups = set()
+                print(f'all_ep_groups={all_ep_groups}')
+                for tp_x_ranks in tp_x_groups:
+                    tp_x_ep_ranks_set = set()
+                    for ep_ranks in all_ep_groups:
+                        tp_x_ranks_set = set(tp_x_ranks)
+                        ep_ranks_set = set(ep_ranks)
+                        if not tp_x_ranks_set.intersection(ep_ranks_set):
+                            continue
+
+                        cur_tp_x_ep_ranks_set = tp_x_ranks_set.union(ep_ranks_set)
+                        tp_x_ep_ranks_set = tp_x_ep_ranks_set.union(cur_tp_x_ep_ranks_set)
+
+                    all_tp_x_ep_groups.add(tuple(sorted(list(tp_x_ep_ranks_set))))
+
+                print(f'{all_tp_x_ep_groups=}')
+                all_tp_x_ep_groups = [tp_x_ep_ranks for tp_x_ep_ranks in all_tp_x_ep_groups]
+                timeout = timedelta(minutes=distributed_timeout_minutes)
+
+                global _TP_X_EP_GROUP
+                for tp_x_ep_ranks in all_tp_x_ep_groups:
+                    group = torch.distributed.new_group(
+                        tp_x_ep_ranks, timeout=timeout,
+                        pg_options=get_nccl_options('tp_x_ep', nccl_comm_cfgs)
+                    )
+                    if rank in tp_x_ep_ranks:
+                        _TP_X_EP_GROUP = group
+
+                print(f'{all_tp_x_ep_groups=}')
+
     return wrapper
 
 
@@ -884,6 +939,29 @@ def get_tensor_model_parallel_group_for_nd1_dim2(check_initialized=True):
     return _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2
 
 
+def get_tp_x_ep_group(check_initialized=True):
+    if check_initialized and _TP_X_EP_GROUP is None:
+        return get_tensor_model_parallel_group_for_nd1_dim1()
+    return _TP_X_EP_GROUP
+
+
+def get_tp_x_ep_group_world_size():
+    global _TP_X_EP_GROUP_WORLD_SIZE
+    if _TP_X_EP_GROUP_WORLD_SIZE is None:
+        _TP_X_EP_GROUP_WORLD_SIZE = torch.distributed.get_world_size(group=get_tp_x_ep_group())
+
+    return _TP_X_EP_GROUP_WORLD_SIZE
+
+
+def get_tp_x_ep_group_rank():
+    global _TP_X_EP_GROUP_RANK
+    if _TP_X_EP_GROUP_RANK is None:
+        _TP_X_EP_GROUP_RANK = torch.distributed.get_rank(
+            group=get_tp_x_ep_group())
+
+    return _TP_X_EP_GROUP_RANK
+
+
 def get_tensor_model_parallel_group_for_nd2_dim1(check_initialized=True):
     if check_initialized and _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM1 is None:
         raise AssertionError('tensor model parallel group for nd2 dim1 is not initialized')
@@ -973,7 +1051,7 @@ def initialize_ndmm_parallel_group(
         tensor_model_parallel_size: int = 1,
         nd1_dim1_size: int = 1,
         nd2_dim1_size: int = 1,
-) -> None:
+):
     import megatron.core.parallel_state as ps
     from megatron.training import get_args
     from megatron.training.global_vars import _ensure_var_is_not_initialized
@@ -1028,7 +1106,7 @@ def initialize_ndmm_parallel_group(
     world_size: int = torch.distributed.get_world_size()
     num_tensor_model_parallel_group: int = world_size // tensor_model_parallel_size
 
-    tp_nd1_dim1_groups = []
+    tp_nd1_dim1_groups = [] # TPX-RANKS
     tp_nd1_dim2_groups = []
     tp_nd2_dim1_groups = []
     tp_nd2_dim2_groups = []
@@ -1100,6 +1178,9 @@ def initialize_ndmm_parallel_group(
             )
             if rank in ranks:
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2 = group
+
+    print(f'tp-x groups: {tp_nd1_dim1_groups}')
+    return tp_nd1_dim1_groups
 
 
 def get_data_parallel_group_gloo_replace(with_context_parallel=False):

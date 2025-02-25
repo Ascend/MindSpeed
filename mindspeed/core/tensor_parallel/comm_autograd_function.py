@@ -23,6 +23,7 @@ from mindspeed.core.tensor_parallel.comm_utils import _split_along_first_dim
 from mindspeed.core.tensor_parallel.comm_utils import _split_along_last_dim
 from mindspeed.core.tensor_parallel.comm_utils import sync_gather_along_first_dim
 from mindspeed.core.tensor_parallel.comm_utils import sync_gather_along_last_dim
+from mindspeed.core.tensor_parallel.comm_utils import sync_reduce_scatter_along_first_dim
 
 
 class _SyncGatherAlongFirstDim(torch.autograd.Function):
@@ -165,6 +166,40 @@ class _ScatterAlongFirstDimThenLastDim(torch.autograd.Function):
         return first_dim_gather_output, None, None
 
 
+class _SyncGatherAlongFirstDimRS(torch.autograd.Function):
+    """Gather the input from model parallel X region and concatinate."""
+
+    @staticmethod
+    def symbolic(graph, input_, comm_intf: CollectiveCommIntf):
+        return sync_gather_along_first_dim(input_, comm_intf)
+
+    @staticmethod
+    def forward(ctx, input_, comm_intf: CollectiveCommIntf):
+        ctx.comm_intf = comm_intf
+        return sync_gather_along_first_dim(input_, comm_intf)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return sync_reduce_scatter_along_first_dim(grad_output, ctx.comm_intf), None
+
+
+class _SyncReduceScatterAlongFirstDim(torch.autograd.Function):
+    """Reduce scatter the input along first dim"""
+
+    @staticmethod
+    def symbolic(graph, input_, comm_intf: CollectiveCommIntf):
+        return sync_reduce_scatter_along_first_dim(input_, comm_intf)
+
+    @staticmethod
+    def forward(ctx, input_, comm_intf: CollectiveCommIntf):
+        ctx.comm_intf = comm_intf
+        return sync_reduce_scatter_along_first_dim(input_, comm_intf)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return sync_gather_along_first_dim(grad_output, ctx.comm_intf), None
+
+
 def auto_grad_sync_gather_along_first_dim(input_, comm_intf: CollectiveCommIntf):
     return _SyncGatherAlongFirstDim.apply(input_, comm_intf)
 
@@ -201,3 +236,11 @@ def reduce_from_parallel_region(input_, tp_intf: CollectiveCommIntf = TPXCollect
 
 def gather_from_parallel_region(input_, comm_intf: CollectiveCommIntf):
     return _GatherFromParallelRegion.apply(input_, comm_intf)
+
+
+def auto_grad_sync_gather_along_first_dim_rs(input_, comm_intf: CollectiveCommIntf):
+    return _SyncGatherAlongFirstDimRS.apply(input_, comm_intf)
+
+
+def auto_grad_reduce_scatter_along_first_dim(input_, comm_intf: CollectiveCommIntf):
+    return _SyncReduceScatterAlongFirstDim.apply(input_, comm_intf)

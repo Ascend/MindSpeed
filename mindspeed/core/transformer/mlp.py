@@ -108,6 +108,9 @@ def mlp_init_2d_wrapper(fn):
     def wrapper(self, *arg, **kwargs):
         fn(self, *arg, **kwargs)
         args = get_args()
+        is_expert = False
+        if get_args().num_experts is not None:
+            is_expert = True
         if args.tp_2d:
             ffn_hidden_size = self.config.ffn_hidden_size
             if self.config.gated_linear_unit:
@@ -119,7 +122,7 @@ def mlp_init_2d_wrapper(fn):
                 init_method=self.config.init_method,
                 add_bias=self.config.add_bias_linear,
                 skip_bias_add=True,
-                is_expert=False,
+                is_expert=is_expert,
                 ag_comm_intf=TPXCollectiveComm,
                 ag_sd_rcv_overlap_comm_intf=TPXOverlapCollectiveComm,
                 rs_comm_intf=TPYCollectiveComm,
@@ -135,7 +138,7 @@ def mlp_init_2d_wrapper(fn):
                 init_method=self.config.output_layer_init_method,
                 add_bias=self.config.add_bias_linear,
                 skip_bias_add=True,
-                is_expert=False,
+                is_expert=is_expert,
                 ag_comm_intf=TPYCollectiveComm,
                 ag_sd_rcv_overlap_comm_intf=TPYOverlapCollectiveComm,
                 rs_comm_intf=TPXCollectiveComm,
