@@ -1,17 +1,4 @@
 // Copyright (c) 2024 Huawei Technologies Co., Ltd
-// All rights reserved.
-//
-// Licensed under the BSD 3-Clause License (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// https://opensource.org/licenses/BSD-3-Clause
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 #include <torch/extension.h>
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/script.h>
@@ -38,12 +25,6 @@ namespace {
             throw std::runtime_error("current version only support padded_mode is false");
         }
         // current version tokens only support bfloat16
-        TORCH_CHECK(tokens.scalar_type() == at::ScalarType::BFloat16,
-                    "Input tensor tokens dtype [", tokens.scalar_type(),
-                    "] is invalid, should be bfloat16");
-        TORCH_CHECK(indices.scalar_type() == at::ScalarType::Long || indices.scalar_type() == at::ScalarType::Int,
-                    "Input tensor indices dtype [", indices.scalar_type(),
-                    "] is invalid, should be int64 or int32");
         TORCH_CHECK(tokens.dim() == DIMS,
                     "The dims of input tokens should be 2 dimensional, but got ", tokens.dim(), "-dimensional.");
         TORCH_CHECK(indices.dim() == DIMS || indices.dim() == MIN_DIMS,
@@ -52,10 +33,6 @@ namespace {
 
     void CheckMoeTokenPermuteBackward(const at::Tensor &grad_permuted_tokens)
     {
-        // current version grad_permuted_tokens only support bfloat16
-        TORCH_CHECK(grad_permuted_tokens.scalar_type() == at::ScalarType::BFloat16,
-                    "Input tensor permuted_tokens_grad dtype [", grad_permuted_tokens.scalar_type(),
-                    "] is invalid, should be bfloat16");
         TORCH_CHECK(grad_permuted_tokens.dim() == DIMS,
                     "The dims of input grad_permuted_tokens should be 2 dimensional, but got ", grad_permuted_tokens.dim(), "-dimensional.");
     }

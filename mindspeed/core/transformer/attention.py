@@ -124,12 +124,23 @@ def self_attention_init_wrapper(fn):
                 submodules: SelfAttentionSubmodules,
                 layer_number: int,
                 attn_mask_type=AttnMaskType.padding, ):
-
         args = get_args()
         if args.overlap_param_gather:
             config.reset_attention_order = True           
         fn(self, config, submodules, layer_number, attn_mask_type)
+    return wrapper
 
+
+def self_attention_init_mla_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self,
+                config: TransformerConfig,
+                submodules: SelfAttentionSubmodules,
+                layer_number: int,
+                attn_mask_type=AttnMaskType.padding, ):
+
+        args = get_args()
+        fn(self, config, submodules, layer_number, attn_mask_type)
         if args.multi_head_latent_attention:
             self.use_flash_attn = args.use_flash_attn
             self.shape_order = args.shape_order
@@ -218,6 +229,19 @@ def self_attention_init_wrapper(fn):
                 tp_comm_buffer_name='proj',
             )
 
+    return wrapper
+
+
+def self_attention_init_tp2d_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self,
+                config: TransformerConfig,
+                submodules: SelfAttentionSubmodules,
+                layer_number: int,
+                attn_mask_type=AttnMaskType.padding, ):
+
+        args = get_args()
+        fn(self, config, submodules, layer_number, attn_mask_type)
         if args.tp_2d:
             attn_heads_split_num = get_tensor_model_parallel_world_size_for_nd1_dim1()
             self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, attn_heads_split_num)

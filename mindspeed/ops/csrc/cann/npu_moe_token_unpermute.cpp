@@ -1,17 +1,4 @@
 // Copyright (c) 2024 Huawei Technologies Co., Ltd
-// All rights reserved.
-//
-// Licensed under the BSD 3-Clause License (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// https://opensource.org/licenses/BSD-3-Clause
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 #include <torch/extension.h>
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/script.h>
@@ -38,19 +25,6 @@ namespace {
         if (padded_mode) {
             throw std::runtime_error("current version only support padded_mode is false");
         }
-        // current version permuted_tokens only support bfloat16
-        TORCH_CHECK(permuted_tokens.scalar_type() == at::ScalarType::BFloat16,
-                    "Input tensor permuted_tokens dtype [", permuted_tokens.scalar_type(),
-                    "] is invalid, should be bfloat16");
-        // current version sorted_indices only support at::ScalarType::Int
-        TORCH_CHECK(sorted_indices.scalar_type() == at::ScalarType::Int,
-                    "Input tensor sorted_indices dtype [", sorted_indices.scalar_type(),
-                    "] is invalid, should be int32");
-        if (probs.has_value()) {
-            TORCH_CHECK(probs.value().scalar_type() == at::ScalarType::BFloat16,
-                        "Input tensor probs dtype [", probs.value().scalar_type(),
-                        "] is invalid, should be bfloat16");
-        }
         TORCH_CHECK(permuted_tokens.dim() == DIMS,
                     "The dims of input permuted_tokens should be 2 dimensional, but got ", permuted_tokens.dim(), "-dimensional.");
         TORCH_CHECK(sorted_indices.dim() == MIN_DIMS,
@@ -67,14 +41,6 @@ namespace {
         const at::Tensor &probs
     )
     {
-        // current version permuted_tokens only support bfloat16
-        TORCH_CHECK(unpermuted_tokens_grad.scalar_type() == at::ScalarType::BFloat16,
-                    "Input tensor unpermuted_tokens_grad dtype [", unpermuted_tokens_grad.scalar_type(),
-                    "] is invalid, should be bfloat16");
-        // current version sorted_indices only support at::ScalarType::Int
-        TORCH_CHECK(sorted_indices.scalar_type() == at::ScalarType::Int,
-                    "Input tensor sorted_indices dtype [", sorted_indices.scalar_type(),
-                    "] is invalid, should be int32");
         if (probs.defined()) {
             TORCH_CHECK(probs.scalar_type() == at::ScalarType::BFloat16,
                         "Input tensor probs dtype [", probs.scalar_type(),

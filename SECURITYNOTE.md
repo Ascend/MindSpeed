@@ -68,7 +68,6 @@
 |  开源引入  |                           https://gitee.com/ascend/MindSpeed/release                            |                     mindspeed/setup.py                     |                           https://gitee.com/ascend/MindSpeed/release                   |               MindSpeed源码地址               |
 |  开源引入  |                           https://packaging.python.org/en/latest/single_source_version.html                            |                     mindspeed/setup.py                     |                           https://packaging.python.org/en/latest/single_source_version.html                   |               MindSpeed版本管理               |
 |  开源引入  |                           https://github.com/NVIDIA/TransformerEngine/pull/719                            |                     mindspeed/core/data_parallel/distributed_data_parallel.py                     |                           https://github.com/NVIDIA/TransformerEngine/pull/719                   |       use_distributed_optimizer实现源码       |
-|  开源引入  |                           https://github.com/NVIDIA/TransformerEngine/pull/719                            |                     mindspeed/mindspore/core/distributed/distributed_data_parallel.py                     |                           https://github.com/NVIDIA/TransformerEngine/pull/719                   |       use_distributed_optimizer实现源码       |
 
 ## 公开接口声明
 

@@ -266,7 +266,7 @@ def mcore_transformer_adaptation_l0(aspm):
                         dot_product_attention_forward_wrapper)
 
 
-def mcore_transformer_adaptation(aspm):
+def mcore_transformer_adaptation(aspm, args):
     from .core.transformer.module import megatron_module_init_wrapper
     from .core.transformer.attention import (attention_init, SelfAttentionSubmodules,
                                              self_attention_init_wrapper, attention_forward_wrapper)
@@ -279,7 +279,6 @@ def mcore_transformer_adaptation(aspm):
     aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
     aspm.register_patch("megatron.core.transformer.attention.Attention.forward", attention_forward_wrapper)
     aspm.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init)
-    aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_wrapper)
     aspm.register_patch('megatron.core.transformer.module.MegatronModule.__init__', megatron_module_init_wrapper)
     aspm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
                         transformer_block_checkpointed_forward_wrapper)
@@ -290,6 +289,9 @@ def mcore_transformer_adaptation(aspm):
     aspm.register_patch('megatron.core.transformer.mlp.MLP.__init__', mlp_init_2d_wrapper)
     aspm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.forward',
                         transformer_block_forward_wrapper)
+    if hasattr(args, "multi_head_latent_attention") and args.multi_head_latent_attention:
+        from mindspeed.core.transformer.attention import self_attention_init_mla_wrapper
+        aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_mla_wrapper)
 
 
 def mcore_parallel_state_adaptation(aspm):
@@ -911,6 +913,8 @@ def tensor_2d_adaptation(aspm, args):
         from .core.transformer.transformer_config import transformer_config_post_init
         aspm.register_patch('megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
                             transformer_config_post_init)
+        from mindspeed.core.transformer.attention import self_attention_init_tp2d_wrapper
+        aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_tp2d_wrapper)
 
 
 def megatron_training_adaptation_with_layerzero(aspm, mindspeed_args):
@@ -983,7 +987,7 @@ def adaptation_l2(aspm, mindspeed_args):
     mcore_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_multiparam_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_tensor_parallel_adaptation(aspm, mindspeed_args)
-    mcore_transformer_adaptation(aspm)
+    mcore_transformer_adaptation(aspm, mindspeed_args)
 
     # megatron legacy
     megatron_legacy_adaptation(aspm)
