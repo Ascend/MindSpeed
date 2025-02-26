@@ -101,10 +101,9 @@ class FusedEmaAdamW(Optimizer):
                 continue
             for p in group['params']:
                 state = self.state[p]
-                if "ema_params" not in state:
+                if 'ema_params' not in state.keys():
                     continue
-                if p.requires_grad:
-                    p.data.copy_(state['ema_params'].data)
+                p.data.copy_(state['ema_params'].data)
 
     def store(self, parameters):
         self.collected_params_group = []

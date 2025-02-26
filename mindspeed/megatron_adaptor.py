@@ -585,8 +585,9 @@ def megatron_training_adaptation(aspm, mindspeed_args):
 
 def megatron_training_ema_adaptation(aspm, mindspeed_args):
     if mindspeed_args.optimizer_selection == 'fused_ema_adamw':
-        from .checkpointing import generate_state_dict_ema_wrapper
+        from .checkpointing import generate_state_dict_ema_wrapper, save_checkpoint_ema_wrapper
         from .optimizer.distrib_optimizer import ema_distrib_optimizer_init_wrapper
+        aspm.register_patch('megatron.training.checkpointing.save_checkpoint', save_checkpoint_ema_wrapper)
         aspm.register_patch('megatron.training.checkpointing.generate_state_dict', generate_state_dict_ema_wrapper)
         aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
                             ema_distrib_optimizer_init_wrapper)

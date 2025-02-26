@@ -21,6 +21,7 @@ from functools import wraps
 import torch
 
 from megatron.core import mpu, tensor_parallel, dist_checkpointing
+from megatron.core.optimizer.optimizer import ChainedOptimizer
 from megatron.training import get_args
 from megatron.training.utils import (unwrap_model, print_rank_0)
 
@@ -64,7 +65,8 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
         if not args.use_dist_ckpt:
             raise NotImplementedError('Async checkpoint save not implemented for legacy checkpoints')
         elif args.dist_ckpt_format != 'torch_dist':
-            raise NotImplementedError(f'Async checkpoint save not implemented for {args.dist_ckpt_format} distributed checkpoint format')
+            raise NotImplementedError(
+                f'Async checkpoint save not implemented for {args.dist_ckpt_format} distributed checkpoint format')
 
     # Collect args, model, RNG.
     if not torch.distributed.is_initialized() \
@@ -92,7 +94,8 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                     # Already saved once before - don't need to rerun sharding validation
                     validate_sharding_integrity = not args.ckpt_assume_constant_structure
                 else:
-                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(with_context_parallel=True),
+                    save_strategy = FullyParallelSaveStrategyWrapper(save_strategy, mpu.get_data_parallel_group(
+                        with_context_parallel=True),
                                                                      args.ckpt_assume_constant_structure)
             # Store save strategy for future checkpoint saves
             if checkpointing_context is not None:
@@ -120,7 +123,7 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
 
     # And update the latest iteration
     if not torch.distributed.is_initialized() \
-       or torch.distributed.get_rank() == 0:
+            or torch.distributed.get_rank() == 0:
         tracker_filename = get_checkpoint_tracker_filename(args.save)
 
         def iter_finalize_fn():
@@ -178,8 +181,10 @@ def generate_state_dict(args, model, optimizer, opt_param_scheduler,
         else:
             for i in range(len(model)):
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
-                state_dict['ema%d' % i] = {k.replace('ema.', ''): v for k, v in state_dict['model%d' % i].items() if k.startswith('ema')}
-                state_dict['model%d' % i] = {k: v for k, v in state_dict['model%d' % i].items() if not k.startswith('ema')}
+                state_dict['ema%d' % i] = {k.replace('ema.', ''): v for k, v in state_dict['model%d' % i].items() if
+                                           k.startswith('ema')}
+                state_dict['model%d' % i] = {k: v for k, v in state_dict['model%d' % i].items() if
+                                             not k.startswith('ema')}
 
     # Optimizer stuff.
     if not args.no_save_optim:
@@ -235,7 +240,8 @@ def _load_base_checkpoint(load_dir, rank0=False, sharded_state_dict=None,
     # Checkpoint.
     if rank0:
         checkpoint_name = find_checkpoint_rank_0(load_dir, iteration, release)
-        is_dist_ckpt = checkpoint_name is not None and dist_checkpointing.check_is_distributed_checkpoint(checkpoint_name)
+        is_dist_ckpt = checkpoint_name is not None and dist_checkpointing.check_is_distributed_checkpoint(
+            checkpoint_name)
     else:
         checkpoint_name = get_checkpoint_name(load_dir, iteration, release,
                                               return_base_dir=True)
@@ -258,8 +264,10 @@ def _load_base_checkpoint(load_dir, rank0=False, sharded_state_dict=None,
         # at this point args are available
         args = get_args()
         if sharded_state_dict is None:
-            assert not args.auto_detect_ckpt_format and not args.use_dist_ckpt, (args.auto_detect_ckpt_format, args.use_dist_ckpt)
-            raise RuntimeError('Detected load from a distributed checkpoint, but neither --use-dist-ckpt nor --auto-detect-ckpt-format is set.')
+            assert not args.auto_detect_ckpt_format and not args.use_dist_ckpt, (
+            args.auto_detect_ckpt_format, args.use_dist_ckpt)
+            raise RuntimeError(
+                'Detected load from a distributed checkpoint, but neither --use-dist-ckpt nor --auto-detect-ckpt-format is set.')
 
         load_strategy = get_default_load_sharded_strategy(checkpoint_name)
         if args.ckpt_fully_parallel_load:
@@ -278,7 +286,7 @@ def _load_base_checkpoint(load_dir, rank0=False, sharded_state_dict=None,
             len_model = sum(1 for key in state_dict if key.startswith('model'))
             ema_state_dict = torch.load(checkpoint_name + ".ema", map_location='cpu')
 
-            if len(ema_state_dict) == 0 :
+            if len(ema_state_dict) == 0:
                 return state_dict, checkpoint_name, release
 
             if len_model == 1:
@@ -314,47 +322,91 @@ def _load_base_checkpoint(load_dir, rank0=False, sharded_state_dict=None,
     return state_dict, checkpoint_name, release
 
 
+def save_checkpoint_ema_wrapper(func):
+    @wraps(func)
+    def save_checkpoint_ema(*args, **kwargs):
+        model, optimizer, opt_param_scheduler = args[1:4]
+        state_dict = get_ema_model(model, optimizer)
+        setattr(opt_param_scheduler, 'ema_model_state_dict', state_dict)
+        func(*args[:3], opt_param_scheduler, *args[4:], **kwargs)
+        setattr(opt_param_scheduler, 'ema_model_state_dict', None)
+
+    return save_checkpoint_ema
+
+
 def generate_state_dict_ema_wrapper(func):
     @wraps(func)
     def generate_state_dict_ema(*args, **kwargs):
+        opt_param_scheduler = args[3]
         state_dict = func(*args, **kwargs)
-        model = args[1]
-        optimizer = args[2]
-        use_dist_ckpt = args[5]
-        ema_optimizer_applier(optimizer)
-        dtype = torch.float32
-        if len(model) == 1:
-            state_dict['ema_model'] = (model[0].shared_state_dict()
-                                       if use_dist_ckpt else
-                                       model[0].state_dict_for_save_checkpoint())
-            state_dict = ema_state_dict_dtype_conversion(state_dict, 'ema_model', dtype)
-            return state_dict
-        for i in range(len(model)):
-            mpu.set_virtual_pipeline_model_parallel_rank(i)
-            state_dict['ema_model%d' % i] = (
-                model[i].sharded_state_dict()
-                if use_dist_ckpt else
-                model[i].state_dict_for_save_checkpoint())
-            state_dict = ema_state_dict_dtype_conversion(state_dict, 'ema_model%d' % i, dtype)
+        if hasattr(opt_param_scheduler, 'ema_model_state_dict'):
+            ema_model_state_dict = getattr(opt_param_scheduler, 'ema_model_state_dict')
+            state_dict.update(ema_model_state_dict)
         return state_dict
 
     return generate_state_dict_ema
 
 
-def ema_optimizer_applier(chained_optimizer):
-    if hasattr(chained_optimizer, "chained_optimizers"):
-        for optim in chained_optimizer.chained_optimizers:
-            optim.optimizer.copy_to()
-        return
-    if hasattr(chained_optimizer, "optimizer"):
-        chained_optimizer.optimizer.copy_to()
-        return
+def get_ema_model(model, optimizer):
+    state_dict = dict()
+    global_args = get_args()
+    use_dist_ckpt = global_args.use_dist_ckpt
+    unwrapped_model = unwrap_model(model)
+    unchained_optimizer = unchain_optimizer(optimizer)
+    ema_optimizer_applier(unchained_optimizer)
+    if len(unwrapped_model) == 1:
+        state_dict['ema_model'] = (unwrapped_model[0].shared_state_dict()
+                                   if use_dist_ckpt else
+                                   unwrapped_model[0].state_dict_for_save_checkpoint())
+        state_dict = ema_state_dict_to_cpu(state_dict, 'ema_model')
+        ema_optimizer_restore(unchained_optimizer)
+        return state_dict
+    for sub_model in unwrapped_model:
+        sub_model_idx = unwrapped_model.index(sub_model)
+        mpu.set_virtual_pipeline_model_parallel_rank(sub_model_idx)
+        state_dict['ema_model%d' % sub_model_idx] = (
+            sub_model.sharded_state_dict()
+            if use_dist_ckpt else
+            sub_model.state_dict_for_save_checkpoint())
+        state_dict = ema_state_dict_to_cpu(state_dict, 'ema_model%d' % sub_model_idx)
+    ema_optimizer_restore(unchained_optimizer)
+    return state_dict
 
 
-def ema_state_dict_dtype_conversion(state_dict, ema_key, dtype):
+def unchain_optimizer(chained_optimizer):
+    if isinstance(chained_optimizer, ChainedOptimizer):
+        return chained_optimizer.chained_optimizers
+    return [chained_optimizer]
+
+
+def ema_optimizer_applier(unchained_optimizer):
+    for optim in unchained_optimizer:
+        optim.optimizer.store(optim.optimizer.param_groups)
+        optim.optimizer.copy_to()
+        param_sync(optim)
+
+
+def ema_optimizer_restore(unchained_optimizer):
+    for optim in unchained_optimizer:
+        optim.optimizer.restore(optim.optimizer.param_groups)
+        param_sync(optim)
+    torch.distributed.barrier()
+    for optim in unchained_optimizer:
+        optim.update_successful = False
+
+
+def param_sync(optim):
+    if hasattr(optim, "_copy_main_params_to_model_params"):
+        optim._copy_main_params_to_model_params()
+    if hasattr(optim, "_reset_metadata_and_sync_gather_all_model_params"):
+        optim.update_successful = True
+        optim._reset_metadata_and_sync_gather_all_model_params(force_sync=True)
+
+
+def ema_state_dict_to_cpu(state_dict, ema_key):
     for k, v in state_dict[ema_key].items():
         if not torch.is_tensor(v):
             continue
-        new_v = v.clone().to(dtype)
+        new_v = v.detach().cpu().clone()
         state_dict[ema_key][k] = new_v
     return state_dict
