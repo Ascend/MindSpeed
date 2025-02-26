@@ -1,5 +1,5 @@
 #!/bin/bash
-
+set -x
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export HCCL_DETERMINISTIC=TRUE
 
@@ -62,7 +62,6 @@ GPT_ARGS="
 "
 
 DATA_ARGS="
-    --load ${LOAD_CKPT_DIR:-./ckpt_llama} \
     --data-path ${DATA_PATH:-/home/dataset/llama2/alpaca_text_document} \
     --split 949,50,1
 "
@@ -80,5 +79,3 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --exit-on-missing-checkpoint \
-
-set +x
