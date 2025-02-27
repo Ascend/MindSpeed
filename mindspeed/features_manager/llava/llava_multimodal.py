@@ -6,7 +6,7 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 class LlavaModel(MindSpeedFeature):
 
     def __init__(self):
-        super().__init__('llava-multimodal', default_patches=True)
+        super().__init__('llava-multimodal', 0)
 
     def register_patches(self, patch_manager, args):
         from mindspeed.core.models.multimodal.llava_model import llava_init_wrapper
