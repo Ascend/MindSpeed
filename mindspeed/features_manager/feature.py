@@ -2,14 +2,10 @@ import argparse
 
 
 class MindSpeedFeature:
-    def __init__(self, feature_name: str, default_patches: bool = False, optimization_level: int = None):
+    def __init__(self, feature_name: str, optimization_level: int = 2):
         self.feature_name = feature_name.strip().replace('-', '_')
-        self.default_patches = default_patches
         self.optimization_level = optimization_level
-        if self.default_patches and self.optimization_level is None:
-            self.optimization_level = 0
-        if self.default_patches and self.optimization_level != 0:
-            raise AssertionError('{} applying patches to default requires optimization level of 0.'.format(self.feature_name))
+        self.default_patches = self.optimization_level == 0
 
     def register_args(self, parser):
         pass

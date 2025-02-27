@@ -502,6 +502,9 @@ def validate_args_wrapper(validate_args):
         #validate optimizer
         if args.optimizer_selection == 'fused_adamw': 
             print("[WARNING] The default AdamW optimizer is no longer recommended for new edition, Use the torch fused AdamW optimizer by argument --optimizer-selection fused_torch_adamw")
+        elif args.optimizer_selection == 'fused_ema_adamw':
+            if args.reuse_fp32_param:
+                raise AssertionError('fused_ema_adamw optimizer is not compatible with reuse_fp32_param')
 
         # validate mla
         if args.multi_head_latent_attention:
@@ -970,9 +973,11 @@ def validate_args_wrapper(validate_args):
         _print_args('arguments', args, True)
 
         for feature in FEATURES_LIST:
-            feature.pre_validate_args(args)
-            feature.validate_args(args)
-            feature.post_validate_args(args)
+            if feature.optimization_level <= args.optimization_level and \
+                    (getattr(args, feature.feature_name, None) or feature.default_patches):
+                feature.pre_validate_args(args)
+                feature.validate_args(args)
+                feature.post_validate_args(args)
 
         return args
 
