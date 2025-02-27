@@ -17,7 +17,7 @@ class UnalignedLinearFeature(MindSpeedFeature):
     def validate_args(self, args):
         self.incompatible_check(args, 'use_ascend_mc2')
         self.incompatible_check(args, 'tp_2d')
-        if args.num_experts and args.num_experts > 1:
+        if args.unaligned_linear and args.num_experts and args.num_experts > 1:
             raise AssertionError("The unaligned linear feature does not support the moe model.")
         # self.dependency_check(..)
 
