@@ -26,7 +26,7 @@ class AdaptiveRecomputingPluggableAllocatorBuilder(MindSpeedOpBuilder):
 
     def cxx_args(self):
         args = ['-fstack-protector-all', '-Wl,-z,relro,-z,now,-z,noexecstack', '-fPIC', '-pie',
-                '-s', '-D_FORTIFY_SOURCE=2', '-O2', '-D_GLIBCXX_USE_CXX11_ABI=0',
+                '-s', '-D_FORTIFY_SOURCE=2', '-O2',
                 "-D__FILENAME__='\"$$(notdir $$(abspath $$<))\"'"]
         return args
 
