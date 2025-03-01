@@ -289,6 +289,12 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
 
         if args.hccl_group_buffer is not None:
             parse_hccl_buffer_string(args.hccl_group_buffer)
+            
+        nccl_comm_cfgs = {}
+        if nccl_communicator_config_path is not None:
+            import yaml
+            with open(nccl_communicator_config_path, "r") as stream:
+                nccl_comm_cfgs = yaml.safe_load(stream)
 
         if order == "tp-cp-ep-dp-pp":
             # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
@@ -321,13 +327,6 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     f"data_parallel_size * context_parallel_size ({data_parallel_size * context_parallel_size}) is not "
                     f"divisible by expert_model_parallel_size "
                 )
-
-            nccl_comm_cfgs = {}
-            if nccl_communicator_config_path is not None:
-                import yaml
-
-                with open(nccl_communicator_config_path, "r") as stream:
-                    nccl_comm_cfgs = yaml.safe_load(stream)
 
             all_data_parallel_group_ranks = []
             all_data_parallel_group_ranks_with_cp = []
@@ -507,6 +506,9 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 get_embedding_ranks,
                 get_position_embedding_ranks,
             )
+            
+        rank = torch.distributed.get_rank()
+        world_size: int = torch.distributed.get_world_size() 
 
         initialize_context_parallel_group_for_send_recv_overlap(
             tensor_model_parallel_size,

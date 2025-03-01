@@ -107,7 +107,10 @@ def rotary_embedding_init_wrapper(fn):
     def wrapper(self, *args, **kwargs):
         _args = get_args()
         if _args.rotary_base:
-            kwargs["rotary_base"] = _args.rotary_base
+            if len(args) >= 5:
+                args[4] = _args.rotary_base
+            else:
+                kwargs["rotary_base"] = _args.rotary_base
         fn(self, *args, **kwargs)
         if hasattr(_args, "rope_scaling_type") and _args.rope_scaling_type == "yarn":
             self.inv_freq = apply_yarn_scaling(self.inv_freq)
