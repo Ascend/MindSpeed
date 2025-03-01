@@ -269,3 +269,9 @@ class LayerZeROptimizer(MegatronOptimizer):
     def zero_grad(self, set_to_none: bool = True):
         self.optimizer.zero_grad()
         
+    def disable_pre_hook(self):
+        return
+
+    def enable_pre_hook(self):
+        return
+        
