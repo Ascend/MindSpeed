@@ -132,6 +132,35 @@ def unaligned_reduce_scatter_to_sequence_parallel_region(input_, group):
     return UnalignedReduceScatterToSequenceParallelRegion.apply(input_, group)
 
 
+class UnalignedGatherFromSequenceParallelRegion(torch.autograd.Function):
+    """Gather the input from the sequence parallel region."""
+
+    @staticmethod
+    def forward(ctx, input_, dim_size, group, tensor_parallel_output_grad):
+        ctx.dim_size = dim_size
+        ctx.parallel_group = group
+        ctx.tensor_parallel_output_grad = tensor_parallel_output_grad
+        return unaligned_gather_along_first_dim(input_, dim_size, group)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        if ctx.tensor_parallel_output_grad:
+            return (
+                unaligned_reduce_scatter_to_sequence_parallel_region(grad_output),
+                None, 
+                None, 
+                None
+            )
+            
+        else:
+            return (
+                unaligned_split_along_first_dim(grad_output),
+                None,
+                None,
+                None
+            )
+            
+            
 class UnalignedLinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
     """See linear_with_grad_accumulation_and_async_allreduce"""
 
@@ -260,6 +289,10 @@ class UnalignedLinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Fu
             handle.wait()
 
         return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
+    
+    
+def unaligned_gather_from_sequence_parallel_region(input_, dim_size, group, tensor_parallel_output_grad):
+    return UnalignedGatherFromSequenceParallelRegion.apply(input_, dim_size, group, tensor_parallel_output_grad)
 
 
 def unaligned_linear_with_grad_accumulation_and_async_allreduce(

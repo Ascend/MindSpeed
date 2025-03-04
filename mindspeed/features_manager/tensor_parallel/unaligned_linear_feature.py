@@ -24,7 +24,8 @@ class UnalignedLinearFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         from mindspeed.core.tensor_parallel.unaligned_layers.adaptor import divide_adaptor, \
             scatter_to_sequence_parallel_region_adaptor, get_rotary_seq_len, UnalignedColumnParallelLinearAdaptor, \
-            UnalignedRowParallelLinearAdaptor, reduce_scatter_to_sequence_parallel_region_adaptor
+            UnalignedRowParallelLinearAdaptor, reduce_scatter_to_sequence_parallel_region_adaptor, \
+            gather_from_sequence_parallel_region_adaptor
         from mindspeed.core.transformer.transformer_config import transformer_config_post_init
         from mindspeed.core.transformer.dot_product_attention import dot_product_attention_init_wrapper
         from mindspeed.core.transformer.attention import attention_init_wrapper
@@ -47,6 +48,8 @@ class UnalignedLinearFeature(MindSpeedFeature):
                                          dot_product_attention_init_wrapper)
             patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__',
                                          attention_init_wrapper)
+            patch_manager.register_patch('megatron.core.tensor_parallel.mappings.gather_from_sequence_parallel_region',
+                                         gather_from_sequence_parallel_region_adaptor)
 
             # To adapt to the sequence parallel feature
             patch_manager.register_patch('megatron.core.tensor_parallel.mappings.scatter_to_sequence_parallel_region',

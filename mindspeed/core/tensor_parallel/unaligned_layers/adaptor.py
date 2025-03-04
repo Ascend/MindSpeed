@@ -7,12 +7,14 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
     _initialize_affine_weight_gpu, set_tensor_model_parallel_attributes, _grad_accum_fusion_available, \
     linear_with_grad_accumulation_and_async_allreduce, linear_with_frozen_weight
 from megatron.core.tensor_parallel.mappings import scatter_to_tensor_model_parallel_region, \
-    reduce_from_tensor_model_parallel_region, scatter_to_sequence_parallel_region, gather_from_tensor_model_parallel_region, copy_to_tensor_model_parallel_region
+    reduce_from_tensor_model_parallel_region, gather_from_tensor_model_parallel_region, copy_to_tensor_model_parallel_region
+from megatron.core.tensor_parallel.mappings import scatter_to_sequence_parallel_region as megatron_scatter_to_sequence_parallel_region
+from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region as megatron_gather_from_sequence_parallel_region
 
 from .unaligned_column_parallel_linear import UnalignedColumnParallelLinear
 from .unaligned_row_parallel_linear import UnalignedRowParallelLinear
 from .unaligned_utils import unaligned_divide, unaligned_scatter_to_sequence_parallel_region, \
-    unaligned_reduce_scatter_to_sequence_parallel_region
+    unaligned_reduce_scatter_to_sequence_parallel_region, unaligned_gather_from_sequence_parallel_region
 
 
 class UnalignedColumnParallelLinearAdaptor(UnalignedColumnParallelLinear, ColumnParallelLinear):
@@ -90,12 +92,26 @@ def scatter_to_sequence_parallel_region_adaptor(embeddings):
     if embeddings.size()[0] % world_size != 0:
         return unaligned_scatter_to_sequence_parallel_region(embeddings, get_tensor_model_parallel_group())
     else:
-        return scatter_to_sequence_parallel_region(embeddings)
+        return megatron_scatter_to_sequence_parallel_region(embeddings)
 
 
 def reduce_scatter_to_sequence_parallel_region_adaptor(inputs):
     group = get_tensor_model_parallel_group()
     return unaligned_reduce_scatter_to_sequence_parallel_region(inputs, group)
+
+
+def gather_from_sequence_parallel_region_adaptor(inputs, tensor_parallel_output_grad=True):
+    world_size = torch.distributed.get_world_size(group=get_tensor_model_parallel_group())
+    
+    dim_size = torch.tensor(inputs.shape[0], dtype=torch.long, device=inputs.device)
+    torch.distributed.all_reduce(dim_size)
+    total_dim_size = dim_size.item()
+    
+    group = get_tensor_model_parallel_group()
+    if total_dim_size % world_size != 0:
+        return unaligned_gather_from_sequence_parallel_region(inputs, group, tensor_parallel_output_grad)
+    else:
+        return megatron_gather_from_sequence_parallel_region(inputs, tensor_parallel_output_grad)
 
 
 def get_rotary_seq_len(
