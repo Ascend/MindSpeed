@@ -942,6 +942,58 @@ def megatron_training_adaptation_with_layerzero(aspm, mindspeed_args):
         aspm.register_patch('megatron.training.checkpointing.save_checkpoint', save_checkpoint)
 
 
+def dist_train_adaptation(aspm, args):
+    if args.dist_train:
+        from mindspeed.multi_modal import dist_train
+        # pipeline parallel adaption
+        aspm.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func', dist_train.pipeline_parallel.dist_schedules.get_forward_backward_func_wrapper)
+        aspm.register_patch('megatron.core.pipeline_parallel.p2p_communication._p2p_ops', dist_train.pipeline_parallel.dist_schedules.p2p_ops_wrapper)
+        # parallel state adaption
+        aspm.register_patch('megatron.training.initialize._initialize_distributed', dist_train.training.initialize_distributed_wrapper)
+        aspm.register_patch('megatron.core.mpu.initialize_model_parallel', dist_train.parallel_state.initialize_model_parallel)
+        aspm.register_patch('megatron.core.mpu.is_pipeline_last_stage', dist_train.parallel_state.get_is_pipeline_last_stage_wrapper)
+        aspm.register_patch('megatron.core.mpu.is_pipeline_first_stage', dist_train.parallel_state.get_is_pipeline_first_stage_wrapper)
+        aspm.register_patch('megatron.core.mpu.get_tensor_model_parallel_src_rank', dist_train.parallel_state.get_tensor_model_parallel_src_rank_wrapper)
+        aspm.register_patch('megatron.core.mpu.is_initialized', dist_train.parallel_state.is_initialized)
+        aspm.register_patch('megatron.core.mpu.model_parallel_is_initialized', dist_train.parallel_state.model_parallel_is_initialized)
+        aspm.register_patch('megatron.core.mpu.get_model_parallel_group', dist_train.parallel_state.get_model_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_tensor_model_parallel_group', dist_train.parallel_state.get_tensor_model_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_group', dist_train.parallel_state.get_pipeline_model_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_data_parallel_group', dist_train.parallel_state.get_data_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_data_parallel_group_gloo', dist_train.parallel_state.get_data_parallel_group_gloo)
+        aspm.register_patch('megatron.core.mpu.get_context_parallel_group', dist_train.parallel_state.get_context_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_context_parallel_global_ranks', dist_train.parallel_state.get_context_parallel_global_ranks)
+        aspm.register_patch('megatron.core.mpu.get_embedding_group', dist_train.parallel_state.get_embedding_group)
+        aspm.register_patch('megatron.core.mpu.get_position_embedding_group', dist_train.parallel_state.get_position_embedding_group)
+        aspm.register_patch('megatron.core.mpu.get_data_modulo_expert_parallel_group_gloo', dist_train.parallel_state.get_data_modulo_expert_parallel_group_gloo)
+        aspm.register_patch('megatron.core.mpu.get_amax_reduction_group', dist_train.parallel_state.get_amax_reduction_group)
+        aspm.register_patch('megatron.core.mpu.get_tensor_and_data_parallel_group', dist_train.parallel_state.get_tensor_and_data_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_tensor_and_context_parallel_group', dist_train.parallel_state.get_tensor_and_context_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_expert_model_parallel_group', dist_train.parallel_state.get_expert_model_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_tensor_and_expert_parallel_group', dist_train.parallel_state.get_tensor_and_expert_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_data_modulo_expert_parallel_group', dist_train.parallel_state.get_data_modulo_expert_parallel_group)
+        aspm.register_patch('megatron.core.mpu.get_tensor_model_parallel_world_size', dist_train.parallel_state.get_tensor_model_parallel_world_size)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_world_size', dist_train.parallel_state.get_pipeline_model_parallel_world_size)
+        aspm.register_patch('megatron.core.mpu.get_tensor_model_parallel_rank', dist_train.parallel_state.get_tensor_model_parallel_rank)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_rank', dist_train.parallel_state.get_pipeline_model_parallel_rank)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_split_rank', dist_train.parallel_state.get_pipeline_model_parallel_split_rank)
+        aspm.register_patch('megatron.core.mpu.is_rank_in_embedding_group', dist_train.parallel_state.is_rank_in_embedding_group)
+        aspm.register_patch('megatron.core.mpu.is_rank_in_position_embedding_group', dist_train.parallel_state.is_rank_in_position_embedding_group)
+        aspm.register_patch('megatron.core.mpu.get_virtual_pipeline_model_parallel_rank', dist_train.parallel_state.get_virtual_pipeline_model_parallel_rank)
+        aspm.register_patch('megatron.core.mpu.get_virtual_pipeline_model_parallel_world_size', dist_train.parallel_state.get_virtual_pipeline_model_parallel_world_size)
+        aspm.register_patch('megatron.core.mpu.get_data_parallel_src_rank', dist_train.parallel_state.get_data_parallel_src_rank)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_first_rank', dist_train.parallel_state.get_pipeline_model_parallel_first_rank)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_last_rank', dist_train.parallel_state.get_pipeline_model_parallel_last_rank)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_next_rank', dist_train.parallel_state.get_pipeline_model_parallel_next_rank)
+        aspm.register_patch('megatron.core.mpu.get_pipeline_model_parallel_prev_rank', dist_train.parallel_state.get_pipeline_model_parallel_prev_rank)
+        aspm.register_patch('megatron.core.mpu.get_expert_model_parallel_world_size', dist_train.parallel_state.get_expert_model_parallel_world_size)
+        aspm.register_patch('megatron.core.mpu.get_expert_model_parallel_rank', dist_train.parallel_state.get_expert_model_parallel_rank)
+        aspm.register_patch('megatron.core.mpu.get_global_memory_buffer', dist_train.parallel_state.get_global_memory_buffer)
+        aspm.register_patch('megatron.core.mpu.get_moe_layer_wise_logging_tracker', dist_train.parallel_state.get_moe_layer_wise_logging_tracker)
+        # checkpoint
+        aspm.register_patch('megatron.training.checkpointing.get_checkpoint_name', dist_train.checkpointing.get_checkpoint_name_wrapper)
+
+
 def optimizer_selection(aspm, mindspeed_args):
     if mindspeed_args.optimizer_selection == 'fused_torch_adamw':
         from .optimizer.adamw import FusedTorchAdamW as AdamW
@@ -1009,6 +1061,7 @@ def adaptation_l2(aspm, mindspeed_args):
     deepspeed_moe_adaptation(aspm, mindspeed_args)
     zero3_adaptation(aspm, mindspeed_args)
     tensor_2d_adaptation(aspm, mindspeed_args)
+    dist_train_adaptation(aspm, mindspeed_args)
 
 
 def delete_lock_file(directory, lock):
