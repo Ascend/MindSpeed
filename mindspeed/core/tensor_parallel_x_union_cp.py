@@ -44,7 +44,7 @@ class TensorParallelXUnionCP(MindspeedParallelGroup, metaclass=SingletonMeta):
                 end_rank = i * num_pp_groups + (j + 1) * tp * cp
                 for k in range(tp):
                     ranks = range(start_rank + k, end_rank, tp)
-                    all_cp_grps.append(ranks)
+                    all_cp_grps.append(list(ranks))
 
         all_tp_x_grps = []
         num_tp_grps: int = world_size // tp
@@ -56,11 +56,17 @@ class TensorParallelXUnionCP(MindspeedParallelGroup, metaclass=SingletonMeta):
         # Build the tensor model-parallel-x-cp groups.
         res_group, res_overlap_group, res_global_ranks = None, None, None
         tp_x_cp_grp_ranks = []
+        tp_x_cp_rank_in_grp = []
         for cp_grp in all_cp_grps:
             for cp_rank in cp_grp:
                 for tp_x_grp in all_tp_x_grps:
-                    if cp_rank in tp_x_grp and tp_x_grp not in tp_x_cp_grp_ranks:
-                        tp_x_cp_grp_ranks.append(tp_x_grp)
+                    if cp_rank in tp_x_grp and tp_x_grp not in tp_x_cp_rank_in_grp:
+                        tp_x_cp_rank_in_grp += tp_x_grp
+
+            tp_x_cp_rank_in_grp = sorted(tp_x_cp_rank_in_grp)
+            if tp_x_cp_rank_in_grp not in tp_x_cp_grp_ranks:
+                tp_x_cp_grp_ranks.append(tp_x_cp_rank_in_grp)
+            tp_x_cp_rank_in_grp = []
 
         cur_overlap_group = None
         for tp_x_cp_ranks in tp_x_cp_grp_ranks:

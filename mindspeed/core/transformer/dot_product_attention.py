@@ -250,9 +250,10 @@ def dot_product_attention_forward(
                 cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
                 cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
                 cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
-                cp_para['cache_policy'] = get_cache_policy(
-                    self.layer_number, args.context_parallel_kv_cache_policy, args.context_parallel_cache_interval
-                )
+
+            cp_para['cache_policy'] = get_cache_policy(
+                self.layer_number, args.context_parallel_kv_cache_policy, args.context_parallel_cache_interval
+            )
 
             output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p,
                                            packed_seq_params)

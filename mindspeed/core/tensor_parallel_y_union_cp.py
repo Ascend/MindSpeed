@@ -44,16 +44,11 @@ class TensorParallelYUnionCP(MindspeedParallelGroup, metaclass=SingletonMeta):
                 end_rank = i * num_pp_groups + (j + 1) * tp * cp
                 for k in range(tp):
                     ranks = range(start_rank + k, end_rank, tp)
-                    all_cp_grps.append(ranks)
+                    all_cp_grps.append(list(ranks))
 
-        all_tp_x_grps = []
         all_tp_y_grps = []
         num_tp_grps: int = world_size // tp
         for i in range(num_tp_grps):
-            for j in range(tp // tp_x):
-                ranks = range(i * tp + j * tp_x, i * tp + (j + 1) * tp_x)
-                all_tp_x_grps.append(list(ranks))
-
             num_tp_x_group = tp // tp_x
             for j in range(tp // num_tp_x_group):
                 ranks = range(i * tp + j, (i + 1) * tp, tp_x)
@@ -62,11 +57,17 @@ class TensorParallelYUnionCP(MindspeedParallelGroup, metaclass=SingletonMeta):
         # Build the tensor model-parallel-y-cp groups.
         res_group, res_overlap_group, res_global_ranks = None, None, None
         tp_y_cp_grp_ranks = []
+        tp_y_cp_rank_in_grp = []
         for cp_grp in all_cp_grps:
             for cp_rank in cp_grp:
                 for tp_y_grp in all_tp_y_grps:
-                    if cp_rank in tp_y_grp and tp_y_grp not in tp_y_cp_grp_ranks:
-                        tp_y_cp_grp_ranks.append(sorted(tp_y_grp))
+                    if cp_rank in tp_y_grp and tp_y_grp not in tp_y_cp_rank_in_grp:
+                        tp_y_cp_rank_in_grp += tp_y_grp
+
+            tp_y_cp_rank_in_grp = sorted(tp_y_cp_rank_in_grp)
+            if tp_y_cp_rank_in_grp not in tp_y_cp_grp_ranks:
+                tp_y_cp_grp_ranks.append(tp_y_cp_rank_in_grp)
+            tp_y_cp_rank_in_grp = []
 
         cur_overlap_group = None
         for tp_y_cp_ranks in tp_y_cp_grp_ranks:
