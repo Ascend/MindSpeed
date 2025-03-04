@@ -41,11 +41,6 @@ namespace {
         const at::Tensor &probs
     )
     {
-        if (probs.defined()) {
-            TORCH_CHECK(probs.scalar_type() == at::ScalarType::BFloat16,
-                        "Input tensor probs dtype [", probs.scalar_type(),
-                        "] is invalid, should be bfloat16");
-        }
         TORCH_CHECK(unpermuted_tokens_grad.dim() == DIMS,
                     "The dims of input unpermuted_tokens_grad should be 2 dimensional, but got ", unpermuted_tokens_grad.dim(), "-dimensional.");
         TORCH_CHECK(sorted_indices.dim() == MIN_DIMS,
