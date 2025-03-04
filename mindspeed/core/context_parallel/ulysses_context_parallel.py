@@ -2,8 +2,8 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
-
-from typing import Any, Tuple
+from abc import ABC, abstractmethod
+from typing import Any, Tuple, Optional
 import torch
 import torch_npu
 from torch import Tensor
@@ -12,11 +12,52 @@ from megatron.training import get_args
 import mindspeed
 from mindspeed.core.tensor_parallel.comm_group_api import CollectiveCommIntf
 from mindspeed.core.tensor_parallel.comm_utils import sync_gather_along_first_dim, sync_reduce_scatter_along_first_dim
+from mindspeed.core.context_parallel.unaligned_cp.mapping import all_to_all, cal_split_sizes
+
 
 try:
     from einops import rearrange
 except ImportError:
     rearrange = None
+
+
+class GatherSizeCalculator(ABC):
+    """Abstract base class defining an interface for calculating the gather size in distributed operations.
+
+    The gather size usually refers to the size of the output tensor in the `gather_idx` dimension after all-to-all
+    communication (in the Ulysses mechanism).
+    """
+
+    @abstractmethod
+    def calculate(self) -> Optional[int]:
+        """Calculates the gather size based on current context such as batch size or sequence length.
+
+        Returns:
+            Optional[int]: The calculated gather size if applicable, otherwise None.
+        """
+        pass
+
+
+class DefaultGatherSizeCalculator(GatherSizeCalculator):
+    """Default implementation where the gather size is always None. If gather_size is None, it
+       will be calculated as the product of the original size of the `gather_idx` of the input tensor and the
+       `world_size`."""
+    def calculate(self, *args, **kwargs) -> Optional[int]:
+        return None
+
+
+class DynamicGatherSizeCalculator(GatherSizeCalculator):
+    """Dynamic implementation that calculates gather size based on the current batch attention mask sequence length."""
+
+    def calculate(self, *args: Any, **kwargs: Any) -> Optional[int]:
+        """Calculates the gather size based on the attention mask sequence length.
+        """
+        # Check if the first argument is a tensor; general masks (which type is list) do not support dynamic gather size
+        if not isinstance(args[0], torch.Tensor):
+            return None
+
+        atten_mask_seq_len = args[0].shape[-1]
+        return atten_mask_seq_len
 
 
 class UlyssesCollectiveComm(CollectiveCommIntf):
@@ -84,26 +125,36 @@ class _SeqAllToAll(torch.autograd.Function):
 
 
 class UlyssesContextAttention(torch.nn.Module):
-    """Initialization.
-    Arguments:
-        local_attention (Module): local attention with q,k,v
-        sequence_process_group (ProcessGroup): sequence parallel process group
-        scatter_idx (int): scatter_idx for all2all comm
-        gather_idx (int): gather_idx for all2all comm
+    """Implementation of Ulysses Context Attention mechanism.
     """
+
     def __init__(
             self,
             local_attention: Module,
             sequence_process_group: torch.distributed.ProcessGroup,
             scatter_idx: int = 2,
             gather_idx: int = 0,
+            gather_size_calculator: GatherSizeCalculator = DefaultGatherSizeCalculator(),  # Injected dependency
     ) -> None:
+        """Initialization
+
+            Args:
+                local_attention (Module): An instance of a local attention mechanism
+                sequence_process_group (ProcessGroup): A PyTorch ProcessGroup object representing the process group for context parallelism.
+                scatter_idx (int): Index specifying along which dimension the data should be scattered during all-to-all communication.
+                gather_idx (int): Index specifying along which dimension the data should be gathered during all-to-all communication.
+                gather_size_calculator (GatherSizeCalculator): A callable object responsible for calculating the gather_size,
+                 which is the total size of the all-to-all output tensor along the `gather_idx`.
+                    Defaults to DefaultGatherSizeCalculator().
+        """
         super(UlyssesContextAttention, self).__init__()
         self.local_attn = local_attention
-        self.local_attn.ulysses_comm_para = dict()
-        self.local_attn.ulysses_comm_para['spg'] = sequence_process_group
-        self.local_attn.ulysses_comm_para['scatter_idx'] = scatter_idx
-        self.local_attn.ulysses_comm_para['gather_idx'] = gather_idx
+        self.local_attn.ulysses_comm_para = {
+            'spg': sequence_process_group,
+            'scatter_idx': scatter_idx,
+            'gather_idx': gather_idx,
+            'gather_size_calculator': gather_size_calculator
+        }
 
     def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         """ forward
@@ -117,10 +168,12 @@ class UlyssesContextAttention(torch.nn.Module):
         Returns:
             * output (Tensor): context output
         """
+        global_args = get_args()
         use_custom_ulysses_backward = (
-            get_args().context_parallel_size > 1 and
-            get_args().context_parallel_algo == "ulysses_cp_algo" and
-            not get_args().use_legacy_models
+            global_args.context_parallel_size > 1 and
+            global_args.context_parallel_algo == "ulysses_cp_algo" and
+            not global_args.use_legacy_models and
+            global_args.context_parallel_kv_cache_policy
         )
         if use_custom_ulysses_backward:
             output = self.local_attn(query, key, value, *args, **kwargs)
@@ -129,19 +182,40 @@ class UlyssesContextAttention(torch.nn.Module):
             scatter_idx = self.local_attn.ulysses_comm_para.get('scatter_idx')
             gather_idx = self.local_attn.ulysses_comm_para.get('gather_idx')
             seq_world_size = torch.distributed.get_world_size(spg)
+
+            # Handle cases where the sequence length of keys/values needs to be adjusted to match queries.
             if seq_world_size > key.shape[scatter_idx] and query.shape[scatter_idx] % key.shape[scatter_idx] == 0:
                 key = key.repeat_interleave(query.shape[scatter_idx] // key.shape[scatter_idx], dim=scatter_idx)
                 value = value.repeat_interleave(query.shape[scatter_idx] // value.shape[scatter_idx], dim=scatter_idx)
 
+            # Calculate the gather size using the injected gather size calculator
+            gather_size = self.local_attn.ulysses_comm_para.get('gather_size_calculator').calculate(*args, **kwargs)
+
+            # The gather size usually refers to the size of the output tensor in the `gather_idx` dimension after
+            # the all-to-all communication
             # in shape : e.g.,  [s/p:h:]
-            query_layer = _SeqAllToAll.apply(spg, query, scatter_idx, gather_idx)
-            key_layer = _SeqAllToAll.apply(spg, key, scatter_idx, gather_idx)
-            value_layer = _SeqAllToAll.apply(spg, value, scatter_idx, gather_idx)
+            query_layer = all_to_all(query, spg, scatter_idx, gather_idx, gather_size)
+            key_layer = all_to_all(key, spg, scatter_idx, gather_idx, gather_size)
+            value_layer = all_to_all(value, spg, scatter_idx, gather_idx, gather_size)
 
             # out shape : e.g., [s:h/p:]
             context_layer = self.local_attn(query_layer, key_layer, value_layer, *args, **kwargs)
 
-            output = _SeqAllToAll.apply(spg, context_layer, gather_idx, scatter_idx)
+            # Reshape the context layer if necessary to align dimensions properly
+            if gather_size:
+                context_shape = context_layer.shape
+                scatter_sizes_query = cal_split_sizes(query.shape[scatter_idx], seq_world_size)
+
+                # To reshape the context_layer tensor to ensure context_layer.size(gather_idx) and context_layer.size(scatter_idx)
+                # has the correct value.
+                context_layer = context_layer.reshape(context_shape[0], context_shape[1],
+                                                      scatter_sizes_query[torch.distributed.get_rank(spg)], -1).contiguous()
+
+            output = all_to_all(context_layer, spg, gather_idx, scatter_idx, query.size(scatter_idx))
+
+            # Final reshape to maintain correct dimensions after all-to-all communication
+            if gather_size:
+                output = output.reshape(output.shape[0], output.shape[1], -1).contiguous()
 
         # out e.g., [s/p::h]
         return output
