@@ -181,7 +181,8 @@ def dot_product_attention_forward(
     else:
         tp_y_cp_sz = self.config.context_parallel_size
 
-    if self.config.context_parallel_size > 1 and args.context_parallel_algo == "ulysses_cp_algo":
+    if (self.config.context_parallel_size > 1 and args.context_parallel_algo == "ulysses_cp_algo"
+            and args.context_parallel_kv_cache_policy):
         self.ulysses_comm_para['cache_policy'] = get_cache_policy(
             self.layer_number, args.context_parallel_kv_cache_policy, args.context_parallel_cache_interval
         )

@@ -6,11 +6,11 @@ import torch_npu
 import torch.distributed as dist
 
 from mindspeed import megatron_adaptor
-from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
+from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention, DynamicGatherSizeCalculator
 import megatron.core.parallel_state as ps
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
-
+from mindspeed.core.context_parallel.unaligned_cp.mapping import _AllToAll, _split, _gather, cal_split_sizes
 from commons import set_random_seed, initialize_model_parallel
 from unit_tests.common import DistributedTest
 
@@ -132,6 +132,66 @@ def run_ulysses_cp(cp_size, bs, seq_len, dtype):
     assert torch.allclose(v.grad, v_grad, **tols)
 
 
+def run_ulysses_cp_unaligned(cp_size, bs, seq_len, dtype):
+    set_random_seed(1234)
+    cp_group = ps.get_context_parallel_group()
+
+    b, n, s, d = bs, 32, seq_len, 128
+    scale = 1.0 / math.sqrt(d)
+
+    q = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
+    k = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
+    v = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
+    dout = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
+
+    attn_mask = ~torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
+
+    out = torch_npu.npu_fusion_attention( \
+        q, k, v, n, 'SBH', \
+        pse=None, \
+        padding_mask=None, \
+        atten_mask=attn_mask, \
+        scale=scale, \
+        pre_tockens=seq_len, \
+        next_tockens=0, \
+        keep_prob=1., \
+        inner_precise=0
+    )[0]
+
+    out.backward(dout)
+
+    q_ = _split(q.clone().detach(), cp_group, dim=0)
+    k_ = _split(k.clone().detach(), cp_group, dim=0)
+    v_ = _split(v.clone().detach(), cp_group, dim=0)
+    dout_ = _split(dout.clone().detach(), cp_group, dim=0)
+
+
+    for x in [q_, k_, v_]:
+        x.requires_grad = True
+
+    split_sizes = cal_split_sizes(dim_size=seq_len, world_size=ps.get_context_parallel_world_size())
+
+    core_attention = FlashSelfAttention(causal=True, softmax_scale=scale)
+    ulysses_attention = UlyssesContextAttention(core_attention, ps.get_context_parallel_group(),
+                                                gather_size_calculator=DynamicGatherSizeCalculator())
+    out_ = ulysses_attention(q_, k_, v_, attn_mask, n // cp_size)
+    out_.backward(dout_)
+
+    out_ulysses = _gather(out_, cp_group, dim=0, gather_sizes=split_sizes)
+    k_grad = _gather(k_.grad, cp_group, dim=0, gather_sizes=split_sizes)
+    v_grad = _gather(v_.grad, cp_group, dim=0, gather_sizes=split_sizes)
+
+    # same as transformer_engine
+    tols = dict(atol=5e-3, rtol=5e-3)
+    if dtype == torch.bfloat16:
+        tols = dict(atol=2.5e-2, rtol=2.5e-2)
+
+    # compare results with and without CP
+    assert torch.allclose(out, out_ulysses, **tols)
+    assert torch.allclose(k.grad, k_grad, **tols)
+    assert torch.allclose(v.grad, v_grad, **tols)
+
+
 class TestUlyssesCP(DistributedTest):
     world_size = 8
 
@@ -141,3 +201,4 @@ class TestUlyssesCP(DistributedTest):
         set_args(args)
         initialize_model_parallel(context_parallel_size=self.world_size)
         run_ulysses_cp(self.world_size, 2, 8192, torch.bfloat16)
+        run_ulysses_cp_unaligned(self.world_size, 2, 8190, torch.bfloat16)
