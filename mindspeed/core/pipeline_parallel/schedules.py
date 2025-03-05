@@ -15,6 +15,7 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reversed.
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
 import contextlib
+import time
 import torch
 from functools import wraps
 from megatron.core.enums import ModelType
@@ -26,6 +27,7 @@ from megatron.core.pipeline_parallel.schedules import set_current_microbatch
 from mindspeed.core.pipeline_parallel import flexible_schedules
 from mindspeed.core.pipeline_parallel.ripipe_schedules import forward_backward_ripipe_pipelining
 from mindspeed.core.pipeline_parallel import multiparameter_schedules
+from mindspeed.core.auto_parallel.mm_search.help import PROFILE_CONTENT
 
 LOSS_BACKWARD_SCALE = torch.tensor(1.0)
 
@@ -78,6 +80,13 @@ def forward_step(
     passed-in input_tensor is used.
 
     Returns output tensor."""
+    arguments = get_args()
+    if arguments.auto_parallel_profile:
+        torch.cuda.synchronize()
+        start_time = time.time()
+        torch.npu.reset_max_memory_allocated()
+        start_memory = torch.npu.memory_allocated()
+
     if config.timers is not None:
         config.timers('forward-compute', log_level=2).start()
 
@@ -139,6 +148,12 @@ def forward_step(
         )
         # Set the loss scale
         MoEAuxLossAutoScaler.set_loss_scale(loss_scale / num_microbatches)
+
+    if arguments.auto_parallel_profile:
+        torch.cuda.synchronize()
+        PROFILE_CONTENT["fwd_time"].append((time.time() - start_time) * 1000)                                      # time: ms
+        PROFILE_CONTENT["act_mem"].append((torch.npu.memory_allocated() - start_memory) / 1024 ** 2)        # memory: MB
+        max_mem = torch.npu.max_memory_allocated()
 
     # If T5 model (or other model with encoder and decoder)
     # and in decoder stack, then send encoder_hidden_state

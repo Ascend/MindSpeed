@@ -47,6 +47,7 @@ def process_args(parser):
     parser = _add_auto_parallel_args(parser)
     parser = _add_deepseek_args(parser)
     parser = _auto_tuning_args(parser)
+    parser = _add_auto_parallel_mm_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
     parser = _add_layerzero_args(parser)
     parser = _add_dist_train_args(parser)
@@ -1073,6 +1074,16 @@ def _add_auto_parallel_args(parser):
     group.add_argument('--profile-operator', action='store_true', help='')
     group.add_argument('--profile-memory', action='store_true', help='')
     group.add_argument('--prof-file', type=str, default=None, help='')
+    return parser
+
+
+def _add_auto_parallel_mm_args(parser):
+    group = parser.add_argument_group(title='auto_parallel_mm')
+    group.add_argument('--auto-parallel-mm', action='store_true', default=False,
+                       help='enable multimode automated parallel policy search')
+    group.add_argument('--auto-parallel-profile', action='store_true', default=False, 
+                       help='multimode performance sampling')
+
     return parser
 
 

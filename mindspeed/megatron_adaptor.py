@@ -942,6 +942,13 @@ def megatron_training_adaptation_with_layerzero(aspm, mindspeed_args):
         aspm.register_patch('megatron.training.checkpointing.save_checkpoint', save_checkpoint)
 
 
+def auto_parallel_mm_adaptation(aspm, mindspeed_args):
+    from mindspeed.core.auto_parallel.mm_search.schedules import backward_step_decorator
+    if mindspeed_args.auto_parallel_mm or mindspeed_args.auto_parallel_profile:
+        aspm.register_patch('megatron.core.pipeline_parallel.schedules.backward_step',
+                            backward_step_decorator)
+
+
 def dist_train_adaptation(aspm, args):
     if args.dist_train:
         from mindspeed.multi_modal import dist_train
@@ -1061,6 +1068,7 @@ def adaptation_l2(aspm, mindspeed_args):
     deepspeed_moe_adaptation(aspm, mindspeed_args)
     zero3_adaptation(aspm, mindspeed_args)
     tensor_2d_adaptation(aspm, mindspeed_args)
+    auto_parallel_mm_adaptation(aspm, mindspeed_args)
     dist_train_adaptation(aspm, mindspeed_args)
 
 
