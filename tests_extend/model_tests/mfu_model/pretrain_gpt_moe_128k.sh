@@ -43,7 +43,7 @@ GPT_ARGS="
     --overlap-param-gather \
     --sequence-parallel \
     --num-layers 24 \
-    --hidden-size 12288 \
+    --hidden-size 11904 \
     --num-attention-heads 96 \
     --seq-length 131072 \
     --max-position-embeddings 131072 \
