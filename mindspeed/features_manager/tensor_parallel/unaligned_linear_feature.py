@@ -21,7 +21,8 @@ class UnalignedLinearFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         from mindspeed.core.tensor_parallel.unaligned_layers.adaptor import divide_adaptor, \
             scatter_to_sequence_parallel_region_adaptor, get_rotary_seq_len, UnalignedColumnParallelLinearAdaptor, \
-            UnalignedRowParallelLinearAdaptor, reduce_scatter_to_sequence_parallel_region_adaptor
+            UnalignedRowParallelLinearAdaptor, reduce_scatter_to_sequence_parallel_region_adaptor, \
+            gather_from_sequence_parallel_region_adaptor    
         if getattr(args, self.feature_name, None):
             patch_manager.register_patch('megatron.core.utils.divide', divide_adaptor)
             patch_manager.register_patch(
@@ -31,6 +32,8 @@ class UnalignedLinearFeature(MindSpeedFeature):
                                          scatter_to_sequence_parallel_region_adaptor)
             patch_manager.register_patch('megatron.core.tensor_parallel.mappings.reduce_scatter_to_sequence_parallel_region',
                                          reduce_scatter_to_sequence_parallel_region_adaptor)
+            patch_manager.register_patch('megatron.core.tensor_parallel.mappings.gather_from_sequence_parallel_region',
+                                         gather_from_sequence_parallel_region_adaptor)
             patch_manager.register_patch('megatron.core.tensor_parallel.layers.ColumnParallelLinear',
                                          UnalignedColumnParallelLinearAdaptor)
             patch_manager.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear',
