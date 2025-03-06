@@ -307,6 +307,9 @@ def _init_param_handle_from_module(
 
     managed_params = list(_get_orig_params(
         zero3_module, state._ignored_params))
+    for param in managed_params:
+        if len(param.shape) == 1:
+            param._is_1D_param = True
     _init_param_handle_from_params(
         state, managed_params, zero3_module)
     return state

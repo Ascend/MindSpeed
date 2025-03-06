@@ -55,7 +55,7 @@ def _get_param_groups(
             else:
                 # Do not regularize biases and norm parameters.
                 #! currently do not support norm parameters, case all zero1 param has len(param.shape) == 1
-                no_wd = name.endswith(".bias")
+                no_wd = name.endswith(".bias") or getattr(param, "_is_1D_param", False)
 
             if scale_lr_cond is not None:
                 scale_lr = scale_lr_cond(name, param)

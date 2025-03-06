@@ -367,10 +367,6 @@ def _post_backward_hook(
         if flat_param.grad.requires_grad:
             raise RuntimeError("ZeRO3 does not support gradients of gradients")
         
-        # early release zero3 shard when sync gradient is True, 
-        # so old zero3_shard will not be needed after backward
-        if state._sync_gradients:
-            handle.flat_param._zero3_shard = None
         _post_backward_reshard(state, handle)
         _accumulate_grad(state, handle)
         reduce_scatter_sync_gradients(state, handle)

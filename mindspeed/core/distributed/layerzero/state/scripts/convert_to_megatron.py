@@ -23,6 +23,8 @@ def parse_arguments():
                         type=str, help='Input DeepSpeed Checkpoint folder')
     parser.add_argument('--output_folder', default=None,
                         type=str, help='Output Megatron checkpoint folder')
+    parser.add_argument('--prefix', default="predictor",
+                        help='Model prefix used in Layerzero')
     parser.add_argument('--target_tp', default=1,
                         type=int, help='Target TP degree')
     parser.add_argument('--target_pp', default=1,
@@ -58,7 +60,7 @@ def _save_checkpoint(file_path, chkpt_sd):
 
 def _create_rank_checkpoint(zero_checkpoint, tp_index, pp_index, tp_degree, pp_degree, for_release=False):
     checkpoint_sd = OrderedDict()
-    checkpoint_sd[layerzero_checkpointer.MODEL_KEY] = zero_checkpoint.create_rank_checkpoint(
+    checkpoint_sd[layerzero_checkpointer.MODEL_SD_KEY] = zero_checkpoint.create_rank_checkpoint(
         tp_index, pp_index, tp_degree, pp_degree)
     iteration = zero_checkpoint.get_iteration()
     checkpoint_sd[ITERATION_KEY] = iteration
@@ -88,6 +90,10 @@ def main():
     if args.ema_model:
         from mindspeed.core.distributed.layerzero.state.scripts.layerzero_checkpointer import set_ema_model
         set_ema_model()
+    if args.prefix is not None:
+        from mindspeed.core.distributed.layerzero.state.scripts.layerzero_checkpointer import remove_model_prefix
+        remove_model_prefix(args.prefix)
+        
     lz_checkpoint = LayerzeroCheckpoint(args.input_folder)
     iteration = lz_checkpoint.get_iteration()
     _create_latest_file(args.output_folder, iteration)
