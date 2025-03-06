@@ -23,6 +23,20 @@ NUM_LAYERS_KEY = "num_layers"
 PP_LAYERS_KEY = "layers_per_pp"
 
 EMA_MODEL_SD_KEY = "ema_model"
+MODEL_PREFIX = None
+
+
+def remove_model_prefix(prefix):
+    print(f"[debug] set model prefix =", prefix)
+    global MODEL_PREFIX
+    if prefix:
+        MODEL_PREFIX = prefix + '.'
+    
+
+def clean_prefix(fqn, prefix):
+    if prefix:
+        fqn = fqn.replace(prefix, "")
+    return fqn
 
 
 def set_ema_model():
@@ -203,6 +217,10 @@ class LayerzeroCheckpoint(object):
         rank_state_dict = {}
         for fqn, tensor in state_dict.items():
             shard_info = self.state_dicts[0]._get_shard_info_by_fqn(fqn)
+            
+            if MODEL_PREFIX:
+                fqn = clean_prefix(fqn, MODEL_PREFIX)
+                
             if shard_info is not None and shard_info.tensor_model_parallel:
                 # 如果张量是 TP 分片的，则根据 tp_index 和 tp_degree 进行分片
                 partition_dim = shard_info.partition_dim
