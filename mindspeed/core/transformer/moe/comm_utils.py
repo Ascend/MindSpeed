@@ -38,14 +38,14 @@ def async_all_gather(input_, group, event=None, is_use_get_global_memory_buffer=
         with torch_npu.npu.stream(COMM_STREAM):
             event.wait()
             if last_dim:
-                handle = torch.distributed.all_gather(ag_out, input_, group=group, async_op=True)
+                handle = torch.distributed.all_gather(ag_out, input_.contiguous(), group=group, async_op=True)
             else:
                 handle = torch.distributed._all_gather_base(
                     ag_out, input_.contiguous(), group=group, async_op=True
                 )
     else:
         if last_dim:
-            handle = torch.distributed.all_gather(ag_out, input_, group=group, async_op=True)
+            handle = torch.distributed.all_gather(ag_out, input_.contiguous(), group=group, async_op=True)
         else:
             handle = torch.distributed._all_gather_base(
                 ag_out, input_.contiguous(), group=group, async_op=True
