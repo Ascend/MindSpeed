@@ -25,7 +25,7 @@ MC2算子接口参见[link](https://www.hiascend.com/document/detail/zh/Pytorch/
 
 ## 使用场景
 
-当开启了TP和SP时，建议开启MC2进一步优化。
+当开启了TP和SP时，建议开启MC2进一步优化。参数冻结和参数不冻结两个场景均支持。
 
 ## 使用方法
 
