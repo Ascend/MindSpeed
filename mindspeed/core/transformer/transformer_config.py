@@ -19,10 +19,11 @@ def transformer_config_post_init(self):
     args = get_args()
     world_size = args.tp_x if args.tp_2d else self.tensor_model_parallel_size
     if self.num_attention_heads % world_size != 0:
-        raise ValueError(
-            f"num_attention_heads ({self.num_attention_heads}) must be a multiple of "
-            f"tensor_model_parallel_size ({world_size})."
-        )
+        if not args.unaligned_linear:
+            raise ValueError(
+                f"num_attention_heads ({self.num_attention_heads}) must be a multiple of "
+                f"tensor_model_parallel_size ({world_size})."
+            )
 
     if self.ffn_hidden_size is None:
         self.ffn_hidden_size = 4 * self.hidden_size
@@ -34,10 +35,11 @@ def transformer_config_post_init(self):
         self.num_query_groups = self.num_attention_heads
 
     if self.num_query_groups % world_size != 0:
-        raise ValueError(
-            f"num_query_groups ({self.num_query_groups}) must be a multiple of "
-            f"tensor_model_parallel_size ({world_size})."
-        )
+        if not args.unaligned_linear:
+            raise ValueError(
+                f"num_query_groups ({self.num_query_groups}) must be a multiple of "
+                f"tensor_model_parallel_size ({world_size})."
+            )
 
     if self.apply_query_key_layer_scaling:
         self.attention_softmax_in_fp32 = True
