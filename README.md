@@ -73,7 +73,7 @@ MindSpeed 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型�
 ☀️ 下载源码安装：
 
  ```shell
- git clone https://gitee.com/ascend/MindSpeed.git
+ git clone -b core_r0.8.0 https://gitee.com/ascend/MindSpeed.git
  pip install -e MindSpeed
  ```
 
