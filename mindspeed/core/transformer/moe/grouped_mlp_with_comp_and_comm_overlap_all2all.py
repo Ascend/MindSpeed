@@ -123,18 +123,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             # grad of activation_func
             act_graph.backward(grad_mm2_inputs)
             if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
-                if not moe_hierarchical_alltoallv:
-                    def alltoall_token_permutation1(hidden_states, indices, router_topk):
-                        hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                        permutated_local_input_tokens, _, _ = permute_with_ep(
-                            hidden_states, indices, probs=scores_ep, topk=router_topk, gb_inputs_splits=input_splits_tp_ep
-                        )
-                        return permutated_local_input_tokens
-
-                    permutated_local_input_tokens = alltoall_token_permutation1(detach_input, indices, router_topk)
-                else:
-                    permutated_local_input_tokens = get_permute_with_ep_local_input_tokens()
-
+                permutated_local_input_tokens = get_permute_with_ep_local_input_tokens()
                 _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
                     permutated_local_input_tokens,
                     output_splits,
