@@ -43,11 +43,10 @@ class MindSpeedOpBuilder(ABC):
 
     def include_paths(self):
         paths = [
-            os.path.join(self._cann_path, 'include'),
             os.path.join(self._torch_npu_path, 'include'),
-            os.path.join(self._torch_npu_path, 'third_party'),
-            os.path.join(self._torch_npu_path, 'acl'),
-            os.path.join(self._torch_npu_path, 'inc'),
+            os.path.join(self._torch_npu_path, 'include/third_party/hccl/inc'),
+            os.path.join(self._torch_npu_path, 'include/third_party/acl/inc'),
+            os.path.join(self._cann_path, 'include'),
         ]
         return paths
 
