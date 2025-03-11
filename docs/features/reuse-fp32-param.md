@@ -37,6 +37,10 @@
 
 ## 使用效果
 
-对于Float16OptimizerWithFloat16Params，整体能够节省`sizeof(bfloat16)*模型参数量`的静态内存，性能劣化在多个模型上测试小于1%。
-对于开启分布式优化器的训练，整体能够节省`sizeof(bfloat16)*模型参数量 / DP`的静态内存，性能劣化在多个模型上测试小于1%。
-legacy下，`reuse_fp32_param`暂不支持和`--overlap-param-gather`一起使用。
+1. 对于Float16OptimizerWithFloat16Params，整体能够节省`sizeof(bfloat16)*模型参数量`的静态内存，性能劣化在多个模型上测试小于1%。
+2. 对于开启分布式优化器的训练，整体能够节省`sizeof(bfloat16)*模型参数量 / DP`的静态内存，性能劣化在多个模型上测试小于1%。
+
+## 注意事项
+
+1. 使用legacy model训练时，`reuse_fp32_param`暂不支持和`--overlap-param-gather`一起使用。
+2. 使用fused_ema_adamw优化器时，不支持同时开启`reuse_fp32_param`。
