@@ -135,7 +135,7 @@ def run_hybridattn_cp(cp_size, u_size, bs, seq_len, dtype, cp_args):
     else:
         # global mask for core branch is generated at DotProductAttention forward
         # no need to generate and mask here
-        out_ = attn(q_.reshape(-1, b, n, d), k_.reshape(-1, b, n, d), v_.reshape(-1, b, n, d), None, None, None)
+        out_ = attn(q_.reshape(-1, b, n, d), k_.reshape(-1, b, n, d), v_.reshape(-1, b, n, d), None, None, None, None)
 
     out_.backward(dout_)
 

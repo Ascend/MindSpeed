@@ -170,7 +170,13 @@ def transformer_config_post_init(self):
 def transformer_config_post_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self):
+        #Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
+        ori_apply_rope_fusion = self.apply_rope_fusion
+        self.apply_rope_fusion = False
         fn(self)
+        self.apply_rope_fusion = ori_apply_rope_fusion
+        del ori_apply_rope_fusion
+
         args = get_args()
         fields = []
         for key, value in vars(args).items():

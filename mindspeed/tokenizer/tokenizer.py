@@ -55,7 +55,7 @@ def build_tokenizer_wrapper(build_tokenizer):
                 args.padded_vocab_size = _vocab_size_with_padding(tokenizer.vocab_size,
                                                                 args)
         else:
-            tokenizer = build_tokenizer(args)
+            tokenizer = build_tokenizer(args, **kargs)
         return tokenizer
     return wrapper
 

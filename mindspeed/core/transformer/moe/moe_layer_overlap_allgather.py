@@ -2,7 +2,7 @@ import acl
 import torch
 import torch_npu
 
-from megatron.core.parallel_state import (get_expert_model_parallel_group, get_tensor_and_expert_parallel_group,
+from megatron.core.parallel_state import (get_expert_model_parallel_group, get_expert_tensor_and_model_parallel_group,
                                           get_tensor_model_parallel_group, get_tensor_model_parallel_world_size)
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
@@ -49,7 +49,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             global_indices_tuple = (global_indices, gi_handle)
 
             _, global_probs, gp_handle = async_all_gather(
-                scores, get_tensor_and_expert_parallel_group()
+                scores, get_expert_tensor_and_model_parallel_group()
             )
 
             global_probs_tuple = (global_probs, gp_handle)
@@ -60,14 +60,14 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             if '910B' in acl.get_soc_name():
                 _, global_hidden_states, ghs_handle = async_all_gather(
                     hidden_states,
-                    get_tensor_and_expert_parallel_group()
+                    get_expert_tensor_and_model_parallel_group()
                 )
             else:
                 _, global_hidden_states, ghs_handle = async_all_gather(
                     shared_experts_input,
                     get_expert_model_parallel_group()
                     if shared_experts_allgather_handle
-                    else get_tensor_and_expert_parallel_group(),
+                    else get_expert_tensor_and_model_parallel_group(),
                     shared_experts_allgather_handle
                 )
             global_hidden_states = global_hidden_states.view(-1, global_hidden_states.shape[-1])
@@ -134,7 +134,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         save_tensors.append(dispatched_input)
 
         _, output_rs, token_unpermutation_rs_handle = async_reduce_scatter(
-            output, get_tensor_and_expert_parallel_group()
+            output, get_expert_tensor_and_model_parallel_group()
         )
 
         ctx.token_unpermutation_output_shape = output.shape
@@ -185,7 +185,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         else:
             _, ag_experts_grad_input, ag_experts_handle = async_all_gather(
                 args[0],
-                get_tensor_and_expert_parallel_group(),
+                get_expert_tensor_and_model_parallel_group(),
             )
 
         args = None
@@ -212,7 +212,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         global_probs_grad = global_probs_detach.grad
 
         _, rs_global_probs_grad, rs_global_probs_grad_handle = async_reduce_scatter(
-            global_probs_grad, get_tensor_and_expert_parallel_group()
+            global_probs_grad, get_expert_tensor_and_model_parallel_group()
         )
         rs_global_probs_grad_handle.wait()
         global_probs_grad.untyped_storage().resize_(0)

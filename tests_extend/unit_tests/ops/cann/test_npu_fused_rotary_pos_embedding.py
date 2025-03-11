@@ -6,7 +6,7 @@ from mindspeed import megatron_adaptor
 from unit_tests.common import DistributedTest
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
-from megatron.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd
+from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
 
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -34,11 +34,11 @@ class TestNpuFusedRotaryEmbedding(DistributedTest):
 
         args = create_test_args(False)
         set_args(args)
-        output_patch_ori = apply_rotary_pos_emb_bshd(t_ori, freqs_ori, rotary_interleaved)
+        output_patch_ori = _apply_rotary_pos_emb_bshd(t_ori, freqs_ori, rotary_interleaved)
 
         args = create_test_args(True)
         set_args(args)
-        output_patch_fused = apply_rotary_pos_emb_bshd(t_fused, freqs_fused, rotary_interleaved)
+        output_patch_fused = _apply_rotary_pos_emb_bshd(t_fused, freqs_fused, rotary_interleaved)
 
         tol = 0.004 if dtype == torch.bfloat16 else 0.001
         assert torch.allclose(output_patch_ori, output_patch_fused, rtol=tol, atol=tol)

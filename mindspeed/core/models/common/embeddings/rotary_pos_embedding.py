@@ -1,6 +1,8 @@
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import math
+from typing import Optional
+import logging
 import torch
 from torch import Tensor
 from functools import wraps
@@ -8,6 +10,10 @@ from functools import wraps
 from megatron.core.models.common.embeddings.rotary_pos_embedding import _rotate_half
 from megatron.training import get_args
 from megatron.core import parallel_state
+from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.transformer.transformer_block import TransformerBlock
+from megatron.core.inference_params import InferenceParams
+from megatron.core.packed_seq_params import PackedSeqParams
 from mindspeed.utils import get_position_ids, generate_rearrange_idx_tensor
 from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
 
@@ -54,14 +60,19 @@ def yarn_linear_ramp_mask(min_, max_, dim):
     return ramp_func
 
 
-def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool = False) -> Tensor:
+def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool = False, multi_latent_attention: bool = False, mscale: float = 1.0) -> Tensor:
     args = get_args()
-    _mscale = 1.0
+    _mscale = mscale
     if args.rope_scaling_type == "yarn":
         _mscale = float(
             yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale)
             / yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale_all_dim)
         )
+
+    if multi_latent_attention:
+        x1 = t[..., 0::2]
+        x2 = t[..., 1::2]
+        t = torch.cat((x1, x2), dim=-1)
 
     rot_dim = freqs.shape[-1]
     t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
@@ -118,12 +129,13 @@ def rotary_embedding_init_wrapper(fn):
     return wrapper
 
 
-def rotary_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
+def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False) -> Tensor:
     """Forward pass of RoPE embedding.
 
     Args:
         max_seq_len (int): Maximum size of sequence
         offset (int, optional): _description_. Defaults to 0.
+        packed_seq (bool, optional): Whether to use packed sequence. Defaults to False.
 
     Returns:
         Tensor: Embeddings after applying RoPE.
@@ -151,11 +163,19 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
     # emb [seq_length, .., dim]
     emb = emb[:, None, None, :]
 
+    position_ids = get_position_ids()
+    s, b = position_ids.shape
+    emb = emb[position_ids.view(-1)].squeeze(1).reshape(s, b, 1, -1)
+
+    if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
+        # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
+        emb = get_pos_emb_on_this_cp_rank(emb, 0)
+
     return emb
 
 
 def apply_rotary_pos_emb_thd(
-    t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False
+    t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False, multi_latent_attention: bool = False, mscale: float = 1.0
 ) -> Tensor:
 
     """A baseline implementation of applying RoPE for `thd` format.
@@ -175,7 +195,7 @@ def apply_rotary_pos_emb_thd(
     block_size, bsz = position_ids.shape
     freqs = freqs[position_ids.view(-1)].reshape(block_size, bsz, 1, -1)
 
-    return apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved)
+    return apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved, multi_latent_attention, mscale)
 
 
 def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
@@ -320,7 +340,7 @@ def _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emd, seq_dim):
     return pos_emd
 
 
-def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
+def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False) -> Tensor:
     """Forward pass of RoPE embedding.
 
     Args:
@@ -355,7 +375,7 @@ def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
         tp_y_cp_sz = cp * global_args.tp_y
     else:
         tp_y_cp_sz = cp
-    if tp_y_cp_sz > 1:
+    if tp_y_cp_sz > 1 and not packed_seq:
         # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
         emb = get_pos_emb_on_this_cp_rank(emb, 0)
     return emb
@@ -363,8 +383,8 @@ def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0) -> Tensor:
 
 def rotary_embedding_forward_wrapper(fn):
     @wraps(fn)
-    def wrapper(self, max_seq_len: int, offset: int = 0):
-        return rotary_embedding_forward(self, max_seq_len, offset)
+    def wrapper(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False):
+        return rotary_embedding_forward(self, max_seq_len, offset, packed_seq)
 
     return wrapper
 
@@ -380,10 +400,99 @@ def _get_pos_emb_on_this_tp_y_cp_rank_in_ulysses_cp(pos_emb, seq_dim):
 
 def rotary_embedding_get_rotary_seq_len_wrapper(fn):
     @wraps(fn)
-    def wrapper(self, inference_params, transformer, transformer_input, transformer_config,):
-        rotary_seq_len = fn(self, inference_params, transformer, transformer_input, transformer_config,)
+    def wrapper(self,  *args, **kwargs):
+        rotary_seq_len = fn(self, *args, **kwargs)
         global_args = get_args()
         if global_args.tp_2d:
             rotary_seq_len *= global_args.tp_x
         return rotary_seq_len
     return wrapper
+
+
+try:
+    from apex.transformer.functional import (
+        fused_apply_rotary_pos_emb,
+        fused_apply_rotary_pos_emb_thd,
+    )
+
+    HAVE_APPLY_ROPE_FUSION = True
+except ImportError:
+    HAVE_APPLY_ROPE_FUSION = False
+
+
+def apply_rotary_pos_emb(
+    t: Tensor, freqs: Tensor, config: TransformerConfig, cu_seqlens: Optional[Tensor] = None, mscale: float = 1.0
+):
+    """
+    Old version for fix rotary_pos_emb in core_r0.10.0.
+    Reroute to the appropriate apply_rotary_pos_emb function depending on
+    fused/unfused kernels, or bshd (conventional) / thd (packed seq) format
+    """
+    import megatron.core.models.common.embeddings.rope_utils as ru
+    logger = logging.getLogger(__name__)
+    if config.apply_rope_fusion and not HAVE_APPLY_ROPE_FUSION:
+        # setting apply_rope_fusion in config to False so that subsequent queries to this config also return False
+        config.apply_rope_fusion = False
+        if not getattr(apply_rotary_pos_emb, "printed_fused_warning", False):
+            logger.warning(
+                "Setting apply_rope_fusion to false because its implementation"
+                " is not included in Apex. Try upgrading to the latest version"
+            )
+            apply_rotary_pos_emb.printed_fused_warning = True
+    if config.apply_rope_fusion:
+        if cu_seqlens is None:
+            return fused_apply_rotary_pos_emb(t, freqs, transpose_output_memory=True)
+        return fused_apply_rotary_pos_emb_thd(t, cu_seqlens, freqs)
+    elif cu_seqlens is None:
+        return ru._apply_rotary_pos_emb_bshd(
+            t, 
+            freqs, 
+            rotary_interleaved=config.rotary_interleaved,  
+            multi_latent_attention=config.multi_latent_attention,
+            mscale=mscale)
+    return ru._apply_rotary_pos_emb_thd(
+        t, 
+        cu_seqlens, 
+        freqs, 
+        rotary_interleaved=config.rotary_interleaved, 
+        multi_latent_attention=config.multi_latent_attention,
+        mscale=mscale
+    )
+
+
+def Eod_get_rotary_seq_len(
+    self,
+    inference_params: InferenceParams,
+    transformer: TransformerBlock,
+    transformer_input: Tensor,
+    transformer_config: TransformerConfig,
+    packed_seq_params: PackedSeqParams,
+) -> float:
+    """Function to get the rotary sequence length with Eod.
+
+    Args:
+        inference_params : Used during Inference time
+        transformer (TransformerBlock): The transformer block (decoder/encoder) used
+            by the model
+        transformer_input (Tensor): Input tensor to the transformer
+        transformer_config (TransformerConfig): Transformer config used by the model
+        packed_seq_params (PackedSeqParams): Packed sequence params
+
+    Returns:
+        float: The rotary sequence length
+    """
+
+    if inference_params is not None:
+        rotary_seq_len = inference_params.max_sequence_length
+    else:
+        if transformer.input_tensor is not None:
+            rotary_seq_len = transformer.input_tensor.size(0)
+        else:
+            rotary_seq_len = transformer_input.size(0)
+
+        if transformer_config.sequence_parallel:
+            rotary_seq_len *= transformer_config.tensor_model_parallel_size
+
+    rotary_seq_len *= transformer_config.context_parallel_size
+
+    return rotary_seq_len

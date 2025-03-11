@@ -158,6 +158,7 @@ class LinearWithGradAccumulationAndAsyncCommunication(torch.autograd.Function):
             # reduce scatter is scheduled before the weight gradient computation
 
         if ctx.gradient_accumulation_fusion:
+            import fused_weight_gradient_mlp_cuda
             if wgrad_compute:
                 import fused_weight_gradient_mlp_cuda
                 if weight.main_grad.dtype == torch.float32:
@@ -329,7 +330,7 @@ class ColumnParallelLinear(torch.nn.Module):
                         init_method,
                         partition_dim=0,
                         stride=stride,
-                        expert_parallel=(self.is_expert and self.expert_parallel),
+                        is_expert=(self.is_expert and self.expert_parallel),
                     )
 
             setattr(self.weight, 'allreduce', not (self.is_expert and self.expert_parallel))
@@ -533,7 +534,7 @@ class RowParallelLinear(torch.nn.Module):
                     init_method,
                     partition_dim=1,
                     stride=stride,
-                    expert_parallel=(self.is_expert and self.expert_parallel),
+                    is_expert=(self.is_expert and self.expert_parallel),
                 )
         setattr(self.weight, 'allreduce', not (self.is_expert and self.expert_parallel))
 

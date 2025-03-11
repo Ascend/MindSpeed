@@ -16,8 +16,8 @@
 import torch
 from einops import rearrange
 from megatron.training import get_args
-from megatron.core.parallel_state import get_expert_model_parallel_group, get_tensor_and_expert_parallel_group
-from megatron.core.transformer.moe.moe_utils import permute
+from megatron.core.parallel_state import get_expert_model_parallel_group, get_expert_tensor_and_model_parallel_group
+from megatron.core.transformer.moe.moe_utils import permute, sort_chunks_by_idxs
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import gmm_op
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
@@ -81,7 +81,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         else:
             act_inputs, mm2_inputs, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
 
-        ((detach_input, indices, router_topk, global_input_tokens_local_experts_indices),
+        ((detach_input, indices, router_topk, num_tokens, num_global_tokens_per_local_expert_cpu, sort_input_by_local_experts, global_input_tokens_local_experts_indices),
          permute2_input_detach, permute2_graph, output_splits, input_splits) = get_gemm_backward_need_tensors()
 
         # grad of mm2
@@ -132,18 +132,18 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         grad_mm2_inputs.untyped_storage().resize_(0)
         act_inputs.untyped_storage().resize_(0)
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
-            def alltoall_token_permutation1(hidden_states, indices, router_topk):
+            def alltoall_token_permutation1(hidden_states, routing_map, num_tokens):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
                 permutated_local_input_tokens, _ = permute(
-                    hidden_states, indices
+                    hidden_states, routing_map, num_tokens
                 )
                 return permutated_local_input_tokens
 
-            permutated_local_input_tokens = alltoall_token_permutation1(detach_input, indices, router_topk)
+            permutated_local_input_tokens = alltoall_token_permutation1(detach_input, indices, num_tokens)
 
             ep_group = get_expert_model_parallel_group()
             if global_args.moe_tp_extend_ep:
-                ep_group = get_tensor_and_expert_parallel_group()
+                ep_group = get_expert_tensor_and_model_parallel_group()
             _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
                 permutated_local_input_tokens,
                 output_splits,
@@ -161,7 +161,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         mm1_inputs_grad.untyped_storage().resize_(0)
         ep_group = get_expert_model_parallel_group()
         if global_args.moe_tp_extend_ep:
-            ep_group = get_tensor_and_expert_parallel_group()
+            ep_group = get_expert_tensor_and_model_parallel_group()
 
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
             permute1_ep_all_to_all_handle.wait()
@@ -176,8 +176,10 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
 
         set_all2all_experts_output((permute1_backward_input, bw_permute1_ep_all2all_handle))
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
-            mm1_inputs, _ = permute(
-                global_input_tokens, global_input_tokens_local_experts_indices
+            mm1_inputs = sort_chunks_by_idxs(
+                global_input_tokens,
+                num_global_tokens_per_local_expert_cpu.ravel(),
+                sort_input_by_local_experts,
             )
 
             global_input_tokens.untyped_storage().resize_(0)

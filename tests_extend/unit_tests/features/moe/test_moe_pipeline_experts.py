@@ -16,7 +16,7 @@ from mindspeed.core.distributed.param_and_grad_buffer import pipe_register_grad_
 from mindspeed.patch_utils import MindSpeedPatchesManager as pm
 
 from megatron.core.transformer import TransformerConfig
-from megatron.core.distributed.param_and_grad_buffer import ParamAndGradBuffer, _ParamAndGradBucketGroup
+from megatron.core.distributed.param_and_grad_buffer import _ParamAndGradBuffer, _ParamAndGradBucketGroup
 from megatron.core.tensor_parallel.layers import RowParallelLinear, ColumnParallelLinear
 from megatron.legacy.model.transformer import ParallelMLP
 from megatron.training.global_vars import set_args

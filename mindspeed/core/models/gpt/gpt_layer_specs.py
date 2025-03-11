@@ -1,4 +1,7 @@
 from functools import wraps
+from typing import Optional
+import types
+from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.attention import SelfAttentionSubmodules
 from megatron.core.transformer.dot_product_attention import DotProductAttention
@@ -9,13 +12,27 @@ from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 from mindspeed.core.transformer.transformer import norm_recompute_forward
 from mindspeed.core.transformer.transformer_block import NoopTransformerLayer
 from mindspeed.model.transformer import should_recompute_norm
-import types
+
+
+def get_gpt_decoder_block_spec_wrapper(fn):
+    @wraps(fn)
+    def wrapper(config: TransformerConfig, use_transformer_engine: bool):
+        res = fn(config, use_transformer_engine)
+        res.layer_norm = TENorm
+        return res
+
+    return wrapper
 
 
 def get_gpt_layer_local_spec_wrapper(fn):
     @wraps(fn)
-    def wrapper(num_experts: int = None, moe_grouped_gemm: bool = False, qk_layernorm: bool = False):
-        res = fn(num_experts, moe_grouped_gemm, qk_layernorm)
+    def wrapper(num_experts: Optional[int] = None,
+                moe_grouped_gemm: Optional[bool] = False,
+                qk_layernorm: Optional[bool] = False,
+                multi_latent_attention: Optional[bool] = False,
+                fp8: Optional[str] = None,  # pylint: disable=unused-arguments
+                moe_use_legacy_grouped_gemm: Optional[bool] = False):
+        res = fn(num_experts, moe_grouped_gemm, qk_layernorm, multi_latent_attention)
         args = get_args()
         if args.multi_head_latent_attention:
             res.submodules.self_attention.submodules = SelfAttentionSubmodules(

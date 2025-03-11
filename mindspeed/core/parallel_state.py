@@ -122,14 +122,14 @@ def hccl_buffer_auto_adaptive():
     #The DP group, DP-CP group, and DP-EP group .Here, we take the default value of 200M.
 
     #Calculation of the maximum communication volume of the TP group.
-    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall':
+    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall_seq':
         #No MOE + No SP, AllReduce MaxComm: S/CP * B * H * 2；No MOE + SP, AllGather MaxComm: S/CP * B * H
         hccl_tp_buffer_size_mlp = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / 1024 / 1024)
         if args.sequence_parallel:
             _HCCL_GROUP_BUFFER['tp'] = hccl_tp_buffer_size_mlp
         else:
             _HCCL_GROUP_BUFFER['tp'] = hccl_tp_buffer_size_mlp * 2
-        #MOE and AlltoAll MaxComm: (S/CP/TP * B * H * topK).
+        #MOE and AlltoAll_seq MaxComm: (S/CP/TP * B * H * topK).
         if args.hccl_ep_group_buffer_adaptive_factor > 0:
             hccl_tp_buffer_size_moe = 2 * math.ceil(args.hccl_ep_group_buffer_adaptive_factor * seq_length / context_parallel_size / tensor_model_parallel_size * micro_batch_size * hidden_size / 1024 / 1024 * moe_router_topk)
         else:
@@ -158,7 +158,7 @@ def hccl_buffer_auto_adaptive():
     _HCCL_GROUP_BUFFER['mp_exp'] = 10
 
     #Calculation of the maximum communication volume of the EP group.
-    #Moe of alltoall, MaxComm:S/CP/TP * B * H * Topk
+    #Moe of alltoall_seq, MaxComm:S/CP/TP * B * H * Topk
     if args.hccl_ep_group_buffer_adaptive_factor > 0: 
         hccl_ep_buffer_size = 2 * math.ceil(seq_length / context_parallel_size / tensor_model_parallel_size * micro_batch_size * hidden_size / 1024 / 1024 * moe_router_topk)
     else:
@@ -167,14 +167,14 @@ def hccl_buffer_auto_adaptive():
 
     #Calculation of the maximum communication volume of the EP-TP group.
     #Moe of allgather, MaxComm:S/CP/TP * B * H * EP * TP
-    #Moe of alltoall + moe-tp-extend-ep , MaxComm:S/CP/TP * B * H * topK
+    #Moe of alltoall_seq + moe-tp-extend-ep , MaxComm:S/CP/TP * B * H * topK
     if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'allgather': 
         if args.hccl_ep_group_buffer_adaptive_factor > 0:
             hccl_tp_ep_buffer_size = 2 * math.ceil(args.hccl_ep_group_buffer_adaptive_factor * seq_length / context_parallel_size * micro_batch_size * hidden_size * expert_model_parallel_size / 1024 / 1024)
         else:
             hccl_tp_ep_buffer_size = 200
         _HCCL_GROUP_BUFFER['tp_exp'] = hccl_ep_buffer_size
-    elif moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall' and args.moe_tp_extend_ep:
+    elif moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall_seq' and args.moe_tp_extend_ep:
         if args.hccl_ep_group_buffer_adaptive_factor > 0:
             hccl_tp_ep_buffer_size = 2 * math.ceil(args.hccl_ep_group_buffer_adaptive_factor * seq_length / context_parallel_size / tensor_model_parallel_size * micro_batch_size * hidden_size * moe_router_topk / 1024 / 1024)
         else:
@@ -267,7 +267,10 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             pipeline_model_parallel_split_rank: Optional[int] = None,
             use_sharp: bool = False,
             context_parallel_size: int = 1,
+            hierarchical_context_parallel_sizes: Optional[List[int]] = None,
             expert_model_parallel_size: int = 1,
+            num_distributed_optimizer_instances: int = 1,
+            expert_tensor_parallel_size: Optional[int] = None,
             nccl_communicator_config_path: Optional[str] = None,
             distributed_timeout_minutes: int = 30,
             order: str = "tp-cp-ep-dp-pp",
@@ -305,7 +308,10 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 pipeline_model_parallel_split_rank,
                 use_sharp,
                 context_parallel_size,
-                1,
+                hierarchical_context_parallel_sizes,
+                expert_model_parallel_size, 
+                num_distributed_optimizer_instances,
+                expert_tensor_parallel_size,
                 nccl_communicator_config_path,
                 distributed_timeout_minutes,
                 order,
@@ -344,150 +350,14 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     )
                     all_data_parallel_group_ranks_with_cp.append(list(ranks_with_cp))
 
-            timeout = timedelta(minutes=distributed_timeout_minutes)
-
-            # # Regenerate ep related groups because ep is set to 1 in initialize_model_parallel func
-            if encoder_pipeline_model_parallel_size is None:
-                encoder_pipeline_model_parallel_size = 0
-            if encoder_tensor_model_parallel_size == 0 and encoder_pipeline_model_parallel_size > 0:
-                encoder_tensor_model_parallel_size = tensor_model_parallel_size
-            
-            encoder_model_size = (
-                encoder_tensor_model_parallel_size
-                * encoder_pipeline_model_parallel_size
-                * context_parallel_size
-            )
-
-            decoder_model_size = (
-                tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
-            )
-            
-            total_model_size = encoder_model_size + decoder_model_size
-            
-            data_parallel_size: int = world_size // total_model_size
-
-            encoder_world_size = encoder_model_size * data_parallel_size
-            decoder_world_size = decoder_model_size * data_parallel_size
-            
-            if encoder_world_size > 0:
-                encoder_rank_generator =  megatron.core.parallel_state.RankGenerator(
-                    tp=encoder_tensor_model_parallel_size,
-                    ep=1,
-                    dp=data_parallel_size * context_parallel_size,
-                    pp=encoder_pipeline_model_parallel_size,
-                    cp=1,
-                    order=order,
-                    rank_offset=0,
-                )
-            else:
-                encoder_rank_generator = None
-
-            decoder_rank_generator = megatron.core.parallel_state.RankGenerator(
-                tp=tensor_model_parallel_size,
-                ep=expert_model_parallel_size,
-                dp=data_parallel_size * context_parallel_size,
-                pp=pipeline_model_parallel_size,
-                cp=1,
-                order=order,
-                rank_offset=encoder_world_size,
-            )
-
-            def generator_wrapper(group_type, **kwargs):
-                """The `RankGenerator` class produces a hyper-rectangle for a given set of
-                tensor, pipeline, data, expert, and context parallelism. If we have an encoder,
-                in addition to the default decoder, we essentially instantiate two `RankGenerator`
-                classes to construct the parallelism for each module separately, and we then have
-                to stitch them together for the right groups. For now, this means pp and tp-pp."""
-                d_ranks = decoder_rank_generator.get_ranks(group_type, **kwargs)
-                if encoder_rank_generator is None:
-                    for x in d_ranks:
-                        yield x
-                    return
-                e_ranks = encoder_rank_generator.get_ranks(group_type, **kwargs)
-                if group_type == 'pp':
-                    # Map 1 encoder tp rank to several decoder tp ranks, because
-                    # these won't be the same size.
-                    for x, y in zip(cycle(e_ranks), d_ranks):
-                        yield x + y
-                elif group_type == 'tp-pp':
-                    # For this group, we can just return the concatenated
-                    # groups together, because their sizes are the same.
-                    assert len(e_ranks) == len(d_ranks)
-                    for x, y in zip(e_ranks, d_ranks):
-                        yield x + y
-                else:
-                    for x in e_ranks:
-                        yield x
-                    for x in d_ranks:
-                        yield x
-
-            for ranks in generator_wrapper('tp-ep-pp', independent_ep=True):
-                group = torch.distributed.new_group(
-                    ranks, timeout=timeout,
-                    pg_options=get_nccl_options('mp_exp', nccl_comm_cfgs)
-                )
-                if rank in ranks:
-                    megatron.core.parallel_state._MODEL_AND_EXPERT_PARALLEL_GROUP = group
-
-            all_tensor_and_expert_group_ranks = []
-            for ranks in generator_wrapper('tp-ep', independent_ep=True):
-                all_tensor_and_expert_group_ranks.append(list(ranks))
-                group = torch.distributed.new_group(
-                    ranks, timeout=timeout, pg_options=get_nccl_options('tp_exp', nccl_comm_cfgs)
-                )
-                if rank in ranks:
-                    megatron.core.parallel_state._TENSOR_AND_EXPERT_PARALLEL_GROUP = group
-
-            all_ep_groups = []
-            for ranks in generator_wrapper('ep', independent_ep=True):
-                all_ep_groups.append(list(ranks))
-                group = torch.distributed.new_group(
-                    ranks, pg_options=get_nccl_options('exp', nccl_comm_cfgs)
-                )
-                if rank in ranks:
-                    megatron.core.parallel_state._EXPERT_MODEL_PARALLEL_GROUP = group
-
-            all_dp_modulo_exp_group_ranks = []
-            for ranks in generator_wrapper('dp', independent_ep=True):
-                all_dp_modulo_exp_group_ranks.append(list(ranks))
-                group = torch.distributed.new_group(
-                    ranks, timeout=timeout, pg_options=get_nccl_options('dp_modulo_exp', nccl_comm_cfgs)
-                )
-                group_gloo = torch.distributed.new_group(ranks, backend="gloo")
-                if rank in ranks:
-                    megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP = group
-                    megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO = group_gloo
-
-            for ranks in generator_wrapper('dp-cp', independent_ep=True):
-                # Lazy initialization of the group
-                if get_context_parallel_world_size() > 1:
-                    group = torch.distributed.new_group(
-                        ranks,
-                        timeout=timeout,
-                        pg_options=get_nccl_options('dp_modulo_exp_cp', nccl_comm_cfgs),
-                    )
-                    group_gloo = torch.distributed.new_group(ranks, backend="gloo")
-                else:
-                    group = megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP
-                    group_gloo = megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO
-                if rank in ranks:
-                    megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP = group
-                    megatron.core.parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO = group_gloo
-
             all_tp_groups = []
             for i in range(num_tensor_model_parallel_groups):
                 ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
                 all_tp_groups.append(list(ranks))
-
-            if encoder_tensor_model_parallel_size == 0 and encoder_pipeline_model_parallel_size == 0:
-                print_rank_0(f"all tp gourps {all_tp_groups}")
-                print_rank_0(f"all dp groups {all_data_parallel_group_ranks}")
-                print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
-
-            print_rank_0(f"all ep groups {all_ep_groups}")
-            print_rank_0(f"all_dp_modulo_exp_group_ranks {all_dp_modulo_exp_group_ranks}")
-            print_rank_0(f"all_tensor_and_expert_group_ranks {all_tensor_and_expert_group_ranks}")
-
+            
+            print_rank_0(f"all tp groups {all_tp_groups}")
+            print_rank_0(f"all dp groups {all_data_parallel_group_ranks}")
+            print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
 
         else:
             initialize_model_parallel(
@@ -497,7 +367,10 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 pipeline_model_parallel_split_rank,
                 use_sharp,
                 context_parallel_size,
+                hierarchical_context_parallel_sizes,
                 expert_model_parallel_size,
+                num_distributed_optimizer_instances,
+                expert_tensor_parallel_size,
                 nccl_communicator_config_path,
                 distributed_timeout_minutes,
                 order,
@@ -1184,11 +1057,16 @@ def initialize_ndmm_parallel_group(
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2 = group
 
 
-def get_data_parallel_group_gloo_replace(with_context_parallel=False):
+def get_data_parallel_group_gloo_replace(with_context_parallel=False, partial_data_parallel=False):
     """Get the data parallel group-gloo the caller rank belongs to."""
     import megatron.core.parallel_state as ps
-
+    
     if with_context_parallel:
+        if partial_data_parallel:
+            assert (
+                 ps._INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP_GLOO is None
+            ), 'Intra partial data parallel group is not initialized'
+            return ps._INTRA_PARTIAL_DATA_PARALLEL_GROUP_WITH_CP
         assert (
             ps._DATA_PARALLEL_GROUP_WITH_CP_GLOO is None
         ), 'data parallel group-gloo with context parallel combined should be None when args.disable_gloo_group is True'
@@ -1203,14 +1081,14 @@ def get_data_modulo_expert_parallel_group_gloo_replace(with_context_parallel=Fal
 
     if with_context_parallel:
         assert (
-            ps._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP_GLOO is None
+            ps._DATA_PARALLEL_GROUP_WITH_CP_GLOO is None
         ), 'data modulo expert parallel group-gloo with context parallel is not initialized'
-        return ps._DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP
+        return ps._DATA_PARALLEL_GROUP_WITH_CP
     else:
         assert (
-            ps._DATA_MODULO_EXPERT_PARALLEL_GROUP_GLOO is None
+            ps._EXPERT_DATA_PARALLEL_GROUP_GLOO is None
         ), 'data modulo expert parallel group-gloo should be None when args.disable_gloo_group is True'
-        return ps._DATA_MODULO_EXPERT_PARALLEL_GROUP
+        return ps._EXPERT_DATA_PARALLEL_GROUP
 
 
 def new_group_wrapper(fn):

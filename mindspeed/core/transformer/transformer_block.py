@@ -33,6 +33,7 @@ def transformer_block_checkpointed_forward(
         context: Tensor,
         context_mask: Tensor,
         rotary_pos_emb: Tensor,
+        attention_bias: Tensor,
         packed_seq_params: PackedSeqParams,
 ):
     """Forward method with activation checkpointing."""
@@ -53,6 +54,7 @@ def transformer_block_checkpointed_forward(
                     context=context,
                     context_mask=context_mask,
                     rotary_pos_emb=rotary_pos_emb,
+                    attention_bias=attention_bias,
                     inference_params=None,
                     packed_seq_params=packed_seq_params,
                 )
@@ -154,7 +156,7 @@ class NoopTransformerLayer(MegatronModule):
         super().__init__(None)
         self.layer_number = layer_number
 
-    def forward(self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, inference_params, packed_seq_params):
+    def forward(self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos=None, rotary_pos_sin=None, inference_params=None, attention_bias=None, packed_seq_params=None):
         return hidden_states.clone(), context
 
 

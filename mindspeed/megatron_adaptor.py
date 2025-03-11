@@ -188,12 +188,13 @@ def communication_adaptation(aspm, mindspeed_args):
 
 
 def mcore_models_adaptation_l0(aspm):
-    from .core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec_wrapper
+    from .core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec_wrapper, get_gpt_decoder_block_spec_wrapper
     from .core.parallel_state import get_nccl_options_wrapper
     # Replace FusedLayerNorm with MindSpeed's PTNorm operator in get_gpt-layer
     aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_local_spec',
                         get_gpt_layer_local_spec_wrapper)
     aspm.register_patch('megatron.core.parallel_state.get_nccl_options', get_nccl_options_wrapper)
+    aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_decoder_block_spec', get_gpt_decoder_block_spec_wrapper)
 
 
 def mcore_models_adaptation(aspm, mindspeed_args):
@@ -202,9 +203,11 @@ def mcore_models_adaptation(aspm, mindspeed_args):
 
     from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec
     from .core.models.common.embeddings.rotary_pos_embedding import get_pos_emb_on_this_cp_rank, \
-        rotary_embedding_init_wrapper
+        rotary_embedding_init_wrapper, apply_rotary_pos_emb
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.get_pos_emb_on_this_cp_rank',
                         get_pos_emb_on_this_cp_rank)
+    aspm.register_patch('megatron.core.models.common.embeddings.rope_utils.apply_rotary_pos_emb',
+                        apply_rotary_pos_emb)
     aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_with_transformer_engine_spec',
                         get_gpt_layer_local_spec)
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__',
@@ -243,12 +246,13 @@ def mcore_models_adaptation(aspm, mindspeed_args):
         from mindspeed.core.models.gpt.gpt_model import gpt_forward_wrapper
         aspm.register_patch('megatron.core.models.gpt.gpt_model.GPTModel.forward', gpt_forward_wrapper)        
         from .core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_thd
-        aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_thd', apply_rotary_pos_emb_thd)
+        aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding._apply_rotary_pos_emb_thd', apply_rotary_pos_emb_thd)
         from .core.transformer.attention import attention_forward
         aspm.register_patch('megatron.core.transformer.attention.Attention.forward', attention_forward)
 
-        from .core.models.common.embeddings.rotary_pos_embedding import rotary_forward
+        from .core.models.common.embeddings.rotary_pos_embedding import rotary_forward, Eod_get_rotary_seq_len
         aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward', rotary_forward)
+        aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len', Eod_get_rotary_seq_len)
 
 
 def mcore_transformer_adaptation_l0(aspm):
@@ -326,7 +330,7 @@ def mcore_fusions_adaptation(aspm, args):
     aspm.register_patch('megatron.core.fusions.fused_bias_swiglu.SwiGLUFunction', SwiGLUFunction)
     aspm.register_patch('megatron.core.fusions.fused_bias_swiglu.BiasSwiGLUFunction', BiasSwiGLUFunction)
 
-    aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_bshd',
+    aspm.register_patch('megatron.core.models.common.embeddings.rope_utils._apply_rotary_pos_emb_bshd',
                         apply_rotary_pos_emb_bshd)
     if hasattr(args, 'use_fused_moe_token_permute_and_unpermute') and args.use_fused_moe_token_permute_and_unpermute:
         from .core.fusions.npu_moe_token_permute import permute_wrapper
@@ -354,12 +358,12 @@ def mcore_optimizer_adapation(aspm, mindspeed_args):
                         optimizer_config_init_wrapper)
     aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
                         reuse_fp32_param_distrib_optimizer_init_wrapper)
-    aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBuffer.__init__',
                         reuse_fp32_param_param_and_grad_buffer_init_wrapper)
 
     if mindspeed_args.param_and_grad_buffer_pad:
         from .core.distributed.param_and_grad_buffer import param_and_grad_buffer_init_pad
-        aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
+        aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBuffer.__init__',
                             param_and_grad_buffer_init_pad)
 
 
@@ -719,8 +723,8 @@ def mcore_moe_adaptation(pm, args):
             else:
                 from .core.transformer.moe.legacy_a2a_token_dispatcher import preprocess, alltoall_token_permutation, \
                     alltoall_token_unpermutation_with_bmm
-                pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
-                                  preprocess)
+                # pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
+                #                   preprocess)
                 if args.moe_alltoall_overlap_comm:
                     from .core.transformer.moe.legacy_a2a_token_dispatcher import alltoall_token_permutation_new, \
                         alltoall_token_unpermutation_new
@@ -742,11 +746,13 @@ def mcore_moe_adaptation(pm, args):
                             'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                             alltoall_token_unpermutation_with_bmm)
             pm.register_patch('megatron.core.transformer.moe.experts.SequentialMLP.forward', sequential_mlp_forward)
-            pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute)
-            pm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute)
+            # pm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute)
+            # pm.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute)
+            # TODO : Patches that conflict with the new version and are not effective can be deleted.
         elif hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'allgather':
-            from .core.transformer.moe.router import aux_loss_load_balancing
-            pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.aux_loss_load_balancing', aux_loss_load_balancing)
+            # from .core.transformer.moe.router import aux_loss_load_balancing
+            # pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.aux_loss_load_balancing', aux_loss_load_balancing)
+            # Patches that conflict with the new version and are not effective can be deleted.
 
             if args.moe_tp_extend_ep:
                 from .core.transformer.moe.moe_layer import base_moe_init_wrapper
@@ -771,18 +777,20 @@ def mcore_moe_adaptation(pm, args):
                 pm.register_patch(
                     'megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation',
                     allgather_token_permutation)
-                pm.register_patch(
-                    'megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_unpermutation',
-                    allgather_token_unpermutation)
-
+                # pm.register_patch(
+                #     'megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_unpermutation',
+                #     allgather_token_unpermutation)
+                # Patches that conflict with the new version and are not effective can be deleted.
         from .core.transformer.moe.moe_layer import moe_layer_init_wrapper
         pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
     else:
         if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall_seq':
             from .core.transformer.moe.legacy_a2a_token_dispatcher import alltoall_preprocess_npu, \
                 alltoall_token_unpermutation_with_bmm, alltoall_token_permutation_with_bmm
-            pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
-                    alltoall_preprocess_npu)
+            # pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
+            #     alltoall_preprocess_npu)
+            # Patches that conflict with the new version and are not effective can be deleted.
+
             if args.moe_bmm_mc2:
                 pm.register_patch(
                     'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation',
@@ -792,8 +800,8 @@ def mcore_moe_adaptation(pm, args):
                     alltoall_token_unpermutation_with_bmm)
         elif hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'allgather':
             from .core.transformer.moe.legacy_a2a_token_dispatcher import allgather_token_permutation_npu
-            pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation', allgather_token_permutation_npu)
-    
+            #     pm.register_patch('megatron.core.transformer.moe.token_dispatcher.MoEAllGatherTokenDispatcher.token_permutation', allgather_token_permutation_npu)
+            #     Patches that conflict with the new version and are not effective can be deleted.
     from .core.transformer.moe.experts import groupedmlp_init_wrapper, groupedmlp_forward
     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.__init__', groupedmlp_init_wrapper)
     if not args.moe_alltoall_overlap_comm and not args.moe_allgather_overlap_comm:
@@ -936,6 +944,15 @@ def coalescing_manager_adaptation(aspm, mindspeed_args):
                         finish_grad_sync)
 
 
+def Megatron_share_expert_test(aspm, mindspeed_args):
+    from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+    # Without TE, use ColumnParallelLinear and RowParallelLinear replace TEColumnParallelLinear for Megatron share expert. 
+    aspm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
+                        ColumnParallelLinear, create_dummy=True)
+    aspm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear',
+                        RowParallelLinear, create_dummy=True)
+
+
 def adaptation_l0(aspm, mindspeed_args):
     """
     The minimum patch set for megatron to adapt to NPU
@@ -994,6 +1011,7 @@ def adaptation_l2(aspm, mindspeed_args):
     deepspeed_moe_adaptation(aspm, mindspeed_args)
     zero3_adaptation(aspm, mindspeed_args)
     tensor_2d_adaptation(aspm, mindspeed_args)
+    Megatron_share_expert_test(aspm, mindspeed_args)
 
 
 def delete_lock_file(directory, lock):

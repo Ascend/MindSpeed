@@ -22,6 +22,7 @@ from megatron.training.training import build_train_valid_test_data_iterators
 from megatron.training.training import train
 from megatron.training.training import evaluate_and_print_results
 from megatron.training.training import print_datetime
+from megatron.training.training import preprocess_common_state_dict
 from megatron.core.num_microbatches_calculator import (
     get_current_global_batch_size,
     get_num_microbatches,
@@ -163,8 +164,8 @@ def pretrain(
     args_defaults={},
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
-):
-
+    non_loss_data_func=None,
+    ):
 
     # Initalize and get arguments, timers, and Tensorboard writer.
     initialize_megatron(
@@ -306,7 +307,7 @@ def pretrain(
                 forward_step_func,
                 model, optimizer, opt_param_scheduler,
                 train_data_iterator, valid_data_iterator,
-                process_non_loss_data_func, config, checkpointing_context)
+                process_non_loss_data_func, config, checkpointing_context, non_loss_data_func)
 
         print_datetime('after training is done')
 
@@ -315,7 +316,8 @@ def pretrain(
                             num_floating_point_operations_so_far, checkpointing_context,
                             train_data_iterator=train_data_iterator,
                             ft_client=ft_integration.get_rank_monitor_client(
-                                ft_integration.StateMachineActions.SAVE_CHECKPOINT))
+                                ft_integration.StateMachineActions.SAVE_CHECKPOINT),
+                            preprocess_common_state_dict_fn=preprocess_common_state_dict)
 
         one_logger and one_logger.log_metrics({
             'app_train_loop_finish_time': one_logger_utils.get_timestamp_in_ms()
@@ -331,14 +333,16 @@ def pretrain(
         evaluate_and_print_results(prefix, forward_step_func,
                                    valid_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=not args.skip_train,
+                                   non_loss_data_func=non_loss_data_func)
 
     if args.do_test:
         prefix = f'iteration {iteration} on test set'
         evaluate_and_print_results(prefix, forward_step_func,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=not args.skip_train,
+                                   non_loss_data_func=non_loss_data_func)
 
     wandb_writer = get_wandb_writer()
     if wandb_writer:

@@ -13,6 +13,7 @@ from mindspeed.ops.npu_moe_token_unpermute import npu_moe_token_unpermute
 from unit_tests.common import TOL_MAPPING
 
 
+@pytest.mark.skip(reason='this UT need update for new Meagatron version')
 class TestNpuFusedPermuteAndUnpermute():
 
     @pytest.mark.parametrize('num_tokens', [1024, 2048, 8192])

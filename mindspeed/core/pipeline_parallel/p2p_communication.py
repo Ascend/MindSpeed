@@ -84,7 +84,7 @@ def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next
     )
 
     if len(reqs) > 0:
-        for req in reqs:
+        for req in reqs if isinstance(reqs, list) else reqs.values():
             req.wait()
         reqs = None
 
@@ -224,7 +224,10 @@ def _communicate(
         assert not isinstance(prev_rank, list)
         prev_rank = [prev_rank]
 
-    reqs = []
+    if config.use_ring_exchange_p2p or config.batch_p2p_comm:
+        reqs = []
+    else:
+        reqs = {}
     tensor_recv_prev_list = []
     tensor_recv_next_list = []
 
@@ -241,8 +244,7 @@ def _communicate(
         else:
             tensor_recv_next = None
 
-        reqs.extend(
-            p2p_func(
+        p2p_reqs = p2p_func(
                 tensor_send_prev=tensor_send_prev,
                 tensor_recv_prev=tensor_recv_prev,
                 tensor_send_next=tensor_send_next,
@@ -251,10 +253,14 @@ def _communicate(
                 prev_pipeline_rank=pr,
                 next_pipeline_rank=nr,
             )
-        )
+        
+        if isinstance(p2p_reqs, list):
+            reqs.extend(p2p_reqs)
+        else:
+            reqs.update(p2p_reqs)
 
     if wait_on_reqs and len(reqs) > 0:
-        for req in reqs:
+        for req in reqs if isinstance(reqs, list) else reqs.values():
             req.wait()
         reqs = None
 
@@ -292,7 +298,7 @@ def _p2p_ops_eod(
     prev_pipeline_rank: int,
     next_pipeline_rank: int,
 ):
-    reqs = []
+    reqs = {}
     rank = get_pipeline_model_parallel_rank()
     even_send_odd_recv_group = group
     if get_pipeline_model_parallel_world_size() == 2:
@@ -324,47 +330,47 @@ def _p2p_ops_eod(
             send_next_req = torch.distributed.isend(
                 tensor=tensor_length, dst=next_pipeline_rank, group=group,
             )
-            reqs.append(send_next_req)
+            reqs["send_next"] = send_next_req
 
         if length_buffer is not None:
             recv_prev_req = torch.distributed.irecv(
                 tensor=length_buffer, src=prev_pipeline_rank, group=group,
             )
-            reqs.append(recv_prev_req)        
+            reqs["recv_prev"] = recv_prev_req      
     else:
         if length_buffer is not None:
             recv_prev_req = torch.distributed.irecv(
                 tensor=length_buffer, src=prev_pipeline_rank, group=group,
             )
-            reqs.append(recv_prev_req)        
+            reqs["recv_prev"] = recv_prev_req      
 
         if tensor_length is not None:
             send_next_req = torch.distributed.isend(
                 tensor=tensor_length, dst=next_pipeline_rank, group=group,
             )
-            reqs.append(send_next_req)
+            reqs["send_next"] = send_next_req
 
-    for req in reqs:
+    for req in reqs.values():
         req.wait()
     
-    reqs = []
+    reqs = {}
 
     if get_pipeline_model_parallel_rank() % 2 == 0:
         if tensor_send_next is not None:
             req = torch.distributed.isend(
                 tensor=prev_actual_seq_len, dst=next_pipeline_rank, group=even_send_odd_recv_group,
             )
-            reqs.append(req)
+            reqs["req"] = req
 
             req = torch.distributed.isend(
                 tensor=prev_position_ids, dst=next_pipeline_rank, group=even_send_odd_recv_group,
             )
-            reqs.append(req)
+            reqs["req"] = req
 
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next, dst=next_pipeline_rank, group=even_send_odd_recv_group,
             )
-            reqs.append(send_next_req)
+            reqs["send_next"] = send_next_req
 
         if tensor_recv_prev is not None:
             actual_seq_len_buffer = torch.empty([length_buffer.item()], dtype=torch.int64, device=torch.cuda.current_device())
@@ -372,7 +378,7 @@ def _p2p_ops_eod(
             req = torch.distributed.irecv(
                 tensor=actual_seq_len_buffer, src=prev_pipeline_rank, group=even_recv_odd_send_group,
             )
-            reqs.append(req)
+            reqs["req"] = req
             set_actual_seq_len(actual_seq_len_buffer)
 
             position_ids_buffer = torch.empty((block_size, bsz), dtype=torch.int64, device=torch.cuda.current_device())
@@ -380,24 +386,24 @@ def _p2p_ops_eod(
                 tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_recv_odd_send_group,
             )
             set_position_ids(position_ids_buffer)
-            reqs.append(req)
+            reqs["req"] = req
 
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_recv_odd_send_group,
             )
-            reqs.append(recv_prev_req)
+            reqs["recv_prev"] = recv_prev_req
 
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_send_odd_recv_group,
             )
-            reqs.append(send_prev_req)
+            reqs["send_prev"] = send_prev_req
 
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next, src=next_pipeline_rank, group=even_recv_odd_send_group,
             )
-            reqs.append(recv_next_req)
+            reqs["recv_next"] = recv_next_req
 
     else:
         if tensor_recv_prev is not None:
@@ -406,7 +412,7 @@ def _p2p_ops_eod(
             req = torch.distributed.irecv(
                 tensor=actual_seq_len_buffer, src=prev_pipeline_rank, group=even_send_odd_recv_group,
             )
-            reqs.append(req)
+            reqs["req"] = req
             set_actual_seq_len(actual_seq_len_buffer)
 
             position_ids_buffer = torch.empty((block_size, bsz), dtype=torch.int64, device=torch.cuda.current_device())
@@ -414,40 +420,40 @@ def _p2p_ops_eod(
                 tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_send_odd_recv_group,
             )
             set_position_ids(position_ids_buffer)
-            reqs.append(req)
+            reqs["req"] = req
 
             recv_prev_req = torch.distributed.irecv(
                 tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_send_odd_recv_group,
             )
-            reqs.append(recv_prev_req)
+            reqs["recv_prev"] = recv_prev_req
 
         if tensor_send_next is not None:
             req = torch.distributed.isend(
                 tensor=prev_actual_seq_len, dst=next_pipeline_rank, group=even_recv_odd_send_group,
             )
-            reqs.append(req)            
+            reqs["req"] = req            
 
             req = torch.distributed.isend(
                 tensor=prev_position_ids, dst=next_pipeline_rank, group=even_recv_odd_send_group,
             )
-            reqs.append(req)
+            reqs["req"] = req
 
             send_next_req = torch.distributed.isend(
                 tensor=tensor_send_next, dst=next_pipeline_rank, group=even_recv_odd_send_group,
             )
-            reqs.append(send_next_req)
+            reqs["send_next"] = send_next_req
 
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
                 tensor=tensor_recv_next, src=next_pipeline_rank, group=even_send_odd_recv_group,
             )
-            reqs.append(recv_next_req)
+            reqs["recv_next"] = recv_next_req
 
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
                 tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_recv_odd_send_group,
             )
-            reqs.append(send_prev_req)
+            reqs["send_prev"] = send_prev_req
     return reqs
     
     

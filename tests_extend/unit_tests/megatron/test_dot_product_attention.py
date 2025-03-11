@@ -50,7 +50,7 @@ def run_dot_product_att(cp_size, bs, seq_len, dtype):
     v = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
 
     # global attn mask will be generated at DotProductAttention forward wrapper
-    out = attn(q, k, v, None, None, None)
+    out = attn(q, k, v, None, None, None, None)
     assert isinstance(out, torch.Tensor)
 
 

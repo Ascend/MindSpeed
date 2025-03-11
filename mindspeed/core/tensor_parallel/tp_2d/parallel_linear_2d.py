@@ -160,7 +160,7 @@ class ParallelLinear2D(torch.nn.Module):
                 self.para_init_method,
                 partition_dim=self.partition_dim,
                 stride=self.stride,
-                expert_parallel=False,
+                is_expert=False,
             )
 
         setattr(self.weight, "allreduce", True)

@@ -100,6 +100,7 @@ def step_optimizer(model, optimizer_config, ddp_config, seed: int = None):
         data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
         data_parallel_group_gloo=mpu.get_data_parallel_group_gloo(with_context_parallel=True),
         data_parallel_group_idx=model_parallel_rank,
+        distributed_optimizer_instance_id=0
     )
 
     for _ in range(500):
@@ -148,14 +149,14 @@ class TestOverlapParamGather(DistributedTest):
             fp16=fp16,
             bf16=bf16,
             barrier_with_L1_time=False,
-            overlap_param_gather=False,
+            overlap_param_gather_with_optimizer_step=False,
         )
         timers = Timers()
         optimizer_config.timers = timers
 
         params = step_optimizer(model, optimizer_config, ddp_config, seed=123)
 
-        optimizer_config.overlap_param_gather = True
+        optimizer_config.overlap_param_gather_with_optimizer_step = True
 
         dist_params = step_optimizer(model, optimizer_config, ddp_config, seed=123)
 

@@ -1429,15 +1429,20 @@ def row_parallel_moe(self, input_):
     return output, output_bias
 
 
-def column_parallel_moe(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None):
+def column_parallel_moe(
+    self,
+    input_: torch.Tensor,
+    weight: Optional[torch.Tensor] = None,
+    runtime_gather_output: Optional[bool] = None,
+):
     """Forward of ColumnParallelLinear
 
     Args:
         input_: 3D tensor whose order of dimension is [sequence, batch, hidden]
-
         weight (optional): weight tensor to use, compulsory when
             skip_weight_param_allocation is True.
-
+        runtime_gather_output (bool): Gather output at runtime. Default None means
+            `gather_output` arg in the constructor will be used.
     Returns:
         - output
         - bias
@@ -1511,7 +1516,11 @@ def column_parallel_moe(self, input_: torch.Tensor, weight: Optional[torch.Tenso
         ampipe_degree=self.ampipe_degree,
         is_dense_h_to_3h=self.is_dense_h_to_3h
     )
-    if self.gather_output:
+    gather_output = self.gather_output
+    # Use the runtime gather output if it's set explicitly.
+    if runtime_gather_output is not None:
+        gather_output = runtime_gather_output
+    if gather_output:
         # All-gather across the partitions.
         assert not self.sequence_parallel
         output = gather_from_tensor_model_parallel_region(output_parallel)

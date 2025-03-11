@@ -86,11 +86,11 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 ### 3. 获取 Megatron-LM 并指定分支
 
-☀️ 获取并切换 Megatron-LM 版本至 core_r0.9.0 的release版本，如下所示：
+☀️ 获取并切换 Megatron-LM 版本至 core_r0.10.0 的release版本，如下所示：
  ```shell
  git clone https://github.com/NVIDIA/Megatron-LM.git
  cd Megatron-LM
- git checkout core_r0.9.0
+ git checkout core_r0.10.0
  ```
 
 # 快速上手
@@ -432,7 +432,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr>
     <tbody>
     <tr>
-    <td rowspan="5"> Ascend MC2</td>
+    <td rowspan="5"> Ascend MC2（存在已知问题⚠️）</td>
     <td><a href="docs/features/mc2.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>

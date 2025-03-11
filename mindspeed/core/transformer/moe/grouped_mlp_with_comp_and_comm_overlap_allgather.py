@@ -16,7 +16,7 @@
 import torch
 import acl
 from einops import rearrange
-from megatron.core.parallel_state import get_expert_model_parallel_group, get_tensor_and_expert_parallel_group, get_tensor_and_expert_parallel_world_size, get_expert_model_parallel_world_size
+from megatron.core.parallel_state import get_expert_model_parallel_group, get_expert_tensor_parallel_group, get_expert_tensor_and_model_parallel_world_size, get_expert_model_parallel_world_size
 from megatron.training import get_args
 from mindspeed.ops.gmm import GMMFunction
 from mindspeed.model.transformer import should_recompute_activation
@@ -124,7 +124,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         ag_inputs_tp = ag_inputs_tp.view(-1, ag_inputs_tp.shape[-1])
         ag_group = get_expert_model_parallel_group()
         if '910B' in acl.get_soc_name() or not get_args().n_shared_experts:
-            ag_group = get_tensor_and_expert_parallel_group()
+            ag_group = get_expert_tensor_parallel_group()
         _, ag_inputs_tp_ep, ag_handle = async_all_gather(ag_inputs_tp, ag_group)
         if ctx.use_gmm:
             # grad of mm1-inputs
@@ -138,7 +138,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         backward_func(token_unpermutation_graph, mm1_inputs_grad)
         mm1_inputs_grad.untyped_storage().resize_(0)
         _, rs_global_hidden_states_grad, rs_handle = async_reduce_scatter(global_hidden_states_detach.grad,
-                                                                          get_tensor_and_expert_parallel_group())
+                                                                          get_expert_tensor_parallel_group())
         rs_global_hidden_states_grad_with_handle = (rs_global_hidden_states_grad, rs_handle)
         ag_handle.wait()
 
@@ -146,7 +146,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         global_args = get_args()
         num_local_experts = global_args.num_experts // get_expert_model_parallel_world_size()
         if global_args.moe_tp_extend_ep:
-            num_local_experts = global_args.num_experts // get_tensor_and_expert_parallel_world_size()
+            num_local_experts = global_args.num_experts // get_expert_tensor_and_model_parallel_world_size()
         if cann_version_check:
             mm1_inputs = ag_inputs_tp_ep[global_local_map, :]
             if num_local_experts > 1:

@@ -38,6 +38,14 @@ def moe_layer_init_wrapper(init_func):
     def moe_layer_init(*args, **kwargs):
         init_func(*args, **kwargs)
         self = args[0]
+
+        # In 0.10.0, 'MoEAlltoAllSEQTokenDispatcher' no longer has'add_bias' attribute. 
+        # To use the two types of share_expert(Megatron and MindSpeed), this parameter is introduced temporarily.
+        if self.config.add_bias_linear and self.config.moe_token_dispatcher_type != 'alltoall':
+            self.token_dispatcher.add_bias = self.config.add_bias_linear
+        else:
+            self.token_dispatcher.add_bias = None
+
         global_args = get_args()
         self.moe_alltoall_overlap_comm = global_args.moe_alltoall_overlap_comm
         self.moe_allgather_overlap_comm = global_args.moe_allgather_overlap_comm
@@ -75,7 +83,7 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
 
     def custom_forward(hidden_states):
         args = get_args()
-        scores, indices = self.router(hidden_states)
+        probs, routing_map = self.router(hidden_states)
         if args.n_shared_experts:
             if not hasattr(self, 'comm_stream'):
                 self.comm_stream = torch.cuda.Stream()
@@ -83,7 +91,7 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
             with torch.cuda.stream(self.comm_stream):
                 share_experts_output, share_experts_bias = self.shared_experts(hidden_states)
         (dispatched_input, tokens_per_expert) = self.token_dispatcher.token_permutation(
-            hidden_states, scores, indices
+            hidden_states, probs, routing_map
         )
         expert_output, mlp_bias = self.experts(dispatched_input, tokens_per_expert)
         output, mlp_bias = self.token_dispatcher.token_unpermutation(expert_output, mlp_bias)

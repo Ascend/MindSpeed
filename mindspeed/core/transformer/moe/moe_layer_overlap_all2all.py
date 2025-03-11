@@ -4,7 +4,7 @@ from megatron.core.parallel_state import get_tensor_model_parallel_group, get_te
 from megatron.core import tensor_parallel, parallel_state
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
-from megatron.core.transformer.moe.moe_utils import permute, save_to_aux_losses_tracker
+from megatron.core.transformer.moe.moe_utils import permute, save_to_aux_losses_tracker, sort_chunks_by_idxs
 from mindspeed.moe.utils import MoEAuxLossAutoScaler
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather
 from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func
@@ -127,7 +127,10 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
 
         ctx.output_splits = moe_layer.token_dispatcher.output_splits
         ctx.input_splits = moe_layer.token_dispatcher.input_splits
-        ctx.router_topk = moe_layer.token_dispatcher.router_topk
+        ctx.router_topk = moe_layer.token_dispatcher.config.moe_router_topk
+        ctx.num_tokens = moe_layer.token_dispatcher.num_out_tokens
+        ctx.num_global_tokens_per_local_expert_cpu = moe_layer.token_dispatcher.num_global_tokens_per_local_expert_cpu
+        ctx.sort_input_by_local_experts = moe_layer.token_dispatcher.sort_input_by_local_experts
         if n_shared_experts:
             if rs_shared_experts_handle is not None:
                 rs_shared_experts_handle.wait()
@@ -168,9 +171,13 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         output_splits = ctx.output_splits
         input_splits = ctx.input_splits
         router_topk = ctx.router_topk
+        num_tokens = ctx.num_tokens
+        num_global_tokens_per_local_expert_cpu = ctx.num_global_tokens_per_local_expert_cpu
+        sort_input_by_local_experts = ctx.sort_input_by_local_experts
 
         set_gemm_backward_need_tensors(
-            ((detach_input, indices, router_topk, global_input_tokens_local_experts_indices),
+            ((detach_input, indices, router_topk, num_tokens, num_global_tokens_per_local_expert_cpu, 
+             sort_input_by_local_experts, global_input_tokens_local_experts_indices),
              permute2_input_detach, permute2_graph,
              output_splits, input_splits))
 
@@ -194,13 +201,13 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 # Recompute token rearrange in permutation1
 
                 permutated_local_input_tokens, _ = permute(
-                    detach_input.view(-1, detach_input.shape[-1]), indices
+                    detach_input.view(-1, detach_input.shape[-1]), indices, num_tokens
                 )
 
                 # Recompute expert parallel AlltoAll communication
                 ep_group = parallel_state.get_expert_model_parallel_group()
                 if moe_tp_extend_ep:
-                    ep_group = parallel_state.get_tensor_and_expert_parallel_group()
+                    ep_group = parallel_state.get_expert_tensor_and_model_parallel_group()
                 _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
                     permutated_local_input_tokens,
                     ctx.output_splits,
@@ -238,7 +245,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
 
         ep_group = parallel_state.get_expert_model_parallel_group()
         if moe_tp_extend_ep:
-            ep_group = parallel_state.get_tensor_and_expert_parallel_group()
+            ep_group = parallel_state.get_expert_tensor_and_model_parallel_group()
         _, unpermute1_backward_input, handle = async_all_to_all(
             unpermute2_input_detach.grad,
             output_splits,
@@ -250,8 +257,10 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             with torch.no_grad():
                 if ctx.num_local_experts > 1:
                     # Recompute permutation2
-                    global_input_tokens, _ = permute(
-                        global_input_tokens, global_input_tokens_local_experts_indices
+                    global_input_tokens = sort_chunks_by_idxs(
+                        global_input_tokens,
+                        num_global_tokens_per_local_expert_cpu.ravel(),
+                        sort_input_by_local_experts,
                     )
                     if not moe_tp_extend_ep and get_tensor_model_parallel_world_size() > 1 and ctx.moe_grouped_gemm:
                         global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(

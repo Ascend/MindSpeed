@@ -1,14 +1,14 @@
 # Copyright (c) 2022; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
-from megatron.core.parallel_state import get_tensor_and_expert_parallel_group
-from megatron.core.tensor_parallel.mappings import _reduce_scatter_along_first_dim_moe
+from megatron.core.parallel_state import get_expert_tensor_and_model_parallel_group
+from megatron.core.tensor_parallel.mappings import _reduce_scatter_along_first_dim
 from megatron.core.transformer.moe.moe_utils import topk_softmax_with_capacity
 
 
 def _gather_along_first_dim_moe_async(input_, async_op):
     """Gather tensors and concatenate along the first dimension."""
-    group = get_tensor_and_expert_parallel_group()
+    group = get_expert_tensor_and_model_parallel_group()
     world_size = torch.distributed.get_world_size(group=group)
     # Bypass the function if we are using only 1 GPU.
     if world_size == 1:
@@ -34,7 +34,7 @@ class _GatherFromSequenceParallelRegionToMOEAsync(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output, grad_handle):
-        return _reduce_scatter_along_first_dim_moe(grad_output)
+        return _reduce_scatter_along_first_dim(grad_output, group=get_expert_tensor_and_model_parallel_group())
 
 
 def gather_from_sequence_parallel_region_to_moe_async(input_):
@@ -42,6 +42,8 @@ def gather_from_sequence_parallel_region_to_moe_async(input_):
 
 
 def aux_loss_load_balancing(self, logits: torch.Tensor):
+    #TODO: In 0.10.0 ,routing_map replace indices. Should we need this patch?
+
     probs, indices, tokens_per_expert = topk_softmax_with_capacity(
         logits,
         self.topk,
@@ -53,7 +55,7 @@ def aux_loss_load_balancing(self, logits: torch.Tensor):
     global_indices = indices
     if self.config.sequence_parallel or (self.config.expert_model_parallel_size > 1):
         with torch.no_grad():
-            global_indices = gather_from_sequence_parallel_region_to_moe_async(indices)
+            global_indices = gather_from_sequence_parallel_region_to_moe_async(indices)[0]
 
     # Apply load balancing loss
     if self.training:
@@ -77,19 +79,21 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
     logits = self.apply_z_loss(logits)
 
     if self.routing_type == "sinkhorn":
-        scores, indices = self.sinkhorn_load_balancing(logits)
+        scores, routing_map = self.sinkhorn_load_balancing(logits)
     elif self.routing_type == "aux_loss":
-        scores, indices = self.aux_loss_load_balancing(logits)
+        scores, routing_map = self.aux_loss_load_balancing(logits)
     elif self.routing_type == "none":
         # A naive top-k routing without load balancing
-        scores, indices, _ = topk_softmax_with_capacity(
+        scores, routing_map, _ = topk_softmax_with_capacity(
             logits,
             self.topk,
             capacity_factor=self.config.moe_expert_capacity_factor,
             pad_to_capacity=self.config.moe_pad_expert_input_to_capacity,
             drop_policy=self.config.moe_token_drop_policy,
+            use_pre_softmax=self.config.moe_router_pre_softmax,
+            moe_router_topk_scaling_factor=self.config.moe_router_topk_scaling_factor,
         )
     else:
         raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")
 
-    return scores, indices
+    return scores, routing_map

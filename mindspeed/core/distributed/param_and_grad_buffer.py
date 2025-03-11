@@ -10,8 +10,7 @@ from logging import getLogger
 from contextlib import nullcontext
 import torch
 from megatron.training import get_args
-from megatron.core.distributed.param_and_grad_buffer import shard_buffer
-from megatron.core.distributed.param_and_grad_buffer import BufferType
+from megatron.core.distributed.param_and_grad_buffer import shard_buffer, dist_reduce_scatter_func, BufferType, dist_all_gather_func
 from megatron.core import parallel_state
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
 from megatron.core.utils import log_on_each_pipeline_stage
@@ -73,13 +72,13 @@ def start_param_sync(self, force_sync: bool = False):
 
     self.param_gather_handle = []
     for bucket in self.buckets:
-        local_data_view = shard_buffer(bucket.param_data, self.data_parallel_world_size)[
-            self.data_parallel_rank
+        local_data_view = shard_buffer(bucket.param_data, self.intra_distributed_optimizer_instance_size)[
+            self.intra_distributed_optimizer_instance_rank
         ]
-        handle = torch.distributed._all_gather_base(
+        handle = dist_all_gather_func(
             bucket.param_data,
             local_data_view,
-            group=self.data_parallel_group,
+            group=self.intra_distributed_optimizer_instance_group,
             async_op=async_op,
         )
         self.param_gather_handle.append(handle)
@@ -150,19 +149,42 @@ def start_grad_sync(self):
         reduce_op = torch.distributed.ReduceOp.AVG
 
     # Use async communications only when overlap_grad_reduce is True.
-    async_op = self.ddp_config.overlap_grad_reduce
+    async_op = (
+        self.ddp_config.overlap_grad_reduce
+        and self.ddp_config.num_distributed_optimizer_instances == 1
+    )
+    if (
+        self.ddp_config.num_distributed_optimizer_instances > 1
+        and self.ddp_config.overlap_grad_reduce
+    ):
+        # Assign a communication stream if we use partial DP DistOpt and we
+        # need to overlap communication
+        stream_context = torch.cuda.stream(self.communication_stream)
+
+        # The RS/AR communication stream needs to wait for the default stream
+        # to complete its gradient computation before launching the next
+        # gradient reduction collective
+        self.communication_stream.wait_stream(torch.cuda.default_stream())
+    else:
+        stream_context = nullcontext()
+
+    if self.ddp_config.use_distributed_optimizer:
+        communication_group = self.intra_distributed_optimizer_instance_group
+    else:
+        communication_group = self.data_parallel_group
+
     # Coalesce communication kernels across buckets in the bucket group.
     self.grad_reduce_handle = []
     for bucket in self.buckets:
         if self.ddp_config.use_distributed_optimizer:
-            local_data_view = shard_buffer(bucket.grad_data, self.data_parallel_world_size)[
-                self.data_parallel_rank
+            local_data_view = shard_buffer(bucket.grad_data, self.intra_distributed_optimizer_instance_size)[
+                self.intra_distributed_optimizer_instance_rank
             ]
-            handle = torch.distributed._reduce_scatter_base(
+            handle = dist_reduce_scatter_func(
                 local_data_view,
                 bucket.grad_data,
                 op=reduce_op,
-                group=self.data_parallel_group,
+                group=self.intra_distributed_optimizer_instance_group,
                 async_op=async_op,
             )
         else:
@@ -173,6 +195,26 @@ def start_grad_sync(self):
                 async_op=async_op,
             )
         self.grad_reduce_handle.append(handle)
+
+    # When enabling partial DP domain DistOpt, we need to All-Reduce across all partial domains
+    if (
+        self.ddp_config.use_distributed_optimizer
+        and self.ddp_config.num_distributed_optimizer_instances > 1
+    ):
+        self.grad_reduce_handle = []
+        # Create a new coalescing facility for the inter partial DP-AllReduce here
+        for bucket in self.buckets:
+            if self.ddp_config.use_distributed_optimizer:
+                local_data_view = shard_buffer(bucket.grad_data, self.intra_distributed_optimizer_instance_size)[
+                    self.intra_distributed_optimizer_instance_rank
+                ]
+                handle = torch.distributed.all_reduce(
+                    local_data_view,
+                    op=reduce_op,
+                    group=self.inter_distributed_optimizer_instance_group,
+                    async_op=async_op,
+                )
+            self.grad_reduce_handle.append(handle)
     if not async_op:
         self.grad_reduce_handle = None
 
@@ -191,6 +233,11 @@ def finish_grad_sync(self):
     self.param_gather_dispatched = False
     if not self.ddp_config.overlap_grad_reduce:
         self.start_grad_sync()
+        return
+    # When using partial DP DistOpt, we don't need to sync as we launch comms on a separate
+    # communication stream
+    if self.ddp_config.num_distributed_optimizer_instances > 1:
+        torch.cuda.default_stream().wait_stream(self.communication_stream)
         return
     assert self.grad_reduce_handle is not None, (
         f'Communication call has not been issued for this bucket '

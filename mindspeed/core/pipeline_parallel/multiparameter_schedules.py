@@ -402,7 +402,7 @@ def forward_backward_pipelining_with_interleaving(
     for k in range(num_warmup_microbatches):
 
         if fwd_wait_handles is not None:
-            for req in fwd_wait_handles:
+            for req in fwd_wait_handles if isinstance(fwd_wait_handles, list) else fwd_wait_handles.values():
                 req.wait()
 
         cur_model_chunk_id = get_model_chunk_id(k, forward=True)
@@ -515,7 +515,7 @@ def forward_backward_pipelining_with_interleaving(
         current_microbatch = get_microbatch_id_in_model_chunk(forward_k, forward=True)
         if config.overlap_p2p_comm:
             if fwd_wait_handles is not None:
-                for req in fwd_wait_handles:
+                for req in fwd_wait_handles if isinstance(fwd_wait_handles, list) else fwd_wait_handles.values():
                     req.wait()
 
             deallocate_output_tensor(output_tensor, config.deallocate_pipeline_outputs)
@@ -564,7 +564,7 @@ def forward_backward_pipelining_with_interleaving(
             # assert fwd_wait_handles is not None
 
             if bwd_wait_handles is not None:
-                for req in bwd_wait_handles:
+                for req in bwd_wait_handles if isinstance(bwd_wait_handles, list) else bwd_wait_handles.values():
                     req.wait()
 
             # Backward pass.
@@ -680,7 +680,7 @@ def forward_backward_pipelining_with_interleaving(
     # Run cooldown backward passes (flush out pipeline).
     if not forward_only:
         if config.overlap_p2p_comm and bwd_wait_handles is not None:
-            for wait_handle in bwd_wait_handles:
+            for wait_handle in bwd_wait_handles if isinstance(bwd_wait_handles, list) else bwd_wait_handles.values():
                 wait_handle.wait()
 
         if all_warmup_microbatches:

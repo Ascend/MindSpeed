@@ -132,7 +132,7 @@ def run_fa_tflops(bs, seq_len, dtype, use_fa2):
     v = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
     flops_counter.start()
     # global attn mask will be generated at DotProductAttention forward wrapper
-    out = attn(q, k, v, None, None, None)
+    out = attn(q, k, v, None, None, None, None)
     counts = flops_counter.get_flops()
     flops_counter.stop()
 

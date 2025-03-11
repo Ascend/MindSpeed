@@ -21,8 +21,8 @@ from megatron.training.training import get_model
 from megatron.training.utils import unwrap_model
 from megatron.core.parallel_state import (get_data_parallel_group,
                                           get_data_parallel_group_gloo,
-                                          get_data_modulo_expert_parallel_group,
-                                          get_data_modulo_expert_parallel_group_gloo,
+                                          get_expert_data_parallel_group,
+                                          get_expert_data_parallel_group_gloo,
                                           initialize_model_parallel)
 
 from mindspeed.utils import _scatter_hccl, _gather_hccl, check_param_hashes_across_dp_replicas_hccl
@@ -64,13 +64,14 @@ def init_mock_args(args, bf16=True):
     args.overlap_grad_reduce = False
     args.use_distributed_optimizer = True
     args.ddp_bucket_size = None
+    args.use_torch_fsdp2 = False
     return args
 
 
 def setup_model_and_optimizer(seed, bf16=True):
-    with mock.patch('megatron.training.training.get_args', data_parallel_random_init=False) as mock_args:
-        init_mock_args(mock_args.return_value, bf16)
-        model = get_model(partial(initialize_gpt_model, seed=seed))
+    # with mock.patch('megatron.training.training.get_args', data_parallel_random_init=False) as mock_args:
+    #     init_mock_args(mock_args.return_value, bf16)
+    model = get_model(partial(initialize_gpt_model, seed=seed))
 
     config = OptimizerConfig(lr=1e-4, bf16=bf16, params_dtype=torch.bfloat16 if bf16 else torch.float,
                              use_distributed_optimizer=bf16)

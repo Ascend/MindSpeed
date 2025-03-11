@@ -2,7 +2,6 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 import torch_npu
-from megatron.core.transformer.moe.moe_utils import permute_with_padded_tokens, unpermute_with_padded_tokens
 from megatron.training import get_args
 from megatron.core import parallel_state
 from megatron.core.transformer.moe.moe_utils import (reduce_aux_losses_tracker_across_ranks,
@@ -190,15 +189,13 @@ def backward_func(func_tensor, gradinputs):
         func_tensor.backward(*gradinputs)
 
 
-def permute(tokens, indices, num_out_tokens: int = None, padded_mode: bool = False):
-    if padded_mode:
-        return permute_with_padded_tokens(tokens, indices)
+def permute(tokens, routing_map, num_out_tokens: int = None):
 
-    if indices.dim() == 1:
+    if routing_map.dim() == 1:
         topk = 1
     else:
-        topk = indices.size(1)
-    flatten_indices = indices.view(-1)
+        topk = routing_map.size(1)
+    flatten_indices = routing_map.view(-1)
     # previous use argsort, argsort int64 will be run on host cpu
     sorted_indices = torch.sort(flatten_indices.float(), stable=True)[1]
     if num_out_tokens is not None:
@@ -210,14 +207,10 @@ def permute(tokens, indices, num_out_tokens: int = None, padded_mode: bool = Fal
 def unpermute(
     permuted_tokens: torch.Tensor,
     sorted_indices: torch.Tensor,
+    restore_shape: torch.Size,
     probs: torch.Tensor = None,
-    padded_mode: bool = False,
-    restore_shape: torch.Size = None,
+    routing_map: torch.Tensor = None,
 ):
-    if padded_mode:
-        return unpermute_with_padded_tokens(
-            permuted_tokens, sorted_indices, probs, restore_shape=restore_shape
-        )
 
     assert sorted_indices.numel() == permuted_tokens.size(0)
     if probs is not None:

@@ -8,7 +8,7 @@ from typing import Union
 import torch
 import torch.nn.functional as F
 
-from megatron.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb
+from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 from megatron.core.transformer import TransformerConfig, ModuleSpec, build_module
 from megatron.core.transformer.attention import SelfAttentionSubmodules, CrossAttentionSubmodules, \
     Attention
@@ -44,6 +44,7 @@ def attention_init(
     layer_number: int,
     attn_mask_type: AttnMaskType,
     attention_type: str,
+    cp_comm_type: str = None,
 ):
     super(Attention, self).__init__(config=config)
     self.config = config
@@ -72,6 +73,7 @@ def attention_init(
         layer_number=self.layer_number,
         attn_mask_type=self.attn_mask_type,
         attention_type=self.attention_type,
+        cp_comm_type=cp_comm_type,
     )
 
     self.checkpoint_core_attention = self.config.recompute_granularity == 'selective'
@@ -123,12 +125,13 @@ def self_attention_init_wrapper(fn):
                 config: TransformerConfig,
                 submodules: SelfAttentionSubmodules,
                 layer_number: int,
-                attn_mask_type=AttnMaskType.padding, ):
-
+                attn_mask_type=AttnMaskType.padding,                
+                **attention_optional_kwargs):
+        
         args = get_args()
         if args.overlap_param_gather:
             config.reset_attention_order = True           
-        fn(self, config, submodules, layer_number, attn_mask_type)
+        fn(self, config, submodules, layer_number, attn_mask_type, **attention_optional_kwargs)
 
         if args.multi_head_latent_attention:
             self.use_flash_attn = args.use_flash_attn
@@ -267,6 +270,9 @@ def attention_forward_wrapper(fn):
         key_value_states=None,
         inference_params=None,
         rotary_pos_emb=None,
+        rotary_pos_cos=None,
+        rotary_pos_sin=None,
+        attention_bias=None,
         packed_seq_params=None,
     ):
         args = get_args()
@@ -348,6 +354,7 @@ def attention_forward_wrapper(fn):
                     value,
                     attention_mask,
                     attn_mask_type=attn_mask_type,
+                    attention_bias=attention_bias,
                     packed_seq_params=packed_seq_params,
                 )
             else:
@@ -357,6 +364,7 @@ def attention_forward_wrapper(fn):
                     value,
                     attention_mask,
                     attn_mask_type=attn_mask_type,
+                    attention_bias=attention_bias,
                     packed_seq_params=packed_seq_params,
                 )
 
@@ -385,6 +393,9 @@ def attention_forward_wrapper(fn):
                 key_value_states,
                 inference_params,
                 rotary_pos_emb,
+                rotary_pos_cos,
+                rotary_pos_sin,
+                attention_bias,
                 packed_seq_params
             )
 
@@ -400,6 +411,9 @@ def attention_forward(
     key_value_states=None,
     inference_params=None,
     rotary_pos_emb=None,
+    rotary_pos_cos=None,
+    rotary_pos_sin=None,
+    attention_bias=None,
     packed_seq_params=None,
 ):
 
@@ -417,8 +431,8 @@ def attention_forward(
     # ===================================================
     # Adjust key, value, and rotary_pos_emb for inference
     # ===================================================
-    key, value, rotary_pos_emb, attn_mask_type = self._adjust_key_value_for_inference(
-        inference_params, key, value, rotary_pos_emb
+    query, key, value, rotary_pos_emb, attn_mask_type = self._adjust_key_value_for_inference(
+        inference_params, query, key, value, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin
     )
 
     # ================================================
@@ -451,6 +465,7 @@ def attention_forward(
             value,
             attention_mask,
             attn_mask_type=attn_mask_type,
+            attention_bias=attention_bias,
             packed_seq_params=packed_seq_params,
         )
     else:
@@ -460,6 +475,7 @@ def attention_forward(
             value,
             attention_mask,
             attn_mask_type=attn_mask_type,
+            attention_bias=attention_bias,
             packed_seq_params=packed_seq_params,
         )
 

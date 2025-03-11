@@ -50,6 +50,8 @@ def dot_product_attention_init(
     attn_mask_type: AttnMaskType,
     attention_type: str,
     attention_dropout: float = None,
+    softmax_scale: float = None,
+    cp_comm_type: str = None
 ):
     cp_size = config.context_parallel_size
     config.context_parallel_size = 1
@@ -77,6 +79,15 @@ def dot_product_attention_init(
     self.num_query_groups_per_partition = divide(self.config.num_query_groups, world_size)
 
     coeff = None
+    if softmax_scale is None:
+        self.softmax_scale = 1.0 / math.sqrt(self.hidden_size_per_attention_head)
+    else:
+        self.softmax_scale = softmax_scale
+
+    if self.config.apply_query_key_layer_scaling:
+        coeff = self.layer_number
+        self.softmax_scale /= coeff
+
     self.norm_factor = math.sqrt(self.hidden_size_per_attention_head)
     if self.config.apply_query_key_layer_scaling:
         coeff = self.layer_number
@@ -146,13 +157,13 @@ def dot_product_attention_init_wrapper(fn):
 
 def dot_product_attention_forward_wrapper(fn):
     @wraps(fn)
-    def wrapper(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params):
+    def wrapper(self, query, key, value, attention_mask, attn_mask_type, attention_bias, packed_seq_params):
         if attention_mask is None and self.attn_mask_type == AttnMaskType.causal:
             if not getattr(self.config, 'is_llava', False):
                 attention_mask = get_attention_mask()
         if get_args().use_flash_attn:
-            return dot_product_attention_forward(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params)
-        return fn(self, query, key, value, attention_mask, attn_mask_type, packed_seq_params)
+            return dot_product_attention_forward(self, query, key, value, attention_mask, attn_mask_type, attention_bias, packed_seq_params)
+        return fn(self, query, key, value, attention_mask, attn_mask_type, attention_bias, packed_seq_params)
 
     return wrapper
 
@@ -164,12 +175,20 @@ def dot_product_attention_forward(
         value: Tensor,
         attention_mask,
         attn_mask_type,
+        attention_bias,
         packed_seq_params,
 ):
-    args = get_args()
-    seq_len, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+    assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
 
+    args = get_args()
+    if packed_seq_params is None:
+        actual_seq_len = get_actual_seq_len()
+        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+    else:
+        actual_seq_len = tuple(packed_seq_params.cu_seqlens_q[1:].cpu().numpy().tolist())
+        seq_length, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2]
     sparse_mode = args.sparse_mode
+    
     if attn_mask_type == AttnMaskType.no_mask:
         sparse_mode = 0  # default mask
 

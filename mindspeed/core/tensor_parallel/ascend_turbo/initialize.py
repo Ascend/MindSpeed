@@ -13,12 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Optional
+from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
 from .ascend_turbo_cfg import ascend_turbo_cfg
 from .mc2_linears_seq_parallel import (ColumnSeqParallelLinear, RowSeqParallelLinear,
                                        ColumnSeqParallelLinearWithFrozenWeight, RowSeqParallelLinearWithFrozenWeight)
 
 
-def column_parallel_forward(self, input_, weight=None):
+def column_parallel_forward(self, input_, weight=None, runtime_gather_output: Optional[bool] = None):
     if weight is None:
         if self.weight is None:
             raise RuntimeError(
@@ -46,6 +48,17 @@ def column_parallel_forward(self, input_, weight=None):
             input_, weight, bias, ascend_turbo_cfg.get_group()
         )
 
+    gather_output = self.gather_output
+    # Use the runtime gather output if it's set explicitly.
+    if runtime_gather_output is not None:
+        gather_output = runtime_gather_output
+
+    if gather_output:
+        # All-gather across the partitions.
+        assert not self.sequence_parallel
+        output = gather_from_tensor_model_parallel_region(output)
+    else:
+        output = output
     output_bias = self.bias if self.skip_bias_add else None
     return output, output_bias
 
