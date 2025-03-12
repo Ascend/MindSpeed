@@ -204,6 +204,7 @@ MindSpeed特性由七大模块组成，分别为：megetron特性支持、并行
 |--------------------------------------|----------------------------------------------------|
 | Ascend PP支持动态形状                            | [link](docs/features/variable_seq_lengths.md)     |
 | Ascend PP支持多参数传递                            | [link](docs/features/multi_parameter_pipeline.md)     |
+| 【Prototype】PP支持多参数传递和动态形状        | [link](docs/features/multi_parameter_pipeline_and_variable_seq_lengths.md) |
 | 【Prototype】Ascend fused ema adamw优化器 | [link](docs/features/fused_ema_adamw_optimizer.md) |
 | 【Prototype】Ascend conv3d 序列并行        | [link](docs/features/conv3d_sequence_paralle.md)   |
 | DistTrain 多模态模型分离部署                  | [link](docs/features/dist-train.md)                |
