@@ -25,14 +25,16 @@
 **注意事项**:
 - 用户需代码配置`args.pipeline_tensor_shapes`明确指定各阶段间传递的具体参数及其属性（如shape、dtype）。 
 - args.pipeline_tensor_shapes配置参考`tests_extend/system_tests/multi_modal/multi_parameter_pipeline/pretrain_multi_parameter_pipeline_test.py`
+
+
 **设置训练脚本参数**
-- # 支持PP场景
+- 支持PP场景
 ```shell
 # PP >= 2
 --pipeline-model-parallel-size ${PP} \
 --use-multiparameter-pipeline-model-parallel \
 ```
-- # 支持VPP场景
+- 支持VPP场景
 ```shell
 # PP >= 2, num-layers-per-virtual-pipeline-stage不为None
 --pipeline-model-parallel-size ${PP} \
