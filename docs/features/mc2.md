@@ -15,7 +15,7 @@
 
 MC2通过融合算子的方式将matmul计算和集合通信操作进行融合，将较大的计算和通信任务切分成了较小的计算子任务和通信子任务，并通过流水的方式使得通信子任务和计算子任务可以互相掩盖，从而减少等待和闲置时间，提高利用率。
 
-### 解决思路:
+## 解决思路:
 
 MindSpeed在python脚本侧将原本串行的matmul和all_gather/reduce_scatter操作通过MC2融合算子接口进行了融合。
 
@@ -25,7 +25,25 @@ MC2算子接口参见[link](https://www.hiascend.com/document/detail/zh/Pytorch/
 
 ## 使用场景
 
-当开启了TP和SP时，建议开启MC2进一步优化。
+当开启了TP和SP时，建议开启MC2进一步优化。模型权重冻结和模型权重不冻结两个场景均支持。
+
+### 说明
+可以通过设置`requires_grad`属性为`False`来实现权重冻结。
+```python
+# 举例1:冻结所有参数
+for param in model.parameters():
+    param.requires_grad = False  
+```
+
+```python
+# 举例2:除了output_layer，冻结所有ColumnParallelLinear和RowParallelLinear
+from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+for name, module in model.named_modules():
+    if ('output_layer' not in name
+            and (isinstance(module, ColumnParallelLinear) or isinstance(module, RowParallelLinear))):
+        for param in module.parameters():
+            param.requires_grad = False
+```
 
 ## 使用方法
 
