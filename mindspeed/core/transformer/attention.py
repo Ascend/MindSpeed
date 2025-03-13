@@ -106,6 +106,17 @@ def attention_init(
         self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
 
 
+def attention_init_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        fn(self, *args, **kwargs)
+        if self.config.num_query_groups is None:
+            self.config.num_query_groups = self.config.num_attention_heads
+        self.num_attention_heads_per_partition = self.config.num_attention_heads * self.num_query_groups_per_partition // self.config.num_query_groups
+
+    return wrapper
+
+
 def self_attention_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self,

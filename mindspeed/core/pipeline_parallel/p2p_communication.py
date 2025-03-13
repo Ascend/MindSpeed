@@ -79,6 +79,8 @@ def _communicate_shapes(tensor_send_next, tensor_send_prev, recv_prev, recv_next
         tensor_send_next=send_next_shape_tensor,
         tensor_recv_next=recv_next_shape_tensor,
         group=get_pipeline_model_parallel_group(),
+        prev_pipeline_rank=get_pipeline_model_parallel_prev_rank(),
+        next_pipeline_rank=get_pipeline_model_parallel_next_rank()
     )
 
     if len(reqs) > 0:

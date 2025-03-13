@@ -62,9 +62,12 @@ class UnalignedRowParallelLinear(torch.nn.Module):
 
         if self.input_size % fusion_number != 0:
             raise AssertionError('input_size({}) must be divisible by fusion number({})'.format(self.input_size, fusion_number))
-        single_input_size = self.input_size // fusion_number
-        self.input_size_per_partition = unaligned_divide(single_input_size, world_size, rank)
-        self.input_size_per_partition *= fusion_number
+
+        if fusion_number != 1:
+            self.input_size_per_partition = unaligned_divide(config.num_query_groups, world_size, rank)
+            self.input_size_per_partition *= fusion_number
+        else:
+            self.input_size_per_partition = unaligned_divide(self.input_size, world_size, rank)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
@@ -159,24 +162,32 @@ class UnalignedRowParallelLinear(torch.nn.Module):
             assert not self.sequence_parallel
             input_parallel = self.scatter_to_tensor_model_parallel_region(input_)
         # Matrix multiply.
+        allreduce_dgrad = False
         if not self.weight.requires_grad:
             self._forward_impl = self.linear_with_frozen_weight
+            output_parallel = self._forward_impl(
+                input=input_parallel,
+                weight=self.weight,
+                bias=None,
+                gradient_accumulation_fusion=self.gradient_accumulation_fusion,
+                async_grad_allreduce=allreduce_dgrad,
+                sequence_parallel=False,
+                grad_output_buffer=None,
+                allreduce_dgrad=allreduce_dgrad
+            )
         else:
             self._forward_impl = unaligned_linear_with_grad_accumulation_and_async_allreduce
-
-        allreduce_dgrad = False
-
-        output_parallel = self._forward_impl(
-            input=input_parallel,
-            weight=self.weight,
-            bias=None,
-            gradient_accumulation_fusion=self.gradient_accumulation_fusion,
-            sequence_parallel=False,
-            grad_output_buffer=None,
-            allreduce_dgrad=allreduce_dgrad,
-            parallel_group=self.parallel_group,
-            seq_length=self.seq_length
-        )
+            output_parallel = self._forward_impl(
+                input=input_parallel,
+                weight=self.weight,
+                bias=None,
+                gradient_accumulation_fusion=self.gradient_accumulation_fusion,
+                sequence_parallel=False,
+                grad_output_buffer=None,
+                allreduce_dgrad=allreduce_dgrad,
+                parallel_group=self.parallel_group,
+                seq_length=self.seq_length
+            )
 
         # All-reduce across all the partitions.
         if self.explicit_expert_comm:

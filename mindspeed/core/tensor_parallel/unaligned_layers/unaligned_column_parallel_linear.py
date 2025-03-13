@@ -66,9 +66,11 @@ class UnalignedColumnParallelLinear(torch.nn.Module):
 
         if self.output_size % fusion_number != 0:
             raise AssertionError('output_size({}) must be divisible by fusion number({})'.format(self.output_size, fusion_number))
-        single_output = self.output_size // fusion_number
-        self.output_size_per_partition = unaligned_divide(single_output, world_size, rank)
-        self.output_size_per_partition *= fusion_number
+        if fusion_number != 1:
+            self.output_size_per_partition = unaligned_divide(config.num_query_groups, world_size, rank)
+            self.output_size_per_partition *= fusion_number
+        else:
+            self.output_size_per_partition = unaligned_divide(self.output_size, world_size, rank)
 
         # Parameters.
         # Note: torch.nn.functional.linear performs XA^T + b and as a result
@@ -207,31 +209,41 @@ class UnalignedColumnParallelLinear(torch.nn.Module):
         if self.config.defer_embedding_wgrad_compute:
             self.embedding_activation_buffer.append(input_parallel)
 
+        allreduce_dgrad = False if self.explicit_expert_comm else self.allreduce_dgrad
         # Matrix multiply.
         if not weight.requires_grad:
             self._forward_impl = self.linear_with_frozen_weight
+            output_parallel = self._forward_impl(
+                input=input_parallel,
+                weight=weight,
+                bias=bias,
+                gradient_accumulation_fusion=self.gradient_accumulation_fusion,
+                async_grad_allreduce=allreduce_dgrad,
+                sequence_parallel=False if self.explicit_expert_comm else self.sequence_parallel,
+                grad_output_buffer=self.grad_output_buffer
+                if self.config.defer_embedding_wgrad_compute
+                else None,
+                allreduce_dgrad=allreduce_dgrad
+            )
         else:
             self._forward_impl = unaligned_linear_with_grad_accumulation_and_async_allreduce
-
-        allreduce_dgrad = False if self.explicit_expert_comm else self.allreduce_dgrad
-
-        output_parallel = self._forward_impl(
-            input=input_parallel,
-            weight=weight,
-            bias=bias,
-            gradient_accumulation_fusion=self.gradient_accumulation_fusion,
-            sequence_parallel=False if self.explicit_expert_comm else self.sequence_parallel,
-            grad_output_buffer=self.grad_output_buffer
-            if self.config.defer_embedding_wgrad_compute
-            else None,
-            allreduce_dgrad=allreduce_dgrad,
-            parallel_group=self.parallel_group,
-            seq_length=self.seq_length
-        )
+            output_parallel = self._forward_impl(
+                input=input_parallel,
+                weight=weight,
+                bias=bias,
+                gradient_accumulation_fusion=self.gradient_accumulation_fusion,
+                sequence_parallel=False if self.explicit_expert_comm else self.sequence_parallel,
+                grad_output_buffer=self.grad_output_buffer
+                if self.config.defer_embedding_wgrad_compute
+                else None,
+                allreduce_dgrad=allreduce_dgrad,
+                parallel_group=self.parallel_group,
+                seq_length=self.seq_length
+            )
         if self.gather_output:
             # All-gather across the partitions.
             assert not self.sequence_parallel
-            output = gather_from_tensor_model_parallel_region(output_parallel)
+            output = self.gather_from_tensor_model_parallel_region(output_parallel)
         else:
             output = output_parallel
         output_bias = self.bias if self.skip_bias_add else None
