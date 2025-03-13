@@ -26,7 +26,7 @@ def set_unaligned_linear_args(args):
 class TestUnalignedLinear(DistributedTest):
     world_size = 8
 
-    @pytest.mark.skip(reason="The local verification is successful. The CI environment problem is to be located")
+    @pytest.mark.skip(reason="Single test passed, but failed due to other test cases, skipped for now")
     def test_UnalignedColumnParallelLinear(self):
         args = parse_args(None, True)
         set_unaligned_linear_args(args)
@@ -66,7 +66,6 @@ class TestUnalignedLinear(DistributedTest):
         assert torch.allclose(dLdA, linear_layer.weight.grad, rtol=0.005, atol=0.005)
         assert torch.allclose(dLdb, linear_layer.bias.grad, rtol=0.005, atol=0.005)
 
-    @pytest.mark.skip(reason="The local verification is successful. The CI environment problem is to be located")
     def test_UnalignedRowParallelLinear(self):
         args = parse_args(None, True)
         set_unaligned_linear_args(args)
