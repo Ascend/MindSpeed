@@ -1,5 +1,6 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
+import os
 import gc
 import dataclasses
 import importlib
@@ -263,6 +264,10 @@ def layerzero_setup_model_and_optimizer_wrapper(setup_model_and_optimizer):
                                                                         scale_lr_cond=scale_lr_cond,
                                                                         lr_mult=lr_mult)
             if config.ckpt_load_path is not None:
+                if not os.path.isabs(config.ckpt_load_path):
+                    raise ValueError(
+                        f"Checkpoint path must be an absolute path, the current path: {config.ckpt_load_path}"
+                    )
                 load_layerzero_checkpoint(
                     zero_models, config.ckpt_load_path, optimizer, opt_param_scheduler)
             torch.cuda.empty_cache()
