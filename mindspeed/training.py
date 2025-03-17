@@ -279,11 +279,6 @@ def pretrain(
                                         args.do_valid, args.do_test, args.dataloader_type,
                                         args.retro_project_dir, args.retro_cyclic_train_iters)
 
-    if args.enable_ft_package and ft_integration.get_rank_monitor_client() is not None:
-        ft_integration.get_rank_monitor_client().init_workload_monitoring()
-        ft_timeouts = ft_integration.get_rank_monitor_client().timeouts
-        print_rank_0(f"Fault tolerance client initialized. Timeouts: {ft_timeouts}")
-
     # Print setup timing.
     print_rank_0('done with setup ...')
     timers.log(['model-and-optimizer-setup',
@@ -313,9 +308,7 @@ def pretrain(
         if args.save and iteration != 0 and iteration % args.save_interval != 0:
             save_checkpoint(iteration, model, optimizer, opt_param_scheduler,
                             num_floating_point_operations_so_far, checkpointing_context,
-                            train_data_iterator=train_data_iterator,
-                            ft_client=ft_integration.get_rank_monitor_client(
-                                ft_integration.StateMachineActions.SAVE_CHECKPOINT))
+                            train_data_iterator=train_data_iterator)
 
         one_logger and one_logger.log_metrics({
             'app_train_loop_finish_time': one_logger_utils.get_timestamp_in_ms()
