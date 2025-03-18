@@ -7,7 +7,7 @@
 ## 解决方案
 
 - **序列长度不能整除TP**：和pad方案（将序列长度pad到TP的整数倍）不同，该方案通过序列分配策略来解决，小于 **(seq_len%tp_size)** 的tp卡分配 **(seq_len//tp_size+1)** 序列长度，其他分配 **(seq_len//tp_size)** 序列长度，例如seq_len=1026,tp_size=4, tp0和tp1分配的序列长度为257，tp2和tp3分配的序列长度为256；
-- **注意力头数不能整除TP**：和上述方案类似，小于 **(num_attention_heads%tp_size)** 的tp卡分配 **(num_attention_heads//tp_size+1)** 个注意力头，其他卡分配 **(num_attention_heads//tp_size)** 注意力头，例如num_attention_heads=25,tp_size=4, tp0分配的注意力头为7个，tp1、tp2和tp3分配的注意力头均为6个；值得注意的是，模型的注意力相关权重TP切分和头数相关，假设hidden_size=3200, qkv_weight大小为(9600,3200)[MHA], dense_weight大小为（3200,3200), tp0的qkv权重大小为(2688,3200),dense权重大小为(3200,896), tp1、tp2和tp3的qkv权重大小为(2304, 3200),dense权重大小为（3200,768）;GQA的权重切分方案按num_query_groups比例分配，注意；
+- **注意力头数不能整除TP**：对于MHA结构模型，小于 **(num_attention_heads%tp_size)** 的tp卡分配 **(num_attention_heads//tp_size+1)** 个注意力头，其他卡分配 **(num_attention_heads//tp_size)** 注意力头，例如num_attention_heads=25,tp_size=4, tp0分配的注意力头为7个，tp1、tp2和tp3分配的注意力头均为6个；值得注意的是，模型的注意力相关权重TP切分和头数相关，假设hidden_size=3200, qkv_weight大小为(9600,3200)[MHA], dense_weight大小为（3200,3200), tp0的qkv权重大小为(2688,3200),dense权重大小为(3200,896), tp1、tp2和tp3的qkv权重大小为(2304, 3200),dense权重大小为（3200,768）; 注意，对于GQA结构模型，权重切分和注意力头切分按num_query_groups比例分配；
 
 ## 使用场景
 

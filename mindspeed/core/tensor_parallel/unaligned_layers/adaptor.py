@@ -2,7 +2,7 @@
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 import torch
 from megatron.training import get_args
-from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_and_expert_parallel_group
+from megatron.core.parallel_state import get_tensor_model_parallel_group, get_expert_tensor_and_model_parallel_group
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear, _initialize_affine_weight_cpu, \
     _initialize_affine_weight_gpu, set_tensor_model_parallel_attributes, _grad_accum_fusion_available, \
     linear_with_grad_accumulation_and_async_allreduce, linear_with_frozen_weight
@@ -27,7 +27,7 @@ class UnalignedColumnParallelLinearAdaptor(UnalignedColumnParallelLinear, Column
             kwargs['tp_comm_buffer_name'] = None
 
         if kwargs['is_expert'] and explicit_expert_comm and config.moe_extended_tp:
-            kwargs['parallel_group'] = get_tensor_and_expert_parallel_group()
+            kwargs['parallel_group'] = get_expert_tensor_and_model_parallel_group()
         else:
             kwargs['parallel_group'] = get_tensor_model_parallel_group()
 
@@ -59,7 +59,7 @@ class UnalignedRowParallelLinearAdaptor(UnalignedRowParallelLinear, RowParallelL
             kwargs['tp_comm_buffer_name'] = None
 
         if kwargs['is_expert'] and explicit_expert_comm and config.moe_extended_tp:
-            kwargs['parallel_group'] = get_tensor_and_expert_parallel_group()
+            kwargs['parallel_group'] = get_expert_tensor_and_model_parallel_group()
         else:
             kwargs['parallel_group'] = get_tensor_model_parallel_group()
 
@@ -120,6 +120,7 @@ def get_rotary_seq_len(
     transformer,
     transformer_input,
     transformer_config,
+    packed_seq_params=None
 ) -> float:
     if inference_params is not None:
         rotary_seq_len = inference_params.max_sequence_length

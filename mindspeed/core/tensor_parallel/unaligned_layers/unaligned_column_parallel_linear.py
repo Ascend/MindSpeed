@@ -171,7 +171,7 @@ class UnalignedColumnParallelLinear(torch.nn.Module):
         self.parallel_group = parallel_group
         self.gather_from_tensor_model_parallel_region = gather_from_tensor_model_parallel_region
 
-    def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None):
+    def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None, **kwargs):
         if weight is None:
             if self.weight is None:
                 raise RuntimeError(
