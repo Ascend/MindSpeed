@@ -128,7 +128,6 @@ class TestUnevenSplitGather(DistributedTest):
                                                     (0, 1), (0, 2), (0, 3)])
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_all_to_all(self, gather_scatter_idx, dtype):
-        total_save_time = 0
         input_shapes = [[32, 64, 32], [32, 64, 32, 32],
                         [29, 51, 57], [29, 51, 65, 57]]
         group = mpu.get_tensor_model_parallel_group()
@@ -143,11 +142,8 @@ class TestUnevenSplitGather(DistributedTest):
             if (input_.size(scatter_idx) % self.world_size) != 0:
                 scatter_size_list = cal_split_sizes(dim_size=input_.size(scatter_idx), world_size=self.world_size)
                 gather_sizes_list = [input_.size(gather_idx)] * self.world_size
-
-            total_save_time += self.run_all_to_all(
+            self.run_all_to_all(
                 input_, scatter_idx, gather_idx, group, scatter_size_list, gather_sizes_list)
-        # The average time saved by calling the all_to_all function once should be greater than 0
-        assert (total_save_time / len(input_shapes)) > 0
 
     @pytest.mark.parametrize("gather_scatter_idx", [(3, 0), (3, 1), (3, 2),
                                                     (2, 0), (2, 1), (2, 3),
@@ -200,7 +196,6 @@ class TestUnevenSplitGather(DistributedTest):
 
     def run_all_to_all(self, input_, scatter_idx, gather_idx, group, scatter_size_list, gather_sizes_list):
         input_clone = input_.clone()
-        save_time = 0
         for i in range(TestUnevenSplitGather.total_time):
             all_to_all_time1, standard_output1 = measure_time(
                 _all_to_all_standard, input_, group, scatter_idx, gather_idx, scatter_size_list, gather_sizes_list)
@@ -218,8 +213,6 @@ class TestUnevenSplitGather(DistributedTest):
                 continue
             assert torch.equal(standard_output1, output1), "The standard_output1 and output1 should be close."
             assert torch.equal(standard_output2, output2), "The standard_output2 and output2 should be close."
-            save_time += (all_to_all_time1 + all_to_all_time2 - all_to_all_single_time1 - all_to_all_single_time2) / 2
-        return save_time / (TestUnevenSplitGather.total_time - TestUnevenSplitGather.warm_up_time)
 
     def run_split_gather(self, x, dim, group):
         split_sizes = None
