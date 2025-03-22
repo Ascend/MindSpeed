@@ -26,7 +26,7 @@ class Ops:
 
         if trans_b:
             b = b.t()
-        group_list = torch.cumsum(batch_sizes, dim=0)
+        group_list = torch.cumsum(batch_sizes, dim=0).to('npu')
         return npu_gmm(a, b, bias=None, group_list=group_list, group_type=0, gemm_fusion=gemm_fusion, original_weight=original_weight)
 
 
