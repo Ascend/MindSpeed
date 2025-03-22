@@ -59,6 +59,7 @@ $$
 
 ## 输入shape限制
 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=group_ep_worldsize，tp=group_tp_worldsize）
+
 按H轴进行AllGather场景，shard_type为0时：
 - x: (E, C, H/tp)
 - weight：(E/ep, H, M/tp)
@@ -66,6 +67,7 @@ $$
 - y1Out：(E/ep, ep\*C, M/tp)
 - y2OutOptional：(E/ep, ep\*C, H)
 - y3OutOptional：(E/ep, ep\*C, M/tp)
+
 按C轴进行AllGather场景，shard_type为1时：
 - x: (E, C/tp, H)；
 - weight：(E/ep, H, M/tp)；
