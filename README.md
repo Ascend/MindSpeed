@@ -73,7 +73,7 @@ MindSpeed 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型�
 ☀️ 下载源码安装：
 
  ```shell
- git clone -b core_r0.8.0 https://gitee.com/ascend/MindSpeed.git
+ git clone -b 2.0.0_core_r0.8.0 https://gitee.com/ascend/MindSpeed.git
  pip install -e MindSpeed
  ```
 
@@ -245,14 +245,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> Ascend Ring Attention 长序列并行</td>
     <td><a href="docs/features/ring-attention-context-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-   <tr>
-    <td rowspan="5"> Ascend Double Ring Attention 长序列并行</td>
-    <td><a href="docs/features/double-ring.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
