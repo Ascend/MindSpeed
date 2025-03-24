@@ -5,14 +5,18 @@ import argparse
 import time
 from functools import wraps
 from multiprocessing import Lock
+from logging import getLogger
+
 import torch
 from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
 from mindspeed.features_manager import FEATURES_LIST
 from .arguments import process_args
+from .deprecate import AdaptorV2
 
 
 _ARGS = None
+LOG = getLogger(__name__)
 
 
 def add_args(args, key, value):
@@ -1034,6 +1038,7 @@ def delete_lock_file(directory, lock):
                     break
 
 
+@AdaptorV2
 def exe_adaptation():
     modified_argv_path = os.getenv("OOTB_OPTIMIZER_MODIFIED_ARGV_PATH", None)
     if modified_argv_path:
@@ -1058,14 +1063,17 @@ def exe_adaptation():
         # The minimum patch set for megatron to adapt to NPU
         optimizer_selection(aspm, mindspeed_args)
         adaptation_l0(aspm, mindspeed_args)
+        LOG.info("Adaptation L0  for megatron")
 
     if mindspeed_args.optimization_level >= 1:
         # Affinity optimization (fusion operators, etc.)
         adaptation_l1(aspm, mindspeed_args)
+        LOG.info("Adaptation L1  for megatron")
 
     if mindspeed_args.optimization_level >= 2:
         # Advanced acceleration algorithm
         adaptation_l2(aspm, mindspeed_args)
+        LOG.info("Adaptation L2  for megatron")
 
     aspm.apply_patches()
 

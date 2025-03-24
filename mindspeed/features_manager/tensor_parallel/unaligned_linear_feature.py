@@ -10,9 +10,12 @@ class UnalignedLinearFeature(MindSpeedFeature):
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        group.add_argument('--unaligned-linear', action='store_true',
-                           help='Replace ColumnParallelLinear/RowParallelLinear with '
-                                'UnalignedColumnParallelLinearAdaptor/UnalignedRowParallelLinearAdaptor.')
+        group.add_argument(
+            "--unaligned-linear",
+            action="store_true",
+            help="Replace ColumnParallelLinear/RowParallelLinear with "
+            "UnalignedColumnParallelLinearAdaptor/UnalignedRowParallelLinearAdaptor.",
+        )
 
     def validate_args(self, args):
         self.incompatible_check(args, 'use_ascend_mc2')

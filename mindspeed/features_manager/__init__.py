@@ -10,3 +10,13 @@ FEATURES_LIST = [
     # llava-multimodal
     LlavaModel()
 ]
+
+
+FEATURES = (
+    # Functional features
+    ProfilerDefaultFeature(),
+    # Tensor parallel features
+    UnalignedLinearFeature(),
+    # llava-multimodal
+    LlavaModel(),
+)

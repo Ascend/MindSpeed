@@ -18,14 +18,21 @@ import os
 from functools import wraps
 from typing import Optional, Callable, List
 from datetime import timedelta
+from logging import getLogger
 
 import torch
 import torch_npu
 import megatron
-from megatron.core.parallel_state import get_context_parallel_world_size, get_nccl_options
+from megatron.core.parallel_state import (
+    get_context_parallel_world_size,
+    get_nccl_options,
+)
 
 from mindspeed.core.simple_parallel_cfg import SimpleParallelCfg
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
+from mindspeed.log_config import log_rank_0
+
+LOG = getLogger(__name__)
 
 _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP = None
 _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_ULYSSES = None
@@ -292,7 +299,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
 
         if args.hccl_group_buffer is not None:
             parse_hccl_buffer_string(args.hccl_group_buffer)
-            
+
         nccl_comm_cfgs = {}
         if nccl_communicator_config_path is not None:
             import yaml
@@ -354,10 +361,14 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             for i in range(num_tensor_model_parallel_groups):
                 ranks = range(i * tensor_model_parallel_size, (i + 1) * tensor_model_parallel_size)
                 all_tp_groups.append(list(ranks))
-            
-            print_rank_0(f"all tp groups {all_tp_groups}")
-            print_rank_0(f"all dp groups {all_data_parallel_group_ranks}")
-            print_rank_0(f"all_data_parallel_group_ranks_with_cp {all_data_parallel_group_ranks_with_cp}")
+
+            log_rank_0(LOG.info, f"all tp groups {all_tp_groups}")
+            log_rank_0(LOG.info, f"all dp groups {all_data_parallel_group_ranks}")
+            log_rank_0(
+                LOG.info,
+                f"all_data_parallel_group_ranks_with_cp"
+                f"{all_data_parallel_group_ranks_with_cp}",
+            )
 
         else:
             initialize_model_parallel(
@@ -379,7 +390,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 get_embedding_ranks,
                 get_position_embedding_ranks,
             )
-            
+
         rank = torch.distributed.get_rank()
         world_size: int = torch.distributed.get_world_size() 
 

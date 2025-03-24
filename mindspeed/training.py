@@ -3,6 +3,8 @@
 import time
 from functools import wraps
 import os
+from logging import getLogger
+
 import torch
 
 from megatron.core import mpu
@@ -46,7 +48,10 @@ from megatron.training.async_utils import maybe_finalize_async_save
 
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
 
+
+_BASE_TIME = 1742613446  # one moment of 2025.3.22
 _TRAIN_START_TIME = time.time()
+LOG = getLogger(__name__)
 
 
 @torch.no_grad()
@@ -161,12 +166,13 @@ def pretrain(
     forward_step_func,
     process_non_loss_data_func=None,
     extra_args_provider=None,
-    args_defaults={},
+    args_defaults=None,
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
     non_loss_data_func=None,
-    ):
-
+):
+    if args_defaults is None:
+        args_defaults = {}
     # Initalize and get arguments, timers, and Tensorboard writer.
     initialize_megatron(
         extra_args_provider=extra_args_provider,
@@ -201,17 +207,26 @@ def pretrain(
     # This will be closer to what scheduler will see (outside of
     # image ... launches.
     global _TRAIN_START_TIME
-    start_time_tensor = torch.npu.FloatTensor([_TRAIN_START_TIME])
+    start_time_tensor = torch.npu.FloatTensor([_TRAIN_START_TIME - _BASE_TIME])
+    LOG.info(
+        "original _TRAIN_START_TIME is (seconds) %s, start_time_tensor is %s",
+        _TRAIN_START_TIME,
+        start_time_tensor.item(),
+    )
     torch.distributed.all_reduce(start_time_tensor,
                                  op=torch.distributed.ReduceOp.MIN)
-    _TRAIN_START_TIME = start_time_tensor.item()
+    _TRAIN_START_TIME = start_time_tensor.item() + _BASE_TIME
+    LOG.info("adjusted _TRAIN_START_TIME is (seconds) %s", _TRAIN_START_TIME)
 
     app_metrics = {}
     app_metrics['app_start_time'] = round(_TRAIN_START_TIME * 1000.0)
     app_metrics['app_model_init_start_time'] = round(_TRAIN_START_TIME * 1000.0)
 
-    print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(
-        time.time() - _TRAIN_START_TIME))
+    print_rank_0(
+        "time to initialize megatron (seconds): {:.3f}".format(
+            time.time() - _BASE_TIME - _TRAIN_START_TIME
+        )
+    )
     print_datetime('after megatron is initialized')
     app_metrics['app_model_init_finish_time'] = one_logger_utils.get_timestamp_in_ms()
 
