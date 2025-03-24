@@ -90,7 +90,12 @@
 | 用户下载并使用HuggingFace的开源数据集            | 调用`load_dataset`函数，并填写目标开源数据集路径 | 随机端口     | 数据集可能包含敏感或不合法内容，导致合规问题。数据集中可能存在质量问题，如标签错误或数据偏差，影响数据预处理。|
 | 使用`from_pretrained`信任特定代码，使用相关模型的实现 | 调用`from_pretrained`函数，设置`trust_remote_code=True` | 随机端口   | 如果trust_remote_code=True，下载的代码可能包含恶意逻辑或后门，威胁系统安全。但同时已设置local_files_only=True，程序仅会运行本地的文件来规避风险。   |
 | 调用auto_tuning进行训练任务时，新增端口           | torchrun拉起训练端口 auto_tuning通过此端口指定MindSpeed拉起特定配置采集Profiling信息 | [1024, 65535]内 |业务需要，无风险     |
-| 使用MindSpeed进行训练任务时，新增48个端口          | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |
+| 使用MindSpeed master分支进行训练任务时，新增48个端口           | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |
+| 使用MindSpeed core_0.9.0分支进行训练任务时，新增48个端口       | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |
+| 使用MindSpeed core_0.8.0分支进行训练任务时，新增32个端口       | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |
+| 使用MindSpeed 2.0.0_core_0.8.0分支进行训练任务时，新增32个端口 | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |
+| 使用MindSpeed core_0.7.0分支进行训练任务时，新增32个端口       | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |
+| 使用MindSpeed core_0.6.0分支进行训练任务时，新增32个端口       | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |
 
 ## 附录
 
