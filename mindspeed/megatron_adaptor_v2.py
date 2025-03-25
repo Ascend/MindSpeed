@@ -102,6 +102,12 @@ def adaptation_l0(
     mindspeed_args.disable_gloo_group = None
     communication_adaptation(mspm, mindspeed_args)
     coalescing_manager_adaptation(mspm, mindspeed_args)
+    if mindspeed_args.npu_deterministic:
+        from mindspeed.initialize import deter_comp_wrapper
+
+        mspm.register_patch(
+            "megatron.training.initialize._set_random_seed", deter_comp_wrapper
+        )
 
 
 def megatron_training_adaptation_l0(mspm: Type[MindSpeedPatchesManager]):

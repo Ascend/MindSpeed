@@ -224,7 +224,7 @@ def pretrain(
 
     print_rank_0(
         "time to initialize megatron (seconds): {:.3f}".format(
-            time.time() - _BASE_TIME - _TRAIN_START_TIME
+            time.time() - _TRAIN_START_TIME
         )
     )
     print_datetime('after megatron is initialized')
