@@ -97,28 +97,29 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 1. 仅仅一行代码就可以轻松使能 MindSpeed 的各项功能。以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
 
-    ```diff
-     import os
-     import torch
-    +import mindspeed.megatron_adaptor
-     from functools import partial
-     from typing import Union
-    ```
+  ```diff
+    import os
+    import torch
+  +import mindspeed.megatron_adaptor
+    from functools import partial
+    from typing import Union
+  ```
 
-2. 如果使用Python3.8.x, 那么需要修改`Megatron-LM/megatron/core/dist_checkpointing/strategies/base.py`文件，在开始处加入`from __future__ import annotations`
-    
-    ```diff
-     """ Strategies base interfaces. """
+2. 从core_r0.10.0版本开始，Megatron大量使用高版本语法的类型注解（Type Annotations），如:
+  ```
+    hierarchical_context_parallel_sizes: Optional[list[int]] = None
+  ```
 
-    +from __future__ import annotations
-     from abc import ABC, abstractmethod
-     from collections import defaultdict
-    ```
+因此，若出现以下报错：
+  ```
+    TypeError: 'type' object is not subscriptable.
+  ```
+则需修改Megatron相应代码，或使用python 3.9及以上版本以适应Megatron原生接口的变动。
 
 3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
-    ```shell
-    bash examples/gpt3/train_gpt3_175b_distributed.sh
-    ```
+  ```shell
+  bash examples/gpt3/train_gpt3_175b_distributed.sh
+  ```
 ---
 # 自定义优化级别
 MindSpeed 提供了多层次的优化解决方案，并划分为三个层级，用户可根据实际需求灵活启用任意层级。高层级兼容低层级的能力，确保了整个系统的稳定性和扩展性。
@@ -873,7 +874,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 | MindSpeed版本             | Megatron版本      | PyTorch版本   | torch_npu版本 | CANN版本  | Python版本                               | 硬件型态     |
 |-------------------------|-----------------|------------- |-------------|---------|----------------------------------------|----------|
-| master（主线）              | Core 0.10.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+| master（主线）              | Core 0.10.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.9.0（主线）         | Core 0.9.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.8.0（主线）         | Core 0.8.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.7.0（主线）         | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
@@ -903,6 +904,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 | **MindSpeed版本**     | **维护策略** | **当前状态** | **发布时间**   | **后续状态**           | **EOL日期** |
 |---------------------|-----------|---------|------------|--------------------|-----------|
+| 2.0.0_core_r0.8.0   |  常规版本  | 开发      | 2025/03/30 | 预计2025/9/30起无维护	   |           |
 | 1.0.0_core_r0.7.0   |  常规版本  | 开发      | 2024/12/30 | 预计2025/6/30起无维护	   |           |
 | 1.0.0_core_r0.6.0   |  常规版本  | 开发      | 2024/12/30 | 预计2025/6/30起无维护	   |           |
 | 1.0.RC3_core_r0.7.0 |  常规版本  | 维护      | 2024/09/30 | 预计2025/3/30起无维护	   |           |
