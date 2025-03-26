@@ -862,6 +862,10 @@ def validate_args_wrapper(validate_args):
                 models_dict[model] = num_layer
             args.swap_models = models_dict
 
+        if args.swap_attention and hasattr(args, "lora_target_modules"):
+            if args.lora_target_modules is not []:
+                raise AssertionError('swap attention is not compatible with LoRA')
+
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
         return args

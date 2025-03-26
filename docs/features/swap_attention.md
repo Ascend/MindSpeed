@@ -52,3 +52,4 @@
 2. 暂不兼容自适应选择重计算特性.
 3. 若出现性能严重劣化，可能是跨NUMA内存访问引起，可尝试通过进程绑核缓解，实现方法可参考[mstt绑核工具](https://gitee.com/ascend/mstt/tree/master/profiler/affinity_cpu_bind)
 4. 目前swap仅支持internvl 多模态模型，后续会逐步支持opensora-plan等等其他模型.
+5. `--swap-attention`暂不兼容LoRA微调。
