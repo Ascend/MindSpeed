@@ -873,6 +873,10 @@ def validate_args_wrapper(validate_args):
             if args.automated_pipeline_perf:
                 raise AssertionError("Enabling --automated-pipeline-perf will cause the '--overlap-warmup-cooldown-communication' option to have no effect.")
 
+        if args.swap_attention and hasattr(args, "lora_target_modules"):
+            if args.lora_target_modules is not []:
+                raise AssertionError('swap attention is not compatible with LoRA')
+
         from megatron.training.arguments import _print_args
         _print_args('arguments', args, True)
         return args
