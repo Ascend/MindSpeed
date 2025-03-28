@@ -84,6 +84,8 @@ def groupedmlp_init_wrapper(fn):
         if args_.moe_tp_extend_ep:
             parallel_state._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = 1
         fn(self, *args, **kwargs)
+        setattr(self.weight1, 'gmm_weight', True)
+        setattr(self.weight2, 'gmm_weight', True)
         if args_.moe_tp_extend_ep:
             parallel_state._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = tp_size
         if self.config.gated_linear_unit:

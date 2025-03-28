@@ -1,5 +1,6 @@
 from .tensor_parallel.unaligned_linear_feature import UnalignedLinearFeature
 from .functional.profiler_default_feature import ProfilerDefaultFeature
+from .pipeline_parallel.fb_overlap_feature import FwdBwdOverlapFeature
 from .optimizer.swap_optimizer_feature import SwapOptimizerFeature
 
 FEATURES_LIST = [
@@ -7,5 +8,7 @@ FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
     # Tensor parallel features
-    UnalignedLinearFeature()
+    UnalignedLinearFeature(),
+    # Pipeline Parallel features
+    FwdBwdOverlapFeature()
 ]

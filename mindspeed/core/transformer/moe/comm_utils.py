@@ -13,7 +13,7 @@ from typing import Optional, List
 COMM_STREAM = None
 
 
-def async_all_gather(input_, group, event=None, is_use_get_global_memory_buffer=False, last_dim=False):
+def async_all_gather(input_, group, event=None, is_use_get_global_memory_buffer=False, last_dim=False, stream=None):
     world_size = dist.get_world_size(group)
     if world_size == 1:
         return input_, input_, None
@@ -30,13 +30,16 @@ def async_all_gather(input_, group, event=None, is_use_get_global_memory_buffer=
             ag_out = get_global_memory_buffer().get_tensor(dim_size, input_.dtype, "mpu")
         else:
             ag_out = torch.empty(dim_size, dtype=input_.dtype, device=torch.cuda.current_device())
-    if event:
+    if event or stream:
         # multi stream wait event
         global COMM_STREAM
         if COMM_STREAM is None:
             COMM_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
         with torch_npu.npu.stream(COMM_STREAM):
-            event.wait()
+            if event:
+                event.wait()
+            if stream:
+                COMM_STREAM.wait_stream(stream)
             if last_dim:
                 handle = torch.distributed.all_gather(ag_out, input_.contiguous(), group=group, async_op=True)
             else:
@@ -83,7 +86,7 @@ def async_reduce_scatter(input_, group, event=None, stream=None, is_use_get_glob
     return input_, rs_out, handle
 
 
-def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event=None):
+def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event=None, stream=None):
     world_size = dist.get_world_size(group)
     if world_size == 1:
         return input_, input_, None
@@ -98,13 +101,16 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
             device=torch.cuda.current_device(),
         )
 
-    if event:
+    if event or stream:
         # multi stream wait event
         global COMM_STREAM
         if COMM_STREAM is None:
             COMM_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
         with torch_npu.npu.stream(COMM_STREAM):
-            event.wait()
+            if event:
+                event.wait()
+            if stream:
+                COMM_STREAM.wait_stream(stream)
             handle = dist.all_to_all_single(
                 a2a_out,
                 input_.contiguous(),
