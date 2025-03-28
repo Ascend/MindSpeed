@@ -3,7 +3,7 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 
 class ProfilerDefaultFeature(MindSpeedFeature):
     def __init__(self):
-        super(ProfilerDefaultFeature, self).__init__('profiler-default', 0)
+        super(ProfilerDefaultFeature, self).__init__('profiler-default', optimization_level=0)
 
     def register_patches(self, patch_manager, args):
         from mindspeed.functional.profiler.profiler_info import get_nccl_options_add_group_info_wrapper

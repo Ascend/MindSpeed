@@ -1,22 +1,27 @@
 """Define base class for mind speed features."""
 
 import argparse
-from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
 
 from mindspeed.patch_utils import MindSpeedPatchesManager
 
 
-class MindSpeedFeature(ABC):
-    """Base class for mind speed features."""
+class MindSpeedFeature:
+    """Base class for mindspeed features."""
 
     def __init__(self, feature_name: str, optimization_level: int = 2):
-        self.feature_name = feature_name.strip().replace('-', '_')
+        self.feature_name = feature_name.lower().strip().replace('-', '_')
         self.optimization_level = optimization_level
         self.default_patches = self.optimization_level == 0
 
+    def is_need_apply(self, args):
+        """Check the feature is need to apply."""
+        return (self.optimization_level <= args.optimization_level and getattr(args, self.feature_name, None)) \
+            or self.default_patches
+
     def register_args(self, parser: ArgumentParser):
         """Register cli arguments to enable the feature."""
+        pass
 
     def pre_validate_args(self, args: Namespace):
         """Validate the arguments of mindspeed before megatron args validation
@@ -28,6 +33,7 @@ class MindSpeedFeature(ABC):
             args.context_parallel_size = 1
             ```
         """
+        pass
 
     def validate_args(self, args: Namespace):
         """Restore the arguments of the mindspeed.
@@ -43,13 +49,13 @@ class MindSpeedFeature(ABC):
         """validate mindspeed arguments after megatron arguments validation."""
         pass
 
-    @abstractmethod
-    def register_patches(
-        self,
-        patch_manager: MindSpeedPatchesManager,
-        args: Namespace,
-    ):
+    def pre_register_patches(self, patch_manager: MindSpeedPatchesManager, args: Namespace):
+        """Register all patch functions before import megatron"""
+        pass
+
+    def register_patches(self, patch_manager: MindSpeedPatchesManager, args: Namespace):
         """Register all patch functions the feature is related."""
+        pass
 
     def incompatible_check(self, global_args, check_args):
         """Register all incompatible functions the feature is related."""
