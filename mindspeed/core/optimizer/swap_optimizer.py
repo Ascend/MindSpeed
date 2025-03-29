@@ -4,6 +4,7 @@ from typing import List, Dict, Tuple
 import torch
 from megatron.core.optimizer.distrib_optimizer import DistributedOptimizer as MegatronDistributedOptimizer
 from megatron.core import tensor_parallel
+from megatron.training import get_args
 from mindspeed.ops.npu_apply_fused_adamw_v2 import npu_apply_fused_adamw_v2
 
 
@@ -43,7 +44,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
         # print swap param num and size
         swap_num = sum([key.numel() for key in self.main_param_to_model_param_map.keys()])
-        self.optimizer.swap_numel = swap_num // 4
+        self.optimizer.swap_numel = swap_num // get_args().swap_optimizer_times
         total_num = sum([sum([p.numel() for p in group['params']]) for group in self.optimizer.param_groups])
         swap_memory = swap_num * 12 / 1024 / 1024
         print('[Rank {}] swap optimizer: {} ({} MB)/{}\n'.format(torch.cuda.current_device(), swap_num, swap_memory,
@@ -561,6 +562,7 @@ def swap_adamw_step(self, closure=None):
         if len(state) == 0:
             state['exp_avg'] = torch.zeros_like(param, memory_format=torch.preserve_format)
             state['exp_avg_sq'] = torch.zeros_like(param, memory_format=torch.preserve_format)
+        if 'max_exp_avg_sq' not in state:
             state['max_exp_avg_sq'] = torch.zeros_like(param, memory_format=torch.preserve_format) if amsgrad else None
 
         # Swap adamw
