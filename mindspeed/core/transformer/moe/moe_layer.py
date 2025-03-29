@@ -89,6 +89,11 @@ def moe_layer_init_wrapper(init_func):
                 self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
                                                                 linear_fc2=RowParallelLinear,),
                                           shared_expert=True)
+            elif getattr(global_args, 'moe_fb_overlap', False):
+                from mindspeed.core.pipeline_parallel.fb_overlap import ColumnParallelLinear, RowParallelLinear
+                self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
+                                                                linear_fc2=RowParallelLinear,),
+                                          shared_expert=True)
             else:
                 from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
                 self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,

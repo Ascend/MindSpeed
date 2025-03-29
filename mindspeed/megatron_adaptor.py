@@ -228,7 +228,7 @@ def mcore_models_adaptation(aspm, mindspeed_args):
         aspm.register_patch('megatron.core.transformer.moe.moe_utils.track_moe_metrics', track_moe_metrics)
 
 
-    if mindspeed_args.recompute_norm:
+    if mindspeed_args.recompute_norm and not mindspeed_args.moe_fb_overlap:
         from .core.models.gpt.gpt_layer_specs import build_norm_recompute_layer_wrapper
         aspm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._build_layers', build_norm_recompute_layer_wrapper)
     
@@ -801,7 +801,7 @@ def mcore_moe_adaptation(pm, args):
     
     from .core.transformer.moe.experts import groupedmlp_init_wrapper, groupedmlp_forward
     pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.__init__', groupedmlp_init_wrapper)
-    if not args.moe_alltoall_overlap_comm and not args.moe_allgather_overlap_comm:
+    if not args.moe_alltoall_overlap_comm and not args.moe_allgather_overlap_comm and not args.moe_fb_overlap:
         pm.register_patch('megatron.core.transformer.moe.experts.GroupedMLP.forward', groupedmlp_forward)
 
     if args.use_ascend_mc2 and not hasattr(args, 'moe_grouped_gemm'):

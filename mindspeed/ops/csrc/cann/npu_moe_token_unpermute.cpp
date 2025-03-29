@@ -72,14 +72,19 @@ namespace {
             // The actual sorted_indices implemented by the aclnn operator are not sliced.
             // so, num_unpermuted_tokens is obtained by dividing sorted_indices.size(0) by topk
             int64_t num_unpermuted_tokens = sorted_indices.size(0) / topk;
-            at::Tensor unpermuted_tokens = at::empty({num_unpermuted_tokens, permuted_tokens.size(-1)}, permuted_tokens.options());
             at::Tensor probs_value = probs.has_value() ? probs.value() : at::Tensor();
-            ACLNN_CMD(aclnnMoeTokenUnpermute, permuted_tokens, sorted_indices, probs_value, padded_mode_vale, restore_shape_vale, unpermuted_tokens);
+            at::ScalarType target_dtype = probs_value.defined() ? probs_value.scalar_type() : permuted_tokens.scalar_type();
+            at::Tensor permuted_tokens_cast = permuted_tokens;
+            if (target_dtype == at::kFloat) {
+                permuted_tokens_cast = permuted_tokens.to(target_dtype);
+            }
+            at::Tensor unpermuted_tokens = at::empty({num_unpermuted_tokens, permuted_tokens.size(-1)}, permuted_tokens_cast.options());
+            ACLNN_CMD(aclnnMoeTokenUnpermute, permuted_tokens_cast, sorted_indices, probs_value, padded_mode_vale, restore_shape_vale, unpermuted_tokens);
             ctx->save_for_backward({permuted_tokens, sorted_indices, probs_value});
             ctx->saved_data["padded_mode"] = padded_mode_vale;
             ctx->saved_data["restore_shape"] = restore_shape;
 
-            return unpermuted_tokens;
+            return unpermuted_tokens.to(permuted_tokens.scalar_type());
         }
 
         static std::vector<at::Tensor> backward(
@@ -97,14 +102,21 @@ namespace {
 
             at::Tensor grad_unpermuted_tokens = grad_outputs[0];
             CheckMoeTokenUnpermuteBackward(grad_unpermuted_tokens, sorted_indices, probs);
+            at::ScalarType target_dtype = probs.defined() ? probs.scalar_type() : permuted_tokens.scalar_type();
+            at::Tensor permuted_tokens_cast = permuted_tokens;
+            if (target_dtype == at::kFloat) {
+                permuted_tokens_cast = permuted_tokens.to(target_dtype);
+                grad_unpermuted_tokens = grad_unpermuted_tokens.to(target_dtype);
+            }
 
-            at::Tensor grad_permuted_tokens = at::empty(permuted_tokens.sizes(), permuted_tokens.options());
+            at::Tensor grad_permuted_tokens = at::empty(permuted_tokens.sizes(), permuted_tokens_cast.options());
             at::Tensor grad_probs = probs.defined() ? at::empty(probs.sizes(), probs.options()) : at::empty({0}, permuted_tokens.options());
-            ACLNN_CMD(aclnnMoeTokenUnpermuteGrad, permuted_tokens, grad_unpermuted_tokens, sorted_indices, probs, padded_mode, restore_shape_vale, grad_permuted_tokens, grad_probs);
+            ACLNN_CMD(aclnnMoeTokenUnpermuteGrad, permuted_tokens_cast, grad_unpermuted_tokens,
+                      sorted_indices, probs, padded_mode, restore_shape_vale, grad_permuted_tokens, grad_probs);
             if (probs.defined()) {
-                return {grad_permuted_tokens, at::Tensor(), grad_probs, at::Tensor(), at::Tensor()};
+                return {grad_permuted_tokens.to(permuted_tokens.scalar_type()), at::Tensor(), grad_probs, at::Tensor(), at::Tensor()};
             } else {
-                return {grad_permuted_tokens, at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor()};
+                return {grad_permuted_tokens.to(permuted_tokens.scalar_type()), at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor()};
             }
         }
     };
