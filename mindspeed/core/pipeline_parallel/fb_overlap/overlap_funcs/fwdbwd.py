@@ -603,7 +603,7 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
     if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
         run_graph_backward(next_bwd_layer_graph.unperm2_graph, bwd_layer_graph.layer_input.grad, keep_graph=True)
 
-    next_layer_output_grad, next_bwd_unperm_a2a_handle = None, None
+    next_layer_output_grad, next_bwd_unperm_a2a_handle = bwd_layer_graph.layer_input.grad, None
     if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
         _, next_layer_output_grad, next_bwd_unperm_a2a_handle = async_all_to_all(
             next_bwd_layer_graph.unperm_a2a_graph[1].grad,
