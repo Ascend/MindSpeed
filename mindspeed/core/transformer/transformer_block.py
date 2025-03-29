@@ -1,3 +1,6 @@
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+
 from functools import wraps
 import torch
 from torch import Tensor
@@ -165,6 +168,8 @@ def _get_layer_offset(args):
     num_layers_per_pipeline_rank = (
         num_layers // parallel_state.get_pipeline_model_parallel_world_size()
     )
+    if args.schedules_method == 'dualpipev':
+        num_layers_per_pipeline_rank = num_layers_per_pipeline_rank // 2
 
     if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
         vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
@@ -178,7 +183,11 @@ def _get_layer_offset(args):
     else:
         # Each stage gets a contiguous set of layers.
         if parallel_state.get_pipeline_model_parallel_world_size() > 1:
-            offset = pipeline_rank * num_layers_per_pipeline_rank
+            if getattr(args, 'dualpipev_first_chunk', True):
+                offset = pipeline_rank * num_layers_per_pipeline_rank
+            else:
+                offset = num_layers - (pipeline_rank + 1) * num_layers_per_pipeline_rank
+
         else:
             offset = 0
     return offset
