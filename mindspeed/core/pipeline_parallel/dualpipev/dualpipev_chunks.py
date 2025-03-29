@@ -1,5 +1,6 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
+from functools import wraps
 import torch
 from typing import List, Optional
 from megatron.core import mpu, tensor_parallel
@@ -204,48 +205,17 @@ def get_num_layers_to_build(config: TransformerConfig) -> int:
     return num_layers_to_build
 
 
-def finalize_model_grads(model: List[torch.nn.Module], num_tokens: Optional[torch.Tensor] = None):
-    """
-    All-reduce all model grads across DP replicas, layernorm grads for sequence parallelism,
-    embedding grads across first and last pipeline stages (if not tied),
-    scale gradients by `num_tokens`.
-    """
+def _allreduce_embedding_grads_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if get_args().schedules_method == 'dualpipev':
+            # dualpipev no need to do embedding allreduce
+            # embedding and lm head are on save rank.
+            if not get_args().untie_embeddings_and_output_weights:
+                raise NotImplementedError
+            else:
+                return
+        else:
+            return fn(*args, **kwargs)
 
-    config = get_model_config(model[0])
-
-    # All-reduce / reduce-scatter across DP replicas.
-    if config.timers is not None:
-        config.timers('all-grads-sync',
-                      log_level=1).start(barrier=config.barrier_with_L1_time)
-    for model_chunk in model:
-        model_chunk.finish_grad_sync()
-    if config.timers is not None:
-        config.timers('all-grads-sync').stop()
-
-    # All-reduce layer-norm grads (for sequence parallelism).
-    if config.timers is not None:
-        config.timers('layernorm-grads-all-reduce', log_level=1).start(
-            barrier=config.barrier_with_L1_time
-        )
-    _allreduce_layernorm_grads(model, config)
-    if config.timers is not None:
-        config.timers('layernorm-grads-all-reduce').stop()
-
-    # normalize gradients for per-token loss normalization.
-    # if we are using by the number of tokens, then we use that as a divisor. this number
-    # will be the total number of non-padded tokens in the global batch.
-    if num_tokens is not None:
-        # the number of tokens is only present on the last stage, so broadcast it
-        # to the other ranks in the pipeline parallel group.
-        torch.distributed.broadcast(
-            num_tokens,
-            src=parallel_state.get_pipeline_model_parallel_last_rank(),
-            group=parallel_state.get_pipeline_model_parallel_group(),
-        )
-        # all-reduce across DP ranks.
-        torch.distributed.all_reduce(
-            num_tokens, group=parallel_state.get_data_parallel_group())
-        for model_chunk in model:
-            if num_tokens > 0:
-                scaling = 1.0 / num_tokens
-                model_chunk.scale_gradients(scaling)
+    return wrapper

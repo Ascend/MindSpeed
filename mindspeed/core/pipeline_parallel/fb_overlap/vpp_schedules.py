@@ -25,7 +25,6 @@ from megatron.core.utils import (
     get_model_config,
     get_model_type,
 )
-from pretrain_gpt import get_batch, loss_func, stimer
 from .gpt_model import gpt_model_backward
 from .modules.utils import P2PCommParams
 
@@ -221,24 +220,24 @@ def forward_step_vpp_overlap(data_iterator, model, extra_block_kwargs=None):
         data_iterator : Input data iterator
         model (GPTModel): The GPT Model
     """
+    from pretrain_gpt import get_batch, loss_func
     timers = get_timers()
 
     # Get the batch.
     timers('batch-generator', log_level=2).start()
-    with stimer(bdata=True):
-        tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
-            data_iterator)
+
+    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data_iterator)
     timers('batch-generator').stop()
 
-    with (stimer):
-        if extra_block_kwargs is not None:
-            # excute forward backward overlaping
-            output_tensor, model_graph, pp_comm_output = \
-            model(tokens, position_ids, attention_mask, labels=labels, extra_block_kwargs=extra_block_kwargs)
-            return (output_tensor, model_graph, pp_comm_output), partial(loss_func, loss_mask)
-        else:
-            output_tensor, model_graph = model(tokens, position_ids, attention_mask, labels=labels)
-            return (output_tensor, model_graph), partial(loss_func, loss_mask)
+
+    if extra_block_kwargs is not None:
+        # excute forward backward overlaping
+        output_tensor, model_graph, pp_comm_output = \
+        model(tokens, position_ids, attention_mask, labels=labels, extra_block_kwargs=extra_block_kwargs)
+        return (output_tensor, model_graph, pp_comm_output), partial(loss_func, loss_mask)
+    else:
+        output_tensor, model_graph = model(tokens, position_ids, attention_mask, labels=labels)
+        return (output_tensor, model_graph), partial(loss_func, loss_mask)
 
 
 def forward_backward_pipelining_with_interleaving(

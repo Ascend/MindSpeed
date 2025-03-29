@@ -1032,6 +1032,10 @@ def adaptation_l0(aspm, mindspeed_args):
     mcore_parallel_state_adaptation(aspm)
     communication_adaptation(aspm, mindspeed_args)
 
+    for feature in FEATURES_LIST:
+        if (getattr(mindspeed_args, feature.feature_name, None) and feature.optimization_level == 0) or feature.default_patches:
+            feature.register_patches(aspm, mindspeed_args)
+
 
 def adaptation_l1(aspm, mindspeed_args):
     """
@@ -1042,6 +1046,10 @@ def adaptation_l1(aspm, mindspeed_args):
     legacy_model_fusions_adaptation(aspm)
     # affinity optimization
     mcore_tensor_parallel_adaptation_l1(aspm)
+
+    for feature in FEATURES_LIST:
+        if getattr(mindspeed_args, feature.feature_name, None) and feature.optimization_level == 1:
+            feature.register_patches(aspm, mindspeed_args)
 
 
 def adaptation_l2(aspm, mindspeed_args):
@@ -1070,6 +1078,10 @@ def adaptation_l2(aspm, mindspeed_args):
     tensor_2d_adaptation(aspm, mindspeed_args)
     auto_parallel_mm_adaptation(aspm, mindspeed_args)
     dist_train_adaptation(aspm, mindspeed_args)
+
+    for feature in FEATURES_LIST:
+        if getattr(mindspeed_args, feature.feature_name, None) and feature.optimization_level == 2:
+            feature.register_patches(aspm, mindspeed_args)
 
 
 def delete_lock_file(directory, lock):
@@ -1129,13 +1141,6 @@ def exe_adaptation():
         # layerzero features
         megatron_training_adaptation_with_layerzero(aspm, mindspeed_args)
         
-    aspm.apply_patches()
-
-    # New features structure
-    for feature in FEATURES_LIST:
-        if getattr(mindspeed_args, feature.feature_name, None) or feature.default_patches:
-            feature.register_patches(aspm, mindspeed_args)
-
     aspm.apply_patches()
 
     # accelerate package will check TE on sys.modules，so we need remove this patch
