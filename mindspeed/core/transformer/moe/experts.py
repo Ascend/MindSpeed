@@ -14,6 +14,9 @@ from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_allga
 from mindspeed.core.transformer.moe import grouped_gemm_util as gg
 
 
+COMM_STREAM = None
+
+
 def get_zeros_with_tp(input_):
     world_size = parallel_state.get_tensor_model_parallel_world_size()
     zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size,)
@@ -31,10 +34,11 @@ def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert
     zero_tensor = torch.zeros(1, dtype=torch.long, device=cumsum_num_tokens.device)
     cumsum_num_tokens = torch.cat((zero_tensor, cumsum_num_tokens))
 
+    global COMM_STREAM
     if parallel_state.get_tensor_model_parallel_world_size() > 1:
-        if not hasattr(self, 'comm_stream'):
-            self.comm_stream = torch.cuda.Stream()
-        self.comm_stream.wait_stream(torch.cuda.current_stream())
+        if COMM_STREAM is None:
+            COMM_STREAM = torch.cuda.Stream()
+        COMM_STREAM.wait_stream(torch.cuda.current_stream())
 
     for expert_num, expert in enumerate(self.local_experts):
         start = cumsum_num_tokens[expert_num]
@@ -42,9 +46,9 @@ def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert
         hidden = permuted_local_hidden_states[start:end]
 
         if parallel_state.get_tensor_model_parallel_world_size() > 1:
-            with torch.cuda.stream(self.comm_stream):
+            with torch.cuda.stream(COMM_STREAM):
                 hidden = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(hidden)
-            torch.cuda.current_stream().wait_stream(self.comm_stream)
+            torch.cuda.current_stream().wait_stream(COMM_STREAM)
 
         output, output_bias = expert(hidden)
 
