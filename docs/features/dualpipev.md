@@ -15,7 +15,8 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 ![dualpipev](../../sources/images/dualpipev.png)
 图中0~9和10~19代表同一个microbatch在同一张卡上的两个stage。绿色部分代表不同microbatch的前反向并行，开启跨micro batch前反向通信掩盖后，All2All通信和P2P通信都可以被没有依赖关系的计算掩盖，该特性的详细介绍参见[MoE跨microbatch前反向通信掩盖](megatron_moe/megatron-moe-fb-overlap.md)。
 
-在warmup阶段，MindSpeed实现了尽可能多得P2P通信掩盖。在cooldown阶段，DualPipeV实现中PP尾卡会连续计算PP_size个反向stage，在对应的dw计算完成之前，激活值并不会完全释放，这会导致在重计算或其他内存特性场景下，cooldown阶段的峰值内存被大大拉高。因此MindSpeed实现中取消了cooldown阶段的dw分离，以较小的性能代价降低了重计算场景下内存峰值。
+在warmup阶段，MindSpeed实现了尽可能多得P2P通信掩盖。在cooldown阶段，DualPipeV实现中PP尾卡会连续计算PP_size个反向stage，在对应的dw计算完成之前，激活值并不会完全释放，这会导致在某些重计算或其他内存特性场景下，cooldown阶段的峰值内存被大大拉高。因此MindSpeed实现中默认取消了cooldown阶段的dw分离，以较小的性能代价降低了重计算场景下内存峰值。同时也给出了dw分离的参数选项，开启dw分离时的流水如下图所示。
+![dualpipev_dw_detach](../../sources/images/dualpipev_dw_detach.png)。
 
 下图展示了在DeepseekV3 671B模型上采用PP8 TP2 EP32 DualPipeV策略采集的PP通信组profiling。
 ![dualpipev_profiling](../../sources/images/dualpipev_profiling.png)
@@ -49,6 +50,8 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 
 ## 使用方法
 在启动脚本中添加`--schedules-method dualpipev` 和`--moe-fb-overlap`。
+
+在启动脚本中额外添加`--dualpipev-dw-detach` 来开启cooldown阶段的dw分离。
 
 使用DualPipeV时，模型层数设置应为`PP*2`的倍数。同时每个PP组的micro batch数至少设置为`PP*2`。
 

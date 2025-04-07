@@ -14,12 +14,17 @@ class DualpipeVFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--schedules-method', type=str,
                            default=None, choices=['dualpipev'])
+        group.add_argument('--dualpipev-dw-detach', action='store_true',
+                           help='detach dw in cooldown to reduce bubble')
 
     def validate_args(self, args):
         if args.schedules_method == "dualpipev":
             if args.num_layers_per_virtual_pipeline_stage is not None:
                 raise AssertionError(
                     "The dualpipev and virtual_pipeline are incompatible.")
+            if args.pipeline_model_parallel_size == 1:
+                raise AssertionError(
+                    "pipeline_model_parallel_size should be larger than 1 with dualpipev schedules")
             if args.num_layers < args.pipeline_model_parallel_size * 2:
                 raise AssertionError(
                     'number of layers must be at least 2*pipeline_model_parallel_size in dualpipe')

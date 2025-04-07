@@ -708,7 +708,6 @@ def forward_backward_pipelining_with_cutinhalf(
 ):
     args = get_args()
     args.moe_fb_overlap = True
-    args.dualpipe_no_dw_detach = True
 
     set_shared_embedding_from_dual_chunk(model[0], model[1])
     assert (
@@ -1435,7 +1434,7 @@ def forward_backward_pipelining_with_cutinhalf(
         input_tensor_bwd = merged_input_tensors.pop(0)[1]
         output_tensor_bwd, bwd_model_chunk_id = merged_output_tensors.pop(0)
 
-        if not args.dualpipe_no_dw_detach:
+        if args.dualpipev_dw_detach:
             WeightGradStore.start_decouple()
 
         if args.moe_fb_overlap:
@@ -1449,7 +1448,7 @@ def forward_backward_pipelining_with_cutinhalf(
                 input_tensor_bwd, output_tensor_bwd, output_tensor_grad_bwd, model_type, config
             )
 
-        if not args.dualpipe_no_dw_detach:
+        if args.dualpipev_dw_detach:
             WeightGradStore.end_decouple()
 
         if i == pp_size - 1:
