@@ -136,14 +136,30 @@ class RingP2P:
 
         self.send_recv_ops = []
     
-    def async_send_recv(self, send_tensor, recv_tensor):
+    def async_send_recv(self, send_tensor, recv_tensor, shapes=None):
         if self.ring_rank % 2 == 0:
+            if shapes is not None:
+                send_tensor_shape_list = list(send_tensor.shape)
+                send_tensor_shape_list[-3] = shapes[0]
+                send_tensor.resize_(send_tensor_shape_list)
             send_op = dist.isend(send_tensor, self.next, self.group)
+            if shapes is not None:
+                recv_tensor_shape_list = list(recv_tensor.shape)
+                recv_tensor_shape_list[-3] = shapes[1]
+                recv_tensor.resize_(recv_tensor_shape_list)
             recv_op = dist.irecv(recv_tensor, self.prev, self.group_for_send_recv_overlap)
             self.send_recv_ops.append(send_op)
             self.send_recv_ops.append(recv_op)
         else:
+            if shapes is not None:
+                recv_tensor_shape_list = list(recv_tensor.shape)
+                recv_tensor_shape_list[-3] = shapes[1]
+                recv_tensor.resize_(recv_tensor_shape_list)
             recv_op = dist.irecv(recv_tensor, self.prev, self.group)
+            if shapes is not None:
+                send_tensor_shape_list = list(send_tensor.shape)
+                send_tensor_shape_list[-3] = shapes[0]
+                send_tensor.resize_(send_tensor_shape_list)
             send_op = dist.isend(send_tensor, self.next, self.group_for_send_recv_overlap)
             self.send_recv_ops.append(recv_op)
             self.send_recv_ops.append(send_op)

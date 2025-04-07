@@ -33,7 +33,7 @@ class ContextParallelKVCache:
 
         self.k_out, self.v_out = None, None
 
-    def communicate_outer_ring_kv(self, index) -> None:
+    def communicate_outer_ring_kv(self, index, shapes=None) -> None:
         """
         Implements of kv communications in outer ring
 
@@ -68,9 +68,9 @@ class ContextParallelKVCache:
         first_step_with_full_cache = self.cache_policy == "full" and index > 0
 
         if not first_step_with_full_cache and not is_last_step:
-            self.outer_ring_p2p.async_send_recv(send_tensor=self.cur_kv, recv_tensor=self.outer_next_kv)
+            self.outer_ring_p2p.async_send_recv(send_tensor=self.cur_kv, recv_tensor=self.outer_next_kv, shapes=shapes)
 
-    def communicate_inner_ring_kv(self, index):
+    def communicate_inner_ring_kv(self, index, shapes=None):
         """
         Implements of kv communications in inner ring
 
@@ -103,7 +103,7 @@ class ContextParallelKVCache:
         first_step_with_full_cache = self.cache_policy == "full" and total_index > 0
 
         if not first_step_with_full_cache and not is_last_step:
-            self.inner_ring_p2p.async_send_recv(send_tensor=self.cur_kv, recv_tensor=self.inner_next_kv)
+            self.inner_ring_p2p.async_send_recv(send_tensor=self.cur_kv, recv_tensor=self.inner_next_kv, shapes=shapes)
 
         cache_index = self.cp_size - total_index - 1
         if self.cache_policy is None:

@@ -414,6 +414,11 @@ def flash_attention_with_alibi_pse_grad(q_block_id, kv_block_id, cur_qkv, cur_do
     return attn_grad_outs
 
 
+def get_unaligned_cp_shapes(shapes, block_id, next_block_id):
+    if shapes is None:
+        return None
+    unaligned_cp_shapes = [shapes[block_id], shapes[next_block_id]]
+    return unaligned_cp_shapes
 
 
 class AttentionWithCp(torch.autograd.Function):
@@ -422,7 +427,7 @@ class AttentionWithCp(torch.autograd.Function):
     
     @staticmethod
     def forward(ctx, q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
-                packed_seq_params=None):
+                packed_seq_params=None, shapes=None):
         keep_prob = 1. - dropout_p
         causal = cp_para['causal']
         cp_group = cp_para.get("cp_group")
@@ -496,11 +501,13 @@ class AttentionWithCp(torch.autograd.Function):
             kv_block_id = kv_block_id_outer
             kv_block_offset = (kv_block_id // inner_size) * inner_size
             if j < outer_size - 1:
-                outer_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_round_kv)
+                next_kv_block_id_outer = (kv_block_id_outer + cp_size - inner_size) % cp_size
+                outer_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_round_kv, shapes=get_unaligned_cp_shapes(shapes, kv_block_id_outer, next_kv_block_id_outer))
             for i in range(inner_size):
                 # wait until KV is received from recv_src
                 if i < inner_size - 1:
-                    inner_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_kv)
+                    next_kv_block_id = (kv_block_id + inner_size - 1) % inner_size + kv_block_offset
+                    inner_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_kv, shapes=get_unaligned_cp_shapes(shapes, kv_block_id, next_kv_block_id))
 
                 cur_k, cur_v = cur_kv[0], cur_kv[1] # [2, s, b, h]
 
@@ -588,17 +595,30 @@ class AttentionWithCp(torch.autograd.Function):
                         attn_mask
                     )
 
+                    layout = "SBH"
+                    pre_tockens_value = cur_k.shape[0]
+
+                    cur_q = q
+                    if megatron_cp_in_bnsd:
+                        cur_q = rearrange(q, 's b (h d) -> b h s d', h=n).contiguous()
+                        kv_n = cur_v.shape[2] // cur_q.shape[3]
+                        cur_k, cur_v = [rearrange(x, 's b (h d) -> b h s d', h=kv_n).contiguous() for x in [cur_k, cur_v]]
+                        layout = "BNSD"
+                        pre_tockens_value = cur_k.shape[2]
+
                     attn_outs = torch_npu.npu_fusion_attention(
-                        q, cur_k, cur_v, n, "SBH",
+                        cur_q, cur_k, cur_v, n, layout,
                         pse=None,
                         padding_mask=None,
                         atten_mask=this_mask,
                         scale=softmax_scale,
-                        pre_tockens=cur_k.shape[0],
-                        next_tockens=cur_k.shape[0],
+                        pre_tockens=pre_tockens_value,
+                        next_tockens=pre_tockens_value,
                         keep_prob=keep_prob,
                         sparse_mode=1
                     )
+                    if megatron_cp_in_bnsd:
+                        attn_outs = rearrange(attn_outs[0], 'b h s d -> s b (h d)').contiguous(), attn_outs[1], attn_outs[2], attn_outs[3], attn_outs[4], attn_outs[5], attn_outs[6]
 
                     global_attn_outs = general_out_update(q_block_id, kv_block_id, attn_outs, global_attn_outs)
                 
@@ -649,6 +669,7 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.megatron_cp_in_bnsd = megatron_cp_in_bnsd
         ctx.bsz = bsz
         ctx.cache_policy = cache_policy
+        ctx.shapes = shapes
 
         if causal and is_eod_reset:
             ctx.q_index = q_index
@@ -683,6 +704,7 @@ class AttentionWithCp(torch.autograd.Function):
         cp_group_for_intra_window_send_recv_overlap = ctx.cp_group_for_intra_window_send_recv_overlap
         cache_policy = ctx.cache_policy
         is_eod_reset = ctx.is_eod_reset
+        shapes = ctx.shapes
         if causal and is_eod_reset:
             dout = sbh_to_tnd(dout, n)
         # Reversed order of forward
@@ -803,35 +825,53 @@ class AttentionWithCp(torch.autograd.Function):
                     ctx.actual_seq_qlen, ctx.actual_seq_kvlen,
                     q_block_id, kv_block_id, 
                     attn_mask
-                )                
+                )
+                layout = "SBH"
+                pre_tockens_value = cur_k.shape[0]
+                cur_q = q
+                cur_dout = dout
+                cur_attn_out = attn_out
+                if megatron_cp_in_bnsd:
+                    cur_q, cur_dout, cur_attn_out = [rearrange(x, 's b (h d) -> b h s d', h=n).contiguous() for x in [q, dout, attn_out]]
+                    kv_n = cur_v.shape[2] // cur_q.shape[3]
+                    cur_k, cur_v = [rearrange(x, 's b (h d) -> b h s d', h=kv_n).contiguous() for x in [cur_k, cur_v]]
+                    layout = "BNSD"
+                    pre_tockens_value = cur_k.shape[2]
                 attn_grad_outs = torch_npu.npu_fusion_attention_grad(
-                    q, cur_k, cur_v, dout, n,
-                    "SBH",
+                    cur_q, cur_k, cur_v, cur_dout, n,
+                    layout,
                     pse=None,
                     padding_mask=None,
                     atten_mask=this_mask,
                     softmax_max=softmax_max,
                     softmax_sum=softmax_sum,
-                    attention_in=attn_out,
+                    attention_in=cur_attn_out,
                     scale_value=softmax_scale,
-                    pre_tockens=cur_k.shape[0],
-                    next_tockens=cur_k.shape[0],
+                    pre_tockens=pre_tockens_value,
+                    next_tockens=pre_tockens_value,
                     sparse_mode=1,
                     keep_prob=keep_prob,
                     seed=rng_states[kv_block_id][0],
                     offset=rng_states[kv_block_id][1],
                     numels=rng_states[kv_block_id][2],
                 )
+                if megatron_cp_in_bnsd:
+                    attn_grad_outs = [rearrange(x, 'b h s d -> s b (h d)').contiguous() for x in [attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]]]
                 cur_dq, cur_dk, cur_dv = attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]
             
             return cur_dq, cur_dk, cur_dv
 
+        q_block_id, kv_block_id, kv_block_id_outer = rank, ctx.kv_block_id, ctx.kv_block_id
 
-        cur_dkv = torch.zeros((2, *k_stack[-1].shape), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
+        if shapes:
+            cur_shapes_list = list(k_stack[-1].shape)
+            cur_shapes_list[-3] = shapes[kv_block_id]
+            cur_dkv = torch.zeros((2, *cur_shapes_list), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
+        else:
+            cur_dkv = torch.zeros((2, *k_stack[-1].shape), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
         next_dkv = cur_dkv.clone()
         next_round_dkv = cur_dkv.clone()
 
-        q_block_id, kv_block_id, kv_block_id_outer = rank, ctx.kv_block_id, ctx.kv_block_id
 
         outer_data = (outer_size, inter_kv_comm)
         inner_data = (inner_size, intra_kv_comm)
@@ -842,13 +882,15 @@ class AttentionWithCp(torch.autograd.Function):
             kv_block_id = kv_block_id_outer
             kv_block_offset = (kv_block_id // inner_size) * inner_size
 
-            cp_kv_cache.communicate_outer_ring_kv(j)
+            next_kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_size
+            cp_kv_cache.communicate_outer_ring_kv(j, shapes=get_unaligned_cp_shapes(shapes, kv_block_id, next_kv_block_id_outer))
 
             for i in range(inner_size):
-                cur_k, cur_v = cp_kv_cache.communicate_inner_ring_kv(i)
+                next_kv_block_id = (kv_block_id + 1) % inner_size + kv_block_offset
+
+                cur_k, cur_v = cp_kv_cache.communicate_inner_ring_kv(i, get_unaligned_cp_shapes(shapes, kv_block_id, next_kv_block_id))
 
                 dq_step, dk_step, dv_step = backward_step_helper(q_block_id, kv_block_id, q, cur_k, cur_v)
-
                 if i == 0 and j > 0: # receive dk dv from last window
                     inter_dkv_comm.wait()
                     cur_dkv, next_round_dkv = next_round_dkv, cur_dkv
@@ -868,26 +910,26 @@ class AttentionWithCp(torch.autograd.Function):
                     dk.add_(dk_step)
                     dv.add_(dv_step)
 
+                next_kv_block_id = (kv_block_id + 1) % inner_size + kv_block_offset
                 if i + 1 != inner_size:
-                    intra_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_dkv)
+                    intra_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_dkv, shapes=get_unaligned_cp_shapes(shapes, kv_block_id, next_kv_block_id))
 
-                kv_block_id = (kv_block_id + 1) % inner_size + kv_block_offset
+                kv_block_id = next_kv_block_id
 
             if intra_dkv_comm.wait():
                 cur_dkv, next_dkv = next_dkv, cur_dkv
 
+            next_kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_size
             if j + 1 != outer_size:
-                inter_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_round_dkv)
+                inter_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_round_dkv, shapes=get_unaligned_cp_shapes(shapes, kv_block_id, next_kv_block_id_outer))
 
-            kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_size
+            kv_block_id_outer = next_kv_block_id_outer
 
         if inter_dkv_comm.wait():
             cur_dkv, next_round_dkv = next_round_dkv, cur_dkv
 
         dk, dv = cur_dkv[0], cur_dkv[1]
 
-
-        # [2, s, b, h] -> [2s, b, h]
         if causal and is_eod_reset:
             dq, dk, dv = [tnd_to_sbh(x, ctx.bsz) for x in [dq, dk, dv]]
         elif causal:
@@ -929,11 +971,11 @@ class AttentionWithCp(torch.autograd.Function):
 
 
 def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
-                              packed_seq_params=None):
+                              packed_seq_params=None, shapes=None):
     AttentionWithCp.block_size = q.shape[0]
     AttentionWithCp.batch_size = q.shape[1]
     out = AttentionWithCp.apply(
         q, k, v, n, cp_para, softmax_scale, attn_mask, dropout_p,
-        packed_seq_params
+        packed_seq_params, shapes
     )
     return out
