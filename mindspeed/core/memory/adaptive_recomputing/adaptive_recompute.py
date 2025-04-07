@@ -760,6 +760,7 @@ def setup_model_and_optimizer_wrapper(setup_model_and_optimizer):
             optimizer.step = recomputing.hook_step_func(optimizer.step, models)
         if isinstance(models, list):
             for index, model in enumerate(models):
+
                 recomputing.construct_context_recursive("module" + str(index), model, recomputing.context, True)
                 if not args.swap_attention:
                     recomputing.register_recursive_hook(model, recomputing.context, recomputing.profiling_prefix,

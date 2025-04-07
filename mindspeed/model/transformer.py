@@ -59,6 +59,7 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                            get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.parallel_state import get_tensor_model_parallel_world_size_for_nd1_dim1
+from mindspeed.core.pipeline_parallel.unaligned.unaligned_pipeline import get_layer_offset_pp_vp_unaligned
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm
 from mindspeed.core.tensor_parallel.comm_group_api import TPXOverlapCollectiveComm
 from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
@@ -489,6 +490,16 @@ def parallel_transformer_init(self, config,
                     offset = (pipeline_rank - num_ranks_in_enc) * self.num_layers
             else:
                 offset = mpu.get_pipeline_model_parallel_rank() * self.num_layers
+
+        if config.pipeline_num_transformer_layers:
+            pp_rank = parallel_state.get_pipeline_model_parallel_rank()
+            vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
+            pipeline_num_transformer_layers = config.pipeline_num_transformer_layers
+            if vpp_rank is None:
+                vpp_rank = 0
+            self.num_layers = pipeline_num_transformer_layers[pp_rank][vpp_rank]
+            offsets = get_layer_offset_pp_vp_unaligned(pipeline_num_transformer_layers)
+            offset = offsets[pp_rank][vpp_rank]
 
         if self.num_layers == 0:
             # When a standalone embedding stage is used (e.g.,

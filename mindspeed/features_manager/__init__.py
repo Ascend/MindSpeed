@@ -8,6 +8,7 @@ from mindspeed.features_manager.megatron_basic.requirements_basic import Require
 from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBasicFeature
 
 from mindspeed.features_manager.tensor_parallel.unaligned_linear_feature import UnalignedLinearFeature
+from mindspeed.features_manager.pipeline_parallel.unaligned_pineline_feature import UnalignedPipelineFeature
 
 from mindspeed.features_manager.llava.llava_multimodal import LlavaModel
 
@@ -17,7 +18,8 @@ FEATURES_LIST = [
     # Tensor parallel features
     UnalignedLinearFeature(),
     # llava-multimodal
-    LlavaModel()
+    LlavaModel(),
+    UnalignedPipelineFeature()
 ]
 
 # this list is for reconstruction of mindspeed
