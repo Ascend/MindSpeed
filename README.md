@@ -157,21 +157,22 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 -  特性的介绍中说明了对应特性的应用场景及使用说明。一般而言，在脚本中加入相关参数即可轻松使用对应特性。🛰️
 
--  当前大模型训练主要使用bf16数据类型，以下特性若无特殊声明原则上兼容fp16, 如遇到fp16场景下相关问题请联系 MindSpeed 团队或提交issue, 我们会快速响应。🛰️
+-  MindSpeed 加速特性仅支持mcore，这也是megatron在v0.6.0版本后主推分支，也是当前版本的默认分支。🛰️
+
+-  当前大模型训练主要使用bf16数据类型，以下特性若无特殊声明原则上兼容fp16, 如使用其它数据类型遇到问题可提交issue, 我们会快速响应。🛰️
+
 ## Megatron特性支持
 
 <table><thead>
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
+    <th>Released</th>
   </tr></thead>
 <tbody>
   <tr>
     <td rowspan="5"> Megatron 数据并行</td>
     <td><a href="docs/features/data-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
@@ -179,13 +180,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Megatron 张量并行</td>
     <td><a href="docs/features/tensor-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Megatron 流水并行</td>
     <td><a href="docs/features/pipeline-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -193,13 +192,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Megatron 虚拟流水并行</td>
     <td><a href="docs/features/virtual-pipeline-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Megatron 分布式优化器</td>
     <td><a href="docs/features/distributed-optimizer.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -207,13 +204,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Megatron 序列并行</td>
     <td><a href="docs/features/sequence-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Megatron 异步DDP</td>
     <td><a href="docs/features/async-ddp.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -221,13 +216,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Megatron 权重更新通信隐藏 </td>
     <td><a href="docs/features/async-ddp-param-gather.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Megatron 重计算</td>
     <td><a href="docs/features/recomputation.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 
@@ -240,8 +233,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
@@ -249,23 +240,17 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend Ulysses 长序列并行</td>
     <td><a href="docs/features/ulysses-context-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend Ring Attention 长序列并行</td>
     <td><a href="docs/features/ring-attention-context-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
    <tr>
     <td rowspan="5"> Ascend Double Ring Attention 长序列并行</td>
     <td><a href="docs/features/double-ring.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   <tbody>
@@ -273,15 +258,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend 混合长序列并行</td>
     <td><a href="docs/features/hybrid-context-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend 自定义空操作层</td>
     <td><a href="docs/features/noop-layers.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -294,72 +275,48 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
   <tr>
-    <td rowspan="5"> Ascend 自适应选择重计算 </td>
-    <td><a href="docs/features/adaptive-recompute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
     <td rowspan="5"> Ascend 激活函数重计算 </td>
     <td><a href="docs/features/activation-function-recompute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend 重计算流水线独立调度 </td>
     <td><a href="docs/features/recompute_independent_pipelining.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend Mask归一</td>
     <td><a href="docs/features/generate-mask.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend BF16 参数副本复用</td>
     <td><a href="docs/features/reuse-fp32-param.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend swap_attention</td>
     <td><a href="docs/features/swap_attention.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   <tbody>
     <tr>
     <td rowspan="5">  Ascend Norm重计算</td>
     <td><a href="docs/features/norm-recompute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
     <tr>
     <td rowspan="5">  Ascend Hccl Buffer 自适应</td>
     <td><a href="docs/features/hccl-group-buffer-set.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
@@ -371,8 +328,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
@@ -380,15 +335,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend rms_norm 融合算子 </td>
     <td><a href="docs/features/rms_norm.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend swiglu 融合算子 </td>
     <td><a href="docs/features/swiglu.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -396,15 +347,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend rotary_embedding 融合算子 </td>
     <td><a href="docs/features/rotary-embedding.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend flash attention</td>
     <td><a href="docs/features/flash-attention.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -412,47 +359,35 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5">  Ascend Moe Token Permute and Unpermute 融合算子</td>
     <td><a href="docs/features/moe-token-permute-and-unpermute.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend npu_matmul_add_fp32 梯度累加融合算子</td>
     <td><a href="docs/features/npu_matmul_add.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
    <tr>
     <td rowspan="5">  Ascend Moe BMM通算融合算子</td>
     <td><a href="docs/features/megatron_moe/megatron-moe-bmm-fused.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
     <tbody>
     <tr>
     <td rowspan="5">  Ascend 计算通信并行优化</td>
     <td><a href="docs/features/communication-over-computation.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
     <tbody>
     <tr>
     <td rowspan="5"> Ascend MC2（存在已知问题⚠️）</td>
     <td><a href="docs/features/mc2.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
     <tbody>
     <tr>
     <td rowspan="5">  Ascend fusion_attention_v2 </td>
     <td><a href="docs/features/fusion-attn-v2.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
@@ -464,8 +399,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
@@ -473,23 +406,17 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend nano-pipe流水线并行 </td>
     <td><a href="docs/features/nanopipe-pipeline-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend Gloo 存档落盘优化 </td>
     <td><a href="docs/features/hccl-replace-gloo.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend 高维张量并行  </td>
     <td><a href="docs/features/tensor-parallel-2d.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   </table>
@@ -500,8 +427,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
@@ -509,15 +434,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend Megatron MoE GMM  </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-gmm.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend Megatron MoE Allgather Dispatcher 性能优化  </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -525,15 +446,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend Megatron MoE Alltoall Dispatcher 性能优化 </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend Megatron MoE TP拓展EP </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-tp-extend-ep.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
@@ -541,71 +458,15 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5"> Ascend 共享专家  </td>
     <td><a href="docs/features/shared-experts.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend Megatron MoE 负载感知内存均衡算 </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-adaptive-recompute-activation.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
 
-
-## DeepSpeed MoE特性
-
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> DeepSpeed MoE   </td>
-    <td><a href="docs/features/deepspeed_moe/deepspeed-moe.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend DeepSpeed MoE token 重排性能优化  </td>
-    <td><a href="docs/features/deepspeed_moe/deepspeed-moe-token-rearrange.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend DeepSpeed MoE dropless 性能优化 </td>
-    <td><a href="docs/features/deepspeed_moe/deepspeed-moe-efficient-moe.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend MLP 通信隐藏 </td>
-    <td><a href="docs/features/pipeline-experts.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Ampipe流水通信隐藏  </td>
-    <td><a href="docs/features/ampipe.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-</table>
 
 ## 关键场景特性
 
@@ -613,8 +474,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
@@ -622,15 +481,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td rowspan="5">  Ascend EOD Reset训练场景   </td>
     <td><a href="docs/features/eod-reset.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend alibi  </td>
     <td><a href="docs/features/alibi.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
@@ -641,40 +496,30 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend fused ema adamw优化器   </td>
     <td><a href="docs/features/fused_ema_adamw_optimizer.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend PP支持动态形状</td>
     <td><a href="docs/features/variable_seq_lengths.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend PP支持多参数传递</td>
     <td><a href="docs/features/multi_parameter_pipeline.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend PP支持多参数传递和动态形状</td>
     <td><a href="docs/features/multi_parameter_pipeline_and_variable_seq_lengths.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
@@ -685,39 +530,32 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <th width='250'>特性名称</th>
     <th>介绍</th>
-    <th>Mcore</th>
-    <th>Legacy</th>
     <th>Released</th>    
   </tr></thead>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend TFLOPS计算   </td>
     <td><a href="docs/features/ops_flops_cal.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend Auto Tuning 并行策略自动搜索系统 </td>
     <td><a href="docs/features/auto_tuning.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend 确定性计算  </td>
     <td><a href="docs/features/npu_deterministic.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
 
 
 ## 自定义算子
 
+昇腾训练自定义算子统一由torch_npu提供API，以下API预计2025年q4起不维护，请优先使用torch_npu提供的自定义算子，如有新需求或问题可提issue反馈，我们会尽快回复。
 
 部分自定义算子设置为公开接口，公开接口设置说明请参照 MindSpeed 安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。
 
@@ -783,6 +621,42 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr>
 <tbody>
   <tr>
+    <td rowspan="5"> npu_fused_moe_token_permute  </td>
+    <td><a href="docs/ops/npu_fused_moe_token_permute.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
+  <tr>
+    <td rowspan="5"> npu_fused_moe_token_unpermute  </td>
+    <td><a href="docs/ops/npu_fused_moe_token_unpermute.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+  <tbody>
+  <tr>
+    <td rowspan="5"> npu_ring_attention_update  </td>
+    <td><a href="docs/ops/npu_ring_attention_update.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
+  <tr>
+    <td rowspan="5"> npu_matmul_add_fp32  </td>
+    <td><a href="docs/ops/npu_matmul_add.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+  <tbody>
+  <tr>
+    <td rowspan="5"> npu_groupmatmul_add_fp32 </td>
+    <td><a href="docs/ops/npu_groupmatmul_add.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
+  <tr>
+    <td rowspan="5"> npu_apply_fused_ema_adamw  </td>
+    <td><a href="docs/ops/npu_apply_fused_ema_adamw.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
+  <tr>
     <td rowspan="5"> lcal_coc  </td>
     <td><a href="docs/ops/lcal_coc.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
@@ -791,36 +665,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> ffn  </td>
     <td><a href="docs/ops/ffn.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_fused_moe_token_permute  </td>
-    <td><a href="docs/ops/npu_fused_moe_token_permute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_fused_moe_token_unpermute  </td>
-    <td><a href="docs/ops/npu_fused_moe_token_unpermute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> npu_ring_attention_update  </td>
-    <td><a href="docs/ops/npu_ring_attention_update.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_matmul_add_fp32  </td>
-    <td><a href="docs/ops/npu_matmul_add.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> npu_groupmatmul_add_fp32 </td>
-    <td><a href="docs/ops/npu_groupmatmul_add.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
@@ -839,12 +683,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> quant_gmm  </td>
     <td><a href="docs/ops/quant_gmm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_apply_fused_ema_adamw  </td>
-    <td><a href="docs/ops/npu_apply_fused_ema_adamw.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
@@ -949,6 +787,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 此外，MindSpeed-Core 感谢以下团队对项目的贡献：
 
-- 微信基础架构团队
+- 微信基础架构中心
 
 感谢来自社区的每一个PR，欢迎贡献 MindSpeed-Core！
