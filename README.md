@@ -356,12 +356,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr>
   <tbody>
   <tr>
-    <td rowspan="5">  Ascend Moe Token Permute and Unpermute 融合算子</td>
-    <td><a href="docs/features/moe-token-permute-and-unpermute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
     <td rowspan="5"> Ascend npu_matmul_add_fp32 梯度累加融合算子</td>
     <td><a href="docs/features/npu_matmul_add.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
@@ -401,12 +395,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <th>介绍</th>
     <th>Released</th>    
   </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend nano-pipe流水线并行 </td>
-    <td><a href="docs/features/nanopipe-pipeline-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend Gloo 存档落盘优化 </td>
@@ -439,19 +427,19 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> Ascend Megatron MoE Allgather Dispatcher 性能优化  </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> Ascend Megatron MoE Alltoall Dispatcher 性能优化 </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> Ascend Megatron MoE TP拓展EP </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-tp-extend-ep.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
@@ -480,7 +468,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5">  Ascend EOD Reset训练场景   </td>
     <td><a href="docs/features/eod-reset.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
