@@ -552,7 +552,10 @@ def validate_args_wrapper(validate_args):
             args.use_fusion_attn_v2 = True
         if args.use_fusion_attn_v2:
             args.use_flash_attn = True
-            print("[WARNING] \"use_fusion_attn_v2\" is not recommended. This feature is not officially released.")            
+            print("[WARNING] \"use_fusion_attn_v2\" is not recommended. This feature is not officially released.")     
+        if args.use_flash_attn and args.use_legacy_models:
+            if args.recompute_granularity == "selective":
+                print("[WARNING] In legacy models, \"--recompute-activations\" is not recommended. This feature is not currently supported.")          
 
         # for vpp assert pp should > 2
         flag_num_layers_per_virtual_pipeline_stage = None
