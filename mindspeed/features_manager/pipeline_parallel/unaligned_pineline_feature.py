@@ -31,7 +31,7 @@ def parse_string_to_array(input_string):
 class UnalignedPipelineFeature(MindSpeedFeature):
 
     def __init__(self):
-        super().__init__("unaligned-pipeline")
+        super().__init__("pipeline-num-transformer-layers")
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
@@ -52,10 +52,10 @@ class UnalignedPipelineFeature(MindSpeedFeature):
         for vpp_layers in pipe_layers:
             if args.virtual_pipeline_model_parallel_size is None:
                 if len(vpp_layers) != 1:
-                    raise AssertionError(f"vpp_layers' length:{len(vpp_layers)} should equal to 1.")
+                    raise AssertionError(f"vpp_layers' length: {len(vpp_layers)} should equal to 1.")
             elif len(vpp_layers) == 0 or len(vpp_layers) != args.virtual_pipeline_model_parallel_size:
-                raise AssertionError(f"vpp_layers' length{len(vpp_layers)} in pipeline_num_transformer_layers"
-                                     f"should equal to virtual_pipeline_model_parallel_size{args.virtual_pipeline_model_parallel_size}.")
+                raise AssertionError(f"vpp_layers' length: {len(vpp_layers)} in pipeline_num_transformer_layers"
+                                     f"should equal to virtual_pipeline_model_parallel_size: {args.virtual_pipeline_model_parallel_size}.")
             for num in vpp_layers:
                 if num < 0:
                     raise AssertionError(f"vpp_layers' number{num} in pipeline_num_transformer_layers"

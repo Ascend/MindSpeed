@@ -1,4 +1,4 @@
-from megatron.core import tensor_parallel, parallel_state
+from megatron.core import parallel_state
 
 
 def get_num_layers_to_build_unaligned(config):
@@ -10,10 +10,10 @@ def get_num_layers_to_build_unaligned(config):
     return pipline_num_transformer_layers[pp_rank][vpp_rank]
 
 
-def get_layer_offset_unaligned(self):
+def get_layer_offset_unaligned(config):
     pp_rank = parallel_state.get_pipeline_model_parallel_rank()
     vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
-    pipline_num_transformer_layers = self.config.pipeline_num_transformer_layers
+    pipline_num_transformer_layers = config.pipeline_num_transformer_layers
     if vpp_rank is None:
         vpp_rank = 0
     offsets = get_layer_offset_pp_vp_unaligned(pipline_num_transformer_layers)

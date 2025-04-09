@@ -41,4 +41,6 @@ FEATURES_LIST_V2 = (
 
     # llava-multimodal
     LlavaModel(),
+    # unaligned pipeline
+    UnalignedPipelineFeature()
 )
