@@ -12,6 +12,10 @@ from mindspeed.features_manager.pipeline_parallel.unaligned_pineline_feature imp
 
 from mindspeed.features_manager.llava.llava_multimodal import LlavaModel
 
+from mindspeed.features_manager.moe.tp_extend_ep import MoETpExtendEpFeature
+from mindspeed.features_manager.moe.gmm import MoEGmmFeature
+from mindspeed.features_manager.moe.shared_expert import MoESharedExpertsFeature
+
 FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
@@ -41,6 +45,11 @@ FEATURES_LIST_V2 = (
 
     # llava-multimodal
     LlavaModel(),
-    # unaligned pipeline
-    UnalignedPipelineFeature()
+
+    # MoeExperts use gemm
+    MoEGmmFeature(),
+    # MoeTp2EpFeature
+    MoETpExtendEpFeature(),
+    # MoeSharedExpertsFeature
+    MoESharedExpertsFeature()
 )

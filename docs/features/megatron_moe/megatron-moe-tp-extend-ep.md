@@ -24,5 +24,5 @@
 
 细粒度小专家，类DeepSeek-V2模型，每个专家的参数量较小。
 
-
+仅支持alltoall_seq分支，即`--moe-token-dispatcher-type alltoall_seq`
 

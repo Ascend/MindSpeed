@@ -24,3 +24,5 @@
 2.仅支持昇腾Atlas A3 AI处理器。
 
 3.不支持`--moe-tp-extend-ep`和`--moe-alltoall-overlap-comm`特性。
+
+4.Megatron 010及以上版本不支持。

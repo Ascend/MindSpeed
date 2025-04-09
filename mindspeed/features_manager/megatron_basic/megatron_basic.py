@@ -41,4 +41,10 @@ class MegatronBasicFeature(MindSpeedFeature):
         pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_grad_sync', start_grad_sync)
         pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_grad_sync', finish_grad_sync)
 
-
+        # Without TE, use ColumnParallelLinear and RowParallelLinear replace TEColumnParallelLinear for Megatron share expert.
+        if hasattr(args, 'transformer_impl') and args.transformer_impl == 'local':
+            from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+            pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
+                              ColumnParallelLinear, create_dummy=True)
+            pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear', RowParallelLinear,
+                              create_dummy=True)
