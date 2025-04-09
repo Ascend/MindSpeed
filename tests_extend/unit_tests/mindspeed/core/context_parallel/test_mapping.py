@@ -128,6 +128,10 @@ class TestUnevenSplitGather(DistributedTest):
                                                     (0, 1), (0, 2), (0, 3)])
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_all_to_all(self, gather_scatter_idx, dtype):
+        args = parse_args(None, True)
+        set_args(args)
+        destroy_model_parallel()
+        initialize_model_parallel(tensor_model_parallel_size=self.world_size)
         input_shapes = [[32, 64, 32], [32, 64, 32, 32],
                         [29, 51, 57], [29, 51, 65, 57]]
         group = mpu.get_tensor_model_parallel_group()
@@ -151,6 +155,10 @@ class TestUnevenSplitGather(DistributedTest):
                                                     (0, 1), (0, 2), (0, 3)])
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_all_to_all_full_unaligned(self, gather_scatter_idx, dtype):
+        args = parse_args(None, True)
+        set_args(args)
+        destroy_model_parallel()
+        initialize_model_parallel(tensor_model_parallel_size=self.world_size)
         group = mpu.get_tensor_model_parallel_group()
         rank = dist.get_rank(group)
         unscatter_gathered_shapes = [[9, 21, 15], [9, 21, 15, 10]]
@@ -188,6 +196,10 @@ class TestUnevenSplitGather(DistributedTest):
     @pytest.mark.parametrize("dim", [0, 1, 2, 3])
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_split_gather_default(self, input_shape, dim, dtype):
+        args = parse_args(None, True)
+        set_args(args)
+        destroy_model_parallel()
+        initialize_model_parallel(tensor_model_parallel_size=self.world_size)
         group = mpu.get_tensor_model_parallel_group()
         input_tensor = torch.randn(input_shape).cuda().to(dtype)
         if dim >= input_tensor.dim():
