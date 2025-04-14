@@ -236,7 +236,7 @@ def distributed_optimizer_zero3_init(
             a constant gradient scaler. Also for `bf16 = False`, we
             always require a grad scaler.
         init_state_fn (Callable, optional): function to initialize state in the optimizer.
-        per_model_buffers (Dict[int, List[ParamAndGradBuffer]]): the implementation of the
+        per_model_buffers (Dict[int, List[_ParamAndGradBuffer]]): the implementation of the
             distributed optimizer is centered on using a contiguous buffer for
             communicating grads & params between the model state and the optimizer state.
             You can find a more detailed description in

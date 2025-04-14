@@ -6,7 +6,7 @@ from typing import Optional
 import mindtorch.torch as torch
 
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
-from megatron.core.distributed.param_and_grad_buffer import ParamAndGradBuffer
+from megatron.core.distributed.param_and_grad_buffer import _ParamAndGradBuffer
 
 logger = getLogger(__name__)
 
@@ -90,7 +90,7 @@ def distributed_data_parallel_init(
         buffers = []
         for (param_dtype, grad_dtype), params in param_and_grad_dtype_to_params.items():
             buffers.append(
-                ParamAndGradBuffer(
+                _ParamAndGradBuffer(
                     self.ddp_config,
                     param_dtype,
                     grad_dtype,

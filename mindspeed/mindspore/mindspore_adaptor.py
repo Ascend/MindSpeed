@@ -212,7 +212,7 @@ def megatron_core_adaptation(mspm):
         'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer._unscale_main_grads_and_check_for_nan',
         mixed_precision_optimizer_unscale_and_check_for_nan)
     mspm.register_patch('megatron.core.optimizer.clip_grads.clip_grad_norm_fp32', clip_grad_norm_fp32)
-    mspm.register_patch('megatron.core.distributed.param_and_grad_buffer.ParamAndGradBuffer._get', get)
+    mspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBuffer._get', get)
     mspm.register_patch('megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.backward',
                         vocab_parallel_cross_entropy_backward)
 
