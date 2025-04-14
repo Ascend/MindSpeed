@@ -14,7 +14,7 @@ from megatron.legacy.model.transformer import FlashSelfAttention
 
 from megatron.training import get_args
 from megatron.core.distributed.distributed_data_parallel import DistributedDataParallel, logger
-from megatron.core.distributed.param_and_grad_buffer import ParamAndGradBuffer, _ParamAndGradBuffer, partition_buckets
+from megatron.core.distributed.param_and_grad_buffer import _ParamAndGradBuffer, partition_buckets
 from megatron.core import parallel_state
 import torch
 
@@ -217,7 +217,7 @@ def distributed_data_parallel_init_zero3(
         buffers = []
         for (param_dtype, grad_dtype), params in param_and_grad_dtype_to_params.items():
             buffers.append(
-                ParamAndGradBuffer(
+                _ParamAndGradBuffer(
                     param_dtype,
                     grad_dtype,
                     params,
