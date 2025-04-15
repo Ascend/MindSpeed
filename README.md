@@ -510,6 +510,18 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/multi_parameter_pipeline_and_variable_seq_lengths.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
+<tbody>
+  <tr>
+    <td rowspan="5"> Ascend 非对齐线性层</td>
+    <td><a href="docs/features/unaligned_linear.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
+  <tr>
+    <td rowspan="5"> Ascend 非对齐Ulysses长序列并行</td>
+    <td><a href="docs/features/unaligned-ulysses-context-parallel.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
 </table>
 
 ## 其它特性
