@@ -12,12 +12,11 @@ Token路由：确定每个token应该由哪个专家处理。这可以通过专�
 
 ## 使用方法
 ### 前提条件
-开启专家并行，并且`moe-token-dispatcher-type`设置为`alltoall`
-`--expert-model-parallel-size M \
---num-experts N \
---moe-token-dispatcher-type alltoall`
-
-设置`--use-fused-moe-token-permute-and-unpermute`即可调用Moe Token Permute和Unpermute融合算子。
+开启专家并行，并且`moe-token-dispatcher-type`设置为`alltoall`，即脚本中需包含以下参数：</br>
+`--moe-token-dispatcher-type alltoall`</br>
+`--expert-model-parallel-size M \`</br>
+`--num-experts N \`</br>
+满足以上前提时，设置`--use-fused-moe-token-permute-and-unpermute`即可调用Moe Token Permute和Unpermute融合算子。
 
 ## 使用效果 
 启用融合算子后，不仅能够有效节省内存资源，还能提升模型训练性能。

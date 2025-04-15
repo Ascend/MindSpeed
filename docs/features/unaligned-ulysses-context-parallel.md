@@ -49,9 +49,12 @@ ulysses_attention = UlyssesContextAttention(core_attention, ps.get_context_paral
                                             gather_size_calculator=calculator)
 
 ```
-*说明*：
-“非对齐 Ulysses”长序列并行暂不兼容Ulysses长序列并行KV缓存优化，即启动脚本设置了--context-parallel-kv-cache-policy为full或者half，系统将自动切换回使用对齐的Ulysses长序列并行机制。
 
 ## 使用效果
 
 通过引入“非对齐 Ulysses”，系统提升了对不同输入长度的适应能力。这不仅解决了传统 Ulysses 在处理动态或不规则输入序列时遇到的问题，而且保持了良好的扩展能力。
+
+## 注意事项
+
+1. 非对齐Ulysses长序列并行不支持在legacy分支使用，即不支持和`--use-legacy-models`同时开启。
+2. 非对齐Ulysses长序列并行暂不兼容Ulysses长序列并行KV缓存优化，即启动脚本设置了--context-parallel-kv-cache-policy为full或者half，系统将自动切换回使用对齐的Ulysses长序列并行机制。
