@@ -30,7 +30,7 @@
         return batch.values()
     ```
 
-2. 在 Megatron-LM 目录下修改`pretrain_gpt.py`文件中的`get_batch`函数。
+2. 在 Megatron-LM 目录下修改`pretrain_gpt.py`文件中的`is_dataset_built_on_rank`函数。
 
     ```diff
     def is_dataset_built_on_rank():
