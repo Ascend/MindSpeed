@@ -20,10 +20,13 @@ from mindspeed.features_manager.tensor_parallel.unaligned_linear_feature import 
 from mindspeed.features_manager.moe.tp_extend_ep import MoETpExtendEpFeature
 from mindspeed.features_manager.moe.gmm import MoEGmmFeature
 from mindspeed.features_manager.moe.shared_expert import MoESharedExpertsFeature
+from mindspeed.features_manager.optimizer.virtual_optimizer import VirtualOptimizerFeature
 
 FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
+    # Virtaul Optimizer
+    VirtualOptimizerFeature(),
     # Tensor parallel features
     UnalignedLinearFeature(),
     # llava-multimodal
