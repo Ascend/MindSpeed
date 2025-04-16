@@ -189,7 +189,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         backward_ag_shared_handle.wait()
         backward_ag_shared_handle = None
         shared_expert_grad.untyped_storage().resize_(0)
-        run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
+    run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
     WeightGradStore.end_decouple()
     run_graph_backward(bwd_layer_graph.router_graph)
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
