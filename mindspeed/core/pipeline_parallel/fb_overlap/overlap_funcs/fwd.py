@@ -93,7 +93,7 @@ def transformer_layer_forward_moe(
 
     # Token Perm1 Forward
     probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
-    perm1_out, tokens_per_expert = alltoall_token_perm1(self.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
+    perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(self.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
     if shared_experts_allgather_handle is not None:
         # overlap shared experts tp comm by token perm1.
         shared_experts_allgather_handle.wait()
@@ -104,6 +104,16 @@ def transformer_layer_forward_moe(
         self.mlp.token_dispatcher.input_splits,
         ep_group
     )
+    perm_prob_a2a_out, perm_prob_a2a_handle = None, None
+    if args.moe_unperm2_mem_optim and perm1_probs is not None:
+        _, perm_prob_a2a_out, perm_prob_a2a_handle = async_all_to_all(
+            perm1_probs,
+            self.mlp.token_dispatcher.output_splits,
+            self.mlp.token_dispatcher.input_splits,
+            ep_group,
+            event=perm_a2a_handle,
+            stream=torch.npu.current_stream()
+        )
     # Shared Experts Forward.
     if use_shared_experts:
         shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
@@ -124,22 +134,25 @@ def transformer_layer_forward_moe(
         rs_shared_experts_handle = None
 
     detached_perm_a2a_out = detach_tensor(perm_a2a_out, checkpoint_forward=checkpoint)
+    detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
     # Token Perm2 Forward.
-    dispached_input = alltoall_token_perm2(self.mlp.token_dispatcher, detached_perm_a2a_out)
+    if args.moe_unperm2_mem_optim and perm_prob_a2a_handle:
+        perm_prob_a2a_handle.wait()
+    dispached_input, dispached_input_probs = alltoall_token_perm2(self.mlp.token_dispatcher, detached_perm_a2a_out,
+                                                                  detached_perm_prob_a2a_out)
     perm_a2a_out.untyped_storage().resize_(0)
 
     # Grouped MLP Forward
     detached_dispached_input = detach_tensor(dispached_input, checkpoint_forward=checkpoint)
-    (expert_output, fc1_output, act_out), _ = self.mlp.experts(detached_dispached_input, tokens_per_expert)
+    detached_dispached_input_probs = detach_tensor(dispached_input_probs, checkpoint_forward=checkpoint)
+    (expert_output, act_ckpt_manager), _ = self.mlp.experts(
+        detached_dispached_input, tokens_per_expert, permuted_probs=detached_dispached_input_probs
+    )
     if args.moe_zero_memory == 'level0':
         dispached_input.untyped_storage().resize_(0)
-        recompute_needed_tensors = [dispached_input, fc1_output, act_out, probs, indices,
-                                    self.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
+        recompute_needed_tensors = [dispached_input, probs, indices, self.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
     else:
-        if should_recompute_activation(self.layer_number):
-            recompute_needed_tensors = [None, fc1_output, act_out, None, None, None]
-        else:
-            recompute_needed_tensors = [None, None, None, None, None, None]
+        recompute_needed_tensors = [None, None, None, None]
 
     detached_expert_output = detach_tensor(expert_output, checkpoint_forward=checkpoint)
 
@@ -166,6 +179,8 @@ def transformer_layer_forward_moe(
     unperm1_out.untyped_storage().resize_(0)
     detached_unperm_a2a_out = detach_tensor(unperm_a2a_out, checkpoint_forward=checkpoint)
     route_expert_output, _ = alltoall_token_unperm2(self.mlp.token_dispatcher, detached_unperm_a2a_out)
+    if get_args().moe_unperm2_mem_optim:
+        unperm_a2a_out.untyped_storage().resize_(0)
 
     if use_shared_experts:
         detached_shared_expert_output = detach_tensor(shared_expert_output, checkpoint_forward=checkpoint)
@@ -199,9 +214,10 @@ def transformer_layer_forward_moe(
         (attention_out, detached_attention_out),
         (pre_mlp_layernorm_output, detached_mlp_input),
         (probs, probs_detached),
-        (perm1_out, None),  # perm1 graph
-        (None, detached_perm_a2a_out),
-        (dispached_input, detached_dispached_input),  # perm2 graph
+        ((perm1_out, perm1_probs), (None, None)),  # perm1 graph
+        (None, (detached_perm_a2a_out, detached_perm_prob_a2a_out)),
+        ((dispached_input, dispached_input_probs), (detached_dispached_input, detached_dispached_input_probs)),
+        # perm2 graph
         (expert_output, detached_expert_output),  # grouped mlp graph
         (unperm1_out, None),  # unperm1 graph
         (None, detached_unperm_a2a_out),
@@ -215,6 +231,7 @@ def transformer_layer_forward_moe(
         self.mlp.token_dispatcher.input_splits, self.mlp.token_dispatcher.output_splits, self,
         checkpointed=checkpoint
     )
+    graph.act_ckpt_manager = act_ckpt_manager
 
     return output, context, graph
 

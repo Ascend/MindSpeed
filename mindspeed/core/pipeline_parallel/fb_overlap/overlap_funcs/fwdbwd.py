@@ -2,6 +2,7 @@
 
 from contextlib import nullcontext
 import torch
+import acl
 from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
 from megatron.core import parallel_state, tensor_parallel
 from megatron.training import get_args
@@ -60,7 +61,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     if args.moe_tp_extend_ep:
         ep_group = parallel_state.get_tensor_and_expert_parallel_group()
     recomp_norm = getattr(args, 'recompute_norm', False)
-    bwd_dispached_input, bwd_fc1_out, bwd_act_out, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
+    bwd_dispached_input, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
 
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
@@ -131,11 +132,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         )
 
     if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
-        with torch.no_grad():
-            recompute_act_out = bwd_layer_graph.layer.mlp.experts.activation_func(bwd_fc1_out)
-            bwd_act_out.untyped_storage().resize_(recompute_act_out.untyped_storage().size())
-            bwd_act_out.untyped_storage().copy_(recompute_act_out.untyped_storage())
-            recompute_act_out.untyped_storage().resize_(0)
+        bwd_layer_graph.act_ckpt_manager.recompute(True)
 
 
     bwd_unperm_a2a_handle.wait()
@@ -163,12 +160,22 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         backward_ag_shared_handle = None
 
     _, perm1_out_grad, bwd_perm_a2a_handle = async_all_to_all(
-        bwd_layer_graph.perm_a2a_graph[1].grad,
+        bwd_layer_graph.perm_a2a_graph[1][0].grad,
         bwd_layer_graph.input_splits,
         bwd_layer_graph.output_splits,
         ep_group,
         event=backward_ag_shared_handle
     )
+    perm1_prob_out_grad, bwd_prob_handle = None, None
+    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+        _, perm1_prob_out_grad, bwd_prob_handle = async_all_to_all(
+            bwd_layer_graph.perm_a2a_graph[1][1].grad,
+            bwd_layer_graph.input_splits,
+            bwd_layer_graph.output_splits,
+            ep_group,
+            event=bwd_perm_a2a_handle,
+            stream=torch.npu.current_stream()
+        )
 
     # Grouped MLP dw computation
 
@@ -182,7 +189,9 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
 
     bwd_perm_a2a_handle.wait()
     bwd_perm_a2a_handle = None
-    run_graph_backward(bwd_layer_graph.perm1_graph, perm1_out_grad)
+    if bwd_prob_handle:
+        bwd_prob_handle.wait()
+    run_graph_backward(bwd_layer_graph.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
     perm1_out_grad.untyped_storage().resize_(0)
     WeightGradStore.start_decouple()
     if backward_ag_shared_handle is not None:
@@ -338,14 +347,23 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
         # Token Permutation Forward
         probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
-        perm1_out, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
-
+        perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
         _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
             perm1_out,
             fwd_layer.mlp.token_dispatcher.output_splits,
             fwd_layer.mlp.token_dispatcher.input_splits,
             ep_group
         )
+        perm_prob_a2a_out, perm_prob_a2a_handle = None, None
+        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+            _, perm_prob_a2a_out, perm_prob_a2a_handle = async_all_to_all(
+                perm1_probs,
+                fwd_layer.mlp.token_dispatcher.output_splits,
+                fwd_layer.mlp.token_dispatcher.input_splits,
+                ep_group,
+                event=perm_a2a_handle,
+                stream=torch.npu.current_stream()
+            )
 
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=True)  # keep for dw
@@ -358,8 +376,12 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     # Grouped MLP dw computation
 
     with checkpoint_context:
+        # Token Perm2 forward
         detached_perm_a2a_out = detach_tensor(perm_a2a_out, checkpoint_forward=checkpoint)
-        dispached_input = alltoall_token_perm2(fwd_layer.mlp.token_dispatcher, detached_perm_a2a_out)
+        detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
+        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+            perm_prob_a2a_handle.wait()
+        dispached_input, dispached_input_probs = alltoall_token_perm2(fwd_layer.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out)
         perm_a2a_out.untyped_storage().resize_(0)
 
         if tp_size > 1 and use_shared_experts:
@@ -372,16 +394,16 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
         # Grouped MLP Forward
         detached_dispached_input = detach_tensor(dispached_input, checkpoint_forward=checkpoint)
-        (expert_output, fc1_output, act_out), _ = fwd_layer.mlp.experts(detached_dispached_input, tokens_per_expert)
+        detached_dispached_input_probs = detach_tensor(dispached_input_probs, checkpoint_forward=checkpoint)
+        (expert_output, act_ckpt_manager), _ = fwd_layer.mlp.experts(
+            detached_dispached_input, tokens_per_expert, permuted_probs=detached_dispached_input_probs
+        )
         if args.moe_zero_memory == 'level0':
             dispached_input.untyped_storage().resize_(0)
-            recompute_needed_tensors = [dispached_input, fc1_output, act_out, probs, indices,
+            recompute_needed_tensors = [dispached_input, probs, indices,
                                         fwd_layer.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
         else:
-            if should_recompute_activation(fwd_layer.layer_number):
-                recompute_needed_tensors = [None, fc1_output, act_out, None, None, None]
-            else:
-                recompute_needed_tensors = [None, None, None, None, None, None]
+            recompute_needed_tensors = [None, None, None, None]
         detached_expert_output = detach_tensor(expert_output, checkpoint_forward=checkpoint)
 
         # Token Unpermutaion Forward
@@ -436,6 +458,8 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     with checkpoint_context:
         detached_unperm_a2a_out = detach_tensor(unperm_a2a_out, checkpoint_forward=checkpoint)
         route_expert_output, _ = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
+        if args.moe_unperm2_mem_optim:
+            unperm_a2a_out.untyped_storage().resize_(0)
 
         if hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None:
             detached_shared_expert_output = detach_tensor(shared_expert_output, checkpoint_forward=checkpoint)
@@ -481,9 +505,9 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         (attention_graph, detached_attention_out),
         (pre_mlp_layernorm_output, detached_mlp_input),
         (probs, probs_detached),
-        (perm1_out, None),  # perm1 graph
-        (None, detached_perm_a2a_out),
-        (dispached_input, detached_dispached_input),  # perm2 graph
+        ((perm1_out, perm1_probs), (None, None)),  # perm1 graph
+        (None, (detached_perm_a2a_out, detached_perm_prob_a2a_out)),
+        ((dispached_input, dispached_input_probs), (detached_dispached_input, detached_dispached_input_probs)), # perm2 graph
         (expert_output, detached_expert_output),  # grouped mlp graph
         (unperm1_out, None),  # unperm1 graph
         (None, detached_unperm_a2a_out),
@@ -497,6 +521,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         fwd_layer.mlp.token_dispatcher.input_splits, fwd_layer.mlp.token_dispatcher.output_splits, fwd_layer,
         checkpointed=checkpoint
     )
+    graph.act_ckpt_manager = act_ckpt_manager
 
     for tensor in bwd_layer_graph.recompute_needed_tensors:
         if tensor is not None:
@@ -677,7 +702,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     tp_group = parallel_state.get_tensor_model_parallel_group()
     use_shared_experts = hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None
     recomp_norm = getattr(args, 'recompute_norm', False)
-    bwd_dispached_input, bwd_fc1_out, bwd_act_out, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
+    bwd_dispached_input, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
     a2a_hooked_on_attention = getattr(fwd_layer.self_attention, 'a2a_hooked_on_attention', False)
 
     # Unperm2 Bwd
@@ -758,15 +783,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         else:
             shared_experts_input, shared_experts_allgather_handle = detached_mlp_input, None
 
-        # Token Permutation Forward
+        # Token Permutation1 Forward
         probs_detached = detach_tensor(probs)
-        perm1_out, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
-    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
-        with torch.no_grad():
-            recompute_act_out = bwd_layer_graph.layer.mlp.experts.activation_func(bwd_fc1_out)
-            bwd_act_out.untyped_storage().resize_(recompute_act_out.untyped_storage().size())
-            bwd_act_out.untyped_storage().copy_(recompute_act_out.untyped_storage())
-            recompute_act_out.untyped_storage().resize_(0)
+        perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
 
     last_comm_handle = shared_experts_allgather_handle if shared_experts_allgather_handle else bwd_unperm_a2a_handle
     if args.moe_zero_memory == 'level0':
@@ -790,6 +809,17 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             stream=torch.npu.current_stream() if last_comm_handle else None
         )
         last_comm_handle = perm_a2a_handle
+        perm_prob_a2a_out, perm_prob_a2a_handle = None, None
+        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+            _, perm_prob_a2a_out, perm_prob_a2a_handle = async_all_to_all(
+                perm1_probs,
+                fwd_layer.mlp.token_dispatcher.output_splits,
+                fwd_layer.mlp.token_dispatcher.input_splits,
+                ep_group,
+                event=last_comm_handle,
+                stream=torch.npu.current_stream() if last_comm_handle else None
+            )
+            last_comm_handle = perm_prob_a2a_handle
 
     with checkpoint_context:
         shared_expert_output = None
@@ -814,6 +844,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     bwd_unperm_a2a_handle.wait()
     bwd_unperm_a2a_handle = None
     run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
+    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
+        bwd_layer_graph.act_ckpt_manager.recompute(True)
     unperm1_out_grad.untyped_storage().resize_(0)
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
@@ -824,7 +856,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     perm_a2a_handle = None
     perm1_out.untyped_storage().resize_(0)
     _, perm1_out_grad, bwd_perm_a2a_handle = async_all_to_all(
-        bwd_layer_graph.perm_a2a_graph[1].grad,
+        bwd_layer_graph.perm_a2a_graph[1][0].grad,
         bwd_layer_graph.input_splits,
         bwd_layer_graph.output_splits,
         ep_group,
@@ -832,6 +864,17 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         stream=torch.npu.current_stream() if last_comm_handle else None
     )
     last_comm_handle = bwd_perm_a2a_handle
+    perm1_prob_out_grad, bwd_prob_handle = None, None
+    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+        _, perm1_prob_out_grad, bwd_prob_handle = async_all_to_all(
+            bwd_layer_graph.perm_a2a_graph[1][1].grad,
+            bwd_layer_graph.input_splits,
+            bwd_layer_graph.output_splits,
+            ep_group,
+            event=last_comm_handle,
+            stream=torch.npu.current_stream()
+        )
+        last_comm_handle = bwd_prob_handle
     # launch shared expert grad allgather here
     if tp_size > 1:
         _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
@@ -857,22 +900,27 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     WeightGradStore.pop()
 
     with checkpoint_context:
+        # Token Perm2 Forward
         detached_perm_a2a_out = detach_tensor(perm_a2a_out)
-        dispached_input = alltoall_token_perm2(fwd_layer.mlp.token_dispatcher, detached_perm_a2a_out)
+        detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
+        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+            perm_prob_a2a_handle.wait()
+        dispached_input, dispached_input_probs = alltoall_token_perm2(fwd_layer.mlp.token_dispatcher,
+                                                                      detached_perm_a2a_out, detached_perm_prob_a2a_out)
         perm_a2a_out.untyped_storage().resize_(0)
 
         # Grouped MLP Forward
         detached_dispached_input = detach_tensor(dispached_input)
-        (expert_output, fc1_output, act_out), _ = fwd_layer.mlp.experts(detached_dispached_input, tokens_per_expert)
+        detached_dispached_input_probs = detach_tensor(dispached_input_probs, checkpoint_forward=checkpoint)
+        (expert_output, act_ckpt_manager), _ = fwd_layer.mlp.experts(
+            detached_dispached_input, tokens_per_expert, permuted_probs=detached_dispached_input_probs
+        )
         if args.moe_zero_memory == 'level0':
             dispached_input.untyped_storage().resize_(0)
-            recompute_needed_tensors = [dispached_input, fc1_output, act_out, probs, indices,
+            recompute_needed_tensors = [dispached_input, probs, indices,
                                         fwd_layer.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
         else:
-            if should_recompute_activation(fwd_layer.layer_number):
-                recompute_needed_tensors = [None, fc1_output, act_out, None, None, None]
-            else:
-                recompute_needed_tensors = [None, None, None, None, None, None]
+            recompute_needed_tensors = [None, None, None, None]
         detached_expert_output = detach_tensor(expert_output)
 
         # Token Unpermutaion Forward
@@ -907,7 +955,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
                 ep_group
             )
 
-    run_graph_backward(bwd_layer_graph.perm1_graph, perm1_out_grad)
+    if bwd_prob_handle:
+        bwd_prob_handle.wait()
+    run_graph_backward(bwd_layer_graph.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
     perm1_out_grad.untyped_storage().resize_(0)
     run_graph_backward(bwd_layer_graph.router_graph)
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
@@ -935,6 +985,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     with checkpoint_context:
         detached_unperm_a2a_out = detach_tensor(unperm_a2a_out)
         route_expert_output, _ = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
+        if args.moe_unperm2_mem_optim:
+            unperm_a2a_out.untyped_storage().resize_(0)
 
         if hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None:
             detached_shared_expert_output = detach_tensor(shared_expert_output)
@@ -981,9 +1033,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         (attention_graph, detached_attention_out),
         (pre_mlp_layernorm_output, detached_mlp_input),
         (probs, probs_detached),
-        (perm1_out, None),  # perm1 graph
-        (None, detached_perm_a2a_out),
-        (dispached_input, detached_dispached_input),  # perm2 graph
+        ((perm1_out, perm1_probs), (None, None)),  # perm1 graph
+        (None, (detached_perm_a2a_out, detached_perm_prob_a2a_out)),
+        ((dispached_input, dispached_input_probs), (detached_dispached_input, detached_dispached_input_probs)), # perm2 graph
         (expert_output, detached_expert_output),  # grouped mlp graph
         (unperm1_out, None),  # unperm1 graph
         (None, detached_unperm_a2a_out),
@@ -997,6 +1049,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         fwd_layer.mlp.token_dispatcher.input_splits, fwd_layer.mlp.token_dispatcher.output_splits, fwd_layer,
         checkpointed=checkpoint
     )
+    graph.act_ckpt_manager = act_ckpt_manager
 
     for tensor in bwd_layer_graph.recompute_needed_tensors:
         if tensor is not None:

@@ -14,12 +14,19 @@ def detach_tensor(tensor, checkpoint_forward=False):
 
 
 def run_graph_backward(graph, output_tensor_grad=None, keep_graph=False, keep_grad=False):
-    grad_tensor = output_tensor_grad
-    if output_tensor_grad is None and graph[1] is not None and graph[1].grad is not None:
-        grad_tensor = graph[1].grad
+    if isinstance(graph[0], torch.Tensor):
+        grad_tensors = [output_tensor_grad]
+        if output_tensor_grad is None and graph[1] is not None and graph[1].grad is not None:
+            grad_tensors = [graph[1].grad]
+        tensors = [graph[0]]
+    else:
+        grad_tensors = filter(lambda x: x is not None, output_tensor_grad) if output_tensor_grad is not None else None
+        if output_tensor_grad is None and graph[1] is not None and graph[1][0].grad is not None:
+            grad_tensors = [x.grad for x in filter(lambda x:x is not None, graph[1])]
+        tensors = filter(lambda x: x is not None, graph[0])
     Variable._execution_engine.run_backward(
-        tensors=(graph[0],),
-        grad_tensors=(grad_tensor,),
+        tensors=(*tensors,),
+        grad_tensors=(*grad_tensors,),
         keep_graph=False,
         create_graph=False,
         inputs=tuple(),
@@ -28,9 +35,12 @@ def run_graph_backward(graph, output_tensor_grad=None, keep_graph=False, keep_gr
     )
 
     if not keep_graph:
-        graph[0].untyped_storage().resize_(0)
+        for tensor in tensors:
+            tensor.untyped_storage().resize_(0)
     if not keep_grad:
-        grad_tensor.untyped_storage().resize_(0)
+        for grad in grad_tensors:
+            grad.untyped_storage().resize_(0)
+
 
 
 class NoopLayerGraph:

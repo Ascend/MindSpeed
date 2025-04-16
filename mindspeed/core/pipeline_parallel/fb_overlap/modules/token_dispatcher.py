@@ -2,6 +2,7 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
 import torch
+import acl
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import permute, unpermute
 from megatron.core.tensor_parallel.mappings import _gather_along_first_dim_expert_parallel
@@ -87,11 +88,70 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
     return num_tokens_per_local_expert
 
 
+class PackProb(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, permutated_local_input_tokens, probs):
+        ctx.prob_dtype = probs.dtype
+        ctx.token_dtype = permutated_local_input_tokens.dtype
+        if ctx.token_dtype == torch.bfloat16 and ctx.prob_dtype == torch.bfloat16:
+            viewd_probs = probs
+        else:
+            viewd_probs = probs.view(ctx.token_dtype)
+
+        ctx.prob_split_sizes = [permutated_local_input_tokens.shape[-1], viewd_probs.shape[-1]]
+
+        packed_tokens = torch.cat((permutated_local_input_tokens, viewd_probs), dim=-1)
+        permutated_local_input_tokens.untyped_storage().resize_(0)
+        viewd_probs.untyped_storage().resize_(0)
+
+        return packed_tokens
+
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_tokens, grad_probs = grad_output.split(ctx.prob_split_sizes, dim=-1)
+        if ctx.token_dtype == torch.bfloat16 and ctx.prob_dtype == torch.bfloat16:
+            viewd_grad_probs = grad_probs
+        else:
+            viewd_grad_probs = grad_probs.view(ctx.prob_dtype)
+
+        return grad_tokens.contiguous(), viewd_grad_probs.contiguous()
+
+
+class UnpackProb(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, packed_tokens, prob_split_sizes, orig_prob_dtype):
+        ctx.token_dtype = packed_tokens.dtype
+        ctx.orig_prob_dtype = orig_prob_dtype
+        tokens, probs = packed_tokens.split(prob_split_sizes, dim=-1)
+        if ctx.token_dtype == torch.bfloat16 and orig_prob_dtype == torch.bfloat16:
+            viewd_probs = probs
+        else:
+            viewd_probs = probs.view(orig_prob_dtype).contiguous()
+
+        return tokens.contiguous(), viewd_probs
+
+    @staticmethod
+    def backward(ctx, grad_tokens, grad_probs):
+        if ctx.token_dtype == torch.bfloat16 and ctx.orig_prob_dtype == torch.bfloat16:
+            viewd_grad_probs = grad_probs
+        else:
+            viewd_grad_probs = grad_probs.view(ctx.token_dtype)
+
+        grad_input = torch.cat((grad_tokens, viewd_grad_probs), dim=-1)
+
+        return grad_input, None, None
+
+
 def alltoall_token_perm1(
     self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor,
 ):
     self.hidden_shape = hidden_states.shape
-    self.probs = probs
+    args = get_args()
+    if args.moe_unperm2_mem_optim:
+        self.probs = None
+    else:
+        self.probs = probs
     assert probs.dim() == 2, "Expected 2D tensor for probs"
     assert indices.dim() == 2, "Expected 2D tensor for indices"
     tokens_per_expert = preprocess(self, indices)
@@ -111,16 +171,28 @@ def alltoall_token_perm1(
         num_out_tokens=self.num_out_tokens,
         padded_mode=self.drop_and_pad,
     )
+    permuted_local_probs = None
+    if args.moe_unperm2_mem_optim:
+        permuted_local_probs, _ = permute(
+            probs.view(-1, 1),
+            indices.view(-1, 1)
+        )
+        if '910B' in acl.get_soc_name():
+            permutated_local_input_tokens = PackProb.apply(permutated_local_input_tokens, permuted_local_probs)
+            self.prob_split_sizes = [hidden_states.shape[-1],
+                                     permutated_local_input_tokens.shape[-1] - hidden_states.shape[-1]]
+            self.orig_prob_format = probs.dtype
+            permuted_local_probs = None
 
     # Perform expert parallel AlltoAll communication
     if self.cuda_sync_point == "before_ep_alltoall":
         torch.cuda.current_stream().synchronize()
 
 
-    return permutated_local_input_tokens, tokens_per_expert
+    return permutated_local_input_tokens, permuted_local_probs, tokens_per_expert
 
 
-def alltoall_token_perm2(self, global_input_tokens):
+def alltoall_token_perm2(self, global_input_tokens, global_input_token_probs=None):
 
     # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
     if self.num_local_experts > 1:
@@ -138,10 +210,20 @@ def alltoall_token_perm2(self, global_input_tokens):
                 .contiguous()
             )
 
+        if get_args().moe_unperm2_mem_optim:
+            if '910B' in acl.get_soc_name():
+                global_input_tokens, global_input_token_probs = UnpackProb.apply(
+                    global_input_tokens, self.prob_split_sizes, self.orig_prob_format
+                )
+            else:
+                global_input_token_probs, _ = permute(
+                    global_input_token_probs, self.global_input_tokens_local_experts_indices
+                )
+
     if self.cuda_sync_point == "before_finish":
         torch.cuda.current_stream().synchronize()
 
-    return global_input_tokens
+    return global_input_tokens, global_input_token_probs
 
 
 def alltoall_token_unperm1(
@@ -195,6 +277,9 @@ def alltoall_token_unperm2(self, permutated_local_input_tokens, probs=None):
         padded_mode=self.drop_and_pad,
         restore_shape=self.hiddden_shape_before_permute,
     )
+    if get_args().moe_unperm2_mem_optim:
+        output = output.view(-1, self.router_topk, output.shape[-1])
+        output = output.sum(dim=1)
 
 
     # Reshape the output tensor

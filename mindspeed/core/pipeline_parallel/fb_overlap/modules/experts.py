@@ -8,6 +8,7 @@ from mindspeed.core.pipeline_parallel.fb_overlap.modules.weight_grad_store impor
 from mindspeed.ops.gmm import GMMFunction
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
+from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 
 
 
@@ -91,19 +92,30 @@ def npu_gmm_with_detach(inputs, weight_tensor, weight_param, bias=None, group_li
 
 
 
-def group_mlp_forward_detach(self, permuted_local_hidden_states, tokens_per_expert):
+def group_mlp_forward_detach(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs=None):
     args = get_args()
     is_recompute_activation = args.moe_zero_memory == 'level0' or should_recompute_activation(self.layer_number)
+
+    def act_func(fc1_output, permuted_probs):
+        fc2_input = self.activation_func(fc1_output)
+        if permuted_probs is not None:
+            fc2_input = (fc2_input * permuted_probs.reshape(*fc2_input.shape[:-1], 1)) \
+                .type(fc2_input.dtype)
+        return fc2_input
+
     if permuted_local_hidden_states.nelement() != 0:
         group_list = torch.cumsum(tokens_per_expert, dim=0)
         w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
         w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 
         fc1_output = npu_gmm_with_detach(permuted_local_hidden_states, w1, self.weight1, bias=None, group_list=group_list)
-        intermediate_parallel = self.activation_func(fc1_output)
-        fc2_output = npu_gmm_with_detach(intermediate_parallel, w2, self.weight2, bias=None, group_list=group_list)
         if is_recompute_activation:
-            intermediate_parallel.untyped_storage().resize_(0)
+            act_ckpt = CheckpointWithoutOutput()
+            fc2_input = act_ckpt.checkpoint(act_func, False, fc1_output, permuted_probs)
+        else:
+            act_ckpt = None
+            fc2_input = act_func(fc1_output, permuted_probs)
+        fc2_output = npu_gmm_with_detach(fc2_input, w2, self.weight2, bias=None, group_list=group_list)
     else:
         # No token is allocated for local experts.
         assert torch.count_nonzero(tokens_per_expert) == 0
@@ -112,10 +124,16 @@ def group_mlp_forward_detach(self, permuted_local_hidden_states, tokens_per_expe
         w1 = self.weight1.view(self.config.hidden_size, -1)
         w2 = self.weight2.view(-1, self.config.hidden_size)
         fc1_output = torch.matmul(permuted_local_hidden_states, w1)
-        intermediate_parallel = self.activation_func(fc1_output)
-        fc2_output = torch.matmul(intermediate_parallel, w2)
         if is_recompute_activation:
-            intermediate_parallel.untyped_storage().resize_(0)
+            act_ckpt = CheckpointWithoutOutput()
+            fc2_input = act_ckpt.checkpoint(act_func, False, fc1_output, permuted_probs)
+        else:
+            act_ckpt = None
+            fc2_input = act_func(fc1_output, permuted_probs)
+        fc2_output = torch.matmul(fc2_input, w2)
+
+    if is_recompute_activation:
+        act_ckpt.discard_output()
 
 
-    return (fc2_output, fc1_output, intermediate_parallel), None
+    return (fc2_output, act_ckpt), None

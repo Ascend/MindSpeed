@@ -1,6 +1,7 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
 import torch
+import acl
 from megatron.core import parallel_state
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
@@ -18,7 +19,7 @@ def transformer_layer_backward_moe(
     self = layer_graph
     args = get_args()
     in_detach_stage = WeightGradStore.is_decoupleBlock
-    dispached_input, fc1_out, act_out, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
+    dispached_input, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
     ep_group = parallel_state.get_expert_model_parallel_group()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
     if args.moe_tp_extend_ep:
@@ -48,11 +49,7 @@ def transformer_layer_backward_moe(
     if self.shared_experts_graph[0] is not None:
         run_graph_backward(self.shared_experts_graph, backward_ag_shared)
     if get_args().moe_zero_memory == 'level0' or should_recompute_activation(self.layer.layer_number):
-        with torch.no_grad():
-            recompute_act_out = self.layer.mlp.experts.activation_func(fc1_out)
-            act_out.untyped_storage().resize_(recompute_act_out.untyped_storage().size())
-            act_out.untyped_storage().copy_(recompute_act_out.untyped_storage())
-            recompute_act_out.untyped_storage().resize_(0)
+        self.act_ckpt_manager.recompute(True)
     handle.wait()
     handle = None
 
@@ -87,11 +84,23 @@ def transformer_layer_backward_moe(
         perm_a2a_handle = None
 
     _, perm1_out_grad, handle = async_all_to_all(
-        self.perm_a2a_graph[1].grad,
+        self.perm_a2a_graph[1][0].grad,
         self.input_splits,
         self.output_splits,
         ep_group
     )
+
+    perm1_prob_out_grad, prob_handle = None, None
+    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+        _, perm1_prob_out_grad, prob_handle = async_all_to_all(
+            self.perm_a2a_graph[1][1].grad,
+            self.input_splits,
+            self.output_splits,
+            ep_group,
+            event=handle,
+            stream=torch.npu.current_stream()
+        )
+
     if get_args().moe_zero_memory == 'level0':
         with torch.no_grad():
             recompute_fc1_input, _ = permute(perm_a2a_out, global_input_tokens_local_experts_indices)
@@ -105,7 +114,9 @@ def transformer_layer_backward_moe(
         WeightGradStore.pop()
     handle.wait()
     handle = None
-    run_graph_backward(self.perm1_graph, perm1_out_grad)
+    if prob_handle:
+        prob_handle.wait()
+    run_graph_backward(self.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
     run_graph_backward(self.router_graph)
     run_graph_backward(self.pre_mlp_layernorm_graph)
     run_graph_backward(self.attn_graph)
