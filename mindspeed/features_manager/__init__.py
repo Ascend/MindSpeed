@@ -52,6 +52,10 @@ from mindspeed.features_manager.optimizer.virtual_optimizer import (
 )
 from mindspeed.features_manager.pipeline_parallel.noop_layers import NoopLayersFeature
 
+from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
+from mindspeed.features_manager.transformer.flash_attention.alibi_feature import AlibiFeature
+from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
+
 FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
@@ -85,6 +89,12 @@ FEATURES_LIST_V2 = (
     UnalignedLinearFeature(),
     # llava-multimodal
     LlavaModel(),
+
+    # Transformer flash attention features
+    FusionAttentionV2Feature(),
+    AlibiFeature(),
+    GenerateMaskFeature(),
+    
     # MoeExperts use gemm
     MoEGmmFeature(),
     # MoeTp2EpFeature
