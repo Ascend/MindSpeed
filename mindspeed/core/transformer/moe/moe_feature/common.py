@@ -1,7 +1,11 @@
-# Copyright (c) 2025, Huawei Technologies.
-# All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 import torch
-from mindspeed.core.transformer.moe.moe_feature import topk_softmax_with_capacity
+from mindspeed.core.transformer.moe.moe_feature import (
+    topk_softmax_with_capacity,
+    gather_from_sequence_parallel_region,
+    _split_along_first_dim
+)
 
 
 def routing_tp_extend_ep(self, logits: torch.Tensor):
@@ -9,6 +13,8 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
     if use tp_extend_ep, logits is not need to gather from the tp region
     """
     logits = logits.view(-1, self.config.num_moe_experts)
+
+    logits = gather_from_sequence_parallel_region(logits)
     # Apply Z-Loss
     logits = self.apply_z_loss(logits)
 
@@ -30,4 +36,6 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
     else:
         raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")
 
+    scores = _split_along_first_dim(scores)
+    routing_map = _split_along_first_dim(routing_map)
     return scores, routing_map

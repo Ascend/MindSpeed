@@ -2,8 +2,12 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 from megatron.core.parallel_state import get_expert_tensor_and_model_parallel_group
-from megatron.core.tensor_parallel.mappings import _reduce_scatter_along_first_dim
 from megatron.core.transformer.moe.moe_utils import topk_softmax_with_capacity
+from megatron.core.tensor_parallel.mappings import (
+    gather_from_sequence_parallel_region,
+    _reduce_scatter_along_first_dim,
+    _split_along_first_dim,
+)
 
 
 def _gather_along_first_dim_moe_async(input_, async_op):
@@ -75,6 +79,7 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
         indices (torch.Tensor): the indices tensor after top-k selection.
     """
     logits = logits.view(-1, self.config.num_moe_experts)
+    logits = gather_from_sequence_parallel_region(logits)
     # Apply Z-Loss
     logits = self.apply_z_loss(logits)
 
@@ -95,5 +100,8 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
         )
     else:
         raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")
+
+    scores = _split_along_first_dim(scores)
+    routing_map = _split_along_first_dim(routing_map)
 
     return scores, routing_map
