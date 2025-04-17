@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import torch
 import torch_npu
 from einops import rearrange
+from megatron.training.global_vars import get_args
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
 from mindspeed.core.context_parallel.context_parallel_kv_cache import ContextParallelKVCache
 from .utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, sbh_to_tnd, tnd_to_sbh, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
@@ -925,6 +926,9 @@ class AttentionWithCp(torch.autograd.Function):
         attention_strategy = AttentionStrategyFactory.get_strategy(cp_config.causal, cp_config.is_eod_reset)
 
         for j in range(cp_config.outer_size):
+            if get_args().prof_file:
+                activation_func_1 = torch.nn.Hardshrink()
+                v = activation_func_1(v)
             cp_config.kv_block_id = kv_block_id_outer
             kv_block_offset = (cp_config.kv_block_id // cp_config.inner_size) * cp_config.inner_size
             if j < cp_config.outer_size - 1:
@@ -953,6 +957,9 @@ class AttentionWithCp(torch.autograd.Function):
             if outer_ring.wait():
                 cur_kv, next_round_kv = next_round_kv, cur_kv  # double buffer
                 kv_block_id_outer = (kv_block_id_outer + cp_config.cp_size - cp_config.inner_size) % cp_config.cp_size
+            
+            if get_args().prof_file:
+                v = activation_func_1(v)
 
         attn_mask = attn_mask if isinstance(attn_mask, list) else [attn_mask]
 
@@ -1030,6 +1037,10 @@ class AttentionWithCp(torch.autograd.Function):
 
         cp_config.q_block_id, cp_config.kv_block_id, kv_block_id_outer = cp_config.rank, cp_config.kv_block_id, cp_config.kv_block_id
 
+        if get_args().prof_file:
+            activation_func_1 = torch.nn.Hardshrink()
+            q = activation_func_1(q)
+
         outer_data = (outer_size, inter_kv_comm)
         inner_data = (inner_size, intra_kv_comm)
         cp_kv_cache = ContextParallelKVCache(cp_config.cache_policy, outer_data, inner_data, k_stack, v_stack)
@@ -1084,6 +1095,8 @@ class AttentionWithCp(torch.autograd.Function):
 
         dk, dv = cur_dkv[0], cur_dkv[1]
 
+        if get_args().prof_file:
+            dq = activation_func_1(dq)
 
         # [2, s, b, h] -> [2s, b, h]
         if cp_config.causal and cp_config.is_eod_reset:

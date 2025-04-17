@@ -24,6 +24,8 @@ from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.training import get_args
 from megatron.core.pipeline_parallel.schedules import forward_step, backward_step, deallocate_output_tensor, check_first_val_step
+
+from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 from mindspeed.core.performance.auto_pipeline_perf.autopipeline_perf import profile_context
 import mindspeed.core.training as training
 
@@ -51,6 +53,17 @@ def forward_step_decorator(fn):
             output_tensor = fn(*args, **kwargs)
             torch.cuda.synchronize()
             profile_context["fwd_time"].append((time.time() - start_time) * 1000)
+        elif argument.prof_file:
+            auto_profiler = AutoPatcher(argument.prof_file)
+            torch.cuda.synchronize()
+            used_mem, _ = auto_profiler.get_memory_status()
+            start_time = time.time()
+            output_tensor = fn(*args, **kwargs)
+            torch.cuda.synchronize()
+            forward_step_time = (time.time() - start_time) * 1000
+            used_mem = (auto_profiler.get_memory_status()[0] - used_mem) / auto_profiler.unit_gb
+            auto_profiler.context['forward_step_time'] = forward_step_time
+            auto_profiler.context['forward_step_mem'] = used_mem
         else:
             output_tensor = fn(*args, **kwargs)
         return output_tensor
@@ -68,6 +81,17 @@ def backward_step_decorator(fn):
             input_tensor_grad = fn(*args, **kwargs)
             torch.cuda.synchronize()
             profile_context["bwd_time"].append((time.time() - start_time) * 1000)
+        elif argument.prof_file:
+            auto_profiler = AutoPatcher(argument.prof_file)
+            torch.cuda.synchronize()
+            used_mem, _ = auto_profiler.get_memory_status()
+            start_time = time.time()
+            input_tensor_grad = fn(*args, **kwargs)
+            torch.cuda.synchronize()
+            backward_step_time = (time.time() - start_time) * 1000
+            used_mem = (auto_profiler.get_memory_status()[0] - used_mem) / auto_profiler.unit_gb
+            auto_profiler.context['backward_step_time'] = backward_step_time
+            auto_profiler.context['backward_step_mem'] = used_mem
         else:
             input_tensor_grad = fn(*args, **kwargs)
         return input_tensor_grad

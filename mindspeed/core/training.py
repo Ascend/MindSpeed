@@ -23,8 +23,9 @@ from megatron.training.global_vars import (set_args, get_tensorboard_writer, get
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import print_rank_last, report_memory
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
-from mindspeed.core.auto_parallel.auto_parallel_apply import search_optimal_configuration
-from mindspeed.core.auto_parallel.auto_parallel_profiling import Profiling, OperateProfile
+
+from mindspeed.auto_settings.auto_settings import AutoSettings
+from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 from mindspeed.core.memory.auto_pipeline.autopipeline import autopipeline_profiling
 from mindspeed.core.performance.auto_pipeline_perf.autopipeline_perf import (autopipelineperf_profiling, check_out_of_memory,
                                                                              calculate_num_of_activations, check_skip_profiling,
@@ -36,7 +37,6 @@ from mindspeed.core.performance.auto_pipeline_perf.schedulepipeline_solver impor
 from mindspeed.core.memory.auto_pipeline.autopipeline_apply import apply_autopipeline
 from mindspeed.core.memory.auto_pipeline.autopipeline_solver import solve_autopipeline, broadcast_policy_in_ranks, destroy_global_vars
 from mindspeed.arguments import parse_args_wrapper
-
 
 POLICY = None
 OPTIMIZED_MBS_LIST = None
@@ -142,19 +142,17 @@ def train_step_decorator(train_step):
         if args_.op_cal_tflops:
             flop_count = get_flops_counter()
             flop_count.start()
-        if args_.profile_operator:
-            op_profile = OperateProfile(args_)
-            ret = train_step(*args, **kwargs)
-            op_profile.step()
-        elif args_.prof_file:
-            profiling = Profiling(args_)
-            train_step = profiling.hook_train_step(train_step)
-            ret = train_step(*args, **kwargs)
+
+        if os.getenv('OOTB_OPTIMIZER_PROFILING_BLACK', 'FALSE') == 'TRUE':
+            custom_train_step = AutoPatcher(args_.prof_file).hook_train_step(train_step)
+            ret = custom_train_step(*args, **kwargs)
         else:
             ret = train_step(*args, **kwargs)
-            is_profile = args_.profile_npu and ((torch.distributed.get_rank() in args_.profile_ranks) or (-1 in args_.profile_ranks))
-            if is_profile:
-                args_.prof.step()
+
+        if hasattr(args_, 'profile_npu') and args_.profile_npu \
+            and (torch.distributed.get_rank() in args_.profile_ranks):
+            args_.prof.step()
+
         if args_.op_cal_tflops:
             counts = flop_count.get_flops()
             set_count(counts)
@@ -267,7 +265,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
             if wandb_writer:
                 wandb_writer.log({'batch-size': batch_size}, iteration)
         for key in loss_dict:
-            writer.add_scalar(key , loss_dict[key], iteration)
+            writer.add_scalar(key, loss_dict[key], iteration)
             writer.add_scalar(key + ' vs samples', loss_dict[key],
                               args.consumed_train_samples)
             if wandb_writer:
@@ -426,27 +424,14 @@ def pretrain_decorator(pretrain):
         new_parse_args = parse_args_wrapper(parse_args)
         argument = new_parse_args(kwargs.get('extra_args_provider'), False)
 
-        if argument.auto_tuning:
+        if argument.auto_settings:
+            if argument.rank % torch.cuda.device_count() != 0:
+                return
             set_args(argument)
-            print("pretrain_decorator set_args ========================================")
-
-            from mindspeed.auto_tuning.auto_tuning import auto_tuning
-            global_args = get_args()
-            assert global_args.auto_tuning_ranks >= 16, "Auto-tuning searching space should be >= 16."
-            working_dir_root = os.path.realpath(global_args.auto_tuning_work_dir)
-            if not os.path.exists(working_dir_root) and global_args.rank % torch.cuda.device_count() == 0:
-                os.makedirs(working_dir_root)
-
-            if global_args.rank % torch.cuda.device_count() == 0:
-                print("only rank 0 run auto tuning ========================================")
-                auto_tuning(global_args, working_dir=working_dir_root)
+            settings = AutoSettings()
+            settings.auto_settings(argument)
             return
 
-        if argument.auto_parallel:
-            set_args(argument)
-            search_optimal_configuration(argument)
-            return
-        
         if argument.automated_pipeline and not argument.num_layer_list:
             context, POLICY = autopipeline_profiling(args[1], args[2], args[3],
                                                      args[0], None, argument)
@@ -512,6 +497,12 @@ def pretrain_decorator(pretrain):
                 PP_SCHEDULE_LIST = exist_policy[2]
                 OPTIMAL_LAYERS = exist_policy[3]
         pretrain(*args, **kwargs)
+        if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
+            from mindspeed.auto_settings.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
+            res_dir = argument.profile_save_path
+            cur_rank = torch.distributed.get_rank()
+            if res_dir and cur_rank % torch.cuda.device_count() == 0:
+                GatherNodeProfiling(res_dir).parse_node_pkl(argument)
     return wrapper
 
 
@@ -537,8 +528,11 @@ def setup_model_and_optimizer_decorator(setup_model_and_optimizer):
         model, optimizer, opt_param_scheduler = setup_model_and_optimizer(*args, **kwargs)
         if argument.recompute_module_list:
             apply_autopipeline(model)
-        if argument.profile_memory and torch.distributed.get_rank() in argument.profile_ranks:
-            profiling = Profiling(argument)
-            profiling.register_recursive_hook("", model)
+
+        if os.getenv('OOTB_OPTIMIZER_PROFILING_BLACK', 'FALSE') == 'TRUE':
+            from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
+            auto_patcher = AutoPatcher(argument.prof_file)
+            auto_patcher.register_recursive_hook("", model, auto_patcher.context)
+
         return model, optimizer, opt_param_scheduler
     return wrapper

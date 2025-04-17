@@ -7,7 +7,6 @@ import torch_npu
 
 from megatron.training import get_args
 from mindspeed.functional.tflops_calculate.tflops_utils import set_count, get_flops_counter
-from mindspeed.core.auto_parallel.auto_parallel_profiling import Profiling, OperateProfile
 
 
 def train_wrapper(train):

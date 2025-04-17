@@ -17,6 +17,7 @@ from megatron.core import mpu, parallel_state
 from megatron.core.utils import divide
 from megatron.training import get_args
 
+from mindspeed.auto_settings.module.black.patch.hccl_operator import AttentionEndOp
 from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses, \
     get_tensor_model_parallel_world_size_for_nd1_dim1
@@ -125,12 +126,12 @@ def self_attention_init_wrapper(fn):
                 config: TransformerConfig,
                 submodules: SelfAttentionSubmodules,
                 layer_number: int,
-                attn_mask_type=AttnMaskType.padding,                
+                attn_mask_type=AttnMaskType.padding,
                 **attention_optional_kwargs):
-        
+
         args = get_args()
         if args.overlap_param_gather:
-            config.reset_attention_order = True           
+            config.reset_attention_order = True
         fn(self, config, submodules, layer_number, attn_mask_type, **attention_optional_kwargs)
 
         if args.multi_head_latent_attention:
@@ -276,6 +277,12 @@ def attention_forward_wrapper(fn):
         packed_seq_params=None,
     ):
         args = get_args()
+        if args.prof_file:
+            from mindspeed.auto_settings.module.black.patch.hccl_operator import AttentionStartOp
+            hidden_states = AttentionStartOp.apply(hidden_states)
+            activation_func_1 = torch.nn.Softplus()
+            hidden_states = activation_func_1(hidden_states)
+
         if args.multi_head_latent_attention:
             # hidden_states: [sq, b, h]
 
@@ -398,6 +405,11 @@ def attention_forward_wrapper(fn):
                 attention_bias,
                 packed_seq_params
             )
+
+        if args.prof_file:
+            output = AttentionEndOp.apply(output)
+            activation_func_2 = torch.nn.Softshrink()
+            output = activation_func_2(output)
 
         return output, bias
 

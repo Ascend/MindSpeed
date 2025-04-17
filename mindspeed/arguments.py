@@ -1,5 +1,5 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
-
+import os
 from dataclasses import make_dataclass, field
 from functools import wraps
 import argparse
@@ -43,10 +43,9 @@ def process_args(parser):
     parser = _add_2d_tp_args(parser)
     parser = _add_coc_args(parser)
     parser = _add_profile_args(parser)
-    parser = _add_auto_parallel_args(parser)
     parser = _add_deepseek_args(parser)
-    parser = _auto_tuning_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
+    parser = _add_auto_settings_args(parser)
 
     for feature in FEATURES_LIST:
         feature.register_args(parser)
@@ -76,19 +75,6 @@ def _add_deepseek_args(parser):
     group.add_argument('--rope-scaling-mscale-all-dim', type=float, default=0.0, help='Yarn rope: rope mscale all dim')
     group.add_argument('--rope-scaling-original-max-position-embeddings', type=int, default=None,
                        help='Yarn rope: rope original max position embeddings')
-
-    return parser
-
-
-def _auto_tuning_args(parser):
-    group = parser.add_argument_group(title='auto_tuning')
-
-    group.add_argument('--auto-tuning', action='store_true', help='enable auto tuning')
-    group.add_argument('--auto-tuning-work-dir', type=str, default='./auto_tuning_dir',
-                       help="auto tuning working path.")
-    group.add_argument('--auto-tuning-ranks', type=int, default=16, help='the global size of auto tuning')
-    group.add_argument('--auto-tuning-log-level', type=str, default='info', choices=['debug', 'info', 'warning'],
-                       help='auto tuning log level, could be debug, info or warning')
 
     return parser
 
@@ -1003,22 +989,6 @@ def _add_ndmm_args(parser):
     return parser
 
 
-def _add_auto_parallel_args(parser):
-    group = parser.add_argument_group(title='auto_parallel')
-    group.add_argument('--auto-parallel', action='store_true', 
-                       help='enable automatic parallelism with auto-parallel')
-    group.add_argument('--nnodes', type=int, default=1, help='the number of node in the cluster')
-    group.add_argument('--nproc-per-node', type=int, default=8, help='the number of NPU on each node')
-    group.add_argument('--master-addr', type=str, default=None, help='the ip-address of master node')
-    group.add_argument('--master-port', type=str, default=None, help='the ip-port of master node')
-    group.add_argument('--node-rank', type=int, default=0, 
-                       help='the rank of nodes in the cluster, starting from 0 and increment by 1')
-    group.add_argument('--profile-operator', action='store_true', help='')
-    group.add_argument('--profile-memory', action='store_true', help='')
-    group.add_argument('--prof-file', type=str, default=None, help='')
-    return parser
-
-
 def _add_2d_tp_args(parser):
     group = parser.add_argument_group(title='2d-tp')
     group.add_argument('--tp-2d', action='store_true', default=False,
@@ -1044,4 +1014,95 @@ def _add_hccl_group_buffer_args(parser):
                        help='the hccl buffer for group adaptively')
     group.add_argument('--hccl-ep-group-buffer-adaptive-factor', type=float, default=-1.0,
                        help='the ep group buffer factor')
-    return parser 
+    return parser
+
+
+def _add_auto_settings_args(parser):
+    group = parser.add_argument_group(title="auto_settings")
+
+    group.add_argument(
+        "--auto-settings",
+        action="store_true",
+        help="Enable auto tuning."
+    )
+    group.add_argument(
+        "--auto-settings-work-dir",
+        type=str,
+        default=os.getcwd(),
+        help="Auto setting's working directory. By default current directory."
+    )
+    group.add_argument(
+        "--auto-settings-ranks",
+        type=int,
+        default=8,
+        help="The world size (# of ranks) for auto settings to search in."
+    )
+    group.add_argument(
+        "--auto-settings-log-level",
+        type=str,
+        default="info",
+        help="The world size (# of ranks) for auto settings to search in."
+    )
+    group.add_argument(
+        "--target-nnodes",
+        type=int,
+        default=1,
+        help="Target search nnodes for auto_settings."
+    )
+    group.add_argument(
+        "--nnodes",
+        type=int,
+        default=1,
+        help="Number of nodes, or the range of nodes in form <minimum_nodes>:<maximum_nodes>."
+             "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--nproc-per-node",
+        "--nproc_per_node",
+        type=int,
+        default=1,
+        help="Number of workers per node; supported values: [auto, cpu, gpu, int]."
+             "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--node-rank",
+        "--node_rank",
+        type=int,
+        default=0,
+        help="Rank of the node for multi-node distributed training."
+             "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--auto-settings-type",
+        type=str,
+        default="mixed",
+        help="You should select one of [mixed, white, black]."
+    )
+    group.add_argument(
+        "--prof-file",
+        type=str,
+        default=None,
+        help=''
+    )
+    group.add_argument(
+        "--master-addr",
+        "--master_addr",
+        default="127.0.0.1",
+        type=str,
+        help="Address of the master node (rank 0) that only used for static rendezvous. It should "
+             "be either the IP address or the hostname of rank 0. For single node multi-proc training "
+             "the --master-addr can simply be 127.0.0.1; IPv6 should have the pattern "
+             "`[0:0:0:0:0:0:0:1]`."
+             "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--master-port",
+        "--master_port",
+        default=29500,
+        type=int,
+        help="Port on the master node (rank 0) to be used for communication during distributed "
+             "training. It is only used for static rendezvous."
+             "Will be passed into torchrun."
+    )
+    return parser
+

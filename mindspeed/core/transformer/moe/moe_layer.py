@@ -7,6 +7,8 @@ import torch
 from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
+
+from mindspeed.auto_settings.module.black.patch.hccl_operator import MOEOrMLPEndOp, MOEOrMLPStartOp
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import MoELayerOverlapAll2All
 from mindspeed.core.transformer.moe.moe_layer_overlap_allgather import MoELayerOverlapAllGather
 
@@ -83,6 +85,11 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
 
     def custom_forward(hidden_states):
         args = get_args()
+        if args.prof_file and args.num_experts > 1:
+            hidden_states = MOEOrMLPStartOp.apply(hidden_states)
+            activation_func1 = torch.nn.Softplus()
+            hidden_states = activation_func1(hidden_states)
+
         probs, routing_map = self.router(hidden_states)
         if args.n_shared_experts:
             if not hasattr(self, 'comm_stream'):
@@ -100,6 +107,12 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
             output = output + share_experts_output
             if self.token_dispatcher.add_bias:
                 mlp_bias = mlp_bias + share_experts_bias
+
+        if args.prof_file and args.num_experts > 1:
+            activation_func2 = torch.nn.Softshrink()
+            output = activation_func2(output)
+
+        output = MOEOrMLPEndOp.apply(output)
         return output, mlp_bias
 
     threshold = hidden_states.shape[0] * hidden_states.shape[1] * self.recompute_threshold

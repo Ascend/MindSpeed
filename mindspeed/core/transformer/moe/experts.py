@@ -50,7 +50,15 @@ def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert
                 hidden = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(hidden)
             torch.cuda.current_stream().wait_stream(COMM_STREAM)
 
+        if get_args().prof_file and get_args().num_experts:
+            activation_func = torch.nn.Hardshrink()
+            hidden = activation_func(hidden)
+
         output, output_bias = expert(hidden)
+
+        if get_args().prof_file and get_args().num_experts:
+            activation_func = torch.nn.Hardshrink()
+            output = activation_func(output)
 
         output_local[start:end] = output
         if self.add_bias:

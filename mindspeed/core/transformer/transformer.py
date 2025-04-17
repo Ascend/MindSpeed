@@ -144,6 +144,15 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
 def core_mlp_forward_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
+        if isinstance(args, tuple):
+            args = list(args)
+
+        if get_args().prof_file and not get_args().num_experts:
+            from mindspeed.auto_settings.module.black.patch.hccl_operator import MOEOrMLPStartOp, MOEOrMLPEndOp
+            args[0] = MOEOrMLPStartOp.apply(args[0])
+            activation_func_1 = torch.nn.Softplus()
+            args[0] = activation_func_1(args[0])
+
         self.layer_number = getattr(self, "layer_number", None)
         is_recompute_activation = should_recompute_activation(self.layer_number)
         if get_args().moe_alltoall_overlap_comm and not isinstance(args[-1], torch.Tensor):
@@ -202,6 +211,12 @@ def core_mlp_forward_wrapper(fn):
             # recompute and restore the output of activation function.
             if output.requires_grad:
                 output.register_hook(self.activation_checkpoint_manager.recompute)
+
+        if get_args().prof_file and not get_args().num_experts:
+            activation_func_2 = torch.nn.Softshrink()
+            output = activation_func_2(output)
+            output = MOEOrMLPEndOp.apply(output)
+
         return output, output_bias
     return wrapper
 

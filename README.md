@@ -540,8 +540,8 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr>
 <tbody>
   <tr>
-    <td rowspan="5"> Ascend Auto Tuning 并行策略自动搜索系统 </td>
-    <td><a href="docs/features/auto_tuning.md">link</a></td>
+    <td rowspan="5"> Ascend Auto Settings 并行策略自动搜索系统 </td>
+    <td><a href="docs/features/auto_settings.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>

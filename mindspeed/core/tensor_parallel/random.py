@@ -71,19 +71,8 @@ def checkpoint_function_backward(ctx, *args):
     get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
 
     detached_inputs = detach_variable(inputs)
-    from mindspeed.auto_tuning.module.parse.recompute_parser import get_recompute_parser, call_hook_func
-    recompute_parser = get_recompute_parser()
-
-    if (
-            recompute_parser.skip_profiling_step <= recompute_parser.profiling_step <= recompute_parser.stop_profiling_step
-            and os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE'):
-        call_hook_func()
     with torch.enable_grad():
         outputs = ctx.run_function(*detached_inputs)
-    # remove hook
-    for hook_handle in recompute_parser.modules_hooks:
-        hook_handle.remove()
-    recompute_parser.modules_hooks.clear()
 
     # Set the states back to what it was at the start of this function.
     torch.set_rng_state(bwd_cpu_rng_state)

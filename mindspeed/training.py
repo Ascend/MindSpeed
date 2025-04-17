@@ -46,7 +46,6 @@ from megatron.training.global_vars import (
     get_one_logger)
 from megatron.training.async_utils import maybe_finalize_async_save
 
-from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
 
 
 _BASE_TIME = 1742613446  # one moment of 2025.3.22
@@ -182,10 +181,13 @@ def pretrain(
     )
 
     if (os.getenv("OOTB_OPTIMIZER_PARSE_ARGS", "FALSE") == "TRUE"):
-        working_dir = get_args().profile_save_path
-        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
-        hardware = MindSpeedAdaptor.get_hardware(working_dir=working_dir)
-        MindSpeedAdaptor.get_model_args(get_args(), hardware, working_dir)
+        args = get_args()
+        if not args.vocab_size:
+            from megatron.training.tokenizer.tokenizer import build_tokenizer
+            tokenizer = build_tokenizer(args)
+            args.vocab_size = tokenizer.vocab_size
+        from mindspeed.auto_settings.module.parse.profiling_parse import get_settings
+        get_settings(args, args.profile_save_path)
         print_rank_0("================OOTB_OPTIMIZER_PARSE_ARGS END EXIT!====================")
 
         return
@@ -260,10 +262,8 @@ def pretrain(
     config = get_model_config(model[0])
 
     if (os.getenv("OOTB_OPTIMIZER_PARSE_MODEL", "FALSE") == "TRUE"):
-        output_path = args.profile_save_path
-        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
-        hardware = MindSpeedAdaptor.get_hardware()
-        MindSpeedAdaptor.get_model_params(model, mpu.get_pipeline_model_parallel_rank(), hardware, output_path)
+        from mindspeed.auto_settings.module.parse.profiling_parse import get_model_params
+        get_model_params(model, mpu.get_pipeline_model_parallel_rank(), args.profile_save_path)
         print_rank_0("================OOTB_OPTIMIZER_PARSE_MODEL END EXIT!====================")
         return
 
@@ -363,14 +363,6 @@ def pretrain(
     if wandb_writer:
         wandb_writer.finish()
     maybe_finalize_async_save(blocking=True)
-
-    if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
-        # profiling parser
-        res_dir = args.profile_save_path
-        cur_rank = torch.distributed.get_rank()
-        if res_dir and cur_rank % 8 == 0:
-            GatherNodeProfiling(res_dir).parse_node_pkl(args)
-        print_datetime('after training is done')
 
     one_logger and one_logger.log_metrics({
         'app_finish_time': one_logger_utils.get_timestamp_in_ms()

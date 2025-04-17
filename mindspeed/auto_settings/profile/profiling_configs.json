@@ -1,0 +1,103 @@
+[
+    {
+        "name": "4dp",
+        "tp": "default",
+        "cp": 1,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 4
+    },
+    {
+        "name": "4dp mc2",
+        "tp": "default",
+        "cp": 1,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 4,
+        "mc2": true
+    },
+    {
+        "name": "2dp 2tp",
+        "tp": "mul_t_by=2",
+        "cp": 1,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 2
+    },
+    {
+        "name": "2dp 2tp mc2",
+        "tp": "mul_t_by=2",
+        "cp": 1,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 2,
+        "mc2": true
+    },
+    {
+        "name": "2dp 2pp",
+        "tp": "default",
+        "cp": 1,
+        "pp": 2,
+        "seq": "default",
+        "experts": "default",
+        "ep": 2
+    },
+    {
+        "name": "4cp",
+        "tp": "default",
+        "cp": 4,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 4
+    },
+    {
+        "name": "2cp",
+        "tp": "default",
+        "cp": 2,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 2
+    },
+    {
+        "name": "roce cp",
+        "tp": "mul_t_by=2",
+        "cp": 2,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 2
+    },
+    {
+        "name": "1ep",
+        "tp": "default",
+        "cp": 1,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 1
+    },
+    {
+        "name": "1ep 2pp",
+        "tp": "default",
+        "cp": 1,
+        "pp": 2,
+        "seq": "default",
+        "experts": "default",
+        "ep": 1
+    },
+    {
+        "name": "half seq length (skip)",
+        "tp": "default",
+        "cp": 1,
+        "pp": 1,
+        "seq": "slice_seq_by=2",
+        "experts": "default",
+        "ep": 1
+    }
+]

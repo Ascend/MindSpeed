@@ -284,6 +284,11 @@ def mcore_models_adaptation(aspm, mindspeed_args):
         aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward', rotary_forward)
         aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len', Eod_get_rotary_seq_len)
 
+    from .auto_settings.module.black.patch.language_module import compute_language_model_loss_wrapper
+    aspm.register_patch(
+        'megatron.core.models.common.language_module.language_module.LanguageModule.compute_language_model_loss',
+        compute_language_model_loss_wrapper)
+
 
 def mcore_transformer_adaptation_l0(aspm):
     import megatron.core
@@ -681,16 +686,6 @@ def memory_fragmentation_adaptation(aspm, args):
         time.sleep(10)
         change_allocator()
 
-    if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
-        print(f"OOTB_OPTIMIZER_PROFILING success open")
-        from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
-        import megatron.training
-        from mindspeed.auto_tuning.module.parse.recompute_parser import allowed_recompute_parser_module_wrapper
-        allowed_recompute_parser_module_wrapper(megatron.legacy.model.transformer.ParallelTransformerLayer)
-        from mindspeed.auto_tuning.module.parse.recompute_parser import setup_model_and_optimizer_decorator
-        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_decorator)
-        print(f"setup_model_and_optimizer_decorator success")
-
     if args.adaptive_recompute_enable or args.memory_fragmentation:
         import megatron.training.initialize
         aspm.register_patch('megatron.training.initialize_megatron', megatron.training.initialize.initialize_megatron)
@@ -845,6 +840,26 @@ def mcore_moe_adaptation(pm, args):
         TransformerBlock._build_layers = build_layers_wrapper(TransformerBlock._build_layers,
                                                               ColumnParallelLinear.forward,
                                                               RowParallelLinear.forward)
+
+    if os.getenv('OOTB_OPTIMIZER_PROFILING_BLACK', 'FALSE') == 'TRUE':
+        from .auto_settings.module.black.patch.moe_layer import moelayer_forward_decorator
+        from .auto_settings.module.black.patch.experts import sequential_mlp_forward_decorator
+        from .auto_settings.module.black.patch.router import router_forward_decorator
+        pm.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.forward', moelayer_forward_decorator)
+        pm.register_patch('megatron.core.transformer.moe.router.TopKRouter.forward', router_forward_decorator)
+        pm.register_patch('megatron.core.transformer.moe.experts.SequentialMLP.forward',
+                          sequential_mlp_forward_decorator)
+
+        from .auto_settings.module.black.patch.hccl_operator import hccl_operator_decorator, p2p_operator_decorator
+        torch.distributed._all_gather_base = hccl_operator_decorator('hcom_allGather_',
+                                                                     torch.distributed._all_gather_base)
+        torch.distributed._reduce_scatter_base = hccl_operator_decorator('hcom_reduceScatter_',
+                                                                         torch.distributed._reduce_scatter_base)
+        torch.distributed.all_to_all_single = hccl_operator_decorator('hcom_alltoall_',
+                                                                      torch.distributed.all_to_all_single)
+        torch.distributed.all_reduce = hccl_operator_decorator('hcom_allReduce_', torch.distributed.all_reduce)
+        torch.distributed.isend = p2p_operator_decorator('isend', torch.distributed.isend)
+        torch.distributed.irecv = p2p_operator_decorator('irecv', torch.distributed.irecv)
 
 
 def deepspeed_moe_adaptation(pm, args):
@@ -1066,11 +1081,6 @@ def delete_lock_file(directory, lock):
 
 @DisableExecution
 def exe_adaptation():
-    modified_argv_path = os.getenv("OOTB_OPTIMIZER_MODIFIED_ARGV_PATH", None)
-    if modified_argv_path:
-        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
-        MindSpeedAdaptor.set_argv(sys.argv, modified_argv_path)
-        print("================OOTB_OPTIMIZER_MODIFIED_ARGV DONE!====================")
     mindspeed_args = get_mindspeed_args()
 
     from torch.utils.cpp_extension import _get_build_directory

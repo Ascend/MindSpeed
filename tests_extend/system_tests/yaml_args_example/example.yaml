@@ -192,11 +192,10 @@ apply_layernorm_1p: False
 async_save: null
 attention_mask_on_cpu: False
 auto_detect_ckpt_format: False
-auto_parallel: False
-auto_tuning: False
-auto_tuning_log_level: 'info'
-auto_tuning_ranks: 16
-auto_tuning_work_dir: './auto_tuning_dir'
+auto_settings: False
+auto_settings_log_level: 'info'
+auto_settings_ranks: 16
+auto_settings_work_dir: './auto_settings_dir'
 automated_pipeline: False
 automated_pipeline_perf: False
 bert_binary_head: True
