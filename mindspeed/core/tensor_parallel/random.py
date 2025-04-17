@@ -1,3 +1,5 @@
+# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 import os
 from functools import wraps
 from typing import List, Union
@@ -68,13 +70,6 @@ def checkpoint_function_backward(ctx, *args):
     _set_cuda_rng_state(ctx.fwd_cuda_rng_state)
     get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
 
-    # Compute the forward pass.
-    flops_counter = None
-    if global_args.op_cal_tflops:
-        from mindspeed.core.training import get_flops_counter
-        flops_counter = get_flops_counter()
-        flops_counter.pause()
-
     detached_inputs = detach_variable(inputs)
     from mindspeed.auto_tuning.module.parse.recompute_parser import get_recompute_parser, call_hook_func
     recompute_parser = get_recompute_parser()
@@ -89,9 +84,6 @@ def checkpoint_function_backward(ctx, *args):
     for hook_handle in recompute_parser.modules_hooks:
         hook_handle.remove()
     recompute_parser.modules_hooks.clear()
-
-    if global_args.op_cal_tflops:
-        flops_counter.resume()
 
     # Set the states back to what it was at the start of this function.
     torch.set_rng_state(bwd_cpu_rng_state)

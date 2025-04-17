@@ -1,5 +1,7 @@
 from mindspeed.features_manager.functional.profiler_default import ProfilerDefaultFeature
 from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
+from mindspeed.features_manager.functional.tflops_calculate import TflopsCalculateFeature
+from mindspeed.features_manager.functional.profile import ProfileFeature
 
 from mindspeed.features_manager.fusions.grouped_matmul import GroupedMatmulFeature
 from mindspeed.features_manager.fusions.fused_bias_swiglu import FusedSwigluFeature
@@ -43,6 +45,8 @@ FEATURES_LIST_V2 = (
     # Functional features
     ProfilerDefaultFeature(),
     NPUDeterministicFeature(),
+    TflopsCalculateFeature(),
+    ProfileFeature(),
 
     # Fusions features
     GroupedMatmulFeature(),

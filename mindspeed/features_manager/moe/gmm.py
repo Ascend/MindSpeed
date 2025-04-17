@@ -12,9 +12,6 @@ class MoEGmmFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument("--gemm-gradient-accumulation-fusion", action='store_true',
                            help="Use gradient-accumulation-fusion in gemm.")
-        # can move to related module
-        group.add_argument('--recompute-activation-function', action='store_true',
-                           help='Recompute the activation function in MLP layers.')
 
     def validate_args(self, args):
         if args.gemm_gradient_accumulation_fusion:

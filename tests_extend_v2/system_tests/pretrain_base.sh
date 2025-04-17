@@ -9,11 +9,6 @@ NNODES=${NNODES:-"1"}
 NODE_RANK=${RANK:-"0"}
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
-CHECKPOINT_PATH=ckpt
-VOCAB_FILE=/home/dataset/enwiki/gpt2-vocab.json
-MERGE_FILE=/home/dataset/enwiki/gpt2-merges.txt
-DATA_PATH=/home/dataset/enwiki/my-t5_text_sentence
-
 DISTRIBUTED_ARGS=(
     --nproc_per_node $GPUS_PER_NODE
     --nnodes $NNODES
@@ -41,6 +36,8 @@ MODEL_ARGS=(
     --hidden-size 1024
     --ffn-hidden-size 4096
     --num-attention-heads 32
+    --tokenizer-type Llama2Tokenizer
+    --tokenizer-model ${TOKENIZER_MODEL:-/home/dataset/model/llama-2-7b-hf/tokenizer.model}
     --init-method-std 0.01
     --attention-dropout 0.0
     --hidden-dropout 0.0
@@ -67,10 +64,8 @@ MOE_ARGS=(
 )
 
 DATA_ARGS=(
-    --vocab-file $VOCAB_FILE
-    --merge-file $MERGE_FILE
-    --data-path $DATA_PATH
-    --split 99990,8,2
+    --data-path ${DATA_PATH:-/home/dataset/llama2/alpaca_text_document}
+    --split 949,50,1
 )
 
 TRAINING_ARGS=(
@@ -92,8 +87,6 @@ LOGGING_ARGS=(
     --save-interval 20000 \
     --eval-interval 20000 \
     --eval-iters 10 \
-    --save $CHECKPOINT_PATH \
-    --load $CHECKPOINT_PATH \
     --no-load-optim \
     --no-load-rng \
     --ckpt-format torch
