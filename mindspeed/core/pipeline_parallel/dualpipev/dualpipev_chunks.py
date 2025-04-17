@@ -18,6 +18,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core import parallel_state
 from megatron.core.distributed.finalize_model_grads import _allreduce_layernorm_grads
 from mindspeed.core.pipeline_parallel.dualpipev.dualpipev_schedules import get_dualpipe_chunk
+from mindspeed.core.data_parallel.async_log_allreduce import get_async_reduced_loss_value
 
 
 def dualpipev_fp16forward(self, *inputs, **kwargs):
@@ -174,11 +175,21 @@ def train_step(forward_step_func, data_iterator,
     if dualpipevlaststage:
         # Average loss across microbatches.
         loss_reduced = {}
-        for key in losses_reduced[0].keys():
+
+        if args.async_log_allreduce:
+            # when async_log_allreduce is on, loss_reduced is list[tuple(dict,torch.distributed.group)]
+            losses_reduced_keys = losses_reduced[0][0].keys()
+        else:
+            losses_reduced_keys = losses_reduced[0].keys()
+
+        for key in losses_reduced_keys:
             numerator = 0
             denominator = 0
             for x in losses_reduced:
-                val = x[key]
+                if args.async_log_allreduce:
+                    val = get_async_reduced_loss_value(x, key)
+                else:
+                    val = x[key]
                 # there is one dict per microbatch. in new reporting, we average
                 # over the total number of tokens across the global batch.
                 if isinstance(val, tuple) or isinstance(val, list):
