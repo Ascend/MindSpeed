@@ -1,6 +1,6 @@
 """Handle the transition from megatron_adaptor to megatron_v2."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from functools import wraps
 from logging import getLogger
@@ -11,7 +11,7 @@ LOG = getLogger(__name__)
 ENABLE_DEPRECATED = False
 
 # when decide to deprecate megatron_adaptor.py, define a specific time.
-MEGATRON_ADAPTOR_DEPRECATED_TIME = datetime(2099, 1, 1)
+MEGATRON_ADAPTOR_DEPRECATED_TIME = datetime(2099, 1, 1, tzinfo=timezone.utc)
 
 
 class DeprecatedLogLevel(Enum):
@@ -124,15 +124,15 @@ class Deprecated:
         )
 
 
-class AdaptorV2:
-    """A decorator for functions which will be deprecated."""
+class DisableExecution:
+    """A decorator to control a function's execution."""
 
-    VERSION = "V1"
+    DISABLE = False
 
     def __init__(self, func: Callable):
         self._func = func
 
     def __call__(self, *args, **kwargs):
-        if self.VERSION == "V2":
+        if self.DISABLE:
             return None
         return self._func(*args, **kwargs)

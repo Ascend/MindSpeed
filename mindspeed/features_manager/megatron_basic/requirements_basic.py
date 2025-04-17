@@ -44,10 +44,12 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('apex.normalization.fused_layer_norm.FusedLayerNormAffineFunction',
                           FusedLayerNormAffineFunction, create_dummy=True)
 
-        if args.optimizer_selection == 'fused_torch_adamw':
-            pm.register_patch('apex.optimizers.FusedAdam', FusedTorchAdamW, create_dummy=True)
-        elif args.optimizer_selection == 'fused_adamw':
-            pm.register_patch('apex.optimizers.FusedAdam', AdamW, create_dummy=True)
+        if args.optimizer_selection == "fused_torch_adamw":
+            pm.register_patch(
+                "apex.optimizers.FusedAdam", FusedTorchAdamW, create_dummy=True
+            )
+        elif args.optimizer_selection == "fused_adamw":
+            pm.register_patch("apex.optimizers.FusedAdam", AdamW, create_dummy=True)
         pm.register_patch('apex.optimizers.FusedSGD', torch.optim.SGD, create_dummy=True)
 
     def torch_adaptation(self, pm, args):

@@ -12,7 +12,11 @@ from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
 from mindspeed.features_manager import FEATURES_LIST
 from .arguments import process_args
-from .deprecate import AdaptorV2
+from .deprecate import (
+    DisableExecution,
+    Deprecated,
+    MEGATRON_ADAPTOR_DEPRECATED_TIME,
+)
 
 
 _ARGS = None
@@ -201,6 +205,28 @@ def mcore_models_adaptation_l0(aspm):
     aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_decoder_block_spec', get_gpt_decoder_block_spec_wrapper)
 
 
+@Deprecated(
+    deprecated_date=MEGATRON_ADAPTOR_DEPRECATED_TIME,
+    deprecated_codes=(
+        "TransformerBlock._build_layers = _build_layers",
+        """
+        aspm.register_patch(
+            'megatron.training.training.num_floating_point_operations', 
+            num_floating_point_wrapper
+        )
+        """,
+        """
+        aspm.register_patch(
+            'megatron.core.transformer.moe.moe_utils.track_moe_metrics', 
+            track_moe_metrics
+        )
+        """,
+    ),
+    suggestion="""
+    please use mindspeed.megatron_adaptor_v2.py
+    instead of interface in mindspeed.megatron_adaptor.py
+    """,
+)
 def mcore_models_adaptation(aspm, mindspeed_args):
     import megatron.core
     megatron.core.jit.jit_fuser = dummy_jit
@@ -1038,7 +1064,7 @@ def delete_lock_file(directory, lock):
                     break
 
 
-@AdaptorV2
+@DisableExecution
 def exe_adaptation():
     modified_argv_path = os.getenv("OOTB_OPTIMIZER_MODIFIED_ARGV_PATH", None)
     if modified_argv_path:
@@ -1079,7 +1105,10 @@ def exe_adaptation():
 
     # New features structure
     for feature in FEATURES_LIST:
-        if getattr(mindspeed_args, feature.feature_name, None) or feature.default_patches:
+        if (
+            getattr(mindspeed_args, feature.feature_name, None)
+            or feature.default_patches
+        ):
             feature.register_patches(aspm, mindspeed_args)
 
     aspm.apply_patches()

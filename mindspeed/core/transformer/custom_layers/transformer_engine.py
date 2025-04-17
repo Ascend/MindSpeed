@@ -10,12 +10,12 @@ from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D
 
-        
+
 class PTNorm:
     """
     Conditional Initialization of Transformer-Engine’s LayerNorm or RMSNorm Instance
     """
-    
+
     def __new__(
         cls, config: TransformerConfig, hidden_size: int, eps: float = 1e-5,
     ):

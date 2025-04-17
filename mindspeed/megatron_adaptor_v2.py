@@ -10,29 +10,32 @@ from logging import getLogger
 from pathlib import Path
 
 from torch.utils.cpp_extension import _get_build_directory
+from torch_npu.contrib import transfer_to_npu
 
-from .deprecate import AdaptorV2
+from .deprecate import DisableExecution
 
 # just in case execution of exe_adaptation function
 # in megatron_adaptor when import it.
-AdaptorV2.VERSION = "V2"
+
 from mindspeed.features_manager import FEATURES_LIST_V2
+DisableExecution.DISABLE = True
 from mindspeed.patch_utils import MindSpeedPatchesManager
 from mindspeed.arguments_v2 import get_mindspeed_args
-from mindspeed.megatron_adaptor import (
-    mcore_transformer_adaptation_l0,
-    legacy_model_transformer_l0,
-    mcore_parallel_state_adaptation,
-    communication_adaptation,
-)
-AdaptorV2.VERSION = "V1"
+
+DisableExecution.DISABLE = False
 from mindspeed.log_config import set_log_config
 
 LOG = getLogger(__name__)
+_IS_FEATURES_PATCHED = False
 
 
 def patch_features():
     """Patch all mindspeed related features."""
+    global _IS_FEATURES_PATCHED
+    if _IS_FEATURES_PATCHED:
+        return
+    _IS_FEATURES_PATCHED = True
+
     set_log_config()
     log = getLogger(__name__)
     log.info("start to patch features in megatron adaptor v2.")

@@ -1,3 +1,5 @@
+# Copyright (c) 2023; NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 from functools import wraps
 import torch
 from torch import Tensor
@@ -11,6 +13,8 @@ from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 from mindspeed.core.tensor_parallel.comm_autograd_function import auto_grad_sync_gather_along_last_dim, \
     auto_grad_sync_gather_along_first_dim
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPYCollectiveComm
+
+from mindspeed.deprecate import Deprecated, MEGATRON_ADAPTOR_DEPRECATED_TIME
 
 
 def transformer_block_checkpointed_forward_wrapper(forward_func):
@@ -186,6 +190,14 @@ def _get_layer_offset(args):
     return offset
 
 
+@Deprecated(
+    deprecated_date=MEGATRON_ADAPTOR_DEPRECATED_TIME,
+    suggestion="""
+    please use
+    mindspeed.core.pipeline_parallel.noop_layers.adaptor.build_layers_adaptor
+    instead
+    """,
+)
 def _build_layers(self):
     args = get_args()
 

@@ -69,8 +69,8 @@ class UnalignedPipelineFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         if args.pipeline_num_transformer_layers is None:
             return
-        from mindspeed.core.pipeline_parallel.unaligned.unaligned_pipeline import get_layer_offset_unaligned, \
-            get_num_layers_to_build_unaligned
+        from mindspeed.core.pipeline_parallel.unaligned.unaligned_pipeline import (
+            get_layer_offset_unaligned, get_num_layers_to_build_unaligned)
         if getattr(args, self.feature_name, None):
             patch_manager.register_patch(
                 "megatron.core.transformer.transformer_layer.TransformerLayer._get_layer_offset",
