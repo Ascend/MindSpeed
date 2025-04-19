@@ -1,7 +1,7 @@
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
-class RecomputeActivationImpl(MindSpeedFeature):
+class RecomputeActivationFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('recompute-activation-function')
 

@@ -37,9 +37,9 @@ from mindspeed.features_manager.megatron_basic.requirements_basic import (
     RequirementsBasicFeature,
 )
 from mindspeed.features_manager.recompute.activation_function import (
-    RecomputeActivationImpl,
+    RecomputeActivationFeature,
 )
-from mindspeed.features_manager.recompute.norm_function import RecomputeNormImpl
+from mindspeed.features_manager.recompute.norm_function import RecomputeNormFeature
 from mindspeed.features_manager.tensor_parallel.unaligned_linear_feature import (
     UnalignedLinearFeature,
 )
@@ -51,6 +51,8 @@ from mindspeed.features_manager.optimizer.virtual_optimizer import (
     VirtualOptimizerFeature,
 )
 from mindspeed.features_manager.pipeline_parallel.noop_layers import NoopLayersFeature
+
+from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferFAdaptiveFeature
 
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
 from mindspeed.features_manager.transformer.flash_attention.alibi_feature import AlibiFeature
@@ -70,9 +72,13 @@ FEATURES_LIST = [
 
 # this list is for reconstruction of mindspeed
 FEATURES_LIST_V2 = (
-    # recompute
-    RecomputeActivationImpl(),
-    RecomputeNormImpl(),
+    # Hccl Buffer
+    HcclBufferFAdaptiveFeature(),
+
+    # Recompute
+    RecomputeActivationFeature(),
+    RecomputeNormFeature(),
+
     # Functional features
     ProfilerDefaultFeature(),
     NPUDeterministicFeature(),

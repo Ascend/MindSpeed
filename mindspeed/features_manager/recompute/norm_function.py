@@ -2,7 +2,7 @@
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
-class RecomputeNormImpl(MindSpeedFeature):
+class RecomputeNormFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('recompute-norm')
 

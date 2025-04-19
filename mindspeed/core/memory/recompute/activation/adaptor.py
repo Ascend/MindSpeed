@@ -27,3 +27,4 @@ def mindspeed_activation_recompute_forward(self, hidden_states):
     state back into h hidden dimension.
     """
     return core_activation_recompute_forward_impl(self, hidden_states, bias_gelu_impl, bias_geglu_impl, get_cuda_rng_tracker)
+
