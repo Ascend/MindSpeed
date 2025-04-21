@@ -178,7 +178,7 @@ def transformer_layer_forward_moe(
     # but backward func of unperm1_out is needed, so resize the storage but keep tensor.
     unperm1_out.untyped_storage().resize_(0)
     detached_unperm_a2a_out = detach_tensor(unperm_a2a_out, checkpoint_forward=checkpoint)
-    route_expert_output, _ = alltoall_token_unperm2(self.mlp.token_dispatcher, detached_unperm_a2a_out)
+    route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(self.mlp.token_dispatcher, detached_unperm_a2a_out)
     if get_args().moe_unperm2_mem_optim:
         unperm_a2a_out.untyped_storage().resize_(0)
 
@@ -191,7 +191,7 @@ def transformer_layer_forward_moe(
         share_experts_graph = None
         mlp_output = route_expert_output
 
-    if recomp_norm:
+    if recomp_norm and mlp_output.requires_grad:
         mlp_output.register_hook(self.norm_ckpt2.recompute)
 
 
@@ -232,6 +232,7 @@ def transformer_layer_forward_moe(
         checkpointed=checkpoint
     )
     graph.act_ckpt_manager = act_ckpt_manager
+    graph.unperm2_swap_manager = unperm2_swap_manager
 
     return output, context, graph
 
@@ -283,7 +284,8 @@ def transformer_layer_forward_dense(
 
     if recomp_norm:
         self.norm_ckpt2.discard_output()
-        mlp_output_with_bias[0].register_hook(self.norm_ckpt2.recompute)
+        if mlp_output_with_bias[0].requires_grad:
+            mlp_output_with_bias[0].register_hook(self.norm_ckpt2.recompute)
 
 
     with self.bias_dropout_add_exec_handler():

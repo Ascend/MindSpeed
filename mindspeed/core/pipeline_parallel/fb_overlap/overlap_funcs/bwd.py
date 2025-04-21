@@ -22,6 +22,11 @@ def transformer_layer_backward_moe(
     dispached_input, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
     ep_group = parallel_state.get_expert_model_parallel_group()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
+
+    # Launch swap-in at the beginning of the backward pass.
+    if self.unperm2_swap_manager:
+        self.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
+
     if args.moe_tp_extend_ep:
         ep_group = parallel_state.get_tensor_and_expert_parallel_group()
     if tp_size > 1:
@@ -37,7 +42,8 @@ def transformer_layer_backward_moe(
     if backward_ag_shared_handle is not None:
         backward_ag_shared_handle.wait()
         backward_ag_shared_handle = None
-        if layer_output_grad is not None:
+        # In case of unperm2 swap, layer_output_grad is required for probs_grad before router-backward
+        if layer_output_grad is not None and not args.moe_unperm2_mem_optim_swap:
             layer_output_grad.untyped_storage().resize_(0)
     _, unperm1_out_grad, handle = async_all_to_all(
         self.unperm_a2a_graph[1].grad,
@@ -117,7 +123,22 @@ def transformer_layer_backward_moe(
     if prob_handle:
         prob_handle.wait()
     run_graph_backward(self.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
-    run_graph_backward(self.router_graph)
+
+    # Swap-in unperm2 input for probs_grad computation in backward pass of router.
+    if self.unperm2_swap_manager:
+        self.unperm2_swap_manager.wait_swap_in()
+    probs_grad = None
+    if args.moe_unperm2_mem_optim_swap:
+        # dprobs computation
+        H = self.unperm2_swap_manager.npu_tensor.shape[-1]
+        K = args.moe_router_topk
+        probs_dtype = probs.dtype
+        probs_grad = layer_output_grad.to(probs_dtype) * self.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(probs_dtype)
+        probs_grad = probs_grad.sum(dim=-1)
+        layer_output_grad.untyped_storage().resize_(0)
+        self.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
+    run_graph_backward(self.router_graph, probs_grad)
+
     run_graph_backward(self.pre_mlp_layernorm_graph)
     run_graph_backward(self.attn_graph)
 

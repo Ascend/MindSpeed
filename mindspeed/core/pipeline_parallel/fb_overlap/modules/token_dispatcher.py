@@ -8,7 +8,7 @@ from megatron.core.transformer.moe.moe_utils import permute, unpermute
 from megatron.core.tensor_parallel.mappings import _gather_along_first_dim_expert_parallel
 from megatron.core.utils import make_viewless_tensor
 from megatron.training import get_args
-from mindspeed.core.transformer.moe.unpermute_without_activation import UnpermuteWithoutActivation
+from mindspeed.core.pipeline_parallel.fb_overlap.modules.utils import TensorSwapManager
 
 
 def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
@@ -269,19 +269,38 @@ def alltoall_token_unperm1(
 def alltoall_token_unperm2(self, permutated_local_input_tokens, probs=None):
     # Unpermutation 1: AlltoAll output to output
 
+    args = get_args()
     probs = probs if probs is not None else self.probs
-    output = unpermute(
+    if args.moe_unperm2_mem_optim_swap:
+        probs = None
+    output_unperm = unpermute(
         permutated_local_input_tokens,
         self.reversed_local_input_permutation_mapping,
         probs=probs,
         padded_mode=self.drop_and_pad,
         restore_shape=self.hiddden_shape_before_permute,
     )
-    if get_args().moe_unperm2_mem_optim:
-        output = output.view(-1, self.router_topk, output.shape[-1])
-        output = output.sum(dim=1)
+    output_swap_manager = None
+    if args.moe_unperm2_mem_optim:
+        output_unperm = output_unperm.view(-1, self.router_topk, output_unperm.shape[-1])
+        output = output_unperm.sum(dim=1)
+    elif args.moe_unperm2_mem_optim_swap:
+        permutated_local_input_tokens.untyped_storage().resize_(0)
+        self.probs_detached = self.probs.detach()
+        assert not self.probs_detached.requires_grad
 
-
+        # [s, k, h] * [s, k, 1] -> [s, k, h]
+        # forward pass here is broadcast and mul
+        # backward pass is mul and reducesum
+        weighted_output = output_unperm.view(-1, self.router_topk, output_unperm.shape[-1]) * self.probs_detached.unsqueeze(-1)
+        # swap output
+        TensorSwapManager.wait_all_swap_out('unperm2')
+        output_swap_manager = TensorSwapManager(output_unperm, 'unperm2')
+        output_swap_manager.async_swap_out(wait_stream=torch.npu.current_stream())
+        output = weighted_output.sum(dim=1).to(permutated_local_input_tokens.dtype) # [s, h]
+    else:
+        # cast for unfused unpermute
+        output = output_unperm.to(permutated_local_input_tokens.dtype)
     # Reshape the output tensor
     output = output.view(self.hidden_shape)
 
@@ -289,5 +308,4 @@ def alltoall_token_unperm2(self, permutated_local_input_tokens, probs=None):
         inp=output, requires_grad=output.requires_grad, keep_graph=True
     )
 
-
-    return output, None
+    return output, output_swap_manager

@@ -1,3 +1,7 @@
+#  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
+
+from typing import Optional, Dict, List
+
 import torch
 from torch.autograd.variable import Variable
 from megatron.core.pipeline_parallel import p2p_communication
@@ -141,3 +145,164 @@ def p2p_comm_helper(comm_params: P2PCommParams, tensor_tosend):
     else:
         return None, p2p_handles
 
+
+class TensorSwapManager:
+    """Manager for asynchronous tensor swapping between NPU and CPU memory."""
+    
+    _SWAP_OUT_STREAM = None
+    _SWAP_IN_STREAM = None
+    _ALL_SWAP_OUT_QUEUES = {}  # Dictionary of swap groups for coordinated operations
+
+    @classmethod
+    def _get_swap_out_stream(cls):
+        """Get or create the swap-out stream."""
+        if cls._SWAP_OUT_STREAM is None:
+            cls._SWAP_OUT_STREAM = torch.npu.Stream(device=torch.npu.current_device())
+        return cls._SWAP_OUT_STREAM
+
+    @classmethod
+    def _get_swap_in_stream(cls):
+        """Get or create the swap-in stream."""
+        if cls._SWAP_IN_STREAM is None:
+            cls._SWAP_IN_STREAM = torch.npu.Stream(device=torch.npu.current_device())
+        return cls._SWAP_IN_STREAM
+
+    def __init__(self, tensor, swap_group_name=None):
+        """
+        Initialize a tensor swap manager.
+        
+        Args:
+            tensor: The NPU tensor to swap
+            swap_group_name: Optional group name for coordinated swap operations
+        """
+        # Check if tensor is a slice (requires special handling, not supported yet)
+        if tensor.storage().size() != tensor.numel():
+            raise AssertionError('TensorSwapManager cannot handle sliced tensors')
+
+        self.npu_tensor = tensor
+        self.cpu_tensor = None
+        self.swap_out_event = None
+        self.swap_in_event = None
+
+        self.swap_group_name = swap_group_name  # Group for coordinated operations
+        self.under_swap_in = False
+
+        # Initialize queue for this swap group if it doesn't exist
+        if swap_group_name and swap_group_name not in self._ALL_SWAP_OUT_QUEUES:
+            self._ALL_SWAP_OUT_QUEUES[swap_group_name] = []
+
+    def async_swap_out(self, wait_event=None, wait_stream=None):
+        """
+        Asynchronously copy tensor from NPU to CPU memory.
+        
+        Args:
+            event: Optional event to wait for before swapping
+            stream: Optional stream to synchronize with before swapping
+        """
+        swap_stream = self._get_swap_out_stream()
+        # Allocate pinned CPU memory (enables faster async transfers)
+        self.cpu_tensor = torch.empty_like(self.npu_tensor, 
+                                         pin_memory=True, 
+                                         device='cpu')
+        
+        with torch.npu.stream(swap_stream):
+            if wait_event:
+                swap_stream.wait_event(wait_event)
+            if wait_stream:
+                swap_stream.wait_stream(wait_stream)
+
+            self.cpu_tensor.untyped_storage().copy_(
+                self.npu_tensor.untyped_storage(), 
+                non_blocking=True)
+            
+            self.swap_out_event = torch.npu.Event()
+            self.swap_out_event.record()
+            
+            # Add to swap group if specified
+            if self.swap_group_name:
+                self._ALL_SWAP_OUT_QUEUES[self.swap_group_name].append(self)
+
+    def wait_swap_out(self):
+        """Wait for swap-out to complete and release NPU memory."""
+        if self.swap_out_event:
+            torch.npu.current_stream().wait_event(self.swap_out_event)
+        # Release NPU memory (but keep storage object alive)
+        if not self.under_swap_in:
+            self.npu_tensor.untyped_storage().resize_(0)
+
+    def async_swap_in(self, wait_event=None, wait_stream=None):
+        """
+        Asynchronously copy tensor from CPU back to NPU memory.
+        
+        Args:
+            event: Optional event to wait for before swapping
+            stream: Optional stream to synchronize with before swapping
+        """
+        self.under_swap_in = True
+        if self.npu_tensor.untyped_storage().size() != 0:
+            return
+        swap_stream = self._get_swap_in_stream()
+        # Ensure NPU storage is properly sized
+        self.npu_tensor.untyped_storage().resize_(
+            self.cpu_tensor.untyped_storage().size())
+        # Wait for previous swap-out to complete
+        torch.npu.current_stream().wait_event(self.swap_out_event)
+        
+        with torch.npu.stream(swap_stream):
+            if wait_event:
+                swap_stream.wait_event(wait_event)
+            if wait_stream:
+                swap_stream.wait_stream(wait_stream)
+
+            self.npu_tensor.untyped_storage().copy_(
+                self.cpu_tensor.untyped_storage(), 
+                non_blocking=True)
+            
+            self.swap_in_event = torch.npu.Event()
+            self.swap_in_event.record()
+
+    def wait_swap_in(self):
+        """Wait for swap-in to complete and release CPU memory."""
+        if self.swap_in_event:
+            torch.npu.current_stream().wait_event(self.swap_in_event)
+        # Release CPU memory
+        self.cpu_tensor = None
+        self.under_swap_in = False
+
+    @classmethod
+    def wait_all_swap_out(cls, group_name):
+        """
+        Wait for all swap-out operations in a group to complete.
+        
+        Args:
+            group_name: Name of the swap group to synchronize
+        """
+        if group_name in cls._ALL_SWAP_OUT_QUEUES:
+            for manager in cls._ALL_SWAP_OUT_QUEUES[group_name]:
+                manager.wait_swap_out()
+            # Clear the group while maintaining the list object
+            cls._ALL_SWAP_OUT_QUEUES[group_name].clear()
+
+
+def make_wait_swap_in_hook(swap_manager):
+    """
+    Create a hook that waits for a swap-in operation to complete.
+    
+    Returns:
+        A callable hook function that waits for swap-in completion
+    """
+    return lambda *_: swap_manager.wait_swap_in()
+
+
+def make_async_swap_in_hook(swap_managers):
+    """
+    Create a hook that initiates async swap-in for multiple tensors.
+    
+    Args:
+        swap_managers: List of TensorSwapManager instances
+        
+    Returns:
+        A callable hook function that triggers swap-in for all managers
+    """
+    return lambda *_: [m.async_swap_in(wait_stream=torch.npu.current_stream()) 
+                      for m in swap_managers]

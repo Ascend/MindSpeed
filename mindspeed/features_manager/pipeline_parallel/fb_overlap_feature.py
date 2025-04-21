@@ -13,6 +13,7 @@ class FwdBwdOverlapFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--moe-fb-overlap', action='store_true')
         group.add_argument('--moe-unperm2-mem-optim', action='store_true')
+        group.add_argument('--moe-unperm2-mem-optim-swap', action='store_true')
 
 
 
@@ -28,9 +29,9 @@ class FwdBwdOverlapFeature(MindSpeedFeature):
         self.incompatible_check(args, 'recompute_in_advance')
         self.incompatible_check(args, 'use_legacy_models')
         if args.moe_fb_overlap and args.moe_token_dispatcher_type == 'allgather':
-            raise AssertionError('The fb overlap feature do not support allgather dispatcher')
+            raise AssertionError('The fb overlap feature do not support allgather dispatcher.')
         if args.moe_fb_overlap and args.moe_zero_memory == 'level1':
-            raise AssertionError('fb overlap only support moe zero memory level 0')
+            raise AssertionError('fb overlap only support moe zero memory level 0.')
 
         self.dependency_check(args, 'n_shared_experts')
         self.dependency_check(args, 'moe_permutation_async_comm')
@@ -38,6 +39,10 @@ class FwdBwdOverlapFeature(MindSpeedFeature):
             self.dependency_check(args, 'moe_tp_extend_ep')
         if args.moe_unperm2_mem_optim and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim currently only can be used with --moe-fb-overlap')
+        if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
+            raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')
+        if args.moe_unperm2_mem_optim and args.moe_unperm2_mem_optim_swap:
+            raise AssertionError('--moe-unperm2-mem-optim and --moe-unperm2-mem-optim-swap are incompatible.')
 
 
     def register_patches(self, patch_manager, args):

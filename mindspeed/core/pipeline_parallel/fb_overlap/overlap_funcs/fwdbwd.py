@@ -63,6 +63,10 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     recomp_norm = getattr(args, 'recompute_norm', False)
     bwd_dispached_input, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
 
+    # Launch swap-in at the beginning of the backward pass.
+    if bwd_layer_graph.unperm2_swap_manager:
+        bwd_layer_graph.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
+
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
     if bwd_unperm_a2a_handle is None:
@@ -200,7 +204,25 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         shared_expert_grad.untyped_storage().resize_(0)
     run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
     WeightGradStore.end_decouple()
-    run_graph_backward(bwd_layer_graph.router_graph)
+
+    # swap-in unperm2 input for probs_grad computation
+    if bwd_layer_graph.unperm2_swap_manager:
+        bwd_layer_graph.unperm2_swap_manager.wait_swap_in()
+    probs_grad = None
+    if args.moe_unperm2_mem_optim_swap:
+        # dprobs computation
+        output_grad = bwd_layer_output_grad
+        if hasattr(bwd_layer_graph, 'last_layer_input_grad'):
+            output_grad = bwd_layer_graph.last_layer_input_grad
+        H = bwd_layer_graph.unperm2_swap_manager.npu_tensor.shape[-1]
+        K = args.moe_router_topk
+        probs_dtype = bwd_probs.dtype
+        probs_grad = bwd_layer_graph.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(probs_dtype) * output_grad.to(probs_dtype)
+        output_grad.untyped_storage().resize_(0)
+        bwd_layer_graph.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
+        probs_grad = probs_grad.sum(dim=-1)
+    run_graph_backward(bwd_layer_graph.router_graph, probs_grad)
+
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
@@ -271,6 +293,13 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         saved_tensors, [], None, None, fwd_layer,
         checkpointed=checkpoint
     )
+
+    # save original layer output for probs_grad computation
+    if args.moe_unperm2_mem_optim_swap \
+        and next_bwd_layer_graph is not None \
+        and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
+ 
+        next_bwd_layer_graph.last_layer_input_grad = bwd_layer_graph.layer_input.grad
 
     for tensor in bwd_layer_graph.recompute_needed_tensors:
         if tensor is not None:
@@ -457,7 +486,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
     with checkpoint_context:
         detached_unperm_a2a_out = detach_tensor(unperm_a2a_out, checkpoint_forward=checkpoint)
-        route_expert_output, _ = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
+        route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
         if args.moe_unperm2_mem_optim:
             unperm_a2a_out.untyped_storage().resize_(0)
 
@@ -522,6 +551,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         checkpointed=checkpoint
     )
     graph.act_ckpt_manager = act_ckpt_manager
+    graph.unperm2_swap_manager = unperm2_swap_manager
 
     for tensor in bwd_layer_graph.recompute_needed_tensors:
         if tensor is not None:
@@ -702,13 +732,18 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     tp_group = parallel_state.get_tensor_model_parallel_group()
     use_shared_experts = hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None
     recomp_norm = getattr(args, 'recompute_norm', False)
+    swap_unperm2 = getattr(args, 'moe_unperm2_mem_optim_swap', False)
     bwd_dispached_input, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
     a2a_hooked_on_attention = getattr(fwd_layer.self_attention, 'a2a_hooked_on_attention', False)
+
+    # Launch swap-in
+    if bwd_layer_graph.unperm2_swap_manager:
+        bwd_layer_graph.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
 
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
     if bwd_unperm_a2a_handle is None:
-        run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad)
+        run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=swap_unperm2)
         # Async Unperm A2A
         if tp_size > 1 and a2a_hooked_on_attention:
             set_async_alltoall_inputs(
@@ -959,7 +994,25 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         bwd_prob_handle.wait()
     run_graph_backward(bwd_layer_graph.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
     perm1_out_grad.untyped_storage().resize_(0)
-    run_graph_backward(bwd_layer_graph.router_graph)
+
+    # router backward
+    if bwd_layer_graph.unperm2_swap_manager:
+        bwd_layer_graph.unperm2_swap_manager.wait_swap_in()
+    probs_grad = None
+    if swap_unperm2:
+        # dprobs computation
+        output_grad = bwd_layer_output_grad
+        if hasattr(bwd_layer_graph, 'last_layer_input_grad'):
+            output_grad = bwd_layer_graph.last_layer_input_grad
+        H = bwd_layer_graph.unperm2_swap_manager.npu_tensor.shape[-1]
+        K = args.moe_router_topk
+        probs_dtype = bwd_probs.dtype
+        probs_grad = bwd_layer_graph.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(probs_dtype) * output_grad.to(probs_dtype)
+        output_grad.untyped_storage().resize_(0)
+        bwd_layer_graph.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
+        probs_grad = probs_grad.sum(dim=-1)
+    run_graph_backward(bwd_layer_graph.router_graph, probs_grad)
+
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
@@ -968,7 +1021,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         unperm_a2a_out, unperm_a2a_handle = get_async_alltoall_outputs()
 
     if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
-        run_graph_backward(next_bwd_layer_graph.unperm2_graph, bwd_layer_graph.layer_input.grad, keep_graph=True)
+        run_graph_backward(next_bwd_layer_graph.unperm2_graph, bwd_layer_graph.layer_input.grad, keep_graph=True, keep_grad=swap_unperm2)
 
     unperm_a2a_handle.wait()
     unperm_a2a_handle = None
@@ -984,7 +1037,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         )
     with checkpoint_context:
         detached_unperm_a2a_out = detach_tensor(unperm_a2a_out)
-        route_expert_output, _ = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
+        route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
         if args.moe_unperm2_mem_optim:
             unperm_a2a_out.untyped_storage().resize_(0)
 
@@ -1050,6 +1103,14 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         checkpointed=checkpoint
     )
     graph.act_ckpt_manager = act_ckpt_manager
+    graph.unperm2_swap_manager = unperm2_swap_manager
+
+    # save original layer output for probs_grad computation
+    if swap_unperm2 \
+        and next_bwd_layer_graph is not None \
+        and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
+ 
+        next_bwd_layer_graph.last_layer_input_grad = bwd_layer_graph.layer_input.grad
 
     for tensor in bwd_layer_graph.recompute_needed_tensors:
         if tensor is not None:
