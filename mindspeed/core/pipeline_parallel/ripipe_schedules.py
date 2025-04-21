@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import collections
+from functools import wraps
 from typing import Iterator, List, Union
 import contextlib
 
@@ -25,9 +26,16 @@ from megatron.core.pipeline_parallel.schedules import deallocate_output_tensor, 
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.core.enums import ModelType
+from megatron.core.pipeline_parallel.schedules import get_forward_backward_func
 
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 from mindspeed.core.weight_grad_store import WeightGradStore
+
+
+def get_forward_backward_func_ripipe_patch(*args, **kwargs):
+    if torch.is_grad_enabled():
+        return forward_backward_ripipe_pipelining
+    return get_forward_backward_func
 
 
 def forward_backward_ripipe_pipelining(
@@ -139,8 +147,8 @@ def forward_backward_ripipe_pipelining(
     tensor_shape[0] = tensor_shape[0] // parallel_state.get_context_parallel_world_size()
     if config.sequence_parallel:
         tensor_shape[0] = tensor_shape[0] // parallel_state.get_tensor_model_parallel_world_size()
-    tensor_shape[0] = tensor_shape[0] // args.tp_x
-    tensor_shape[-1] = tensor_shape[-1] // args.tp_y
+    tensor_shape[0] = tensor_shape[0] // getattr(args, "tp_x", 1)
+    tensor_shape[-1] = tensor_shape[-1] // getattr(args, "tp_y", 1)
     # Compute number of warmup and remaining microbatches.
     num_model_chunks = len(model)
     total_num_microbatches = num_microbatches * num_model_chunks
@@ -156,7 +164,7 @@ def forward_backward_ripipe_pipelining(
 
     num_fwd = min((pipeline_parallel_size - 1) * 2 + (num_model_chunks - 1) * pipeline_parallel_size, total_num_microbatches)
     num_dx = num_fwd - num_warmup_microbatches
-    overlap_chunks_num = (num_dx + pipeline_parallel_size - 1) // pipeline_parallel_size 
+    overlap_chunks_num = (num_dx + pipeline_parallel_size - 1) // pipeline_parallel_size
     nano_flag = [True] * len(model)
     for i in range(overlap_chunks_num):
         nano_flag[-i - 1] = False
@@ -531,14 +539,14 @@ def forward_backward_ripipe_pipelining(
 
             # Backward pass.
             backward_k = k
-            if k < num_dx and args.use_nanopipe:
+            if k < num_dx and getattr(args, "use_nanopipe", False):
                 WeightGradStore.start_decouple()
 
-            if args.use_nanopipe:
-                WeightGradStore.resize_ori_storage(args.use_nanopipe_swap)
+            if getattr(args, "use_nanopipe", False):
+                WeightGradStore.resize_ori_storage(getattr(args, "use_nanopipe_swap", False))
 
             input_tensor_grad = backward_step_helper(backward_k)
-            if args.use_nanopipe:
+            if getattr(args, "use_nanopipe", False):
                 if WeightGradStore.is_decoupleBlock:
                     WeightGradStore.flush()
                 if k == num_dx - 1:
@@ -577,14 +585,14 @@ def forward_backward_ripipe_pipelining(
 
             # Backward pass.
             backward_k = k
-            if k < num_dx and args.use_nanopipe:
+            if k < num_dx and getattr(args, "use_nanopipe", False):
                 WeightGradStore.start_decouple()
 
-            if args.use_nanopipe:
-                WeightGradStore.resize_ori_storage(args.use_nanopipe_swap)
+            if getattr(args, "use_nanopipe", False):
+                WeightGradStore.resize_ori_storage(getattr(args, "use_nanopipe_swap", False))
 
             input_tensor_grad = backward_step_helper(backward_k)
-            if k == num_dx - 1 and args.use_nanopipe:
+            if k == num_dx - 1 and getattr(args, "use_nanopipe", False):
                 WeightGradStore.end_decouple()
 
             # Send output_tensor and input_tensor_grad, receive input_tensor
@@ -699,7 +707,14 @@ def forward_backward_ripipe_pipelining(
                 out_tensor
             )
 
-            if args.use_nanopipe and args.use_nanopipe_swap and k == max(num_microbatches_remaining + 1, (total_num_microbatches + num_microbatches_remaining) // 2):
+            if (
+                    getattr(args, "use_nanopipe", False) and
+                    getattr(args, "use_nanopipe_swap", False) and
+                    k == max(
+                        num_microbatches_remaining + 1,
+                        (total_num_microbatches + num_microbatches_remaining) // 2
+                    )
+            ):
                 WeightGradStore.swap_tensors()
 
             # ripipe related, actually do the recomputation
@@ -721,7 +736,7 @@ def forward_backward_ripipe_pipelining(
                     wait_handle.wait()
 
         # nanopipe related
-        if args.use_nanopipe:
+        if getattr(args, "use_nanopipe", False):
             if nano_flag[0] and 0 not in synchronized_model_chunks:
                 config.grad_sync_func[0](model[0].parameters())
                 synchronized_model_chunks.add(0)

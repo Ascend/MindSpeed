@@ -4,6 +4,8 @@ from mindspeed.features_manager.functional.profiler_default import (
 from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
 from mindspeed.features_manager.functional.tflops_calculate import TflopsCalculateFeature
 from mindspeed.features_manager.functional.profile import ProfileFeature
+from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import RiPipeSchedulesBubbleFeature, \
+    RiPipeSchedulesAdvanceFeature
 
 from mindspeed.features_manager.functional.profiler_default import (
     ProfilerDefaultFeature,
@@ -93,6 +95,11 @@ FEATURES_LIST_V2 = (
     MegatronBasicFeature(),
     # Tensor parallel features
     UnalignedLinearFeature(),
+
+    # ripipe
+    RiPipeSchedulesBubbleFeature(),
+    RiPipeSchedulesAdvanceFeature(),
+
     # llava-multimodal
     LlavaModel(),
 
