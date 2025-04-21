@@ -111,8 +111,7 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
         if args.prof_file and args.num_experts > 1:
             activation_func2 = torch.nn.Softshrink()
             output = activation_func2(output)
-
-        output = MOEOrMLPEndOp.apply(output)
+            output = MOEOrMLPEndOp.apply(output)
         return output, mlp_bias
 
     threshold = hidden_states.shape[0] * hidden_states.shape[1] * self.recompute_threshold

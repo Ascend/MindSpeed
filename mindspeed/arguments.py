@@ -1023,7 +1023,7 @@ def _add_auto_settings_args(parser):
     group.add_argument(
         "--auto-settings",
         action="store_true",
-        help="Enable auto tuning."
+        help="Enable auto settings."
     )
     group.add_argument(
         "--auto-settings-work-dir",
@@ -1058,7 +1058,6 @@ def _add_auto_settings_args(parser):
     )
     group.add_argument(
         "--nproc-per-node",
-        "--nproc_per_node",
         type=int,
         default=1,
         help="Number of workers per node; supported values: [auto, cpu, gpu, int]."
@@ -1066,7 +1065,6 @@ def _add_auto_settings_args(parser):
     )
     group.add_argument(
         "--node-rank",
-        "--node_rank",
         type=int,
         default=0,
         help="Rank of the node for multi-node distributed training."
@@ -1086,7 +1084,6 @@ def _add_auto_settings_args(parser):
     )
     group.add_argument(
         "--master-addr",
-        "--master_addr",
         default="127.0.0.1",
         type=str,
         help="Address of the master node (rank 0) that only used for static rendezvous. It should "
@@ -1097,7 +1094,6 @@ def _add_auto_settings_args(parser):
     )
     group.add_argument(
         "--master-port",
-        "--master_port",
         default=29500,
         type=int,
         help="Port on the master node (rank 0) to be used for communication during distributed "
