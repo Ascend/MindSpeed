@@ -51,10 +51,17 @@ def process_args(parser):
     parser = _add_hccl_group_buffer_args(parser)
     parser = _add_layerzero_args(parser)
     parser = _add_dist_train_args(parser)
+    parser = _add_ai_framework_args(parser)
 
     for feature in FEATURES_LIST:
         feature.register_args(parser)
 
+    return parser
+
+
+def _add_ai_framework_args(parser):
+    group = parser.add_argument_group(title='ai framework')
+    group.add_argument('--ai-framework', type=str, default='pytorch', help='support pytorch and mindspore')
     return parser
 
 

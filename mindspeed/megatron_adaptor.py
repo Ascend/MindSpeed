@@ -10,7 +10,7 @@ from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
 from mindspeed.features_manager import FEATURES_LIST
 from .arguments import process_args
-
+from .mindspore.mindspore_adaptor import mindspore_adaptation
 
 _ARGS = None
 
@@ -1136,7 +1136,8 @@ def exe_adaptation():
     if mindspeed_args.optimization_level >= 2:
         # Advanced acceleration algorithm
         adaptation_l2(aspm, mindspeed_args)
-        
+
+    mindspore_adaptation(aspm, mindspeed_args)
     if mindspeed_args.layerzero:
         # layerzero features
         megatron_training_adaptation_with_layerzero(aspm, mindspeed_args)
