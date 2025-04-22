@@ -46,6 +46,8 @@ from mindspeed.features_manager.tensor_parallel.unaligned_linear_feature import 
     UnalignedLinearFeature,
 )
 
+from mindspeed.features_manager.tensor_parallel.mc2 import MC2Feature
+
 from mindspeed.features_manager.moe.tp_extend_ep import MoETpExtendEpFeature
 from mindspeed.features_manager.moe.gmm import MoEGmmFeature
 from mindspeed.features_manager.moe.shared_expert import MoESharedExpertsFeature
@@ -102,6 +104,9 @@ FEATURES_LIST_V2 = (
 
     # llava-multimodal
     LlavaModel(),
+
+    # coc_overlap: mc2
+    MC2Feature(),
 
     # Transformer flash attention features
     FusionAttentionV2Feature(),
