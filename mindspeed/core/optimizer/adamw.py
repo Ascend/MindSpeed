@@ -11,7 +11,7 @@ def adamw(params: List[Tensor],
           exp_avgs: List[Tensor],
           exp_avg_sqs: List[Tensor],
           max_exp_avg_sqs: List[Tensor],
-          step: int,
+          step_tensor: Tensor,
           *,
           amsgrad: bool,
           beta1: float,
@@ -27,24 +27,22 @@ def adamw(params: List[Tensor],
         grad = grads[i]
         exp_avg = exp_avgs[i]
         exp_avg_sq = exp_avg_sqs[i]
+        max_exp_avg_sq = max_exp_avg_sqs[i] if amsgrad else None
 
-        # Perform stepweight decay
-        bias_correction1 = beta1 ** (step - 1)
-        bias_correction2 = beta2 ** (step - 1)
-
-        param.data, exp_avg, exp_avg_sq = torch_npu.npu_apply_adam_w(
-            bias_correction1,
-            bias_correction2,
-            lr,
-            weight_decay,
-            beta1,
-            beta2,
-            eps,
-            grad,
-            None,
-            amsgrad,
-            maximize,
-            out=(param.data, exp_avg, exp_avg_sq)
+        torch._fused_adamw_(
+            [param],
+            [grad],
+            [exp_avg],
+            [exp_avg_sq],
+            [max_exp_avg_sq] if amsgrad else [],
+            [step_tensor],
+            amsgrad=amsgrad,
+            lr=lr,
+            beta1=beta1,
+            beta2=beta2,
+            weight_decay=weight_decay,
+            eps=eps,
+            maximize=maximize
         )
 
 
@@ -120,8 +118,10 @@ class AdamW(Optimizer):
 
             if 'step' in group:
                 group['step'] += 1
+                if group['step'].is_cpu:
+                    group['step'] = group['step'].cuda()
             else:
-                group['step'] = 1
+                group['step'] = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
 
             for p in group['params']:
                 if p.grad is None:
