@@ -10,7 +10,7 @@ from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
 from mindspeed.model.transformer import should_recompute_activation
 from ..modules.token_dispatcher import (
     alltoall_token_perm1, alltoall_token_perm2,
-    alltoall_token_unperm1, alltoall_token_unperm2
+    alltoall_token_unperm1, alltoall_token_unperm2, overlap_stream
 )
 from ..modules.attention import attention_forward
 from ..modules.utils import (
@@ -94,9 +94,24 @@ def transformer_layer_forward_moe(
     # Token Perm1 Forward
     probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
     perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(self.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
-    if shared_experts_allgather_handle is not None:
-        # overlap shared experts tp comm by token perm1.
-        shared_experts_allgather_handle.wait()
+
+    if use_shared_experts:
+        with torch.npu.stream(overlap_stream.stream):
+            if shared_experts_allgather_handle is not None:
+                shared_experts_allgather_handle.wait()
+                shared_experts_allgather_handle = None
+            # Shared Experts Forward.
+            shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
+    disp = self.mlp.token_dispatcher
+    if disp.num_local_experts > 1:
+        # No further synchronization is needed because torch.repeat_interleave() calls stream
+        # synchronization internally when the `output_size` parameter is not provided.
+        disp.cuda_sync_point = "no_sync"
+        disp.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+            disp.expert_ids_per_ep_rank, disp.num_global_tokens_per_local_expert.ravel()
+        )
+    torch.npu.current_stream().wait_stream(overlap_stream.stream)
+
     # Async Perm A2A.
     _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
         perm1_out,
@@ -114,9 +129,7 @@ def transformer_layer_forward_moe(
             event=perm_a2a_handle,
             stream=torch.npu.current_stream()
         )
-    # Shared Experts Forward.
-    if use_shared_experts:
-        shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
+
     if recomp_norm:
         self.norm_ckpt2.discard_output()
     # overlap perm a2a by shared experts computation.
@@ -127,7 +140,8 @@ def transformer_layer_forward_moe(
     if tp_size > 1 and use_shared_experts:
         # tp comm for shared experts
         share_experts_graph, shared_expert_output, rs_shared_experts_handle = async_reduce_scatter(
-            shared_expert_output, tp_group
+            shared_expert_output, tp_group, 
+            event=perm_prob_a2a_handle if perm_prob_a2a_handle else None
         )
     else:
         share_experts_graph = shared_expert_output

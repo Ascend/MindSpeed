@@ -5,10 +5,14 @@ import torch
 import acl
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import permute, unpermute
-from megatron.core.tensor_parallel.mappings import _gather_along_first_dim_expert_parallel
 from megatron.core.utils import make_viewless_tensor
 from megatron.training import get_args
 from mindspeed.core.pipeline_parallel.fb_overlap.modules.utils import TensorSwapManager
+
+
+class StreamConfig:
+    stream = None
+overlap_stream = StreamConfig
 
 
 def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
@@ -76,14 +80,6 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
             -1, self.num_experts
         )
         num_tokens_per_local_expert = num_local_tokens_per_expert
-
-    if self.num_local_experts > 1:
-        # No further synchronization is needed because torch.repeat_interleave() calls stream
-        # synchronization internally when the `output_size` parameter is not provided.
-        self.cuda_sync_point = "no_sync"
-        self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-            self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
-        )
 
     return num_tokens_per_local_expert
 
@@ -156,38 +152,38 @@ def alltoall_token_perm1(
     assert indices.dim() == 2, "Expected 2D tensor for indices"
     tokens_per_expert = preprocess(self, indices)
 
-    # Flatten the input tensor
-    # hidden_states: [S/TP, B, H] -> [S*B/TP, H]
-    hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
+    event = torch.npu.current_stream().record_event()
+    global overlap_stream
+    if overlap_stream.stream is None:
+        overlap_stream.stream = torch.npu.Stream()      
+    with torch.npu.stream(overlap_stream.stream):
+        torch.npu.current_stream().wait_event(event)
+        # Flatten the input tensor
+        # hidden_states: [S/TP, B, H] -> [S*B/TP, H]
+        hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
 
-
-    # Permutation 1: input to AlltoAll input
-    self.hiddden_shape_before_permute = hidden_states.shape
-    if self.cuda_sync_point == "before_permutation_1":
-        torch.cuda.current_stream().synchronize()
-    permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
-        hidden_states,
-        indices,
-        num_out_tokens=self.num_out_tokens,
-        padded_mode=self.drop_and_pad,
-    )
-    permuted_local_probs = None
-    if args.moe_unperm2_mem_optim:
-        permuted_local_probs, _ = permute(
-            probs.view(-1, 1),
-            indices.view(-1, 1)
+        # Permutation 1: input to AlltoAll input
+        self.hiddden_shape_before_permute = hidden_states.shape
+        if self.cuda_sync_point == "before_permutation_1":
+            torch.cuda.current_stream().synchronize()
+        permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+            hidden_states,
+            indices,
+            num_out_tokens=self.num_out_tokens,
+            padded_mode=self.drop_and_pad,
         )
-        if '910B' in acl.get_soc_name():
-            permutated_local_input_tokens = PackProb.apply(permutated_local_input_tokens, permuted_local_probs)
-            self.prob_split_sizes = [hidden_states.shape[-1],
-                                     permutated_local_input_tokens.shape[-1] - hidden_states.shape[-1]]
-            self.orig_prob_format = probs.dtype
-            permuted_local_probs = None
-
-    # Perform expert parallel AlltoAll communication
-    if self.cuda_sync_point == "before_ep_alltoall":
-        torch.cuda.current_stream().synchronize()
-
+        permuted_local_probs = None
+        if args.moe_unperm2_mem_optim:
+            permuted_local_probs, _ = permute(
+                probs.view(-1, 1),
+                indices.view(-1, 1)
+            )
+            if '910B' in acl.get_soc_name():
+                permutated_local_input_tokens = PackProb.apply(permutated_local_input_tokens, permuted_local_probs)
+                self.prob_split_sizes = [hidden_states.shape[-1],
+                                        permutated_local_input_tokens.shape[-1] - hidden_states.shape[-1]]
+                self.orig_prob_format = probs.dtype
+                permuted_local_probs = None
 
     return permutated_local_input_tokens, permuted_local_probs, tokens_per_expert
 

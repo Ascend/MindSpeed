@@ -24,12 +24,9 @@ def launch_async_all2all():
     global AsyncAll2All_INPUT
     global AsyncAll2All_OUTPUT
     if len(AsyncAll2All_INPUT) > 0:
-        input_, input_splits, output_splits, group = AsyncAll2All_INPUT.pop(0)
+        args = AsyncAll2All_INPUT.pop(0)
         _, output, a2a_handle = async_all_to_all(
-            input_,
-            input_splits,
-            output_splits,
-            group
+            *args
         )
         AsyncAll2All_OUTPUT.append((output, a2a_handle))
 

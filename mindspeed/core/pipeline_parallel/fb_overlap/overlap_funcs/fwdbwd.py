@@ -13,7 +13,7 @@ from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
 from ..modules.token_dispatcher import (
     alltoall_token_perm1, alltoall_token_perm2,
-    alltoall_token_unperm1, alltoall_token_unperm2
+    alltoall_token_unperm1, alltoall_token_unperm2, overlap_stream
 )
 from ..modules.weight_grad_store import WeightGradStore
 from ..modules.attention import (
@@ -373,10 +373,36 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         # MLP.
         detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
         probs, indices = router_forward(fwd_layer, detached_mlp_input)
+        if tp_size > 1 and use_shared_experts:
+            _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
+                detached_mlp_input, tp_group, is_use_get_global_memory_buffer=True
+            )
+            AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
+        else:
+            shared_experts_input, shared_experts_allgather_handle = detached_mlp_input, None
 
         # Token Permutation Forward
         probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
         perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
+
+        if use_shared_experts:
+            with torch.npu.stream(overlap_stream.stream):
+                if shared_experts_allgather_handle is not None:
+                    shared_experts_allgather_handle.wait()
+                    shared_experts_allgather_handle = None
+                shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
+
+        disp = fwd_layer.mlp.token_dispatcher
+        if disp.num_local_experts > 1:
+            # No further synchronization is needed because torch.repeat_interleave() calls stream
+            # synchronization internally when the `output_size` parameter is not provided.
+            disp.cuda_sync_point = "no_sync"
+            disp.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+                disp.expert_ids_per_ep_rank, disp.num_global_tokens_per_local_expert.ravel()
+            )
+
+        torch.npu.current_stream().wait_stream(overlap_stream.stream)
+
         _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
             perm1_out,
             fwd_layer.mlp.token_dispatcher.output_splits,
@@ -413,13 +439,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         dispached_input, dispached_input_probs = alltoall_token_perm2(fwd_layer.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out)
         perm_a2a_out.untyped_storage().resize_(0)
 
-        if tp_size > 1 and use_shared_experts:
-            _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
-                detached_mlp_input, tp_group, is_use_get_global_memory_buffer=True
-            )
-            AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
-        else:
-            shared_experts_input, shared_experts_allgather_handle = detached_mlp_input, None
 
         # Grouped MLP Forward
         detached_dispached_input = detach_tensor(dispached_input, checkpoint_forward=checkpoint)
@@ -438,9 +457,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         # Token Unpermutaion Forward
         unperm1_out = alltoall_token_unperm1(fwd_layer.mlp.token_dispatcher, detached_expert_output, None)
         expert_output.untyped_storage().resize_(0)
-        if shared_experts_allgather_handle is not None:
-            shared_experts_allgather_handle.wait()
-            shared_experts_allgather_handle = None
         _, unperm_a2a_out, unperm_a2a_handle = async_all_to_all(
             unperm1_out,
             fwd_layer.mlp.token_dispatcher.input_splits,
@@ -450,7 +466,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
         share_experts_graph = None
         if use_shared_experts:
-            shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
             if tp_size > 1:
                 share_experts_graph, shared_expert_output, rs_shared_experts_handle = async_reduce_scatter(
                     shared_expert_output, tp_group
@@ -740,25 +755,43 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     if bwd_layer_graph.unperm2_swap_manager:
         bwd_layer_graph.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
 
+    # shard experts backward grad Allgather
+    last_comm_handle = None
+    shared_experts_grad = bwd_layer_output_grad if bwd_unperm_a2a_handle is None else bwd_layer_graph.shared_experts_graph[1].grad
+    if tp_size > 1:
+        _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
+            shared_experts_grad, tp_group,
+            stream=torch.npu.current_stream() if last_comm_handle else None
+        )
+        last_comm_handle = backward_ag_shared_handle
+    else:
+        backward_ag_shared = shared_experts_grad
+        backward_ag_shared_handle = None
+
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
     if bwd_unperm_a2a_handle is None:
-        run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=swap_unperm2)
+        run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=True)
         # Async Unperm A2A
         if tp_size > 1 and a2a_hooked_on_attention:
             set_async_alltoall_inputs(
                 bwd_layer_graph.unperm_a2a_graph[1].grad,
                 bwd_layer_graph.output_splits,
                 bwd_layer_graph.input_splits,
-                ep_group
+                ep_group,
+                last_comm_handle,
+                torch.npu.current_stream() if last_comm_handle else None
             )
         else:
             _, unperm1_out_grad, bwd_unperm_a2a_handle = async_all_to_all(
                 bwd_layer_graph.unperm_a2a_graph[1].grad,
                 bwd_layer_graph.output_splits,
                 bwd_layer_graph.input_splits,
-                ep_group
+                ep_group,
+                last_comm_handle,
+                torch.npu.current_stream() if last_comm_handle else None
             )
+            last_comm_handle = bwd_unperm_a2a_handle
     else:
         unperm1_out_grad = bwd_layer_output_grad
 
@@ -822,17 +855,50 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         probs_detached = detach_tensor(probs)
         perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
 
-    last_comm_handle = shared_experts_allgather_handle if shared_experts_allgather_handle else bwd_unperm_a2a_handle
-    if args.moe_zero_memory == 'level0':
-        _, bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle = async_all_to_all(
-            bwd_perm1_out,
-            bwd_layer_graph.output_splits,
-            bwd_layer_graph.input_splits,
-            ep_group,
-            event=last_comm_handle,
-            stream=torch.npu.current_stream() if last_comm_handle else None
-        )
-        last_comm_handle = bwd_recomp_perm_a2a_handle
+        if use_shared_experts:
+            with torch.npu.stream(overlap_stream.stream):
+                if shared_experts_allgather_handle is not None:
+                    shared_experts_allgather_handle.wait()
+                    shared_experts_allgather_handle = None
+                shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
+
+        if args.moe_zero_memory != 'disable':
+            _, bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle = async_all_to_all(
+                bwd_perm1_out,
+                bwd_layer_graph.output_splits,
+                bwd_layer_graph.input_splits,
+                ep_group,
+                stream=overlap_stream.stream
+            )
+            last_comm_handle = bwd_recomp_perm_a2a_handle
+
+        disp = fwd_layer.mlp.token_dispatcher
+        if disp.num_local_experts > 1:
+            # No further synchronization is needed because torch.repeat_interleave() calls stream
+            # synchronization internally when the `output_size` parameter is not provided.
+            disp.cuda_sync_point = "no_sync"
+            disp.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+                disp.expert_ids_per_ep_rank, disp.num_global_tokens_per_local_expert.ravel()
+            )
+
+        torch.npu.current_stream().wait_stream(overlap_stream.stream)
+
+    bwd_unperm_a2a_handle.wait()
+    bwd_unperm_a2a_handle = None
+    run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
+    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
+        bwd_layer_graph.act_ckpt_manager.recompute(True)
+    unperm1_out_grad.untyped_storage().resize_(0)
+
+    # Shared Experts Backward
+    if backward_ag_shared_handle is not None:
+        # ensure tp comm is not overlaped with alltoall comm
+        backward_ag_shared_handle.wait()
+        backward_ag_shared_handle = None
+
+    WeightGradStore.start_decouple()
+    run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
+    WeightGradStore.end_decouple()
 
     with checkpoint_context:
         _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
@@ -856,13 +922,12 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             )
             last_comm_handle = perm_prob_a2a_handle
 
+    WeightGradStore.start_decouple()
+    run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
+    WeightGradStore.end_decouple()
+
     with checkpoint_context:
-        shared_expert_output = None
         if use_shared_experts:
-            if shared_experts_allgather_handle is not None:
-                shared_experts_allgather_handle.wait()
-                shared_experts_allgather_handle = None
-            shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
             if tp_size > 1:
                 # launch tp comm after permf a2a and wait until shared experts computation finish.
                 share_experts_graph, shared_expert_output, rs_shared_experts_handle = async_reduce_scatter(
@@ -876,16 +941,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     if recomp_norm:
         fwd_layer.norm_ckpt2.discard_output()
 
-    bwd_unperm_a2a_handle.wait()
-    bwd_unperm_a2a_handle = None
-    run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
-    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
-        bwd_layer_graph.act_ckpt_manager.recompute(True)
-    unperm1_out_grad.untyped_storage().resize_(0)
-    WeightGradStore.start_decouple()
-    run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
-    WeightGradStore.end_decouple()
-    run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
+    run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)
 
     perm_a2a_handle.wait()
     perm_a2a_handle = None
@@ -910,15 +966,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             stream=torch.npu.current_stream()
         )
         last_comm_handle = bwd_prob_handle
-    # launch shared expert grad allgather here
-    if tp_size > 1:
-        _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
-            bwd_layer_graph.shared_experts_graph[1].grad, tp_group, event=last_comm_handle,
-            stream=torch.npu.current_stream() if last_comm_handle else None
-        )
-    else:
-        backward_ag_shared = bwd_layer_graph.shared_experts_graph[1].grad
-        backward_ag_shared_handle = None
 
     # Grouped MLP dw computation
     if args.moe_zero_memory == 'level0':
@@ -967,14 +1014,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             share_experts_graph.untyped_storage().resize_(0)
         bwd_perm_a2a_handle.wait()
         bwd_perm_a2a_handle = None
-    if backward_ag_shared_handle is not None:
-        # ensure tp comm is not overlaped with alltoall comm
-        backward_ag_shared_handle.wait()
-        backward_ag_shared_handle = None
-    # move shared experts backward before unpermF all2all to avoid tp comm colision.
-    WeightGradStore.start_decouple()
-    run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
-    WeightGradStore.end_decouple()
 
     with checkpoint_context:
         # launch async all2all in the middle of attention graph backward
