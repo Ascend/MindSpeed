@@ -239,7 +239,8 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             with torch.enable_grad():
                 scores, ctx.router_func = torch.autograd.vjp(router_func_test, router_input)
         else:
-            scores = router_func_test(hidden_states)
+            with torch.enable_grad():
+                scores = router_func_test(hidden_states)
 
         save_tensors.append(scores)
         scores = mindspore.ops.stop_gradient(scores)

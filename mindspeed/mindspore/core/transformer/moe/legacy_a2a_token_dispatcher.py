@@ -66,7 +66,7 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         self.input_splits = (
             num_local_tokens_per_expert.reshape(ep_size, self.num_local_experts)
             .sum(axis=1)
-
+            .numpy()
         )
         num_global_tokens_per_expert = _gather_along_first_dim_expert_parallel(
             num_local_tokens_per_expert

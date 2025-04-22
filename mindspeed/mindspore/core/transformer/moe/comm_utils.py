@@ -23,8 +23,8 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
         # multi stream wait event
         global COMM_STREAM
         if COMM_STREAM is None:
-            COMM_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
-        with torch_npu.npu.stream(COMM_STREAM):
+            COMM_STREAM = mindspore.runtime.communitation_stream()
+        with mindspore.runtime.StreamCtx(COMM_STREAM):
             event.wait()
             handle = dist.all_to_all_single(
                 a2a_out,
