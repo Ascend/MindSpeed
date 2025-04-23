@@ -23,9 +23,10 @@ class MegatronBasicFeature(MindSpeedFeature):
         pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__post_init__", transformer_config_post_init_wrapper)
 
         # initialization patches
-        from mindspeed.core.megatron_basic.megatron_basic import _set_cuda_rng_state, _compile_dependencies
+        from mindspeed.core.megatron_basic.megatron_basic import _set_cuda_rng_state, _compile_dependencies, get_device_wrapper
         pm.register_patch('megatron.core.tensor_parallel.random._set_cuda_rng_state', _set_cuda_rng_state)
         pm.register_patch('megatron.training.initialize._compile_dependencies', _compile_dependencies)
+        pm.register_patch('megatron.training.dist_signal_handler.get_device', get_device_wrapper)
 
         # norm patches
         from mindspeed.core.megatron_basic.megatron_basic import PTNorm

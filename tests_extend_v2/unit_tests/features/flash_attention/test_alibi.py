@@ -2,11 +2,11 @@ import pytest
 import torch
 import torch_npu
 
+from mindspeed import megatron_adaptor_v2
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from megatron.core.transformer.transformer_config import TransformerConfig
 
-from mindspeed import megatron_adaptor_v2
 from mindspeed.core.transformer.flash_attention.alibi.adaptor import MindSpeedDotProductAttention
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -33,6 +33,8 @@ def run_fusion_attn_with_pse_alibi(bs, seq_len, dtype):
     config.sparse_mode = 2
     config.seq_length = seq_len
     config.alibi_diagonal_opposite = False
+    config.pre_tockens = 65536
+    config.next_tockens = 0
 
     attn = MindSpeedDotProductAttention(
         config=config, 
@@ -55,7 +57,7 @@ def run_fusion_attn_with_pse_alibi(bs, seq_len, dtype):
     assert isinstance(out, torch.Tensor)
 
 
-class TestAlibi():
+class TestAlibi:
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_alibi(self, mocker):

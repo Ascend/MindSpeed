@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+from typing import List, Dict, Union
 
 
 def get_func_name(func):
@@ -44,12 +45,28 @@ class Patch:
 
     def set_patch_func(self, new_func, force_patch=False):
         if hasattr(new_func, '__name__') and new_func.__name__.endswith(('wrapper', 'decorator')):
-            self.wrappers.append(new_func)
+            if new_func not in self.wrappers:
+                self.wrappers.append(new_func)
         else:
             if self.patch_func and not force_patch:
                 raise RuntimeError('the patch of {} exist !'.format(self.orig_func_name))
             self.patch_func = new_func
         self.is_applied = False
+
+    def remove_wrappers(self, wrapper_names: Union[str, List[str]] = None):
+        if wrapper_names is None:
+            self.wrappers.clear()
+            return
+
+        if isinstance(wrapper_names, str):
+            wrapper_names = [wrapper_names]
+        for name in wrapper_names:
+            i = 0
+            while i < len(self.wrappers):
+                if self.wrappers[i].__name__ == name:
+                    self.wrappers.pop(i)
+                else:
+                    i += 1
 
     def apply_patch(self):
         if self.is_applied:
@@ -105,16 +122,40 @@ class Patch:
 
 
 class MindSpeedPatchesManager:
-    patches_info = {}
+    patches_info: Dict[str, Patch] = {}
 
     @staticmethod
     def register_patch(orig_func_name, new_func=None, force_patch=False, create_dummy=False):
+        """Patch registration method. When this method is executed, the patch does not take effect in real time.
+        It takes effect only after the apply_patches method is invoked. Other details are as follows:
+
+        1. If `orig_func_name` does not exist and create_dummy is set to True, a dummy function is created to ensure
+        that the import is normal.
+        2. If `orig_func_name` is not None, `orig_func_name` is replaced with `new_func`.
+        3. If the `new_func` function name ends with `wrapper` or `decorator`, then `new_func` is decorated on
+        `orig_func_name` as a decorator, and the decorator can be superimposed repeatedly.
+        4. When force_patch=False, a function cannot be replaced repeatedly (but can be decorated repeatedly),
+        otherwise the replacement is overwritten.
+        """
         if orig_func_name not in MindSpeedPatchesManager.patches_info:
             MindSpeedPatchesManager.patches_info[orig_func_name] = Patch(orig_func_name, new_func, create_dummy)
         else:
             MindSpeedPatchesManager.patches_info.get(orig_func_name).set_patch_func(new_func, force_patch)
 
     @staticmethod
+    def remove_wrappers(orig_func_name, wrappers_name, remove_check=True):
+        """Remove wrapper registered in orig_func_name."""
+        if orig_func_name not in MindSpeedPatchesManager.patches_info:
+            raise ValueError('The function <{}> not exist.'.format(orig_func_name))
+
+        patch = MindSpeedPatchesManager.patches_info.get(orig_func_name)
+        wrappers_len = len(patch.wrappers)
+        patch.remove_wrappers(wrappers_name)
+        if remove_check and wrappers_len == len(patch.wrappers):
+            raise RuntimeError('Remove wrappers has not remove anything.')
+
+    @staticmethod
     def apply_patches():
+        """Apply all patches registered in MindSpeedPatchesManager."""
         for patch in MindSpeedPatchesManager.patches_info.values():
             patch.apply_patch()

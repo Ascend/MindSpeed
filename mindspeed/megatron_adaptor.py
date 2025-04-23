@@ -11,13 +11,9 @@ import torch
 from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
 from mindspeed.features_manager import FEATURES_LIST
-from .arguments import process_args
-from .deprecate import (
-    DisableExecution,
-    Deprecated,
-    MEGATRON_ADAPTOR_DEPRECATED_TIME,
-)
+from mindspeed.deprecate import AutoExecuteFunction, Deprecated, MEGATRON_ADAPTOR_DEPRECATED_TIME
 
+from .arguments import process_args
 
 _ARGS = None
 LOG = getLogger(__name__)
@@ -1079,7 +1075,7 @@ def delete_lock_file(directory, lock):
                     break
 
 
-@DisableExecution
+@AutoExecuteFunction
 def exe_adaptation():
     mindspeed_args = get_mindspeed_args()
 
@@ -1115,10 +1111,7 @@ def exe_adaptation():
 
     # New features structure
     for feature in FEATURES_LIST:
-        if (
-            getattr(mindspeed_args, feature.feature_name, None)
-            or feature.default_patches
-        ):
+        if getattr(mindspeed_args, feature.feature_name, None) or feature.default_patches:
             feature.register_patches(aspm, mindspeed_args)
 
     aspm.apply_patches()

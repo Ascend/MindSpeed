@@ -1,4 +1,5 @@
 import time
+from functools import wraps
 
 import torch
 from torch import _C
@@ -52,3 +53,19 @@ class PTNorm:
             raise Exception('Only LayerNorm and RMSNorm are curently supported')
 
         return instance
+
+
+def get_device_wrapper(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        backend = torch.distributed.get_backend()
+        local_rank = args[0]
+        if backend == 'hccl':
+            if local_rank is None:
+                device = torch.device('cuda')
+            else:
+                device = torch.device(f'cuda:{local_rank}')
+        else:
+            device = func(*args, **kwargs)
+        return device
+    return wrapper

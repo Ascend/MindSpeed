@@ -2,7 +2,7 @@
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
-class HcclBufferFAdaptiveFeature(MindSpeedFeature):
+class HcclBufferAdaptiveFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('hccl-group-buffer-adaptive')
 

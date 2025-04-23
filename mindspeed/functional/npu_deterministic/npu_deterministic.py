@@ -24,8 +24,8 @@ def extend_seed_all(seed=1234):
 
 def npu_deterministic_wrapper(fn):
     @wraps(fn)
-    def wrapper(seed_, data_parallel_random_init=False):
-        fn(seed_, data_parallel_random_init)
-        extend_seed_all(seed_)
+    def wrapper(seed, *args, **kwargs):
+        fn(seed, *args, **kwargs)
+        extend_seed_all(seed)
         LOG.info("Deterministic computing is applied for npu.")
     return wrapper

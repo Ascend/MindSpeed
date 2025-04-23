@@ -6,7 +6,7 @@ from dataclasses import make_dataclass, field
 from megatron.training import get_args
 from megatron.training.arguments import _print_args
 
-from mindspeed.features_manager import FEATURES_LIST_V2
+from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
 
 
 def extra_args_provider_decorator(extra_args_provider):
@@ -15,8 +15,7 @@ def extra_args_provider_decorator(extra_args_provider):
     def wrapper(parser):
         if extra_args_provider is not None:
             parser = extra_args_provider(parser)
-        for feature in FEATURES_LIST_V2:
-            feature.register_args(parser)
+        MindSpeedFeaturesManager.register_features_args(parser)
         return parser
 
     return wrapper
@@ -41,20 +40,15 @@ def validate_args_wrapper(validate_args):
         if defaults is None:
             defaults = {}
         # make prev validation and copy some args.
-        origin = _pre_validate(args)
-        for feature in FEATURES_LIST_V2:
-            feature.pre_validate_args(args)
+        MindSpeedFeaturesManager.pre_validate_features_args(args)
 
         # make megatron args validation then restore args thar are copied.
         args = validate_args(args, defaults)
 
         # make post validation after megatron validation.
-        _post_validate(args, origin)
-        for feature in FEATURES_LIST_V2:
-            feature.post_validate_args(args=args)
+        MindSpeedFeaturesManager.post_validate_features_args(args=args)
 
-        for feature in FEATURES_LIST_V2:
-            feature.validate_args(args=args)
+        MindSpeedFeaturesManager.validate_features_args(args=args)
 
         args.create_attention_mask_in_dataloader = False
         args.reduce_recompute_for_last_chunk = False
@@ -65,14 +59,6 @@ def validate_args_wrapper(validate_args):
         return args
 
     return wrapper
-
-
-def _pre_validate(_args: Namespace):
-    return (None,)
-
-
-def _post_validate(_args: Namespace, _origin):
-    pass
 
 
 def print_args_wrapper(fn):

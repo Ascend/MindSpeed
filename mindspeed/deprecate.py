@@ -124,15 +124,21 @@ class Deprecated:
         )
 
 
-class DisableExecution:
-    """A decorator to control a function's execution."""
-
-    DISABLE = False
+class AutoExecuteFunction:
+    AUTO_EXECUTE = True
 
     def __init__(self, func: Callable):
         self._func = func
 
     def __call__(self, *args, **kwargs):
-        if self.DISABLE:
+        if not AutoExecuteFunction.AUTO_EXECUTE:
             return None
         return self._func(*args, **kwargs)
+
+
+class NoExecuteFunction:
+    def __enter__(self):
+        AutoExecuteFunction.AUTO_EXECUTE = False
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        AutoExecuteFunction.AUTO_EXECUTE = True

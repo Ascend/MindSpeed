@@ -113,3 +113,21 @@ class TestRegisterPatchesResetEnv(DistributedTest):
         from unit_tests.mindspeed.test_register_patches import function1
 
         assert function1() == 'this is function3'
+
+    def test_double_wrapper(self):
+        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.apply_patches()
+
+        from unit_tests.mindspeed.test_register_patches import function1
+
+        assert function1() == 'this is function1 wrapper'
+
+    def test_remove_wrapper(self):
+        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.remove_wrappers('unit_tests.mindspeed.test_register_patches.function1', 'function_wrapper')
+        aspm.apply_patches()
+
+        from unit_tests.mindspeed.test_register_patches import function1
+
+        assert function1() == 'this is function1'
