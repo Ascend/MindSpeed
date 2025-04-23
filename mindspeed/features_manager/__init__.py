@@ -79,6 +79,8 @@ from mindspeed.features_manager.pipeline_parallel.variable_seq_length import (
     VariableSequenceLengthFeature,
 )
 
+from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFeature
+
 FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
@@ -133,4 +135,6 @@ FEATURES_LIST_V2 = (
     # pipeline parallel
     NoopLayersFeature(),
     VariableSequenceLengthFeature(),
+    # DistTrainFeature
+    DistTrainFeature()
 )
