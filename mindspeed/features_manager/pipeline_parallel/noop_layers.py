@@ -1,4 +1,8 @@
-"""Define noop layer feature of pipeline training."""
+"""Define noop layer feature of pipeline training.
+
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+"""
 
 from argparse import ArgumentParser, Namespace
 from logging import getLogger
@@ -28,7 +32,7 @@ class NoopLayersFeature(MindSpeedFeature):
         )
 
     def post_validate_args(self, args: Namespace):
-        if args.automated_pipeline:
+        if getattr(args, "automated_pipeline", None):
             LOG.warning("disable noop_layers when enabling automated pipeline")
             args.noop_layers = None
 
@@ -52,19 +56,23 @@ class NoopLayersFeature(MindSpeedFeature):
         patch_manager: MindSpeedPatchesManager,
         args: Namespace,
     ):
+        # pylint: disable=import-outside-toplevel
         from mindspeed.core.pipeline_parallel.noop_layers.adaptor import (
-            build_layers_adaptor, calc_flop_adaptor, track_moe_metrics_adaptor)
+            mindspeed_build_layers,
+            mindspeed_calc_flop,
+            mindspeed_track_moe_metrics,
+        )
 
         if getattr(args, self.feature_name, None):
             patch_manager.register_patch(
-                "megatron.core.transformer.transformer_block.TransformerBlock._build_layers",
-                build_layers_adaptor,
+                "megatron.core.transformer.transformer_block.TransformerBlock._build_layers",  # noqa
+                mindspeed_build_layers,
             )
             patch_manager.register_patch(
                 "megatron.training.training.num_floating_point_operations",
-                calc_flop_adaptor,
+                mindspeed_calc_flop,
             )
             patch_manager.register_patch(
                 "megatron.core.transformer.moe.moe_utils.track_moe_metrics",
-                track_moe_metrics_adaptor,
+                mindspeed_track_moe_metrics,
             )

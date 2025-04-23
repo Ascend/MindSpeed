@@ -5,8 +5,6 @@ from dataclasses import make_dataclass, field
 
 from megatron.training import get_args
 from megatron.training.arguments import _print_args
-from mindspeed.arguments import process_args
-
 
 from mindspeed.features_manager import FEATURES_LIST_V2
 
@@ -17,7 +15,6 @@ def extra_args_provider_decorator(extra_args_provider):
     def wrapper(parser):
         if extra_args_provider is not None:
             parser = extra_args_provider(parser)
-        parser = process_args(parser)
         for feature in FEATURES_LIST_V2:
             feature.register_args(parser)
         return parser

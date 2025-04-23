@@ -1,11 +1,17 @@
 from mindspeed.features_manager.functional.profiler_default import (
     ProfilerDefaultFeature,
 )
-from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
-from mindspeed.features_manager.functional.tflops_calculate import TflopsCalculateFeature
+from mindspeed.features_manager.functional.npu_deterministic import (
+    NPUDeterministicFeature,
+)
+from mindspeed.features_manager.functional.tflops_calculate import (
+    TflopsCalculateFeature,
+)
 from mindspeed.features_manager.functional.profile import ProfileFeature
-from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import RiPipeSchedulesBubbleFeature, \
-    RiPipeSchedulesAdvanceFeature
+from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import (
+    RiPipeSchedulesBubbleFeature,
+    RiPipeSchedulesAdvanceFeature,
+)
 
 from mindspeed.features_manager.functional.profiler_default import (
     ProfilerDefaultFeature,
@@ -56,11 +62,22 @@ from mindspeed.features_manager.optimizer.virtual_optimizer import (
 )
 from mindspeed.features_manager.pipeline_parallel.noop_layers import NoopLayersFeature
 
-from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferFAdaptiveFeature
+from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import (
+    HcclBufferFAdaptiveFeature,
+)
 
-from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
-from mindspeed.features_manager.transformer.flash_attention.alibi_feature import AlibiFeature
-from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
+from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import (
+    FusionAttentionV2Feature,
+)
+from mindspeed.features_manager.transformer.flash_attention.alibi_feature import (
+    AlibiFeature,
+)
+from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import (
+    GenerateMaskFeature,
+)
+from mindspeed.features_manager.pipeline_parallel.variable_seq_length import (
+    VariableSequenceLengthFeature,
+)
 
 FEATURES_LIST = [
     # Functional features
@@ -78,17 +95,14 @@ FEATURES_LIST = [
 FEATURES_LIST_V2 = (
     # Hccl Buffer
     HcclBufferFAdaptiveFeature(),
-
     # Recompute
     RecomputeActivationFeature(),
     RecomputeNormFeature(),
-
     # Functional features
     ProfilerDefaultFeature(),
     NPUDeterministicFeature(),
     TflopsCalculateFeature(),
     ProfileFeature(),
-
     # Fusions features
     GroupedMatmulFeature(),
     FusedSwigluFeature(),
@@ -97,11 +111,9 @@ FEATURES_LIST_V2 = (
     MegatronBasicFeature(),
     # Tensor parallel features
     UnalignedLinearFeature(),
-
     # ripipe
     RiPipeSchedulesBubbleFeature(),
     RiPipeSchedulesAdvanceFeature(),
-
     # llava-multimodal
     LlavaModel(),
 
@@ -112,12 +124,13 @@ FEATURES_LIST_V2 = (
     FusionAttentionV2Feature(),
     AlibiFeature(),
     GenerateMaskFeature(),
-    
     # MoeExperts use gemm
     MoEGmmFeature(),
     # MoeTp2EpFeature
     MoETpExtendEpFeature(),
     # MoeSharedExpertsFeature
     MoESharedExpertsFeature(),
+    # pipeline parallel
     NoopLayersFeature(),
+    VariableSequenceLengthFeature(),
 )

@@ -21,8 +21,8 @@ from megatron.training.training import \
 from torch import Tensor
 
 from .calc_flop import calc_flop
-from .moe_metrics_tracker import track_moe_metrics
-from .transformer import build_with_noop_layers
+from .moe_metrics_tracker import track_moe_metrics_impl
+from .transformer import build_layers_impl
 
 
 class NoopTransformerLayer(MegatronModule):
@@ -84,20 +84,20 @@ class NoopTransformerLayer(MegatronModule):
         return hidden_states.clone(), context
 
 
-def build_layers_adaptor(transformer: TransformerBlock):
+def mindspeed_build_layers(transformer: TransformerBlock):
     """Adaptor to build noop transformer layer by use megatron dependency.
 
     Args:
         transformer (TransformerBlock): A megatron `TransformerBlock` object.
     """
-    build_with_noop_layers(
+    build_layers_impl(
         transformer=transformer,
         noop_trasformer=NoopTransformerLayer,
         build_module=build_module,
     )
 
 
-def calc_flop_adaptor(args: Namespace, batch_size: int) -> float:
+def mindspeed_calc_flop(args: Namespace, batch_size: int) -> float:
     """Adaptor to calculate floating points of operations
     by using megatron dependency.
 
@@ -116,7 +116,7 @@ def calc_flop_adaptor(args: Namespace, batch_size: int) -> float:
     )
 
 
-def track_moe_metrics_adaptor(
+def mindspeed_track_moe_metrics(
     loss_scale: float,
     iteration: int,
     writer,
@@ -138,7 +138,7 @@ def track_moe_metrics_adaptor(
             Defaults to False.
     """
     args = get_args()
-    track_moe_metrics(
+    track_moe_metrics_impl(
         args,
         reduce_aux_losses_tracker_across_ranks,
         get_moe_layer_wise_logging_tracker,

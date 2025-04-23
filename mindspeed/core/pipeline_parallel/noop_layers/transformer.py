@@ -6,7 +6,7 @@ import torch
 from mindspeed.core.transformer.transformer_block import _get_layer_offset
 
 
-def build_with_noop_layers(
+def build_layers_impl(
     transformer: torch.nn.Module,
     noop_trasformer: Type[torch.nn.Module],
     build_module: Callable,

@@ -3,7 +3,7 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 
 class NPUDeterministicFeature(MindSpeedFeature):
     def __init__(self):
-        super(NPUDeterministicFeature, self).__init__('npu-deterministic')
+        super(NPUDeterministicFeature, self).__init__("npu-deterministic")
 
     def register_args(self, parser):
         group = parser.add_argument_group(title=self.feature_name)

@@ -46,7 +46,7 @@ def get_mean(args: Namespace, values: torch.Tensor) -> torch.Tensor:
     return values.mean()
 
 
-def track_moe_metrics(
+def track_moe_metrics_impl(
     args: Namespace,
     reduce_aux_losses_tracker_across_ranks: Callable,
     get_moe_layer_wise_logging_tracker: Callable,
