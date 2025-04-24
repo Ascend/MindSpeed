@@ -16,6 +16,7 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.core import mpu, parallel_state
 from megatron.core.utils import divide
 from megatron.training import get_args
+from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
 
 from mindspeed.auto_settings.module.black.patch.hccl_operator import AttentionEndOp
 from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
@@ -241,6 +242,7 @@ def self_attention_init_wrapper(fn):
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=0,
                 enable_backward_overlap_ag_with_matmul=False,
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu
             )
             self.linear_proj = ParallelLinear2D(
                 self.query_projection_size,
@@ -256,7 +258,8 @@ def self_attention_init_wrapper(fn):
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1,
-                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul
+                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu
             )
 
     return wrapper

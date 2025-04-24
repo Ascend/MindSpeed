@@ -43,6 +43,9 @@ from mindspeed.features_manager.pipeline_parallel.variable_seq_length import Var
 
 from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFeature
 
+from mindspeed.features_manager.tensor_parallel.tp_2d import TP2dFeature
+
+
 FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
@@ -91,7 +94,8 @@ def add_recompute_features(features_list: List[MindSpeedFeature]):
 def add_tensor_parallel_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         UnalignedLinearFeature(),
-        MC2Feature()
+        MC2Feature(),
+        TP2dFeature()
     ])
 
 

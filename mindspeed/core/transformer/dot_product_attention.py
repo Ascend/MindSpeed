@@ -72,7 +72,7 @@ def dot_product_attention_init(
     projection_size = self.config.kv_channels * self.config.num_attention_heads
     args = get_args()
     # Per attention head and per partition values.
-    world_size = args.tp_x if args.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
+    world_size = parallel_state.get_tensor_model_parallel_world_size()
     self.hidden_size_per_partition = divide(projection_size, world_size)
     self.hidden_size_per_attention_head = divide(projection_size, config.num_attention_heads)
     self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
@@ -182,11 +182,9 @@ def dot_product_attention_forward(
 
     args = get_args()
     if packed_seq_params is None:
-        actual_seq_len = get_actual_seq_len()
-        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+        seq_length, bsz, n_head = query.shape[0], query.shape[1], query.shape[2]
     else:
-        actual_seq_len = tuple(packed_seq_params.cu_seqlens_q[1:].cpu().numpy().tolist())
-        seq_length, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2]
+        seq_length, n_head = query.shape[0], query.shape[1]
     sparse_mode = args.sparse_mode
     
     if attn_mask_type == AttnMaskType.no_mask:
@@ -324,5 +322,5 @@ def dot_product_attention_forward(
                 actual_seq_kvlen=actual_seq_kvlen
                 )[0]
         if packed_seq_params is not None:
-            output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_len, b=bsz)
+            output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_length, b=bsz)
     return output

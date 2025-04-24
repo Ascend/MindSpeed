@@ -1,9 +1,16 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+
 import time
 from functools import wraps
 
 import torch
 from torch import _C
 from torch_npu.npu import _lazy_call, device as device_ctx_manager
+
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPYCollectiveComm
+from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
+from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D
 
 
 def _set_cuda_rng_state(new_state, device=-1):
@@ -45,10 +52,24 @@ class PTNorm:
 
     def __new__(cls, config, hidden_size: int, eps: float = 1e-5):
         if config.normalization == "LayerNorm":
-            instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps,)
+            if config.tp_2d:
+                instance = LayerNorm2D(
+                    hidden_size,
+                    eps=eps,
+                    last_dim_split_comm_intf=TPYCollectiveComm(),
+                )
+            else:
+                instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps,)
         elif config.normalization == "RMSNorm":
-            from mindspeed.core.fusions.fused_rms_norm import RMSNorm
-            instance = RMSNorm(dim=hidden_size, eps=eps, sequence_parallel=config.sequence_parallel, config=config)
+            if config.tp_2d:
+                instance = RMSNorm2D(
+                    hidden_size,
+                    eps=eps,
+                    last_dim_split_comm_intf=TPYCollectiveComm(),
+                )
+            else:
+                from mindspeed.core.fusions.fused_rms_norm import RMSNorm
+                instance = RMSNorm(dim=hidden_size, eps=eps, sequence_parallel=config.sequence_parallel, config=config)
         else:
             raise Exception('Only LayerNorm and RMSNorm are curently supported')
 

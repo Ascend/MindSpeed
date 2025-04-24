@@ -21,9 +21,10 @@ from torch import Tensor
 from torch import nn
 from torch.cuda.amp import custom_bwd
 from torch.cuda.amp import custom_fwd
-from megatron.core.utils import divide
-from mindspeed.core.tensor_parallel.comm_group_api import CollectiveCommIntf
-from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import CollectiveCommIntf
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPYCollectiveComm
+
+from mindspeed.core.tensor_parallel.tp_2d.utils import divide
 
 
 class RMSNorm2D(torch.nn.Module):

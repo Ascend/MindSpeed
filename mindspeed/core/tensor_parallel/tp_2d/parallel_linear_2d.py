@@ -13,13 +13,12 @@ from typing import Any, Callable
 
 import torch
 
-from megatron.core import ModelParallelConfig
-from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
-from megatron.core.utils import divide
-from mindspeed.core.tensor_parallel.comm_group_api import CollectiveCommIntf
-from mindspeed.core.tensor_parallel.comm_group_api import OverlapCollectiveIntf
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import CollectiveCommIntf
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import OverlapCollectiveIntf
 from mindspeed.core.tensor_parallel.layers import _initialize_affine_weight_cpu_2d
 from mindspeed.core.tensor_parallel.tp_2d.linear_2d_split_along_first_dim import Linear2DSplitAlongFirstDim
+
+from mindspeed.core.tensor_parallel.tp_2d.utils import divide
 
 
 class ParallelLinear2D(torch.nn.Module):
@@ -65,7 +64,7 @@ class ParallelLinear2D(torch.nn.Module):
         input_size,
         output_size,
         *,
-        config: ModelParallelConfig,
+        config,
         init_method: Callable,
         add_bias=True,
         gather_output=False,
@@ -82,9 +81,10 @@ class ParallelLinear2D(torch.nn.Module):
         enable_overlap_matmul_with_rs=False,
         partition_dim: int = 0,
         enable_backward_overlap_ag_with_matmul=False,
+        _initialize_affine_weight_gpu: Callable = None
     ):
         super().__init__()
-        self.mp_config: ModelParallelConfig = config
+        self.mp_config = config
         self.para_init_method = init_method
         self.stride = stride
         self.keep_master_weight_for_test = keep_master_weight_for_test
@@ -113,6 +113,7 @@ class ParallelLinear2D(torch.nn.Module):
         self.expert_parallel = config.expert_model_parallel_size > 1
         self.gradient_accumulation_fusion = config.gradient_accumulation_fusion
         self.enable_backward_overlap_ag_with_matmul = enable_backward_overlap_ag_with_matmul
+        self._initialize_affine_weight_gpu = _initialize_affine_weight_gpu
         if config.sequence_parallel:
             raise RuntimeError(
                 "Nd_matmul cannot be used with sequence_parallel."
@@ -155,7 +156,7 @@ class ParallelLinear2D(torch.nn.Module):
                 params_dtype=self.mp_config.params_dtype,
             )
         elif self.mp_config.perform_initialization:
-            _initialize_affine_weight_gpu(
+            self._initialize_affine_weight_gpu(
                 self.weight,
                 self.para_init_method,
                 partition_dim=self.partition_dim,
@@ -193,6 +194,7 @@ class ParallelLinear2D(torch.nn.Module):
             self.gradient_accumulation_fusion,
             self.enable_backward_overlap_ag_with_matmul,
             self.partition_dim,
+            getattr(self.mp_config, 'coc_fused_kernel', False)
         )
 
         if not self.skip_bias_add:

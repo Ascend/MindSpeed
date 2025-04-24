@@ -20,6 +20,7 @@ from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
 from megatron.training import get_args
+from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPXOverlapCollectiveComm, \
     TPYCollectiveComm, TPYOverlapCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.parallel_linear_2d import ParallelLinear2D
@@ -127,7 +128,8 @@ def mlp_init_2d_wrapper(fn):
                 enable_overlap_ag_with_matmul=False,
                 enable_overlap_matmul_with_rs=args.enable_overlap_matmul_with_rs,
                 partition_dim=0,
-                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul)
+                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu)
             self.linear_fc2 = ParallelLinear2D(
                 self.config.ffn_hidden_size,
                 self.config.hidden_size,
@@ -143,5 +145,6 @@ def mlp_init_2d_wrapper(fn):
                 enable_overlap_ag_with_matmul=args.enable_overlap_ag_with_matmul,
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1,
-                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul)
+                enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu)
     return wrapper

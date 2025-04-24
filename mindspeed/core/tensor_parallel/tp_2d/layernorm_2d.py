@@ -22,9 +22,10 @@ from torch.cuda.amp import custom_bwd
 from torch.cuda.amp import custom_fwd
 from torch.nn import Parameter
 
-from megatron.core.utils import divide
-from mindspeed.core.tensor_parallel.comm_group_api import CollectiveCommIntf
-from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import CollectiveCommIntf
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPYCollectiveComm
+
+from mindspeed.core.tensor_parallel.tp_2d.utils import divide
 
 
 class LayerNorm2D(torch.nn.Module):

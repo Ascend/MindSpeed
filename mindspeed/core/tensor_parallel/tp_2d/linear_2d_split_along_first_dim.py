@@ -15,10 +15,9 @@ import torch_npu
 from torch import distributed as torch_dist
 from torch.cuda.amp import custom_bwd
 from torch.cuda.amp import custom_fwd
-from megatron.training import get_args
 
 from mindspeed.core.tensor_parallel.comm_autograd_function import CollectiveCommIntf
-from mindspeed.core.tensor_parallel.comm_group_api import OverlapCollectiveIntf
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import OverlapCollectiveIntf
 from mindspeed.core.tensor_parallel.comm_utils import async_gather_tensors
 from mindspeed.core.tensor_parallel.comm_utils import async_reduce_scatter_along_first_dim
 from mindspeed.core.tensor_parallel.comm_utils import sync_gather_along_first_dim
@@ -58,6 +57,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         gradient_accumulation_fusion=False,
         enable_backward_overlap_ag_with_matmul=False,
         partition_dim=0,
+        coc_fused_kernel=False
     ):
         """
         :param ctx: context to save some tensors or vars for backward use.
@@ -83,6 +83,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         ctx.rs_overlap_comm_intf = rs_overlap_comm_intf
         ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
         ctx.enable_backward_overlap_ag_with_matmul = enable_backward_overlap_ag_with_matmul
+        ctx.coc_fused_kernel = coc_fused_kernel
 
         if enable_overlap_matmul_with_rs:
             activation_input = activation_input.contiguous()
@@ -101,7 +102,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
 
             if bias is not None:
                 matmul_res += bias
-        elif get_args().coc_fused_kernel:
+        elif ctx.coc_fused_kernel:
             from mindspeed.ops.lcal_functional import coc_ops, TP2DConfig
             inner_dim_is_ag = True
             if partition_dim == 0:
@@ -135,8 +136,6 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         matmul_res = sync_reduce_scatter_along_first_dim(matmul_res, rs_comm_intf)
         return matmul_res
 
-
-
     @staticmethod
     @custom_bwd
     def backward(ctx, grad_output):
@@ -165,7 +164,7 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
         # [s/(y*cp), b, E/x]---AG(y)---> [s/cp, b, E/x]
         # Use sync AG to avoid communication competition, for the bandwidth is shared for A3.
         grad_output = grad_output.contiguous()
-        if ctx.enable_backward_overlap_ag_with_matmul and get_args().coc_fused_kernel:
+        if ctx.enable_backward_overlap_ag_with_matmul and ctx.coc_fused_kernel:
             from mindspeed.ops.lcal_functional import coc_ops, CoCConfig
             # prepare total activation_input for computing grad weight.
             # [s/(x*cp), b, h/y]---AG(X)--->[s/cp, b, h/y]
@@ -260,7 +259,8 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
 
         if rs_grad_input_handle:
             rs_grad_input_handle.wait()
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None
+        back_res = (grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None, None)
+        return back_res
 
     @staticmethod
     def _do_allgather_left_tensor_and_matmul_overlap(
@@ -496,4 +496,5 @@ class Linear2DSplitAlongFirstDim(torch.autograd.Function):
 
         if rs_grad_input_handle:
             rs_grad_input_handle.wait()
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None
+        back_res = (grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None, None)
+        return back_res
