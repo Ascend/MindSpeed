@@ -708,7 +708,6 @@ def mcore_moe_adaptation(pm, args):
     if args.moe_permutation_async_comm:
         if hasattr(args, 'moe_token_dispatcher_type') and args.moe_token_dispatcher_type == 'alltoall_seq':
             from .core.transformer.moe.experts import sequential_mlp_forward
-            from .core.transformer.moe.moe_utils import permute, unpermute
             if args.moe_tp_extend_ep:
                 from .core.transformer.moe.legacy_a2a_token_dispatcher import (
                     preprocess_tp_extend_ep, alltoall_token_unpermutation_tp_extend_ep,
@@ -736,6 +735,10 @@ def mcore_moe_adaptation(pm, args):
                     pm.register_patch(
                         'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation',
                         alltoall_token_unpermutation_new)
+                    if args.moe_zero_memory != 'disable':
+                        from .core.transformer.moe.moe_layer import zero_memory_SharedExpertMlp_forward
+                        pm.register_patch('megatron.core.transformer.moe.shared_experts.SharedExpertMLP.forward',
+                            zero_memory_SharedExpertMlp_forward)
                 else:
                     pm.register_patch('megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation',
                                       alltoall_token_permutation_tp_extend_ep)

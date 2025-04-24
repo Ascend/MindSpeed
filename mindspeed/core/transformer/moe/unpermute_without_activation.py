@@ -14,9 +14,10 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
     def forward(ctx,
         permuted_tokens: torch.Tensor,
         sorted_indices: torch.Tensor,
+        restore_shape: torch.Size,
         probs: torch.Tensor = None,
-        padded_mode: bool = False,
-        restore_shape: torch.Size = None,
+        routing_map: torch.Tensor = None,
+
     ):
         """Unpermute a tensor of permuted tokens based on sorted indices, and optionally merge the tokens with their corresponding probabilities.
 
@@ -30,45 +31,43 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
         Returns:
             torch.Tensor: The unpermuted tokens, optionally merged with probabilities.
         """
-        if padded_mode:
-            raise ValueError("moe-zero-memory temporally does not support padded mode")
 
         if sorted_indices.numel() != permuted_tokens.size(0):
             raise AssertionError("")
         saved_tensors = [sorted_indices]
 
         with torch.no_grad():
+            _, hidden = restore_shape
             if probs is not None:
                 # Unpermute and merge the tokens with their probabilities
-                num_unpermuted_tokens = probs.numel()
-                saved_tensors.append(probs)
+                assert routing_map is not None, "Mask must be provided to permute the probs."
+                permuted_probs = probs.T.contiguous().masked_select(routing_map.T.contiguous())
+                tensor_to_swap = permuted_tokens
+                permuted_tokens = permuted_tokens * permuted_probs.unsqueeze(-1)
+                saved_tensors.append(permuted_probs)
                 ctx.topk = probs.size(1)
                 ctx.probs_shape = probs.shape
                 ctx.probs_dtype = probs.dtype
+                ctx.hidden_size = hidden
+                ctx.routing_map = routing_map
             else:
                 # Unpermute the tokens without merge
-                num_unpermuted_tokens = permuted_tokens.size(0)
                 ctx.topk = 1
             ctx.save_for_backward(*saved_tensors)
 
             if not get_args().use_fused_moe_token_permute_and_unpermute:
                 unpermuted_tokens = torch.zeros(
-                    [num_unpermuted_tokens, permuted_tokens.shape[-1]],
-                    dtype=permuted_tokens.dtype,
-                    device=permuted_tokens.device,
+                    restore_shape, device=permuted_tokens.device, dtype=permuted_tokens.dtype
                 )
-                unpermuted_tokens.index_copy_(0, sorted_indices, permuted_tokens)
             else:
-                unpermuted_tokens = permuted_tokens.index_select(0, sorted_indices)
+                raise RuntimeError("'fused_moe_token_permute_and_unpermute' not supported in Megatron core_r0.10.0.")
 
             ctx.permuted_tokens_shape = permuted_tokens.shape
             ctx.unpermuted_tokens_shape = unpermuted_tokens.shape
-            unpermuted_tokens = unpermuted_tokens.reshape(-1, ctx.topk, permuted_tokens.size(-1))
-            permuted_tokens.untyped_storage().resize_(0)
+
+            unpermuted_tokens.scatter_add_(0, sorted_indices.unsqueeze(1).expand(-1, hidden), permuted_tokens)
 
             if probs is not None:
-                tensor_to_swap = unpermuted_tokens
-                unpermuted_tokens = unpermuted_tokens * probs.unsqueeze(-1)
                 swap_stream, last_tensor = get_swap_status()
                 if last_tensor is not None:
                     torch.npu.current_stream().wait_stream(swap_stream)
@@ -84,41 +83,34 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
                     ctx.swap_event.record()
 
             ctx.matmul_output_shape = unpermuted_tokens.shape
-            unpermuted_tokens = unpermuted_tokens.sum(dim=1)
 
         return unpermuted_tokens
 
     @staticmethod
     def backward(ctx, *args):
         if ctx.topk > 1:
-            (indices, probs) = ctx.saved_tensors
+            (indices, permuted_probs) = ctx.saved_tensors
         else:
             (indices,) = ctx.saved_tensors
         ctx.save_for_backward()
 
         if ctx.topk > 1:
-            matmul_output_grad = args[0].unsqueeze(dim=1).expand(ctx.matmul_output_shape)
+            matmul_output_grad = args[0].expand(ctx.matmul_output_shape)
             backward_event1 = torch.npu.Event()
             backward_event1.record()
             swap_stream = get_swap_stream()
-            unpermuted_tokens = torch.empty(ctx.tensor_cpu.shape, dtype=ctx.tensor_cpu.dtype, device=torch.npu.current_device())
+            permuted_tokens = torch.empty(ctx.tensor_cpu.shape, dtype=ctx.tensor_cpu.dtype, device=torch.npu.current_device())
+            gather_indices = indices.unsqueeze(1).expand(-1, ctx.hidden_size)
+            permuted_tokens_grad = torch.gather(matmul_output_grad, 0, gather_indices)
             with torch_npu.npu.stream(swap_stream):
                 swap_stream.wait_event(backward_event1)
                 swap_stream.wait_event(ctx.swap_event)
-                unpermuted_tokens.untyped_storage().copy_(ctx.tensor_cpu.untyped_storage(), non_blocking=True)
+                permuted_tokens.untyped_storage().copy_(ctx.tensor_cpu.untyped_storage(), non_blocking=True)
                 ctx.tensor_cpu = None
-            unpermuted_tokens_grad = matmul_output_grad * probs.unsqueeze(-1)
-            set_prob_backward_need_tensors(matmul_output_grad, unpermuted_tokens)
-        else:
-            unpermuted_tokens_grad = args[0]
+            set_prob_backward_need_tensors(permuted_tokens_grad, permuted_tokens)
+            permuted_tokens_grad = permuted_tokens_grad * permuted_probs.unsqueeze(-1)
 
-        unpermuted_tokens_grad = unpermuted_tokens_grad.reshape(ctx.unpermuted_tokens_shape)
-
-        if not get_args().use_fused_moe_token_permute_and_unpermute:
-            permuted_tokens_grad = unpermuted_tokens_grad.index_select(0, indices)
         else:
-            permuted_tokens_grad = torch.zeros(size=ctx.permuted_tokens_shape, dtype=unpermuted_tokens_grad.dtype,
-                                               device=torch.npu.current_device())
-            permuted_tokens_grad.index_add_(0, indices, unpermuted_tokens_grad)
+            permuted_tokens_grad = args[0]
 
         return permuted_tokens_grad, None, None, None, None

@@ -606,6 +606,14 @@ def validate_args_wrapper(validate_args):
                       "and --pipe-experts-multi-data is set to 1, "
                       "--use-pipe-experts will be turned off.")
                 args.use_pipe_experts = False
+        if args.n_shared_experts and args.moe_shared_expert_intermediate_size:
+            raise AssertionError('`n_shared_experts` cannot be used with `moe_shared_expert_intermediate_size` together. Please use one of them.')
+        elif args.n_shared_experts is not None and args.moe_shared_expert_intermediate_size is None:
+            args.moe_shared_expert_intermediate_size = args.n_shared_experts * args.ffn_hidden_size
+            print(f'Using shared experts. Convert n_shared_experts to moe_shared_expert_intermediate_size, the moe_shared_expert_intermediate_size is {args.moe_shared_expert_intermediate_size}.')
+        elif args.n_shared_experts is None and args.moe_shared_expert_intermediate_size is not None:
+            args.n_shared_experts = args.moe_shared_expert_intermediate_size // args.ffn_hidden_size
+            print(f'Using shared experts. Convert moe_shared_expert_intermediate_size to n_shared_experts, the n_shared_experts is {args.n_shared_experts}.')
         if args.moe_alltoall_overlap_comm and not args.moe_token_dispatcher_type == 'alltoall_seq':
             raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall_seq`.')
         

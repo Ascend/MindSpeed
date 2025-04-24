@@ -1,10 +1,13 @@
 import torch
 
-from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
 from megatron.core import tensor_parallel, parallel_state
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute, save_to_aux_losses_tracker, sort_chunks_by_idxs
+from megatron.core.parallel_state import (get_tensor_model_parallel_group, 
+                                          get_tensor_model_parallel_world_size, 
+                                          get_expert_tensor_and_model_parallel_group,
+                                          get_expert_model_parallel_group)
 from mindspeed.moe.utils import MoEAuxLossAutoScaler
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather
 from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func
@@ -15,7 +18,7 @@ from mindspeed.core.transformer.moe.moe_utils import (AG_SHARED_EXPERTS_INPUTS, 
 
 
 def gmm_op(x, weight, bias, group_list, group_type):
-    return GMMFunction.builder.load().npu_gmm([x], [weight], bias, group_list, group_type, 0)
+    return GMMFunction.builder.load().npu_gmm([x], [weight], bias, group_list.to('npu'), group_type, 0)
 
 
 class MoELayerOverlapAll2All(torch.autograd.Function):
@@ -30,14 +33,17 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
 
         # router
         with torch.enable_grad():
-            scores, indices = moe_layer.router(hidden_states)
+            scores, routing_map = moe_layer.router(hidden_states)
 
         save_tensors.append(scores)
         scores = scores.detach()
         scores.requires_grad = True
         save_tensors.append(scores)
+
         moe_zero_memory = args.moe_zero_memory
         n_shared_experts = args.n_shared_experts
+        moe_shared_expert_intermediate_size = args.moe_shared_expert_intermediate_size
+        ctx.moe_shared_expert_intermediate_size = moe_shared_expert_intermediate_size
         ctx.n_shared_experts = n_shared_experts
         ctx.moe_zero_memory = moe_zero_memory
         shared_expert_gate = hasattr(args, 'shared_expert_gate') and args.shared_expert_gate
@@ -52,9 +58,9 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             ctx.moe_grouped_gemm = moe_layer.token_dispatcher.config.moe_grouped_gemm
             ctx.num_local_experts = moe_layer.token_dispatcher.num_local_experts
 
-        save_tensors.append(indices)
+        save_tensors.append(routing_map)
 
-        if n_shared_experts:
+        if n_shared_experts or moe_shared_expert_intermediate_size:
             ctx.shared_experts = moe_layer.shared_experts
             if get_tensor_model_parallel_world_size() > 1:
                 _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
@@ -70,11 +76,13 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             shared_expert_gate = None
 
         (share_experts_output, dispatched_input, tokens_per_expert) = moe_layer.token_dispatcher.token_permutation(
-            hidden_states, scores, indices, ctx.shared_experts, save_tensors, shared_expert_gate, ctx
+            hidden_states, scores, routing_map, ctx.shared_experts, save_tensors, shared_expert_gate, ctx
         )
         if isinstance(share_experts_output, tuple):
             share_experts_output, rs_share_experts_output, rs_shared_experts_handle = share_experts_output
         else:
+            if share_experts_output is not None:
+                share_experts_output.requires_grad_(True)
             rs_share_experts_output = share_experts_output
             rs_shared_experts_handle = None
         (expert_output, mlp_bias), *_ = forward_func(moe_layer.experts, (dispatched_input, tokens_per_expert, ctx))
@@ -129,13 +137,13 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         ctx.input_splits = moe_layer.token_dispatcher.input_splits
         ctx.router_topk = moe_layer.token_dispatcher.config.moe_router_topk
         ctx.num_tokens = moe_layer.token_dispatcher.num_out_tokens
-        ctx.num_global_tokens_per_local_expert_cpu = moe_layer.token_dispatcher.num_global_tokens_per_local_expert_cpu
-        ctx.sort_input_by_local_experts = moe_layer.token_dispatcher.sort_input_by_local_experts
-        if n_shared_experts:
+
+        if n_shared_experts or moe_shared_expert_intermediate_size:
             if rs_shared_experts_handle is not None:
                 rs_shared_experts_handle.wait()
             output_sum = output + rs_share_experts_output
             output.untyped_storage().resize_(0)
+            rs_share_experts_output.untyped_storage().resize_(0)
             share_experts_output.untyped_storage().resize_(0)
         else:
             output_sum = output.detach()
@@ -151,11 +159,10 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *args):
         global_args = get_args()
-        shared_expert_gate = ctx.shared_expert_gate
 
         (route_graph, detach_scores,
-         indices,
-         permute1_graph,
+         routing_map,
+         permute1_graph, num_global_tokens_per_local_expert_cpu,
          permute2_input_detach, permute2_graph,
          experts_graph,
          unpermute1_input_detach, unpermute1_graph,
@@ -167,47 +174,40 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         n_shared_experts = ctx.n_shared_experts
         moe_zero_memory = ctx.moe_zero_memory
         moe_tp_extend_ep = global_args.moe_tp_extend_ep
+        moe_shared_expert_intermediate_size = ctx.moe_shared_expert_intermediate_size
 
         output_splits = ctx.output_splits
         input_splits = ctx.input_splits
-        router_topk = ctx.router_topk
         num_tokens = ctx.num_tokens
-        num_global_tokens_per_local_expert_cpu = ctx.num_global_tokens_per_local_expert_cpu
         sort_input_by_local_experts = ctx.sort_input_by_local_experts
 
         set_gemm_backward_need_tensors(
-            ((detach_input, indices, router_topk, num_tokens, num_global_tokens_per_local_expert_cpu, 
-             sort_input_by_local_experts, global_input_tokens_local_experts_indices),
+            ((detach_input, routing_map, num_global_tokens_per_local_expert_cpu, 
+             sort_input_by_local_experts),
              permute2_input_detach, permute2_graph,
              output_splits, input_splits))
 
-        if n_shared_experts:
-            if get_tensor_model_parallel_world_size() > 1 and not shared_expert_gate:
-                _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
-                    args[0], get_tensor_model_parallel_group()
-                )
-            else:
-                backward_ag_shared = args[0]
-                backward_ag_shared_handle = None
+        backward_ag_shared = args[0]
+        backward_ag_shared_handle = None
 
         if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             with torch.no_grad():
-                if get_tensor_model_parallel_world_size() > 1 and n_shared_experts:
+                if get_tensor_model_parallel_world_size() > 1 and (n_shared_experts or moe_shared_expert_intermediate_size):
                     _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
-                        detach_input, get_tensor_model_parallel_group(), is_use_get_global_memory_buffer=True
+                        detach_input, get_expert_tensor_and_model_parallel_group(), is_use_get_global_memory_buffer=True
                     )
                     AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
 
                 # Recompute token rearrange in permutation1
 
                 permutated_local_input_tokens, _ = permute(
-                    detach_input.view(-1, detach_input.shape[-1]), indices, num_tokens
+                    detach_input.view(-1, detach_input.shape[-1]), routing_map, num_tokens
                 )
 
                 # Recompute expert parallel AlltoAll communication
-                ep_group = parallel_state.get_expert_model_parallel_group()
+                ep_group = get_expert_model_parallel_group()
                 if moe_tp_extend_ep:
-                    ep_group = parallel_state.get_expert_tensor_and_model_parallel_group()
+                    ep_group = get_expert_tensor_and_model_parallel_group()
                 _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
                     permutated_local_input_tokens,
                     ctx.output_splits,
@@ -218,7 +218,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         unpermute2_graph.backward(args[0])
         unpermute2_graph = None
         if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
-            if n_shared_experts:
+            if n_shared_experts or moe_shared_expert_intermediate_size:
                 with torch.no_grad():
                     # Recompute mm1 and act of shared experts
                     shared_fc1_out, bias_parallel = ctx.shared_experts.linear_fc1(detach_input)
@@ -243,9 +243,9 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             permute1_ep_all_to_all_handle.wait()
             permutated_local_input_tokens.untyped_storage().resize_(0)
 
-        ep_group = parallel_state.get_expert_model_parallel_group()
+        ep_group = get_expert_model_parallel_group()
         if moe_tp_extend_ep:
-            ep_group = parallel_state.get_expert_tensor_and_model_parallel_group()
+            ep_group = get_expert_tensor_and_model_parallel_group()
         _, unpermute1_backward_input, handle = async_all_to_all(
             unpermute2_input_detach.grad,
             output_splits,
@@ -262,7 +262,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                         num_global_tokens_per_local_expert_cpu.ravel(),
                         sort_input_by_local_experts,
                     )
-                    if not moe_tp_extend_ep and get_tensor_model_parallel_world_size() > 1 and ctx.moe_grouped_gemm:
+                    if not moe_tp_extend_ep and get_expert_tensor_and_model_parallel_group() > 1 and ctx.moe_grouped_gemm:
                         global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
                             global_input_tokens
                         )
@@ -328,10 +328,14 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             l_aux_graph.backward(l_aux_detach.grad, retain_graph=True)
         if moe_zero_memory != "disable":
             if ctx.router_topk > 1:
-                stream, matmul_output_grad, unpermuted_tokens = get_prob_backward_need_tensors()
+                stream, matmul_output_grad, permuted_tokens = get_prob_backward_need_tensors()
                 torch.npu.current_stream().wait_stream(stream)
-                probs_grad = (matmul_output_grad * unpermuted_tokens).sum(-1).squeeze(-1)
-                route_graph.backward(probs_grad)
+                
+                permutated_probs_grad = (matmul_output_grad * permuted_tokens).sum(dim=-1).squeeze(-1)
+                prob_T_grad = torch.zeros_like(routing_map.T.contiguous(), dtype=torch.bfloat16)
+                prob_T_grad[routing_map.T.contiguous()] = permutated_probs_grad
+                route_graph.backward(prob_T_grad.T.contiguous())
+                permutated_probs_grad.untyped_storage().resize_(0)
             ctx.router_topk = None
         else:
             route_graph.backward(detach_scores.grad)

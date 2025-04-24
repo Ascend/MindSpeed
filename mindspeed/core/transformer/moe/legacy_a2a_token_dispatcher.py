@@ -609,184 +609,89 @@ def alltoall_token_unpermutation_tp_extend_ep(
     return output, None
 
 
-def allgather_token_permutation_new(self, global_indices_2_tuple, global_probs_2_tuple, global_hidden_states_2_tuple):
-    global_indices, gi_handle = global_indices_2_tuple
-    global_probs, gp_handle = global_probs_2_tuple
-    global_hidden_states, ghs_handle = global_hidden_states_2_tuple
-
-    local_hidden_states = None
+def allgather_token_permutation_new(self, global_routing_map_tuple, global_probs_tuple, global_hidden_states_tuple):
+    global_routing_map, gr_handle = global_routing_map_tuple
+    global_probs, gp_handle = global_probs_tuple
+    global_hidden_states, ghs_handle = global_hidden_states_tuple
     tokens_per_expert = None
 
     if (self.config.tensor_model_parallel_size > 1) or (
             self.config.expert_model_parallel_size > 1
     ):
+        
         with (torch.no_grad()):
-            gi_handle.wait()
-            global_local_mask = (global_indices >= self.local_expert_indices[0]) & \
-                                (global_indices <= self.local_expert_indices[-1])
 
-            # masked_select -> reshape
-            local_indices = global_indices.masked_select(global_local_mask)
-            self.indices = torch.argsort(local_indices.float(), dim=0)
-            num_global_experts = self.num_local_experts * parallel_state.get_expert_model_parallel_world_size()
-            if get_args().moe_tp_extend_ep:
-                num_global_experts *= parallel_state.get_tensor_model_parallel_world_size()
-            all_tokens_per_expert = torch.histc(
-                global_indices,
-                bins=num_global_experts,
-                min=0,
-                max=num_global_experts
-            )
-        self.all_tokens_per_expert = all_tokens_per_expert.to(torch.long)
-        tokens_per_expert = self.all_tokens_per_expert[self.local_expert_indices[0]: self.local_expert_indices[-1] + 1]
-        self.global_local_map = global_local_mask.nonzero()[:, 0]
-
-        if self.router_topk > 1:  # k > 1
-            gp_handle.wait()
-            # masked_select -> reshape
-            self.local_probs = global_probs.masked_select(global_local_mask)
+            gr_handle.wait()
 
         ghs_handle.wait()
-        if cann_version_check:
-            local_hidden_states = global_hidden_states[self.global_local_map, :]
-        else:
-            self.global_local_map = self.global_local_map.view(-1, 1).expand(-1, self.hidden_shape[-1])
-            local_hidden_states = moe_gather.apply(global_hidden_states, self.global_local_map)
-    if self.num_local_experts > 1:
-        if cann_version_check:
-            permuted_local_hidden_states = local_hidden_states[self.indices, :]
-        else:
-            self.indices = self.indices.view(-1, 1).expand(-1, self.hidden_shape[-1])
-            permuted_local_hidden_states = moe_gather.apply(local_hidden_states, self.indices)
-    else:
-        permuted_local_hidden_states = local_hidden_states
+        gp_handle.wait()
+        # masked_select -> reshape
+    self.local_probs = global_probs[
+        :, self.local_expert_indices[0]:self.local_expert_indices[-1] + 1
+    ].contiguous()
+    self.local_map = global_routing_map[
+        :, self.local_expert_indices[0]:self.local_expert_indices[-1] + 1
+    ].contiguous()
+    tokens_per_expert = self.local_map.sum(dim=0).long().cpu()    
+
+    self.hidden_shape_before_permute = global_hidden_states.shape
+
+    (permuted_local_hidden_states, self.reversed_local_input_permutation_mapping) = permute(
+        global_hidden_states, self.local_map
+    )
     return (
         permuted_local_hidden_states,
         tokens_per_expert,
-        self.global_local_map,
-        self.indices
+        self.local_map,
+        self.reversed_local_input_permutation_mapping
     )
 
 
-def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor, bias: torch.Tensor = None):
-    # Stage1: unpermute the tokens and bias locally respectively.w
-    scores = self.local_probs.to(dtype=hidden_states.dtype)
-    if self.num_local_experts > 1:
-        if cann_version_check:
-            unpermuted_local_hidden = torch.zeros_like(hidden_states)
-            unpermuted_local_hidden.index_put_((self.indices,), hidden_states[:self.indices.shape[0], :],
-                                               accumulate=False)
-        else:
-            assert self.indices.shape == hidden_states.shape
-            unpermuted_local_hidden = moe_scatter.apply(hidden_states, self.indices)
-    else:
-        unpermuted_local_hidden = hidden_states
 
-    # Scale the expert output prior to reduction and subsequent to local unpermutation if k > 1.
-    if self.router_topk > 1:
-        unpermuted_local_hidden = unpermuted_local_hidden * scores.view(-1, 1)
+def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor, 
+                                        bias: torch.Tensor = None, 
+                                        reversed_local_input_permutation_mapping: torch.Tensor = None):
+    # Stage1: unpermute the tokens and bias locally respectively.w
+
+    permuted_probs = self.local_probs.T.contiguous().masked_select(
+        self.local_map.T.contiguous()
+    )
+    hidden_states = hidden_states * permuted_probs.unsqueeze(-1)
+    unpermuted_local_hidden = unpermute(
+        hidden_states,
+        reversed_local_input_permutation_mapping,
+        restore_shape=self.hidden_shape_before_permute,
+    )
 
     unpermuted_local_bias = None
     if self.add_bias:
         assert bias is not None
-        unpermuted_local_bias = torch.zeros_like(hidden_states)
-        if cann_version_check:
-            unpermuted_local_bias.index_put_((self.indices,), bias[:self.indices.shape[0], :], accumulate=False)
-        else:
-            assert self.indices.shape == bias.shape
-            unpermuted_local_bias = unpermuted_local_bias.scatter(0, self.indices, bias)
-
-        if self.router_topk > 1:
-            unpermuted_local_bias = unpermuted_local_bias * scores.view(-1, 1)
+        bias = bias * permuted_probs.unsqueeze(-1)
+        unpermuted_local_bias = unpermute(
+            bias,
+            reversed_local_input_permutation_mapping,
+            restore_shape=self.hidden_shape_before_permute,
+        )
 
     output_total = unpermuted_local_hidden
     output_bias_total = unpermuted_local_bias
 
     # Unpermute the tokens across expert parallel devices.
-    if (self.config.tensor_model_parallel_size > 1) or (
-            self.config.expert_model_parallel_size > 1
+    if (self.tp_size > 1) or (
+            self.ep_size > 1
     ):
-        assert (
-                self.global_local_map is not None
-        ), "global_local_map is necessary for 'AllGather'."
-        ep_group_size = parallel_state.get_tensor_and_expert_parallel_world_size()
-        # hidden_shape: [SeqLen/TP, MBS, HiddenSize], global_num_tokens = SeqLen/TP*MBS*(TP*EP)
-        global_num_tokens = self.hidden_shape[0] * self.hidden_shape[1] * ep_group_size
-        global_hidden_shape = [global_num_tokens, hidden_states.shape[-1]]
-
-        if cann_version_check:
-            unpermuted_global_hidden = torch.zeros(global_hidden_shape, dtype=torch.float,
-                                                   device=torch.cuda.current_device())
-            unpermuted_global_hidden = NewIndePut.apply(unpermuted_global_hidden, (self.global_local_map,),
-                                                        unpermuted_local_hidden[:self.global_local_map.shape[0], :])
-        else:
-            unpermuted_global_hidden = torch.zeros(
-                global_hidden_shape, dtype=hidden_states.dtype, device=torch.cuda.current_device()
+        output_total = reduce_scatter_to_sequence_parallel_region(
+                output_total, group=self.tp_ep_group
             )
-            # Reshape global_local_map to be compatible with Tensor.scatter
-            assert self.global_local_map.shape == unpermuted_local_hidden.shape
-            unpermuted_global_hidden = unpermuted_global_hidden.scatter_add(
-                0, self.global_local_map, unpermuted_local_hidden)
-
-        output_total = unpermuted_global_hidden
         if self.add_bias:
-            # Unpermute the bias across expert parallel devices.
-            unpermuted_global_bias = torch.zeros_like(unpermuted_global_hidden)
-            if cann_version_check:
-                unpermuted_global_bias.index_put_((self.global_local_map,),
-                                                  unpermuted_local_bias[:self.global_local_map.shape[0], :],
-                                                  accumulate=True)
-            else:
-                unpermuted_global_bias = unpermuted_global_bias.scatter_add(
-                    0, self.global_local_map, unpermuted_local_bias
-                )
-
-            output_bias_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region_from_moe(
-                unpermuted_global_bias
+            output_bias_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region(
+                output_bias_total, group=self.tp_ep_group
             )
-            # bias is duplicated across tensor parallelism ranks;
-            # reduce scatter reduces bias across tensor parallel_ranks
-            output_bias_total = (output_bias_total / parallel_state.get_tensor_model_parallel_world_size())
-    else:
-        if self.router_topk > 1:
-            global_num_tokens = self.hidden_shape[0] * self.hidden_shape[1]
-            global_hidden_shape = [global_num_tokens, hidden_states.shape[-1]]
-            unpermuted_global_hidden = torch.zeros(
-                global_hidden_shape,
-                dtype=hidden_states.dtype,
-                device=torch.cuda.current_device()
-            )
-            if cann_version_check:
-                output_total = unpermuted_global_hidden.index_put((self.global_local_map,),
-                                                                  unpermuted_local_hidden[
-                                                                  :self.global_local_map.shape[0], :],
-                                                                  accumulate=True)
-            else:
-                output_total = unpermuted_global_hidden.scatter_add(
-                    0, self.global_local_map, unpermuted_local_hidden
-                )
+            output_bias_total = (output_bias_total / self.tp_size)
 
-            if self.add_bias:
-                unpermuted_global_bias = torch.zeros_like(unpermuted_global_hidden)
-                if cann_version_check:
-                    output_bias_total = unpermuted_global_bias.index_put((self.global_local_map,),
-                                                                         unpermuted_local_bias[
-                                                                         :self.global_local_map.shape[0], :],
-                                                                         accumulate=True)
-                else:
-                    output_bias_total = unpermuted_global_bias.scatter_add(
-                        0, self.global_local_map, unpermuted_local_bias
-                    )
-
-    if self.router_topk == 1:
-        output_total = output_total * scores
+    output_total = output_total.view(self.hidden_shape)
     if self.add_bias:
-        assert output_bias_total is not None
-        if self.router_topk == 1:
-            output_bias_total = output_bias_total * scores
         output_bias_total = output_bias_total.view(self.hidden_shape)
-    else:
-        output_bias_total = None
 
     return output_total, output_bias_total
 
@@ -798,44 +703,28 @@ def alltoall_token_permutation_new(
     self.probs = probs
     self.routing_map = routing_map
     assert probs.dim() == 2, "Expected 2D tensor for probs"
-    assert routing_map.dim() == 2, "Expected 2D tensor for indices"
+    assert routing_map.dim() == 2, "Expected 2D tensor for routing map"
 
+    # Permutation 1: input to AlltoAll input
     def alltoall_token_permutation1(hidden_states, routing_map):
-        tokens_per_expert = self.preprocess(routing_map)
-        if self.num_local_experts > 1:
-            self.expert_ids_per_ep_rank = torch.tensor(
-                [i % self.num_local_experts for i in range(self.num_experts)],
-                dtype=torch.int32,
-                device=torch.cuda.current_device(),
-            )
-        
-        self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-            self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
-        )
-        # Flatten the input tensor
-        # hidden_states: [S/TP, B, H] -> [S*B/TP, H]
         hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
-
-        # Perform tensor parallel AlltoAll communication
-        # hidden_states: [S*B/TP, H] -> [S*B, H/TP]
-
+        tokens_per_expert = self.preprocess(routing_map)
         if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
             hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
-
-        # Permutation 1: input to AlltoAll input
-        self.hidden_shape_before_permute = hidden_states.shape
+        self.hidden_shape_before_permute = hidden_states.shape   
+ 
         if self.cuda_sync_point == "before_permutation_1":
             torch.cuda.current_stream().synchronize()
-        permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+        permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
             hidden_states,
             routing_map,
             num_out_tokens=self.num_out_tokens,
         )
-        return tokens_per_expert, permutated_local_input_tokens
+        return permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert
 
-    (tokens_per_expert, permutated_local_input_tokens), *_ = forward_func(alltoall_token_permutation1,
-                                                                          (hidden_states, routing_map))
-
+    (permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert), *_ = forward_func(
+                                                            alltoall_token_permutation1, (hidden_states, routing_map))
+    self.reversed_local_input_permutation_mapping = reversed_local_input_permutation_mapping
     # permute 1
     save_tensors.append(permutated_local_input_tokens)
 
@@ -855,11 +744,10 @@ def alltoall_token_permutation_new(
 
     # shared experts
     if shared_experts is not None:
-        (share_experts_output, _), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
-        if parallel_state.get_tensor_model_parallel_world_size() > 1 and shared_expert_gate is None:
-            share_experts_graph, share_experts_output, rs_shared_experts_handle = async_reduce_scatter(share_experts_output, parallel_state.get_tensor_model_parallel_group(),
-                                                                                                       event=permute1_ep_all_to_all_handle, stream=torch.npu.default_stream())
-            share_experts_output = (share_experts_graph, share_experts_output, rs_shared_experts_handle)
+        if get_args().moe_zero_memory != "disable":
+            (share_experts_output), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
+        else:
+            (share_experts_output), *_ = forward_func(shared_experts, (hidden_states))
         if shared_expert_gate is not None:
             with torch.enable_grad():
                 # tp not support shared expert gate for now
@@ -873,16 +761,14 @@ def alltoall_token_permutation_new(
     permutated_local_input_tokens.untyped_storage().resize_(0)
 
     def alltoall_token_permutation2(global_input_tokens):
-        # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
+        # Permutation 2: Sort tokens by local expert.
         if self.num_local_experts > 1:
-            if self.comm_stream is not None:
-                torch.cuda.current_stream().wait_stream(self.comm_stream)
-
             global_input_tokens = sort_chunks_by_idxs(
                 global_input_tokens,
                 self.num_global_tokens_per_local_expert_cpu.ravel(),
                 self.sort_input_by_local_experts,
             )
+
         # Perform tensor parallel AllGather on the hidden dimension to obtain the input tokens.
         # global_input_tokens: [SEQL, H/TP] -> [SEQL, H]
         if (not get_args().moe_tp_extend_ep and
@@ -895,6 +781,9 @@ def alltoall_token_permutation_new(
             torch.cuda.current_stream().synchronize()
 
         return global_input_tokens
+
+    save_tensors.append(self.num_global_tokens_per_local_expert_cpu)
+    moe_ctx.sort_input_by_local_experts = self.sort_input_by_local_experts
 
     # token 重排2 input
     (global_input_tokens), global_input_tokens_detach = forward_func(alltoall_token_permutation2,
@@ -910,7 +799,7 @@ def alltoall_token_unpermutation_new(
         self, hidden_states, bias, save_tensors
 ):
     def alltoall_token_unpermutation1(hidden_states):
-        assert bias is None, "Bias is not supported in MoEAlltoAllTokenDispatcher"
+        assert bias is None, "Bias is not supported in MoEAlltoAllSeqTokenDispatcher"
 
         # Perform tensor parallel Reduce-Scatter
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
@@ -951,7 +840,9 @@ def alltoall_token_unpermutation_new(
             output = UnpermuteWithoutActivation.apply(
                 permutated_local_input_tokens,
                 self.reversed_local_input_permutation_mapping,
-                self.probs
+                self.hidden_shape_before_permute,
+                self.probs,
+                self.routing_map,
             )
         else:
             output = unpermute(
@@ -973,9 +864,7 @@ def alltoall_token_unpermutation_new(
 
     output, unpermute2_input_detach = forward_func(alltoall_token_unpermutation2, permutated_local_input_tokens)
     save_tensors.append(unpermute2_input_detach)
-    if not self.drop_and_pad \
-            and not get_args().use_fused_moe_token_permute_and_unpermute or get_args().moe_zero_memory != "disable":
-        unpermute2_input_detach.untyped_storage().resize_(0)
+
     return output, None
 
 

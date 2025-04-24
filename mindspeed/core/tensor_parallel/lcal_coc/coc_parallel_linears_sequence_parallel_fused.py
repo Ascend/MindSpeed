@@ -1,4 +1,5 @@
 from functools import reduce
+from typing import Optional
 import torch
 import torch_npu
 
@@ -13,7 +14,7 @@ ALIGN_SIZE = 512
 
 class FusedCOCColumnSeqParallelFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_, weight, bias):
+    def forward(ctx, input_, weight, bias, runtime_gather_output: Optional[bool] = None):
         from mindspeed.ops.lcal_functional import coc_ops
 
         set_context(ctx, input_, weight, bias)

@@ -180,7 +180,7 @@ def core_mlp_forward_wrapper(fn):
                 self.activation_func = self.origin_activation_func
             output, output_bias = fn(self, *args, **kwargs)
         elif moe_zero_memory == "level1" and not only_recompute_activation(self.layer_number):
-            if self.shared_expert:
+            if self.with_shared_expert:
                 self.activation_function = activation_function
                 hidden_states = args[0]
                 fc1_out_parallel, bias_parallel = self.linear_fc1(hidden_states)

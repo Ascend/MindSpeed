@@ -38,9 +38,14 @@ def base_moe_init_wrapper(init_func):
 def moe_layer_init_wrapper(init_func):
     @wraps(init_func)
     def moe_layer_init(*args, **kwargs):
+        global_args = get_args()
         init_func(*args, **kwargs)
         self = args[0]
 
+        # In 0.10.0, the definition of shared_experts has conflict. Rename the MindSpeed version to 'with_shared_expert'.
+        if self.use_shared_expert:
+            self.shared_experts.with_shared_expert = True
+        
         # In 0.10.0, 'MoEAlltoAllSEQTokenDispatcher' no longer has'add_bias' attribute. 
         # To use the two types of share_expert(Megatron and MindSpeed), this parameter is introduced temporarily.
         if self.config.add_bias_linear and self.config.moe_token_dispatcher_type != 'alltoall':
@@ -48,22 +53,8 @@ def moe_layer_init_wrapper(init_func):
         else:
             self.token_dispatcher.add_bias = None
 
-        global_args = get_args()
         self.moe_alltoall_overlap_comm = global_args.moe_alltoall_overlap_comm
         self.moe_allgather_overlap_comm = global_args.moe_allgather_overlap_comm
-
-        if global_args.n_shared_experts:
-            config = deepcopy(self.config)
-            config.ffn_hidden_size = global_args.n_shared_experts * self.config.ffn_hidden_size
-            if self.moe_allgather_overlap_comm or self.moe_alltoall_overlap_comm:
-                from mindspeed.core.transformer.moe.layers import ColumnParallelLinear, RowParallelLinear
-                self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
-                                                                linear_fc2=RowParallelLinear,),
-                                          shared_expert=True)
-            else:
-                from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
-                self.shared_experts = MLP(config, MLPSubmodules(linear_fc1=ColumnParallelLinear,
-                                                                linear_fc2=RowParallelLinear,))
 
         self.moe_adaptive_recompute_activation = global_args.moe_adaptive_recompute_activation
         self.recompute_threshold = 0
@@ -91,22 +82,20 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
             hidden_states = activation_func1(hidden_states)
 
         probs, routing_map = self.router(hidden_states)
-        if args.n_shared_experts:
+        if args.n_shared_experts or args.moe_shared_expert_intermediate_size:
             if not hasattr(self, 'comm_stream'):
                 self.comm_stream = torch.cuda.Stream()
             self.comm_stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(self.comm_stream):
-                share_experts_output, share_experts_bias = self.shared_experts(hidden_states)
+                share_experts_output = self.shared_experts(hidden_states)
         (dispatched_input, tokens_per_expert) = self.token_dispatcher.token_permutation(
             hidden_states, probs, routing_map
         )
         expert_output, mlp_bias = self.experts(dispatched_input, tokens_per_expert)
         output, mlp_bias = self.token_dispatcher.token_unpermutation(expert_output, mlp_bias)
-        if args.n_shared_experts:
+        if args.n_shared_experts or args.moe_shared_expert_intermediate_size:
             torch.cuda.current_stream().wait_stream(self.comm_stream)
             output = output + share_experts_output
-            if self.token_dispatcher.add_bias:
-                mlp_bias = mlp_bias + share_experts_bias
 
         if args.prof_file and args.num_experts > 1:
             activation_func2 = torch.nn.Softshrink()
@@ -122,3 +111,13 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
     else:
         output, mlp_bias = custom_forward(hidden_states)
     return output, mlp_bias
+
+
+def zero_memory_SharedExpertMlp_forward(self, hidden_states, moe_ctx):
+    """Shared expert forward function with zero_memory."""
+    output, _ = MLP.forward(self, hidden_states, moe_ctx)
+    if self.use_shared_expert_gate:
+        logits = torch.nn.functional.linear(hidden_states, self.gate_weight)
+        gate_score = torch.nn.functional.sigmoid(logits)
+        output = output * gate_score
+    return output

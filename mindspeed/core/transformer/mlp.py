@@ -31,7 +31,7 @@ def mlp_init(
     submodules: MLPSubmodules,
     is_expert: bool = False,
     input_size: int = None,
-    shared_expert=False,
+    with_shared_expert=False
 ):
     super(MLP, self).__init__(config=config)
 
@@ -42,7 +42,7 @@ def mlp_init(
     ffn_hidden_size = self.config.ffn_hidden_size
     if self.config.gated_linear_unit:
         ffn_hidden_size *= 2
-    if shared_expert:
+    if with_shared_expert:
         self.linear_fc1 = build_module(
             submodules.linear_fc1,
             self.input_size,
@@ -54,7 +54,7 @@ def mlp_init(
             skip_bias_add=True,
             is_expert=is_expert,
             tp_comm_buffer_name='fc1',
-            shared_expert=shared_expert
+            with_shared_expert=with_shared_expert
         )
     else:
         self.linear_fc1 = build_module(
@@ -72,7 +72,7 @@ def mlp_init(
 
     self.activation_func = self.config.activation_func
 
-    if shared_expert:
+    if with_shared_expert:
         self.linear_fc2 = build_module(
             submodules.linear_fc2,
             self.config.ffn_hidden_size,
@@ -84,7 +84,7 @@ def mlp_init(
             skip_bias_add=True,
             is_expert=is_expert,
             tp_comm_buffer_name='fc2',
-            shared_expert=shared_expert
+            with_shared_expert=with_shared_expert
         )
     else:
         self.linear_fc2 = build_module(
@@ -100,7 +100,7 @@ def mlp_init(
             tp_comm_buffer_name='fc2'
         )
 
-    self.shared_expert = shared_expert
+    self.with_shared_expert = with_shared_expert
 
 
 def mlp_init_2d_wrapper(fn):

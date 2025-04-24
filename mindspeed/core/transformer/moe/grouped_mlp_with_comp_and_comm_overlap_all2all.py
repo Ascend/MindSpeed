@@ -64,8 +64,8 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             ctx.save_for_backward(inputs, detached_act_inputs, act_out, weights1, weights2, original_weight1,
                                   original_weight2, group_list)
         else:
-            ctx.save_for_backward(detached_act_inputs, act_out, weights1, weights2, original_weight1, original_weight2,
-                                  group_list)
+            ctx.save_for_backward(detached_act_inputs, act_out, weights1, weights2, original_weight1, 
+                                  original_weight2, group_list)
 
         return mm2_out, None
 
@@ -81,7 +81,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         else:
             act_inputs, mm2_inputs, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
 
-        ((detach_input, indices, router_topk, num_tokens, num_global_tokens_per_local_expert_cpu, sort_input_by_local_experts, global_input_tokens_local_experts_indices),
+        ((detach_input, routing_map, num_global_tokens_per_local_expert_cpu, sort_input_by_local_experts),
          permute2_input_detach, permute2_graph, output_splits, input_splits) = get_gemm_backward_need_tensors()
 
         # grad of mm2
@@ -132,14 +132,14 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         grad_mm2_inputs.untyped_storage().resize_(0)
         act_inputs.untyped_storage().resize_(0)
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
-            def alltoall_token_permutation1(hidden_states, routing_map, num_tokens):
+            def alltoall_token_permutation1(hidden_states, routing_map):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
                 permutated_local_input_tokens, _ = permute(
-                    hidden_states, routing_map, num_tokens
+                    hidden_states, routing_map
                 )
                 return permutated_local_input_tokens
 
-            permutated_local_input_tokens = alltoall_token_permutation1(detach_input, indices, num_tokens)
+            permutated_local_input_tokens = alltoall_token_permutation1(detach_input, routing_map)
 
             ep_group = get_expert_model_parallel_group()
             if global_args.moe_tp_extend_ep:
