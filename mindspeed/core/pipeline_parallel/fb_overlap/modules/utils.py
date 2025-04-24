@@ -85,6 +85,9 @@ class LayerGraph:
         self.checkpointed = checkpointed
         self.layer = layer
         self.is_moe_layer = hasattr(layer, 'mlp') and hasattr(layer.mlp, 'experts')
+        # For Swap attention activation
+        self.attn_swap_managers = None
+        self.unperm2_swap_manager = None
 
 
     def record_layer_inputs(self, *args):

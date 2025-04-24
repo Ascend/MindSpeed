@@ -247,6 +247,8 @@ def transformer_layer_forward_moe(
     )
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
+    if hasattr(self.self_attention, 'swap_managers'):
+        graph.attn_swap_managers = self.self_attention.swap_managers
 
     return output, context, graph
 
@@ -336,6 +338,8 @@ def transformer_layer_forward_dense(
         saved_tensors, [], None, None, self,
         checkpointed=checkpoint
     )
+    if hasattr(self.self_attention, 'swap_managers'):
+        graph.attn_swap_managers = self.self_attention.swap_managers
 
     return output, context, graph
 

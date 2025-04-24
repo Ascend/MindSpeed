@@ -26,6 +26,9 @@ def transformer_layer_backward_moe(
     # Launch swap-in at the beginning of the backward pass.
     if self.unperm2_swap_manager:
         self.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
+    if self.attn_swap_managers:
+        for manager in self.attn_swap_managers:
+            manager.async_swap_in(wait_stream=torch.npu.current_stream())
 
     if args.moe_tp_extend_ep:
         ep_group = parallel_state.get_tensor_and_expert_parallel_group()
@@ -140,6 +143,9 @@ def transformer_layer_backward_moe(
     run_graph_backward(self.router_graph, probs_grad)
 
     run_graph_backward(self.pre_mlp_layernorm_graph)
+    if self.attn_swap_managers:
+        for manager in self.attn_swap_managers:
+            manager.wait_swap_in()
     run_graph_backward(self.attn_graph)
 
 
@@ -149,8 +155,14 @@ def transformer_layer_backward_moe(
 
 
 def transformer_layer_backward_dense(layer_output_grad, layer_graph):
+    if layer_graph.attn_swap_managers:
+        for manager in layer_graph.attn_swap_managers:
+            manager.async_swap_in(wait_stream=torch.npu.current_stream())
     run_graph_backward(layer_graph.unperm2_graph, layer_output_grad)
     run_graph_backward(layer_graph.pre_mlp_layernorm_graph)
+    if layer_graph.attn_swap_managers:
+        for manager in layer_graph.attn_swap_managers:
+            manager.wait_swap_in()
     run_graph_backward(layer_graph.attn_graph)
 
     return layer_graph.layer_input.grad
