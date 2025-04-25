@@ -40,6 +40,8 @@ from mindspeed.features_manager.transformer.flash_attention.alibi_feature import
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
 from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
 from mindspeed.features_manager.pipeline_parallel.variable_seq_length import VariableSequenceLengthFeature
+from mindspeed.features_manager.memory.reuse_fp32_param import ReuseFP32Param
+from mindspeed.features_manager.memory.smart_swap import SmartSwapFeature
 
 from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFeature
 
@@ -148,6 +150,17 @@ def add_dist_train_features(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_reuse_param_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        ReuseFP32Param()
+    ])
+
+
+def add_swap_manage_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        SmartSwapFeature()
+    ])
+
 
 def create_features_list():
     features_list = []
@@ -162,6 +175,8 @@ def create_features_list():
     add_optimizer_features(features_list)
     add_llava_features(features_list)
     add_dist_train_features(features_list)
+    add_reuse_param_features(features_list)
+    add_swap_manage_features(features_list)
     return features_list
 
 
