@@ -12,7 +12,6 @@ from mindspeed.features_manager.functional.tflops_calculate import TflopsCalcula
 from mindspeed.features_manager.fusions.grouped_matmul import GroupedMatmulFeature
 from mindspeed.features_manager.fusions.fused_bias_swiglu import FusedSwigluFeature
 from mindspeed.features_manager.fusions.fused_softmax import FusedSoftmaxFeature
-from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferAdaptiveFeature
 
 from mindspeed.features_manager.megatron_basic.requirements_basic import RequirementsBasicFeature
 from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBasicFeature
@@ -35,6 +34,10 @@ from mindspeed.features_manager.tensor_parallel.mc2 import MC2Feature
 from mindspeed.features_manager.moe.tp_extend_ep import MoETpExtendEpFeature
 from mindspeed.features_manager.moe.gmm import MoEGmmFeature
 from mindspeed.features_manager.moe.shared_expert import MoESharedExpertsFeature
+
+from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferAdaptiveFeature
+from mindspeed.features_manager.hccl_buffer.hccl_buffer_set import HcclBufferSetFeature
+
 from mindspeed.features_manager.optimizer.virtual_optimizer import VirtualOptimizerFeature
 from mindspeed.features_manager.transformer.flash_attention.alibi_feature import AlibiFeature
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
@@ -128,6 +131,7 @@ def add_moe_features(features_list: List[MindSpeedFeature]):
 
 def add_hccl_buffer_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
+        HcclBufferSetFeature(),
         HcclBufferAdaptiveFeature(),
     ])
 

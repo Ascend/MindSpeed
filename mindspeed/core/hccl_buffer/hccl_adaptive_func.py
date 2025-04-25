@@ -3,6 +3,39 @@ import math
 _HCCL_GROUP_BUFFER = {}
 
 
+def parse_hccl_buffer_string(hccl_group_buffer):
+    global _HCCL_GROUP_BUFFER
+
+    if hccl_group_buffer is None:
+        return
+
+    allowed_keys = ["dp", "dp_cp", "cp", "mp", "mp_exp", "tp", "pp", "embd", "tp_dp_cp", 
+                    "tp_dp", "tp_cp", "tp_exp", "exp", "dp_modulo_exp", "pp_new_stream", 
+                    "cp2", "cp_ulysses", "cp_ring", "cp_ring_intra", "cp_ring_intra_overlap", "nd1_dim1", "ag_x_sd_rcv_overlap", 
+                    "nd1_dim2", "ag_y_sd_rcv_overlap", "nd2_dim1", "nd2_dim2"]
+
+    parts = hccl_group_buffer.split(';')
+    for part in parts:
+        key_value = part.split(':')
+        if len(key_value) == 2:
+            key = key_value[0].strip()
+            value_str = key_value[1].strip()
+            key = key.replace(' ', '')
+            value_str = value_str.replace(' ', '')
+            if key in allowed_keys:
+                try:
+                    value = int(value_str)
+                    if value <= 0:
+                        raise RuntimeError(f"Value {value} must be greater than 0")
+                    _HCCL_GROUP_BUFFER[key] = value
+                except ValueError as e:
+                    raise RuntimeError(f"{value_str} is not a valid positive integer") from e
+            else:
+                raise RuntimeError(f"Key {key} is not allowed")
+        else:
+            raise RuntimeError("The str of hccl-group-buffer is not valid")
+
+
 def hccl_buffer_auto_adaptive(args):
     seq_length = args.seq_length
     micro_batch_size = args.micro_batch_size

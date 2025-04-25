@@ -24,7 +24,9 @@ class RecomputeNormFeature(MindSpeedFeature):
                                             f'cannot be greater than --num-layers ({args.num_layers}).')
 
     def register_patches(self, patch_manager, args):
-        from mindspeed.core.memory.recompute.norm.adaptor import mindspeed_norm_recompute_forward
+        from mindspeed.core.memory.recompute.norm.adaptor import mindspeed_norm_recompute_forward, build_norm_recompute_layer_wrapper
 
         if getattr(args, self.feature_name, None):
             patch_manager.register_patch('megatron.core.transformer.transformer_layer.TransformerLayer.forward', mindspeed_norm_recompute_forward)
+            patch_manager.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._build_layers', build_norm_recompute_layer_wrapper)
+    

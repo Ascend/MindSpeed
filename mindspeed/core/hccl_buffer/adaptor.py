@@ -7,7 +7,7 @@ import torch_npu
 from megatron.training import get_args
 from megatron.training.utils import print_rank_0
 
-from mindspeed.core.hccl_buffer.hccl_adaptive_func import hccl_buffer_auto_adaptive, _HCCL_GROUP_BUFFER
+from mindspeed.core.hccl_buffer.hccl_adaptive_func import hccl_buffer_auto_adaptive, parse_hccl_buffer_string, _HCCL_GROUP_BUFFER
 
 
 def get_nccl_options_wrapper(get_nccl_options):
@@ -33,6 +33,19 @@ def hccl_buffer_adaptive_wrapper(initialize_model_parallel):
         if config.hccl_group_buffer_adaptive:
             hccl_buffer_auto_adaptive(config)
             print_rank_0(f"hccl_group_buffer_adaptive: {_HCCL_GROUP_BUFFER}")
+
+        return initialize_model_parallel(*args, **kwargs)
+    return wrapper
+
+
+def hccl_buffer_set_wrapper(initialize_model_parallel):
+    @wraps(initialize_model_parallel)
+    def wrapper(*args, **kwargs):
+        config = get_args()
+
+        if config.hccl_group_buffer is not None:
+            parse_hccl_buffer_string(config.hccl_group_buffer)
+            print_rank_0(f"hccl_group_buffer_set: {_HCCL_GROUP_BUFFER}")
 
         return initialize_model_parallel(*args, **kwargs)
     return wrapper

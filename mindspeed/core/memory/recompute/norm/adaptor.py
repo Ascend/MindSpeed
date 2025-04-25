@@ -1,22 +1,13 @@
-# coding=utf-8
-# Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the BSD 3-Clause License  (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://opensource.org/licenses/BSD-3-Clause
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+from functools import wraps
+import types
+
 from megatron.core.tensor_parallel.random import get_cuda_rng_tracker
 
 from mindspeed.core.memory.recompute.norm.norm_recompute_forward import norm_recompute_forward_impl
+from mindspeed.core.memory.recompute.norm.should_recompute import should_recompute_norm
+from mindspeed.model.transformer import NoopTransformerLayer
 
 
 # pylint: disable=too-many-arguments
@@ -57,3 +48,16 @@ def mindspeed_norm_recompute_forward(
     """
     return norm_recompute_forward_impl(self, get_cuda_rng_tracker, hidden_states, attention_mask, context, context_mask,
                                        rotary_pos_emb, inference_params, packed_seq_params)
+
+
+def build_norm_recompute_layer_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        fn(self, *args, **kwargs)
+        self.layer_number = getattr(self, "layer_number", None)
+        for layer in self.layers:
+            if isinstance(layer, NoopTransformerLayer):
+                continue
+            if should_recompute_norm(self.layer_number, self.config):
+                layer.forward = types.MethodType(norm_recompute_forward_impl, layer)
+    return wrapper
