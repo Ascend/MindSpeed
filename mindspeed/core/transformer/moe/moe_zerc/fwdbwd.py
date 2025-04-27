@@ -3,332 +3,30 @@
 from contextlib import nullcontext
 import torch
 import acl
-from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core.utils import make_viewless_tensor
+from megatron.core import parallel_state
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather, async_reduce_scatter
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
-from ..modules.token_dispatcher import (
+from mindspeed.core.pipeline_parallel.fb_overlap.modules.token_dispatcher import (
     alltoall_token_perm1, alltoall_token_perm2,
-    alltoall_token_unperm1, alltoall_token_unperm2, overlap_stream
+    alltoall_token_unperm1, alltoall_token_unperm2
 )
-from ..modules.weight_grad_store import WeightGradStore
-from ..modules.attention import (
+from mindspeed.core.pipeline_parallel.fb_overlap.modules.weight_grad_store import WeightGradStore
+from mindspeed.core.pipeline_parallel.fb_overlap.modules.attention import (
     attention_forward, set_async_alltoall_inputs, get_async_alltoall_outputs
 )
-from ..modules.utils import (
+from mindspeed.core.pipeline_parallel.fb_overlap.modules.utils import (
     detach_tensor, run_graph_backward, LayerGraph, is_p2p_comm_needed,
     p2p_comm_helper, P2PCommOutput, P2PCommParams
 )
+from mindspeed.core.pipeline_parallel.fb_overlap.overlap_funcs.fwdbwd import router_forward
 
 
-def router_forward(
-    self,
-    hidden_states
-):
-    probs, indices = self.mlp.router(hidden_states)
-
-    return probs, indices
-
-
-def transformer_layer_forward_dense_backward_moe_overlaping(
-    fwd_layer,
-    hidden_states,
-    attention_mask,
-    bwd_layer_output_grad=None,
-    bwd_layer_graph: LayerGraph = None,
-    bwd_unperm_a2a_handle=None,
-    next_bwd_layer_graph: LayerGraph = None,
-    context=None,
-    context_mask=None,
-    rotary_pos_emb=None,
-    inference_params=None,
-    packed_seq_params=None,
-    pp_comm_params: P2PCommParams = None,
-    bwd_pp_comm_params: P2PCommParams = None,
-    checkpoint=False
-):
-    tp_size = parallel_state.get_tensor_model_parallel_world_size()
-    if checkpoint:
-        checkpoint_context = torch.no_grad()
-    else:
-        checkpoint_context = nullcontext()
-    args = get_args()
-    ep_group = parallel_state.get_expert_model_parallel_group()
-    if args.moe_tp_extend_ep:
-        ep_group = parallel_state.get_tensor_and_expert_parallel_group()
-    recomp_norm = getattr(args, 'recompute_norm', False)
-    if args.moe_zerc:
-        bwd_dispached_input, bwd_probs, bwd_indices, bwd_select_index, bwd_nr_token_id_recover = bwd_layer_graph.recompute_needed_tensors
-    else:
-        bwd_dispached_input, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
-        bwd_select_index = None
-
-    # Launch swap-in at the beginning of the backward pass.
-    if bwd_layer_graph.unperm2_swap_manager:
-        bwd_layer_graph.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.async_swap_in(wait_stream=torch.npu.current_stream())
-
-    # Unperm2 Bwd
-    # check if backward unpermutation alltoall is launched at bwd layer before
-    if bwd_unperm_a2a_handle is None:
-        run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad)
-        # Async Unperm A2A
-        _, unperm1_out_grad, bwd_unperm_a2a_handle = async_all_to_all(
-            bwd_layer_graph.unperm_a2a_graph[1].grad,
-            bwd_layer_graph.output_splits,
-            bwd_layer_graph.input_splits,
-            ep_group
-        )
-    else:
-        unperm1_out_grad = bwd_layer_output_grad
-
-    if args.moe_zero_memory == 'level0':
-        with torch.no_grad():
-            bwd_input_before_perm1 = bwd_layer_graph.pre_mlp_layernorm_graph[0]
-
-            def recomp_token_permutation1(hidden_states, indices, _select_index):
-                hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                if args.moe_zerc:
-                    permutated_local_input_tokens = hidden_states.index_select(0, _select_index)
-                else:
-                    permutated_local_input_tokens, _ = permute(
-                        hidden_states, indices
-                    )
-                return permutated_local_input_tokens
-            bwd_perm1_out = recomp_token_permutation1(bwd_input_before_perm1, bwd_indices, bwd_select_index)
-
-    with checkpoint_context:
-        # Atten Fwd
-        detached_layer_input = detach_tensor(hidden_states, checkpoint_forward=checkpoint)
-
-        # Residual connection.
-        residual1 = detached_layer_input
-
-        # input_layernorm + AttentionForward
-        hidden_states = attention_forward(
-            fwd_layer, detached_layer_input, residual1,
-            attention_mask=attention_mask,
-            inference_params=inference_params,
-            rotary_pos_emb=rotary_pos_emb,
-            packed_seq_params=packed_seq_params,
-            recompute_norm=recomp_norm
-        )
-
-        attention_graph, detached_attention_out = hidden_states, detach_tensor(hidden_states,
-                                                                               checkpoint_forward=checkpoint)
-
-        # Residual connection.
-        residual2 = detached_attention_out
-
-        if recomp_norm:
-            fwd_layer.norm_ckpt2 = CheckpointWithoutOutput()
-            pre_mlp_layernorm_output = fwd_layer.norm_ckpt2.checkpoint(fwd_layer.pre_mlp_layernorm, False,
-                                                                       detached_attention_out)
-        else:
-            pre_mlp_layernorm_output = fwd_layer.pre_mlp_layernorm(detached_attention_out)
-
-
-    if args.moe_zero_memory == 'level0':
-        _, bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle = async_all_to_all(
-            bwd_perm1_out,
-            bwd_layer_graph.output_splits,
-            bwd_layer_graph.input_splits,
-            ep_group,
-            event=bwd_unperm_a2a_handle,
-            stream=torch.npu.current_stream()
-        )
-
-    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
-        bwd_layer_graph.act_ckpt_manager.recompute(True)
-
-
-    bwd_unperm_a2a_handle.wait()
-    bwd_unperm_a2a_handle = None
-    run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
-    unperm1_out_grad.untyped_storage().resize_(0)
-    WeightGradStore.start_decouple()
-    run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
-    WeightGradStore.end_decouple()
-    run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
-    if args.moe_zero_memory == 'level0':
-        with torch.no_grad():
-            bwd_recomp_perm_a2a_handle.wait()
-            bwd_recomp_perm_a2a_handle = None
-            if args.moe_zerc:
-                recompute_fc1_input = bwd_perm_a2a_out.index_select(0, bwd_nr_token_id_recover)
-            else:
-                recompute_fc1_input, _ = permute(bwd_perm_a2a_out, global_input_tokens_local_experts_indices)
-            bwd_perm_a2a_out.untyped_storage().resize_(0)
-
-    if tp_size > 1:
-        shared_expert_grad = bwd_layer_graph.shared_experts_graph[1].grad
-        _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
-            shared_expert_grad, parallel_state.get_tensor_model_parallel_group()
-        )
-    else:
-        backward_ag_shared = bwd_layer_graph.shared_experts_graph[1].grad
-        backward_ag_shared_handle = None
-
-    _, perm1_out_grad, bwd_perm_a2a_handle = async_all_to_all(
-        bwd_layer_graph.perm_a2a_graph[1][0].grad,
-        bwd_layer_graph.input_splits,
-        bwd_layer_graph.output_splits,
-        ep_group,
-        event=backward_ag_shared_handle
-    )
-    perm1_prob_out_grad, bwd_prob_handle = None, None
-    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name() and not args.moe_zerc:
-        _, perm1_prob_out_grad, bwd_prob_handle = async_all_to_all(
-            bwd_layer_graph.perm_a2a_graph[1][1].grad,
-            bwd_layer_graph.input_splits,
-            bwd_layer_graph.output_splits,
-            ep_group,
-            event=bwd_perm_a2a_handle,
-            stream=torch.npu.current_stream()
-        )
-
-    # Grouped MLP dw computation
-
-    with checkpoint_context:
-        # MLP Forward
-        detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
-        mlp_output_with_bias = fwd_layer.mlp(detached_mlp_input)
-        if recomp_norm:
-            fwd_layer.norm_ckpt2.discard_output()
-            mlp_output_with_bias[0].register_hook(fwd_layer.norm_ckpt2.recompute)
-
-    bwd_perm_a2a_handle.wait()
-    bwd_perm_a2a_handle = None
-    if bwd_prob_handle:
-        bwd_prob_handle.wait()
-    run_graph_backward(bwd_layer_graph.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
-    perm1_out_grad.untyped_storage().resize_(0)
-    WeightGradStore.start_decouple()
-    if backward_ag_shared_handle is not None:
-        backward_ag_shared_handle.wait()
-        backward_ag_shared_handle = None
-        shared_expert_grad.untyped_storage().resize_(0)
-    run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
-    WeightGradStore.end_decouple()
-
-    # swap-in unperm2 input for probs_grad computation
-    if bwd_layer_graph.unperm2_swap_manager:
-        bwd_layer_graph.unperm2_swap_manager.wait_swap_in()
-    probs_grad = None
-    if args.moe_unperm2_mem_optim_swap:
-        # dprobs computation
-        output_grad = bwd_layer_output_grad
-        if hasattr(bwd_layer_graph, 'last_layer_input_grad'):
-            output_grad = bwd_layer_graph.last_layer_input_grad
-        H = bwd_layer_graph.unperm2_swap_manager.npu_tensor.shape[-1]
-        K = args.moe_router_topk
-        probs_dtype = bwd_probs.dtype
-        probs_grad = bwd_layer_graph.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(probs_dtype) * output_grad.to(probs_dtype)
-        output_grad.untyped_storage().resize_(0)
-        bwd_layer_graph.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
-        probs_grad = probs_grad.sum(dim=-1)
-    run_graph_backward(bwd_layer_graph.router_graph, probs_grad)
-
-    run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
-    WeightGradStore.start_decouple()
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.wait_swap_in()
-    run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
-    WeightGradStore.end_decouple()
-
-    if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
-        run_graph_backward(next_bwd_layer_graph.unperm2_graph, bwd_layer_graph.layer_input.grad, keep_graph=True)
-
-    next_layer_output_grad, next_bwd_unperm_a2a_handle = bwd_layer_graph.layer_input.grad, None
-    if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
-        _, next_layer_output_grad, next_bwd_unperm_a2a_handle = async_all_to_all(
-            next_bwd_layer_graph.unperm_a2a_graph[1].grad,
-            next_bwd_layer_graph.output_splits,
-            next_bwd_layer_graph.input_splits,
-            ep_group
-        )
-
-    with checkpoint_context:
-        with fwd_layer.bias_dropout_add_exec_handler():
-            hidden_states = fwd_layer.mlp_bda(fwd_layer.training, fwd_layer.config.bias_dropout_fusion)(
-                mlp_output_with_bias, residual2, fwd_layer.hidden_dropout
-            )
-
-    # Jit compiled function creates 'view' tensor. This tensor
-    # potentially gets saved in the MPU checkpoint function context,
-    # which rejects view tensors. While making a viewless tensor here
-    # won't result in memory savings (like the data loader, or
-    # p2p_communication), it serves to document the origin of this
-    # 'view' tensor.
-    output = make_viewless_tensor(
-        inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
-    )
-
-    # handle fwd p2p communication
-    next_iter_input_tensor, fwd_p2p_handles = None, None
-    fwd_pp_comm_params = pp_comm_params
-    if is_p2p_comm_needed(fwd_pp_comm_params):
-        next_iter_input_tensor, fwd_p2p_handles = p2p_comm_helper(fwd_pp_comm_params, output)
-
-    # handle bwd p2p communication
-    next_iter_output_tensor_grad, bwd_p2p_handles = None, None
-    if is_p2p_comm_needed(bwd_pp_comm_params):
-        next_iter_output_tensor_grad, bwd_p2p_handles = p2p_comm_helper(bwd_pp_comm_params, bwd_layer_graph.layer_input.grad)
-
-    if args.moe_zero_memory == 'level0':
-        # restore fc1 input for dw computation
-        bwd_dispached_input.untyped_storage().resize_(recompute_fc1_input.untyped_storage().size())
-        bwd_dispached_input.untyped_storage().copy_(recompute_fc1_input.untyped_storage())
-        recompute_fc1_input.untyped_storage().resize_(0)
-    WeightGradStore.pop()
-
-    saved_tensors = (
-        (attention_graph, detached_attention_out),
-        (pre_mlp_layernorm_output, detached_mlp_input),
-        (None, None),
-        (None, None),
-        (None, None),
-        (None, None),  # perm2 graph
-        (None, None),  # grouped mlp graph
-        (None, None),  # unperm1 graph
-        (None, None),
-        (output, None),  # unperm2 graph
-        (None, None),
-        detached_layer_input
-    )
-
-    graph = LayerGraph(
-        saved_tensors, [], None, None, fwd_layer,
-        checkpointed=checkpoint
-    )
-    if hasattr(fwd_layer.self_attention, 'swap_managers'):
-        graph.attn_swap_managers = fwd_layer.self_attention.swap_managers
-
-    # save original layer output for probs_grad computation
-    if args.moe_unperm2_mem_optim_swap \
-        and next_bwd_layer_graph is not None \
-        and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
- 
-        next_bwd_layer_graph.last_layer_input_grad = bwd_layer_graph.layer_input.grad
-
-    for tensor in bwd_layer_graph.recompute_needed_tensors:
-        if tensor is not None:
-            tensor.untyped_storage().resize_(0)
-
-    return (output, context, graph,
-            (next_layer_output_grad, next_bwd_unperm_a2a_handle),
-            P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
-
-
-
-def transformer_layer_forward_moe_backward_dense_overlaping(
+def transformer_layer_forward_moe_backward_dense_overlaping_zerc(
     fwd_layer,
     hidden_states,
     attention_mask,
@@ -358,9 +56,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     if args.moe_tp_extend_ep:
         ep_group = parallel_state.get_tensor_and_expert_parallel_group()
     recomp_norm = getattr(args, 'recompute_norm', False)
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.async_swap_in(wait_stream=torch.npu.current_stream())
 
     with checkpoint_context:
         # Atten Fwd
@@ -393,36 +88,10 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         # MLP.
         detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
         probs, indices = router_forward(fwd_layer, detached_mlp_input)
-        if tp_size > 1 and use_shared_experts:
-            _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
-                detached_mlp_input, tp_group, is_use_get_global_memory_buffer=True
-            )
-            AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
-        else:
-            shared_experts_input, shared_experts_allgather_handle = detached_mlp_input, None
 
         # Token Permutation Forward
         probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
         perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
-
-        if use_shared_experts:
-            with torch.npu.stream(overlap_stream.stream):
-                if shared_experts_allgather_handle is not None:
-                    shared_experts_allgather_handle.wait()
-                    shared_experts_allgather_handle = None
-                shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
-
-        disp = fwd_layer.mlp.token_dispatcher
-        if disp.num_local_experts > 1:
-            # No further synchronization is needed because torch.repeat_interleave() calls stream
-            # synchronization internally when the `output_size` parameter is not provided.
-            disp.cuda_sync_point = "no_sync"
-            disp.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-                disp.expert_ids_per_ep_rank, disp.num_global_tokens_per_local_expert.ravel()
-            )
-
-        torch.npu.current_stream().wait_stream(overlap_stream.stream)
-
         _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
             perm1_out,
             fwd_layer.mlp.token_dispatcher.output_splits,
@@ -430,7 +99,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
             ep_group
         )
         perm_prob_a2a_out, perm_prob_a2a_handle = None, None
-        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name() and not args.moe_zerc:
             _, perm_prob_a2a_out, perm_prob_a2a_handle = async_all_to_all(
                 perm1_probs,
                 fwd_layer.mlp.token_dispatcher.output_splits,
@@ -447,19 +116,25 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
     perm_a2a_handle.wait()
     perm_a2a_handle = None
-    perm1_out.untyped_storage().resize_(0)
 
     # Grouped MLP dw computation
 
     with checkpoint_context:
         # Token Perm2 forward
         detached_perm_a2a_out = detach_tensor(perm_a2a_out, checkpoint_forward=checkpoint)
-        detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
-        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+        if perm_prob_a2a_handle is not None:
             perm_prob_a2a_handle.wait()
+        detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
         dispached_input, dispached_input_probs = alltoall_token_perm2(fwd_layer.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out)
         perm_a2a_out.untyped_storage().resize_(0)
 
+        if tp_size > 1 and use_shared_experts:
+            _, shared_experts_input, shared_experts_allgather_handle = async_all_gather(
+                detached_mlp_input, tp_group, is_use_get_global_memory_buffer=True
+            )
+            AG_SHARED_EXPERTS_INPUTS.append((shared_experts_input, shared_experts_allgather_handle))
+        else:
+            shared_experts_input, shared_experts_allgather_handle = detached_mlp_input, None
 
         # Grouped MLP Forward
         detached_dispached_input = detach_tensor(dispached_input, checkpoint_forward=checkpoint)
@@ -469,15 +144,26 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         )
         if args.moe_zero_memory == 'level0':
             dispached_input.untyped_storage().resize_(0)
-            recompute_needed_tensors = [dispached_input, probs, indices,
-                                        fwd_layer.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
+            if args.moe_zerc:
+                recompute_needed_tensors = [dispached_input, probs, indices,
+                                            fwd_layer.mlp.token_dispatcher.select_index, fwd_layer.mlp.token_dispatcher.nr_token_id_recover]
+            else:
+                recompute_needed_tensors = [dispached_input, probs, indices,
+                                            fwd_layer.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
         else:
-            recompute_needed_tensors = [None, None, None, None]
+            if args.moe_zerc:
+                recompute_needed_tensors = [None, None, None, None, None]
+            else:
+                recompute_needed_tensors = [None, None, None, None]
         detached_expert_output = detach_tensor(expert_output, checkpoint_forward=checkpoint)
 
         # Token Unpermutaion Forward
         unperm1_out = alltoall_token_unperm1(fwd_layer.mlp.token_dispatcher, detached_expert_output, None)
-        expert_output.untyped_storage().resize_(0)
+        if not args.moe_zerc or args.moe_unperm2_mem_optim:
+            expert_output.untyped_storage().resize_(0)
+        if shared_experts_allgather_handle is not None:
+            shared_experts_allgather_handle.wait()
+            shared_experts_allgather_handle = None
         _, unperm_a2a_out, unperm_a2a_handle = async_all_to_all(
             unperm1_out,
             fwd_layer.mlp.token_dispatcher.input_splits,
@@ -487,6 +173,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
         share_experts_graph = None
         if use_shared_experts:
+            shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
             if tp_size > 1:
                 share_experts_graph, shared_expert_output, rs_shared_experts_handle = async_reduce_scatter(
                     shared_expert_output, tp_group
@@ -501,9 +188,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
             fwd_layer.norm_ckpt2.discard_output()
 
     WeightGradStore.start_decouple()
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.wait_swap_in()
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
     WeightGradStore.end_decouple()
 
@@ -526,7 +210,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     with checkpoint_context:
         detached_unperm_a2a_out = detach_tensor(unperm_a2a_out, checkpoint_forward=checkpoint)
         route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
-        if args.moe_unperm2_mem_optim:
+        if args.moe_unperm2_mem_optim or args.moe_zerc:
             unperm_a2a_out.untyped_storage().resize_(0)
 
         if hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None:
@@ -591,8 +275,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     )
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
-    if hasattr(fwd_layer.self_attention, 'swap_managers'):
-        graph.attn_swap_managers = fwd_layer.self_attention.swap_managers
 
     for tensor in bwd_layer_graph.recompute_needed_tensors:
         if tensor is not None:
@@ -603,157 +285,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
             P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
 
 
-
-def transformer_layer_forward_dense_backward_dense_overlaping(
-    fwd_layer,
-    hidden_states,
-    attention_mask,
-    bwd_layer_output_grad=None,
-    bwd_layer_graph: LayerGraph = None,
-    bwd_unperm_a2a_handle=None,
-    next_bwd_layer_graph: LayerGraph = None,
-    context=None,
-    context_mask=None,
-    rotary_pos_emb=None,
-    inference_params=None,
-    packed_seq_params=None,
-    pp_comm_params: P2PCommParams = None,
-    bwd_pp_comm_params: P2PCommParams = None,
-    checkpoint=False
-):
-    if checkpoint:
-        checkpoint_context = torch.no_grad()
-    else:
-        checkpoint_context = nullcontext()
-    args = get_args()
-    ep_group = parallel_state.get_expert_model_parallel_group()
-    if args.moe_tp_extend_ep:
-        ep_group = parallel_state.get_tensor_and_expert_parallel_group()
-    recomp_norm = getattr(args, 'recompute_norm', False)
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.async_swap_in(wait_stream=torch.npu.current_stream())
-
-    with checkpoint_context:
-        # Atten Fwd
-        detached_layer_input = detach_tensor(hidden_states, checkpoint_forward=checkpoint)
-
-        # Residual connection.
-        residual1 = detached_layer_input
-
-        # input_layernorm + AttentionForward
-        hidden_states = attention_forward(
-            fwd_layer, detached_layer_input, residual1,
-            attention_mask=attention_mask,
-            inference_params=inference_params,
-            rotary_pos_emb=rotary_pos_emb,
-            packed_seq_params=packed_seq_params,
-            recompute_norm=recomp_norm
-        )
-
-        attention_graph, detached_attention_out = hidden_states, detach_tensor(hidden_states, checkpoint_forward=checkpoint)
-
-        # Residual connection.
-        residual2 = detached_attention_out
-
-        if recomp_norm:
-            fwd_layer.norm_ckpt2 = CheckpointWithoutOutput()
-            pre_mlp_layernorm_output = fwd_layer.norm_ckpt2.checkpoint(fwd_layer.pre_mlp_layernorm, False, detached_attention_out)
-        else:
-            pre_mlp_layernorm_output = fwd_layer.pre_mlp_layernorm(detached_attention_out)
-
-        # MLP.
-        detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
-        mlp_output_with_bias = fwd_layer.mlp(detached_mlp_input)
-        if recomp_norm:
-            fwd_layer.norm_ckpt2.discard_output()
-            mlp_output_with_bias[0].register_hook(fwd_layer.norm_ckpt2.recompute)
-
-        # TODO: could we move `bias_dropout_add_exec_handler` itself
-        # inside the module provided in the `bias_dropout_add_spec` module?
-        with fwd_layer.bias_dropout_add_exec_handler():
-            hidden_states = fwd_layer.mlp_bda(fwd_layer.training, fwd_layer.config.bias_dropout_fusion)(
-                mlp_output_with_bias, residual2, fwd_layer.hidden_dropout
-            )
-
-    # Jit compiled function creates 'view' tensor. This tensor
-    # potentially gets saved in the MPU checkpoint function context,
-    # which rejects view tensors. While making a viewless tensor here
-    # won't result in memory savings (like the data loader, or
-    # p2p_communication), it serves to document the origin of this
-    # 'view' tensor.
-    output = make_viewless_tensor(
-        inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
-    )
-
-    # handle fwd p2p communication
-    next_iter_input_tensor, fwd_p2p_handles = None, None
-    fwd_pp_comm_params = pp_comm_params
-    if is_p2p_comm_needed(fwd_pp_comm_params):
-        next_iter_input_tensor, fwd_p2p_handles = p2p_comm_helper(fwd_pp_comm_params, output)
-
-    # Detach backward into dx/dw
-    WeightGradStore.start_decouple()
-    run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=True)  # keep for dw
-    run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.wait_swap_in()
-    run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
-    WeightGradStore.end_decouple()
-
-    if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
-        run_graph_backward(next_bwd_layer_graph.unperm2_graph, bwd_layer_graph.layer_input.grad, keep_graph=True)
-
-    next_layer_output_grad, next_bwd_unperm_a2a_handle = bwd_layer_graph.layer_input.grad, None
-    if next_bwd_layer_graph is not None and getattr(next_bwd_layer_graph, 'is_moe_layer', False):
-        _, next_layer_output_grad, next_bwd_unperm_a2a_handle = async_all_to_all(
-            next_bwd_layer_graph.unperm_a2a_graph[1].grad,
-            next_bwd_layer_graph.output_splits,
-            next_bwd_layer_graph.input_splits,
-            ep_group
-        )
-
-    # handle bwd p2p communication
-    next_iter_output_tensor_grad, bwd_p2p_handles = None, None
-    if is_p2p_comm_needed(bwd_pp_comm_params):
-        next_iter_output_tensor_grad, bwd_p2p_handles = p2p_comm_helper(bwd_pp_comm_params, bwd_layer_graph.layer_input.grad)
-
-    WeightGradStore.pop()
-
-    saved_tensors = (
-        (attention_graph, detached_attention_out),
-        (pre_mlp_layernorm_output, detached_mlp_input),
-        (None, None),
-        (None, None),  # perm1 graph
-        (None, None),
-        (None, None),  # perm2 graph
-        (None, None),  # grouped mlp graph
-        (None, None),  # unperm1 graph
-        (None, None),
-        (output, None),  # unperm2 graph
-        (None, None),
-        detached_layer_input
-    )
-
-    graph = LayerGraph(
-        saved_tensors, [], None, None, fwd_layer,
-        checkpointed=checkpoint
-    )
-
-    for tensor in bwd_layer_graph.recompute_needed_tensors:
-        if tensor is not None:
-            tensor.untyped_storage().resize_(0)
-
-    if hasattr(fwd_layer.self_attention, 'swap_managers'):
-        graph.attn_swap_managers = fwd_layer.self_attention.swap_managers
-
-    return (output, context, graph,
-            (next_layer_output_grad, next_bwd_unperm_a2a_handle),
-            P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_layer_graph.layer_input.grad))
-
-
-def transformer_layer_forward_moe_backward_moe_overlaping(
+def transformer_layer_forward_moe_backward_moe_overlaping_zerc(
     fwd_layer,
     hidden_states,
     attention_mask,
@@ -783,53 +315,36 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     use_shared_experts = hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None
     recomp_norm = getattr(args, 'recompute_norm', False)
     swap_unperm2 = getattr(args, 'moe_unperm2_mem_optim_swap', False)
-    bwd_dispached_input, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
+    if args.moe_zerc:
+        bwd_dispached_input, bwd_probs, bwd_indices, bwd_select_index, bwd_nr_token_id_recover = bwd_layer_graph.recompute_needed_tensors
+    else:
+        bwd_dispached_input, bwd_probs, bwd_indices, global_input_tokens_local_experts_indices = bwd_layer_graph.recompute_needed_tensors
+        bwd_select_index = None
     a2a_hooked_on_attention = getattr(fwd_layer.self_attention, 'a2a_hooked_on_attention', False)
 
     # Launch swap-in
     if bwd_layer_graph.unperm2_swap_manager:
         bwd_layer_graph.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.async_swap_in(wait_stream=torch.npu.current_stream())
-
-    # shard experts backward grad Allgather
-    last_comm_handle = None
-    shared_experts_grad = bwd_layer_output_grad if bwd_unperm_a2a_handle is None else bwd_layer_graph.shared_experts_graph[1].grad
-    if tp_size > 1:
-        _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
-            shared_experts_grad, tp_group,
-            stream=torch.npu.current_stream() if last_comm_handle else None
-        )
-        last_comm_handle = backward_ag_shared_handle
-    else:
-        backward_ag_shared = shared_experts_grad
-        backward_ag_shared_handle = None
 
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
     if bwd_unperm_a2a_handle is None:
-        run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=True)
+        run_graph_backward(bwd_layer_graph.unperm2_graph, bwd_layer_output_grad, keep_grad=swap_unperm2)
         # Async Unperm A2A
         if tp_size > 1 and a2a_hooked_on_attention:
             set_async_alltoall_inputs(
                 bwd_layer_graph.unperm_a2a_graph[1].grad,
                 bwd_layer_graph.output_splits,
                 bwd_layer_graph.input_splits,
-                ep_group,
-                last_comm_handle,
-                torch.npu.current_stream() if last_comm_handle else None
+                ep_group
             )
         else:
             _, unperm1_out_grad, bwd_unperm_a2a_handle = async_all_to_all(
                 bwd_layer_graph.unperm_a2a_graph[1].grad,
                 bwd_layer_graph.output_splits,
                 bwd_layer_graph.input_splits,
-                ep_group,
-                last_comm_handle,
-                torch.npu.current_stream() if last_comm_handle else None
+                ep_group
             )
-            last_comm_handle = bwd_unperm_a2a_handle
     else:
         unperm1_out_grad = bwd_layer_output_grad
 
@@ -837,14 +352,17 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         with torch.no_grad():
             bwd_input_before_perm1 = bwd_layer_graph.pre_mlp_layernorm_graph[0]
 
-            def recomp_token_permutation1(hidden_states, indices):
+            def recomp_token_permutation1(hidden_states, indices, _select_index):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, _ = permute(
-                    hidden_states, indices
-                )
+                if args.moe_zerc:
+                    permutated_local_input_tokens = hidden_states.index_select(0, _select_index)
+                else:
+                    permutated_local_input_tokens, _ = permute(
+                        hidden_states, indices
+                    )
                 return permutated_local_input_tokens
-
-            bwd_perm1_out = recomp_token_permutation1(bwd_input_before_perm1, bwd_indices)
+ 
+            bwd_perm1_out = recomp_token_permutation1(bwd_input_before_perm1, bwd_indices, bwd_select_index)
 
     with checkpoint_context:
 
@@ -893,50 +411,17 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         probs_detached = detach_tensor(probs)
         perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(fwd_layer.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
 
-        if use_shared_experts:
-            with torch.npu.stream(overlap_stream.stream):
-                if shared_experts_allgather_handle is not None:
-                    shared_experts_allgather_handle.wait()
-                    shared_experts_allgather_handle = None
-                shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
-
-        if args.moe_zero_memory != 'disable':
-            _, bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle = async_all_to_all(
-                bwd_perm1_out,
-                bwd_layer_graph.output_splits,
-                bwd_layer_graph.input_splits,
-                ep_group,
-                stream=overlap_stream.stream
-            )
-            last_comm_handle = bwd_recomp_perm_a2a_handle
-
-        disp = fwd_layer.mlp.token_dispatcher
-        if disp.num_local_experts > 1:
-            # No further synchronization is needed because torch.repeat_interleave() calls stream
-            # synchronization internally when the `output_size` parameter is not provided.
-            disp.cuda_sync_point = "no_sync"
-            disp.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-                disp.expert_ids_per_ep_rank, disp.num_global_tokens_per_local_expert.ravel()
-            )
-
-        torch.npu.current_stream().wait_stream(overlap_stream.stream)
-
-    bwd_unperm_a2a_handle.wait()
-    bwd_unperm_a2a_handle = None
-    run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
-    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
-        bwd_layer_graph.act_ckpt_manager.recompute(True)
-    unperm1_out_grad.untyped_storage().resize_(0)
-
-    # Shared Experts Backward
-    if backward_ag_shared_handle is not None:
-        # ensure tp comm is not overlaped with alltoall comm
-        backward_ag_shared_handle.wait()
-        backward_ag_shared_handle = None
-
-    WeightGradStore.start_decouple()
-    run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
-    WeightGradStore.end_decouple()
+    last_comm_handle = shared_experts_allgather_handle if shared_experts_allgather_handle else bwd_unperm_a2a_handle
+    if args.moe_zero_memory == 'level0':
+        _, bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle = async_all_to_all(
+            bwd_perm1_out,
+            bwd_layer_graph.output_splits,
+            bwd_layer_graph.input_splits,
+            ep_group,
+            event=last_comm_handle,
+            stream=torch.npu.current_stream() if last_comm_handle else None
+        )
+        last_comm_handle = bwd_recomp_perm_a2a_handle
 
     with checkpoint_context:
         _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
@@ -949,7 +434,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         )
         last_comm_handle = perm_a2a_handle
         perm_prob_a2a_out, perm_prob_a2a_handle = None, None
-        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+        if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name() and not args.moe_zerc:
             _, perm_prob_a2a_out, perm_prob_a2a_handle = async_all_to_all(
                 perm1_probs,
                 fwd_layer.mlp.token_dispatcher.output_splits,
@@ -960,12 +445,13 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             )
             last_comm_handle = perm_prob_a2a_handle
 
-    WeightGradStore.start_decouple()
-    run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
-    WeightGradStore.end_decouple()
-
     with checkpoint_context:
+        shared_expert_output = None
         if use_shared_experts:
+            if shared_experts_allgather_handle is not None:
+                shared_experts_allgather_handle.wait()
+                shared_experts_allgather_handle = None
+            shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
             if tp_size > 1:
                 # launch tp comm after permf a2a and wait until shared experts computation finish.
                 share_experts_graph, shared_expert_output, rs_shared_experts_handle = async_reduce_scatter(
@@ -979,8 +465,20 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     if recomp_norm:
         fwd_layer.norm_ckpt2.discard_output()
 
-    run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)
+    bwd_unperm_a2a_handle.wait()
+    bwd_unperm_a2a_handle = None
+    run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
+    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
+        bwd_layer_graph.act_ckpt_manager.recompute(True)
+    unperm1_out_grad.untyped_storage().resize_(0)
+    WeightGradStore.start_decouple()
+    run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
+    WeightGradStore.end_decouple()
+    run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
 
+    perm_a2a_handle.wait()
+    perm_a2a_handle = None
+    perm1_out.untyped_storage().resize_(0)
     _, perm1_out_grad, bwd_perm_a2a_handle = async_all_to_all(
         bwd_layer_graph.perm_a2a_graph[1][0].grad,
         bwd_layer_graph.input_splits,
@@ -991,7 +489,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     )
     last_comm_handle = bwd_perm_a2a_handle
     perm1_prob_out_grad, bwd_prob_handle = None, None
-    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name() and not args.moe_zerc:
         _, perm1_prob_out_grad, bwd_prob_handle = async_all_to_all(
             bwd_layer_graph.perm_a2a_graph[1][1].grad,
             bwd_layer_graph.input_splits,
@@ -1001,6 +499,15 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             stream=torch.npu.current_stream()
         )
         last_comm_handle = bwd_prob_handle
+    # launch shared expert grad allgather here
+    if tp_size > 1:
+        _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
+            bwd_layer_graph.shared_experts_graph[1].grad, tp_group, event=last_comm_handle,
+            stream=torch.npu.current_stream() if last_comm_handle else None
+        )
+    else:
+        backward_ag_shared = bwd_layer_graph.shared_experts_graph[1].grad
+        backward_ag_shared_handle = None
 
     # Grouped MLP dw computation
     if args.moe_zero_memory == 'level0':
@@ -1008,7 +515,10 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         with torch.no_grad():
             bwd_recomp_perm_a2a_handle.wait()
             bwd_recomp_perm_a2a_handle = None
-            recompute_fc1_input, _ = permute(bwd_perm_a2a_out, global_input_tokens_local_experts_indices)
+            if args.moe_zerc:
+                recompute_fc1_input = bwd_perm_a2a_out.index_select(0, bwd_nr_token_id_recover)
+            else:
+                recompute_fc1_input, _ = permute(bwd_perm_a2a_out, global_input_tokens_local_experts_indices)
             bwd_perm_a2a_out.untyped_storage().resize_(0)
         bwd_dispached_input.untyped_storage().resize_(recompute_fc1_input.untyped_storage().size())
         bwd_dispached_input.untyped_storage().copy_(recompute_fc1_input.untyped_storage())
@@ -1018,9 +528,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     with checkpoint_context:
         # Token Perm2 Forward
-        perm_a2a_handle.wait()
-        perm_a2a_handle = None
-        perm1_out.untyped_storage().resize_(0)
         detached_perm_a2a_out = detach_tensor(perm_a2a_out)
         detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
         if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
@@ -1037,21 +544,37 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         )
         if args.moe_zero_memory == 'level0':
             dispached_input.untyped_storage().resize_(0)
-            recompute_needed_tensors = [dispached_input, probs, indices,
+            if args.moe_zerc:
+                recompute_needed_tensors = [dispached_input, probs, indices,
+                                            fwd_layer.mlp.token_dispatcher.select_index, fwd_layer.mlp.token_dispatcher.nr_token_id_recover]
+            else:
+                recompute_needed_tensors = [dispached_input, probs, indices,
                                         fwd_layer.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
         else:
-            recompute_needed_tensors = [None, None, None, None]
+            if args.moe_zerc:
+                recompute_needed_tensors = [None, None, None, None, None]
+            else:
+                recompute_needed_tensors = [None, None, None, None]
         detached_expert_output = detach_tensor(expert_output)
 
         # Token Unpermutaion Forward
         unperm1_out = alltoall_token_unperm1(fwd_layer.mlp.token_dispatcher, detached_expert_output, None)
-        expert_output.untyped_storage().resize_(0)
+        if not args.moe_zerc or args.moe_unperm2_mem_optim:
+            expert_output.untyped_storage().resize_(0)
         if rs_shared_experts_handle is not None:
             rs_shared_experts_handle.wait()
             rs_shared_experts_handle = None
             share_experts_graph.untyped_storage().resize_(0)
         bwd_perm_a2a_handle.wait()
         bwd_perm_a2a_handle = None
+    if backward_ag_shared_handle is not None:
+        # ensure tp comm is not overlaped with alltoall comm
+        backward_ag_shared_handle.wait()
+        backward_ag_shared_handle = None
+    # move shared experts backward before unpermF all2all to avoid tp comm colision.
+    WeightGradStore.start_decouple()
+    run_graph_backward(bwd_layer_graph.shared_experts_graph, backward_ag_shared, keep_grad=True)  # dw computation
+    WeightGradStore.end_decouple()
 
     with checkpoint_context:
         # launch async all2all in the middle of attention graph backward
@@ -1092,9 +615,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, keep_graph=True)
     WeightGradStore.start_decouple()
-    if bwd_layer_graph.attn_swap_managers:
-        for manager in bwd_layer_graph.attn_swap_managers:
-            manager.wait_swap_in()
     run_graph_backward(bwd_layer_graph.attn_graph, keep_grad=True)
     WeightGradStore.end_decouple()
     if tp_size > 1 and a2a_hooked_on_attention:
@@ -1118,7 +638,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     with checkpoint_context:
         detached_unperm_a2a_out = detach_tensor(unperm_a2a_out)
         route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out)
-        if args.moe_unperm2_mem_optim:
+        if args.moe_unperm2_mem_optim or args.moe_zerc:
             unperm_a2a_out.untyped_storage().resize_(0)
 
         if hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None:
@@ -1184,8 +704,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     )
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
-    if hasattr(fwd_layer.self_attention, 'swap_managers'):
-        graph.attn_swap_managers = fwd_layer.self_attention.swap_managers
 
     # save original layer output for probs_grad computation
     if swap_unperm2 \

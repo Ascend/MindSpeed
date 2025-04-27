@@ -19,7 +19,11 @@ def transformer_layer_backward_moe(
     self = layer_graph
     args = get_args()
     in_detach_stage = WeightGradStore.is_decoupleBlock
-    dispached_input, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
+    if args.moe_zerc:
+        dispached_input, probs, indices, select_index, nr_token_id_recover = self.recompute_needed_tensors
+    else:
+        dispached_input, probs, indices, global_input_tokens_local_experts_indices = self.recompute_needed_tensors
+        select_index = None
     ep_group = parallel_state.get_expert_model_parallel_group()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
 
@@ -67,14 +71,17 @@ def transformer_layer_backward_moe(
         with torch.no_grad():
             input_before_perm1 = self.pre_mlp_layernorm_graph[0]
 
-            def recomp_token_permutation1(hidden_states, indices):
+            def recomp_token_permutation1(hidden_states, indices, _select_index):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, _ = permute(
-                    hidden_states, indices
-                )
+                if args.moe_zerc:
+                    permutated_local_input_tokens = hidden_states.index_select(0, _select_index)
+                else:
+                    permutated_local_input_tokens, _ = permute(
+                        hidden_states, indices
+                    )
                 return permutated_local_input_tokens
 
-            perm1_out = recomp_token_permutation1(input_before_perm1, indices)
+            perm1_out = recomp_token_permutation1(input_before_perm1, indices, select_index)
             _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
                 perm1_out,
                 self.output_splits,
@@ -100,7 +107,7 @@ def transformer_layer_backward_moe(
     )
 
     perm1_prob_out_grad, prob_handle = None, None
-    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
+    if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name() and not args.moe_zerc:
         _, perm1_prob_out_grad, prob_handle = async_all_to_all(
             self.perm_a2a_graph[1][1].grad,
             self.input_splits,
@@ -112,7 +119,10 @@ def transformer_layer_backward_moe(
 
     if get_args().moe_zero_memory == 'level0':
         with torch.no_grad():
-            recompute_fc1_input, _ = permute(perm_a2a_out, global_input_tokens_local_experts_indices)
+            if args.moe_zerc:
+                recompute_fc1_input = perm_a2a_out.index_select(0, nr_token_id_recover)
+            else:
+                recompute_fc1_input, _ = permute(perm_a2a_out, global_input_tokens_local_experts_indices)
             perm_a2a_out.untyped_storage().resize_(0)
             # restore fc1 input for dw computation
             dispached_input.untyped_storage().resize_(recompute_fc1_input.untyped_storage().size())

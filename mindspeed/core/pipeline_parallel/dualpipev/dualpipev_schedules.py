@@ -30,8 +30,8 @@ from mindspeed.core.pipeline_parallel.fb_overlap.modules.weight_grad_store impor
 Shape = Union[List[int], torch.Size]
 LOSS_BACKWARD_SCALE = torch.tensor(1.0)
 
-
 _DUALPIPE_CHUNK = None
+_POST_CHUNK = None
 
 
 def set_dualpipe_chunk(chunkid):
@@ -46,6 +46,20 @@ def get_dualpipe_chunk():
         return _DUALPIPE_CHUNK
     else:
         raise AssertionError("_DUALPIPE_CHUNK is None")
+
+
+def set_post_process_flag(flag):
+    """set_postprocess_chunk for mtp position id"""
+    global _POST_CHUNK
+    _POST_CHUNK = flag
+
+
+def get_post_process_flag():
+    global _POST_CHUNK
+    if _POST_CHUNK is not None:
+        return _POST_CHUNK
+    else:
+        raise AssertionError("_POST_CHUNK is None")
 
 
 def is_dualpipev_last_stgae(model_chunk_id):
@@ -336,6 +350,7 @@ def pretrain_gpt_forward_step_dualpipe(data_iterator, model: GPTModel, extra_blo
 
     # Get the batch.
     timers('batch-generator', log_level=2).start()
+    set_post_process_flag(model.module.module.post_process)
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator)
     timers('batch-generator').stop()

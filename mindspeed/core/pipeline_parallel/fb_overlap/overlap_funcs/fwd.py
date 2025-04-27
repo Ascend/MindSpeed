@@ -95,22 +95,23 @@ def transformer_layer_forward_moe(
     probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
     perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(self.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
 
-    if use_shared_experts:
-        with torch.npu.stream(overlap_stream.stream):
-            if shared_experts_allgather_handle is not None:
-                shared_experts_allgather_handle.wait()
-                shared_experts_allgather_handle = None
-            # Shared Experts Forward.
-            shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
-    disp = self.mlp.token_dispatcher
-    if disp.num_local_experts > 1:
-        # No further synchronization is needed because torch.repeat_interleave() calls stream
-        # synchronization internally when the `output_size` parameter is not provided.
-        disp.cuda_sync_point = "no_sync"
-        disp.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-            disp.expert_ids_per_ep_rank, disp.num_global_tokens_per_local_expert.ravel()
-        )
-    torch.npu.current_stream().wait_stream(overlap_stream.stream)
+    if not args.moe_zerc:
+        if use_shared_experts:
+            with torch.npu.stream(overlap_stream.stream):
+                if shared_experts_allgather_handle is not None:
+                    shared_experts_allgather_handle.wait()
+                    shared_experts_allgather_handle = None
+                # Shared Experts Forward.
+                shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
+        disp = self.mlp.token_dispatcher
+        if disp.num_local_experts > 1:
+            # No further synchronization is needed because torch.repeat_interleave() calls stream
+            # synchronization internally when the `output_size` parameter is not provided.
+            disp.cuda_sync_point = "no_sync"
+            disp.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+                disp.expert_ids_per_ep_rank, disp.num_global_tokens_per_local_expert.ravel()
+            )
+        torch.npu.current_stream().wait_stream(overlap_stream.stream)
 
     # Async Perm A2A.
     _, perm_a2a_out, perm_a2a_handle = async_all_to_all(
@@ -129,6 +130,13 @@ def transformer_layer_forward_moe(
             event=perm_a2a_handle,
             stream=torch.npu.current_stream()
         )
+
+    if args.moe_zerc:
+        if shared_experts_allgather_handle is not None:
+            shared_experts_allgather_handle.wait()
+            shared_experts_allgather_handle = None
+            # Shared Experts Forward.
+            shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
 
     if recomp_norm:
         self.norm_ckpt2.discard_output()
@@ -164,15 +172,23 @@ def transformer_layer_forward_moe(
     )
     if args.moe_zero_memory == 'level0':
         dispached_input.untyped_storage().resize_(0)
-        recompute_needed_tensors = [dispached_input, probs, indices, self.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
+        if args.moe_zerc:
+            recompute_needed_tensors = [dispached_input, probs, indices,
+                                        self.mlp.token_dispatcher.select_index, self.mlp.token_dispatcher.nr_token_id_recover]
+        else:
+            recompute_needed_tensors = [dispached_input, probs, indices, self.mlp.token_dispatcher.global_input_tokens_local_experts_indices]
     else:
-        recompute_needed_tensors = [None, None, None, None]
+        if args.moe_zerc:
+            recompute_needed_tensors = [None, None, None, None, None]
+        else:
+            recompute_needed_tensors = [None, None, None, None]
 
     detached_expert_output = detach_tensor(expert_output, checkpoint_forward=checkpoint)
 
     # Token Unperm1 Forward
     unperm1_out = alltoall_token_unperm1(self.mlp.token_dispatcher, detached_expert_output, None)
-    expert_output.untyped_storage().resize_(0)
+    if not args.moe_zerc or args.moe_unperm2_mem_optim:
+        expert_output.untyped_storage().resize_(0)
     if rs_shared_experts_handle is not None:
         # overlap shared experts tp comm by token perm2 + gmm
         rs_shared_experts_handle.wait()
@@ -193,7 +209,7 @@ def transformer_layer_forward_moe(
     unperm1_out.untyped_storage().resize_(0)
     detached_unperm_a2a_out = detach_tensor(unperm_a2a_out, checkpoint_forward=checkpoint)
     route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(self.mlp.token_dispatcher, detached_unperm_a2a_out)
-    if get_args().moe_unperm2_mem_optim:
+    if args.moe_unperm2_mem_optim or args.moe_zerc:
         unperm_a2a_out.untyped_storage().resize_(0)
 
     if use_shared_experts:
