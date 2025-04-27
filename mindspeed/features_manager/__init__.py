@@ -49,6 +49,7 @@ from mindspeed.features_manager.memory.smart_swap import SmartSwapFeature
 from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFeature
 
 from mindspeed.features_manager.tensor_parallel.tp_2d import TP2dFeature
+from mindspeed.features_manager.compress_dense.compress_dense import AnsCompressTensorFeature
 
 
 FEATURES_LIST = [
@@ -166,6 +167,12 @@ def add_swap_manage_features(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_compress_dense_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        AnsCompressTensorFeature()
+    ])
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -181,6 +188,7 @@ def create_features_list():
     add_dist_train_features(features_list)
     add_reuse_param_features(features_list)
     add_swap_manage_features(features_list)
+    add_compress_dense_features(features_list)
     return features_list
 
 
