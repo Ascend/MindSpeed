@@ -52,6 +52,7 @@ from mindspeed.features_manager.distributed.buffer_pad import BufferPadFeature
 from mindspeed.features_manager.tensor_parallel.tp_2d import TP2dFeature
 from mindspeed.features_manager.compress_dense.compress_dense import AnsCompressTensorFeature
 
+from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeature
 
 FEATURES_LIST = [
     # Functional features
@@ -170,7 +171,8 @@ def add_reuse_param_features(features_list: List[MindSpeedFeature]):
 
 def add_swap_manage_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
-        SmartSwapFeature()
+        SmartSwapFeature(),
+        SwapAttentionFeature()
     ])
 
 
