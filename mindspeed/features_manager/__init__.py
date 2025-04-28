@@ -50,6 +50,7 @@ from mindspeed.features_manager.memory.smart_swap import SmartSwapFeature
 
 from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFeature
 
+from mindspeed.features_manager.tokenizer.build_tokenizer import BuildTokenizerFeature
 from mindspeed.features_manager.distributed.buffer_pad import BufferPadFeature
 from mindspeed.features_manager.tensor_parallel.tp_2d import TP2dFeature
 from mindspeed.features_manager.compress_dense.compress_dense import AnsCompressTensorFeature
@@ -168,6 +169,12 @@ def add_dist_train_features(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_tokenizer_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        BuildTokenizerFeature()
+    ])
+
+
 def add_distributed_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         BufferPadFeature()
@@ -213,6 +220,7 @@ def create_features_list():
     add_optimizer_features(features_list)
     add_llava_features(features_list)
     add_dist_train_features(features_list)
+    add_tokenizer_features(features_list)
     add_distributed_features(features_list)
     add_reuse_param_features(features_list)
     add_swap_manage_features(features_list)
