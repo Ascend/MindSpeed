@@ -10,13 +10,13 @@ from mindspeed.core.tensor_parallel.tp_2d.parallel_state_2d import get_tensor_mo
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPXCollectiveComm, TPXOverlapCollectiveComm, \
     TPYCollectiveComm, TPYOverlapCollectiveComm
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
-from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
+from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses
-from mindspeed.core.context_parallel.context_parallel_kv_cache import get_cache_policy
-from mindspeed.core.context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
-from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
+from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import get_cache_policy
+from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
+from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.core.context_parallel.utils import get_scheduling_info
-from mindspeed.core.context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
+from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ring,
                                            get_context_parallel_for_hybrid_ring_world_size,
                                            get_context_parallel_for_hybrid_ring_rank,
