@@ -9,7 +9,7 @@ from commons import set_random_seed, initialize_model_parallel
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from unit_tests.common import DistributedTest
-from mindspeed.core.context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
+from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_send_recv_overlap,
                                            initialize_context_parallel_group_for_hybrid_cp,
                                            get_context_parallel_for_hybrid_ulysses_world_size,
@@ -168,7 +168,7 @@ def run_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
 
 
 def run_hybrid_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
-    from mindspeed.core.context_parallel.ulysses_context_parallel import _SeqAllToAll
+    from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import _SeqAllToAll
     args = parse_args(None, True)
     args.seq_length = seq_len
     args.attention_mask_type = 'general'

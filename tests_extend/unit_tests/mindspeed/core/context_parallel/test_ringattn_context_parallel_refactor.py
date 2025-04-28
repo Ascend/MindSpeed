@@ -1,7 +1,7 @@
 import pytest
 import torch
 import torch_npu
-from mindspeed.core.context_parallel.ring_context_parallel import (
+from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import (
     AttentionStrategyFactory,
     CausalRegularAttentionStrategy,
     CausalEodAttentionStrategy,

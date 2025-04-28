@@ -8,11 +8,11 @@ import torch
 import torch_npu
 from torch import Tensor
 from torch.nn import Module
-from megatron.training import get_args
 import mindspeed
 from mindspeed.core.tensor_parallel.comm_group_api import CollectiveCommIntf
 from mindspeed.core.tensor_parallel.comm_utils import sync_gather_along_first_dim, sync_reduce_scatter_along_first_dim
-from mindspeed.core.context_parallel.unaligned_cp.mapping import all_to_all, cal_split_sizes
+from mindspeed.core.context_parallel import get_args
+from mindspeed.core.context_parallel.ulysses_context_parallel.unaligned_cp.mapping import all_to_all, cal_split_sizes
 
 
 try:

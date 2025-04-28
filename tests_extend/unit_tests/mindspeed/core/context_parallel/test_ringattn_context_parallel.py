@@ -1,3 +1,4 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import math
 
 import pytest
@@ -7,8 +8,8 @@ import torch.distributed as dist
 from mindspeed import megatron_adaptor
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
-from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
-from mindspeed.core.context_parallel.context_parallel_kv_cache import get_cache_policy
+from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import ringattn_context_parallel
+from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import get_cache_policy
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ulysses,
                                            get_context_parallel_group_for_hybrid_ring,
                                            get_context_parallel_for_hybrid_ring_world_size,

@@ -6,10 +6,10 @@ from dataclasses import dataclass
 import torch
 import torch_npu
 from einops import rearrange
-from megatron.training.global_vars import get_args
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
-from mindspeed.core.context_parallel.context_parallel_kv_cache import ContextParallelKVCache
-from .utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, sbh_to_tnd, tnd_to_sbh, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
+from mindspeed.core.context_parallel import get_args
+from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import ContextParallelKVCache
+from mindspeed.core.context_parallel.utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, sbh_to_tnd, tnd_to_sbh, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
 
 
 def causal_forward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_mask=None):

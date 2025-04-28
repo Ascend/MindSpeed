@@ -15,8 +15,8 @@ import torch.distributed as dist
 
 from mindspeed import megatron_adaptor
 from unit_tests.common import DistributedTest
-from mindspeed.core.context_parallel.unaligned_cp.mapping import (all_to_all, split_forward_gather_backward,
-                                                                  gather_forward_split_backward, cal_split_sizes)
+from mindspeed.core.context_parallel.ulysses_context_parallel.unaligned_cp.mapping import (all_to_all, split_forward_gather_backward,
+                                                                                   gather_forward_split_backward, cal_split_sizes)
 from megatron.core.parallel_state import destroy_model_parallel, initialize_model_parallel
 import megatron.core.parallel_state as mpu
 from megatron.training.global_vars import set_args

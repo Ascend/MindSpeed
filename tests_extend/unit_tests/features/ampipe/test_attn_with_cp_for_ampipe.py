@@ -24,7 +24,7 @@ from megatron.training.global_vars import set_args
 from unit_tests.common import DistributedTest
 from commons import set_random_seed, initialize_model_parallel
 
-from mindspeed.core.context_parallel.ring_context_parallel_for_ampipe import attn_with_cp_for_ampipe_forward, \
+from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel_for_ampipe import attn_with_cp_for_ampipe_forward, \
     attn_with_cp_for_ampipe_backward
 from mindspeed.moe.ampipe.ampipe_args import FACpFwdArgs, FlashAttentionFwdArgs, FlashAttentionBwdArgs
 

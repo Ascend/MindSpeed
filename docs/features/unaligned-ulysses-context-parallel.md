@@ -32,7 +32,7 @@
 ```python
 # 示例代码
 import megatron.core.parallel_state as ps
-from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention, GatherSizeCalculator, DynamicGatherSizeCalculator
+from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention, GatherSizeCalculator, DynamicGatherSizeCalculator
 from your_library import FlashSelfAttention
 
 # 自定义 GatherSizeCalculator

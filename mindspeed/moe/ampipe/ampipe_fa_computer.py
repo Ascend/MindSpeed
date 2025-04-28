@@ -14,8 +14,8 @@
 import torch
 
 from megatron.training import get_args
-from mindspeed.core.context_parallel.ring_context_parallel_for_ampipe import (attn_with_cp_for_ampipe_forward,
-                                                                              attn_with_cp_for_ampipe_backward)
+from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel_for_ampipe import (attn_with_cp_for_ampipe_forward,
+                                                                                                    attn_with_cp_for_ampipe_backward)
 from mindspeed.moe.ampipe.ampipe_args import FlashAttentionSaveForBwdArgs, FACpFwdArgs
 from mindspeed.moe.ampipe.ampipe_fa import flash_attn_forward, flash_attn_backward
 

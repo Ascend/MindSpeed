@@ -17,9 +17,9 @@ from megatron.core.utils import divide
 from megatron.training import get_args
 from megatron.core import mpu, parallel_state
 from mindspeed.core.models.common.embeddings.rotary_pos_embedding import yarn_get_mscale
-from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
-from mindspeed.core.context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
-from mindspeed.core.context_parallel.context_parallel_kv_cache import get_cache_policy
+from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import ringattn_context_parallel
+from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
+from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import get_cache_policy
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ring,
@@ -34,7 +34,7 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.model.transformer import get_attention_mask
 from mindspeed.utils import get_actual_seq_len
-from mindspeed.core.context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
+from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
 from mindspeed.core.context_parallel.utils import get_scheduling_info
 
 try:

@@ -4,6 +4,7 @@ from mindspeed.deprecate import AutoExecuteFunction
 
 from mindspeed.features_manager.feature import MindSpeedFeature
 from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
+from mindspeed.features_manager.context_parallel.context_parallel_feature import ContextParallelFeature
 from mindspeed.features_manager.functional.profile import ProfileFeature
 from mindspeed.features_manager.functional.profiler_default import ProfilerDefaultFeature
 from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
@@ -101,6 +102,12 @@ def add_recompute_features(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_context_parallel_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        ContextParallelFeature()
+    ])
+
+
 def add_tensor_parallel_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         UnalignedLinearFeature(),
@@ -195,6 +202,7 @@ def add_disable_gloo_group_feature(features_list: List[MindSpeedFeature]):
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
+    add_context_parallel_features(features_list)
     add_fusions_features(features_list)
     add_functional_features(features_list)
     add_recompute_features(features_list)

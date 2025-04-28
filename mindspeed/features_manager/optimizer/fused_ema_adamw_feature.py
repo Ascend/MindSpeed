@@ -14,9 +14,6 @@ class FusedEmaAdamwFeature(MindSpeedFeature):
         group.add_argument('--ema-decay', type=float, default=0.9999,
                            help='Set ema_decay of fused_ema_adamw optimizer.')
 
-        group.add_argument('--disable-gloo-group', action='store_true', default=False,
-                       help='Replace the communication method of the DP group in the distributed optimizer from gloo to hccl.')
-
     def pre_validate_args(self, args):
         self.incompatible_check(args, 'optimizer-selection')
         self.incompatible_check(args, 'ema-decay')

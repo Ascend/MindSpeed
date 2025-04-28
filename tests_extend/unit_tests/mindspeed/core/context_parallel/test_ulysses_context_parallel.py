@@ -6,11 +6,11 @@ import torch_npu
 import torch.distributed as dist
 
 from mindspeed import megatron_adaptor
-from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention, DynamicGatherSizeCalculator
+from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention, DynamicGatherSizeCalculator
 import megatron.core.parallel_state as ps
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
-from mindspeed.core.context_parallel.unaligned_cp.mapping import _AllToAll, _split, _gather, cal_split_sizes
+from mindspeed.core.context_parallel.ulysses_context_parallel.unaligned_cp.mapping import _AllToAll, _split, _gather, cal_split_sizes
 from commons import set_random_seed, initialize_model_parallel
 from unit_tests.common import DistributedTest
 

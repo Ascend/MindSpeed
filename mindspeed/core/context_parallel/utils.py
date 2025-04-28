@@ -6,9 +6,9 @@ import torch.distributed as dist
 import numpy as np
 from einops import rearrange
 from scipy.sparse.linalg import eigsh
-from megatron.training import get_args
-from megatron.core.parallel_state import get_context_parallel_global_ranks
 from mindspeed.ops.npu_ring_attention_update import npu_ring_attention_update
+from mindspeed.core.context_parallel import get_args
+from mindspeed.core.context_parallel import get_context_parallel_global_ranks
 from mindspeed.core.parallel_state import get_context_parallel_for_hybrid_ring_global_ranks
 from mindspeed.op_builder import AdaptiveCpOpBuilder
 

@@ -45,8 +45,8 @@ from megatron.legacy.model.fused_bias_gelu import bias_gelu_impl
 from megatron.core.tensor_parallel.mappings import _split_along_first_dim
 from megatron.core.transformer.module import MegatronModule
 
-from mindspeed.core.context_parallel.ulysses_context_parallel import UlyssesContextAttention
-from mindspeed.core.context_parallel.ring_context_parallel import ringattn_context_parallel
+from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
+from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ulysses,
                                            get_context_parallel_group_for_hybrid_ring,
                                            get_context_parallel_for_hybrid_ring_world_size,
@@ -76,7 +76,7 @@ from mindspeed.moe.ampipe.ampipe_args import ForwardArgs
 from mindspeed.moe.utils import (get_slice_indices_from_order_to_disorder,
                                  get_slice_indices_from_disorder_to_order,
                                  all_gather_along_first_dim)
-from mindspeed.core.context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
+from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
 from mindspeed.core.context_parallel.utils import get_scheduling_info
 
 try:
