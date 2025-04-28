@@ -176,6 +176,7 @@ def communication_adaptation(aspm, mindspeed_args):
                                                    get_data_modulo_expert_parallel_group_gloo_replace,
                                                   new_group_wrapper)
         from mindspeed.utils import check_param_hashes_across_dp_replicas_hccl
+        from mindspeed.optimizer.optimizer import get_megatron_optimizer_disable_gloo
 
         aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.get_parameter_state_dp_zero',
                             get_parameter_state_dp_zero_hccl)
@@ -189,6 +190,7 @@ def communication_adaptation(aspm, mindspeed_args):
         aspm.register_patch('megatron.core.parallel_state.get_data_modulo_expert_parallel_group_gloo',
                             get_data_modulo_expert_parallel_group_gloo_replace)
         aspm.register_patch('torch.distributed.new_group', new_group_wrapper)
+        aspm.register_patch('megatron.core.optimizer.get_megatron_optimizer', get_megatron_optimizer_disable_gloo)
 
 
 def mcore_models_adaptation_l0(aspm):

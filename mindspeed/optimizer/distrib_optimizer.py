@@ -398,7 +398,10 @@ def reuse_fp32_param_distrib_optimizer_init_wrapper(init_func):
             from mindspeed.op_builder import AlgorithmOpBuilder
             reuse_data_ptr = AlgorithmOpBuilder().load().reuse_data_ptr
             data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-            data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+            if not global_args.disable_gloo_group:
+                data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+            else:
+                data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
             self.model_param_bucket_and_res_map = {}
             self.model_param_bucket_and_shard_main_param_int32_view_map = {}
             self.shard_main_param_res_buffers = []
@@ -486,7 +489,7 @@ def ema_distrib_optimizer_init_wrapper(init_func):
     return ema_distrib_optimizer_init
 
 
-def load_ema_state_from_dp_zero(self, state_dict):
+def load_ema_state_from_dp_zero(*args, **kwargs):
     """Load parameter state (i.e., parameter & optimizer tensors) from DP 0 rank,
     using the new checkpoint format with coalesced state across buckets.
 
@@ -497,14 +500,25 @@ def load_ema_state_from_dp_zero(self, state_dict):
     buffers. (e.g., one buffer each for main_param, exp_avg, and
     exp_avg_sq).
     """
-    self.load_parameter_state_from_dp_zero_func_temp(state_dict)
+    self = args[0]
+    state_dict = args[1]
+    update_legacy_format = kwargs['update_legacy_format']
+    self.load_parameter_state_from_dp_zero_func_temp(state_dict, update_legacy_format=update_legacy_format)
     # Data parallelism variables.
-    data_parallel_world_size = self.data_parallel_group_gloo.size()
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-    data_parallel_group_gloo = self.data_parallel_group_gloo
-    data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-        self.data_parallel_group_gloo
-    )
+    if get_args().disable_gloo_group:
+        data_parallel_world_size = self.data_parallel_group.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
+            self.data_parallel_group
+        )
+    else:
+        data_parallel_world_size = self.data_parallel_group_gloo.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
+            self.data_parallel_group_gloo
+        )
 
     # Scatter tensors to all DP ranks.
     for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
@@ -607,12 +621,20 @@ def get_ema_state_dp_zero(self):
     """
     state = self.get_parameter_state_dp_zero_func_temp()
     # Data parallelism variables.
-    data_parallel_world_size = self.data_parallel_group_gloo.size()
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-    data_parallel_group_gloo = self.data_parallel_group_gloo
-    data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-        self.data_parallel_group_gloo
-    )
+    if get_args().disable_gloo_group:
+        data_parallel_world_size = self.data_parallel_group.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
+            self.data_parallel_group
+        )
+    else:
+        data_parallel_world_size = self.data_parallel_group_gloo.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
+            self.data_parallel_group_gloo
+        )
     for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
 
         # Iterate grad buffers (by data type).
@@ -718,16 +740,22 @@ def get_ema_state_dp_zero(self):
     return state
 
 
-
-def load_parameter_state_from_dp_zero(self, state_dict):
-    self.load_parameter_state_from_dp_zero_func(state_dict)
+def load_parameter_state_from_dp_zero(*args, **kwargs):
+    self = args[0]
+    state_dict = args[1]
+    update_legacy_format = kwargs['update_legacy_format']
+    self.load_parameter_state_from_dp_zero_func(state_dict, update_legacy_format=update_legacy_format)
     self.first_sub_flag = False
-    data_parallel_world_size = self.data_parallel_group_gloo.size()
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-    data_parallel_group_gloo = self.data_parallel_group_gloo
-    data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-        self.data_parallel_group_gloo
-    )
+    if get_args().disable_gloo_group:
+        data_parallel_world_size = self.data_parallel_group.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group)
+    else:
+        data_parallel_world_size = self.data_parallel_group_gloo.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
     if data_parallel_world_size == 1 or \
         not hasattr(self, "shard_main_param_res_buffers"):
         return
@@ -762,12 +790,16 @@ def load_parameter_state_from_dp_zero(self, state_dict):
 
 def get_parameter_state_dp_zero(self):
     state = self.get_parameter_state_dp_zero_func()
-    data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-    data_parallel_group_gloo = self.data_parallel_group_gloo
-    data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-        self.data_parallel_group_gloo
-    )
+    if get_args().disable_gloo_group:
+        data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group)
+    else:
+        data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
     if data_parallel_world_size == 1 or not hasattr(self, "shard_main_param_res_buffers"):
         return state
    
@@ -815,7 +847,11 @@ def fp16_tensor_convert_to_fp32_tensor(self):
     into the fp32 tensor through view transposition.
     """
     data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    global_args = get_args()
+    if not global_args.disable_gloo_group:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    else:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
     iteration = getattr(get_args(), "iteration", 0)
     npu_deterministic = getattr(get_args(), "npu_deterministic", False)
     if data_parallel_world_size == 1:
@@ -882,7 +918,11 @@ def fp32_tensor_convert_to_fp16_tensor(self):
     into the bf16 data and residual through view transposition.
     """
     data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    global_args = get_args()
+    if not global_args.disable_gloo_group:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    else:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
     npu_deterministic = getattr(get_args(), "npu_deterministic", False)
     if data_parallel_world_size == 1:
         if npu_deterministic:
@@ -1099,7 +1139,7 @@ def get_parameter_state_dp_zero_hccl(self):
     return state
 
 
-def load_parameter_state_from_dp_zero_hccl(self, state_dict):
+def load_parameter_state_from_dp_zero_hccl(*args, **kwargs):
     """Load parameter state (i.e., parameter & optimizer tensors) from DP 0 rank,
     using the new checkpoint format with coalesced state across buckets.
 
@@ -1110,7 +1150,12 @@ def load_parameter_state_from_dp_zero_hccl(self, state_dict):
       buffers. (e.g., one buffer each for main_param, exp_avg, and
       exp_avg_sq).
     """
-
+    self = args[0]
+    state_dict = args[1]
+    update_legacy_format = kwargs['update_legacy_format']
+    if update_legacy_format:
+        self.load_parameter_state_from_dp_zero_legacy(state_dict)
+        return
     # Data parallelism variables.
     data_parallel_world_size = self.data_parallel_group.size()
     data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)

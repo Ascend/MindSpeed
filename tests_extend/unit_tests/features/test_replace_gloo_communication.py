@@ -265,7 +265,7 @@ class TestDistributedOptimizer(DistributedTest):
         assert not any(map(bool, diffs)), diffs
 
         # test load_parameter_state_from_dp_zero()
-        optimizer.load_parameter_state_from_dp_zero(optim_param_state_new)
+        optimizer.load_parameter_state_from_dp_zero(optim_param_state_new, update_legacy_format=False)
         optim_param_state_new_copy, _ = get_parameter_state(args.disable_gloo_group, optimizer)
         diffs = diff(optim_param_state_new, optim_param_state_new_copy)
         assert not any(map(bool, diffs)), diffs

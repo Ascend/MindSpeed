@@ -52,6 +52,7 @@ from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFe
 from mindspeed.features_manager.distributed.buffer_pad import BufferPadFeature
 from mindspeed.features_manager.tensor_parallel.tp_2d import TP2dFeature
 from mindspeed.features_manager.compress_dense.compress_dense import AnsCompressTensorFeature
+from mindspeed.features_manager.disable_gloo_group.disable_gloo_group_feature import DisableGlooGroupFeature
 
 from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeature
 
@@ -185,6 +186,12 @@ def add_compress_dense_features(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_disable_gloo_group_feature(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        DisableGlooGroupFeature()
+    ])
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -202,6 +209,7 @@ def create_features_list():
     add_reuse_param_features(features_list)
     add_swap_manage_features(features_list)
     add_compress_dense_features(features_list)
+    add_disable_gloo_group_feature(features_list)
     return features_list
 
 
