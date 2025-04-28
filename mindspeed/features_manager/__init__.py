@@ -38,6 +38,7 @@ from mindspeed.features_manager.moe.shared_expert import MoESharedExpertsFeature
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferAdaptiveFeature
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_set import HcclBufferSetFeature
 
+from mindspeed.features_manager.optimizer.fused_ema_adamw_feature import FusedEmaAdamwFeature
 from mindspeed.features_manager.optimizer.virtual_optimizer import VirtualOptimizerFeature
 from mindspeed.features_manager.transformer.flash_attention.alibi_feature import AlibiFeature
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
@@ -141,6 +142,8 @@ def add_hccl_buffer_features(features_list: List[MindSpeedFeature]):
 
 def add_optimizer_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
+        # Optimizer features: fused-ema-adamw
+        FusedEmaAdamwFeature(),
         VirtualOptimizerFeature(),
     ])
 

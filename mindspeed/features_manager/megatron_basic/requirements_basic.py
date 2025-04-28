@@ -12,7 +12,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--optimizer-selection', type=str, default='fused_adamw',
-                           choices=['fused_adamw', 'fused_torch_adamw'],
+                           choices=['fused_adamw', 'fused_torch_adamw', 'fused_ema_adamw'],
                            help='Select from the former fused AdamW optimizer and Torch fused AdamW optimizer')
 
     def pre_register_patches(self, patch_manager, args):
