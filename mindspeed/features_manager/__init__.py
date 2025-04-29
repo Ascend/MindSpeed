@@ -31,6 +31,7 @@ from mindspeed.features_manager.recompute.norm_function import RecomputeNormFeat
 from mindspeed.features_manager.tensor_parallel.unaligned_linear_feature import UnalignedLinearFeature
 
 from mindspeed.features_manager.tensor_parallel.mc2 import MC2Feature
+from mindspeed.features_manager.tensor_parallel.locl_coc import CoCFeature
 
 from mindspeed.features_manager.moe.tp_extend_ep import MoETpExtendEpFeature
 from mindspeed.features_manager.moe.gmm import MoEGmmFeature
@@ -113,6 +114,7 @@ def add_tensor_parallel_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         UnalignedLinearFeature(),
         MC2Feature(),
+        CoCFeature(),
         TP2dFeature()
     ])
 
