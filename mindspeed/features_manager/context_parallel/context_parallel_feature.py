@@ -12,13 +12,9 @@ class ContextParallelFeature(MindSpeedFeature):
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        group.add_argument('--context-parallel-algo', type=str, default='ulysses_cp_algo',
-                           choices=['ulysses_cp_algo', 'megatron_cp_algo', 'hybrid_cp_algo', 'adaptive_cp_algo',
-                                    'hybrid_adaptive_cp_algo'],
+        group.add_argument('--context-parallel-algo', type=str, default='megatron_cp_algo',
+                           choices=['megatron_cp_algo', 'hybrid_cp_algo', 'hybrid_adaptive_cp_algo'],
                            help='context parallel algorithm')
-
-        # ulysses context parallel
-        group.add_argument('--ulysses-degree-in-cp', type=int, default=None)
 
         # ring context parallel
         group.add_argument('--cp-window-size', type=int, default=1)
@@ -31,44 +27,8 @@ class ContextParallelFeature(MindSpeedFeature):
         group.add_argument("--megatron-cp-in-bnsd", action='store_true',
                            help="Megatron CP in bnsd.")
 
-        # adaptive context parallel
-        group.add_argument('--attention-mask-on-cpu', action='store_true',
-                           help='store full attention mask on CPU instead of NPU')
-        group.add_argument('--adaptive-cp-without-coarse', action='store_true',
-                           help='does not coarse the attention mask in adaptive_cp feature, only recommended when full'
-                                'sequence length is less than 8K and dynamic attention mask is not feasible')
-        group.add_argument('--adaptive-cp-dynamic-attn-mask', action='store_true',
-                           help='if the attention mask is dynamic across batches')
-        group.add_argument('--adaptive-cp-only-reschedule', action='store_true',
-                           help='not apply remapping but only rescheduling process in adaptive-cp feature')
-        group.add_argument('--adaptive-cp-manually-set-mask-list', action='store_true',
-                           help='manually set pre-cooked attention mask list')
-
-        # context parallelism kv cache
-        group.add_argument('--context-parallel-kv-cache-policy', type=str, default=None,
-                           choices=['full', 'half'],
-                           help='Selectivity cache K, V in process of cp.'
-                                'Default is None, means not used cache K, V.'
-                                'If para is full, cache all K, V.'
-                                'If para is half, cache only K')
-        group.add_argument('--context-parallel-cache-interval', type=int, default=0,
-                           help='Set the interval of cache layers in cp.'
-                                'Default is 0, means cache K, V in all layers.')
-        group.add_argument('--use-ulysses-allgather-kv', action='store_true',
-                           help='use this flag to enable allgather kv + repeat all2all q in ulysses cp.')
-
 
     def validate_args(self, args):
-        # ulysses context parallel
-        if args.context_parallel_size > 1 and args.context_parallel_algo == 'ulysses_cp_algo':
-            if args.seq_length % args.context_parallel_size != 0:
-                raise AssertionError("sequence length must be divisible by context_parallel_size")
-            head, remainder = divmod(args.num_attention_heads,
-                                     args.context_parallel_size * args.tensor_model_parallel_size)
-            if not (head >= 1 and remainder == 0):
-                raise AssertionError("num_attention_heads must be divisible by context_parallel_size * tensor_model_parallel_size")
-            args.use_flash_attn = True
-
         # ring context parallel
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'megatron_cp_algo':
             if args.seq_length % (2 * args.context_parallel_size) != 0:
@@ -116,65 +76,9 @@ class ContextParallelFeature(MindSpeedFeature):
                 raise AssertionError('ring_degree should be divisible by cp_window_size when using double ring with hybrid context parallelism.')
             args.use_flash_attn = True
 
-        # adaptive context parallel
-        if args.context_parallel_size > 1 and args.context_parallel_algo == 'adaptive_cp_algo':
-            if args.seq_length % args.context_parallel_size != 0:
-                raise AssertionError("sequence length must be divisible by context_parallel_size")
-            args.use_flash_attn = True
-        if args.context_parallel_size > 1 and args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
-            if args.ulysses_degree_in_cp is None:
-                raise AssertionError("--ulysses-degree-in-cp must be specified in hybrid_adaptive_cp_algo")
-            ring_degree, remainder = divmod(args.context_parallel_size, args.ulysses_degree_in_cp)
-            if not (ring_degree > 1 and remainder == 0):
-                raise AssertionError("--ulysses-degree-in-cp must be devisible by --context-parallel-size")
-            head, remainder = divmod(args.num_attention_heads,
-                                     args.ulysses_degree_in_cp * args.tensor_model_parallel_size)
-            if not (head >= 1 and remainder == 0):
-                raise AssertionError("num_attention_heads must be divisible by ulysse-degree-in-cp * tensor_model_parallel_size in hybrid cp")
-            if args.seq_length % args.context_parallel_size != 0:
-                raise AssertionError("sequence length must be divisible by context_parallel_size in hybrid cp")
-            args.use_flash_attn = True
-
-        # context parallelism kv cache
-        if args.context_parallel_kv_cache_policy:
-            if args.context_parallel_size == 1:
-                raise AssertionError(
-                    'context parallel size must larger than 1 when --context-parallel-kv-cache-policy is set.')
-            if not args.use_flash_attn:
-                raise AssertionError(
-                    '--context-parallel-kv-cache-policy only support use flash attention.'
-                )
-
-        if args.context_parallel_cache_interval != 0:
-            if not args.context_parallel_kv_cache_policy:
-                raise AssertionError(
-                    '--context-parallel-cache-interval only can be used when --context-parallel-kv-cache-policy is set.'
-                )
-            if args.context_parallel_cache_interval >= args.num_layers:
-                raise AssertionError(
-                    '--context-parallel-cache-interval should be smaller than the number of layers.'
-                )
-            if args.context_parallel_cache_interval < 0:
-                raise AssertionError(
-                    '--context-parallel-cache-interval cannot be negative number.'
-                )
-
-        if args.use_ulysses_allgather_kv:
-            if args.context_parallel_size == 1:
-                raise AssertionError(
-                    'context parallel size must larger than 1 when --use-ulysses-allgather-kv is set.')
-            if args.context_parallel_algo != 'ulysses_cp_algo':
-                raise AssertionError(
-                    '--context_parallel-algo should be ulysses_cp_algo when using --use-ulysses-allgather-kv.'
-                )
-            if not args.group_query_attention:
-                raise AssertionError(
-                    '--use-ulysses-allgather-kv needs to enable --group-query-attention.'
-                )
-
 
     def register_patches(self, patch_manager, args):
-        if args.context_parallel_size > 1:
+        if int(getattr(args, 'context_parallel_size', 1)) > 1:
             # The patches of eod
             if getattr(args, 'reset_attention_mask', False):
                 from mindspeed.core.datasets.gpt_dataset import _get_ltor_masks_and_position_ids, collate_wrapper

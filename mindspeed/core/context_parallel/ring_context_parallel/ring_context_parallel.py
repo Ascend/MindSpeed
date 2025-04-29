@@ -418,6 +418,13 @@ def flash_attention_with_alibi_pse_grad(q_block_id, kv_block_id, cur_qkv, cur_do
     return attn_grad_outs
 
 
+def get_unaligned_cp_shapes(shapes, block_id, next_block_id):
+    if shapes is None:
+        return None
+    unaligned_cp_shapes = [shapes[block_id], shapes[next_block_id]]
+    return unaligned_cp_shapes
+
+
 class AttentionStrategy(ABC):
     """Attention strategy base class"""
 
@@ -641,17 +648,30 @@ class GeneralAttentionStrategy(AttentionStrategy):
             attn_mask
         )
 
+        layout = "SBH"
+        pre_tockens_value = cp_config.cur_k.shape[0]
+
+        cur_q = q
+        if cp_config.megatron_cp_in_bnsd:
+            cur_q = rearrange(q, 's b (h d) -> b h s d', h=n).contiguous()
+            kv_n = cp_config.cur_v.shape[2] // cur_q.shape[3]
+            cp_config.cur_k, cp_config.cur_v = [rearrange(x, 's b (h d) -> b h s d', h=kv_n).contiguous() for x in [cp_config.cur_k, cp_config.cur_v]]
+            layout = "BNSD"
+            pre_tockens_value = cp_config.cur_k.shape[2]
+
         attn_outs = torch_npu.npu_fusion_attention(
-            q, cp_config.cur_k, cp_config.cur_v, n, "SBH",
+            cur_q, cp_config.cur_k, cp_config.cur_v, n, layout,
             pse=None,
             padding_mask=None,
             atten_mask=this_mask,
             scale=softmax_scale,
-            pre_tockens=cp_config.cur_k.shape[0],
-            next_tockens=cp_config.cur_k.shape[0],
+            pre_tockens=pre_tockens_value,
+            next_tockens=pre_tockens_value,
             keep_prob=cp_config.keep_prob,
             sparse_mode=1
         )
+        if cp_config.megatron_cp_in_bnsd:
+            attn_outs = rearrange(attn_outs[0], 'b h s d -> s b (h d)').contiguous(), attn_outs[1], attn_outs[2], attn_outs[3], attn_outs[4], attn_outs[5], attn_outs[6]
         return attn_outs, cp_config.cur_sub_out_seq_len
 
     def update_out(self, cp_config):
@@ -666,24 +686,38 @@ class GeneralAttentionStrategy(AttentionStrategy):
             attn_mask
         )
 
+        layout = "SBH"
+        pre_tockens_value = cp_config.cur_k.shape[0]
+        cur_q = q
+        cur_dout = dout
+        cur_attn_out = attn_out
+        if cp_config.megatron_cp_in_bnsd:
+            cur_q, cur_dout, cur_attn_out = [rearrange(x, 's b (h d) -> b h s d', h=n).contiguous() for x in [q, dout, attn_out]]
+            kv_n = cp_config.cur_v.shape[2] // cur_q.shape[3]
+            cp_config.cur_k, cp_config.cur_v = [rearrange(x, 's b (h d) -> b h s d', h=kv_n).contiguous() for x in [cp_config.cur_k, cp_config.cur_v]]
+            layout = "BNSD"
+            pre_tockens_value = cp_config.cur_k.shape[2]
+
         attn_grad_outs = torch_npu.npu_fusion_attention_grad(
-            q, cp_config.cur_k, cp_config.cur_v, dout, n,
-            "SBH",
+            cur_q, cp_config.cur_k, cp_config.cur_v, cur_dout, n,
+            layout,
             pse=None,
             padding_mask=None,
             atten_mask=this_mask,
             softmax_max=cp_config.softmax_max,
             softmax_sum=cp_config.softmax_sum,
-            attention_in=attn_out,
+            attention_in=cur_attn_out,
             scale_value=softmax_scale,
-            pre_tockens=cp_config.cur_k.shape[0],
-            next_tockens=cp_config.cur_k.shape[0],
+            pre_tockens=pre_tockens_value,
+            next_tockens=pre_tockens_value,
             sparse_mode=1,
             keep_prob=cp_config.keep_prob,
             seed=cp_config.rng_states[cp_config.kv_block_id][0],
             offset=cp_config.rng_states[cp_config.kv_block_id][1],
             numels=cp_config.rng_states[cp_config.kv_block_id][2],
         )
+        if cp_config.megatron_cp_in_bnsd:
+            attn_grad_outs = [rearrange(x, 'b h s d -> s b (h d)').contiguous() for x in [attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]]]
         return attn_grad_outs
 
 
@@ -867,7 +901,7 @@ class AttentionWithCp(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
-                packed_seq_params=None):
+                packed_seq_params=None, shapes=None):
 
         cp_config = AttentionWithCpConfig.init_from_para(cp_para)
         cp_config.cp_outer_ranks = cp_para.get("cp_outer_ranks", cp_config.cp_global_ranks)
@@ -926,17 +960,19 @@ class AttentionWithCp(torch.autograd.Function):
         attention_strategy = AttentionStrategyFactory.get_strategy(cp_config.causal, cp_config.is_eod_reset)
 
         for j in range(cp_config.outer_size):
-            if get_args().prof_file:
+            if getattr(get_args(), "prof_file", False):
                 activation_func_1 = torch.nn.Hardshrink()
                 v = activation_func_1(v)
             cp_config.kv_block_id = kv_block_id_outer
             kv_block_offset = (cp_config.kv_block_id // cp_config.inner_size) * cp_config.inner_size
             if j < cp_config.outer_size - 1:
-                outer_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_round_kv)
+                next_kv_block_id_outer = (kv_block_id_outer + cp_config.cp_size - cp_config.inner_size) % cp_config.cp_size
+                outer_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_round_kv, shapes=get_unaligned_cp_shapes(shapes, kv_block_id_outer, next_kv_block_id_outer))
             for i in range(cp_config.inner_size):
                 # wait until KV is received from recv_src
                 if i < cp_config.inner_size - 1:
-                    inner_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_kv)
+                    next_kv_block_id = (cp_config.kv_block_id + cp_config.inner_size - 1) % cp_config.inner_size + kv_block_offset
+                    inner_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_kv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id))
 
                 cp_config.cur_k, cp_config.cur_v = cur_kv[0], cur_kv[1]  # [2, s, b, h]
 
@@ -958,7 +994,7 @@ class AttentionWithCp(torch.autograd.Function):
                 cur_kv, next_round_kv = next_round_kv, cur_kv  # double buffer
                 kv_block_id_outer = (kv_block_id_outer + cp_config.cp_size - cp_config.inner_size) % cp_config.cp_size
             
-            if get_args().prof_file:
+            if getattr(get_args(), "prof_file", False):
                 v = activation_func_1(v)
 
         attn_mask = attn_mask if isinstance(attn_mask, list) else [attn_mask]
@@ -974,6 +1010,7 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.softmax_scale = softmax_scale
         ctx.cp_dkv_outer_ranks = cp_para.get('cp_dkv_outer_ranks', cp_config.cp_global_ranks)
         ctx.bsz = bsz
+        ctx.shapes = shapes
         ctx.cp_config = cp_config.get_backward_config()
 
         if cp_config.causal and cp_config.is_eod_reset:
@@ -996,6 +1033,7 @@ class AttentionWithCp(torch.autograd.Function):
         attn_mask = attn_mask[0] if len(attn_mask) == 1 else attn_mask
 
         n = ctx.n
+        shapes = ctx.shapes
         softmax_scale = ctx.softmax_scale
         if cp_config.causal and cp_config.is_eod_reset:
             dout = sbh_to_tnd(dout, n)
@@ -1031,13 +1069,17 @@ class AttentionWithCp(torch.autograd.Function):
                                                                    2, cp_config.softmax_sum.shape[2] // 2,
                                                                    cp_config.softmax_sum.shape[-1])
 
-        cur_dkv = torch.zeros((2, *k_stack[-1].shape), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
+        cp_config.q_block_id, cp_config.kv_block_id, kv_block_id_outer = cp_config.rank, cp_config.kv_block_id, cp_config.kv_block_id
+        if shapes:
+            cur_shapes_list = list(k_stack[-1].shape)
+            cur_shapes_list[-3] = shapes[cp_config.kv_block_id]
+            cur_dkv = torch.zeros((2, *cur_shapes_list), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
+        else:
+            cur_dkv = torch.zeros((2, *k_stack[-1].shape), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
         next_dkv = cur_dkv.clone()
         next_round_dkv = cur_dkv.clone()
 
-        cp_config.q_block_id, cp_config.kv_block_id, kv_block_id_outer = cp_config.rank, cp_config.kv_block_id, cp_config.kv_block_id
-
-        if get_args().prof_file:
+        if getattr(get_args(), "prof_file", False):
             activation_func_1 = torch.nn.Hardshrink()
             q = activation_func_1(q)
 
@@ -1050,10 +1092,12 @@ class AttentionWithCp(torch.autograd.Function):
             cp_config.kv_block_id = kv_block_id_outer
             kv_block_offset = (cp_config.kv_block_id // inner_size) * inner_size
 
-            cp_kv_cache.communicate_outer_ring_kv(j)
+            next_kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_config.cp_size
+            cp_kv_cache.communicate_outer_ring_kv(j, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id_outer))
 
             for i in range(inner_size):
-                cp_config.cur_k, cp_config.cur_v = cp_kv_cache.communicate_inner_ring_kv(i)
+                next_kv_block_id = (cp_config.kv_block_id + 1) % inner_size + kv_block_offset
+                cp_config.cur_k, cp_config.cur_v = cp_kv_cache.communicate_inner_ring_kv(i, get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id))
 
                 dq_step, dk_step, dv_step = AttentionWithCp.backward_step_helper(attn_mask, n, q, softmax_scale,
                                                                                  attn_out, dout, cp_config)
@@ -1077,25 +1121,27 @@ class AttentionWithCp(torch.autograd.Function):
                     dk.add_(dk_step)
                     dv.add_(dv_step)
 
+                next_kv_block_id = (cp_config.kv_block_id + 1) % inner_size + kv_block_offset
                 if i + 1 != inner_size:
-                    intra_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_dkv)
+                    intra_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_dkv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id))
 
-                cp_config.kv_block_id = (cp_config.kv_block_id + 1) % inner_size + kv_block_offset
+                cp_config.kv_block_id = next_kv_block_id
 
             if intra_dkv_comm.wait():
                 cur_dkv, next_dkv = next_dkv, cur_dkv
 
+            next_kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_config.cp_size
             if j + 1 != outer_size:
-                inter_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_round_dkv)
+                inter_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_round_dkv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id_outer))
 
-            kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_config.cp_size
+            kv_block_id_outer = next_kv_block_id_outer
 
         if inter_dkv_comm.wait():
             cur_dkv, next_round_dkv = next_round_dkv, cur_dkv
 
         dk, dv = cur_dkv[0], cur_dkv[1]
 
-        if get_args().prof_file:
+        if getattr(get_args(), "prof_file", False):
             dq = activation_func_1(dq)
 
         # [2, s, b, h] -> [2s, b, h]

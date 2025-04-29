@@ -149,8 +149,6 @@ class CPDotProductAttentionImpl:
                 attention_mask = get_attention_mask()
         if self.config.attention_mask_type == 'causal':
             self.config.sparse_mode = 2
-        if self.config.ampipe_degree > 1 and self.config.context_parallel_size <= 1:
-            self.config.sparse_mode = 0
         if self.config.reset_attention_mask:
             if self.config.attention_mask_type == 'general':
                 self.config.sparse_mode = 2

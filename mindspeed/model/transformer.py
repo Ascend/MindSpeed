@@ -610,12 +610,6 @@ def get_attention_mask():
         should_generate_mask = True
         compress = True
 
-    # ampipe开启在同时不开cp时需要生成全量mask，开cp时生成causal mask
-    if args.ampipe_degree > 1 and args.context_parallel_size <= 1:
-        args.sparse_mode = 0
-        should_generate_mask = True
-        compress = False
-
     # EoD 模式 Ring Attention的实现
     # general 为基线方案，causal 为加速方案
     # 如果 cp > 1 且使用了Ring Attention 并行（包括Hybrid并行）。则Mask为动态生成的，不需要额外的Mask

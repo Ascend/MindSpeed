@@ -90,8 +90,9 @@ class AlibiFeature(MindSpeedFeature):
             )
 
     def register_patches(self, patch_manager, args):
-        from mindspeed.core.transformer.flash_attention.alibi.adaptor import MindSpeedDotProductAttention
-        patch_manager.register_patch(
-            'megatron.core.transformer.dot_product_attention.DotProductAttention',
-            MindSpeedDotProductAttention
+        if int(getattr(args, 'context_parallel_size', 1)) == 1:
+            from mindspeed.core.transformer.flash_attention.alibi.adaptor import MindSpeedDotProductAttention
+            patch_manager.register_patch(
+                'megatron.core.transformer.dot_product_attention.DotProductAttention',
+                MindSpeedDotProductAttention
         )

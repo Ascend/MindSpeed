@@ -4,7 +4,10 @@ from mindspeed.deprecate import AutoExecuteFunction
 
 from mindspeed.features_manager.feature import MindSpeedFeature
 from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
+from mindspeed.features_manager.context_parallel.adaptive_context_parallel import AdaptiveContextParallelFeature
 from mindspeed.features_manager.context_parallel.context_parallel_feature import ContextParallelFeature
+from mindspeed.features_manager.context_parallel.context_parallel_kv_cache import ContextParallelKvCacheFeature
+from mindspeed.features_manager.context_parallel.ulysses_context_parallel import UlyssesContextParallelFeature
 from mindspeed.features_manager.functional.profile import ProfileFeature
 from mindspeed.features_manager.functional.profiler_default import ProfilerDefaultFeature
 from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
@@ -106,7 +109,10 @@ def add_recompute_features(features_list: List[MindSpeedFeature]):
 
 def add_context_parallel_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
-        ContextParallelFeature()
+        ContextParallelFeature(),
+        UlyssesContextParallelFeature(),
+        ContextParallelKvCacheFeature(),
+        AdaptiveContextParallelFeature()
     ])
 
 
@@ -228,6 +234,7 @@ def create_features_list():
     add_swap_manage_features(features_list)
     add_compress_dense_features(features_list)
     add_disable_gloo_group_feature(features_list)
+    add_transformer_features(features_list)
     return features_list
 
 
