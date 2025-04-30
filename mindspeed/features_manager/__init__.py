@@ -16,6 +16,8 @@ from mindspeed.features_manager.functional.tflops_calculate import TflopsCalcula
 from mindspeed.features_manager.fusions.grouped_matmul import GroupedMatmulFeature
 from mindspeed.features_manager.fusions.fused_bias_swiglu import FusedSwigluFeature
 from mindspeed.features_manager.fusions.fused_softmax import FusedSoftmaxFeature
+from mindspeed.features_manager.fusions.fused_rope import FusedRoPEFeature
+from mindspeed.features_manager.affinity.affinity import AffinityFeature
 
 from mindspeed.features_manager.megatron_basic.requirements_basic import RequirementsBasicFeature
 from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBasicFeature
@@ -89,6 +91,13 @@ def add_fusions_features(features_list: List[MindSpeedFeature]):
         GroupedMatmulFeature(),
         FusedSwigluFeature(),
         FusedSoftmaxFeature(),
+        FusedRoPEFeature(),
+    ])
+
+
+def add_affinity_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        AffinityFeature(),
     ])
 
 
@@ -221,6 +230,7 @@ def create_features_list():
     add_megatron_basic_features(features_list)
     add_context_parallel_features(features_list)
     add_fusions_features(features_list)
+    add_affinity_features(features_list)
     add_functional_features(features_list)
     add_recompute_features(features_list)
     add_tensor_parallel_features(features_list)
