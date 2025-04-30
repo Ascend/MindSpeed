@@ -1193,11 +1193,11 @@ class AttentionWithCp(torch.autograd.Function):
 
 
 def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
-                              packed_seq_params=None):
+                              packed_seq_params=None, shapes=None):
     AttentionWithCp.block_size = q.shape[0]
     AttentionWithCp.batch_size = q.shape[1]
     out = AttentionWithCp.apply(
         q, k, v, n, cp_para, softmax_scale, attn_mask, dropout_p,
-        packed_seq_params
+        packed_seq_params, shapes
     )
     return out
