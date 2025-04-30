@@ -31,6 +31,7 @@ from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBas
 from mindspeed.features_manager.megatron_basic.requirements_basic import RequirementsBasicFeature
 from mindspeed.features_manager.recompute.activation_function import RecomputeActivationFeature
 from mindspeed.features_manager.recompute.norm_function import RecomputeNormFeature
+from mindspeed.features_manager.recompute.enable_recompute_layers_per_pp_rank import EnableRecomputeLayersPerPPRank
 from mindspeed.features_manager.tensor_parallel.unaligned_linear_feature import UnalignedLinearFeature
 
 from mindspeed.features_manager.tensor_parallel.mc2 import MC2Feature
@@ -104,6 +105,7 @@ def add_recompute_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         RecomputeActivationFeature(),
         RecomputeNormFeature(),
+        EnableRecomputeLayersPerPPRank(),
     ])
 
 
