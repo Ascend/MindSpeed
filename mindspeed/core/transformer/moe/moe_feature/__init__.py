@@ -1,3 +1,4 @@
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler, TopKRouter
 from megatron.core.transformer.module import MegatronModule
@@ -29,7 +30,8 @@ from megatron.core.tensor_parallel.mappings import (
     reduce_scatter_to_sequence_parallel_region,
     scatter_to_tensor_model_parallel_region,
     _reduce_scatter_along_first_dim,
-    _gather_along_first_dim
+    _gather_along_first_dim,
+    _split_along_first_dim
 )
 
 from megatron.core.tensor_parallel.utils import VocabUtility, divide, split_tensor_along_last_dim
@@ -46,6 +48,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size,
 )
 
+from megatron.core.tensor_parallel import gather_from_sequence_parallel_region
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.moe.experts import GroupedMLP
