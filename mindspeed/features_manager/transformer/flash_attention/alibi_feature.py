@@ -82,13 +82,6 @@ class AlibiFeature(MindSpeedFeature):
             if args.alibi_fusion_attn_type in [2, 3]:
                 args.use_fusion_attn_v2 = True
 
-        if args.use_fusion_attn_v2:
-            args.use_flash_attn = True
-            print(
-                '[WARNING] \"use_fusion_attn_v2\" is not recommended.' \
-                'This feature is not officially released.'
-            )
-
     def register_patches(self, patch_manager, args):
         if int(getattr(args, 'context_parallel_size', 1)) == 1:
             from mindspeed.core.transformer.flash_attention.alibi.adaptor import MindSpeedDotProductAttention

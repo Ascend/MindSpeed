@@ -60,6 +60,9 @@ def get_attention_mask(args):
     device = 'npu'
     compress = True
 
+    if getattr(args, "multi_head_latent_attention", False):
+        compress = False
+
     generate_attention_mask(args, compress, device)
 
     return _GLOBAL_ATTN_MASK

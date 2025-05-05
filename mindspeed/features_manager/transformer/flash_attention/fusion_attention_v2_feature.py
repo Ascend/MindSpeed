@@ -1,9 +1,11 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
+from logging import getLogger
 
 from mindspeed.features_manager.feature import MindSpeedFeature
+
+LOG = getLogger(__name__)
 
 
 class FusionAttentionV2Feature(MindSpeedFeature):
@@ -27,26 +29,8 @@ class FusionAttentionV2Feature(MindSpeedFeature):
             default=False,
             help='enalbe fusion attention v2'
         )
-        group.add_argument(
-            '--pre-tockens', 
-            type=int, 
-            default=65536,
-            help='pre-tockens is used by Flash attention'
-        )
-        group.add_argument(
-            '--next-tockens', 
-            type=int, 
-            default=0,
-            help='next-tockens is used by Flash attention'
-        )
-        group.add_argument(
-            '--sparse-mode',
-            type=int,
-            default=0,
-            choices=[0, 1, 2, 3, 4, 5, 6, 7, 8],
-            help='mask type for fusion attention'
-        )
-        
-    def validate_args(self, args):
+
+    def validate_args(self, args: Namespace):
         if args.use_fusion_attn_v2:
             args.use_flash_attn = True
+            LOG.warning("\"use_fusion_attn_v2\" is not recommended. This feature is not officially released.")

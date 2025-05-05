@@ -49,6 +49,7 @@ from mindspeed.features_manager.hccl_buffer.hccl_buffer_set import HcclBufferSet
 from mindspeed.features_manager.optimizer.fused_ema_adamw_feature import FusedEmaAdamwFeature
 from mindspeed.features_manager.optimizer.virtual_optimizer import VirtualOptimizerFeature
 from mindspeed.features_manager.transformer.flash_attention.alibi_feature import AlibiFeature
+from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v1_feature import FusionAttentionFeature
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
 from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
 from mindspeed.features_manager.pipeline_parallel.variable_seq_length import VariableSequenceLengthFeature
@@ -147,6 +148,7 @@ def add_pipeline_parallel_features(features_list: List[MindSpeedFeature]):
 
 def add_transformer_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
+        FusionAttentionFeature(),
         FusionAttentionV2Feature(),
         AlibiFeature(),
         GenerateMaskFeature(),
