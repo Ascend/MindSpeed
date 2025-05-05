@@ -63,7 +63,7 @@ def yarn_linear_ramp_mask(min_, max_, dim):
 def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool = False, multi_latent_attention: bool = False, mscale: float = 1.0) -> Tensor:
     args = get_args()
     _mscale = mscale
-    if args.rope_scaling_type == "yarn":
+    if hasattr(args, "rope_scaling_type") and args.rope_scaling_type == "yarn":
         _mscale = float(
             yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale)
             / yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale_all_dim)
@@ -79,7 +79,7 @@ def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool
     cos_ = (torch.cos(freqs) * _mscale).to(t.dtype)
     sin_ = (torch.sin(freqs) * _mscale).to(t.dtype)
 
-    if args.use_fused_rotary_pos_emb:
+    if hasattr(args, "use_fused_rotary_pos_emb"):
         mode = 1 if rotary_interleaved else 0
         t = npu_rotary_position_embedding(t.contiguous(), cos_, sin_, mode).to(t.dtype)
     else:

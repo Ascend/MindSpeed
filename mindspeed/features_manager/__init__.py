@@ -52,6 +52,7 @@ from mindspeed.features_manager.transformer.flash_attention.alibi_feature import
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v1_feature import FusionAttentionFeature
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
 from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
+from mindspeed.features_manager.transformer.flash_attention.reset_attention_mask_feature import ResetAttentionMaskFeature
 from mindspeed.features_manager.pipeline_parallel.variable_seq_length import VariableSequenceLengthFeature
 from mindspeed.features_manager.memory.reuse_fp32_param import ReuseFP32Param
 from mindspeed.features_manager.memory.smart_swap import SmartSwapFeature
@@ -152,6 +153,7 @@ def add_transformer_features(features_list: List[MindSpeedFeature]):
         FusionAttentionV2Feature(),
         AlibiFeature(),
         GenerateMaskFeature(),
+        ResetAttentionMaskFeature(),
     ])
 
 

@@ -154,12 +154,9 @@ class CPDotProductAttentionImpl:
                 self.config.sparse_mode = 2
         sparse_mode = self.config.sparse_mode
         assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
-        if packed_seq_params is None:
-            actual_seq_len = get_actual_seq_len()
-            seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
-        else:
-            actual_seq_len = tuple(packed_seq_params.cu_seqlens_q[1:].cpu().numpy().tolist())
-            seq_length, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2]
+
+        actual_seq_len = get_actual_seq_len()
+        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
 
         if attn_mask_type == AttnMaskType.no_mask:
             sparse_mode = 0  # default mask
