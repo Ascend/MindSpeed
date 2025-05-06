@@ -161,6 +161,7 @@ def add_transformer_features(features_list: List[MindSpeedFeature]):
         AlibiFeature(),
         GenerateMaskFeature(),
         ResetAttentionMaskFeature(),
+        MLAFeature(),
     ])
 
 
