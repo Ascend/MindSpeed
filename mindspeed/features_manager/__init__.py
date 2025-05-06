@@ -42,6 +42,8 @@ from mindspeed.features_manager.tensor_parallel.locl_coc import CoCFeature
 from mindspeed.features_manager.moe.tp_extend_ep import MoETpExtendEpFeature
 from mindspeed.features_manager.moe.gmm import MoEGmmFeature
 from mindspeed.features_manager.moe.shared_expert import MoESharedExpertsFeature
+from mindspeed.features_manager.moe.moe_allgather_overlap import MoEAllGatherOverLapFeature
+from mindspeed.features_manager.moe.moe_alltoallseq_overlap import MoEAlltoAllSeqOverLapFeature
 
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferAdaptiveFeature
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_set import HcclBufferSetFeature
@@ -166,7 +168,9 @@ def add_moe_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         MoEGmmFeature(),
         MoETpExtendEpFeature(),
-        MoESharedExpertsFeature()
+        MoESharedExpertsFeature(),
+        MoEAllGatherOverLapFeature(),
+        MoEAlltoAllSeqOverLapFeature()
     ])
 
 

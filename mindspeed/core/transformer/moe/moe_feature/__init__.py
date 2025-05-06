@@ -1,9 +1,11 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025; NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler, TopKRouter
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
-from megatron.core.transformer.spec_utils import build_module
+from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.moe import grouped_gemm_util
 from megatron.core.transformer.spec_utils import build_module
 
@@ -53,3 +55,5 @@ from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.moe.experts import GroupedMLP
 from megatron.core.transformer.moe.legacy_a2a_token_dispatcher import MoEAlltoAllSEQTokenDispatcher
+from megatron.core.transformer.moe.token_dispatcher import MoEAllGatherTokenDispatcher
+from megatron.training import get_args
