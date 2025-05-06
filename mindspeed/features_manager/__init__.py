@@ -54,6 +54,8 @@ from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_
 from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
 from mindspeed.features_manager.transformer.flash_attention.reset_attention_mask_feature import ResetAttentionMaskFeature
 from mindspeed.features_manager.pipeline_parallel.variable_seq_length import VariableSequenceLengthFeature
+from mindspeed.features_manager.pipeline_parallel.multi_parameter import MultiParameterFeature
+from mindspeed.features_manager.pipeline_parallel.optimize_send_recv_comm import OptimizeSendRecvCommFeature
 from mindspeed.features_manager.memory.reuse_fp32_param import ReuseFP32Param
 from mindspeed.features_manager.memory.smart_swap import SmartSwapFeature
 
@@ -66,6 +68,7 @@ from mindspeed.features_manager.compress_dense.compress_dense import AnsCompress
 from mindspeed.features_manager.disable_gloo_group.disable_gloo_group_feature import DisableGlooGroupFeature
 
 from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeature
+from mindspeed.features_manager.transformer.multi_head_latent_attention.mla_feature import MLAFeature
 
 FEATURES_LIST = [
     # Functional features
@@ -143,7 +146,9 @@ def add_pipeline_parallel_features(features_list: List[MindSpeedFeature]):
         RiPipeSchedulesBubbleFeature(),
         RiPipeSchedulesAdvanceFeature(),
         NoopLayersFeature(),
-        VariableSequenceLengthFeature()
+        VariableSequenceLengthFeature(),
+        MultiParameterFeature(),
+        OptimizeSendRecvCommFeature(),
     ])
 
 

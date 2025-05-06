@@ -8,6 +8,7 @@ from torch import Tensor
 from megatron.core.models.common.embeddings.rotary_pos_embedding import _rotate_half
 from megatron.training import get_args
 from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
+from mindspeed.core.transformer.multi_head_latent_attention.mla_utils import yarn_get_mscale
 
 
 def apply_rotary_pos_emb_bshd(
@@ -32,6 +33,13 @@ def apply_rotary_pos_emb_bshd(
     Returns:
         Tensor: The input tensor after applying RoPE
     """
+    args = get_args()
+    _mscale = mscale
+    if getattr(args, "rope_scaling_type", None) == "yarn":
+        _mscale = float(
+            yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale)
+            / yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale_all_dim)
+        )
     rot_dim = freqs.shape[-1]
 
     # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
