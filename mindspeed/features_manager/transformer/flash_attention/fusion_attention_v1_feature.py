@@ -56,10 +56,11 @@ class FusionAttentionFeature(MindSpeedFeature):
             raise AssertionError("When use_flash_attn, only supports sparse modes 0 and 2")
 
     def register_patches(self, patch_manager, args):
-        from mindspeed.core.transformer.flash_attention.flash_attention_v1.adaptor import \
-            dot_product_attention_forward_impl
-
-        patch_manager.register_patch(
-            'megatron.core.transformer.dot_product_attention.DotProductAttention.forward',
-            dot_product_attention_forward_impl
-        )
+        if int(getattr(args, 'context_parallel_size', 1)) < 2:
+            from mindspeed.core.transformer.flash_attention.flash_attention.adaptor import \
+                dot_product_attention_forward_impl
+    
+            patch_manager.register_patch(
+                'megatron.core.transformer.dot_product_attention.DotProductAttention.forward',
+                dot_product_attention_forward_impl
+            )

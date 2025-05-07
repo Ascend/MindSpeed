@@ -26,7 +26,7 @@ from megatron.core.pipeline_parallel.schedules import deallocate_output_tensor, 
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.core.enums import ModelType
-from megatron.core.pipeline_parallel.schedules import get_forward_backward_func
+from megatron.core.pipeline_parallel.schedules import get_forward_backward_func as get_forward_backward_func_mg
 
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 from mindspeed.core.weight_grad_store import WeightGradStore
@@ -35,7 +35,7 @@ from mindspeed.core.weight_grad_store import WeightGradStore
 def get_forward_backward_func_ripipe_patch(*args, **kwargs):
     if torch.is_grad_enabled():
         return forward_backward_ripipe_pipelining
-    return get_forward_backward_func
+    return get_forward_backward_func_mg()
 
 
 def forward_backward_ripipe_pipelining(
