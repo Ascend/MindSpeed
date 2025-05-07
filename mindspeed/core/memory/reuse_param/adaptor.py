@@ -8,10 +8,12 @@ import torch_npu
 
 from megatron.training import get_args
 
+from mindspeed.optimizer.distrib_optimizer import (
+    get_parameter_state_dp_zero,
+    load_parameter_state_from_dp_zero,
+)
 from .reuse_optimizer import _copy_model_params_to_main_params 
 from .reuse_distrib_optimizer import (
-    load_parameter_state_from_dp_zero,
-    get_parameter_state_dp_zero,
     fp16_tensor_convert_to_fp32_tensor_dis,
     fp32_tensor_convert_to_fp16_tensor_dis,
 )
@@ -152,7 +154,10 @@ def reuse_buffer_single(self):
 def reuse_buffer_dis(self, data_parallel_world_size):
     from mindspeed.op_builder import AlgorithmOpBuilder
     reuse_data_ptr = AlgorithmOpBuilder().load().reuse_data_ptr
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    if not self.disable_gloo_group:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    else:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
     for buffer in self.buffers:
         self.bucket_num_group = []
         bucket_res_numel = 0

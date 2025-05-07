@@ -67,15 +67,23 @@ def _copy_model_params_to_main_params():
     pass
 
 
-def load_parameter_state_from_dp_zero(self, state_dict):
-    self.load_parameter_state_from_dp_zero_func(state_dict)
+def load_parameter_state_from_dp_zero(*args, **kwargs):
+    self = args[0]
+    state_dict = args[1]
+
+    update_legacy_format = kwargs['update_legacy_format']
+    self.load_parameter_state_from_dp_zero_func(state_dict, update_legacy_format=update_legacy_format)
     self.first_sub_flag = False
-    data_parallel_world_size = self.data_parallel_group_gloo.size()
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-    data_parallel_group_gloo = self.data_parallel_group_gloo
-    data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-        self.data_parallel_group_gloo
-    )
+    if self.disable_gloo_group:
+        data_parallel_world_size = self.data_parallel_group.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group)
+    else:
+        data_parallel_world_size = self.data_parallel_group_gloo.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
     if data_parallel_world_size == 1 or \
         not hasattr(self, "shard_main_param_res_buffers"):
         return
@@ -110,12 +118,16 @@ def load_parameter_state_from_dp_zero(self, state_dict):
 
 def get_parameter_state_dp_zero(self):
     state = self.get_parameter_state_dp_zero_func()
-    data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-    data_parallel_group_gloo = self.data_parallel_group_gloo
-    data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-        self.data_parallel_group_gloo
-    )
+    if self.disable_gloo_group:
+        data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group)
+    else:
+        data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
     if data_parallel_world_size == 1 or not hasattr(self, "shard_main_param_res_buffers"):
         return state
    
@@ -161,7 +173,10 @@ def fp16_tensor_convert_to_fp32_tensor_dis(self):
     into the fp32 tensor through view transposition.
     """
     data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    if not self.disable_gloo_group:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    else:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
     if data_parallel_world_size == 1:
         for shard_fp32_param_fp16_view in self.shard_fp32_param_fp16_view_group:
             shard_fp32_param_fp16_view.copy_(
@@ -226,7 +241,10 @@ def fp32_tensor_convert_to_fp16_tensor_dis(self):
     into the bf16 data and residual through view transposition.
     """
     data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    if not self.disable_gloo_group:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+    else:
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
     if data_parallel_world_size == 1:
         if self.npu_deterministic:
             ConvertFp32BF16Distrib().fp32_tensor_convert_to_fp16_tensor_deterministic(self.shard_fp32_from_float16_groups, self.optimizer)
