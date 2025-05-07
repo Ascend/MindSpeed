@@ -15,7 +15,7 @@ def npu_dropout_add_layer_norm(x0,
                                return_dropout_mask=False)
 
 # 计算逻辑
-# norm_result = RmsNorm(Dropout(x0 x rowscale x layerscale) + residual)   
+# norm_result = RmsNorm(Dropout(x0 * rowscale * layerscale) + residual)   
 def npu_dropout_add_rms_norm(x0,
                              residual,
                              weight,

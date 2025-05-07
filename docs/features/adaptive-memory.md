@@ -45,21 +45,21 @@ SwapManager功能需要内存管理适配PTA的NPUPluggableAllocator接口拦截
 
 gpt-175B:
 
-| 特性         | 参数                                                                                                                        | NPU卡数    | TFLOPs      | 收益        |
-|------------|---------------------------------------------------------------------------------------------------------------------------|----------|-------------| -------------|
-| adaptive-memory-optimization    | seq-length=8192、mico-batch-size=10、global-batch-size=40、TP=8、PP=1、DP=1、CP=1、NL=8、hidden-size=12288                        | 8卡（单机）   | 165.90      | - |
-| 全重计算     | seq-length=8192、mico-batch-size=10、global-batch-size=40、TP=8、PP=1、DP=1、CP=1、NL=3、hidden-size=12288、recompute-num-layers=3 | 8卡（单机）   | 145.93      | 13.68% |
+| 特性         | 参数                                                                                                                         | NPU卡数    | TFLOPs      | 收益        |
+|------------|----------------------------------------------------------------------------------------------------------------------------|----------|-------------| -------------|
+| adaptive-memory-optimization    | seq-length=8192、micro-batch-size=10、global-batch-size=40、TP=8、PP=1、DP=1、CP=1、NL=8、hidden-size=12288                        | 8卡（单机）   | 165.90      | - |
+| 全重计算     | seq-length=8192、micro-batch-size=10、global-batch-size=40、TP=8、PP=1、DP=1、CP=1、NL=3、hidden-size=12288、recompute-num-layers=3 | 8卡（单机）   | 145.93      | 13.68% |
 
 
-| 特性         | 参数                                                                                                                        | NPU卡数    | TFLOPs | 收益     |
-|------------|---------------------------------------------------------------------------------------------------------------------------|----------|--------|--------|
-| adaptive-memory-optimization    | seq-length=8192、mico-batch-size=3、global-batch-size=9、TP=2、PP=4、DP=1、CP=1、NL=8、hidden-size=12288                          | 8卡（单机）   | 76.30  | -      |
-| 全重计算     | seq-length=8192、mico-batch-size=3、global-batch-size=9、TP=2、PP=4、DP=1、CP=1、NL=8、hidden-size=12288、recompute-num-layers=1 | 8卡（单机）   | 66.50  | 14.17% |
+| 特性         | 参数                                                                                                                       | NPU卡数    | TFLOPs | 收益     |
+|------------|--------------------------------------------------------------------------------------------------------------------------|----------|--------|--------|
+| adaptive-memory-optimization    | seq-length=8192、micro-batch-size=3、global-batch-size=9、TP=2、PP=4、DP=1、CP=1、NL=8、hidden-size=12288                        | 8卡（单机）   | 76.30  | -      |
+| 全重计算     | seq-length=8192、micro-batch-size=3、global-batch-size=9、TP=2、PP=4、DP=1、CP=1、NL=8、hidden-size=12288、recompute-num-layers=1 | 8卡（单机）   | 66.50  | 14.17% |
 
-| 特性         | 参数                                                                                                                              | NPU卡数    | TFLOPs | 收益     |
-|------------|---------------------------------------------------------------------------------------------------------------------------------|----------|--------|--------|
-| adaptive-memory-optimization    | seq-length=8192、mico-batch-size=2、global-batch-size=8、TP=2、PP=4、VPP=2、DP=1、CP=1、NL=8、hidden-size=12288                          | 8卡（单机）   | 86.10  | -      |
-| 全重计算     | seq-length=8192、mico-batch-size=2、global-batch-size=8、TP=2、PP=4、VPP=2、DP=1、CP=1、NL=8、hidden-size=12288、recompute-num-layers=1 | 8卡（单机）   | 75.10  | 14.65% |
+| 特性         | 参数                                                                                                                             | NPU卡数    | TFLOPs | 收益     |
+|------------|--------------------------------------------------------------------------------------------------------------------------------|----------|--------|--------|
+| adaptive-memory-optimization    | seq-length=8192、micro-batch-size=2、global-batch-size=8、TP=2、PP=4、VPP=2、DP=1、CP=1、NL=8、hidden-size=12288                        | 8卡（单机）   | 86.10  | -      |
+| 全重计算     | seq-length=8192、micro-batch-size=2、global-batch-size=8、TP=2、PP=4、VPP=2、DP=1、CP=1、NL=8、hidden-size=12288、recompute-num-layers=1 | 8卡（单机）   | 75.10  | 14.65% |
 
 ## 注意事项
 
