@@ -90,7 +90,7 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
         if args.n_shared_experts:
             torch.cuda.current_stream().wait_stream(self.comm_stream)
             output = output + share_experts_output
-            if self.token_dispatcher.add_bias:
+            if self.config.add_bias_linear:
                 mlp_bias = mlp_bias + share_experts_bias
         return output, mlp_bias
 
