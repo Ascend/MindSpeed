@@ -59,7 +59,7 @@ class FusionAttentionFeature(MindSpeedFeature):
         if int(getattr(args, 'context_parallel_size', 1)) < 2:
             from mindspeed.core.transformer.flash_attention.flash_attention.adaptor import \
                 dot_product_attention_forward_impl
-    
+
             patch_manager.register_patch(
                 'megatron.core.transformer.dot_product_attention.DotProductAttention.forward',
                 dot_product_attention_forward_impl

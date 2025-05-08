@@ -5,7 +5,6 @@ import torch
 import torch_npu
 import torch.nn.functional as F
 from megatron.training import get_args
-from megatron.core.tensor_parallel.mappings import scatter_to_tensor_parallel_region
 
 
 def column_forward(self, input_, weight, column_parallel_function=None, check_fcn=None):

@@ -151,6 +151,7 @@ def add_pipeline_parallel_features(features_list: List[MindSpeedFeature]):
         VariableSequenceLengthFeature(),
         MultiParameterFeature(),
         OptimizeSendRecvCommFeature(),
+        UnalignedPipelineFeature()
     ])
 
 

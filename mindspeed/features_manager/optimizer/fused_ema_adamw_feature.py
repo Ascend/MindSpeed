@@ -15,9 +15,7 @@ class FusedEmaAdamwFeature(MindSpeedFeature):
                            help='Set ema_decay of fused_ema_adamw optimizer.')
 
     def pre_validate_args(self, args):
-        self.incompatible_check(args, 'optimizer-selection')
-        self.incompatible_check(args, 'ema-decay')
-        self.incompatible_check(args, 'disable-gloo-group')
+        self.incompatible_check(args, 'disable_gloo_group')
 
         if args.optimizer_selection == 'fused_ema_adamw' and args.ema_decay < 0 or args.ema_decay > 1:
             raise AssertionError("ema_decay must be in the range [0, 1].")

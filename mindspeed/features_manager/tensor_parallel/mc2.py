@@ -14,6 +14,7 @@ class MC2Feature(MindSpeedFeature):
                            help="Use ascend mc2")
 
     def validate_args(self, args):
+        self.incompatible_check(args, 'unaligned_linear')
         if args.use_ascend_mc2:
             if args.num_experts:
                 raise AssertionError('mc2 is not compatible with moe models')

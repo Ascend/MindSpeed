@@ -22,6 +22,7 @@ class CoCFeature(MindSpeedFeature):
                            help='use coc fused kernel')
 
     def validate_args(self, args):
+        self.incompatible_check(args, 'unaligned_linear')
         if args.num_experts:
             if args.use_ascend_coc:
                 raise AssertionError('coc is not compatible with moe models')
