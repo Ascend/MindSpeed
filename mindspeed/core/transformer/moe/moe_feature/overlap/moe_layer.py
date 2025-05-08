@@ -28,14 +28,21 @@ class BaseMoELayer(MegatronModule, ABC):
         self.expert_parallel_size = parallel_state.get_expert_model_parallel_world_size()
         assert self.expert_parallel_size > 0, "Expected non-negative expert parallel size"
 
-        tp_size = parallel_state.get_tensor_model_parallel_world_size()
-        assert self.config.num_moe_experts % (self.expert_parallel_size * tp_size) == 0
-        # adjust the local expert split logic
-        self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size // tp_size
-        local_expert_indices_offset = (
-            parallel_state.get_expert_model_parallel_rank() * self.num_local_experts * tp_size +
-            parallel_state.get_tensor_model_parallel_rank() * self.num_local_experts
-        )
+        if self.config.moe_tp_extend_ep:
+            tp_size = parallel_state.get_tensor_model_parallel_world_size()
+            assert self.config.num_moe_experts % (self.expert_parallel_size * tp_size) == 0
+            # adjust the local expert split logic
+            self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size // tp_size
+            local_expert_indices_offset = (
+                parallel_state.get_expert_model_parallel_rank() * self.num_local_experts * tp_size +
+                parallel_state.get_tensor_model_parallel_rank() * self.num_local_experts
+            )
+        else:
+            assert self.config.num_moe_experts % self.expert_parallel_size == 0
+            self.num_local_experts = self.config.num_moe_experts // self.expert_parallel_size
+            local_expert_indices_offset = (
+                parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
+            )
 
         self.use_shared_expert = self.config.moe_shared_expert_intermediate_size is not None
         self.shared_expert_overlap = self.config.moe_shared_expert_overlap

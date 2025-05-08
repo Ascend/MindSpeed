@@ -27,12 +27,13 @@ class OverLapGmmExpertsImpl:
         self.weight1 = None
         self.weight2 = None
         self.activation_checkpoint_manager = None
-
-        tp_size = parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE
-        # set tp size to 1 before GMM init to aviod weight sharding
-        parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = 1
+        if self.config.moe_tp_extend_ep:
+            tp_size = parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE
+            # set tp size to 1 before GMM init to aviod weight sharding
+            parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = 1
         super().__init__(num_local_experts, config)
-        parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = tp_size
+        if self.config.moe_tp_extend_ep:        
+            parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = tp_size
         if self.config.gated_linear_unit:
             assert (self.config.activation_func == F.silu
                     ), 'Activation function must be silu when using fused_swiglu.'

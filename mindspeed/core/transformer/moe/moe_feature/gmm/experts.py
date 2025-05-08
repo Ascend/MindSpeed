@@ -32,7 +32,6 @@ class GmmExpertsImpl:
         if self.config.gated_linear_unit:
             assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
-        self.activation_checkpoint_manager = CheckpointWithoutOutput()
 
     def forward(self, permuted_local_hidden_states, tokens_per_expert):
         """Forward of GroupedMLP
@@ -62,6 +61,7 @@ class GmmExpertsImpl:
             if not is_recompute_activation:
                 intermediate_parallel = self.activation_func(fc1_output)
             else:
+                self.activation_checkpoint_manager = CheckpointWithoutOutput()
                 intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
                                                                                       False,
                                                                                       fc1_output)
