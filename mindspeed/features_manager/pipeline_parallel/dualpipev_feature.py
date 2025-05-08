@@ -38,7 +38,7 @@ class DualpipeVFeature(MindSpeedFeature):
         from mindspeed.core.pipeline_parallel.dualpipev.dualpipev_schedules import forward_backward_pipelining_with_cutinhalf
         from mindspeed.core.pipeline_parallel.dualpipev.dualpipev_chunks import (
             get_model, dualpipev_fp16forward, get_num_layers_to_build, train_step,
-            _allreduce_embedding_grads_wrapper
+            _allreduce_embedding_grads_wrapper, evaluate
         )
 
         if args.schedules_method == "dualpipev":
@@ -57,3 +57,4 @@ class DualpipeVFeature(MindSpeedFeature):
                 'megatron.training.utils.print_rank_last', print_rank_0)
             patch_manager.register_patch(
                 'megatron.core.distributed.finalize_model_grads._allreduce_embedding_grads', _allreduce_embedding_grads_wrapper)
+            patch_manager.register_patch('megatron.training.training.evaluate', evaluate)

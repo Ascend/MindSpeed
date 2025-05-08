@@ -131,7 +131,7 @@ class WeightGradStore:
             cls.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
             
         (input_, grad_output_slice, weight, sequence_parallel, in_row), handle = cls.overlap_all_gather()
-        if not sequence_parallel or get_args().moe_fb_overlap:
+        if not sequence_parallel or get_args().moe_fb_overlap or get_args().schedules_method == "dualpipev":
             grad_output = grad_output_slice
         else:
             grad_output, handle = gather(grad_output_slice, cls.gather_stream)

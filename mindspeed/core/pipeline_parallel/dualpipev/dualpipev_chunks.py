@@ -1,8 +1,9 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
+import time
 from functools import wraps
 import torch
-from typing import List, Optional
+
 from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import get_model_config
 from megatron.legacy.model import Float16Module
@@ -10,13 +11,12 @@ from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.enums import ModelType
 from megatron.training.global_vars import get_args, get_timers
-from megatron.training.utils import unwrap_model
+from megatron.training.utils import unwrap_model, print_rank_0, is_last_rank
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.legacy.model.module import fp32_to_float16, float16_to_fp32
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core import parallel_state
-from megatron.core.distributed.finalize_model_grads import _allreduce_layernorm_grads
 from mindspeed.core.pipeline_parallel.dualpipev.dualpipev_schedules import get_dualpipe_chunk
 from mindspeed.core.data_parallel.async_log_allreduce import get_async_reduced_loss_value
 
@@ -230,3 +230,113 @@ def _allreduce_embedding_grads_wrapper(fn):
             return fn(*args, **kwargs)
 
     return wrapper
+
+
+def evaluate(forward_step_func,
+             data_iterator,
+             model,
+             process_non_loss_data_func,
+             config,
+             verbose=False):
+    """Evaluation."""
+    args = get_args()
+    timers = get_timers()
+
+    timers('evaluate', log_level=0).start(barrier=True)
+
+    if args.vision_pretraining and args.vision_pretraining_type == "dino":
+        from megatron.legacy.model.vision.knn_monitor import compute_feature_bank
+        compute_feature_bank(model)
+
+    # Turn on evaluation mode which disables dropout.
+    for model_module in model:
+        model_module.eval()
+
+    total_loss_dict = {}
+
+    # make validation batch size independent from training batch size
+    eval_batch_size = args.global_batch_size
+    eval_num_microbatches = eval_batch_size // \
+        (args.micro_batch_size * args.data_parallel_size)
+
+    with torch.no_grad():
+        iteration = 0
+        if verbose:
+            print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
+        while iteration < args.eval_iters:
+            iteration += 1
+            if verbose:
+                print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+
+            forward_backward_func = get_forward_backward_func()
+            # Don't care about timing during evaluation
+            config.timers = None
+            loss_dicts = forward_backward_func(
+                forward_step_func=forward_step_func,
+                data_iterator=data_iterator,
+                model=model,
+                num_microbatches=eval_num_microbatches,
+                seq_length=args.seq_length,
+                micro_batch_size=args.micro_batch_size,
+                decoder_seq_length=args.decoder_seq_length,
+                forward_only=True)
+            config.timers = get_timers()
+
+            # Empty unused memory
+            if args.empty_unused_memory_level >= 1:
+                torch.cuda.empty_cache()
+
+            # Change last stage to first stage for dualpipev
+            if mpu.is_pipeline_first_stage(ignore_virtual=True):
+                # Reduce across processes.
+                for loss_dict in loss_dicts:
+                    for key in loss_dict:
+                        if key not in total_loss_dict:
+                            total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
+                        val = loss_dict[key]
+                        if isinstance(val, tuple) or isinstance(val, list):
+                            total_loss_dict[key][0] += val[0]
+                            total_loss_dict[key][1] += val[1]
+                        else:
+                            total_loss_dict[key][0] += val
+                            total_loss_dict[key][1] += 1
+
+            args.consumed_valid_samples += eval_batch_size
+
+            if args.exit_duration_in_mins:
+                train_time = (time.time() - _TRAIN_START_TIME) / 60.0
+                done_cuda = torch.tensor(
+                    [train_time > args.exit_duration_in_mins],
+                    dtype=torch.int, device='cuda')
+                torch.distributed.all_reduce(
+                    done_cuda, op=torch.distributed.ReduceOp.MAX)
+                done = done_cuda.item()
+                if done:
+                    print_rank_0('Exiting during evaluation, timelimit reached')
+                    return None, None, True
+
+        collected_non_loss_data = None
+        if process_non_loss_data_func is not None and is_last_rank():
+            collected_non_loss_data = forward_backward_func(
+                forward_step_func=forward_step_func,
+                data_iterator=data_iterator,
+                model=model,
+                num_microbatches=get_num_microbatches(),
+                seq_length=args.seq_length,
+                micro_batch_size=args.micro_batch_size,
+                decoder_seq_length=args.decoder_seq_length,
+                forward_only=True,
+                collect_non_loss_data=True)
+
+    # Move model back to the train mode.
+    for model_module in model:
+        model_module.train()
+
+    for key in total_loss_dict:
+        numerator, denominator = total_loss_dict[key]
+        total_loss_dict[key] = numerator / denominator
+
+    timers('evaluate').stop()
+    timers.log(['evaluate'])
+
+    return total_loss_dict, collected_non_loss_data, False

@@ -46,7 +46,6 @@ class FwdBwdOverlapFeature(MindSpeedFeature):
 
 
     def register_patches(self, patch_manager, args):
-        from mindspeed.core.transformer.moe.moe_layer import moe_layer_init_wrapper
         from mindspeed.core.transformer.mlp import mlp_init
         from mindspeed.core.pipeline_parallel.fb_overlap import (
             linear_backward_wgrad_detach,
@@ -67,7 +66,6 @@ class FwdBwdOverlapFeature(MindSpeedFeature):
                                          transformer_layer_forward_backward_overlaping)
             patch_manager.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
                                          linear_backward_wgrad_detach)
-            patch_manager.register_patch('megatron.core.transformer.moe.moe_layer.MoELayer.__init__', moe_layer_init_wrapper)
             patch_manager.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_param_hook',
                                          _make_param_hook)
             if getattr(args, 'num_layers_per_virtual_pipeline_stage', None):
