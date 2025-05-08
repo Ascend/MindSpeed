@@ -15,8 +15,8 @@ DATA_PATH="/home/dataset/llama2/alpaca_text_document"
 TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
 TP=2
-PP=2
-CP=2
+PP=1
+CP=4
 EP=1
 
 DISTRIBUTED_ARGS="
@@ -28,28 +28,28 @@ DISTRIBUTED_ARGS="
 "
 
 RECOMPUTE_ARGS="
-    --recompute-granularity full \
-    --recompute-method block \
     --recompute-num-layers 1 \
-    --enable-recompute-layers-per-pp-rank \
     --recompute-activation-function \
-    --recompute-activation-function-num-layers 1 \
-    --recompute-in-advance \
+    --recompute-activation-function-num-layers 2 \
+    --swap-attention \
 "
 
 GPT_ARGS="
     --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
-    --num-layers-per-virtual-pipeline-stage 1 \
     --context-parallel-size ${CP} \
-    --context-parallel-algo ulysses_cp_algo \
+    --context-parallel-algo hybrid_cp_algo \
+    --ulysses-degree-in-cp 2 \
+    --use-cp-send-recv-overlap \
+    --use-fused-ring-attention-update \
     --use-ascend-mc2 \
-    --reuse-fp32-param \
     --sequence-parallel \
     --use-fused-rotary-pos-emb \
     --use-fused-rmsnorm \
     --use-flash-attn \
+    --op-cal-tflops \
+    --optimizer-selection fused_torch_adamw \
     --num-layers 4 \
     --hidden-size 8192 \
     --ffn-hidden-size 28672 \
@@ -65,9 +65,9 @@ GPT_ARGS="
     --train-iters 1000 \
     --lr-decay-style cosine \
     --untie-embeddings-and-output-weights \
-    --attention-dropout 0.0 \
+    --attention-dropout 0.1 \
     --init-method-std 0.01 \
-    --hidden-dropout 0.0 \
+    --hidden-dropout 0.1 \
     --position-embedding-type rope \
     --normalization RMSNorm \
     --swiglu \
@@ -89,14 +89,14 @@ GPT_ARGS="
 
 DATA_ARGS="
     --data-path $DATA_PATH \
-    --split 949,50,1
+    --split 100,0,0
 "
 
 OUTPUT_ARGS="
     --log-throughput \
     --log-interval 1 \
     --save-interval 10000 \
-    --eval-interval 50 \
+    --eval-interval 10000 \
     --eval-iters 10 \
 "
 
@@ -105,15 +105,5 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $RECOMPUTE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
-    --exit-interval 50 \
-    --save $CKPT_DIR \
-    --ckpt-format torch \
-
-torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
-    $GPT_ARGS \
-    $RECOMPUTE_ARGS \
-    $DATA_ARGS \
-    $OUTPUT_ARGS \
-    --load $CKPT_DIR
 
 set +x

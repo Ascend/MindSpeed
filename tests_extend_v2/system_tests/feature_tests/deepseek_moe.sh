@@ -16,8 +16,8 @@ TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
 TP=2
 PP=2
-CP=2
-EP=1
+CP=1
+EP=2
 
 DISTRIBUTED_ARGS="
     --nproc_per_node $NPUS_PER_NODE \
@@ -27,14 +27,18 @@ DISTRIBUTED_ARGS="
     --master_port $MASTER_PORT
 "
 
-RECOMPUTE_ARGS="
-    --recompute-granularity full \
-    --recompute-method block \
-    --recompute-num-layers 1 \
-    --enable-recompute-layers-per-pp-rank \
-    --recompute-activation-function \
-    --recompute-activation-function-num-layers 1 \
-    --recompute-in-advance \
+MOE_ARGS="
+    --expert-model-parallel-size ${EP} \
+    --moe-token-dispatcher-type alltoall_seq \
+    --moe-alltoall-overlap-comm \
+    --moe-zero-memory level0 \
+    --moe-tp-extend-ep \
+    --moe-grouped-gemm \
+    --moe-permutation-async-comm \
+    --n-shared-experts 1 \
+    --num-experts 32 \
+    --moe-router-topk 4 \
+    --moe-aux-loss-coeff 0.02 \
 "
 
 GPT_ARGS="
@@ -42,78 +46,73 @@ GPT_ARGS="
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
-    --context-parallel-size ${CP} \
-    --context-parallel-algo ulysses_cp_algo \
-    --use-ascend-mc2 \
-    --reuse-fp32-param \
-    --sequence-parallel \
+    --use-flash-attn \
     --use-fused-rotary-pos-emb \
     --use-fused-rmsnorm \
-    --use-flash-attn \
+    --sequence-parallel \
+    --use-distributed-optimizer \
+    --overlap-grad-reduce \
+    --swap-attention \
     --num-layers 4 \
+    --noop-layers 0,3 \
+    --manual-gc \
+    --manual-gc-interval 50 \
+    --seq-length 8192 \
+    --max-position-embeddings 8192 \
+    --train-iters 10000 \
     --hidden-size 8192 \
-    --ffn-hidden-size 28672 \
     --num-attention-heads 64 \
+    --ffn-hidden-size 4352 \
+    --make-vocab-size-divisible-by 128 \
+    --vocab-size 126464 \
+    --micro-batch-size 1 \
+    --global-batch-size 32 \
     --tokenizer-type Llama2Tokenizer \
     --tokenizer-model ${TOKENIZER_MODEL} \
-    --seq-length 32768 \
-    --max-position-embeddings 32768 \
-    --micro-batch-size 1 \
-    --global-batch-size 4 \
-    --make-vocab-size-divisible-by 1 \
-    --lr 1.0e-6 \
-    --train-iters 1000 \
-    --lr-decay-style cosine \
-    --untie-embeddings-and-output-weights \
+    --disable-bias-linear \
+    --lr-decay-style linear \
+    --lr-warmup-iters 1500 \
+    --short-seq-prob 0.0 \
     --attention-dropout 0.0 \
-    --init-method-std 0.01 \
     --hidden-dropout 0.0 \
+    --untie-embeddings-and-output-weights \
+    --init-method-std 0.006 \
     --position-embedding-type rope \
     --normalization RMSNorm \
     --swiglu \
     --no-masked-softmax-fusion \
     --attention-softmax-in-fp32 \
-    --min-lr 1.0e-7 \
+    --no-gradient-accumulation-fusion \
+    --bf16 \
+    --group-query-attention \
+    --num-query-groups 8 \
+    --lr 2.0e-4 \
+    --min-lr 2.0e-4 \
     --weight-decay 0.1 \
     --clip-grad 1.0 \
     --adam-beta1 0.9 \
-    --initial-loss-scale 4096.0 \
     --adam-beta2 0.95 \
-    --adam-eps 1e-5 \
-    --disable-bias-linear \
-    --group-query-attention \
-    --num-query-groups 8 \
-    --lr-warmup-fraction 0.01 \
-    --bf16
+    --rotary-base 100000 \
+    --norm-epsilon 1.0e-5 \
 "
 
 DATA_ARGS="
     --data-path $DATA_PATH \
-    --split 949,50,1
+    --split 995,5,0
 "
 
 OUTPUT_ARGS="
     --log-throughput \
     --log-interval 1 \
     --save-interval 10000 \
-    --eval-interval 50 \
+    --eval-interval 10000 \
     --eval-iters 10 \
 "
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
-    $RECOMPUTE_ARGS \
+    $MOE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
-    --exit-interval 50 \
-    --save $CKPT_DIR \
-    --ckpt-format torch \
-
-torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
-    $GPT_ARGS \
-    $RECOMPUTE_ARGS \
-    $DATA_ARGS \
-    $OUTPUT_ARGS \
-    --load $CKPT_DIR
 
 set +x

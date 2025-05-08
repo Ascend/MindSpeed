@@ -14,9 +14,9 @@ CKPT_DIR=./ckpt_llama
 DATA_PATH="/home/dataset/llama2/alpaca_text_document"
 TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
-TP=2
+TP=1
 PP=2
-CP=2
+CP=4
 EP=1
 
 DISTRIBUTED_ARGS="
@@ -28,13 +28,10 @@ DISTRIBUTED_ARGS="
 "
 
 RECOMPUTE_ARGS="
-    --recompute-granularity full \
-    --recompute-method block \
-    --recompute-num-layers 1 \
     --enable-recompute-layers-per-pp-rank \
     --recompute-activation-function \
     --recompute-activation-function-num-layers 1 \
-    --recompute-in-advance \
+    --recompute-in-bubble \
 "
 
 GPT_ARGS="
@@ -43,14 +40,17 @@ GPT_ARGS="
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
     --context-parallel-size ${CP} \
-    --context-parallel-algo ulysses_cp_algo \
-    --use-ascend-mc2 \
+    --context-parallel-algo megatron_cp_algo \
+    --cp-window-size 2 \
+    --use-cp-send-recv-overlap \
+    --use-fused-ring-attention-update \
     --reuse-fp32-param \
-    --sequence-parallel \
-    --use-fused-rotary-pos-emb \
     --use-fused-rmsnorm \
     --use-flash-attn \
-    --num-layers 4 \
+    --use-fusion-attn-v2 \
+    --alibi-fusion-attn-type 2 \
+    --num-layers 6 \
+    --noop-layers 0,5 \
     --hidden-size 8192 \
     --ffn-hidden-size 28672 \
     --num-attention-heads 64 \
@@ -68,7 +68,7 @@ GPT_ARGS="
     --attention-dropout 0.0 \
     --init-method-std 0.01 \
     --hidden-dropout 0.0 \
-    --position-embedding-type rope \
+    --position-embedding-type alibi \
     --normalization RMSNorm \
     --swiglu \
     --no-masked-softmax-fusion \
@@ -89,14 +89,14 @@ GPT_ARGS="
 
 DATA_ARGS="
     --data-path $DATA_PATH \
-    --split 949,50,1
+    --split 100,0,0
 "
 
 OUTPUT_ARGS="
     --log-throughput \
     --log-interval 1 \
     --save-interval 10000 \
-    --eval-interval 50 \
+    --eval-interval 10000 \
     --eval-iters 10 \
 "
 
@@ -105,15 +105,5 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $RECOMPUTE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
-    --exit-interval 50 \
-    --save $CKPT_DIR \
-    --ckpt-format torch \
-
-torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
-    $GPT_ARGS \
-    $RECOMPUTE_ARGS \
-    $DATA_ARGS \
-    $OUTPUT_ARGS \
-    --load $CKPT_DIR
 
 set +x
