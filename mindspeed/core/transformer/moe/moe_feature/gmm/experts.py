@@ -75,6 +75,7 @@ class GmmExpertsImpl:
             if not is_recompute_activation:
                 intermediate_parallel = self.activation_func(h)
             else:
+                self.activation_checkpoint_manager = CheckpointWithoutOutput()
                 intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
                                                                                       False,
                                                                                       h)
