@@ -9,10 +9,10 @@ import torch_npu
 
 
 def get_swap_tensor(ts_numel: int, device: torch.device, dtype: torch.dtype):
-    if not hasattr(torch_npu, "empty_with_swap_memory"): 
+    if not hasattr(torch_npu, "empty_with_swapped_memory"): 
         raise ModuleNotFoundError("PTA dose not support this func, please update to latest version.")
     size = torch.Size([ts_numel])
-    swap_tensor = torch_npu.empty_with_swap_memory(size, dtype=dtype, device=device)
+    swap_tensor = torch_npu.empty_with_swapped_memory(size, dtype=dtype, device=device)
     swap_tensor.zero_()
     return swap_tensor
 

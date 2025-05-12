@@ -18,7 +18,7 @@ class AnsCompressTensorFeature(MindSpeedFeature):
         if args.compress_dense != "disable":
             import torch_npu
             if not hasattr(torch_npu, "npu_hans_encode") or not hasattr(torch_npu, "npu_hans_decode") \
-                or not hasattr(torch_npu, "empty_with_swap_memory"):  
+                or not hasattr(torch_npu, "empty_with_swapped_memory"):  
                 raise AssertionError("`--compress-dense` is invalid, please update the latest PTA version.")
             self.incompatible_check(args, "recompute_activation_function")
     
