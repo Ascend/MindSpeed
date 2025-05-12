@@ -1,12 +1,10 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-from typing import Optional
 import math
 import torch
 import torch_npu
 
-from torch import Tensor
 from megatron.core.transformer.utils import attention_mask_func
 from mindspeed.core.context_parallel import AttnMaskType
 from mindspeed.core.context_parallel import FusedScaleMaskSoftmax
@@ -15,7 +13,6 @@ from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.core.transformer.flash_attention.alibi.alibi import AlibiForFusionAttnSingleton
 from mindspeed.core.context_parallel import mpu as parallel_state
 from mindspeed.model.transformer import get_attention_mask
-from mindspeed.utils import get_actual_seq_len
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import get_cache_policy
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
@@ -70,7 +67,7 @@ class CPDotProductAttentionImpl:
 
         projection_size = self.config.kv_channels * self.config.num_attention_heads
         # Per attention head and per partition values.
-        world_size = self.config.tp_x if self.config.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
+        world_size = parallel_state.get_tensor_model_parallel_world_size()
         self.hidden_size_per_partition = divide(projection_size, world_size)
         self.hidden_size_per_attention_head = divide(projection_size, config.num_attention_heads)
         self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
@@ -155,8 +152,7 @@ class CPDotProductAttentionImpl:
         sparse_mode = self.config.sparse_mode
         assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
 
-        actual_seq_len = get_actual_seq_len()
-        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+        seq_length, bsz, n_head = query.shape[0], query.shape[1], query.shape[2]
 
         if attn_mask_type == AttnMaskType.no_mask:
             sparse_mode = 0  # default mask
@@ -296,5 +292,5 @@ class CPDotProductAttentionImpl:
                     actual_seq_kvlen=actual_seq_kvlen
                 )[0]
             if packed_seq_params is not None:
-                output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_len, b=bsz)
+                output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_length, b=bsz)
         return output

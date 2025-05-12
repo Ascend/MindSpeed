@@ -74,6 +74,7 @@ GPT_ARGS="
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
     --use-fused-rmsnorm \
+    --reuse-fp32-param \
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
