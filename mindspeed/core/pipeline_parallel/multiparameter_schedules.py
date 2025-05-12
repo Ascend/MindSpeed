@@ -852,7 +852,10 @@ def send_forward_recv_forward(output_tensors, tensor_shapes, recv_prev, config, 
     if not isinstance(output_tensors, list):
         output_tensors = [output_tensors]
     input_tensors = []
-    all_fwd_wait_handles = []
+    if config.use_ring_exchange_p2p or config.batch_p2p_comm:
+        all_fwd_wait_handles = []
+    else:
+        all_fwd_wait_handles = {}
 
     if overlap_p2p_comm:
         for (output_tensor, tensor_shape) in zip(output_tensors, tensor_shapes):
@@ -868,7 +871,10 @@ def send_forward_recv_forward(output_tensors, tensor_shapes, recv_prev, config, 
                 overlap_p2p_comm=overlap_p2p_comm,
             )
             input_tensors.append(input_tensor)
-            all_fwd_wait_handles.extend(wait_handles)
+            if isinstance(wait_handles, list):
+                all_fwd_wait_handles.extend(wait_handles)
+            else:
+                all_fwd_wait_handles.update(wait_handles)
         return input_tensors, all_fwd_wait_handles
 
     else:
@@ -895,7 +901,10 @@ def send_backward_recv_backward(input_tensor_grads, tensor_shapes, recv_next, co
     if not isinstance(input_tensor_grads, list):
         input_tensor_grads = [input_tensor_grads]
     output_tensor_grads = []
-    all_fwd_wait_handles = []
+    if config.use_ring_exchange_p2p or config.batch_p2p_comm:
+        all_bwd_wait_handles = []
+    else:
+        all_bwd_wait_handles = {}
 
     if overlap_p2p_comm:
         for (input_tensor_grad, tensor_shape) in zip(input_tensor_grads, tensor_shapes):
@@ -911,8 +920,11 @@ def send_backward_recv_backward(input_tensor_grads, tensor_shapes, recv_next, co
                 overlap_p2p_comm=overlap_p2p_comm,
             )
             output_tensor_grads.append(output_tensor_grad)
-            all_fwd_wait_handles.extend(bwd_wait_handles)
-        return output_tensor_grads, all_fwd_wait_handles
+            if isinstance(bwd_wait_handles, list):
+                all_bwd_wait_handles.extend(bwd_wait_handles)
+            else:
+                all_bwd_wait_handles.update(bwd_wait_handles)
+        return output_tensor_grads, all_bwd_wait_handles
 
     else:
         for (input_tensor_grad, tensor_shape) in zip(input_tensor_grads, tensor_shapes):

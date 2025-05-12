@@ -354,7 +354,7 @@ def forward_backward_ripipe_pipelining(
     for k in range(num_warmup_microbatches):
 
         if fwd_wait_handles is not None:
-            for req in fwd_wait_handles.values():
+            for req in fwd_wait_handles if isinstance(fwd_wait_handles, list) else fwd_wait_handles.values():
                 req.wait()
 
         # Decide to checkpoint all layers' activations of the current micro-batch
@@ -534,7 +534,7 @@ def forward_backward_ripipe_pipelining(
                     pipeline_checkpoint_manager.recompute_next(vpp_rank)
 
             if bwd_wait_handles is not None:
-                for req in bwd_wait_handles.values():
+                for req in bwd_wait_handles if isinstance(bwd_wait_handles, list) else bwd_wait_handles.values():
                     req.wait()
 
             # Backward pass.
@@ -678,7 +678,7 @@ def forward_backward_ripipe_pipelining(
             pipeline_checkpoint_manager.recompute_next_force(0)
             parallel_state.set_virtual_pipeline_model_parallel_rank(old_vpp_rank)
         if config.overlap_p2p_comm and bwd_wait_handles is not None:
-            for wait_handle in bwd_wait_handles.values():
+            for wait_handle in bwd_wait_handles if isinstance(bwd_wait_handles, list) else bwd_wait_handles.values():
                 wait_handle.wait()
 
         if all_warmup_microbatches:
@@ -732,7 +732,7 @@ def forward_backward_ripipe_pipelining(
                     pipeline_checkpoint_manager.recompute_next(vpp_rank)
             # ripipe related, use async communication
             if config.overlap_p2p_comm and bwd_wait_handles is not None:
-                for wait_handle in bwd_wait_handles.values():
+                for wait_handle in bwd_wait_handles if isinstance(bwd_wait_handles, list) else bwd_wait_handles.values():
                     wait_handle.wait()
 
         # nanopipe related

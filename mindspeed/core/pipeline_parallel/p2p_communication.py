@@ -350,7 +350,7 @@ def _p2p_ops_eod(
             )
             reqs["send_next"] = send_next_req
 
-    for req in reqs.values():
+    for req in reqs if isinstance(reqs, list) else reqs.values():
         req.wait()
     
     reqs = {}

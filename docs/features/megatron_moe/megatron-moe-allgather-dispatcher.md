@@ -26,7 +26,7 @@ local_hidden_states = torch.gather(global_hidden_states, 0, self.global_local_ma
 
 ## 使用场景
 
-在使用 mcore MoE 的场景下，开启了 `--moe-token-dispatcher-type allgather`。
+在使用 mcore MoE 且不开`--variable-seq-lengths`的场景下，开启了 `--moe-token-dispatcher-type allgather`。
 
 ## 使用方法
 开启参数 `--moe-permutation-async-comm`。

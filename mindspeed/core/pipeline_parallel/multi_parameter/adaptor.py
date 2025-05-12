@@ -349,5 +349,6 @@ def core_transformer_config_from_args_wrapper(fn):
         config = fn(args)
         if args.use_multiparameter_pipeline_model_parallel:
             config.deallocate_pipeline_outputs = False
+        return config
 
     return wrapper
