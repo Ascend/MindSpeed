@@ -95,7 +95,7 @@ def permute(tokens, indices, num_out_tokens: int = None, padded_mode: bool = Fal
 **备注**：
 1. 目前仅支持padded_mode为False
 2. 目前仅支持bfloat16
-3. 不支持moe_expert_capacity_factor和moe_pad_expert_input_to_capacity
+3. 不支持moe-expert-capacity-factor和moe-pad-expert-input-to-capacity
 
 
 ## 案例
