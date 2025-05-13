@@ -114,6 +114,7 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $RECOMPUTE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
-    --load $CKPT_DIR
+    --load $CKPT_DIR \
+    --ckpt-format torch \
 
 set +x
