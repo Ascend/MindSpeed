@@ -132,9 +132,11 @@ def multi_tensor_scale(overflow_buf, tensor_lists, scale):
 
 
 def te_adaptation(aspm):
+    from mindspeed.te.pytorch import MindSpeedTELayernorm
     aspm.register_patch('torch.compile', torch.jit.script)
     # Need replace modules before import megatron
     aspm.register_patch('importlib.metadata.version', version_wrapper)
+    aspm.register_patch('transformer_engine.pytorch.LayerNorm', MindSpeedTELayernorm, create_dummy=True)
     aspm.register_patch('transformer_engine.pytorch.LayerNormLinear', torch.nn.Module, create_dummy=True)
     aspm.register_patch('transformer_engine.pytorch.DotProductAttention', torch.nn.Module, create_dummy=True)
     aspm.register_patch('transformer_engine.pytorch.Linear', torch.nn.Module, create_dummy=True)

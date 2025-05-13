@@ -1,3 +1,5 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+import warnings
 from argparse import ArgumentParser
 
 from mindspeed.features_manager.feature import MindSpeedFeature
@@ -21,7 +23,9 @@ class MC2Feature(MindSpeedFeature):
             if getattr(args, 'use_ascend_coc', None):
                 raise AssertionError('mc2 and coc can not be used together')
             if not args.sequence_parallel or args.tensor_model_parallel_size == 1:
-                raise AssertionError('mc2 need sequence_parallel and tp_size >= 2')
+                warnings.warn("The use_ascend_mc2 feature requires tp to be greater than 1 and sequence_parallel is "
+                              "enabled. However, currently tp is equal to 1 or sequence parallelism is not enabled, "
+                              "and use_ascend_mc2 feature has been disabled.")
             if getattr(args, 'use_pipe_experts', None):
                 raise AssertionError('mc2 is not compatible with use_pipe_experts')
             if getattr(args, 'use_nanopipe', None):

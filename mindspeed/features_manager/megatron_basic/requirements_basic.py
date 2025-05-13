@@ -27,10 +27,11 @@ class RequirementsBasicFeature(MindSpeedFeature):
 
     def te_adaptation(self, pm, args):
         from mindspeed.core.megatron_basic.requirements_basic import version_wrapper
-
+        from mindspeed.te.pytorch import MindSpeedTELayernorm
         pm.register_patch('torch.compile', torch.jit.script)
         # Need replace modules before import megatron
         pm.register_patch('importlib.metadata.version', version_wrapper)
+        pm.register_patch('transformer_engine.pytorch.LayerNorm', MindSpeedTELayernorm, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.LayerNormLinear', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.DotProductAttention', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.Linear', torch.nn.Module, create_dummy=True)
