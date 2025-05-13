@@ -257,21 +257,3 @@ def _get_training_state(
     """Returns the training state of the handles in ``handle``."""
     _p_assert(handle, "Expects a non-empty handle")
     return handle._training_state
-
-
-@no_type_check
-def _get_handle_to_post_backward(
-    state: "_ZeRO3State",
-    current_handle: "FlatParamHandle",
-) -> "FlatParamHandle":
-    """
-    Returns the last handle to do post_backward reduce scatter, where ``current_handle`` represents the current module.
-    """
-    eod = state._exec_order_data
-    target_handle: Optional["FlatParamHandle"] = None
-    target_handle = eod.get_handle_to_post_backward(current_handle)
-    if target_handle:
-        return [handle for handle in target_handle
-                if (_get_training_state(handle) == HandleTrainingState.BACKWARD_POST) and not handle.flat_param._post_backward_called]
-    else:
-        return None

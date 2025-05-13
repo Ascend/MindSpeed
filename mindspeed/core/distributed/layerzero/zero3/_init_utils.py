@@ -42,7 +42,6 @@ from mindspeed.core.distributed.layerzero.zero3.flat_param import (
 )
 from mindspeed.core.distributed.layerzero.zero3._limiter import _FreeEventQueue
 import mindspeed.core.distributed.layerzero.zero3._exec_order_utils as exec_order_utils
-import mindspeed.core.distributed.layerzero.zero3._traversal_utils as traversal_utils
 import mindspeed.core.distributed.layerzero.zero3.fsdp as zero3_file
 
 
@@ -368,11 +367,6 @@ def _get_ignored_modules(
         if _get_module_zero3_state(module):
             raise ValueError(
                 "`ignored_modules` should not include FSDP modules")
-    # Treat modules that cannot compose with `fully_shard` as ignored modules,
-    # meaning that their subtrees are ignored
-    for module in root_module.modules():
-        if not traversal_utils._composable(module):
-            ignored_root_modules.add(module)
     # NOTE: Even if `ignored_root_modules` is empty, do not return early so
     # that this FSDP instance can get any ignored modules from its children.
 

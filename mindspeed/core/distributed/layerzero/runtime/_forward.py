@@ -26,7 +26,7 @@ from mindspeed.core.distributed.layerzero.zero3._common_utils import (
 
 from mindspeed.core.distributed.layerzero.zero3.flat_param import FlatParamHandle, HandleTrainingState
 from mindspeed.core.distributed.layerzero import constants
-from ._shard import _unshard, _reshard, _pre_forward_backward_unshard, _post_forward_reshard, _post_backward_reshard, _get_handle_to_post_backward
+from ._shard import _unshard, _reshard, _pre_forward_backward_unshard, _post_forward_reshard, _post_backward_reshard
 from ._grad import _reduce_grad, _accumulate_grad, _pre_bwd_reload_full_prec_grad
 from ._utils import _reset_flat_param_grad_info_if_needed
 from .hook import register_multi_post_grad_hook

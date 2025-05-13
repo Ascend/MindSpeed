@@ -9,7 +9,6 @@ import collections
 from typing import Deque, List, Set, Tuple, TYPE_CHECKING
 
 import torch.nn as nn
-from torch.distributed._composable.contract import _get_registry
 from mindspeed.core.distributed.layerzero.zero3._common_utils import _get_module_zero3_state
 
 if TYPE_CHECKING:
@@ -31,13 +30,6 @@ All of these methods must take in the root module (i.e. an ``nn.Module``) and
 not a general ``_ZeRO3PState`` because ``_ZeRO3PState`` does not support a graph
 traversal, whereas ``nn.Module`` has ``nn.Module.modules()`` for traversal.
 """
-
-
-def _composable(module: nn.Module) -> bool:
-    """
-    Returns if ``module`` can compose with ``fully_shard``.
-    """
-    return "replicate" not in _get_registry(module)
 
 
 def _get_zero3_states_with_modules(
@@ -75,8 +67,6 @@ def _get_zero3_states_with_modules(
     while deque:
         submodule = deque.popleft()
         visited_modules.add(submodule)
-        if not _composable(submodule):
-            continue
         for child_module in reversed(list(submodule.children())):
             if child_module not in visited_modules:
                 deque.appendleft(child_module)
