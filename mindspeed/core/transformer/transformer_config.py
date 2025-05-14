@@ -173,7 +173,12 @@ def transformer_config_post_init_wrapper(fn):
         #Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
         ori_apply_rope_fusion = self.apply_rope_fusion
         self.apply_rope_fusion = False
+        if self.num_moe_experts is None:
+            _ori_var_seq = getattr(self, 'variable_seq_lengths', False)
+            self.variable_seq_lengths = False
         fn(self)
+        if self.num_moe_experts is None:
+            self.variable_seq_lengths = _ori_var_seq
         self.apply_rope_fusion = ori_apply_rope_fusion
         del ori_apply_rope_fusion
 
