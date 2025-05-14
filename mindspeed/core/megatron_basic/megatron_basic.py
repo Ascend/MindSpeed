@@ -52,7 +52,7 @@ class PTNorm:
 
     def __new__(cls, config, hidden_size: int, eps: float = 1e-5):
         if config.normalization == "LayerNorm":
-            if config.tp_2d:
+            if getattr(config, "tp_2d", False):
                 instance = LayerNorm2D(
                     hidden_size,
                     eps=eps,
@@ -61,7 +61,7 @@ class PTNorm:
             else:
                 instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps,)
         elif config.normalization == "RMSNorm":
-            if config.tp_2d:
+            if getattr(config, "tp_2d", False):
                 instance = RMSNorm2D(
                     hidden_size,
                     eps=eps,

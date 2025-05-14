@@ -38,8 +38,11 @@ class OptimizeSendRecvCommFeature(MindSpeedFeature):
         args: Namespace,
     ):
         # pylint: disable=import-outside-toplevel
-        from mindspeed.core.pipeline_parallel.optimize_send_recv_comm.adaptor import \
-            mindspeed_get_forward_backward_func  # noqa
+        from mindspeed.core.pipeline_parallel.optimize_send_recv_comm.adaptor import (
+            mindspeed_get_forward_backward_func,
+            mindspeed_initialize_model_parallel_wrapper,
+            mindspeed_destroy_model_parallel_wrapper,
+        )
 
         if getattr(args, self.feature_name, None):
             if (
@@ -49,4 +52,12 @@ class OptimizeSendRecvCommFeature(MindSpeedFeature):
                 patch_manager.register_patch(
                     "megatron.core.pipeline_parallel.schedules.get_forward_backward_func",  # noqa
                     mindspeed_get_forward_backward_func,
+                )
+                patch_manager.register_patch(
+                    "megatron.core.parallel_state.initialize_model_parallel",
+                    mindspeed_initialize_model_parallel_wrapper,
+                )
+                patch_manager.register_patch(
+                    "megatron.core.parallel_state.destroy_model_parallel",
+                    mindspeed_destroy_model_parallel_wrapper,
                 )

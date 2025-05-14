@@ -433,9 +433,9 @@ def forward_backward_pipelining_without_interleaving(
     global scheduler_plan
     arguments = get_args()
     key = 'stage{}'.format(parallel_state.get_pipeline_model_parallel_rank())
-    if scheduler_plan is None and arguments.pp_schedule_list:
+    if scheduler_plan is None and getattr(arguments, "pp_schedule_list", None):
         scheduler_plan = arguments.pp_schedule_list.get(key)
-    elif scheduler_plan is None and arguments.pp_schedule_list is None:
+    elif scheduler_plan is None and getattr(arguments, "pp_schedule_list", None) is None:
         scheduler_plan = generate_1f1b_scheduler_plan(parallel_state.get_pipeline_model_parallel_world_size(),
                                                       num_microbatches)
         scheduler_plan = scheduler_plan.get(key)

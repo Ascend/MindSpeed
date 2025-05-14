@@ -13,27 +13,40 @@ from megatron.core.enums import ModelType
 from megatron.core.parallel_state import (
     get_pipeline_model_parallel_world_size,
     get_virtual_pipeline_model_parallel_world_size,
-    is_pipeline_stage_after_split)
-from megatron.core.pipeline_parallel.p2p_communication import \
-    recv_backward as recv_backward_
-from megatron.core.pipeline_parallel.p2p_communication import \
-    recv_forward as recv_forward_
-from megatron.core.pipeline_parallel.p2p_communication import \
-    send_backward as send_backward_
-from megatron.core.pipeline_parallel.p2p_communication import \
-    send_backward_recv_forward as send_backward_recv_forward_
-from megatron.core.pipeline_parallel.p2p_communication import \
-    send_forward as send_forward_
-from megatron.core.pipeline_parallel.p2p_communication import \
-    send_forward_recv_backward as send_forward_recv_backward_
-from mindspeed.core.pipeline_parallel.multiparameter_schedules import \
-    forward_backward_pipelining_with_interleaving
+    is_pipeline_stage_after_split,
+)
+from megatron.core.pipeline_parallel.p2p_communication import (
+    recv_backward as recv_backward_,
+)
+from megatron.core.pipeline_parallel.p2p_communication import (
+    recv_forward as recv_forward_,
+)
+from megatron.core.pipeline_parallel.p2p_communication import (
+    send_backward as send_backward_,
+)
+from megatron.core.pipeline_parallel.p2p_communication import (
+    send_backward_recv_forward as send_backward_recv_forward_,
+)
+from megatron.core.pipeline_parallel.p2p_communication import (
+    send_forward as send_forward_,
+)
+from megatron.core.pipeline_parallel.p2p_communication import (
+    send_forward_recv_backward as send_forward_recv_backward_,
+)
+from mindspeed.core.pipeline_parallel.multiparameter_schedules import (
+    forward_backward_pipelining_with_interleaving,
+)
 
 from .common import Config
-from .communication import (backward_step_impl, recv_backward_impl,
-                            recv_forwrard_impl, send_backward_impl,
-                            send_backward_recv_forward_impl, send_forward_impl,
-                            send_forward_recv_backward_impl)
+from .communication import (
+    backward_step_impl,
+    recv_backward_impl,
+    recv_forwrard_impl,
+    send_backward_impl,
+    send_backward_recv_forward_impl,
+    send_forward_impl,
+    send_forward_recv_backward_impl,
+)
 
 
 def get_tensor_shapes_wrapper(fn):

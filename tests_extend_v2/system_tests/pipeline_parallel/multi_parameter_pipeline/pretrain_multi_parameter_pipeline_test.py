@@ -101,6 +101,16 @@ class MultiParamSimpleModel(nn.Module):
 
 def model_provider(pre_process=True, post_process=True):
     args = get_args()
+    args.pipeline_tensor_shapes = [
+        {
+            "shape": (args.micro_batch_size, args.hidden_size),
+            "dtype": torch.float32,
+        },
+        {
+            "shape": (args.micro_batch_size, args.hidden_size),
+            "dtype": torch.float32,
+        },
+    ]
     config = core_transformer_config_from_args(args)
     model = MultiParamSimpleModel(args.hidden_size)
     model.config = config
@@ -124,16 +134,6 @@ def model_provider(pre_process=True, post_process=True):
         if pp_rank == pp_size - 1:
             model.post_process = True
 
-    args.pipeline_tensor_shapes = [
-        {
-            "shape": (args.micro_batch_size, args.hidden_size),
-            "dtype": torch.float32,
-        },
-        {
-            "shape": (args.micro_batch_size, args.hidden_size),
-            "dtype": torch.float32,
-        },
-    ]
     setattr(
         forward_step,
         "pipeline_tensor_shapes",
