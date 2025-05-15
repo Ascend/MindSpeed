@@ -92,6 +92,3 @@ class TP2dFeature(MindSpeedFeature):
         # mcore_transformer_adaptation(l2)
         from mindspeed.core.transformer.module import megatron_module_init_wrapper
         patch_manager.register_patch('megatron.core.transformer.module.MegatronModule.__init__', megatron_module_init_wrapper)
-
-        from mindspeed.utils import get_batch_on_this_cp_rank
-        patch_manager.register_patch('megatron.training.utils.get_batch_on_this_cp_rank', get_batch_on_this_cp_rank)

@@ -67,7 +67,7 @@ class PTNorm:
                     eps=eps,
                     last_dim_split_comm_intf=TPYCollectiveComm(),
                 )
-                instance.config.use_fused_rmsnorm = False
+                instance.use_fused_rmsnorm = False
             else:
                 from mindspeed.core.fusions.fused_rms_norm import RMSNorm
                 instance = RMSNorm(dim=hidden_size, eps=eps, sequence_parallel=config.sequence_parallel, config=config)

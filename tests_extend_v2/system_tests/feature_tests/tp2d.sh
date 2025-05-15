@@ -83,7 +83,8 @@ GPT_ARGS="
     --group-query-attention \
     --num-query-groups 8 \
     --lr-warmup-fraction 0.01 \
-    --bf16
+    --bf16 \
+    --context-parallel-algo ulysses_cp_algo
 "
 
 DATA_ARGS="
