@@ -101,46 +101,21 @@ OUTPUT_ARGS="
     --eval-interval 50 \
     --eval-iters 10 \
 "
-time=$(date +%Y_%m%d_%H%M)
-LOG_DIR="/home/d00568668/logs/core0.10.0"
-if [ -d "$LOG_DIR" ]; then
-    # do nothing
-    :
-else
-    mkdir -p $LOG_DIR
-fi
-name=${time}_coc
+
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
     $RECOMPUTE_ARGS \
     $DATA_ARGS \
-    --use-fused-swiglu \
     $OUTPUT_ARGS \
     --exit-interval 50 \
-    --ckpt-format torch | tee $LOG_DIR/${name}_v1.log
+    --save $CKPT_DIR \
+    --ckpt-format torch \
 
-torchrun $DISTRIBUTED_ARGS pretrain_gpt_v2.py \
+torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
     $RECOMPUTE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
-    --exit-interval 50 \
-    --ckpt-format torch | tee $LOG_DIR/${name}_v2.log
-
-#torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
-#    $GPT_ARGS \
-#    $RECOMPUTE_ARGS \
-#    $DATA_ARGS \
-#    $OUTPUT_ARGS \
-#    --exit-interval 50 \
-#    --ckpt-format torch | tee $LOG_DIR/${name}.log
-
-#torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
-#    $GPT_ARGS \
-#    $RECOMPUTE_ARGS \
-#    $DATA_ARGS \
-#    $OUTPUT_ARGS \
-#    --load $CKPT_DIR
-
+    --load $CKPT_DIR
 
 set +x

@@ -20,11 +20,20 @@ class RiPipeSchedulesFeature(MindSpeedFeature):
             raise AssertionError('{} and {} are incompatible.'.format(self.feature_name, "ampipe"))
 
     def register_patches(self, patch_manager, args):
-        if args.recompute_in_bubble is None and args.recompute_in_advance is None:
+        if not args.recompute_in_bubble and not args.recompute_in_advance:
             return
+        from mindspeed.core.tensor_parallel.random import checkpoint_wrapper
+        from mindspeed.core.memory.common import linear_forward_main_grad_wrapper, linear_backward_main_grad_wrapper
+        patch_manager.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
         from mindspeed.core.pipeline_parallel.ripipe_schedules import get_forward_backward_func_ripipe_patch
         patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
                                      get_forward_backward_func_ripipe_patch)
+        patch_manager.register_patch(
+            'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
+            linear_forward_main_grad_wrapper)
+        patch_manager.register_patch(
+            'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
+            linear_backward_main_grad_wrapper)
 
 
 class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
@@ -45,12 +54,12 @@ class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
                 raise AssertionError('recompute_num_layers must be None or 0 when using recompute_in_bubble')
             if args.pipeline_model_parallel_size <= 1 or args.num_layers_per_virtual_pipeline_stage is None:
                 raise AssertionError('recompute_in_bubble only support pipelining with interleaving')
-            if getattr(args, "swap_attention", None) is None:
+            if not getattr(args, "swap_attention", False):
                 # Following is a trick to realize bubble recomputation. We first enable all recomputation,
                 # and then disable recomputation for all layers except the ones chosen for bubble recomputation.
                 args.recompute_granularity = "full"
                 args.recompute_method = "block"
-            if getattr(args, "enable_recompute_layers_per_pp_rank", None) is not None:
+            if getattr(args, "enable_recompute_layers_per_pp_rank", False):
                 args.recompute_num_layers = args.num_layers // args.pipeline_model_parallel_size
             else:
                 args.recompute_num_layers = args.num_layers_per_virtual_pipeline_stage

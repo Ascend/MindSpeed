@@ -21,7 +21,7 @@ def transformer_block_checkpointed_forward_wrapper(forward_func):
     @wraps(forward_func)
     def row_parallel_forward(*args, **kwargs):
         global_args = get_args()
-        if global_args.recompute_method != 'block' and not global_args.swap_attention:
+        if global_args.recompute_method != 'block' and not getattr(args, 'swap_attention', False):
             output = forward_func(*args, **kwargs)
         else:
             output = transformer_block_checkpointed_forward(*args, **kwargs)

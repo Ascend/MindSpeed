@@ -1,3 +1,4 @@
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
@@ -12,3 +13,9 @@ class EnableRecomputeLayersPerPPRank(MindSpeedFeature):
                            help='If enabled, --recompute-num-layers will mean the number of '
                            'layers recomputed in each pp rank. Otherwise it means the number '
                            'of layers recomputed in each vpp rank.')
+
+    def register_patches(self, patch_manager, args):
+        from mindspeed.core.memory.common import transformer_block_checkpointed_forward
+        patch_manager.register_patch(
+            'megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
+            transformer_block_checkpointed_forward)
