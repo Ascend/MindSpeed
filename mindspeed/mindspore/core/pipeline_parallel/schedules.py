@@ -6,6 +6,7 @@
 
 import contextlib
 from typing import Iterator, List, Union
+from functools import lru_cache
 
 from mindspore.ops import composite as C
 from mindspore.common.api import _pynative_executor
@@ -205,7 +206,6 @@ def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, c
     # NOTE: This code currently can handle at most one skip connection. It
     # needs to be modified slightly to support arbitrary numbers of skip
     # connections.
-
     if config.timers is not None:
         config.timers('backward-compute', log_level=2).start()
 
@@ -233,9 +233,8 @@ def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, c
 
     # run backward
     grad_ = C.GradOperation(True, True, True)
-    weights = model.trainable_params()
-    _pynative_executor.check_run(grad_, config.forward_step_func, weights, None, input_tensor[0])
-    _pynative_executor.grad(config.forward_step_func, grad_, weights, None, input_tensor[0], output_tensor_grad[0])
+    _pynative_executor.check_run(grad_, config.forward_step_func, None, None, input_tensor[0])
+    _pynative_executor.grad(config.forward_step_func, grad_, None, None, input_tensor[0], output_tensor_grad[0])
 
     # Collect the grad of the input_tensor.
     input_tensor_grad = [None]
