@@ -18,5 +18,8 @@ Token路由：确定每个token应该由哪个专家处理。这可以通过专�
 `--num-experts N \`</br>
 满足以上前提时，设置`--use-fused-moe-token-permute-and-unpermute`即可调用Moe Token Permute和Unpermute融合算子。
 
+### 备注
+该融合算子不支持moe-expert-capacity-factor和moe-pad-expert-input-to-capacity。
+
 ## 使用效果 
 启用融合算子后，不仅能够有效节省内存资源，还能提升模型训练性能。

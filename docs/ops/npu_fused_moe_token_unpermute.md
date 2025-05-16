@@ -146,7 +146,7 @@ def unpermute(
 **备注**：
 1. 目前仅支持padded_mode为False
 2. 目前仅支持bfloat16
-
+3. 不支持moe-expert-capacity-factor和moe-pad-expert-input-to-capacity
 
 ## 案例
 
