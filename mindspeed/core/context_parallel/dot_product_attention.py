@@ -144,11 +144,14 @@ class CPDotProductAttentionImpl:
         if attention_mask is None and self.attn_mask_type == AttnMaskType.causal:
             if not getattr(self.config, 'is_llava', False):
                 attention_mask = get_attention_mask()
-        if self.config.attention_mask_type == 'causal':
-            self.config.sparse_mode = 2
-        if self.config.reset_attention_mask:
-            if self.config.attention_mask_type == 'general':
-                self.config.sparse_mode = 2
+                if self.config.attention_mask_type == 'causal':
+                    self.config.sparse_mode = 2
+                if self.config.reset_attention_mask:
+                    if self.config.attention_mask_type == 'general':
+                        self.config.sparse_mode = 2
+                        if not (self.config.context_parallel_size == 1 or self.config.context_parallel_algo == 'ulysses_cp_algo'):
+                            self.config.sparse_mode = 1
+
         sparse_mode = self.config.sparse_mode
         assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
 
