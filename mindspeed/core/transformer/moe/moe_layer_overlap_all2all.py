@@ -7,6 +7,7 @@ from megatron.core.transformer.moe.moe_utils import permute, save_to_aux_losses_
 from megatron.core.parallel_state import (get_tensor_model_parallel_group, 
                                           get_tensor_model_parallel_world_size, 
                                           get_expert_tensor_and_model_parallel_group,
+                                          get_expert_tensor_and_model_parallel_world_size,
                                           get_expert_model_parallel_group)
 from mindspeed.moe.utils import MoEAuxLossAutoScaler
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather
@@ -262,7 +263,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                         num_global_tokens_per_local_expert_cpu.ravel(),
                         sort_input_by_local_experts,
                     )
-                    if not moe_tp_extend_ep and get_expert_tensor_and_model_parallel_group() > 1 and ctx.moe_grouped_gemm:
+                    if not moe_tp_extend_ep and get_expert_tensor_and_model_parallel_world_size() > 1 and ctx.moe_grouped_gemm:
                         global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
                             global_input_tokens
                         )

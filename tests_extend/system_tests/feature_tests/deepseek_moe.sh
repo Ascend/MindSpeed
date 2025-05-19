@@ -36,7 +36,6 @@ MOE_ARGS="
     --moe-tp-extend-ep \
     --moe-grouped-gemm \
     --moe-permutation-async-comm \
-    --use-fused-moe-token-permute-and-unpermute \
     --n-shared-experts 1 \
     --num-experts 32 \
     --moe-router-topk 4 \
