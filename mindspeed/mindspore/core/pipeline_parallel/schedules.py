@@ -52,6 +52,7 @@ def forward_step(
     checkpoint_activations_microbatch=None,
     is_first_microbatch=False,
     current_microbatch=None,
+    forward_only=False,
 ):
     """Forward step for passed-in model.
 
@@ -134,8 +135,9 @@ def forward_step(
         context_manager = torch.autocast("cuda", dtype=config.autocast_dtype)
     else:
         context_manager = contextlib.nullcontext()
-    _pynative_executor.set_grad_flag(True)
-    _pynative_executor.new_graph(forward_step_func, input_tensor[0])
+    if not forward_only:
+        _pynative_executor.set_grad_flag(True)
+        _pynative_executor.new_graph(forward_step_func, input_tensor[0])
     with context_manager:
         if checkpoint_activations_microbatch is None:
             output_tensor, loss_func = forward_step_func(data_iterator, model)
@@ -162,7 +164,9 @@ def forward_step(
         else:
             data = loss_func(output_tensor, non_loss_data=True)
             forward_data_store.append(data)
-    _pynative_executor.end_graph(forward_step_func, output_tensor, input_tensor[0])
+            output_tensor = None
+    if not forward_only:
+        _pynative_executor.end_graph(forward_step_func, output_tensor, input_tensor[0])
 
     if config.timers is not None:
         config.timers('forward-compute').stop()
@@ -325,6 +329,7 @@ def forward_backward_no_pipelining(
                 collect_non_loss_data,
                 is_first_microbatch=check_first_val_step(first_val_step, forward_only, i == 0),
                 current_microbatch=i,
+                forward_only=forward_only,
             )
             total_num_tokens += num_tokens.item()
             if not forward_only:
@@ -345,6 +350,7 @@ def forward_backward_no_pipelining(
             first_val_step, forward_only, num_microbatches == 1
         ),
         current_microbatch=num_microbatches - 1,
+        forward_only=forward_only,
     )
     total_num_tokens += num_tokens.item()
 
@@ -596,6 +602,7 @@ def forward_backward_pipelining_with_interleaving(
                 is_first_microbatch_for_model_chunk(microbatch_id),
             ),
             current_microbatch=current_microbatch,
+            forward_only=forward_only,
         )
         output_tensors[model_chunk_id].append(output_tensor)
 
@@ -1126,6 +1133,7 @@ def forward_backward_pipelining_without_interleaving(
             checkpoint_activations_microbatch,
             check_first_val_step(first_val_step, forward_only, i == 0),
             current_microbatch=i,
+            forward_only=forward_only,
         )
         send_forward(output_tensor, send_tensor_shapes, config)
         total_num_tokens += num_tokens.item()
@@ -1167,6 +1175,7 @@ def forward_backward_pipelining_without_interleaving(
                 first_val_step, forward_only, (i == 0) and (num_warmup_microbatches == 0)
             ),
             current_microbatch=i + num_warmup_microbatches,
+            forward_only=forward_only,
         )
         total_num_tokens += num_tokens.item()
 
