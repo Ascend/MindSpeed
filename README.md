@@ -105,9 +105,12 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
      from typing import Union
     ```
 
-2. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
+2. （可选）若未准备好相应训练数据，则需进行数据集的下载及处理供后续使用。数据集准备流程可参考
+<a href="https://www.hiascend.com/document/detail/zh/Pytorch/700/modthirdparty/Mindspeedguide/mindspeed_0003.html">数据集处理</a>。
+
+3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。以下示例脚本可供参考。
     ```shell
-    bash examples/gpt3/train_gpt3_175b_distributed.sh
+    MindSpeed/tests_extend/example/train_distributed.sh
     ```
 ---
 # 自定义优化级别
