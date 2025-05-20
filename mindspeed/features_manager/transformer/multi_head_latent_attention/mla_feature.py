@@ -8,16 +8,10 @@ from mindspeed.patch_utils import MindSpeedPatchesManager
 
 
 class MLAFeature(MindSpeedFeature):
-    """
-    Multi-Head Latent Attention feature.
-
-    Arguments(other):
-        - use_flash_attn
-    """
 
     def __init__(self):
         super().__init__(
-            'multi-head-latent-attention',
+            'multi-latent-attention',
             optimization_level=2
         )
 
@@ -47,59 +41,10 @@ class MLAFeature(MindSpeedFeature):
             help='The qk head dim for only self-attn'
         )
 
-        # yarn arguments
-        group.add_argument(
-            '--rope-scaling-type',
-            type=str,
-            default=None,
-            choices=['yarn', ],
-            help='Set the rope scaling type, only support "yarn" type now'
-        )
-        group.add_argument(
-            '--rope-scaling-beta-fast',
-            type=int,
-            default=32,
-            help='Yarn rope: rope beta fast'
-        )
-        group.add_argument(
-            '--rope-scaling-beta-slow',
-            type=int,
-            default=1,
-            help='Yarn rope: rope beta slow'
-        )
-        # megatron has similar argument，only default is not same
-        group.add_argument(
-            '--rope-scaling-factor',
-            type=float,
-            default=1.0,
-            help='Yarn rope: rope factor'
-        )
-        group.add_argument(
-            '--rope-scaling-mscale',
-            type=float,
-            default=1.0,
-            help='Yarn rope: rope mscale'
-        )
-        group.add_argument(
-            '--rope-scaling-mscale-all-dim',
-            type=float,
-            default=0.0,
-            help='Yarn rope: rope mscale all dim'
-        )
-        group.add_argument(
-            '--rope-scaling-original-max-position-embeddings',
-            type=int,
-            default=None,
-            help='Yarn rope: rope original max position embeddings'
-        )
-
-        group.add_argument(
-            '--shape-order',
-            type=str,
-            default='SBH',
-            choices=['SBH', 'BSH', 'BSND'],
-            help='input shape order used by Flash attention'
-        )
+    def is_need_apply(self, args):
+        return (self.optimization_level <= args.optimization_level and
+                (getattr(args, self.feature_name, None) or getattr(args, "multi_head_latent_attention", None))) \
+            or self.default_patches
 
     def validate_args(self, args: Namespace):
         if args.multi_head_latent_attention:
@@ -123,47 +68,28 @@ class MLAFeature(MindSpeedFeature):
                     'The parameter qk-nope-head-dim should be '
                     'set when use multi_head_latent_attention.'
                 )
-        if args.rope_scaling_type == "yarn":
-            if args.rope_scaling_original_max_position_embeddings is None:
-                raise AssertionError(
-                    'The parameter '
-                    'rope_scaling_original_max_position_embeddings '
-                    'should be set when use yarn.'
-                )
+
+            # map the mindspeed argument to megatron
+            args.qk_head_dim = args.qk_nope_head_dim
+            args.qk_pos_emb_head_dim = args.qk_rope_head_dim
+
+            if not args.multi_latent_attention and args.multi_head_latent_attention:
+                args.multi_latent_attention = args.multi_head_latent_attention
+
 
     def register_patches(
             self,
             patch_manager: MindSpeedPatchesManager,
             args: Namespace
     ):
-        # pylint: disable=import-outside-toplevel
-        from mindspeed.core.transformer.multi_head_latent_attention.adaptor import (
-            SelfAttentionSubmodules,
-            self_attention_init_wrapper,
-            attention_forward,
+        from mindspeed.core.transformer.multi_head_latent_attention import (
+            multi_latent_attention_init_impl,
             dot_product_attention_init_wrapper,
-            get_gpt_layer_local_spec_wrapper,
-            rotary_embedding_init_wrapper,
         )
-        patch_manager.register_patch('megatron.core.transformer.attention.SelfAttentionSubmodules',
-                                     SelfAttentionSubmodules)
-        patch_manager.register_patch(
-            'megatron.core.transformer.attention.SelfAttention.__init__',
-            self_attention_init_wrapper
-        )
-        patch_manager.register_patch(
-            "megatron.core.transformer.attention.Attention.forward",
-            attention_forward
-        )
+        patch_manager.register_patch('megatron.core.transformer.multi_latent_attention.MultiLatentAttention.__init__',
+                                     multi_latent_attention_init_impl)
         patch_manager.register_patch(
             'megatron.core.transformer.dot_product_attention.DotProductAttention.__init__',
             dot_product_attention_init_wrapper
         )
-        patch_manager.register_patch(
-            'megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_local_spec',
-            get_gpt_layer_local_spec_wrapper
-        )
-        patch_manager.register_patch(
-            'megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__',
-            rotary_embedding_init_wrapper
-        )
+
