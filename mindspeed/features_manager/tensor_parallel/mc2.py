@@ -23,15 +23,19 @@ class MC2Feature(MindSpeedFeature):
             if getattr(args, 'use_ascend_coc', None):
                 raise AssertionError('mc2 and coc can not be used together')
             if not args.sequence_parallel or args.tensor_model_parallel_size == 1:
-                warnings.warn("The use_ascend_mc2 feature requires tp to be greater than 1 and sequence_parallel is "
-                              "enabled. However, currently tp is equal to 1 or sequence parallelism is not enabled, "
-                              "and use_ascend_mc2 feature has been disabled.")
+                warnings.warn("The 'mc2' feature requires both the Tensor Model Parallel (TP) size to be greater than 1 "
+                              "and Sequence Parallelism to be enabled. Currently, either the TP size is set to 1 or "
+                              "Sequence Parallelism is disabled. As a consequence, the 'mc2' feature has been "
+                              "automatically disabled. Please ensure that you configure the TP size to be greater than "
+                              "1 and enable Sequence Parallelism to utilize the 'mc2' feature.")
             if getattr(args, 'use_pipe_experts', None):
                 raise AssertionError('mc2 is not compatible with use_pipe_experts')
             if getattr(args, 'use_nanopipe', None):
                 raise AssertionError('mc2 is not compatible with use_nanopipe')
 
     def register_patches(self, patch_manager, args):
+        if not args.sequence_parallel or int(args.tensor_model_parallel_size) == 1:
+            return
         from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2ColumnParallelLinear
         from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2RowParallelLinear
         patch_manager.register_patch('megatron.core.tensor_parallel.layers.ColumnParallelLinear',
