@@ -142,10 +142,14 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
   ```
 则需修改Megatron相应代码，或使用python 3.9及以上版本以适应Megatron原生接口的变动。
 
-3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。
+3. （可选）若未准备好相应训练数据，则需进行数据集的下载及处理供后续使用。数据集准备流程可参考
+<a href="https://www.hiascend.com/document/detail/zh/Pytorch/700/modthirdparty/Mindspeedguide/mindspeed_0003.html">数据集处理</a>。
+
+4. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。以下示例脚本可供参考。
   ```shell
-  bash examples/gpt3/train_gpt3_175b_distributed.sh
+  MindSpeed/tests_extend/example/train_distributed.sh
   ```
+
 ---
 # 自定义优化级别
 MindSpeed 提供了多层次的优化解决方案，并划分为三个层级，用户可根据实际需求灵活启用任意层级。高层级兼容低层级的能力，确保了整个系统的稳定性和扩展性。
