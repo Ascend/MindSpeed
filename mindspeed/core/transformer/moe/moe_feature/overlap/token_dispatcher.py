@@ -131,7 +131,7 @@ class MoEAlltoAllSeqOverLapDispatcher:
     
             if self.cuda_sync_point == "before_permutation_1":
                 torch.cuda.current_stream().synchronize()
-            permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
+            permutated_local_input_tokens, _, reversed_local_input_permutation_mapping = permute(
                 hidden_states,
                 routing_map,
                 num_out_tokens=self.num_out_tokens,
@@ -179,7 +179,7 @@ class MoEAlltoAllSeqOverLapDispatcher:
         def alltoall_token_permutation2(global_input_tokens):
             # Permutation 2: Sort tokens by local expert.
             if self.num_local_experts > 1:
-                global_input_tokens = sort_chunks_by_idxs(
+                global_input_tokens, _ = sort_chunks_by_idxs(
                     global_input_tokens,
                     self.num_global_tokens_per_local_expert_cpu.ravel(),
                     self.sort_input_by_local_experts,
@@ -241,7 +241,7 @@ class MoEAlltoAllSeqOverLapDispatcher:
 
             # Unpermutation 2: expert output to AlltoAll input
             if self.num_local_experts > 1:
-                hidden_states = sort_chunks_by_idxs(
+                hidden_states, _ = sort_chunks_by_idxs(
                     hidden_states,
                     self.num_global_tokens_per_local_expert_cpu.T.ravel(),
                     self.restore_output_by_local_experts,
@@ -387,7 +387,7 @@ class MoEAllGatherOverLapDispatcher:
         ghs_handle.wait()
         self.hidden_shape_before_permute = global_hidden_states.shape
 
-        (permuted_local_hidden_states, self.reversed_local_input_permutation_mapping) = permute(
+        (permuted_local_hidden_states, _, self.reversed_local_input_permutation_mapping) = permute(
             global_hidden_states, self.local_map
         )
         return (

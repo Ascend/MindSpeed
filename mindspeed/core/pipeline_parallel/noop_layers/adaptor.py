@@ -127,6 +127,10 @@ def mindspeed_track_moe_metrics(
     wandb_writer=None,
     total_loss_dict: Optional[dict] = None,
     per_layer_logging: bool = False,
+    force_initialize: bool = False,
+    track_names: Optional[List[str]] = None,
+    num_layers: Optional[int] = None,
+    moe_layer_freq: Optional[Union[int, List[int]]] = None,
 ):
     """Adaptor to track moe metrics of training.
 

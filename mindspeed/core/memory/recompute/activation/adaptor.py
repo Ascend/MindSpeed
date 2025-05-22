@@ -7,7 +7,7 @@ from megatron.core.fusions.fused_bias_gelu import bias_gelu_impl
 from mindspeed.core.memory.recompute.activation.activation_recompute_forward import core_activation_recompute_forward_impl
 
 
-def mindspeed_activation_recompute_forward(self, hidden_states):
+def mindspeed_activation_recompute_forward(self, hidden_states, per_token_scale=None):
     """MLP.
     Core impl, MLP will take the input with h hidden state, project it to 4*h
     hidden dimension, perform nonlinear transformation, and project the
