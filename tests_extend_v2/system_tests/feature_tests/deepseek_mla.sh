@@ -16,7 +16,7 @@ TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
 TP=1     # MLA only support TP1
 PP=2
-CP=2
+CP=1
 EP=2
 
 DISTRIBUTED_ARGS="
@@ -45,24 +45,16 @@ MOE_ARGS="
 "
 
 MLA_ARGS="
-    --multi-head-latent-attention \
-    --qk-rope-head-dim 64 \
-    --qk-nope-head-dim 128 \
+    --multi-latent-attention \
+    --qk-pos-emb-head-dim 64 \
+    --qk-head-dim 128 \
     --q-lora-rank 1536 \
     --kv-lora-rank 512 \
     --v-head-dim 128 \
     --qk-layernorm \
+    --rotary-scaling-factor 40 \
 "
 
-ROPE_ARGS="
-    --rope-scaling-beta-fast 32 \
-    --rope-scaling-beta-slow 1 \
-    --rope-scaling-factor  40 \
-    --rope-scaling-mscale 0.707 \
-    --rope-scaling-mscale-all-dim  0.707 \
-    --rope-scaling-original-max-position-embeddings 4096 \
-    --rope-scaling-type yarn
-"
 
 GPT_ARGS="
     --transformer-impl local \
@@ -106,8 +98,6 @@ GPT_ARGS="
     --attention-softmax-in-fp32 \
     --no-gradient-accumulation-fusion \
     --bf16 \
-    --group-query-attention \
-    --num-query-groups 8 \
     --lr 2.0e-4 \
     --min-lr 2.0e-4 \
     --weight-decay 0.1 \
@@ -116,6 +106,7 @@ GPT_ARGS="
     --adam-beta2 0.95 \
     --rotary-base 100000 \
     --norm-epsilon 1.0e-5 \
+    --npu-deterministic \
 "
 
 DATA_ARGS="
@@ -136,7 +127,6 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $RECOMPUTE_ARGS \
     $MOE_ARGS \
     $MLA_ARGS \
-    $ROPE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
 

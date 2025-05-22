@@ -118,6 +118,3 @@ def dot_product_attention_init_wrapper(fn):
         self.hidden_size_per_partition_head = divide(projection_size, config.num_attention_heads)
 
     return wrapper
-
-
-
