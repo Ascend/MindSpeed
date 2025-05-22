@@ -3,7 +3,7 @@
 
 import torch
 from torch.autograd import recompute_instance
-
+from torch.utils.checkpoint import detach_variable
 from megatron.core.tensor_parallel import get_cuda_rng_tracker
 
 from megatron.core.utils import safely_set_viewless_tensor_data
@@ -88,3 +88,84 @@ def checkpoint_function_forward(ctx, run_function, distribute_saved_activations,
     return outputs
 
 
+class CheckpointFunctionWithoutOutput(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, run_function, checkpoint, *args):
+        with torch.no_grad():
+            outputs = run_function(*args)
+
+        # Store everything
+        ctx.save_for_backward(*detach_variable(args))
+        checkpoint.ctx = ctx
+
+        return outputs
+
+    @staticmethod
+    def backward(ctx, *args):
+        inputs = ctx.saved_tensors
+        grads = ctx.f_vjp(args)
+        ctx.outputs = None
+        ctx.f_vjp = None
+        return (None, None) + grads
+
+
+class CheckpointWithoutOutput:
+    def __init__(self):
+        self.run_function = None
+        self.fwd_cpu_rng_state = None
+        self.fwd_cuda_rng_state = None
+        self.fwd_cuda_rng_state_tracker = None
+        self.outputs = None
+
+    def checkpoint(self, run_function, distribute_saved_activations, *args):
+        self.run_function = run_function
+
+        if distribute_saved_activations:
+            raise RuntimeError(
+                "CheckpointFunctionWithoutOutput does not support "
+                "distribute_saved_activations"
+            )
+
+        #Copy the rng states.
+        self.fwd_cpu_rng_state = torch.get_rng_state()
+        self.fwd_cuda_rng_state = torch.cuda.get_rng_state()
+        self.fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
+
+        outputs = CheckpointFunctionWithoutOutput.apply(run_function, self, *args)
+        self.outputs = outputs
+        if isinstance(self.outputs, torch.Tensor):
+            self.outputs = (self.outputs,)
+
+        return outputs
+
+    def discard_output(self):
+        for output in self.outputs:
+            output.untyped_storage().resize_(0)
+
+    def recompute(self, _):
+        if not torch.autograd._is_checkpoint_valid():
+            raise RuntimeError(
+                "Checkpointing is not compatible with .grad(), "
+                "please use .backward() if possible"
+            )
+
+        with torch.enable_grad():
+            outputs, f_vjp = torch.autograd.vjp(self.run_function, *self.ctx.saved_tensors)
+        self.run_function = None
+        self.fwd_cpu_rng_state = None
+        self.fwd_cuda_rng_state = None
+        self.fwd_cuda_rng_state_tracker = None
+
+        if isinstance(outputs, torch.Tensor):
+            outputs = (outputs,)
+
+        for output, recomputation_output in zip(self.outputs, outputs):
+            output_size = recomputation_output.untyped_storage().size()
+            output.untyped_storage().resize_(output_size)
+            with torch.no_grad():
+                output.untyped_storage().copy_(recomputation_output.untyped_storage())
+
+        self.ctx.outputs = outputs
+        self.ctx.f_vjp = f_vjp
+        self.outputs = None
+        self.ctx = None

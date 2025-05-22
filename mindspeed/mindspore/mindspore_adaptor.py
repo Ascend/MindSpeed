@@ -58,3 +58,8 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.forward', checkpoint_function_forward)
     aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
                         checkpoint_function_backward)
+
+    from .core.tensor_parallel.random import CheckpointWithoutOutput, CheckpointFunctionWithoutOutput
+    aspm.register_patch('mindspeed.core.tensor_parallel.random.CheckpointWithoutOutput', CheckpointWithoutOutput)
+    aspm.register_patch('mindspeed.core.tensor_parallel.random.CheckpointFunctionWithoutOutput',
+                        CheckpointFunctionWithoutOutput)
