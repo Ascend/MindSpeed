@@ -49,3 +49,13 @@ class MegatronBasicFeature(MindSpeedFeature):
                               ColumnParallelLinear, create_dummy=True)
             pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear', RowParallelLinear,
                               create_dummy=True)
+        # Currently, it is not supported to Cast shard fp32 main params to fp8 model params
+        from mindspeed.core.fp8_utils import quantize_param_shard
+        pm.register_patch('megatron.core.fp8_utils.quantize_param_shard', quantize_param_shard)
+
+        # fix get_megatron_optimizer for core_r0.12.0
+        from mindspeed.core.megatron_basic.get_megatron_optimizer import get_megatron_optimizer
+        pm.register_patch('megatron.core.optimizer.get_megatron_optimizer', get_megatron_optimizer)
+
+        from mindspeed.training import get_device_arch_version
+        pm.register_patch('megatron.training.utils.get_device_arch_version', get_device_arch_version)

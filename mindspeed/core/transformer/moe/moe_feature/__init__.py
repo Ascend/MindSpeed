@@ -7,7 +7,7 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.moe import grouped_gemm_util
-from megatron.core.transformer.spec_utils import build_module
+from megatron.core.transformer.spec_utils import build_module, ModuleSpec
 
 from megatron.core.transformer.moe.moe_utils import (
     permute,

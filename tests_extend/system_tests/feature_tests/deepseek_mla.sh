@@ -16,7 +16,7 @@ TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
 
 TP=1     # MLA only support TP1
 PP=2
-CP=2
+CP=1
 EP=2
 
 DISTRIBUTED_ARGS="
@@ -53,6 +53,7 @@ MLA_ARGS="
     --kv-lora-rank 512 \
     --v-head-dim 128 \
     --qk-layernorm \
+    --rotary-scaling-factor 40 \
 "
 
 ROPE_ARGS="
@@ -75,6 +76,7 @@ GPT_ARGS="
     --use-fused-rotary-pos-emb \
     --use-fused-swiglu \
     --use-fused-rmsnorm \
+    --reuse-fp32-param \
     --sequence-parallel \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
@@ -106,8 +108,6 @@ GPT_ARGS="
     --attention-softmax-in-fp32 \
     --no-gradient-accumulation-fusion \
     --bf16 \
-    --group-query-attention \
-    --num-query-groups 8 \
     --lr 2.0e-4 \
     --min-lr 2.0e-4 \
     --weight-decay 0.1 \
@@ -116,6 +116,7 @@ GPT_ARGS="
     --adam-beta2 0.95 \
     --rotary-base 100000 \
     --norm-epsilon 1.0e-5 \
+    --npu-deterministic \
 "
 
 DATA_ARGS="

@@ -1,7 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import pytest
 import torch
-from mindspeed import megatron_adaptor
+from mindspeed import megatron_adaptor_v2
 from mindspeed.core.multi_modal.dist_train import dist_train_config as config
 from mindspeed.core.multi_modal.dist_train.dist_parallel_state import initialize_model_parallel, \
     reset_global_group_and_ranks

@@ -32,6 +32,7 @@ RECOMPUTE_ARGS="
 "
 
 GPT_ARGS="
+    --context-parallel-algo ulysses_cp_algo \
     --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \

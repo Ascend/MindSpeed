@@ -5,9 +5,10 @@ Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 """
 
 from argparse import Namespace
-from typing import Optional
+from typing import Optional, List, Union
 
 from megatron.core import InferenceParams
+from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.parallel_state import get_moe_layer_wise_logging_tracker
 from megatron.core.transformer.module import MegatronModule
@@ -45,15 +46,18 @@ class NoopTransformerLayer(MegatronModule):
     def forward(
         self,
         hidden_states: Tensor,
-        attention_mask: Tensor,
+        attention_mask: Optional[Tensor],
         context: Optional[Tensor] = None,
         context_mask: Optional[Tensor] = None,
         rotary_pos_emb: Optional[Tensor] = None,
         rotary_pos_cos: Optional[Tensor] = None,
         rotary_pos_sin: Optional[Tensor] = None,
         attention_bias: Optional[Tensor] = None,
-        inference_params: Optional[InferenceParams] = None,
+        inference_context: Optional[BaseInferenceContext] = None,
         packed_seq_params: Optional[PackedSeqParams] = None,
+        sequence_len_offset: Optional[Tensor] = None,
+        *,
+        inference_params: Optional[BaseInferenceContext] = None,
     ):
         """
         Perform the forward pass through the noop transformer block.

@@ -70,7 +70,7 @@ def _add_deepseek_args(parser):
                        help='Set the rope scaling type, only support "yarn" type now')
     group.add_argument('--rope-scaling-beta-fast', type=int, default=32, help='Yarn rope: rope beta fast')
     group.add_argument('--rope-scaling-beta-slow', type=int, default=1, help='Yarn rope: rope beta slow')
-    group.add_argument('--rope-scaling-factor', type=float, default=1.0, help='Yarn rope: rope factor')
+    group.add_argument('--yarn-scaling-factor', type=float, default=1.0, help='Yarn rope: rope factor')
     group.add_argument('--rope-scaling-mscale', type=float, default=1.0, help='Yarn rope: rope mscale')
     group.add_argument('--rope-scaling-mscale-all-dim', type=float, default=0.0, help='Yarn rope: rope mscale all dim')
     group.add_argument('--rope-scaling-original-max-position-embeddings', type=int, default=None,

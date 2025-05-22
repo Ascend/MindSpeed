@@ -202,12 +202,15 @@ def attention_forward(
     hidden_states,
     attention_mask,
     key_value_states=None,
-    inference_params=None,
+    inference_context=None,
     rotary_pos_emb=None,
     rotary_pos_cos=None,
     rotary_pos_sin=None,
     attention_bias=None,
     packed_seq_params=None,
+    sequence_len_offset: Optional[int] = None,
+    *,
+    inference_params=None,
 ):
 
     # For self attention we just duplicate the rotary_pos_emb if it isn't already
@@ -245,7 +248,6 @@ def attention_forward(
         key = apply_rotary_pos_emb(
             key, k_pos_emb, config=self.config, cu_seqlens=cu_seqlens_kv,
         )
-
 
     # ==================================
     # core attention computation

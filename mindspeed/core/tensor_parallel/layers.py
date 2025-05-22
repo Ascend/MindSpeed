@@ -181,18 +181,20 @@ def linear_forward_main_grad_wrapper(forward_func):
                                  bias,
                                  gradient_accumulation_fusion,
                                  allreduce_dgrad,
-                                 wgrad_deferral_limit,
                                  sequence_parallel,
-                                 grad_output_buffer,):
+                                 grad_output_buffer,
+                                 wgrad_deferral_limit,
+                                 ):
         output = forward_func(ctx,
                               inputs,
                               weight,
                               bias,
                               gradient_accumulation_fusion,
                               allreduce_dgrad,
-                              wgrad_deferral_limit,
                               sequence_parallel,
-                              grad_output_buffer,)
+                              grad_output_buffer,
+                              wgrad_deferral_limit,
+                              )
         ctx.weight = weight
         return output
 

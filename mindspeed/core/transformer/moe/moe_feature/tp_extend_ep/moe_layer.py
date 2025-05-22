@@ -1,13 +1,15 @@
-# Copyright (c) 2025, Huawei Technologies.
-# All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 from mindspeed.core.transformer.moe.moe_feature import (
     MegatronModule,
     parallel_state,
     TopKRouter,
     MLP,
-    tensor_parallel,
     MLPSubmodules,
-    SharedExpertMLP)
+    SharedExpertMLP,
+    ModuleSpec,
+    build_module
+    )
 
 
 class MSBaseMoELayer(MegatronModule):
@@ -85,7 +87,7 @@ class All2AllSeqTpExtendEpMoELayerImpl(MSBaseMoELayer):
 
         # Initialize shared experts
         if self.use_shared_expert:
-            self.shared_experts = SharedExpertMLP(self.config, self.submodules.shared_experts)
+            self.shared_experts = build_module(self.submodules.shared_experts, config=self.config)
             if self.shared_expert_overlap:
                 raise ValueError(
                     f"use tp_extend_ep not support shared_expert_overlap"

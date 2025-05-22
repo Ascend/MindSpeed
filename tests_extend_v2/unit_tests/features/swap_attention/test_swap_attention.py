@@ -1,8 +1,8 @@
 import torch
+from mindspeed import megatron_adaptor_v2
 import torch_npu
 
 from mindspeed.core.memory.swap_attention.adaptor import AdaptiveRecomputeSwap
-from mindspeed import megatron_adaptor
 from mindspeed.patch_utils import MindSpeedPatchesManager as pm
 
 from megatron.training.global_vars import set_args

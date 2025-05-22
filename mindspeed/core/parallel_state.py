@@ -272,6 +272,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             pipeline_model_parallel_size: int = 1,
             virtual_pipeline_model_parallel_size: Optional[int] = None,
             pipeline_model_parallel_split_rank: Optional[int] = None,
+            pipeline_model_parallel_comm_backend=None,
             use_sharp: bool = False,
             context_parallel_size: int = 1,
             hierarchical_context_parallel_sizes: Optional[List[int]] = None,
@@ -285,6 +286,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             encoder_pipeline_model_parallel_size: Optional[int] = 0,
             get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
             get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+            create_gloo_process_groups=True,
     ):
         from megatron.training.utils import print_rank_0
         from megatron.training import get_args
@@ -313,6 +315,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 pipeline_model_parallel_size,
                 virtual_pipeline_model_parallel_size,
                 pipeline_model_parallel_split_rank,
+                pipeline_model_parallel_comm_backend,
                 use_sharp,
                 context_parallel_size,
                 hierarchical_context_parallel_sizes,
@@ -326,6 +329,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 encoder_pipeline_model_parallel_size,
                 get_embedding_ranks,
                 get_position_embedding_ranks,
+                create_gloo_process_groups,
             )
             rank = torch.distributed.get_rank()
             world_size: int = torch.distributed.get_world_size()
@@ -376,6 +380,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 pipeline_model_parallel_size,
                 virtual_pipeline_model_parallel_size,
                 pipeline_model_parallel_split_rank,
+                pipeline_model_parallel_comm_backend,
                 use_sharp,
                 context_parallel_size,
                 hierarchical_context_parallel_sizes,
@@ -389,6 +394,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 encoder_pipeline_model_parallel_size,
                 get_embedding_ranks,
                 get_position_embedding_ranks,
+                create_gloo_process_groups,
             )
 
         rank = torch.distributed.get_rank()

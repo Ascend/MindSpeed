@@ -296,7 +296,7 @@ def mcore_transformer_adaptation_l0(aspm):
     from .core.transformer.dot_product_attention import dot_product_attention_forward_wrapper, \
         dot_product_attention_init
     megatron.core.transformer.transformer_block.LayerNormImpl = PTNorm
-    aspm.register_patch('megatron.core.transformer.custom_layers.transformer_engine.TENorm', PTNorm)
+    aspm.register_patch('megatron.core.extensions.transformer_engine.TENorm', PTNorm)
     # Add cp parameters to dot_deduct_mattention init, and add fusion attention support for alibi in non cp situations
     aspm.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention.__init__',
                         dot_product_attention_init)

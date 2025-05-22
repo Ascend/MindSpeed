@@ -10,6 +10,7 @@ from megatron.core.models.common.embeddings import (
     YarnRotaryEmbedding,
     _yarn_get_mscale,
 )
+from megatron.core.models.common.embeddings import RotaryEmbedding
 from megatron.core.transformer.attention import Attention
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -47,19 +48,44 @@ def multi_latent_attention_init_impl(
 
     self.q_head_dim = self.config.qk_head_dim + self.config.qk_pos_emb_head_dim
 
+    # Overwrite the base class kv shape to support MLA inference
+    self.key_hidden_size = self.q_head_dim
+    self.val_hidden_size = self.config.v_head_dim
+
+    self.recompute_up_proj = (
+        self.config.recompute_granularity == 'selective'
+        and "mla_up_proj" in self.config.recompute_modules
+    )
+    self.qkv_up_checkpoint = None
+
     mscale = _yarn_get_mscale(self.config.rotary_scaling_factor, self.config.mscale)
     self.softmax_scale = mscale * mscale / math.sqrt(self.q_head_dim)
 
-    self.rotary_pos_emb = YarnRotaryEmbedding(
-        self.config.qk_pos_emb_head_dim,
-        rotary_base=self.config.rotary_base,
-        scaling_factor=self.config.rotary_scaling_factor,
-        original_max_position_embeddings=self.config.max_position_embeddings,
-        beta_fast=self.config.beta_fast,
-        beta_slow=self.config.beta_slow,
-        mscale=self.config.mscale,
-        mscale_all_dim=self.config.mscale_all_dim,
-    )
+    if self.config.rope_type == "rope":
+        self.rotary_pos_emb = RotaryEmbedding(
+            self.config.qk_pos_emb_head_dim,
+            rotary_percent=self.config.rotary_percent,
+            rotary_base=self.config.rotary_base,
+        )
+    elif self.config.rope_type == "yarn":
+        assert not self.config.apply_rope_fusion, "MLA Yarn RoPE does not support RoPE fusion"
+        self.rotary_pos_emb = YarnRotaryEmbedding(
+            self.config.qk_pos_emb_head_dim,
+            rotary_base=self.config.rotary_base,
+            scaling_factor=self.config.rotary_scaling_factor,
+            original_max_position_embeddings=self.config.max_position_embeddings,
+            beta_fast=self.config.beta_fast,
+            beta_slow=self.config.beta_slow,
+            mscale=self.config.mscale,
+            mscale_all_dim=self.config.mscale_all_dim,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported RoPE type: {self.config.rope_type}, supported types are "
+            "'rope' and 'yarn'"
+        )
+
+
 
     # Megatron use TEDotProductAttention
     # we use DotProductAttention
@@ -118,6 +144,3 @@ def dot_product_attention_init_wrapper(fn):
         self.hidden_size_per_partition_head = divide(projection_size, config.num_attention_heads)
 
     return wrapper
-
-
-

@@ -90,7 +90,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
  ```shell
  git clone https://github.com/NVIDIA/Megatron-LM.git
  cd Megatron-LM
- git checkout core_r0.10.0
+ git checkout core_r0.12.0
  ```
 
 
@@ -390,12 +390,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/npu_matmul_add.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
-  <tbody>
-   <tr>
-    <td rowspan="5">  Ascend Moe BMM通算融合算子</td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-bmm-fused.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
     <tbody>
     <tr>
     <td rowspan="5">  Ascend 计算通信并行优化</td>
@@ -478,11 +472,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
-  <tr>
-    <td rowspan="5"> Ascend Megatron MoE 负载感知内存均衡算 </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-adaptive-recompute-activation.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
 </table>
 
 

@@ -62,7 +62,7 @@ def yarn_linear_ramp_mask(min_, max_, dim) -> torch.Tensor:
 
 def apply_yarn_scaling(args: Namespace, freqs: torch.Tensor) -> float:
 
-    scaling_factor = args.rope_scaling_factor
+    scaling_factor = args.yarn_scaling_factor
     dim = (
         args.qk_rope_head_dim
         if args.multi_head_latent_attention

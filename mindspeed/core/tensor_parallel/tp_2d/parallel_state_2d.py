@@ -58,6 +58,7 @@ def initialize_model_parallel_impl(
         pipeline_model_parallel_size: int = 1,
         virtual_pipeline_model_parallel_size: Optional[int] = None,
         pipeline_model_parallel_split_rank: Optional[int] = None,
+        pipeline_model_parallel_comm_backend: Optional[str] = None,
         use_sharp: bool = False,
         context_parallel_size: int = 1,
         hierarchical_context_parallel_sizes: Optional[List[int]] = None,
@@ -67,10 +68,11 @@ def initialize_model_parallel_impl(
         nccl_communicator_config_path: Optional[str] = None,
         distributed_timeout_minutes: int = 30,
         order: str = "tp-cp-ep-dp-pp",
-        encoder_tensor_model_parallel_size: Optional[int] = 0,
+        encoder_tensor_model_parallel_size: int = 0,
         encoder_pipeline_model_parallel_size: Optional[int] = 0,
         get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
         get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+        create_gloo_process_groups: bool = True,
         config=None
 ):
     world_size = torch.distributed.get_world_size()

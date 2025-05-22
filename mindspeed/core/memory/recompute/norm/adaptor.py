@@ -21,8 +21,12 @@ def mindspeed_norm_recompute_forward(
     rotary_pos_cos=None,
     rotary_pos_sin=None,
     attention_bias=None,
+    inference_context=None,
+    packed_seq_params=None,
+    sequence_len_offset=None,
+    *,
     inference_params=None,
-    packed_seq_params=None,):
+):
     """
     Perform a forward pass through the transformer layer.
 

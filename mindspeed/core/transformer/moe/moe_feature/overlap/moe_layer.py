@@ -10,7 +10,10 @@ from mindspeed.core.transformer.moe.moe_feature import (
     TopKRouter,
     MLP,
     MLPSubmodules,
-    SharedExpertMLP)
+    SharedExpertMLP,
+    ModuleSpec,
+    build_module
+    )
 
 
 class BaseMoELayer(MegatronModule, ABC):
@@ -101,7 +104,7 @@ class AlltoAllSeqOverlapMoeLayer(BaseMoELayer):
 
         # Initialize shared experts
         if self.use_shared_expert:
-            self.shared_experts = SharedExpertMLP(self.config, self.submodules.shared_experts)
+            self.shared_experts = build_module(self.submodules.shared_experts, config=self.config)
             if self.shared_expert_overlap:
                 raise ValueError(
                     f"use tp_extend_ep not support shared_expert_overlap."
@@ -146,7 +149,7 @@ class AllGatherOverlapMoeLayer(BaseMoELayer):
 
         # Initialize shared experts
         if self.use_shared_expert:
-            self.shared_experts = SharedExpertMLP(self.config, self.submodules.shared_experts)
+            self.shared_experts = build_module(self.submodules.shared_experts, config=self.config)
             if self.shared_expert_overlap:
                 raise ValueError(
                     f"use tp_extend_ep not support shared_expert_overlap."

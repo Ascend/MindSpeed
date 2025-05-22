@@ -1,16 +1,12 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+from mindspeed import megatron_adaptor_v2
 import copy
 from functools import partial
 import itertools
-import os
-from time import sleep
-from unittest import mock
-
 import pytest
 import torch
 import torch_npu
 
-from mindspeed import megatron_adaptor_v2
 
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
@@ -31,7 +27,8 @@ def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_k
     torch.manual_seed(seed)
     model_parallel_cuda_manual_seed(seed)
 
-    default_config_kwargs = dict(num_layers=8, hidden_size=512, num_attention_heads=32, use_cpu_initialization=True)
+    default_config_kwargs = dict(num_layers=8, hidden_size=512, num_attention_heads=32, use_cpu_initialization=True,
+                                 bf16=True)
     default_config_kwargs.update(**config_kwargs)
     transformer_config = TransformerConfig(**default_config_kwargs)
     model = GPTModel(config=transformer_config, transformer_layer_spec=get_gpt_layer_local_spec(), vocab_size=1024, max_sequence_length=64, pre_process=pre_process, post_process=post_process)

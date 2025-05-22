@@ -124,7 +124,7 @@ def dot_product_attention_init(
 
         if args.rope_scaling_type is not None:
             mscale_all_dim = args.rope_scaling_mscale_all_dim if args.rope_scaling_mscale_all_dim else 0
-            scaling_factor = args.rope_scaling_factor
+            scaling_factor = args.yarn_scaling_factor
 
             if mscale_all_dim:
                 mscale = yarn_get_mscale(scaling_factor, mscale_all_dim)

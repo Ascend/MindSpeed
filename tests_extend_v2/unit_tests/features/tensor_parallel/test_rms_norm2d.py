@@ -14,6 +14,11 @@
 # ============================================================================
 import os
 import sys
+
+sys.argv.append("--tp-2d")
+
+from mindspeed import megatron_adaptor_v2
+
 import pytest
 import torch
 import torch.nn as nn
@@ -39,9 +44,6 @@ os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 # so that the code block (which will be executed
 # after determining that noop_layers is not None)
 # will be executed in megatron_adaptor.
-sys.argv.append("--tp-2d")
-
-from mindspeed import megatron_adaptor_v2
 
 sys.argv.remove('--tp-2d')
 

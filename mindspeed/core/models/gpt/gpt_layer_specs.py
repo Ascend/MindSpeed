@@ -8,7 +8,7 @@ from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.training import get_args
 from megatron.core.transformer.moe.moe_layer import MoELayer
-from megatron.core.transformer.custom_layers.transformer_engine import TENorm
+from megatron.core.extensions.transformer_engine import TENorm
 from mindspeed.core.transformer.transformer import norm_recompute_forward
 from mindspeed.core.transformer.transformer_block import NoopTransformerLayer
 from mindspeed.model.transformer import should_recompute_norm
@@ -16,7 +16,12 @@ from mindspeed.model.transformer import should_recompute_norm
 
 def get_gpt_decoder_block_spec_wrapper(fn):
     @wraps(fn)
-    def wrapper(config: TransformerConfig, use_transformer_engine: bool):
+    def wrapper(
+    config: TransformerConfig,
+    use_transformer_engine: bool,
+    normalization: Optional[str] = None,
+    qk_l2_norm: Optional[bool] = False,
+):
         res = fn(config, use_transformer_engine)
         res.layer_norm = TENorm
         return res
@@ -31,7 +36,9 @@ def get_gpt_layer_local_spec_wrapper(fn):
                 qk_layernorm: Optional[bool] = False,
                 multi_latent_attention: Optional[bool] = False,
                 fp8: Optional[str] = None,  # pylint: disable=unused-arguments
-                moe_use_legacy_grouped_gemm: Optional[bool] = False):
+                moe_use_legacy_grouped_gemm: Optional[bool] = False,
+                normalization: Optional[str] = None,
+                qk_l2_norm: Optional[bool] = False):
         res = fn(num_experts, moe_grouped_gemm, qk_layernorm, multi_latent_attention)
         args = get_args()
         if args.multi_head_latent_attention:

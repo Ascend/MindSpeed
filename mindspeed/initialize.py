@@ -58,7 +58,7 @@ def mc2_wrapper(fn):
 
 def deter_comp_wrapper(fn):
     @wraps(fn)
-    def wrapper(seed_, data_parallel_random_init=False):
+    def wrapper(seed_, data_parallel_random_init=False, te_rng_tracker=False, inference_rng_tracker=False, use_cudagraphable_rng=False):
         fn(seed_, data_parallel_random_init=False)
         extend_seed_all(seed_)
         print_rank_0("deterministic computing is applied for npu.")

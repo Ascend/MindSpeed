@@ -348,6 +348,7 @@ def get_megatron_optimizer_disable_gloo(
     no_weight_decay_cond: Optional[Callable] = None,
     scale_lr_cond: Optional[Callable] = None,
     lr_mult: float = 1.0,
+    use_gloo_process_groups: bool = True,
 ) -> MegatronOptimizer:
     """Retrieve the Megatron optimizer for model chunks.
 

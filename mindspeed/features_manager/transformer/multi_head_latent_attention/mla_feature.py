@@ -73,9 +73,8 @@ class MLAFeature(MindSpeedFeature):
             args.qk_head_dim = args.qk_nope_head_dim
             args.qk_pos_emb_head_dim = args.qk_rope_head_dim
 
-            if not args.multi_latent_attention and args.multi_head_latent_attention:
+            if not args.multi_latent_attention:
                 args.multi_latent_attention = args.multi_head_latent_attention
-
 
     def register_patches(
             self,
@@ -92,4 +91,3 @@ class MLAFeature(MindSpeedFeature):
             'megatron.core.transformer.dot_product_attention.DotProductAttention.__init__',
             dot_product_attention_init_wrapper
         )
-

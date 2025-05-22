@@ -2,6 +2,7 @@
 from typing import Tuple, List
 import pytest
 import torch
+from mindspeed import megatron_adaptor_v2
 import torch.distributed
 import mindspeed.core.multi_modal.dist_train.dist_communication as comm
 from mindspeed.core.multi_modal.dist_train.dist_train_config import _set_config, _clear_dist_config

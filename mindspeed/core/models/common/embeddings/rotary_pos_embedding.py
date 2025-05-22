@@ -65,8 +65,8 @@ def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool
     _mscale = mscale
     if hasattr(args, "rope_scaling_type") and args.rope_scaling_type == "yarn":
         _mscale = float(
-            yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale)
-            / yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale_all_dim)
+            yarn_get_mscale(args.yarn_scaling_factor, args.rope_scaling_mscale)
+            / yarn_get_mscale(args.yarn_scaling_factor, args.rope_scaling_mscale_all_dim)
         )
 
     if multi_latent_attention:
@@ -91,7 +91,7 @@ def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool
 def apply_yarn_scaling(freqs: torch.Tensor):
     args = get_args()
 
-    scaling_factor = args.rope_scaling_factor
+    scaling_factor = args.yarn_scaling_factor
     dim = args.qk_rope_head_dim if args.multi_head_latent_attention else (args.hidden_size // args.num_attention_heads)
     rotary_ratio = args.rotary_base ** (torch.arange(0, dim, 2, dtype=torch.float32, device=freqs.device) / dim)
     freq_extra = 1.0 / rotary_ratio

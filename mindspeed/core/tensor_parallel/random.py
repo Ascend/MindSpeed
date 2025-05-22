@@ -21,7 +21,7 @@ from megatron.core.parallel_state import (
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 
-def _set_cuda_rng_state(new_state, device=-1):
+def _set_cuda_rng_state(new_state, device=-1, graph_safe: bool = False):
     if hasattr(_C, '_cuda_setRNGState') and callable(_C._cuda_setRNGState):
         # older PyTorch
         def cb():

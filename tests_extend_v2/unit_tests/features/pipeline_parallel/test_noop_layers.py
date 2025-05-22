@@ -370,8 +370,8 @@ class TestNoopLayer(DistributedTest):
     @pytest.mark.parametrize(
         "num_layers, noop_layers, megatron_expected, mindspeed_expected",
         [
-            (4, None, 195689447424.0, 195689447424.0),
-            (4, {1, 2}, 195689447424, 119587995648.0),
+            (4, None, 184817811456.0, 184817811456.0),
+            (4, {1, 2}, 184817811456.0, 114152177664.0),
         ],
     )
     def test_cacl_flop_adaptor(
@@ -389,6 +389,10 @@ class TestNoopLayer(DistributedTest):
         args.group_query_attention = False
         args.swiglu = False
         args.num_experts = None
+        args.is_hybrid_model = None
+        args.mtp_num_layers = None
+        args.moe_ffn_hidden_size = 0
+        args.multi_latent_attention = None
         args.moe_shared_expert_intermediate_size = None
         batch_size = 1
         megatron_flop = origin_flop_calculator(args, batch_size)

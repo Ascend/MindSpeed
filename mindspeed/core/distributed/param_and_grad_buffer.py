@@ -17,10 +17,10 @@ from megatron.core.distributed.param_and_grad_buffer import (
     shard_buffer,
 )
 from megatron.core.utils import (
-    is_float8tensor,
     is_torch_min_version,
     log_on_each_pipeline_stage,
 )
+from megatron.core.fp8_utils import is_float8tensor
 from megatron.training import get_args
 
 
@@ -143,7 +143,10 @@ def start_grad_sync(self):
     ), 'Should not have multiple communication calls outstanding at once'
 
     if self.ddp_config.check_for_nan_in_grad:
-        self.check_for_nan_in_grad()
+        self.check_grads(
+            check_for_nan_or_inf=self.ddp_config.check_for_nan_in_grad,
+            check_for_large=self.ddp_config.check_for_large_grads,
+        )
 
     # gradient_scaling_factor already takes into account whether we are computing
     # an average or sum in the data-parallel collective.

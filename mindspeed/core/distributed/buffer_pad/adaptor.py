@@ -9,7 +9,8 @@ import torch
 
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
 from megatron.core.distributed.param_and_grad_buffer import BufferType
-from megatron.core.utils import is_float8tensor, is_torch_min_version, log_on_each_pipeline_stage
+from megatron.core.utils import is_torch_min_version, log_on_each_pipeline_stage
+from megatron.core.fp8_utils import is_float8tensor
 from megatron.training import get_args
 
 

@@ -51,8 +51,8 @@ def apply_rotary_pos_emb_bshd(
     _mscale = mscale
     if hasattr(args, "rope_scaling_type") and args.rope_scaling_type == "yarn":
         _mscale = float(
-            yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale)
-            / yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale_all_dim)
+            yarn_get_mscale(args.yarn_scaling_factor, args.rope_scaling_mscale)
+            / yarn_get_mscale(args.yarn_scaling_factor, args.rope_scaling_mscale_all_dim)
         )
 
     if multi_latent_attention:
@@ -82,6 +82,9 @@ def transformer_config_post_init_wrapper(fn):
         self.apply_rope_fusion = False
         fn(self)
         self.apply_rope_fusion = ori_apply_rope_fusion
+        if ((getattr(self, "multi_head_latent_attention") or getattr(self, "multi_latent_attention"))
+                and self.rope_type == "yarn"):
+            self.apply_rope_fusion = False
         del ori_apply_rope_fusion
 
     return wrapper

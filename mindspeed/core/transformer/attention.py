@@ -272,12 +272,15 @@ def attention_forward_wrapper(fn):
         hidden_states,
         attention_mask,
         key_value_states=None,
-        inference_params=None,
+        inference_context=None,
         rotary_pos_emb=None,
         rotary_pos_cos=None,
         rotary_pos_sin=None,
         attention_bias=None,
         packed_seq_params=None,
+        sequence_len_offset=None,
+        *,
+        inference_params=None,
     ):
         args = get_args()
         if args.prof_file:
@@ -401,12 +404,14 @@ def attention_forward_wrapper(fn):
                 hidden_states,
                 attention_mask,
                 key_value_states,
-                inference_params,
+                inference_context,
                 rotary_pos_emb,
                 rotary_pos_cos,
                 rotary_pos_sin,
                 attention_bias,
-                packed_seq_params
+                packed_seq_params,
+                sequence_len_offset,
+                inference_params=inference_params,
             )
 
         if args.prof_file:
@@ -424,13 +429,16 @@ def attention_forward(
     hidden_states,
     attention_mask,
     key_value_states=None,
-    inference_params=None,
+    inference_context=None,
     rotary_pos_emb=None,
     rotary_pos_cos=None,
     rotary_pos_sin=None,
     attention_bias=None,
     packed_seq_params=None,
-):
+    sequence_len_offset=None,
+    *,
+    inference_params=None,
+    ):
 
     # For self attention we just duplicate the rotary_pos_emb if it isn't already
     if rotary_pos_emb is not None and not isinstance(rotary_pos_emb, tuple):

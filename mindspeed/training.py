@@ -395,3 +395,8 @@ def get_device_wrapper(func):
             device = func(*args, **kwargs)
         return device
     return wrapper
+
+
+def get_device_arch_version():
+    """Returns GPU arch version (8: Ampere, 9: Hopper, 10: Blackwell, ...)"""
+    return 8
