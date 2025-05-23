@@ -14,7 +14,7 @@
 3. Run a single test by pytest command line under `Megatron-LM` root path
    ```shell
    cd {PATH_TO_MEGATRON_LM}
-   pytest tests_extend/unit_tests/optimizer/test_distrib_optimizer.py
+   pytest tests_extend/unit_tests/megatron/test_distrib_optimizer.py
    ```
 
 4. Run the whole tests

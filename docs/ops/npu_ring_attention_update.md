@@ -14,7 +14,7 @@ npu_ring_attention_update(
 小算子等价计算逻辑：
 ```python
 import torch
-
+from einops import rearrange
 
 def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
                    cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=None, layout='SBH'):
@@ -66,7 +66,7 @@ def forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
 
 - attn_out：必选输出，数据类型torch.bfloat16, torch.float, torch.float16
 - softmax_max：必选输出，数据类型torch.float
-- softmax_max：必选输出，数据类型torch.float
+- softmax_sum：必选输出，数据类型torch.float
 
 属性：
 
@@ -89,7 +89,7 @@ cur_attn_out = torch.randn(2048, 1, 12, dtype=torch.bfloat16).npu()
 cur_softmax_max = torch.randn(1, 12, 2048, 8, dtype=torch.float32).npu()
 cur_softmax_sum = torch.randn(1, 12, 2048, 8, dtype=torch.float32).npu()
 
-attn_out, softmax_max, softmax_sum = forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
+attn_out, softmax_max, softmax_sum = npu_ring_attention_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
                                                 cur_attn_out, cur_softmax_max, cur_softmax_sum)
 
 
