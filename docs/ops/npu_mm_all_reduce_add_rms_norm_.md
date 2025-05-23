@@ -101,7 +101,7 @@ $$
 - 伪量化场景下，``antiquant_group_size`` 取值满足取值范围``[32, min(k-1, INT_MAX)]``且为32倍数。
 - 一个模型中的通算融合MC2算子，仅支持相同通信域。
 
-## npu_mm_all_redcue_add_rms_norm 接口的调用方式
+## npu_mm_all_reduce_add_rms_norm 接口的调用方式
 
 ```python
 import torch
