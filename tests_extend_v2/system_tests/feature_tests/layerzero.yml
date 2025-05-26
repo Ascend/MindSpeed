@@ -1,0 +1,4 @@
+zero3_size: 8
+transformer_layers:
+  - megatron.core.transformer.transformer_layer.TransformerLayer
+param_dtype: "fp16"

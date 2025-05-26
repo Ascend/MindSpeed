@@ -74,6 +74,7 @@ from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeatur
 from mindspeed.features_manager.transformer.multi_head_latent_attention.mla_feature import MLAFeature
 
 from mindspeed.features_manager.tensor_parallel.vocab_parallel import ReplaceIndexPutFeature
+from mindspeed.features_manager.distributed.layerzero import LayerZeroFeature
 
 FEATURES_LIST = [
     # Functional features
@@ -216,7 +217,8 @@ def add_tokenizer_features(features_list: List[MindSpeedFeature]):
 
 def add_distributed_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
-        BufferPadFeature()
+        BufferPadFeature(),
+        LayerZeroFeature(),
     ])
 
 
