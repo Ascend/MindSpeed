@@ -7,8 +7,8 @@ from mindspeed.patch_utils import MindSpeedPatchesManager as pm
 
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
-from tests_extend.unit_tests.common import DistributedTest
-from tests_extend.commons import initialize_model_parallel
+from tests_extend_v2.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import initialize_model_parallel
 
 
 class AdaptiveRecomputePolicy(AdaptiveRecomputeSwap):
@@ -37,7 +37,7 @@ class TestSwapAttention(DistributedTest):
         assert prefetch_list == check_prefetch
         assert recompute_list == check_recompute
         assert swap_noop_layers == check_noop
-    
+
     @staticmethod
     def config_args(args):
         args.pipeline_model_parallel_size = 1

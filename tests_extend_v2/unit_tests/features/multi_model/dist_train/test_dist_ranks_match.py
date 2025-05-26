@@ -2,7 +2,7 @@
 import pytest
 from mindspeed import megatron_adaptor_v2
 from mindspeed.core.multi_modal.dist_train import dist_ranks_match as match
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.unit_tests.common import DistributedTest
 
 
 class TestDistRanksMatchWithDistributed(DistributedTest):

@@ -8,8 +8,8 @@ import mindspeed.core.multi_modal.dist_train.dist_communication as comm
 from mindspeed.core.multi_modal.dist_train.dist_train_config import _set_config, _clear_dist_config
 from mindspeed.core.multi_modal.dist_train.dist_parallel_state import initialize_model_parallel, reset_global_group_and_ranks
 from mindspeed.core.multi_modal.dist_train.dist_ranks_match import clear_model_comm_ranks
-from tests_extend.commons import set_random_seed
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import set_random_seed
+from tests_extend_v2.unit_tests.common import DistributedTest
 from tests_extend_v2.unit_tests.features.multi_model.dist_train.dist_train_config_utils import get_single_config, make_whole_config
 
 

@@ -3,8 +3,8 @@ import torch
 import torch_npu
 from mindspeed import megatron_adaptor_v2
 
-from tests_extend.commons import set_random_seed, initialize_model_parallel
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import set_random_seed, initialize_model_parallel
+from tests_extend_v2.unit_tests.common import DistributedTest
 
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_block import TransformerBlock

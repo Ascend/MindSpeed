@@ -5,7 +5,7 @@ import torch
 import torch_npu
 import mindspeed.megatron_adaptor_v2
 import megatron.core.parallel_state as ps
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.unit_tests.common import DistributedTest
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 

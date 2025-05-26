@@ -7,7 +7,7 @@ import torch
 import torch_npu
 sys.argv.append("--use-fused-rotary-pos-emb")
 from mindspeed import megatron_adaptor_v2
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.unit_tests.common import DistributedTest
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd

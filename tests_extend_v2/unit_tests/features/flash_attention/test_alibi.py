@@ -37,9 +37,9 @@ def run_fusion_attn_with_pse_alibi(bs, seq_len, dtype):
     config.next_tockens = 0
 
     attn = MindSpeedDotProductAttention(
-        config=config, 
-        layer_number=1, 
-        attn_mask_type=AttnMaskType.causal, 
+        config=config,
+        layer_number=1,
+        attn_mask_type=AttnMaskType.causal,
         attention_type='self'
     )
 

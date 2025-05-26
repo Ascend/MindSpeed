@@ -36,8 +36,8 @@ from mindspeed.core.tensor_parallel.comm_utils import sync_reduce_scatter_along_
 from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPXCollectiveComm, TPYCollectiveComm
 
-from tests_extend.unit_tests.common import DistributedTest
-from tests_extend.commons import set_random_seed
+from tests_extend_v2.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import set_random_seed
 
 os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 # Setting sys.argv is mainly to ensure that --tp-2d is not None,

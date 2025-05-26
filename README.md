@@ -95,11 +95,11 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 
 
-# 版本变更说明（自 core_r0.10.0 起）
+# 版本变更说明（自 core_r0.12.0 起）
 
 ## ⚠️ 重要更新
 
-自 **core_r0.10.0** 开始，为了支持更广泛的用户需求，并解决之前用户意图运行 `--transformer-impl transformer_engine` 实现却意外使用了 `--transformer-impl local` 的问题，需要额外配置 Transformer 实现。
+自 **core_r0.12.0** 开始，为了支持更广泛的用户需求，并解决之前用户意图运行 `--transformer-impl transformer_engine` 实现却意外使用了 `--transformer-impl local` 的问题，需要额外配置 Transformer 实现。
 
 ## ✅ 新增配置要求
 
@@ -131,7 +131,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
     from typing import Union
   ```
 
-2. 从core_r0.10.0版本开始，Megatron大量使用高版本语法的类型注解（Type Annotations），如:
+2. 从core_r0.12.0版本开始，Megatron大量使用高版本语法的类型注解（Type Annotations），如:
   ```
     hierarchical_context_parallel_sizes: Optional[list[int]] = None
   ```
@@ -731,7 +731,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 | MindSpeed版本             | Megatron版本      | PyTorch版本   | torch_npu版本 | CANN版本  | Python版本                               | 硬件型态     |
 |-------------------------|-----------------|------------- |-------------|---------|----------------------------------------|----------|
-| master（主线）              | Core 0.10.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+| master（主线）              | Core 0.12.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.9.0（主线）         | Core 0.9.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.8.0（主线）         | Core 0.8.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
 | core_r0.7.0（主线）         | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |

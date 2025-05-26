@@ -6,9 +6,9 @@ from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.transformer.transformer_config import TransformerConfig
 from mindspeed.core.tensor_parallel.coc_feature.adaptor import MindSpeedCoCColumnParallelLinear
-from tests_extend.unit_tests.common import DistributedTest
-from tests_extend.commons import initialize_model_parallel
-from tests_extend.commons import set_random_seed
+from tests_extend_v2.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import initialize_model_parallel
+from tests_extend_v2.commons import set_random_seed
 
 
 def set_coc_args(args):
@@ -44,7 +44,7 @@ class TestCoC(DistributedTest):
         transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
         transformer_config.sequence_parallel = 1
         # -------------EMD---------------
-    
+
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
@@ -89,7 +89,7 @@ class TestCoC(DistributedTest):
         transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
         transformer_config.sequence_parallel = 1
         # -------------EMD---------------
-        
+
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
@@ -117,7 +117,7 @@ class TestCoC(DistributedTest):
         dLdb = torch.matmul(ones.t(), dLdY).sum(dim=0).view(-1)
         assert torch.allclose(dLdA, linear_layer.weight.grad, rtol=0.005, atol=0.005)
         assert torch.allclose(dLdb, linear_layer.bias.grad, rtol=0.005, atol=0.005)
-    
+
     def test_coc_column_parallel_linear(self):
         args = parse_args(None, True)
         args = set_coc_args(args)
@@ -126,7 +126,7 @@ class TestCoC(DistributedTest):
                                                hidden_size=12,
                                                num_attention_heads=4,
                                                use_cpu_initialization=True)
-        
+
         # ----------COC SETTING----------
         transformer_config.coc_mode = 2
         transformer_config.coc_parallel_num = 8
@@ -134,7 +134,7 @@ class TestCoC(DistributedTest):
         transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
         transformer_config.sequence_parallel = 0
         # -------------EMD---------------
-        
+
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
@@ -169,7 +169,7 @@ class TestCoC(DistributedTest):
                                                hidden_size=12,
                                                num_attention_heads=4,
                                                use_cpu_initialization=True)
-        
+
         # ----------COC SETTING----------
         transformer_config.coc_mode = 2
         transformer_config.coc_parallel_num = 1
@@ -177,7 +177,7 @@ class TestCoC(DistributedTest):
         transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
         transformer_config.sequence_parallel = 0
         # -------------EMD---------------
-        
+
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size

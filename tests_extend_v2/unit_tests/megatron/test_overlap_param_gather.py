@@ -17,8 +17,8 @@ from megatron.core.optimizer import (
     OptimizerConfig,
 )
 from megatron.core import mpu
-from tests_extend.commons import set_random_seed, initialize_model_parallel
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import set_random_seed, initialize_model_parallel
+from tests_extend_v2.unit_tests.common import DistributedTest
 
 
 class Model(MegatronModule):
@@ -88,7 +88,6 @@ def step_optimizer(model, optimizer_config, ddp_config, seed: int = None):
     ]
     model_parallel_rank = torch.distributed.get_rank(mpu.get_model_parallel_group())
     per_model_buffers = {}
-
 
     for model_idx, model_chunk in enumerate(model):
         if hasattr(model_chunk, 'buffers'):

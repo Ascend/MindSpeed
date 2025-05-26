@@ -6,8 +6,8 @@ from mindspeed import megatron_adaptor_v2
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 
-from tests_extend.commons import set_random_seed, initialize_model_parallel
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import set_random_seed, initialize_model_parallel
+from tests_extend_v2.unit_tests.common import DistributedTest
 
 from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
 from megatron.core.tensor_parallel import mappings

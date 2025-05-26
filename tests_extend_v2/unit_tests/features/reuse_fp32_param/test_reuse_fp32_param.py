@@ -7,7 +7,6 @@ import pytest
 import torch
 import torch_npu
 
-
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.models.gpt import GPTModel
@@ -19,8 +18,8 @@ from megatron.core.transformer import TransformerConfig
 from megatron.training.training import get_model
 from megatron.training.utils import unwrap_model
 
-from tests_extend.unit_tests.common import DistributedTest
-from tests_extend.commons import set_random_seed, initialize_model_parallel
+from tests_extend_v2.unit_tests.common import DistributedTest
+from tests_extend_v2.commons import set_random_seed, initialize_model_parallel
 
 
 def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_kwargs):
@@ -31,7 +30,8 @@ def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_k
                                  bf16=True)
     default_config_kwargs.update(**config_kwargs)
     transformer_config = TransformerConfig(**default_config_kwargs)
-    model = GPTModel(config=transformer_config, transformer_layer_spec=get_gpt_layer_local_spec(), vocab_size=1024, max_sequence_length=64, pre_process=pre_process, post_process=post_process)
+    model = GPTModel(config=transformer_config, transformer_layer_spec=get_gpt_layer_local_spec(), vocab_size=1024,
+                     max_sequence_length=64, pre_process=pre_process, post_process=post_process)
 
     model.bfloat16()
     with torch.no_grad():
@@ -54,10 +54,11 @@ def init_mock_args(args, use_distributed_optimizer=False, reuse_fp32_param=False
 def setup_model_and_optimizer(seed, use_distributed_optimizer=False):
     model = get_model(partial(initialize_gpt_model, seed=seed))
     set_random_seed(seed)
-    config = OptimizerConfig(lr=1e-4, bf16=True, params_dtype=torch.bfloat16, use_distributed_optimizer=use_distributed_optimizer)
+    config = OptimizerConfig(lr=1e-4, bf16=True, params_dtype=torch.bfloat16,
+                             use_distributed_optimizer=use_distributed_optimizer)
     config.timers = Timers()
     optimizer = get_megatron_optimizer(config, model)
-   
+
     for group in optimizer.optimizer.param_groups:
         for p in group['params']:
             if len(optimizer.optimizer.state[p]) == 0:
@@ -111,7 +112,6 @@ class TestDistributedOptimizer(DistributedTest):
             else:
                 assert torch.allclose(p.data, reuse_p.data, rtol=0.005, atol=0.005)
 
-   
     @pytest.mark.parametrize("is_deterministic", [False])
     @pytest.mark.parametrize("overlap_grad_reduce", [True, False])
     @pytest.mark.parametrize("overlap_param_gather", [True, False])
@@ -137,7 +137,7 @@ class TestDistributedOptimizer(DistributedTest):
                     model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
         truth_params = copy.deepcopy(list(itertools.chain(*optimizer.model_float16_groups)))
-       
+
         # reuse
         args = init_mock_args(args, use_distributed_optimizer=True, reuse_fp32_param=True)
         initialize_model_parallel(*tp_pp)
@@ -152,7 +152,7 @@ class TestDistributedOptimizer(DistributedTest):
                     model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
         reuse_params = copy.deepcopy(list(itertools.chain(*optimizer.model_float16_groups)))
-       
+
         for p, reuse_p in zip(truth_params, reuse_params):
             if is_deterministic:
                 assert torch.allclose(p.data, reuse_p.data, rtol=0, atol=0)

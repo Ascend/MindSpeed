@@ -42,7 +42,7 @@ from mindspeed.core.pipeline_parallel.noop_layers.adaptor import (
     NoopTransformerLayer,
 )
 
-from tests_extend.unit_tests.common import DistributedTest
+from tests_extend_v2.unit_tests.common import DistributedTest
 
 
 os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
