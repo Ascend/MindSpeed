@@ -16,144 +16,71 @@
 
 # 简介
 
-MindSpeed 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型加速库。
+MindSpeed Core 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型加速库。
 
 大模型训练是一种非常复杂的过程，涉及到许多技术和挑战，其中大模型训练需要大量的显存资源是一个难题，对计算卡提出了不小的挑战。
 为了在单个计算卡显存资源不足时，可以通过多张计算卡进行计算，业界出现了类似 Megatron、DeepSpeed 等第三方大模型加速库，对模型、输入数据等进行切分并分配到不同的计算卡上，最后再通过集合通信对结果进行汇总。
 
-昇腾提供 MindSpeed 加速库，使能客户大模型业务快速迁移至昇腾设备，并且支持昇腾专有算法，确保开箱可用。
+昇腾提供 MindSpeed Core 加速库，使能客户大模型业务快速迁移至昇腾设备，并且支持昇腾专有算法，确保开箱可用。
+
+此外在 MindSpeed Core 加速库的基础之上也提供了大语言模型、多模态模型以及强化学习模型套件加速库:
+
+- 📝 大语言模型库: [MindSpeed LLM](https://gitee.com/ascend/MindSpeed-LLM)
+- 🖼️ 多模态模型库: [MindSpeed MM](https://gitee.com/ascend/MindSpeed-MM)
+- 🖥️ 强化学习加速库: [MindSpeed RL](https://gitee.com/ascend/MindSpeed-RL)
 
 ---
+
+# 📣 Latest News
+- [May 21, 2025]: 🚀 MindSpeed Core 支持Mcore 0.12.1版本。
+
+> 注： 当前版本仅支持local后端的transformer实现，需要用户配置参数`--transformer-impl local`。te后端实现正在筹备中，敬请期待。
+
+---
+
 # 安装
 
-### 1. 安装依赖
+MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`，具体请参考 [部署文档](./docs/user-guide/installation.md) 安装 MindSpeed Core 指定分支及其依赖软件。
 
-☀️ 在安装 **MindSpeed** 之前，请参考[版本配套表](#版本配套表)，安装最新昇腾软件栈。
-
-<table border="0">
-  <tr>
-    <th>依赖软件</th>
-    <th>软件安装指南</th>
-  </tr>
-
-  <tr>
-    <td>昇腾NPU驱动</td>
-    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/canncommercial/80RC3/softwareinst/instg/instg_0003.html?Mode=PmIns&OS=Ubuntu&Software=cannToolKit">驱动固件安装指南</a> 》</td>
-  </tr>
-  <tr>
-    <td>昇腾NPU固件</td>
-  </tr>
-  <tr>
-    <td>Toolkit（开发套件）</td>
-    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/canncommercial/80RC3/softwareinst/instg/instg_0000.html">CANN 软件安装指南</a> 》</td>
-  </tr>
-  <tr>
-    <td>Kernel（算子包）</td>
-  </tr>
-  <tr>
-    <td>NNAL（Ascend Transformer Boost加速库）</td>
-  </tr>
-  <tr>
-    <td>PyTorch</td>
-    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/Pytorch/60RC3/configandinstg/instg/insg_0001.html">Ascend Extension for PyTorch 配置与安装</a> 》</td>
-  </tr>
-  <tr>
-    <td>torch_npu插件</td>
-  </tr>
-  <tr>
-    <td>apex</td>
-  </tr>
-</table>
-
-
-
-
-### 2. 安装 MindSpeed
-
-☀️ 下载源码安装：
-
- ```shell
- git clone https://gitee.com/ascend/MindSpeed.git
- pip install -e MindSpeed
- ```
-
-如需使用Ascend Transformer Boost（ATB）加速库算子，请先安装 CANN-NNAL 并初始化添加环境，例如：
- ```shell
-# CANN-NNAL默认安装路径为：/usr/local/Ascend/nnal
-# 运行CANN-NNAL默认安装路径下atb文件夹中的环境配置脚本set_env.sh
-source /usr/local/Ascend/nnal/atb/set_env.sh 
- ```
-
-### 3. 获取 Megatron-LM 并指定分支
-
-☀️ 获取并切换 Megatron-LM 版本至 core_r0.12.0 的release版本，如下所示：
+获取并切换 Megatron-LM 版本至 core_v0.12.1 版本，可参考：
  ```shell
  git clone https://github.com/NVIDIA/Megatron-LM.git
  cd Megatron-LM
- git checkout a845aa7e
+ git checkout core_v0.12.1
  ```
 
-
-
-# 版本变更说明（自 core_r0.12.0 起）
-
-## ⚠️ 重要更新
-
-自 **core_r0.12.0** 开始，为了支持更广泛的用户需求，并解决之前用户意图运行 `--transformer-impl transformer_engine` 实现却意外使用了 `--transformer-impl local` 的问题，需要额外配置 Transformer 实现。
-
-## ✅ 新增配置要求
-
-请在启动命令中添加以下参数以明确指定使用本地（Local）Transformer 实现：
-
-```bash
---transformer-impl local
-```
-
-此设置确保系统按预期执行特定的 Transformer 实现。
-
-## 📌 注意事项
-
-- 缺少该参数时，系统将依据默认配置选择实现方式，即`--transformer-impl transformer_engine`。
-- 使用 `--transformer-impl transformer_engine` 的用户应确保未错误配置为 `--transformer-impl local` 实现。
-
-我们建议所有用户升级后检查并调整相关配置，以匹配实际需求。
+当前版本配套表如下：
+| 软件  | 版本  |
+|:------------:|:------------|
+| MindSpeed Core分支  | master |
+| Mcore版本 | 0.12.0 |
+| CANN版本 | 8.1.RC1 |
+| PyTorch | 2.1.0、2.6.0 |
+| torch_npu版本 | 7.0.0 |
+| Python版本 | Python3.9.x、Python3.10.x |
 
 
 # 快速上手
 
-1. 仅仅一行代码就可以轻松使能 MindSpeed 的各项功能。以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
+使用MindSpeed Core仅须增加一行代码，即可在昇腾训练设备上运行Megatron-LM，并进一步参考[特性介绍](#特性介绍) 使能MindSpeed的各项加速特性。
 
-  ```diff
-    import os
+以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
+
+  ```Python
     import torch
-  +import mindspeed.megatron_adaptor
+    import mindspeed.megatron_adaptor # 新增代码行
     from functools import partial
-    from typing import Union
+    from contextlib import nullcontext
+    import inspect
   ```
 
-2. 从core_r0.12.0版本开始，Megatron大量使用高版本语法的类型注解（Type Annotations），如:
-  ```
-    hierarchical_context_parallel_sizes: Optional[list[int]] = None
-  ```
 
-因此，若出现以下报错：
-  ```
-    TypeError: 'type' object is not subscriptable.
-  ```
-则需修改Megatron相应代码，或使用python 3.9及以上版本以适应Megatron原生接口的变动。
-
-3. （可选）若未准备好相应训练数据，则需进行数据集的下载及处理供后续使用。数据集准备流程可参考
-<a href="https://www.hiascend.com/document/detail/zh/Pytorch/700/modthirdparty/Mindspeedguide/mindspeed_0003.html">数据集处理</a>。
-
-4. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。以下示例脚本可供参考。
-  ```shell
-  MindSpeed/tests_extend/example/train_distributed.sh
-  ```
+具体操作可以参考[快速上手指导](./docs/user-guide/getting_started.md)。
 
 ---
-# 自定义优化级别
-MindSpeed 提供了多层次的优化解决方案，并划分为三个层级，用户可根据实际需求灵活启用任意层级。高层级兼容低层级的能力，确保了整个系统的稳定性和扩展性。
-用户可以通过设置启动脚本中的 `--optimization-level {层级}` 参数来自定义开启的优化层级。该参数支持以下配置：
+# 加速特性分级说明
+
+MindSpeed Core 加速特性分为三个层级，用户可根据实际需求选择通过设置启动脚本中的 `--optimization-level {层级}` 参数来自定义开启的优化层级。该参数支持以下配置：
 
 <table><thead>
   <tr>
@@ -164,20 +91,20 @@ MindSpeed 提供了多层次的优化解决方案，并划分为三个层级，�
 <tbody>
   <tr>
     <td rowspan="5" style="text-align: center; vertical-align: middle"> 0 </td>
-    <td>基础兼容层</a></td>
-    <td>提供Megatron-LM框架对NPU的支持，确保无缝集成。该层包含基础功能集patch，保证可靠性和稳定性，为高级优化奠定基础。</td>
+    <td>基础功能兼容</a></td>
+    <td>提供Megatron-LM框架对NPU的基本功能适配。</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5" style="text-align: center; vertical-align: middle"> 1 </td>
-    <td>亲和性增强层🔥</a></td>
-    <td>兼容L0能力，集成高性能融合算子库，结合昇腾亲和的计算优化，充分释放昇腾算力，显著提升计算效率。</td>
+    <td>亲和性增强🔥</a></td>
+    <td>在L0基础上使能部分融合算子与昇腾亲和计算改写。</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5" style="text-align: center; vertical-align: middle"> 2 </td>
-    <td>自研加速算法层🔥🔥</a></td>
-    <td>默认值。该模式兼容了L1, L0能力，并集成了昇腾多项自主研发核心技术成果，可提供全面的性能优化。</td>
+    <td>加速特性使能🔥🔥</a></td>
+    <td>默认值。在L0、L1基础上开启更丰富的加速特性，加速特性通常通过具体参数使能，可参考“特性介绍”章节。</td>
   </tr>
 </table>
 
@@ -707,43 +634,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 </table>
 
 ---
-# MindSpeed 中采集Profile数据
 
-📝 MindSpeed 支持命令式开启Profile采集数据，命令配置介绍如下：
-
-| 配置命令                    | 命令含义                                                                                                    | 
-|-------------------------|---------------------------------------------------------------------------------------------------------|
-| --profile               | 打开profile开关                                                                                             |
-| --profile-step-start    | 配置开始采集步，未配置时默认为10, 配置举例: --profile-step-start 30                                                        |
-| --profile-step-end      | 配置结束采集步，未配置时默认为12, 配置举例: --profile-step-end 35                                                          |
-| --profile-level         | 配置采集等级，未配置时默认为level0, 可选配置: level0, level1, level2, 配置举例: --profile-level level1                        |
-| --profile-with-cpu      | 打开cpu信息采集开关                                                                                             |
-| --profile-with-stack    | 打开stack信息采集开关                                                                                           |
-| --profile-with-memory   | 打开memory信息采集开关，配置本开关时需打开--profile-with-cpu                                                              |
-| --profile-record-shapes | 打开shapes信息采集开关                                                                                          |
-| --profile-save-path     | 配置采集信息保存路径, 未配置时默认为./profile_dir, 配置举例: --profile-save-path ./result_dir                                |
-| --profile-ranks         | 配置待采集的ranks,未配置时默认为-1，表示采集所有rank的profiling数据，配置举例: --profile-ranks 0 1 2 3, 需注意: 该配置值为每个rank在单机/集群中的全局值 |
-
----
-# 版本配套表
-
-💡 **PyTorch Extension**版本号采用`{PyTorch版本}-{昇腾版本}`命名规则，前者为**PyTorch Extension**匹配的PyTorch版本，后者用于匹配CANN版本，详细匹配如下：
-
-| MindSpeed版本             | Megatron版本      | PyTorch版本   | torch_npu版本 | CANN版本  | Python版本                               | 硬件型态     |
-|-------------------------|-----------------|------------- |-------------|---------|----------------------------------------|----------|
-| master（主线）              | Core 0.12.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.9.0（主线）         | Core 0.9.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.8.0（主线）         | Core 0.8.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.7.0（主线）         | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.6.0（主线）         | Core 0.6.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.0_core_r0.7.0（商用）   | Core 0.7.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.0_core_r0.6.0（商用）   | Core 0.6.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC3_core_r0.7.0（商用） | Core 0.7.0      |  2.1.0     | 6.0.RC3     | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC3_core_r0.6.0（商用） | Core 0.6.0      |  2.1.0     | 6.0.RC3     | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC2（商用）             | Core 0.6.0      |  2.1.0     | 6.0.RC2     | 8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC1（商用）             | commitid bcce6f |  2.1.0     | 6.0.RC1     | 8.0.RC1 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-
-[昇腾辅助软件](https://gitee.com/ascend/pytorch#%E6%98%87%E8%85%BE%E8%BE%85%E5%8A%A9%E8%BD%AF%E4%BB%B6)中有更多关于PyTorch和CANN的版本信息。
 
 # 分支维护策略
 
