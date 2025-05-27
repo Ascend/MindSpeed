@@ -6,6 +6,8 @@ Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 """
 
 from typing import Iterable, Optional, Tuple
+from functools import wraps
+from logging import getLogger
 
 import torch
 
@@ -19,6 +21,28 @@ from megatron.core.pipeline_parallel.p2p_communication import (
     _batched_p2p_ops, _p2p_ops)
 
 from .communicate import Shape, communicate_impl, communicate_shapes_impl
+
+LOG = getLogger(__name__)
+
+
+def transformer_config_post_init_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self):
+        # 1. When using dense models, support variable_seq_lengths, thus caching the raw values and bypassing Megatron's
+        # Parameter validation.
+        # 2. When using the moe model and moe_toked_spatcher_type in ['allgather ','alltoall_deq'], variable_seq_lengths
+        # is not supported and will be automatically disabled with a warning
+        original_variable_seq_lengths = getattr(self, 'variable_seq_lengths', False)
+        if self.num_moe_experts is None or self.moe_token_dispatcher_type in ['allgather', 'alltoall_seq']:
+            self.variable_seq_lengths = False
+            if self.moe_token_dispatcher_type in ['allgather', 'alltoall_seq']:
+                LOG.warning("disable variable_seq_lengths when self.moe_token_dispatcher_type in ['allgather', "
+                            "'alltoall_seq']")
+        fn(self)
+        if self.num_moe_experts is None:
+            self.variable_seq_lengths = original_variable_seq_lengths
+
+    return wrapper
 
 
 def mindspeed_communicate(

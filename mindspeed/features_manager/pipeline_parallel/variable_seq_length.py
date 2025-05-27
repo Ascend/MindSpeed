@@ -50,6 +50,7 @@ class VariableSequenceLengthFeature(MindSpeedFeature):
         from mindspeed.core.pipeline_parallel.variable_seq_length.adaptor import (  # noqa
             mindspeed_communicate,
             mindspeed_commuticate_shapes,
+            transformer_config_post_init_wrapper,
         )
 
         if getattr(args, self.feature_name, None):
@@ -61,3 +62,5 @@ class VariableSequenceLengthFeature(MindSpeedFeature):
                 "megatron.core.pipeline_parallel.p2p_communication._communicate_shapes",  # noqa
                 mindspeed_commuticate_shapes,
             )
+            patch_manager.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__post_init__", # noqa
+                              transformer_config_post_init_wrapper)

@@ -1,5 +1,6 @@
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-from argparse import Namespace
+
 from functools import wraps
 from dataclasses import make_dataclass, field
 
@@ -73,12 +74,7 @@ def print_args_wrapper(fn):
 def transformer_config_post_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self):
-        if self.num_moe_experts is None:
-            _ori_var_seq = getattr(self, 'variable_seq_lengths', False)
-            self.variable_seq_lengths = False
         fn(self)
-        if self.num_moe_experts is None:
-            self.variable_seq_lengths = _ori_var_seq
         args_items = vars(get_args()).items()
         fields = []
         for key, value in args_items:

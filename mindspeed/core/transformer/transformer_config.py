@@ -2,12 +2,15 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
 from dataclasses import make_dataclass, field
 from functools import wraps
+from logging import getLogger
 
 import torch.nn.functional as F
 
 from megatron.core.transformer import TransformerConfig
 from megatron.core.utils import init_method_normal, scaled_init_method_normal
 from megatron.training import get_args
+
+LOG = getLogger(__name__)
 
 
 def transformer_config_post_init(self):
@@ -170,15 +173,22 @@ def transformer_config_post_init(self):
 def transformer_config_post_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self):
-        #Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
+        # Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
         ori_apply_rope_fusion = self.apply_rope_fusion
         self.apply_rope_fusion = False
-        if self.num_moe_experts is None:
-            _ori_var_seq = getattr(self, 'variable_seq_lengths', False)
+        # 1. When using dense models, support variable_seq_lengths, thus caching the raw values and bypassing Megatron's
+        # Parameter validation.
+        # 2. When using the moe model and moe_toked_spatcher_type in ['allgather ','alltoall_deq'], variable_seq_lengths
+        # is not supported and will be automatically disabled with a warning
+        original_variable_seq_lengths = getattr(self, 'variable_seq_lengths', False)
+        if self.num_moe_experts is None or self.moe_token_dispatcher_type in ['allgather', 'alltoall_seq']:
             self.variable_seq_lengths = False
+            if self.moe_token_dispatcher_type in ['allgather', 'alltoall_seq']:
+                LOG.warning("disable variable_seq_lengths when self.moe_token_dispatcher_type in ['allgather', "
+                            "'alltoall_seq']")
         fn(self)
         if self.num_moe_experts is None:
-            self.variable_seq_lengths = _ori_var_seq
+            self.variable_seq_lengths = original_variable_seq_lengths
         self.apply_rope_fusion = ori_apply_rope_fusion
         del ori_apply_rope_fusion
 
