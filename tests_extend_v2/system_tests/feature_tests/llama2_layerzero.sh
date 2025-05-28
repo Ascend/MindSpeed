@@ -111,7 +111,7 @@ OUTPUT_ARGS="
     --eval-iters 0 \
 "
 
-torchrun $DISTRIBUTED_ARGS pretrain_gpt_v2.py \
+torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \

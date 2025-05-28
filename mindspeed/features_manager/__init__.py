@@ -8,6 +8,7 @@ from mindspeed.features_manager.context_parallel.adaptive_context_parallel impor
 from mindspeed.features_manager.context_parallel.context_parallel_feature import ContextParallelFeature
 from mindspeed.features_manager.context_parallel.context_parallel_kv_cache import ContextParallelKvCacheFeature
 from mindspeed.features_manager.context_parallel.ulysses_context_parallel import UlyssesContextParallelFeature
+from mindspeed.features_manager.data_parallel.async_log_allreduce import AsyncLogAllreduceFeature
 from mindspeed.features_manager.functional.profile import ProfileFeature
 from mindspeed.features_manager.functional.profiler_default import ProfilerDefaultFeature
 from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
@@ -138,6 +139,12 @@ def add_context_parallel_features(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_data_parallel_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        AsyncLogAllreduceFeature(),
+    ])
+
+
 def add_tensor_parallel_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         UnalignedLinearFeature(),
@@ -251,6 +258,7 @@ def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
     add_context_parallel_features(features_list)
+    add_data_parallel_features(features_list)
     add_fusions_features(features_list)
     add_affinity_features(features_list)
     add_functional_features(features_list)
