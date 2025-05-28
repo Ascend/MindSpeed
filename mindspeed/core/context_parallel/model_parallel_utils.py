@@ -223,20 +223,53 @@ def get_context_parallel_group_for_send_recv_overlap(check_initialized=True):
 def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
     @wraps(initialize_model_parallel)
     def wrapper(
-        *args, **kwargs
+            tensor_model_parallel_size: int = 1,
+            pipeline_model_parallel_size: int = 1,
+            virtual_pipeline_model_parallel_size: Optional[int] = None,
+            pipeline_model_parallel_split_rank: Optional[int] = None,
+            pipeline_model_parallel_comm_backend: Optional[str] = None,
+            use_sharp: bool = False,
+            context_parallel_size: int = 1,
+            hierarchical_context_parallel_sizes: Optional[List[int]] = None,
+            expert_model_parallel_size: int = 1,
+            num_distributed_optimizer_instances: int = 1,
+            expert_tensor_parallel_size: Optional[int] = None,
+            nccl_communicator_config_path: Optional[str] = None,
+            distributed_timeout_minutes: int = 30,
+            order: str = "tp-cp-ep-dp-pp",
+            encoder_tensor_model_parallel_size: int = 0,
+            encoder_pipeline_model_parallel_size: Optional[int] = 0,
+            get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+            get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+            create_gloo_process_groups: bool = True
     ):
         initialize_model_parallel(
-            *args, **kwargs
+            tensor_model_parallel_size,
+            pipeline_model_parallel_size,
+            virtual_pipeline_model_parallel_size,
+            pipeline_model_parallel_split_rank,
+            pipeline_model_parallel_comm_backend,
+            use_sharp,
+            context_parallel_size,
+            hierarchical_context_parallel_sizes,
+            expert_model_parallel_size,
+            num_distributed_optimizer_instances,
+            expert_tensor_parallel_size,
+            nccl_communicator_config_path,
+            distributed_timeout_minutes,
+            order,
+            encoder_tensor_model_parallel_size,
+            encoder_pipeline_model_parallel_size,
+            get_embedding_ranks,
+            get_position_embedding_ranks,
+            create_gloo_process_groups
         )
         nccl_comm_cfgs = {}
-        if kwargs['nccl_communicator_config_path'] is not None:
+        if nccl_communicator_config_path is not None:
             import yaml
-            with open(kwargs['nccl_communicator_config_path'], "r") as stream:
+            with open(nccl_communicator_config_path, "r") as stream:
                 nccl_comm_cfgs = yaml.safe_load(stream)
 
-        tensor_model_parallel_size = args[0]
-        pipeline_model_parallel_size = args[1]
-        context_parallel_size = kwargs['context_parallel_size']
         initialize_context_parallel_group_for_send_recv_overlap(
             tensor_model_parallel_size,
             pipeline_model_parallel_size,
