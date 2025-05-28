@@ -361,20 +361,15 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                             gbuf_local_start = param_range_map["gbuf_local"].start
                             gbuf_local_end = param_range_map["gbuf_local"].end
 
-                            if tensor_to_copy_into.storage().size() != 0:
+                            if tensor_to_copy_into.storage().size() != 0\
+                                    or main_param not in SwapDistributedOptimizer.param_to_cpu_states_map:
                                 tensor_to_copy_into.data.copy_(recv_tensor[gbuf_local_start:gbuf_local_end])
                             else:
                                 cpu_state = SwapDistributedOptimizer.param_to_cpu_states_map[main_param]
-
-                                # resize h2d
-                                tensor_to_copy_into.storage().resize_(cpu_state[key].storage().size())
-
-                                # copy data
-                                tensor_to_copy_into.data.copy_(recv_tensor[gbuf_local_start:gbuf_local_end])
-
-                                # swap d2h
-                                cpu_state[key].copy_(tensor_to_copy_into)
-                                tensor_to_copy_into.storage().resize_(0)
+                                cpu_state[key].copy_(recv_tensor[gbuf_local_start:gbuf_local_end])
+        for group in self.optimizer.param_groups:
+            for p in group['params']:
+                self.optimizer.param_to_group_map[p] = group
 
     def get_parameter_state_dp_zero(self):
         """Get parameter state (i.e., parameter & optimizer tensors).
@@ -540,6 +535,14 @@ def swap_adamw_step(self, closure=None):
         with torch.enable_grad():
             loss = closure()
 
+    for group in self.param_groups:
+        if 'step' in group:
+            group['step'] += 1
+            if group['step'].is_cpu:
+                group['step'] = group['step'].cuda()
+        else:
+            group['step'] = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
+
     swap_count = 0
     params_list = list(self.param_to_group_map.keys())
     for i, param in enumerate(params_list):
@@ -552,11 +555,6 @@ def swap_adamw_step(self, closure=None):
         amsgrad = group['amsgrad']
         beta1, beta2 = group['betas']
         state = self.state[param]
-
-        if 'step' in state:
-            state['step'] += 1
-        else:
-            state['step'] = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
 
         # State initialization
         if len(state) == 0:
@@ -577,7 +575,7 @@ def swap_adamw_step(self, closure=None):
 
         SwapDistributedOptimizer.wait_swap_to_device_event(param)
         npu_apply_fused_adamw_v2(param, param.grad, state['exp_avg'], state['exp_avg_sq'], state['max_exp_avg_sq'],
-                                 state['step'], group['lr'], beta1, beta2, group['weight_decay'],
+                                 group['step'], group['lr'], beta1, beta2, group['weight_decay'],
                                  group['eps'], amsgrad, group['maximize'])
 
         SwapDistributedOptimizer.copy_tensor_to_model_param(param)
