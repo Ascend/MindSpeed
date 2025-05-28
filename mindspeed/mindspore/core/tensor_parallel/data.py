@@ -53,4 +53,4 @@ def local_build_key_size_numel_dictionaries(keys, data):
         total_numel += numel
         offset += max_dim
 
-    return key_size, key_numel, total_numel
+    return key_size, key_numel, total_numel.item()
