@@ -17,12 +17,11 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_block import TransformerBlock
 from megatron.core.inference_params import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 
 from mindspeed.utils import get_position_ids, set_position_ids
 from mindspeed.core.context_parallel.get_batch_utils import get_actual_seq_len, set_actual_seq_len
-from mindspeed.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd
 from mindspeed.core.context_parallel.rotary_pos_embedding_utils import get_pos_emb_on_this_cp_rank
+from mindspeed.core.fusions.fused_rope import apply_rotary_pos_emb_bshd, apply_rotary_pos_emb
 
 
 def _p2p_ops_eod(
