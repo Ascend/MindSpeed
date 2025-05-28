@@ -31,8 +31,20 @@ from mindspeed.core.pipeline_parallel.fb_overlap.modules.utils import detach_ten
 Shape = Union[List[int], torch.Size]
 LOSS_BACKWARD_SCALE = torch.tensor(1.0)
 
+_FORWARD_STEP_FUNC = None
 _DUALPIPE_CHUNK = None
 _POST_CHUNK = None
+
+
+def set_forward_func(forward_func):
+    """set customized forward_func"""
+    global _FORWARD_STEP_FUNC
+    _FORWARD_STEP_FUNC = forward_func
+
+
+def get_forward_func():
+    global _FORWARD_STEP_FUNC
+    return _FORWARD_STEP_FUNC
 
 
 def set_dualpipe_chunk(chunkid):
@@ -623,26 +635,29 @@ def forward_step_with_model_graph(
     else:
         context_manager = contextlib.nullcontext()
     with context_manager:
+        forward_step_func = get_forward_func()
+        if forward_step_func is None:
+            forward_step_func = pretrain_gpt_forward_step_dualpipe
         if checkpoint_activations_microbatch is None:
-            output_tensor, loss_func = pretrain_gpt_forward_step_dualpipe(
+            output_tensor, loss_func = forward_step_func(
                 data_iterator, model, extra_block_kwargs)
         else:
-            output_tensor, loss_func = pretrain_gpt_forward_step_dualpipe(
+            output_tensor, loss_func = forward_step_func(
                 data_iterator, model, checkpoint_activations_microbatch, extra_block_kwargs
             )
 
     num_tokens = torch.tensor(0, dtype=torch.int)
 
     if is_dualpipev_last_stgae(model_chunk_id):
-        if not collect_non_loss_data:
-            next_info = None
-            if isinstance(output_tensor, tuple):
-                # use pp overlaping,
-                if len(output_tensor) == 2:
-                    output_tensor, model_graph = output_tensor
-                elif len(output_tensor) == 3:
-                    output_tensor, model_graph, next_info = output_tensor
+        next_info = None
+        if isinstance(output_tensor, tuple):
+            # use pp overlaping,
+            if len(output_tensor) == 2:
+                output_tensor, model_graph = output_tensor
+            elif len(output_tensor) == 3:
+                output_tensor, model_graph, next_info = output_tensor
 
+        if not collect_non_loss_data:
             outputs = loss_func(output_tensor)
             if len(outputs) == 3:
                 output_tensor, num_tokens, loss_reduced = outputs
@@ -655,11 +670,11 @@ def forward_step_with_model_graph(
                 output_tensor, loss_reduced = outputs
                 output_tensor /= num_microbatches
             forward_data_store.append(loss_reduced)
-            output_tensor = (output_tensor, model_graph, next_info) if next_info is not None else (
-                output_tensor, model_graph)
         else:
             data = loss_func(output_tensor, non_loss_data=True)
             forward_data_store.append(data)
+        output_tensor = (output_tensor, model_graph, next_info) if next_info is not None else (
+            output_tensor, model_graph)
 
     if config.timers is not None:
         config.timers('forward-compute').stop()
@@ -699,14 +714,28 @@ def get_shared_embedding_from_dual_chunk():
     return shared_embedding
 
 
+def _unwrap_megatron_model(model):
+    """
+    Remove consecutive 'module.' prefixes from the model based on the state_dict's first key.
+    This method only removes 'module.' from the beginning of the key and ignores other occurrences.
+    """
+    first_key = list(dict((model).named_parameters()).keys())[0]
+    while first_key.startswith("module."):
+        (model) = (model).module
+        first_key = first_key[len("module."):]
+    return (model)
+
+
 def set_shared_embedding_from_dual_chunk(model1, model2):
     global shared_embedding
     if shared_embedding is not None:
         return
-    if model1.module.module.pre_process:
-        shared_embedding = model1.module.module.embedding.word_embeddings.weight
-    elif model2.module.module.pre_process:
-        shared_embedding = model2.module.module.embedding.word_embeddings.weight
+    model1 = _unwrap_megatron_model(model1)
+    model2 = _unwrap_megatron_model(model2)
+    if model1.pre_process:
+        shared_embedding = model1.embedding.word_embeddings.weight
+    elif model2.pre_process:
+        shared_embedding = model2.embedding.word_embeddings.weight
 
 
 def forward_backward_pipelining_with_cutinhalf(
