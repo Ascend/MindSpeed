@@ -33,7 +33,7 @@ class GmmExpertsImpl:
             assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
 
-    def forward(self, permuted_local_hidden_states, tokens_per_expert):
+    def forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs=None):
         """Forward of GroupedMLP
 
         Args:
