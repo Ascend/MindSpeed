@@ -71,7 +71,6 @@ GPT_ARGS="
     --adam-beta2 0.95 \
     --use-flash-attn \
     --use-distributed-optimizer \
-    --use-ascend-coc \
     --no-gradient-accumulation-fusion \
     --bf16 \
 "

@@ -5,8 +5,8 @@ from mindspeed import megatron_adaptor
 import torch_npu
 import torch.distributed as dist
 
-from commons import set_random_seed, initialize_model_parallel
-from unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
 
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
@@ -28,7 +28,6 @@ from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.core.context_parallel.utils import sbh_to_tnd, tnd_to_sbh
 from mindspeed.utils import set_actual_seq_len
 from mindspeed.utils import compute_qkv_index
-
 
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -62,8 +61,8 @@ def get_data_on_this_cp_rank(data, batch_actual_seq_len, cp_size, cp_rank, dim=0
     bsz = data.shape[1]
     index_lst = [get_index(actual_seq_len, cp_size, cp_rank).to(data.device) for actual_seq_len in batch_actual_seq_len]
 
-    data_lst = [data[:, i, :].index_select(0, index_lst[i]) for i in range(bsz)]             
-    data = torch.stack(data_lst, dim=1) # [s/cp, b, h]
+    data_lst = [data[:, i, :].index_select(0, index_lst[i]) for i in range(bsz)]
+    data = torch.stack(data_lst, dim=1)  # [s/cp, b, h]
     return data
 
 
@@ -135,28 +134,28 @@ def run_ringattn_cp(cp_size, dtype, cp_args):
             actual_seq_kvlen=actual_seq_len,
             sparse_mode=3 if attn_mask is not None else 0
         )
-        out = out_packed[0] # TND
-        out = tnd_to_sbh(out, b) # SBH
+        out = out_packed[0]  # TND
+        out = tnd_to_sbh(out, b)  # SBH
         out.backward(dout)
     else:
-        out = npu_fusion_attention( \
-            q, k, v, n, 'SBH', \
-            pse=pse, \
-            pse_type=pse_type, \
-            padding_mask=None, \
-            atten_mask=attn_mask, \
-            scale=scale, \
-            pre_tokens=s, \
-            next_tokens=0, \
-            keep_prob=1., \
-            inner_precise=0, \
+        out = npu_fusion_attention(
+            q, k, v, n, 'SBH',
+            pse=pse,
+            pse_type=pse_type,
+            padding_mask=None,
+            atten_mask=attn_mask,
+            scale=scale,
+            pre_tokens=s,
+            next_tokens=0,
+            keep_prob=1.,
+            inner_precise=0,
             sparse_mode=3 if attn_mask is not None else 0
         )[0]
         out.backward(dout)
 
-    out_ref = get_data_on_this_cp_rank(out.clone().detach(), batch_actual_seq_len, cp_size, rank) # SBH
-    k_grad_ref = get_data_on_this_cp_rank(k.grad.clone().detach(), batch_actual_seq_len, cp_size, rank) # SBH
-    v_grad_ref = get_data_on_this_cp_rank(v.grad.clone().detach(), batch_actual_seq_len, cp_size, rank) # SBH
+    out_ref = get_data_on_this_cp_rank(out.clone().detach(), batch_actual_seq_len, cp_size, rank)  # SBH
+    k_grad_ref = get_data_on_this_cp_rank(k.grad.clone().detach(), batch_actual_seq_len, cp_size, rank)  # SBH
+    v_grad_ref = get_data_on_this_cp_rank(v.grad.clone().detach(), batch_actual_seq_len, cp_size, rank)  # SBH
 
     local_actual_seq_len = [x // cp_size for x in actual_seq_len]
 
@@ -191,10 +190,9 @@ def run_ringattn_cp(cp_size, dtype, cp_args):
     cp_para['rank'] = rank
     cp_para['cp_global_ranks'] = cp_global_ranks
     cp_para['cp_group_for_send_recv_overlap'] = mpu.get_context_parallel_group_for_send_recv_overlap() \
-            if args.use_cp_send_recv_overlap else None
+        if args.use_cp_send_recv_overlap else None
     cp_para['pse'] = pse
     cp_para['pse_type'] = pse_type
-
 
     cp_para['cp_inner_ranks'] = get_ring_ranks_for_intra_window()
     cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
@@ -203,14 +201,14 @@ def run_ringattn_cp(cp_size, dtype, cp_args):
     cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
 
     packed_seq_params = PackedSeqParams(
-        cu_seqlens_q=torch.tensor(local_actual_seq_len).npu(), 
+        cu_seqlens_q=torch.tensor(local_actual_seq_len).npu(),
         cu_seqlens_kv=torch.tensor(local_actual_seq_len).npu()
     )
     q_index, kv_index = compute_qkv_index(local_actual_seq_len)
     packed_seq_params.q_index = q_index
     packed_seq_params.kv_index = kv_index
-    out_ = ringattn_context_parallel(q_, k_, v_, n, cp_para, softmax_scale=scale, 
-                                    attn_mask=None, packed_seq_params = packed_seq_params)
+    out_ = ringattn_context_parallel(q_, k_, v_, n, cp_para, softmax_scale=scale,
+                                     attn_mask=None, packed_seq_params=packed_seq_params)
     out_.backward(dout_)
 
     # same as transformer_engine
@@ -224,7 +222,6 @@ def run_ringattn_cp(cp_size, dtype, cp_args):
     assert torch.allclose(v_.grad, v_grad_ref, **tols)
 
 
-
 class TestRingAttnCP(DistributedTest):
     world_size = 8
 
@@ -232,4 +229,3 @@ class TestRingAttnCP(DistributedTest):
     @pytest.mark.parametrize("cp_args", [(True, True, True, 2, 1), (True, True, False, 2, 1)])
     def test_ringattn_context_parallel_seq8192_bs2_bf16(self, cp_args):
         run_ringattn_cp(self.world_size, torch.bfloat16, cp_args)
-

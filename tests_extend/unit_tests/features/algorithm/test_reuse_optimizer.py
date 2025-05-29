@@ -22,8 +22,8 @@ from megatron.core.transformer import TransformerConfig
 from megatron.training.training import get_model
 from megatron.training.utils import unwrap_model
 
-from unit_tests.common import DistributedTest
-from commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
 
 
 def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_kwargs):

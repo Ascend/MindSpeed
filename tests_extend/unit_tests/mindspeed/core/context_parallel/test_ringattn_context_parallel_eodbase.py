@@ -15,8 +15,8 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                              get_context_parallel_for_hybrid_ring_world_size,
                                              get_context_parallel_for_hybrid_ring_rank,
                                              get_context_parallel_for_hybrid_ring_global_ranks)
-from commons import set_random_seed, initialize_model_parallel
-from unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
 
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]

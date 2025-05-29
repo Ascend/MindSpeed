@@ -9,9 +9,9 @@ from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from mindspeed.core.tensor_parallel.unaligned_layers.adaptor import UnalignedColumnParallelLinearAdaptor, \
     UnalignedRowParallelLinearAdaptor
-from unit_tests.common import DistributedTest
-from commons import initialize_model_parallel
-from commons import set_random_seed
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import initialize_model_parallel
+from tests_extend.commons import set_random_seed
 
 
 def set_unaligned_linear_args(args):
@@ -20,7 +20,6 @@ def set_unaligned_linear_args(args):
     args.seq_len = 180
     args.batch_size = 8
     args.sequence_parallel = True
-    return args
 
 
 class TestUnalignedLinear(DistributedTest):

@@ -38,6 +38,7 @@ RECOMPUTE_ARGS="
 "
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
@@ -47,7 +48,6 @@ GPT_ARGS="
     --reuse-fp32-param \
     --sequence-parallel \
     --use-fused-rotary-pos-emb \
-    --use-fused-swiglu \
     --use-fused-rmsnorm \
     --use-flash-attn \
     --num-layers 4 \

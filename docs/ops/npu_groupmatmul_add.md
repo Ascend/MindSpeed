@@ -9,6 +9,7 @@
 - output：必选输出，数据类型float32
 
 ## 案例
+
 ```python
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import pytest
@@ -25,8 +26,8 @@ out = torch.rand((8192, 2048), dtype=torch.float32).npu()
 weight = torch.rand((2, 4096, 2048), dtype=torch.float16).npu()
 # 分开算子计算结果
 _, dy, _ = GMMFunction.builder.load().npu_gmm_backward([grads_out], [x], [weight], group_list, 0)
-out_single = out+dy[0].view(*out.shape)
-#融合算子计算结果
+out_single = out + dy[0].view(*out.shape)
+# 融合算子计算结果
 x = x.clone().detach()
 grads_out = grads_out.clone().detach()
 group_list = group_list.clone().detach()

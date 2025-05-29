@@ -1,7 +1,7 @@
+import sys
 import pytest
 import torch
 import torch_npu
-from mindspeed import megatron_adaptor # noqa
 
 from megatron.training.global_vars import set_args # noqa
 from megatron.training.arguments import parse_args # noqa
@@ -10,11 +10,17 @@ from megatron.core.transformer.transformer_config import TransformerConfig # noq
 from megatron.core.transformer.dot_product_attention import DotProductAttention # noqa
 from megatron.core.tensor_parallel import RowParallelLinear, ColumnParallelLinear
 
-from commons import set_random_seed, initialize_model_parallel # noqa
-from unit_tests.common import DistributedTest # noqa
-from mindspeed.model.transformer import get_attention_mask, set_attention_mask
+from mindspeed.core.transformer.flash_attention.generate_mask.generate_mask import get_attention_mask, set_attention_mask
 from mindspeed.core.tensor_parallel.ascend_turbo.initialize import initialize_cfg_from_args
-from mindspeed.core.training import get_flops_counter
+from mindspeed.functional.tflops_calculate.tflops_utils import get_flops_counter
+
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
+
+sys.argv.append("--use-flash-attn")
+from mindspeed import megatron_adaptor # noqa
+sys.argv.remove("--use-flash-attn")
+
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 

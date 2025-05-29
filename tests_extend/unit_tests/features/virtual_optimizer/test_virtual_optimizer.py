@@ -31,7 +31,7 @@ class SimpleLayer(nn.Module):
         super(SimpleLayer, self).__init__()
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, output_size)
-    
+
     def forward(self, x):
         out = self.linear1(x)
         out = F.relu(out)
@@ -68,7 +68,6 @@ def train_model(model, optimizer, input_tensor, target, steps=5):
     return output, expect_grad
 
 
-
 @pytest.mark.skipif(
     not hasattr(torch_npu, "empty_with_swapped_memory"),
     reason="Skip UT due to missing torch_npu APIs in CI"
@@ -92,6 +91,6 @@ class TestVirtualOptimizer:
         output, grad = train_model(model, optimizer, input_tensor, target)
         output_, grad_ = train_model(model_, optimizer_, input_tensor_, target_)
 
-        assert(torch.allclose(output, output_, atol=1e-6))
+        assert (torch.allclose(output, output_, atol=1e-6))
         for g1, g2 in zip(grad, grad_):
-            assert(torch.allclose(g1, g2, atol=1e-6))
+            assert (torch.allclose(g1, g2, atol=1e-6))

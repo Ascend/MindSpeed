@@ -1,6 +1,9 @@
+import sys
 import pytest
 import torch
 import torch_npu
+
+sys.argv.append('--use-flash-attn')
 from mindspeed import megatron_adaptor # noqa
 
 from megatron.training.global_vars import set_args # noqa
@@ -17,8 +20,10 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                              get_context_parallel_for_hybrid_ring_global_ranks)
 from mindspeed.model.transformer import get_attention_mask, set_attention_mask
 
-from commons import set_random_seed, initialize_model_parallel # noqa
-from unit_tests.common import DistributedTest # noqa
+from tests_extend.commons import set_random_seed, initialize_model_parallel # noqa
+from tests_extend.unit_tests.common import DistributedTest # noqa
+
+sys.argv.remove('--use-flash-attn')
 
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]

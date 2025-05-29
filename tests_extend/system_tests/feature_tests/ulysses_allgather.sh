@@ -47,7 +47,6 @@ GPT_ARGS="
     --reuse-fp32-param \
     --sequence-parallel \
     --use-fused-rotary-pos-emb \
-    --use-fused-swiglu \
     --use-fused-rmsnorm \
     --use-flash-attn \
     --num-layers 4 \
@@ -90,7 +89,8 @@ GPT_ARGS="
     --context-parallel-kv-cache-policy full \
     --context-parallel-cache-interval 1 \
     --lr-warmup-fraction 0.01 \
-    --bf16
+    --bf16 \
+    --transformer-impl local \
 "
 
 DATA_ARGS="

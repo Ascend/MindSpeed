@@ -1,3 +1,5 @@
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import random
 import torch
 import numpy

@@ -34,7 +34,6 @@ RECOMPUTE_ARGS="
 
 MOE_ARGS="
     --expert-model-parallel-size ${EP} \
-    --moe-model-type megatron_moe \
     --moe-token-dispatcher-type alltoall_seq \
     --moe-permutation-async-comm \
     --moe-pad-expert-input-to-capacity \
@@ -46,9 +45,9 @@ MOE_ARGS="
 "
 
 MLA_ARGS="
-    --multi-head-latent-attention \
-    --qk-rope-head-dim 64 \
-    --qk-nope-head-dim 128 \
+    --multi-latent-attention \
+    --qk-pos-emb-head-dim 64 \
+    --qk-head-dim 128 \
     --q-lora-rank 1536 \
     --kv-lora-rank 512 \
     --v-head-dim 128 \
@@ -56,17 +55,9 @@ MLA_ARGS="
     --rotary-scaling-factor 40 \
 "
 
-ROPE_ARGS="
-    --rope-scaling-beta-fast 32 \
-    --rope-scaling-beta-slow 1 \
-    --rope-scaling-factor  40 \
-    --rope-scaling-mscale 0.707 \
-    --rope-scaling-mscale-all-dim  0.707 \
-    --rope-scaling-original-max-position-embeddings 4096 \
-    --rope-scaling-type yarn
-"
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
@@ -74,7 +65,6 @@ GPT_ARGS="
     --context-parallel-algo megatron_cp_algo \
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
-    --use-fused-swiglu \
     --use-fused-rmsnorm \
     --reuse-fp32-param \
     --sequence-parallel \
@@ -137,7 +127,6 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $RECOMPUTE_ARGS \
     $MOE_ARGS \
     $MLA_ARGS \
-    $ROPE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
 

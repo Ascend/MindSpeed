@@ -10,7 +10,7 @@ LOG = getLogger(__name__)
 
 ENABLE_DEPRECATED = False
 
-# when decide to deprecate megatron_adaptor.py, define a specific time.
+# when decide to deprecate megatron_adaptor_deprecated.py, define a specific time.
 MEGATRON_ADAPTOR_DEPRECATED_TIME = datetime(2099, 1, 1, tzinfo=timezone.utc)
 
 
@@ -55,8 +55,8 @@ class Deprecated:
                 "aspm.register_patch('megatron.core.transformer.moe.moe_utils.track_moe_metrics', track_moe_metrics)",
             ),
             suggestion=
-            "please use mindspeed.megatron_adaptor_v2.py"
-            "instead of interface in mindspeed.megatron_adaptor.py",
+            "please use mindspeed.megatron_adaptor.py"
+            "instead of interface in mindspeed.megatron_adaptor_deprecated.py",
         )
         def mcore_models_adaptation(aspm, mindspeed_args):
             # code here

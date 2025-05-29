@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import torch
 
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 
 from mindspeed.multi_modal.conv3d.conv3d_depth_parallel import Conv3DSequenceParallel
 

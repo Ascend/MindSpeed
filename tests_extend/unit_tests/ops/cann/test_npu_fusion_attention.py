@@ -2,7 +2,7 @@ import pytest
 import torch
 import torch_npu
 
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]

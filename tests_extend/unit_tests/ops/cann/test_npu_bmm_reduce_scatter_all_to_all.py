@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import _get_default_group, ReduceOp
 import torch_npu
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 from mindspeed.ops.npu_bmm_reduce_scatter_all_to_all import npu_bmm_reducescatter_alltoall
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -105,7 +105,7 @@ class TestNPUBMMReduceScatterAlltoAll(DistributedTest):
             x_shape = (E / self.ep_size, self.ep_size * C, M / self.tp_size)
             bias_shape = (E / self.ep_size, 1, H)
         weight_shape = (E / self.ep_size, M / self.tp_size, H)
-        if transpose_weight == True:
+        if transpose_weight:
             weight_shape = (E / self.ep_size, H, M / self.tp_size)
         
         x_shape = tuple(int(item) for item in x_shape)
@@ -116,7 +116,7 @@ class TestNPUBMMReduceScatterAlltoAll(DistributedTest):
         bias = torch.rand(bias_shape)
         self.x_npu = x.npu().to(dtype)
         self.weight_npu = weight.npu().to(dtype)
-        if transpose_weight == True:
+        if transpose_weight:
             print(f'!!!!before transpose, weight_npu.size()={self.weight_npu.size()}')
             self.weight_npu = self.weight_npu.transpose(1, 2)
             print(f'!!!!after transpose, weight_npu.size()={self.weight_npu.size()}')
