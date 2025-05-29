@@ -1,134 +1,28 @@
 import torch
+from mindspeed import megatron_adaptor
 import torch_npu
-from unit_tests.common import DistributedTest
+
+from mindspeed.core.memory.swap_attention.adaptor import AdaptiveRecomputeSwap
+from mindspeed.patch_utils import MindSpeedPatchesManager as pm
+
+from megatron.training.global_vars import set_args
+from megatron.training.arguments import parse_args
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import initialize_model_parallel
 
 
-class AdaptiveRecomputePolicy:
+class AdaptiveRecomputePolicy(AdaptiveRecomputeSwap):
     # swap_attention
-    def __init__(self, args):
-        self.interval = 0
-        self.threshold_prefetch = 0
-        self.num_prefetch = 0
-        self.num_layers = 0
-        self.args = args
-        self.pp_rank = 0
-        self.is_last_stage = False
-
-    def granular_module_allocation(self, vpp_size, recompute_num_layers, cur_pp_noop_layers):
-        swap_list = []
-        recompute_list = []
-        args = self.args
-        cur_pp_rank = self.pp_rank
-        pp_size = args.pipeline_model_parallel_size or 1
-        vpp_layer = args.num_layers_per_virtual_pipeline_stage
-        if self.num_prefetch <= vpp_size:
-            swap_list = [['0'] if i < self.num_prefetch else [''] for i in range(vpp_size)]
-        else:
-            for chunk in range(vpp_size):
-                chunk_swap_layer = ['0']
-                for layer_id in range(vpp_size, self.num_prefetch):
-                    if layer_id % vpp_size == chunk:
-                        chunk_swap_layer.append(f'{layer_id // vpp_size}')
-                swap_list.append(chunk_swap_layer)
-
-        if recompute_num_layers <= vpp_size:
-            recompute_list = [['0'] if i < recompute_num_layers else [''] for i in range(vpp_size)]
-            if self.is_last_stage and args.reduce_recompute_for_last_chunk:
-                recompute_list[-1] = ['']
-        else:
-            for chunk in range(vpp_size):
-                chunk_recompute_layer = ['0']
-                for layer_id in range(vpp_size, recompute_num_layers):
-                    if layer_id % vpp_size == chunk:
-                        chunk_recompute_layer.append(f'{layer_id // vpp_size}')
-                recompute_list.append(chunk_recompute_layer)
-            if self.is_last_stage and args.reduce_recompute_for_last_chunk:
-                if recompute_list[-1][-1] == str(args.num_layers_per_virtual_pipeline_stage - 1):
-                    recompute_list[-1].pop()
-                    if len(recompute_list[-1]) == 0:
-                        recompute_list[-1].append('')
-        for vpp in range(vpp_size):
-            vpp_layers = swap_list[vpp]
-            for i in range(len(vpp_layers)):
-                layer_id = vpp * vpp_layer * pp_size + i + vpp_layer * cur_pp_rank
-                if layer_id in cur_pp_noop_layers:
-                    swap_list[vpp][i] = ''
-                    if len(recompute_list[vpp]) >= i + 1:
-                        recompute_list[vpp][i] = ''
-
-        prefetch_list = swap_list
-        interval = 0
-        prefetch_recompute_group = [swap_list, prefetch_list, recompute_list]
-        return [prefetch_recompute_group, interval, self.num_prefetch, cur_pp_noop_layers]
-
-    def get_cur_stage_noop_layers(self, noop_layers):
-        all_args = self.args
-        cur_pp_noop_layers = []
-        cur_pp_rank = self.pp_rank
-        pp_size = all_args.pipeline_model_parallel_size or 1
-        layers_per_pp = all_args.num_layers // pp_size
-        vpp_layer = all_args.num_layers_per_virtual_pipeline_stage or layers_per_pp
-        vpp_layers = vpp_layer * pp_size
-        for i in noop_layers:
-            pp_id = (i % vpp_layers) // vpp_layer
-            if pp_id == cur_pp_rank:
-                cur_pp_noop_layers.append(i)
-        return cur_pp_noop_layers
-
-    def solve_prefetch_policy(self):
-        all_args = self.args
-        noop_layers = list(all_args.noop_layers) if isinstance(all_args.noop_layers, set) else []
-        cur_pp_noop_layers = self.get_cur_stage_noop_layers(noop_layers)
-        recompute_num_layers = all_args.recompute_num_layers or 0
-        pp_size = all_args.pipeline_model_parallel_size or 1
-        vpp_size = all_args.virtual_pipeline_model_parallel_size or 1
-        per_pp_layers = all_args.num_layers // pp_size
-        per_vpp_layers = all_args.num_layers_per_virtual_pipeline_stage or per_pp_layers
-        if not all_args.enable_recompute_layers_per_pp_rank:
-            if recompute_num_layers >= per_vpp_layers:
-                recompute_num_layers = per_pp_layers
-            else:
-                recompute_num_layers *= vpp_size
-        else:
-            if recompute_num_layers >= per_pp_layers:
-                recompute_num_layers = per_pp_layers
-        if all_args.recompute_method == 'block':
-            self.num_prefetch = recompute_num_layers
-        elif all_args.recompute_method == 'uniform':
-            recompute_num_layers = per_pp_layers
-            self.num_prefetch = recompute_num_layers
-        else:
-            self.num_prefetch = per_pp_layers
-        self.interval = 0
-        if vpp_size > 1:
-            return self.granular_module_allocation(vpp_size, recompute_num_layers, cur_pp_noop_layers)
-        else:
-            swap_list, recompute_list = [], []
-            for i in range(self.num_prefetch):
-                if i + self.pp_rank * per_pp_layers not in cur_pp_noop_layers:
-                    swap_list.append(str(i))
-                else:
-                    swap_list.append('')
-            for i in range(recompute_num_layers):
-                if i + self.pp_rank * per_pp_layers not in cur_pp_noop_layers:
-                    recompute_list.append(str(i))
-                else:
-                    recompute_list.append('')
-            prefetch_list = swap_list
-            prefetch_recompute_group = [[swap_list], [prefetch_list], [recompute_list]]
-            return [prefetch_recompute_group, 0, len(prefetch_list), cur_pp_noop_layers]
-
-
-class Config:
     def __init__(self):
-        self.noop_layers = None
-        self.pipeline_model_parallel_size = 1
-        self.num_layers = 8
-        self.recompute_num_layers = 4
-        self.virtual_pipeline_model_parallel_size = 1
-        self.enable_recompute_layers_per_pp_rank = False
-        self.recompute_method = None
-        self.num_layers_per_virtual_pipeline_stage = None
+        super().__init__()
+        initialize_model_parallel(1, 1)
+        self.pp_rank = 0
+        pm.register_patch('megatron.core.parallel_state.get_pipeline_model_parallel_rank',
+                          self.get_pipeline_model_parallel_rank_patch, True)
+        pm.apply_patches()
+
+    def get_pipeline_model_parallel_rank_patch(self):
+        return self.pp_rank
 
 
 class TestSwapAttention(DistributedTest):
@@ -143,6 +37,14 @@ class TestSwapAttention(DistributedTest):
         assert prefetch_list == check_prefetch
         assert recompute_list == check_recompute
         assert swap_noop_layers == check_noop
+
+    @staticmethod
+    def config_args(args):
+        args.pipeline_model_parallel_size = 1
+        args.num_layers = 8
+        args.recompute_num_layers = 4
+        args.virtual_pipeline_model_parallel_size = 1
+        args.enable_recompute_layers_per_pp_rank = False
 
     def test_storage_copy_interface(self):
         tensor1 = torch.randn([2048, 1, 4096], dtype=torch.bfloat16, device='npu:0')
@@ -168,8 +70,11 @@ class TestSwapAttention(DistributedTest):
         assert torch.allclose(tensor1.cpu().float().sum(), tensor_cpu.float().sum())
 
     def test_swap_attention_cal_prefetch_list(self):
-        args = Config()
-        arp = AdaptiveRecomputePolicy(args)
+        args = parse_args(None, True)
+        self.config_args(args)
+        args.reduce_recompute_for_last_chunk = None
+        set_args(args)
+        arp = AdaptiveRecomputePolicy()
         self.check_result(arp,
                           [['0', '1', '2', '3', '4', '5', '6', '7']],
                           [['0', '1', '2', '3', '4', '5', '6', '7']],
@@ -177,9 +82,12 @@ class TestSwapAttention(DistributedTest):
                           [])
 
     def test_swap_attention_cal_prefetch_list_enable_pp(self):
-        args = Config()
+        args = parse_args(None, True)
+        self.config_args(args)
         args.pipeline_model_parallel_size = 2
-        arp = AdaptiveRecomputePolicy(args)
+        args.reduce_recompute_for_last_chunk = None
+        set_args(args)
+        arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
         self.check_result(arp,
                           [['0', '1', '2', '3']],
@@ -195,10 +103,13 @@ class TestSwapAttention(DistributedTest):
                           [])
 
     def test_swap_attention_cal_prefetch_list_enable_pp_enable_noop_layers(self):
-        args = Config()
+        args = parse_args(None, True)
+        self.config_args(args)
         args.pipeline_model_parallel_size = 2
         args.noop_layers = {0, 7}
-        arp = AdaptiveRecomputePolicy(args)
+        args.reduce_recompute_for_last_chunk = None
+        set_args(args)
+        arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
         self.check_result(arp,
                           [['', '1', '2', '3']],
@@ -213,15 +124,17 @@ class TestSwapAttention(DistributedTest):
                           [['0', '1', '2', '']],
                           [7])
 
-    #
     def test_swap_attention_cal_prefetch_list_enable_vpp_enable_noop_layers(self):
-        args = Config()
+        args = parse_args(None, True)
+        self.config_args(args)
         args.pipeline_model_parallel_size = 2
         args.num_layers_per_virtual_pipeline_stage = 1
         args.virtual_pipeline_model_parallel_size = 4
         args.noop_layers = {0, 7}
         args.enable_recompute_layers_per_pp_rank = True
-        arp = AdaptiveRecomputePolicy(args)
+        args.reduce_recompute_for_last_chunk = None
+        set_args(args)
+        arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
         self.check_result(arp,
                           [[''], ['0'], ['0'], ['0']],
@@ -253,13 +166,16 @@ class TestSwapAttention(DistributedTest):
                           [7])
 
     def test_swap_attention_cal_prefetch_list_enable_vpp_enable_multiple_noop_layers(self):
-        args = Config()
+        args = parse_args(None, True)
+        self.config_args(args)
         args.pipeline_model_parallel_size = 2
         args.virtual_pipeline_model_parallel_size = 2
         args.num_layers_per_virtual_pipeline_stage = 2
         args.noop_layers = {0, 1, 6, 7}
         args.enable_recompute_layers_per_pp_rank = True
-        arp = AdaptiveRecomputePolicy(args)
+        args.reduce_recompute_for_last_chunk = None
+        set_args(args)
+        arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
         self.check_result(arp,
                           [['', ''], ['0', '1']],
@@ -275,14 +191,19 @@ class TestSwapAttention(DistributedTest):
                           [6, 7])
 
     def test_swap_attention_cal_prefetch_list_enable_vpp_enable_multiple_noop_layers_with_inter_layer(self):
-        args = Config()
+        args = parse_args(None, True)
+        self.config_args(args)
         args.num_layers = 16
         args.pipeline_model_parallel_size = 4
         args.virtual_pipeline_model_parallel_size = 2
         args.num_layers_per_virtual_pipeline_stage = 2
         args.noop_layers = {0, 7}
         args.enable_recompute_layers_per_pp_rank = True
-        arp = AdaptiveRecomputePolicy(args)
+        args.world_size = 8
+        args.micro_batch_size = 8
+        args.reduce_recompute_for_last_chunk = None
+        set_args(args)
+        arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
         self.check_result(arp,
                           [['', '1'], ['0', '1']],

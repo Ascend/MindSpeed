@@ -1,7 +1,7 @@
 from functools import wraps
 import pytest
 from mindspeed.patch_utils import MindSpeedPatchesManager as aspm
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 
 
 def function1():
@@ -48,9 +48,9 @@ class TestRegisterPatches(DistributedTest):
     world_size = 1
 
     def test_replace_class_variable(self):
-        from unit_tests.mindspeed.test_register_patches import TestClass
+        from tests_extend.unit_tests.mindspeed.test_register_patches import TestClass
         assert TestClass.test_variable == 1
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.TestClass.test_variable', 2)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.TestClass.test_variable', 2)
         aspm.apply_patches()
         assert TestClass.test_variable == 2
 
@@ -73,61 +73,68 @@ class TestRegisterPatchesResetEnv(DistributedTest):
     reuse_dist_env = False
 
     def test_replace_function(self):
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function2)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function2)
         aspm.apply_patches()
 
-        from unit_tests.mindspeed.test_register_patches import function1
+        from tests_extend.unit_tests.mindspeed.test_register_patches import function1
 
         assert function1() == 'this is function2'
 
     def test_wrapper_function(self):
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
         aspm.apply_patches()
 
-        from unit_tests.mindspeed.test_register_patches import function1
+        from tests_extend.unit_tests.mindspeed.test_register_patches import function1
 
         assert function1() == 'this is function1 wrapper'
 
     def test_multi_patch(self):
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function2)
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_second_wrapper)
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_third_wrapper)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function2)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.register_patch(
+            'tests_extend.unit_tests.mindspeed.test_register_patches.function1',
+            function_second_wrapper)
+        aspm.register_patch(
+            'tests_extend.unit_tests.mindspeed.test_register_patches.function1',
+            function_third_wrapper)
         aspm.apply_patches()
 
-        from unit_tests.mindspeed.test_register_patches import function1
+        from tests_extend.unit_tests.mindspeed.test_register_patches import function1
 
         assert function1() == 'this is function2 wrapper wrapper2 wrapper3'
 
     def test_double_patch(self):
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function2)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function2)
 
         with pytest.raises(RuntimeError, match='the patch of function1 exist !'):
-            aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function3)
+            aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function3)
 
     def test_force_double_patch(self):
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function2)
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function3, force_patch=True)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function2)
+        aspm.register_patch(
+            'tests_extend.unit_tests.mindspeed.test_register_patches.function1',
+            function3,
+            force_patch=True)
         aspm.apply_patches()
 
-        from unit_tests.mindspeed.test_register_patches import function1
+        from tests_extend.unit_tests.mindspeed.test_register_patches import function1
 
         assert function1() == 'this is function3'
 
     def test_double_wrapper(self):
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
         aspm.apply_patches()
 
-        from unit_tests.mindspeed.test_register_patches import function1
+        from tests_extend.unit_tests.mindspeed.test_register_patches import function1
 
         assert function1() == 'this is function1 wrapper'
 
     def test_remove_wrapper(self):
-        aspm.register_patch('unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
-        aspm.remove_wrappers('unit_tests.mindspeed.test_register_patches.function1', 'function_wrapper')
+        aspm.register_patch('tests_extend.unit_tests.mindspeed.test_register_patches.function1', function_wrapper)
+        aspm.remove_wrappers('tests_extend.unit_tests.mindspeed.test_register_patches.function1', 'function_wrapper')
         aspm.apply_patches()
 
-        from unit_tests.mindspeed.test_register_patches import function1
+        from tests_extend.unit_tests.mindspeed.test_register_patches import function1
 
         assert function1() == 'this is function1'

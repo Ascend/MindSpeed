@@ -10,7 +10,7 @@ from megatron.core.transformer.moe.moe_utils import unpermute
 from mindspeed.ops.npu_moe_token_permute import npu_moe_token_permute
 from mindspeed.ops.npu_moe_token_unpermute import npu_moe_token_unpermute
 
-from unit_tests.common import TOL_MAPPING
+from tests_extend.unit_tests.common import TOL_MAPPING
 
 
 @pytest.mark.skip(reason='this UT need update for new Meagatron version')
@@ -91,7 +91,6 @@ class TestNpuFusedPermuteAndUnpermute():
         else:
             assert torch.allclose(unpermuted_tokens, tokens, **tols)
 
-    @pytest.mark.skip(reason='this UT need update for new cann version')
     @pytest.mark.parametrize('num_tokens', [1024, 2048, 8192])
     @pytest.mark.parametrize('hidden_size', [6144, 8192, 12288])
     @pytest.mark.parametrize('topk', [1, 4])

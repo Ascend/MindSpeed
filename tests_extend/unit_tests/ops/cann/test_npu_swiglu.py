@@ -3,8 +3,8 @@ import torch
 import torch_npu
 from mindspeed import megatron_adaptor
 from megatron.legacy.model.transformer import ParallelMLP
-from unit_tests.common import DistributedTest
-from commons import initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import initialize_model_parallel
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed

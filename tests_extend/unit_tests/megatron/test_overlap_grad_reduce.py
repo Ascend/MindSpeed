@@ -3,8 +3,8 @@ import os
 import pytest
 import torch
 import mindspeed.megatron_adaptor
-from commons import initialize_model_parallel
-from unit_tests.common import DistributedTest
+from tests_extend.commons import initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
 
 from megatron.core import parallel_state
 from megatron.core.distributed import DistributedDataParallelConfig
@@ -91,5 +91,6 @@ class TestOverlapGradReduce(DistributedTest):
             ref_bucket.param_data = ref_bucket.param_data.float()
             overlap_bucket.param_data = overlap_bucket.param_data.float()
 
-        assert torch.allclose(ref_bucket.param_data, overlap_bucket.param_data, rtol=0.0001, atol=0.0001), '{}\n{}'.format(
+        assert torch.allclose(
+            ref_bucket.param_data, overlap_bucket.param_data, rtol=0.0001, atol=0.0001), '{}\n{}'.format(
             ref_bucket.param_data, overlap_bucket.param_data)

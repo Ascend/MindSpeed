@@ -4,7 +4,7 @@ import torch
 import torch_npu
 import torchair as tng
 from torchair.configs.compiler_config import CompilerConfig
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 from mindspeed.ops import ffn
 from mindspeed.op_builder import FFNOpBuilder
 

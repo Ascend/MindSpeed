@@ -29,7 +29,6 @@ DISTRIBUTED_ARGS="
 
 MOE_ARGS="
     --expert-model-parallel-size ${EP} \
-    --moe-model-type megatron_moe \
     --moe-token-dispatcher-type alltoall_seq \
     --moe-alltoall-overlap-comm \
     --moe-zero-memory level0 \
@@ -43,12 +42,12 @@ MOE_ARGS="
 "
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
-    --use-fused-swiglu \
     --use-fused-rmsnorm \
     --sequence-parallel \
     --use-distributed-optimizer \

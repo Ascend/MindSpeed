@@ -30,7 +30,6 @@ DISTRIBUTED_ARGS="
 
 MOE_ARGS="
     --expert-model-parallel-size ${EP} \
-    --moe-model-type megatron_moe \
     --num-experts 4 \
     --moe-permutation-async-comm \
     --moe-grouped-gemm \
@@ -42,8 +41,6 @@ MOE_ARGS="
 "
 
 RECOMPUTE_ARGS="
-    --moe-adaptive-recompute-activation \
-    --moe-adaptive-recompute-activation-scale 1.5 \
     --recompute-activation-function \
     --recompute-activation-function-num-layers 2 \
     --recompute-norm \
@@ -52,6 +49,7 @@ RECOMPUTE_ARGS="
 "
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \

@@ -3,8 +3,6 @@
 # This source code is licensed under the Apache license found in the
 # LICENSE file in the root directory of this source tree.
 
-# copied from https://github.com/microsoft/DeepSpeed/blob/master/tests/unit/common.py
-# reworked/refactored some parts to make it run.
 import os
 import time
 import inspect

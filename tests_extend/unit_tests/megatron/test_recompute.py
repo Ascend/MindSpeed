@@ -3,8 +3,8 @@ import torch
 import torch_npu
 from mindspeed import megatron_adaptor
 
-from commons import set_random_seed, initialize_model_parallel
-from unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
 
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_block import TransformerBlock
@@ -68,7 +68,7 @@ class TestRecompute(DistributedTest):
         attention_mask = torch.ones((1, 1, sequence_length, sequence_length), dtype=bool).cuda()
         set_attention_mask(attention_mask)
 
-        hidden_states = transformer_block(hidden_states=hidden_states, attention_mask=None)
+        hidden_states = transformer_block(hidden_states=hidden_states, attention_mask=attention_mask)
         assert hidden_states.shape[0] == sequence_length
         assert hidden_states.shape[1] == micro_batch_size
         assert hidden_states.shape[2] == config.hidden_size

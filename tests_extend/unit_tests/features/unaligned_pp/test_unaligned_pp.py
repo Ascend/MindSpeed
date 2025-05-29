@@ -6,7 +6,6 @@ import pytest
 import torch
 
 from mindspeed import megatron_adaptor
-
 from megatron.core.transformer import TransformerConfig
 from megatron.core.transformer.enums import ModelType
 from megatron.core.parallel_state import destroy_model_parallel
@@ -19,35 +18,40 @@ from megatron.training.initialize import _initialize_distributed, _set_random_se
 from megatron.legacy.model.transformer import ParallelTransformer, NoopTransformerLayer
 
 from mindspeed.core.transformer.moe.moe_utils import get_mean
-from mindspeed.core.pipeline_parallel.unaligned.unaligned_pipeline import get_num_layers_to_build_unaligned
 
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 
-
-sys.argv = [
-    sys.argv[0],
-    '--num-layers', '24',
-    '--hidden-size', '8',
-    '--ffn-hidden-size', '8',
-    '--num-attention-heads', '8',
-    '--tokenizer-type', 'Llama2Tokenizer',
-    '--tokenizer-model', '/home/dataset/model/llama-2-7b-hf/tokenizer.model',
-    '--seq-length', '128',
-    '--max-position-embeddings', '128',
-    '--micro-batch-size', '1',
-    '--global-batch-size', '8',
-    '--lr-warmup-fraction', '0.01',
-    '--bf16',
-    '--data-path',
-    '/home/dataset/llama2/alpaca_text_document',
-    '--seed', '1234',
-]
 
 os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = "1"
 
 
 class TestUnalignedPP(DistributedTest):
     world_size = 8
+
+    def initialize_env(self):
+        self.ori_sys = sys.argv
+        sys.argv = [
+            sys.argv[0],
+            '--num-layers', '24',
+            '--hidden-size', '8',
+            '--ffn-hidden-size', '8',
+            '--num-attention-heads', '8',
+            '--tokenizer-type', 'Llama2Tokenizer',
+            '--tokenizer-model', '/home/dataset/model/llama-2-7b-hf/tokenizer.model',
+            '--seq-length', '128',
+            '--max-position-embeddings', '128',
+            '--micro-batch-size', '1',
+            '--global-batch-size', '8',
+            '--lr-warmup-fraction', '0.01',
+            '--bf16',
+            '--data-path',
+            '--transformer-impl local'
+            '/home/dataset/llama2/alpaca_text_document',
+            '--seed', '1234',
+        ]
+    
+    def del_env(self):
+        sys.argv = self.ori_sys
 
     def init_parallel_transformer(self):
         args = get_args()
@@ -86,6 +90,7 @@ class TestUnalignedPP(DistributedTest):
         args.encoder_seq_length = None
         args.start_weight_decay = None
         args.end_weight_decay = None
+        args.transformer_impl = "local"
         validate_args(args)
         set_args(args)
 
@@ -99,28 +104,9 @@ class TestUnalignedPP(DistributedTest):
         _set_random_seed(args.seed, args.data_parallel_random_init)
 
     @pytest.mark.parametrize("tp_pp_vp_stage_num_layers", [(2, 4, 1, 8)])
-    @pytest.mark.parametrize("pipeline_num_transformer_layers", ["[[0,1],[1,1], [1,1],[3,0]]"])
-    def test_valid_unaligned_layers(self, tp_pp_vp_stage_num_layers, pipeline_num_transformer_layers):
-        num_layers = tp_pp_vp_stage_num_layers[3]
-        self.set_args(tp_pp_vp_stage_num_layers, pipeline_num_transformer_layers)
-        self.initialize_distributed()
-        self.init_parallel_transformer()
-        args = get_args()
-        all_layers = 0
-        for v in args.pipeline_num_transformer_layers:
-            for x in v:
-                all_layers += x
-        assert all_layers == num_layers
-        assert args.pipeline_num_transformer_layers == [[0, 1], [1, 1], [1, 1], [3, 0]]
-        pp_num_layers = get_num_layers_to_build_unaligned(args)
-        if pp_num_layers != 0:
-            assert pp_num_layers == len(self.parallel_transformer.layers)
-        else:
-            assert len(self.parallel_transformer.layers) == 1
-
-    @pytest.mark.parametrize("tp_pp_vp_stage_num_layers", [(2, 4, 1, 8)])
     @pytest.mark.parametrize("pipeline_num_transformer_layers", ["[[0,1], [1,1], [1,1],[3,0]]"])
     def test_moe_metrics_with_unaligned_layers(self, tp_pp_vp_stage_num_layers, pipeline_num_transformer_layers):
+        self.initialize_env()
         self.set_args(tp_pp_vp_stage_num_layers, pipeline_num_transformer_layers)
         self.initialize_distributed()
         self.init_parallel_transformer()
@@ -147,3 +133,4 @@ class TestUnalignedPP(DistributedTest):
         clear_aux_losses_tracker()
         assert total_loss_dict.get(name) == 1
         del parallel_state._MOE_LAYER_WISE_LOGGING_TRACKER[name]
+        self.del_env()

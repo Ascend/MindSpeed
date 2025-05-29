@@ -11,8 +11,10 @@ NODE_RANK=0
 WORLD_SIZE=$(($NPUS_PER_NODE*$NNODES))
 
 CKPT_DIR=./ckpt_llama
-DATA_PATH="/home/dataset/llama2/alpaca_text_document"
 TOKENIZER_MODEL="/home/dataset/model/llama-2-7b-hf/tokenizer.model"
+VOCAB_FILE=/home/dataset/enwiki/gpt2-vocab.json
+MERGE_FILE=/home/dataset/enwiki/gpt2-merges.txt
+DATA_PATH=/home/dataset/enwiki/my-t5_text_sentence
 
 TP=1     # MLA only support TP1
 PP=2
@@ -34,8 +36,7 @@ RECOMPUTE_ARGS="
 
 MOE_ARGS="
     --expert-model-parallel-size ${EP} \
-    --moe-model-type megatron_moe \
-    --moe-token-dispatcher-type alltoall_seq \
+    --moe-token-dispatcher-type alltoall \
     --moe-permutation-async-comm \
     --moe-pad-expert-input-to-capacity \
     --moe-expert-capacity-factor 1.5 \
@@ -43,12 +44,14 @@ MOE_ARGS="
     --num-experts 16 \
     --moe-router-topk 4 \
     --moe-aux-loss-coeff 0.02 \
+    --moe-layer-freq [0]*1+[1]*3 \
+    --moe-shared-expert-overlap \
 "
 
 MLA_ARGS="
-    --multi-head-latent-attention \
-    --qk-rope-head-dim 64 \
-    --qk-nope-head-dim 128 \
+    --multi-latent-attention \
+    --qk-pos-emb-head-dim 64 \
+    --qk-head-dim 128 \
     --q-lora-rank 1536 \
     --kv-lora-rank 512 \
     --v-head-dim 128 \
@@ -56,17 +59,9 @@ MLA_ARGS="
     --rotary-scaling-factor 40 \
 "
 
-ROPE_ARGS="
-    --rope-scaling-beta-fast 32 \
-    --rope-scaling-beta-slow 1 \
-    --rope-scaling-factor  40 \
-    --rope-scaling-mscale 0.707 \
-    --rope-scaling-mscale-all-dim  0.707 \
-    --rope-scaling-original-max-position-embeddings 4096 \
-    --rope-scaling-type yarn
-"
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
@@ -74,7 +69,6 @@ GPT_ARGS="
     --context-parallel-algo megatron_cp_algo \
     --use-flash-attn \
     --use-fused-rotary-pos-emb \
-    --use-fused-swiglu \
     --use-fused-rmsnorm \
     --reuse-fp32-param \
     --sequence-parallel \
@@ -121,6 +115,8 @@ GPT_ARGS="
 
 DATA_ARGS="
     --data-path $DATA_PATH \
+    --vocab-file $VOCAB_FILE \
+    --merge-file $MERGE_FILE \
     --split 995,5,0
 "
 
@@ -137,7 +133,6 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $RECOMPUTE_ARGS \
     $MOE_ARGS \
     $MLA_ARGS \
-    $ROPE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
 

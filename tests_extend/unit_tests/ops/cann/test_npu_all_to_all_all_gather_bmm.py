@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import _get_default_group, ReduceOp
 import torch_npu
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 from mindspeed.ops.npu_all_to_all_all_gather_bmm import npu_alltoall_allgather_bmm
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -97,7 +97,6 @@ class TestNPUAlltoAllAllGatherBMM(DistributedTest):
     @pytest.mark.parametrize('out_y3_flag', [False])
     @pytest.mark.parametrize('act_type', ["none"])
     @pytest.mark.parametrize('transpose_weight', [False, True])
-    #@pytest.mark.skip(reason="MatmulAllRedcueAddRmsNorm is not in this cann.")
     def test_npu_alltoall_allgather_bmm(self, dtype, out_y2_flag, out_y3_flag, act_type, transpose_weight):
         rank = int(os.environ["LOCAL_RANK"])
         hcomm_info_dist = self.get_ep_tp_hcomm_info(rank, self.ep_size, self.tp_size)
@@ -122,7 +121,7 @@ class TestNPUAlltoAllAllGatherBMM(DistributedTest):
             x_shape = (E / self.ep_size, self.tp_size * self.ep_size * C, M / self.tp_size)
 
         weight_shape = (E / self.ep_size, H, M / self.tp_size)
-        if transpose_weight == True:
+        if transpose_weight:
             weight_shape = (E / self.ep_size, M / self.tp_size, H)
 
         bias_shape = (E / self.ep_size, 1, M / self.tp_size)
@@ -136,7 +135,7 @@ class TestNPUAlltoAllAllGatherBMM(DistributedTest):
         bias = torch.rand(bias_shape)
         self.x_npu = x.npu().to(dtype)
         self.weight_npu = weight.npu().to(dtype)
-        if transpose_weight == True:
+        if transpose_weight:
             print(f'!!!!before transpose, weight_npu.size()={self.weight_npu.size()}')
             self.weight_npu = self.weight_npu.transpose(1, 2)
             print(f'!!!!after transpose, weight_npu.size()={self.weight_npu.size()}')
@@ -148,9 +147,9 @@ class TestNPUAlltoAllAllGatherBMM(DistributedTest):
         y1, y2, y3 = self.custom_op_exec()
         print(f'y1_shape = {y1.size()}')
         assert y1.size() == (int(E / self.ep_size), self.ep_size * C, int(M / self.tp_size))
-        if self.out_y2_flag == True:
+        if self.out_y2_flag:
             assert y2.size() == (int(E / self.ep_size), self.ep_size * C, H)
-        if self.act_type != "None" and self.out_y3_flag == True:
+        if self.act_type != "None" and self.out_y3_flag:
             if self.x_shard_type == 0:
                 assert y3.size() == (int(E / self.ep_size), self.ep_size * C, int(M / self.tp_size))
             elif self.x_shard_type == 1:
@@ -176,9 +175,9 @@ class TestNPUAlltoAllAllGatherBMM(DistributedTest):
         for y1_i, y1_golden_i in zip(y1, y1_golden):
             assert torch.allclose(y1_i, y1_golden_i, rtol=diff_hold, atol=diff_hold)
         
-        if self.out_y2_flag == True:
+        if self.out_y2_flag:
             for y2_i, y2_golden_i in zip(y2, y2_golden):
                 assert torch.allclose(y2_i, y2_golden_i, rtol=diff_hold, atol=diff_hold)
-        if self.out_y3_flag == True:
+        if self.out_y3_flag:
             for y3_i, y3_golden_i in zip(y3, y3_golden):
                 assert torch.allclose(y3_i, y3_golden_i, rtol=diff_hold, atol=diff_hold)

@@ -31,8 +31,8 @@ from mindspeed.optimizer.distrib_optimizer import get_parameter_state_dp_zero_hc
 from mindspeed.core.parallel_state import (get_data_parallel_group_gloo_replace,
                                            get_data_modulo_expert_parallel_group_gloo_replace)
 
-from unit_tests.common import DistributedTest
-from commons import initialize_model_parallel as initialize_model_parallel_comm
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import initialize_model_parallel as initialize_model_parallel_comm
 
 
 def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_kwargs):
@@ -71,7 +71,7 @@ def init_mock_args(args, bf16=True):
 def setup_model_and_optimizer(seed, bf16=True):
     # with mock.patch('megatron.training.training.get_args', data_parallel_random_init=False) as mock_args:
     #     init_mock_args(mock_args.return_value, bf16)
-    model = get_model(partial(initialize_gpt_model, seed=seed))
+    model = get_model(partial(initialize_gpt_model, seed=seed, bf16=bf16))
 
     config = OptimizerConfig(lr=1e-4, bf16=bf16, params_dtype=torch.bfloat16 if bf16 else torch.float,
                              use_distributed_optimizer=bf16)
@@ -145,8 +145,10 @@ class TestGatherAndScatter(DistributedTest):
         # GLOO Communication
         recv_tensor_gloo = torch.empty(recv_shape, dtype=torch.float32, device="cpu")
         if data_parallel_rank == 0:
-            send_tensors = [torch.rand(recv_shape, dtype=torch.float32, device="cpu") for _
-                            in range(data_parallel_world_size)]
+            send_tensors = [
+                torch.rand(recv_shape, dtype=torch.float32, device="cpu")
+                for _ in range(data_parallel_world_size)
+            ]
         else:
             send_tensors = None
         torch.distributed.scatter(
@@ -186,8 +188,8 @@ class TestGatherAndScatter(DistributedTest):
         # GLOO Communication
         send_tensor = torch.rand(send_shape, dtype=torch.float32, device="cpu")
         if data_parallel_rank == 0:
-            recv_tensors_gloo = [torch.empty(send_shape, dtype=torch.float32, device="cpu") for _
-                                 in range(data_parallel_world_size)]
+            recv_tensors_gloo = [torch.empty(send_shape, dtype=torch.float32, device="cpu")
+                                 for _ in range(data_parallel_world_size)]
         else:
             recv_tensors_gloo = None
         torch.distributed.gather(
@@ -198,8 +200,8 @@ class TestGatherAndScatter(DistributedTest):
         )
 
         # HCCL Slice Communication Optimization
-        recv_tensors_hccl = [torch.empty(send_shape, dtype=torch.float32) for _
-                             in range(data_parallel_world_size)]
+        recv_tensors_hccl = [torch.empty(send_shape, dtype=torch.float32)
+                             for _ in range(data_parallel_world_size)]
         _gather_hccl(
             send_tensor,
             recv_tensors_hccl,

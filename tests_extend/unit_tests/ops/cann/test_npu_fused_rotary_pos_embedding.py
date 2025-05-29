@@ -1,13 +1,17 @@
+# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 from copy import deepcopy
+import sys
 import pytest
 import torch
 import torch_npu
+sys.argv.append("--use-fused-rotary-pos-emb")
 from mindspeed import megatron_adaptor
-from unit_tests.common import DistributedTest
+from tests_extend.unit_tests.common import DistributedTest
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
-
+sys.argv.remove("--use-fused-rotary-pos-emb")
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 

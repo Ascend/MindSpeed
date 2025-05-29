@@ -35,6 +35,7 @@ RECOMPUTE_ARGS="
 "
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
@@ -44,7 +45,6 @@ GPT_ARGS="
     --use-cp-send-recv-overlap \
     --use-fused-ring-attention-update \
     --reuse-fp32-param \
-    --use-fused-swiglu \
     --use-fused-rmsnorm \
     --use-flash-attn \
     --use-fusion-attn-v2 \

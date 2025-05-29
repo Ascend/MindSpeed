@@ -35,6 +35,7 @@ RECOMPUTE_ARGS="
 "
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --context-parallel-size ${CP} \
@@ -45,7 +46,6 @@ GPT_ARGS="
     --use-ascend-mc2 \
     --sequence-parallel \
     --use-fused-rotary-pos-emb \
-    --use-fused-swiglu \
     --use-fused-rmsnorm \
     --use-flash-attn \
     --op-cal-tflops \

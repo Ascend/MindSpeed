@@ -22,8 +22,8 @@ from megatron.core.transformer import TransformerConfig
 from megatron.training.training import get_model
 from megatron.training.utils import unwrap_model
 
-from unit_tests.common import DistributedTest
-from commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
 
 
 def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_kwargs):
@@ -54,7 +54,7 @@ def init_mock_args(args, use_distributed_optimizer=False, reuse_fp32_param=False
 
 
 def setup_model_and_optimizer(seed, use_distributed_optimizer=False):
-    model = get_model(partial(initialize_gpt_model, seed=seed))
+    model = get_model(partial(initialize_gpt_model, seed=seed, bf16=True))
     set_random_seed(seed)
     config = OptimizerConfig(lr=1e-4, bf16=True, params_dtype=torch.bfloat16, use_distributed_optimizer=use_distributed_optimizer)
     config.timers = Timers()

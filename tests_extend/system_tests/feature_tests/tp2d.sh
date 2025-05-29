@@ -32,6 +32,8 @@ RECOMPUTE_ARGS="
 "
 
 GPT_ARGS="
+    --context-parallel-algo ulysses_cp_algo \
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --tp-2d \
@@ -40,14 +42,12 @@ GPT_ARGS="
     --enable-overlap-ag-with-matmul \
     --enable-overlap-matmul-with-rs \
     --enable-backward-overlap-ag-with-matmul \
-    --disable-gloo-group \
     --optimizer-selection fused_torch_adamw \
     --use-distributed-optimizer \
     --overlap-grad-reduce \
     --overlap-param-gather \
     --reuse-fp32-param \
     --use-fused-rotary-pos-emb \
-    --use-fused-swiglu \
     --use-flash-attn \
     --no-gradient-accumulation-fusion \
     --num-layers 4 \
@@ -84,7 +84,8 @@ GPT_ARGS="
     --group-query-attention \
     --num-query-groups 8 \
     --lr-warmup-fraction 0.01 \
-    --bf16
+    --bf16 \
+    --context-parallel-algo ulysses_cp_algo
 "
 
 DATA_ARGS="

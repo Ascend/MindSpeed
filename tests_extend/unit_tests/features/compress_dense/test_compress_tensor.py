@@ -1,16 +1,13 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
-import argparse
 import copy
-import os
-from unittest import mock
 
 import pytest
 import torch
+import mindspeed.megatron_adaptor
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch_npu
-import mindspeed.megatron_adaptor
 from mindspeed.core.memory.compress_dense.compress_tensor import ActivationCompress
 
 torch.manual_seed(42)
@@ -24,7 +21,7 @@ class MockArgs:
         self.iteration = 0
         self.curr_iteration = 0
         self.compress_dense = "level1"
-    
+
     def set_mock_step(self, step):
         self.curr_iteration = step
 
@@ -39,13 +36,13 @@ class SimpleLayer(nn.Module):
         super(SimpleLayer, self).__init__()
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, output_size)
-    
+
     def forward(self, x):
         global if_compress
         global mock_args
         if if_compress:
             if not hasattr(self, "ac"):
-                self.ac = ActivationCompress(mock_args, "simplelayer_ctm")    
+                self.ac = ActivationCompress(mock_args, "simplelayer_ctm")
             self.ac.compress_and_wait_decompress_async_for_previous_layer(x)
         out = self.linear1(x)
         if if_compress:
@@ -126,6 +123,6 @@ class TestCompressTensor:
         output, grad = train_model(model, optimizer, input_tensor, target)
         output_, grad_ = train_model_with_compress(model_, optimizer_, input_tensor_, target_)
 
-        assert(torch.allclose(output, output_, atol=1e-6))
+        assert (torch.allclose(output, output_, atol=1e-6))
         for g1, g2 in zip(grad, grad_):
-            assert(torch.allclose(g1, g2, atol=1e-6))
+            assert (torch.allclose(g1, g2, atol=1e-6))

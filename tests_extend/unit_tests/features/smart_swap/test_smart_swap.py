@@ -60,6 +60,12 @@ class TestSmartSwap:
 
         return models, optimizer, swap_manager
 
+    @staticmethod
+    def def_swap_manager(swap_manager):
+        option = {"OP_HOOK_ENABLE": "disable"}
+        torch.npu.set_option(option)
+        swap_manager.smart_swap_cpp.deinit_cpp_manager()
+
     def test_swap_manager(self):
         from mindspeed.core.memory.smart_swap.swap_manager import SwapRunningStage
 
@@ -68,8 +74,8 @@ class TestSmartSwap:
 
         models, optimizer, swap_manager = self.init_swap_manager()
         assert swap_manager.running_stage == SwapRunningStage.WARMUP_STAGE
-        assert swap_manager.config.enable_profiler == True
-        assert swap_manager.config.enable_executor == False
+        assert swap_manager.config.enable_profiler
+        assert not swap_manager.config.enable_executor
 
         swap_policy_config.warmup_step = 2
         swap_policy_config.stable_step = 4
@@ -84,53 +90,55 @@ class TestSmartSwap:
             if iteration == 0:
                 assert swap_manager.config.step == 0
                 assert swap_manager.running_stage == SwapRunningStage.WARMUP_STAGE
-                assert swap_manager.config.enable_profiler == True
-                assert swap_manager.config.enable_executor == False
+                assert swap_manager.config.enable_profiler
+                assert not swap_manager.config.enable_executor
             if iteration == 1:
                 assert swap_manager.config.step == 1
                 assert swap_manager.running_stage == SwapRunningStage.WARMUP_STAGE
-                assert swap_manager.config.enable_profiler == True
-                assert swap_manager.config.enable_executor == False
+                assert swap_manager.config.enable_profiler
+                assert not swap_manager.config.enable_executor
             if iteration == 2:
                 assert swap_manager.config.step == 2
                 assert swap_manager.running_stage == SwapRunningStage.SEARCHING_POLICY_STAGE
-                assert swap_manager.config.enable_profiler == True
-                assert swap_manager.config.enable_executor == True
+                assert swap_manager.config.enable_profiler
+                assert swap_manager.config.enable_executor
             if iteration == 3:
                 assert swap_manager.config.step == 3
                 assert swap_manager.running_stage == SwapRunningStage.SEARCHING_POLICY_STAGE
-                assert swap_manager.config.enable_profiler == True
-                assert swap_manager.config.enable_executor == True
+                assert swap_manager.config.enable_profiler
+                assert swap_manager.config.enable_executor
             if iteration == 4:
                 assert swap_manager.config.step == 4
                 assert swap_manager.running_stage == SwapRunningStage.STABLE_STAGE
-                assert swap_manager.config.enable_profiler == False
-                assert swap_manager.config.enable_executor == True
+                assert not swap_manager.config.enable_profiler
+                assert swap_manager.config.enable_executor
 
             swap_manager.step()
 
             if iteration == 0:
                 assert swap_manager.config.step == 1
                 assert swap_manager.running_stage == SwapRunningStage.WARMUP_STAGE
-                assert swap_manager.config.enable_profiler == True
-                assert swap_manager.config.enable_executor == False
+                assert swap_manager.config.enable_profiler
+                assert not swap_manager.config.enable_executor
             if iteration == 1:
                 assert swap_manager.config.step == 2
                 assert swap_manager.running_stage == SwapRunningStage.SEARCHING_POLICY_STAGE
-                assert swap_manager.config.enable_profiler == True
-                assert swap_manager.config.enable_executor == True
+                assert swap_manager.config.enable_profiler
+                assert swap_manager.config.enable_executor
             if iteration == 2:
                 assert swap_manager.config.step == 3
                 assert swap_manager.running_stage == SwapRunningStage.SEARCHING_POLICY_STAGE
-                assert swap_manager.config.enable_profiler == True
-                assert swap_manager.config.enable_executor == True
+                assert swap_manager.config.enable_profiler
+                assert swap_manager.config.enable_executor
             if iteration == 3:
                 assert swap_manager.config.step == 4
                 assert swap_manager.running_stage == SwapRunningStage.STABLE_STAGE
-                assert swap_manager.config.enable_profiler == False
-                assert swap_manager.config.enable_executor == True
+                assert not swap_manager.config.enable_profiler
+                assert swap_manager.config.enable_executor
             if iteration == 4:
                 assert swap_manager.config.step == 5
                 assert swap_manager.running_stage == SwapRunningStage.STABLE_STAGE
-                assert swap_manager.config.enable_profiler == False
-                assert swap_manager.config.enable_executor == True
+                assert not swap_manager.config.enable_profiler
+                assert swap_manager.config.enable_executor
+
+        self.def_swap_manager(swap_manager)

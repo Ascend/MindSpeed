@@ -4,12 +4,11 @@ import torch_npu
 from mindspeed import megatron_adaptor
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
-from megatron.core.tensor_parallel import RowParallelLinear
 from megatron.core.transformer.transformer_config import TransformerConfig
-from mindspeed.core.tensor_parallel.ascend_turbo.initialize import initialize_cfg_from_args
-from unit_tests.common import DistributedTest
-from commons import initialize_model_parallel
-from commons import set_random_seed
+from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2RowParallelLinear
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import initialize_model_parallel
+from tests_extend.commons import set_random_seed
 
 
 def set_mc2_args(args):
@@ -33,7 +32,6 @@ class TestMC2(DistributedTest):
         args = parse_args(None, True)
         args = set_mc2_args(args)
         set_args(args)
-        initialize_cfg_from_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
                                                num_attention_heads=4,
@@ -43,13 +41,13 @@ class TestMC2(DistributedTest):
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.output_size_coeff * args.tensor_model_parallel_size
-        linear_layer = RowParallelLinear(input_size,
-                                         output_size,
-                                         keep_master_weight_for_test=True,
-                                         bias=True, input_is_parallel=True,
-                                         skip_bias_add=False,
-                                         init_method=transformer_config.init_method,
-                                        config=transformer_config).half().npu()
+        linear_layer = MindSpeedMC2RowParallelLinear(input_size,
+                                                     output_size,
+                                                     keep_master_weight_for_test=True,
+                                                     bias=True, input_is_parallel=True,
+                                                     skip_bias_add=False,
+                                                     init_method=transformer_config.init_method,
+                                                     config=transformer_config).half().npu()
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         loss_weight = torch.rand([args.seq_len, output_size]).half().npu()
         input_ = torch.rand(args.batch_size, args.seq_len, args.input_size_coeff)
@@ -78,7 +76,6 @@ class TestMC2(DistributedTest):
         args = parse_args(None, True)
         args = set_mc2_args(args)
         set_args(args)
-        initialize_cfg_from_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
                                                num_attention_heads=4,
@@ -87,13 +84,13 @@ class TestMC2(DistributedTest):
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.output_size_coeff * args.tensor_model_parallel_size
-        linear_layer = RowParallelLinear(input_size,
-                                         output_size,
-                                         keep_master_weight_for_test=True,
-                                         bias=True, input_is_parallel=True,
-                                         skip_bias_add=False,
-                                         init_method=transformer_config.init_method,
-                                        config=transformer_config).half().npu()
+        linear_layer = MindSpeedMC2RowParallelLinear(input_size,
+                                                     output_size,
+                                                     keep_master_weight_for_test=True,
+                                                     bias=True, input_is_parallel=True,
+                                                     skip_bias_add=False,
+                                                     init_method=transformer_config.init_method,
+                                                     config=transformer_config).half().npu()
         linear_layer.weight.requires_grad_(False)
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         input_ = torch.rand(args.batch_size, args.seq_len, args.input_size_coeff)

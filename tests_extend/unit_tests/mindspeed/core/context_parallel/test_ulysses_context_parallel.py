@@ -2,17 +2,17 @@ import pytest
 import math
 
 import torch
+from mindspeed import megatron_adaptor
 import torch_npu
 import torch.distributed as dist
 
-from mindspeed import megatron_adaptor
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention, DynamicGatherSizeCalculator
 import megatron.core.parallel_state as ps
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from mindspeed.core.context_parallel.ulysses_context_parallel.unaligned_cp.mapping import _AllToAll, _split, _gather, cal_split_sizes
-from commons import set_random_seed, initialize_model_parallel
-from unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
 
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -28,6 +28,7 @@ class FlashSelfAttention(torch.nn.Module):
         attention_dropout: The dropout rate to apply to the attention
                            (default: 0.0)
     """
+
     def __init__(self, causal=False, softmax_scale=None, attention_dropout=0.0,
                  device=None, dtype=None):
         super().__init__()
@@ -42,15 +43,15 @@ class FlashSelfAttention(torch.nn.Module):
             q, k, v: The tensor containing the query, key, and value. (S, B, H, D)
         """
 
-        output = torch_npu.npu_fusion_attention( \
-            q, k, v, head_num, 'SBH', \
-            pse=None, \
-            padding_mask=None, \
-            atten_mask=attention_mask, \
-            scale=self.softmax_scale, \
-            pre_tockens=q.shape[0], \
-            next_tockens=0, \
-            keep_prob=1., \
+        output = torch_npu.npu_fusion_attention(
+            q, k, v, head_num, 'SBH',
+            pse=None,
+            padding_mask=None,
+            atten_mask=attention_mask,
+            scale=self.softmax_scale,
+            pre_tockens=q.shape[0],
+            next_tockens=0,
+            keep_prob=1.,
             inner_precise=0
         )[0]
 
@@ -70,7 +71,6 @@ def get_data_on_this_cp_rank(data, cp_size, cp_rank, dim=0):
 
 
 def run_ulysses_cp(cp_size, bs, seq_len, dtype):
-    # initialize_model_parallel(context_parallel_size=cp_size)
     set_random_seed(1234)
 
     rank = dist.get_rank()
@@ -83,15 +83,15 @@ def run_ulysses_cp(cp_size, bs, seq_len, dtype):
     dout = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
 
     attn_mask = ~torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
-    out = torch_npu.npu_fusion_attention( \
-        q, k, v, n, 'SBH', \
-        pse=None, \
-        padding_mask=None, \
-        atten_mask=attn_mask, \
-        scale=scale, \
-        pre_tockens=seq_len, \
-        next_tockens=0, \
-        keep_prob=1., \
+    out = torch_npu.npu_fusion_attention(
+        q, k, v, n, 'SBH',
+        pse=None,
+        padding_mask=None,
+        atten_mask=attn_mask,
+        scale=scale,
+        pre_tockens=seq_len,
+        next_tockens=0,
+        keep_prob=1.,
         inner_precise=0
     )[0]
     out.backward(dout)
@@ -146,15 +146,15 @@ def run_ulysses_cp_unaligned(cp_size, bs, seq_len, dtype):
 
     attn_mask = ~torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
 
-    out = torch_npu.npu_fusion_attention( \
-        q, k, v, n, 'SBH', \
-        pse=None, \
-        padding_mask=None, \
-        atten_mask=attn_mask, \
-        scale=scale, \
-        pre_tockens=seq_len, \
-        next_tockens=0, \
-        keep_prob=1., \
+    out = torch_npu.npu_fusion_attention(
+        q, k, v, n, 'SBH',
+        pse=None,
+        padding_mask=None,
+        atten_mask=attn_mask,
+        scale=scale,
+        pre_tockens=seq_len,
+        next_tockens=0,
+        keep_prob=1.,
         inner_precise=0
     )[0]
 
@@ -164,7 +164,6 @@ def run_ulysses_cp_unaligned(cp_size, bs, seq_len, dtype):
     k_ = _split(k.clone().detach(), cp_group, dim=0)
     v_ = _split(v.clone().detach(), cp_group, dim=0)
     dout_ = _split(dout.clone().detach(), cp_group, dim=0)
-
 
     for x in [q_, k_, v_]:
         x.requires_grad = True

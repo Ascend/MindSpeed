@@ -1,4 +1,30 @@
-# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+import sys
+# Setting sys.argv is mainly to ensure that --context-parallel-size is not None, so that the code block (which will be executed
+# after determining that context-parallel-size is not None) will be executed in megatron_adaptor.
+original_argv = sys.argv.copy()
+sys.argv = [
+    sys.argv[0],
+    '--use-flash-attn',
+    '--context-parallel-algo', 'megatron_cp_algo',
+    '--context-parallel-size', '2',
+    '--num-layers', '24',
+    '--hidden-size', '8',
+    '--ffn-hidden-size', '8',
+    '--num-attention-heads', '8',
+    '--tokenizer-type', 'Llama2Tokenizer',
+    '--tokenizer-model', '/home/dataset/model/llama-2-7b-hf/tokenizer.model',
+    '--seq-length', '128',
+    '--max-position-embeddings', '128',
+    '--micro-batch-size', '1',
+    '--global-batch-size', '8',
+    '--lr-warmup-fraction', '0.01',
+    '--bf16',
+    '--data-path',
+    '/home/dataset/llama2/alpaca_text_document',
+    '--seed', '1234',
+]
 import math
 
 import pytest
@@ -10,7 +36,7 @@ from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import ringattn_context_parallel
 from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import get_cache_policy
-from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ulysses,
+from mindspeed.core.context_parallel.model_parallel_utils import (get_context_parallel_group_for_hybrid_ulysses,
                                            get_context_parallel_group_for_hybrid_ring,
                                            get_context_parallel_for_hybrid_ring_world_size,
                                            get_context_parallel_for_hybrid_ring_rank,
@@ -22,10 +48,10 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                            get_ring_group_for_intra_window_send_recv_overlap)
 from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
-from commons import set_random_seed, initialize_model_parallel
-from unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
 
-
+sys.argv = original_argv
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 

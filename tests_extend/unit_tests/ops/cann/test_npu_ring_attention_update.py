@@ -8,7 +8,7 @@ from mindspeed import megatron_adaptor
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from mindspeed.core.context_parallel.utils import forward_update
-from unit_tests.common import TOL_MAPPING
+from tests_extend.unit_tests.common import TOL_MAPPING
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 

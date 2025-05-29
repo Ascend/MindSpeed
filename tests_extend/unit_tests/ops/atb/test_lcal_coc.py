@@ -1,9 +1,10 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 import torch_npu
 import pytest
 import numpy as np
-from unit_tests.common import DistributedTest
-from commons import initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
+from tests_extend.commons import initialize_model_parallel
 
 
 shape_list = [

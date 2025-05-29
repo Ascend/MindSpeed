@@ -17,8 +17,8 @@ from megatron.core.optimizer import (
     ConstantGradScaler,
 )
 from megatron.core import mpu
-from commons import set_random_seed, initialize_model_parallel
-from unit_tests.common import DistributedTest
+from tests_extend.commons import set_random_seed, initialize_model_parallel
+from tests_extend.unit_tests.common import DistributedTest
 
 
 class Model(MegatronModule):
