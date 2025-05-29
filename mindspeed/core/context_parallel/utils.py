@@ -9,7 +9,7 @@ from scipy.sparse.linalg import eigsh
 from mindspeed.ops.npu_ring_attention_update import npu_ring_attention_update
 from mindspeed.core.context_parallel import get_args
 from mindspeed.core.context_parallel import get_context_parallel_global_ranks
-from mindspeed.core.parallel_state import get_context_parallel_for_hybrid_ring_global_ranks
+from mindspeed.core.context_parallel.model_parallel_utils import get_context_parallel_for_hybrid_ring_global_ranks
 from mindspeed.op_builder import AdaptiveCpOpBuilder
 
 
