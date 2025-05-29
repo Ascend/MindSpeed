@@ -10,6 +10,8 @@ class DisableGlooGroupFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--disable-gloo-group', action='store_true', default=False,
                            help='Replace the communication method of the DP group in the distributed optimizer from gloo to hccl.')
+        group.add_argument('--hccl-slice-size', type=int, default=10 * 1024 * 1024,
+                           help='data slice size on each dp rank in distributed optimizer')
 
     def register_patches(self, patch_manager, args):
         from mindspeed.optimizer.distrib_optimizer import get_parameter_state_dp_zero_hccl, \

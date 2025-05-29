@@ -98,9 +98,9 @@ def initialize_cfg_from_framework():
 
 
 def initialize_cfg_from_args(args):
-    if not args.sequence_parallel or args.tensor_model_parallel_size == 1 or args.use_pipe_experts:
+    if not args.sequence_parallel or args.tensor_model_parallel_size == 1 or getattr(args, 'use_pipe_experts', False):
         return
-    if args.use_nanopipe:
+    if getattr(args, 'use_nanopipe', False):
         return
     ascend_turbo_cfg.set_sequence_parallel(args.sequence_parallel)
     ascend_turbo_cfg.set_all_gather_recomputation(True)
