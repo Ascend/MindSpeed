@@ -8,6 +8,7 @@ class MegatronBasicFeature(MindSpeedFeature):
     def register_args(self, parser):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument("--use-fused-rmsnorm", action='store_true', help="Use fused rmsnorm.")
+        group.add_argument("--use-fused-swiglu", action='store_true', help="Use fused swiglu.")
 
     def register_patches(self, patch_manager, args):
         self.register_basic_patches(patch_manager, args)
