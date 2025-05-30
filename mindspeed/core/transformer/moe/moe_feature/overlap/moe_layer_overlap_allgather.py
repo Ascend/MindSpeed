@@ -115,10 +115,10 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         save_tensors.append(global_probs_detach)
         save_tensors.append(global_hidden_states_detach)
 
-        expert_input = (dispatched_input, tokens_per_expert)
+        expert_input = (dispatched_input, tokens_per_expert, None)
 
-        def func(dispatched_input, tokens_per_expert):
-            expert_output, mlp_bias = moe_layer.experts(dispatched_input, tokens_per_expert)
+        def func(dispatched_input, tokens_per_expert, permuted_probs):
+            expert_output, mlp_bias = moe_layer.experts(dispatched_input, tokens_per_expert, permuted_probs)
             output, mlp_bias = moe_layer.token_dispatcher.token_unpermutation(
                 expert_output, mlp_bias, reversed_local_input_permutation_mapping
             )

@@ -23,7 +23,7 @@ def get_zeros_with_tp(input_):
     return torch.zeros(zeros_shape, dtype=input_.dtype, layout=input_.layout, device=input_.device)
 
 
-def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
+def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
     output_local = get_zeros_with_tp(permuted_local_hidden_states)
     output_bias_local = None
     if self.add_bias:
@@ -106,7 +106,7 @@ def groupedmlp_init_wrapper(fn):
     return wrapper
 
 
-def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
+def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
     args = get_args()
     is_recompute_activation = should_recompute_activation(
         self.layer_number) and not args.moe_alltoall_overlap_comm and not args.moe_allgather_overlap_comm

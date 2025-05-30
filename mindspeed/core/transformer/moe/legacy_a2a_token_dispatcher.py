@@ -60,7 +60,7 @@ def allgather_token_permutation(self, hidden_states: torch.Tensor, max_prob: tor
     if cann_version_check:
         raise AssertionError('In this CANN version, the moe-permutation-async-comm is no longer supported by the Megatron upgrade. Please check the CANN version.')
     else:
-        permuted_local_hidden_states, self.reversed_local_input_permutation_mapping = permute(
+        permuted_local_hidden_states, _, self.reversed_local_input_permutation_mapping = permute(
             hidden_states, self.local_map
         )
 
@@ -340,7 +340,7 @@ def alltoall_token_permutation(
     self.hidden_shape_before_permute = hidden_states.shape
     if self.cuda_sync_point == "before_permutation_1":
         torch.cuda.current_stream().synchronize()
-    permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+    permutated_local_input_tokens, _, self.reversed_local_input_permutation_mapping = permute(
         hidden_states,
         routing_map,
         num_out_tokens=self.num_out_tokens,
@@ -361,7 +361,7 @@ def alltoall_token_permutation(
 
     # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
     if self.num_local_experts > 1:
-        global_input_tokens = sort_chunks_by_idxs(
+        global_input_tokens, _ = sort_chunks_by_idxs(
             global_input_tokens,
             self.num_global_tokens_per_local_expert_cpu.ravel(),
             self.sort_input_by_local_experts,
@@ -376,7 +376,7 @@ def alltoall_token_permutation(
     if self.cuda_sync_point == "before_finish":
         torch.cuda.current_stream().synchronize()
 
-    return global_input_tokens, tokens_per_expert
+    return global_input_tokens, tokens_per_expert, None
 
 
 def alltoall_token_unpermutation_with_bmm(
@@ -413,13 +413,13 @@ def alltoall_token_permutation_with_bmm(
         hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
 
     self.hidden_shape_before_permute = hidden_states.shape
-    permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+    permutated_local_input_tokens, _, self.reversed_local_input_permutation_mapping = permute(
         hidden_states,
         indices,
         num_out_tokens=self.num_out_tokens,
         padded_mode=self.drop_and_pad,
     )
-    return permutated_local_input_tokens, tokens_per_expert
+    return permutated_local_input_tokens, tokens_per_expert, None
 
 
 def preprocess_tp_extend_ep(self, routing_map: torch.Tensor) -> torch.Tensor:
@@ -536,7 +536,7 @@ def alltoall_token_permutation_tp_extend_ep(
 
     # Permutation 1: input to AlltoAll input
     self.hidden_shape_before_permute = hidden_states.shape
-    permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+    permutated_local_input_tokens, _, self.reversed_local_input_permutation_mapping = permute(
         hidden_states,
         routing_map,
         num_out_tokens=self.num_out_tokens,
@@ -552,13 +552,13 @@ def alltoall_token_permutation_tp_extend_ep(
 
     # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
     if self.num_local_experts > 1:
-        global_input_tokens = sort_chunks_by_idxs(
+        global_input_tokens, _ = sort_chunks_by_idxs(
             global_input_tokens,
             self.num_global_tokens_per_local_expert_cpu.ravel(),
             self.sort_input_by_local_experts,
         )
     
-    return global_input_tokens, tokens_per_expert
+    return global_input_tokens, tokens_per_expert, None
 
 
 def alltoall_token_unpermutation_tp_extend_ep(
@@ -581,7 +581,7 @@ def alltoall_token_unpermutation_tp_extend_ep(
     # Unpermutation 2: expert output to AlltoAll input
     # hidden_states: [SEQL, H] -> [SEQL, H/TP]
     if self.num_local_experts > 1:
-        hidden_states = sort_chunks_by_idxs(
+        hidden_states, _ = sort_chunks_by_idxs(
             hidden_states,
             self.num_global_tokens_per_local_expert_cpu.T.ravel(),
             self.restore_output_by_local_experts,
@@ -636,7 +636,7 @@ def allgather_token_permutation_new(self, global_routing_map_tuple, global_probs
 
     self.hidden_shape_before_permute = global_hidden_states.shape
 
-    (permuted_local_hidden_states, self.reversed_local_input_permutation_mapping) = permute(
+    (permuted_local_hidden_states, _, self.reversed_local_input_permutation_mapping) = permute(
         global_hidden_states, self.local_map
     )
     return (
@@ -715,7 +715,7 @@ def alltoall_token_permutation_new(
  
         if self.cuda_sync_point == "before_permutation_1":
             torch.cuda.current_stream().synchronize()
-        permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
+        permutated_local_input_tokens, _, reversed_local_input_permutation_mapping = permute(
             hidden_states,
             routing_map,
             num_out_tokens=self.num_out_tokens,
@@ -763,7 +763,7 @@ def alltoall_token_permutation_new(
     def alltoall_token_permutation2(global_input_tokens):
         # Permutation 2: Sort tokens by local expert.
         if self.num_local_experts > 1:
-            global_input_tokens = sort_chunks_by_idxs(
+            global_input_tokens, _ = sort_chunks_by_idxs(
                 global_input_tokens,
                 self.num_global_tokens_per_local_expert_cpu.ravel(),
                 self.sort_input_by_local_experts,
@@ -792,7 +792,7 @@ def alltoall_token_permutation_new(
     save_tensors.append(global_input_tokens)
     global_input_tokens_detach.untyped_storage().resize_(0)
 
-    return share_experts_output, global_input_tokens, tokens_per_expert
+    return share_experts_output, global_input_tokens, tokens_per_expert, None
 
 
 def alltoall_token_unpermutation_new(
@@ -808,7 +808,7 @@ def alltoall_token_unpermutation_new(
 
         # Unpermutation 2: expert output to AlltoAll input
         if self.num_local_experts > 1:
-            hidden_states = sort_chunks_by_idxs(
+            hidden_states, _ = sort_chunks_by_idxs(
                 hidden_states,
                 self.num_global_tokens_per_local_expert_cpu.T.ravel(),
                 self.restore_output_by_local_experts,
@@ -942,7 +942,7 @@ def allgather_token_permutation_npu(self, hidden_states: torch.Tensor, max_prob:
     # Stage2: permute the tokens locally so that they are grouped by their expert assignment
     # Reshape indices to be compatible with Tensor.gather
 
-    permuted_local_hidden_states, self.reversed_local_input_permutation_mapping = permute(
+    permuted_local_hidden_states, _, self.reversed_local_input_permutation_mapping = permute(
         local_hidden_states, local_indices
     )
     return permuted_local_hidden_states, tokens_per_expert

@@ -204,8 +204,8 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
 
                 # Recompute token rearrange in permutation1
 
-                permutated_local_input_tokens, _ = permute(
-                    detach_input.view(-1, detach_input.shape[-1]), routing_map, num_tokens
+                permutated_local_input_tokens, _, _ = permute(
+                    detach_input.view(-1, detach_input.shape[-1]), routing_map, num_out_tokens=num_tokens
                 )
 
                 # Recompute expert parallel AlltoAll communication
@@ -261,7 +261,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
             with torch.no_grad():
                 if ctx.num_local_experts > 1:
                     # Recompute permutation2
-                    global_input_tokens = sort_chunks_by_idxs(
+                    global_input_tokens, _ = sort_chunks_by_idxs(
                         global_input_tokens,
                         num_global_tokens_per_local_expert_cpu.ravel(),
                         sort_input_by_local_experts,

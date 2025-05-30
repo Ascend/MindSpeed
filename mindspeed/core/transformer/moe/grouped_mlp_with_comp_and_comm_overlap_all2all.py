@@ -134,7 +134,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
             def alltoall_token_permutation1(hidden_states, routing_map):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, _ = permute(
+                permutated_local_input_tokens, _, _ = permute(
                     hidden_states, routing_map
                 )
                 return permutated_local_input_tokens
@@ -176,7 +176,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
 
         set_all2all_experts_output((permute1_backward_input, bw_permute1_ep_all2all_handle))
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
-            mm1_inputs = sort_chunks_by_idxs(
+            mm1_inputs, _ = sort_chunks_by_idxs(
                 global_input_tokens,
                 num_global_tokens_per_local_expert_cpu.ravel(),
                 sort_input_by_local_experts,

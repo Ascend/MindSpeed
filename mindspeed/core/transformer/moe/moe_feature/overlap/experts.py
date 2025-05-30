@@ -15,6 +15,7 @@ class OverLapGmmExpertsImpl:
     An efficient implementation of the experts layer using GroupedGEMM.
     Only used when open moe_alltoall_overlap_comm or moe_allgather_overlap_comm to overlap compute and communicate.
     """
+
     def __init__(self, num_local_experts, config=None):
         """
         Args:
@@ -32,7 +33,7 @@ class OverLapGmmExpertsImpl:
             # set tp size to 1 before GMM init to aviod weight sharding
             parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = 1
         super().__init__(num_local_experts, config)
-        if self.config.moe_tp_extend_ep:        
+        if self.config.moe_tp_extend_ep:
             parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = tp_size
         if self.config.gated_linear_unit:
             assert (self.config.activation_func == F.silu
@@ -43,7 +44,7 @@ class OverLapGmmExpertsImpl:
         self.activation_checkpoint_manager = CheckpointWithoutOutput()
 
     def forward(self, permuted_local_hidden_states, tokens_per_expert, ctx=None):
-        """Forward step of the GroupedMLP with MoE overlap."""   
+        """Forward step of the GroupedMLP with MoE overlap."""
         if permuted_local_hidden_states.nelement() != 0:
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
             w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
@@ -53,12 +54,12 @@ class OverLapGmmExpertsImpl:
         group_list = torch.cumsum(tokens_per_expert, dim=0)
         if self.config.moe_alltoall_overlap_comm:
             return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                                (self.weight1, self.weight2, self.activation_func, 
+                                                                (self.weight1, self.weight2, self.activation_func,
                                                                 group_list, self.layer_number, self.config),
                                                                 ctx=ctx)
-        else: 
+        else:
             return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                    (self.weight1, self.weight2, self.activation_func, 
+                                                                    (self.weight1, self.weight2, self.activation_func,
                                                                      group_list, self.layer_number, self.config))
 
 

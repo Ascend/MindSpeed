@@ -9,7 +9,7 @@ from megatron.training.global_vars import get_args
 def sequential_mlp_forward_decorator(fn):
 
     @wraps(fn)
-    def wrapper(self, permuted_local_hidden_states, tokens_per_expert):
+    def wrapper(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
         prof_file = get_args().prof_file
         if prof_file:
             output_local = torch.zeros_like(permuted_local_hidden_states)
@@ -38,6 +38,6 @@ def sequential_mlp_forward_decorator(fn):
 
             return output_local, output_bias_local
 
-        return fn(self, permuted_local_hidden_states, tokens_per_expert)
+        return fn(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs)
 
     return wrapper

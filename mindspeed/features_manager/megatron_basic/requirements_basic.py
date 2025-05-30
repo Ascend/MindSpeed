@@ -24,6 +24,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
         self.te_adaptation(patch_manager, args)
         self.apex_adaptation(patch_manager, args)
         self.torch_adaptation(patch_manager, args)
+        self.optimizer_selection(patch_manager, args)
 
     def te_adaptation(self, pm, args):
         from mindspeed.core.megatron_basic.requirements_basic import version_wrapper
@@ -42,7 +43,6 @@ class RequirementsBasicFeature(MindSpeedFeature):
     def apex_adaptation(self, pm, args):
         from mindspeed.core.megatron_basic.requirements_basic import multi_tensor_l2norm, multi_tensor_scale, multi_tensor_applier
         from mindspeed.core.fusions.fused_layer_norm import fused_layer_norm_affine
-        from mindspeed.core.optimizer.adamw import FusedTorchAdamW, AdamW
         from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
         from mindspeed.core.fusions.fused_layer_norm import FusedLayerNormAffineFunction, FastLayerNormFN
 
@@ -56,7 +56,9 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('apex.contrib.layer_norm.layer_norm.FastLayerNormFN', FastLayerNormFN, create_dummy=True)
         pm.register_patch('apex.normalization.fused_layer_norm.FusedLayerNormAffineFunction',
                           FusedLayerNormAffineFunction, create_dummy=True)
-
+        
+    def optimizer_selection(self, pm, args):
+        from mindspeed.core.optimizer.adamw import FusedTorchAdamW, AdamW
         if args.optimizer_selection == 'fused_torch_adamw':
             pm.register_patch('apex.optimizers.FusedAdam', FusedTorchAdamW, create_dummy=True)
         elif args.optimizer_selection == 'fused_adamw':

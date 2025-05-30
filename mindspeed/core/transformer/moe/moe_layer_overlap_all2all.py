@@ -76,7 +76,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         else:
             shared_expert_gate = None
 
-        (share_experts_output, dispatched_input, tokens_per_expert) = moe_layer.token_dispatcher.token_permutation(
+        (share_experts_output, dispatched_input, tokens_per_expert, permuted_probs) = moe_layer.token_dispatcher.token_permutation(
             hidden_states, scores, routing_map, ctx.shared_experts, save_tensors, shared_expert_gate, ctx
         )
         if isinstance(share_experts_output, tuple):
@@ -86,7 +86,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 share_experts_output.requires_grad_(True)
             rs_share_experts_output = share_experts_output
             rs_shared_experts_handle = None
-        (expert_output, mlp_bias), *_ = forward_func(moe_layer.experts, (dispatched_input, tokens_per_expert, ctx))
+        (expert_output, mlp_bias), *_ = forward_func(moe_layer.experts, (dispatched_input, tokens_per_expert, permuted_probs, ctx))
         save_tensors.append(expert_output)
 
         output, mlp_bias = moe_layer.token_dispatcher.token_unpermutation(expert_output, mlp_bias, save_tensors)
@@ -201,7 +201,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
 
                 # Recompute token rearrange in permutation1
 
-                permutated_local_input_tokens, _ = permute(
+                permutated_local_input_tokens, _, _ = permute(
                     detach_input.view(-1, detach_input.shape[-1]), routing_map, num_tokens
                 )
 
@@ -258,7 +258,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             with torch.no_grad():
                 if ctx.num_local_experts > 1:
                     # Recompute permutation2
-                    global_input_tokens = sort_chunks_by_idxs(
+                    global_input_tokens, _ = sort_chunks_by_idxs(
                         global_input_tokens,
                         num_global_tokens_per_local_expert_cpu.ravel(),
                         sort_input_by_local_experts,

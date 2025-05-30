@@ -88,10 +88,10 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
             self.comm_stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(self.comm_stream):
                 share_experts_output = self.shared_experts(hidden_states)
-        (dispatched_input, tokens_per_expert) = self.token_dispatcher.token_permutation(
+        (dispatched_input, tokens_per_expert, permuted_probs) = self.token_dispatcher.token_permutation(
             hidden_states, probs, routing_map
         )
-        expert_output, mlp_bias = self.experts(dispatched_input, tokens_per_expert)
+        expert_output, mlp_bias = self.experts(dispatched_input, tokens_per_expert, permuted_probs)
         output, mlp_bias = self.token_dispatcher.token_unpermutation(expert_output, mlp_bias)
         if args.n_shared_experts or args.moe_shared_expert_intermediate_size:
             torch.cuda.current_stream().wait_stream(self.comm_stream)

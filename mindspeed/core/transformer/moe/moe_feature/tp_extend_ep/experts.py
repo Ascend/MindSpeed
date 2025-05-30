@@ -13,6 +13,7 @@ class TpExtendEpGmmExpertsImpl:
     """
     support gemm_fusion、 activation recompute、TpExtendEp
     """
+
     def __init__(self, num_local_experts, config=None):
         """adjust the logic for generate expert weight to avoid splitting by tp_size
 
@@ -40,7 +41,7 @@ class TpExtendEpGmmExpertsImpl:
         self.set_recompute_activation_func = False
         self.activation_checkpoint_manager = CheckpointWithoutOutput()
 
-    def forward(self, permuted_local_hidden_states, tokens_per_expert):
+    def forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
         is_recompute_activation = should_recompute_activation(
             self.layer_number) and not self.config.moe_alltoall_overlap_comm and not \
             self.config.moe_allgather_overlap_comm
@@ -88,4 +89,3 @@ class TpExtendEpGmmExpertsImpl:
                 fc2_output.register_hook(self.activation_checkpoint_manager.recompute)
 
         return fc2_output, None
-
