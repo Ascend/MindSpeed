@@ -19,7 +19,7 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.register_grad_ready',
                         register_grad_ready)  # name overlap
 
-    from .core.models.common.embeddings import get_rotary_seq_len, local_rotate_half  # resolve warning
+    from .core.models.common.embeddings.rotary_pos_embedding import get_rotary_seq_len, local_rotate_half  # resolve warning
     aspm.register_patch(
         'megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len',
         get_rotary_seq_len)  # name overlap
@@ -34,8 +34,8 @@ def mindspore_adaptation(aspm, mindspeed_args):
     from .core.pipeline_parallel.schedules import forward_step, backward_step, forward_backward_no_pipelining
     from .core.pipeline_parallel.schedules import forward_backward_pipelining_with_interleaving, \
         forward_backward_pipelining_without_interleaving  # NOTE there's import patch
-    aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step', forward_step)
-    aspm.register_patch('megatron.core.pipeline_parallel.schedules.backward_step', backward_step)
+    aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step', forward_step, force_patch=True)
+    aspm.register_patch('megatron.core.pipeline_parallel.schedules.backward_step', backward_step, force_patch=True)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_no_pipelining',
                         forward_backward_no_pipelining)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_with_interleaving',
@@ -47,17 +47,13 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries',
                         local_build_key_size_numel_dictionaries)
 
-    from .core.tensor_parallel.mappings import all_to_all_forward
-    aspm.regsiter_patch('megatron.core.tensor_parallel.data._AllToAll.forward',
-                        all_to_all_forward)  # NOTE there's import patch NOTE this is the class staticmethod
-
     from .core.tensor_parallel.random import local_set_cuda_rng_state, checkpoint_function_forward, \
         checkpoint_function_backward
     aspm.register_patch('megatron.core.tensor_parallel.random._set_cuda_rng_state', local_set_cuda_rng_state,
                         force_patch=True)
     aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.forward', checkpoint_function_forward)
     aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
-                        checkpoint_function_backward)
+                        checkpoint_function_backward, force_patch=True)
 
     from .core.tensor_parallel.random import CheckpointWithoutOutput, CheckpointFunctionWithoutOutput
     aspm.register_patch('mindspeed.core.tensor_parallel.random.CheckpointWithoutOutput', CheckpointWithoutOutput)
