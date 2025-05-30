@@ -50,8 +50,21 @@ def mindspeed_norm_recompute_forward(
             context (Tensor): Updated context tensor if cross-attention is used,
             otherwise None.
     """
-    return norm_recompute_forward_impl(self, get_cuda_rng_tracker, hidden_states, attention_mask, context, context_mask,
-                                       rotary_pos_emb, inference_params, packed_seq_params)
+    return norm_recompute_forward_impl(self, 
+                                       get_cuda_rng_tracker, 
+                                       hidden_states, 
+                                       attention_mask, 
+                                       context, 
+                                       context_mask,
+                                       rotary_pos_emb, 
+                                       rotary_pos_cos,
+                                       rotary_pos_sin,
+                                       attention_bias,
+                                       inference_context,
+                                       packed_seq_params,
+                                       sequence_len_offset,
+                                       inference_params, 
+                                       )
 
 
 def build_norm_recompute_layer_wrapper(fn):

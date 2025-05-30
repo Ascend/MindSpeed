@@ -1,5 +1,9 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+from typing import Any, Dict, Optional, Union
+from torch import Tensor
+
+from mindspeed.core.memory.recompute.norm import PackedSeqParams
 from mindspeed.core.memory.recompute.recompute_common import CheckpointWithoutOutput
 from mindspeed.mindspore.core.utils import make_viewless_tensor
 from mindspeed.core.memory.recompute.norm.should_recompute import should_recompute_norm
@@ -10,12 +14,17 @@ def norm_recompute_forward_impl(
     self,
     get_cuda_rng_tracker,
     hidden_states,
-    attention_mask,
-    context=None,
-    context_mask=None,
-    rotary_pos_emb=None,
-    inference_params=None,
-    packed_seq_params=None,
+    attention_mask: Optional[Tensor] = None,
+    context: Optional[Tensor] = None,
+    context_mask: Optional[Tensor] = None,
+    rotary_pos_emb: Optional[Tensor] = None,
+    rotary_pos_cos: Optional[Tensor] = None,
+    rotary_pos_sin: Optional[Tensor] = None,
+    attention_bias: Optional[Tensor] = None,
+    inference_context: Optional[Any] = None,
+    packed_seq_params: Optional[PackedSeqParams] = None,
+    sequence_len_offset: Optional[Tensor] = None,
+    inference_params: Optional[Any] = None,
 ):
     self.layer_number = getattr(self, "layer_number", None)
     is_recompute_norm = should_recompute_norm(self.layer_number, self.config)
@@ -33,9 +42,13 @@ def norm_recompute_forward_impl(
     attention_output_with_bias = self.self_attention(
         input_layernorm_output,
         attention_mask=attention_mask,
-        inference_params=inference_params,
+        inference_context=inference_context,
         rotary_pos_emb=rotary_pos_emb,
+        rotary_pos_cos=rotary_pos_cos,
+        rotary_pos_sin=rotary_pos_sin,
+        attention_bias=attention_bias,
         packed_seq_params=packed_seq_params,
+        sequence_len_offset=sequence_len_offset,
     )
 
     if is_recompute_norm:

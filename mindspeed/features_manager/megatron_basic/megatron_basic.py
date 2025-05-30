@@ -59,3 +59,7 @@ class MegatronBasicFeature(MindSpeedFeature):
 
         from mindspeed.training import get_device_arch_version
         pm.register_patch('megatron.training.utils.get_device_arch_version', get_device_arch_version)
+
+        # fix count_zeros in ChainedOptimizer for core_r0.12.1.
+        from mindspeed.core.megatron_basic.count_zero_fix import step
+        pm.register_patch('megatron.core.optimizer.optimizer.ChainedOptimizer.step', step)

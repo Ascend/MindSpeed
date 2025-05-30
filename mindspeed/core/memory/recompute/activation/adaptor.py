@@ -13,5 +13,5 @@ def mindspeed_activation_recompute_forward(self, hidden_states, per_token_scale=
     hidden dimension, perform nonlinear transformation, and project the
     state back into h hidden dimension.
     """
-    return core_activation_recompute_forward_impl(self, hidden_states, bias_gelu_impl, bias_geglu_impl, get_cuda_rng_tracker)
+    return core_activation_recompute_forward_impl(self, hidden_states, bias_gelu_impl, bias_geglu_impl, get_cuda_rng_tracker, per_token_scale)
 

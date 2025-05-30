@@ -4,30 +4,43 @@ import torch.nn.functional as F
 
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.memory.recompute.recompute_common import CheckpointWithoutOutput
-
+from mindspeed.core.memory.recompute.activation import weighted_bias_swiglu_impl
 from mindspeed.core.memory.recompute.activation.should_recompute import should_recompute_activation
 
 
 # pylint: disable=too-many-arguments
-def core_activation_recompute_forward_impl(self, hidden_states, bias_gelu_impl, bias_geglu_impl, get_cuda_rng_tracker):
+def core_activation_recompute_forward_impl(self, hidden_states, bias_gelu_impl, bias_geglu_impl, \
+                                           get_cuda_rng_tracker, per_token_scale=None):
     intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)
     self.layer_number = getattr(self, "layer_number", None)
     is_recompute_activation = should_recompute_activation(self.layer_number, self.config)
 
     def activation_function(*function_args):
-        intermediate_parallel, bias_parallel = function_args
+        intermediate_parallel, bias_parallel, per_token_scale = function_args
         if self.config.bias_activation_fusion:
-            if self.activation_func == F.gelu:
-                if self.config.gated_linear_unit:
-                    intermediate_parallel = bias_geglu_impl(intermediate_parallel, bias_parallel)
+            if per_token_scale is not None:
+                if self.activation_func == F.silu and self.config.gated_linear_unit:
+                    # dtype is handled inside the fused kernel
+                    intermediate_parallel = weighted_bias_swiglu_impl(
+                        intermediate_parallel,
+                        bias_parallel,
+                        per_token_scale.unsqueeze(-1),
+                        self.config.activation_func_fp8_input_store,
+                    )
                 else:
-                    intermediate_parallel = bias_gelu_impl(intermediate_parallel, bias_parallel)
-            elif self.activation_func == F.silu and self.config.gated_linear_unit:
-                if bias_parallel is not None:
-                    intermediate_parallel = intermediate_parallel + bias_parallel
-                intermediate_parallel = fused_swiglu(intermediate_parallel)
+                    raise ValueError("Only support fusion of swiglu with per_token_scale in MLP.")
             else:
-                raise ValueError("Only support fusion of gelu and swiglu")
+                if self.activation_func == F.gelu:
+                    if self.config.gated_linear_unit:
+                        intermediate_parallel = bias_geglu_impl(intermediate_parallel, bias_parallel)
+                    else:
+                        intermediate_parallel = bias_gelu_impl(intermediate_parallel, bias_parallel)
+                elif self.activation_func == F.silu and self.config.gated_linear_unit:
+                    if bias_parallel is not None:
+                        intermediate_parallel = intermediate_parallel + bias_parallel
+                    intermediate_parallel = fused_swiglu(intermediate_parallel)
+                else:
+                    raise ValueError("Only support fusion of gelu and swiglu")
         else:
             if bias_parallel is not None:
                 intermediate_parallel = intermediate_parallel + bias_parallel
@@ -41,17 +54,23 @@ def core_activation_recompute_forward_impl(self, hidden_states, bias_gelu_impl, 
             else:
                 intermediate_parallel = self.activation_func(intermediate_parallel)
 
+            if per_token_scale is not None:
+                original_dtype = intermediate_parallel.dtype
+                intermediate_parallel = intermediate_parallel * per_token_scale.unsqueeze(-1)
+                intermediate_parallel = intermediate_parallel.to(original_dtype)
+
         return intermediate_parallel
 
     if not is_recompute_activation:
-        intermediate_parallel = activation_function(intermediate_parallel, bias_parallel)
+        intermediate_parallel = activation_function(intermediate_parallel, bias_parallel, per_token_scale)
         output, output_bias = self.linear_fc2(intermediate_parallel)
     else:
         self.activation_checkpoint_manager = CheckpointWithoutOutput(get_cuda_rng_tracker)
         intermediate_parallel = self.activation_checkpoint_manager.checkpoint(activation_function,
                                                                               False,
                                                                               intermediate_parallel,
-                                                                              bias_parallel)
+                                                                              bias_parallel,
+                                                                              per_token_scale)
         output, output_bias = self.linear_fc2(intermediate_parallel)
         # discard the output of the activation function,
         # which will be restored by recomputation during backward.
@@ -61,5 +80,8 @@ def core_activation_recompute_forward_impl(self, hidden_states, bias_gelu_impl, 
         # recompute and restore the output of activation function.
         if output.requires_grad:
             output.register_hook(self.activation_checkpoint_manager.recompute)
+
+    if per_token_scale is not None:
+        assert output_bias is None, "Bias is not supported with per_token_scale"
 
     return output, output_bias
