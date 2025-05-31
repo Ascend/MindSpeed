@@ -78,6 +78,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
                 moe_layer.shared_experts, hidden_states
             )
 
+            share_experts_output = share_experts_output[0]
             rs_share_experts_output = share_experts_output
 
         token_permutation_input = (
