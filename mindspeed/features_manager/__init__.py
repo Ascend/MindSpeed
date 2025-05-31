@@ -77,6 +77,7 @@ from mindspeed.features_manager.transformer.multi_head_latent_attention.mla_feat
 
 from mindspeed.features_manager.tensor_parallel.vocab_parallel import ReplaceIndexPutFeature
 from mindspeed.features_manager.distributed.layerzero import LayerZeroFeature
+from mindspeed.features_manager.optimizer.swap_optimizer_feature import SwapOptimizerFeature
 
 FEATURES_LIST = [
     # Functional features
@@ -256,6 +257,12 @@ def add_disable_gloo_group_feature(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_swap_optimizer_feature(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        SwapOptimizerFeature(),
+    ])
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -278,6 +285,7 @@ def create_features_list():
     add_swap_manage_features(features_list)
     add_compress_dense_features(features_list)
     add_disable_gloo_group_feature(features_list)
+    add_swap_optimizer_feature(features_list)
     add_transformer_features(features_list)
     return features_list
 
