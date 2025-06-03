@@ -2,10 +2,13 @@ import einops
 import torch
 import torch_npu
 import torch.distributed as dist
+import mindspore
+
+
 COMM_STREAM = None
 
 
-def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event=None):
+def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event=None, stream=None):
     world_size = dist.get_world_size(group)
     if world_size == 1:
         return input_, input_, None
@@ -15,17 +18,21 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
     else:
         # Unequal split (all2all-v)
         a2a_out = input_.new_empty(
-            size=[int(sum(output_split_sizes.tolist()))] + list(input_.size()[1:]),
+            size=[int(sum(output_split_sizes))] + list(input_.size()[1:]),
             dtype=input_.dtype,
+            device=torch.cuda.current_device(),
         )
 
-    if event:
+    if event or stream:
         # multi stream wait event
         global COMM_STREAM
         if COMM_STREAM is None:
-            COMM_STREAM = mindspore.runtime.communitation_stream()
-        with mindspore.runtime.StreamCtx(COMM_STREAM):
-            event.wait()
+            COMM_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
+        with torch_npu.npu.stream(COMM_STREAM):
+            if event:
+                event.wait()
+            if stream:
+                COMM_STREAM.wait_stream(stream)
             handle = dist.all_to_all_single(
                 a2a_out,
                 input_.contiguous(),
