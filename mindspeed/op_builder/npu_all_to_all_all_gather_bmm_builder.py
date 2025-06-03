@@ -89,7 +89,7 @@ class AllToAllAllGatherBatchMatMulOpBuilder(MindSpeedOpBuilder):
             if weight.size(2) == 0:
                 raise AssertionError('The last dim of weight can not be 0.')
 
-            empty_tensor = x.new_empty((0))
+            empty_tensor = x.new_empty((0, 0, 0))
             return (x.new_empty((batch, m, n)),
                     x.new_empty((batch, m, k)) if need_allgather_out else empty_tensor,
                     x.new_empty((batch, m, n)) if need_activation_feature else empty_tensor)
