@@ -17,7 +17,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 source /usr/local/Ascend/nnal/atb/set_env.sh 
  ```
 
-### 2. include head files
+### 2. include header files
 
 + newest torch_npu
 + newest cann

@@ -118,7 +118,7 @@ coverage html --data-file=.coverage -d <输出目录>
 举例说明：添加 FA的用例
 **分析**
 - FA只需要添加参数：--use-flash-attn
-添加样例只需要在在gpt-usecase.yaml文件的products下添加一条：
+添加样例只需要在gpt-usecase.yaml文件的products下添加一条：
 \- { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--use-flash-attn"'] }
 **注意**
 - 训练的其他参数见pretrain_gpt_usecase.sh，所有用例执行的入口文件是pretrain_gpt_usecase.py，详细信息看这两个文件
@@ -128,7 +128,7 @@ coverage html --data-file=.coverage -d <输出目录>
 - 实际添加的系统用例个数=各key取值个数的乘积
 
 ### 方式二：新实例化用例模板
-看完方式一，如果其中固化的参数不满足要求，比如用train-samples替代train-iters，可以新创建pretrain_gpt_usecese_template2.sh和gpt_usecase_template2.yaml
+看完方式一，如果其中固化的参数不满足要求，比如用train-samples替代train-iters，可以新创建pretrain_gpt_usecase_template2.sh和gpt_usecase_template2.yaml
 **建议**
 - 新实例化用例模板遵从方式一的模式
 - 在pretrain_gpt_usecase.py里添加一个用例即可，不要新添入口

@@ -1,6 +1,6 @@
 # LCAL_COC对外接口
 
-## MATMUL_ALL_REDUCE接口
+## matmul_all_reduce接口
 
 ```python
 from mindspeed.ops.lcal_functional import coc_ops
@@ -78,7 +78,7 @@ if __name__ == "__main__":
 ```
 
 
-## ALL_GATHER_MATMUL接口
+## all_gather_matmul接口
 
 ```python
 from mindspeed.ops.lcal_functional import coc_ops

@@ -3,17 +3,17 @@
 ## 问题分析
 Context Parallelism特性在attention计算前将序列在sequence维度切分，在attention计算时，需要计算全量的序列，因此在attention计算时，会有CP的通信产生。
 
-1. Ring CP在attention计算时通过send/recv方式循环接收其他卡的KV，最终保证Q能关注到全量KV，保持和不拆解情况的数学等价性。当前，前向计算完成后KV被丢弃，反向时需要再次send-recv拿到kv。 当在短序列计算过程中通信时间会大于计算时间，导致计算时间无法掩盖通信时间的情况，从而导致性能变差。因此，需要针对计算时间不足以掩盖通信时间的情况进行优化来加速改场景下的训练需求。
+1. Ring CP在attention计算时通过send/recv方式循环接收其他卡的KV，最终保证Q能关注到全量KV，保持和不拆解情况的数学等价性。当前，前向计算完成后KV被丢弃，反向时需要再次send-recv拿到KV。 当在短序列计算过程中通信时间会大于计算时间，导致计算时间无法掩盖通信时间的情况，从而导致性能变差。因此，需要针对计算时间不足以掩盖通信时间的情况进行优化来加速该场景下的训练需求。
 
-2. Ulysses CP方案在GQA模型下，开启TP后，每个rank通常会只有一个head，在这种情况下，使用All2All的通信量与AllGather通信量相同，而All2All方案在只有一个head的情况下，需要对KV进行repeat，在数据layerout通常为sbh或sbnd的情况下，对h维做repeat，地址不连续，会导致算子存在效率问题，并且需要插入transpose等操作，而allgather直接操作s维，地址连续，无需额外操作。
+2. Ulysses CP方案在GQA模型下，开启TP后，每个rank通常会只有一个head，在这种情况下，使用All2All的通信量与AllGather通信量相同，而All2All方案在只有一个head的情况下，需要对KV进行repeat，在数据layerout通常为sbh或sbnd的情况下，对h维做repeat，地址不连续，会导致算子存在效率问题，并且需要插入transpose等操作，而AllGather直接操作s维，地址连续，无需额外操作。
 
 3. Ulysses CP在有repeat产生的情况下，传入attention反向的Key和Value相较于repeat前的Key和Value内存扩大了CP倍，这将会导致内存的消耗增加出现out of memory的情况。
 
 ## 解决方案
 
-1. 在Ring Attention长序列并行的基础上加入KV缓存功能，可选择进行(1)缓存所有K,V，(2)只缓存K以及(3)设置分层缓存的方式在长序列并行的前向中使前向计算接收的kv始终保留至反向计算，直接计算出梯度结果，减少通信时间。
+1. 在Ring Attention长序列并行的基础上加入KV缓存功能，可选择进行(1)缓存所有K,V，(2)只缓存K以及(3)设置分层缓存的方式在长序列并行的前向中使前向计算接收的KV始终保留至反向计算，直接计算出梯度结果，减少通信时间。
 
-2. 在GQA模型，一个head的情况下，Ulysses Attention长序列并行的基础上加入Allgather KV + All2All Q的方案，减少repeat操作以及transpose等内存非连续的开销，提高训练性能。
+2. 在GQA模型，一个head的情况下，Ulysses Attention长序列并行的基础上加入AllGather KV + All2All Q的方案，减少repeat操作以及transpose等内存非连续的开销，提高训练性能。
 
 3. 在Ulysses使用All2All和AllGather方案加入KV缓存功能，可选择进行(1)缓存所有K,V，(2)只缓存K以及(3)设置分层缓存的方式在前向中将通信前的KV进行缓存始终保留至反向再进行重通信进行计算，节省内存。All2All方案只能在做了Repeat的情况下可以开启KV缓存。
 
@@ -38,7 +38,7 @@ Context Parallelism特性在attention计算前将序列在sequence维度切分�
 
 在Ring Attention中想要使用KV缓存获得收益，需要使得计算时间小于通信时间，理论上需要确保每个计算块分到的序列长度需要`c < F/B`。其中`F`是每个device的FLOPS，`B`是每个device间的带宽。
 
-在Ulysse Attention中，想要使用AllGather KV + All2All Q获得收益，需要使用GQA模型，并且需要在通信量相同的前提下，即KV仅有一个head的情况下。
+在Ulysses Attention中，想要使用AllGather KV + All2All Q获得收益，需要使用GQA模型，并且需要在通信量相同的前提下，即KV仅有一个head的情况下。
 
 在Ulysses Attention中，想要使用KV缓存获得收益，Repeat-All2All方案需要在使用repeat的情况下，才能获得内存收益，而AllGather KV + All2All Q开启CP即可以获得内存收益。
 

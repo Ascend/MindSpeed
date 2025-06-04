@@ -129,7 +129,7 @@ def unpermute(
 输入：
 
 - permuted_tokens：必选输入，2维Tensor，数据类型bfloat16(当前版本permuted_tokens仅支持bfloat16)
-- grad_unpermuted_tokens：必选输入，2维Tensor，数据类型bfloat16(当前版本grad_permuted_tokens仅支持bfloat16)
+- grad_unpermuted_tokens：必选输入，2维Tensor，数据类型bfloat16(当前版本grad_unpermuted_tokens仅支持bfloat16)
 - sorted_indices: 必选输入，1维Tensor，数据类型int32(当前版本sorted_indices仅支持int32)
 - probs：可选输入，2维Tensor，数据类型bfloat16(当前版本probs仅支持bfloat16)
 

@@ -10,9 +10,9 @@ npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=F
 输入：
 - x：必选输入，为tensor，数据类型float16, bfloat16, float32
 - weight：必选输入，为tensor，数据类型float16, bfloat16, float32
-- bias：可选输入，为tensor，数据类型float16, float32, 默认值为none。训练场景下，仅支持bias为none
-- group_list：可选输入，数据类型list[int64], tensor，默认值为none。不同接口中的数值定义不同，具体如上。
-- group_type：可选输入，数据类型int64，代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组，默认值为0。
+- bias：可选输入，为tensor，数据类型float16, float32, 默认值为None。训练场景下，仅支持bias为none
+- group_list：可选输入，数据类型list[int64], tensor，默认值为None。不同接口中的数值定义不同，具体如上。
+- group_type：可选输入，数据类型int64，代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则group_type取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组，默认值为0。
 - gemm_fusion:可选输入，为bool，数据类型True，False，用于反向累加梯度的时候使能GMM+ADD融合算子，默认值为False。
 - original_weight:可选输入，为tensor，数据类型float16, bfloat16, float32，用于获取view之前的weight的main_grad用于GMM+ADD中梯度累加功能，默认值为None。
 
@@ -36,7 +36,7 @@ npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=F
 - grad：必选输入，为tensor，数据类型float16, bfloat16, float32
 - x：必选输入，为tensor，数据类型float16, bfloat16, float32
 - weight：必选输入，为tensor，数据类型float16, bfloat16, float32
-- group_list：可选输入，数据类型list[int64]、tensor，默认值为none。数据来自正向输入
+- group_list：可选输入，数据类型list[int64]、tensor，默认值为None。数据来自正向输入
 
 输出：
 - grad_x：必选输出，数据类型float16, bfloat16, float32
