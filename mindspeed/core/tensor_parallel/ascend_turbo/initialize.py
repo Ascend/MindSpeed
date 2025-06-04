@@ -13,12 +13,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
 from .ascend_turbo_cfg import ascend_turbo_cfg
 from .mc2_linears_seq_parallel import (ColumnSeqParallelLinear, RowSeqParallelLinear,
                                        ColumnSeqParallelLinearWithFrozenWeight, RowSeqParallelLinearWithFrozenWeight)
 
+# original forward
+_orig_column_forward = None
+_orig_row_forward = None
+
 
 def column_parallel_forward(self, input_, weight=None):
+    # sequence_parallel=False, use ColumnParallelLinear.forward
+    if not self.sequence_parallel:
+        if _orig_column_forward is None:
+            raise RuntimeError("Original ColumnParallelLinear forward method not found")
+        output, output_bias = _orig_column_forward(self, input_, weight)
+        return output, output_bias
+
+    # sequence_parallel=True, use mc2 forward
     if weight is None:
         if self.weight is None:
             raise RuntimeError(
@@ -51,6 +64,14 @@ def column_parallel_forward(self, input_, weight=None):
 
 
 def row_parallel_forward(self, input_):
+    # sequence_parallel=False, use RowParallelLinear.forward
+    if not self.sequence_parallel:
+        if _orig_row_forward is None:
+            raise RuntimeError("Original RowParallelLinear forward method not found")
+        output, output_bias = _orig_row_forward(self, input_)
+        return output, output_bias
+
+    # sequence_parallel=True, use mc2 forward
     if not self.weight.requires_grad:
         output = RowSeqParallelLinearWithFrozenWeight.apply(
             input_, self.weight, None, ascend_turbo_cfg.get_group()
@@ -65,13 +86,18 @@ def row_parallel_forward(self, input_):
         output_bias = None
     else:
         output_bias = self.bias
-
     return output, output_bias
 
 
 def initialize_cfg_from_framework():
-    from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinear
     from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
+
+    # save original forward func
+    global _orig_column_forward, _orig_row_forward
+    if _orig_column_forward is None:
+        _orig_column_forward = ColumnParallelLinear.forward
+    if _orig_row_forward is None:
+        _orig_row_forward = RowParallelLinear.forward
 
     ascend_turbo_cfg.set_group(get_tensor_model_parallel_group)
     ascend_turbo_cfg.set_world_size(get_tensor_model_parallel_world_size)

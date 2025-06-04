@@ -43,8 +43,8 @@ class TestMC2(DistributedTest):
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.output_size_coeff * args.tensor_model_parallel_size
-        linear_layer = ColumnParallelLinear(input_size, 
-                                            output_size, 
+        linear_layer = ColumnParallelLinear(input_size,
+                                            output_size,
                                             keep_master_weight_for_test=True,
                                             init_method=transformer_config.init_method,
                                             config=transformer_config).half().npu()
@@ -94,3 +94,56 @@ class TestMC2(DistributedTest):
         gather_res = torch.concat(gather_list, dim=0)
         output_naive = torch.matmul(gather_res, linear_layer.weight.t())
         assert torch.allclose(output_naive, output[0], rtol=0.005, atol=0.005)
+
+    def test_mc2_column_parallel_linear_original(self):
+        args = parse_args(None, True)
+        args = set_mc2_args(args)
+        set_args(args)
+
+        # without mc2 patch
+        transformer_config = TransformerConfig(num_layers=1,
+                                               hidden_size=12,
+                                               num_attention_heads=4,
+                                               use_cpu_initialization=True)
+        transformer_config.sequence_parallel = False
+        initialize_model_parallel(args.tensor_model_parallel_size)
+
+        set_random_seed(args.seed)
+        input_size = args.input_size_coeff * args.tensor_model_parallel_size
+        output_size = args.output_size_coeff * args.tensor_model_parallel_size
+        linear_layer = ColumnParallelLinear(input_size,
+                                            output_size,
+                                            keep_master_weight_for_test=True,
+                                            init_method=transformer_config.init_method,
+                                            config=transformer_config).half().npu()
+        setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
+        loss_weight = torch.rand([args.seq_len, args.output_size_coeff]).half().npu()
+        input_ = torch.rand(args.batch_size, args.seq_len, input_size).half().npu()
+        output = linear_layer(input_)
+
+        # witch mc2 patch
+        initialize_cfg_from_args(args)
+        transformer_config_ori = TransformerConfig(num_layers=1,
+                                               hidden_size=12,
+                                               num_attention_heads=4,
+                                               use_cpu_initialization=True)
+        transformer_config_ori.sequence_parallel = False
+
+        set_random_seed(args.seed)
+        linear_layer_ori = ColumnParallelLinear(input_size,
+                                            output_size,
+                                            keep_master_weight_for_test=True,
+                                            init_method=transformer_config_ori.init_method,
+                                            config=transformer_config_ori).half().npu()
+        setattr(linear_layer_ori.weight, 'main_grad_ori', linear_layer_ori.weight.clone())
+        output_ori = linear_layer_ori(input_)
+
+        loss = torch.mul(output[0], loss_weight).sum()
+        loss.backward()
+
+        loss_ori = torch.mul(output_ori[0], loss_weight).sum()
+        loss_ori.backward()
+
+        assert torch.allclose(output_ori[0], output[0], rtol=0.005, atol=0.005)
+        assert torch.allclose(linear_layer_ori.weight.grad, linear_layer.weight.grad, rtol=0.005, atol=0.005)
+        assert torch.allclose(linear_layer_ori.bias.grad, linear_layer.bias.grad, rtol=0.005, atol=0.005)
