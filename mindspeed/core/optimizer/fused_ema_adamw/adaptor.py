@@ -121,13 +121,13 @@ def get_megatron_optimizer_func_wrapper(func):
     @wraps(func)
     def get_megatron_optimizer_func(*args, **kwargs):
         chained_optimizer = func(*args, **kwargs)
-        args = get_args()
+        global_args = get_args()
         if hasattr(chained_optimizer, "chained_optimizers"):
             for optim in chained_optimizer.chained_optimizers:
-                optim.optimizer.ema_decay = args.ema_decay
+                optim.optimizer.ema_decay = global_args.ema_decay
             return chained_optimizer
         if hasattr(chained_optimizer, "optimizer"):
-            chained_optimizer.optimizer.ema_decay = args.ema_decay
+            chained_optimizer.optimizer.ema_decay = global_args.ema_decay
             return chained_optimizer
         return chained_optimizer
 

@@ -11,6 +11,7 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.optimizer import _get_param_groups_and_buffers, _get_megatron_optimizer_based_on_param_groups
 from megatron.core import mpu
 from megatron.core.utils import log_single_rank
+from megatron.training import get_args
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ def get_megatron_optimizer(
         Instance of MegatronOptimizer.
     """
 
+    args = get_args()
     log_single_rank(logger, logging.INFO, f'Setting up optimizer with config {config}')
 
     # Separate out first model chunk if overlapping param AG with optimizer step.
@@ -122,7 +124,7 @@ def get_megatron_optimizer(
             )
 
         # Pass Gloo process groups into optimizer only if needed.
-        if use_gloo_process_groups:
+        if use_gloo_process_groups or (not args.disable_gloo_group):
             data_parallel_group_gloo = mpu.get_data_parallel_group_gloo(
                 with_context_parallel=True, partial_data_parallel=True
             )
@@ -160,7 +162,7 @@ def get_megatron_optimizer(
             mpu.get_expert_tensor_model_pipeline_parallel_group()
         )
         # Pass Gloo process groups into optimizer only if needed.
-        if use_gloo_process_groups:
+        if use_gloo_process_groups or (not args.disable_gloo_group):
             data_parallel_group_gloo = mpu.get_expert_data_parallel_group_gloo()
         else:
             data_parallel_group_gloo = None

@@ -20,7 +20,6 @@ class DisableGlooGroupFeature(MindSpeedFeature):
                                                    get_data_modulo_expert_parallel_group_gloo_replace,
                                                    new_group_wrapper)
         from mindspeed.utils import check_param_hashes_across_dp_replicas_hccl
-        from mindspeed.optimizer.optimizer import get_megatron_optimizer_disable_gloo
         if getattr(args, self.feature_name, None):
             patch_manager.register_patch(
                 'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.get_parameter_state_dp_zero',
@@ -36,4 +35,3 @@ class DisableGlooGroupFeature(MindSpeedFeature):
             patch_manager.register_patch('megatron.core.parallel_state.get_data_modulo_expert_parallel_group_gloo',
                                          get_data_modulo_expert_parallel_group_gloo_replace)
             patch_manager.register_patch('torch.distributed.new_group', new_group_wrapper)
-            patch_manager.register_patch('megatron.core.optimizer.get_megatron_optimizer', get_megatron_optimizer_disable_gloo)
