@@ -66,7 +66,7 @@ $$
 
   2. x中元素类型为bfloat16，weight中元素类型为bfloat16，bias中元素类型为float32，输出y中元素类型为bfloat16；
 - 输入中须包含通信域hcomm字符串，它需要从torch.distributed包中的接口获取。
-- 当前只支持Pytorch2.1版本。
+- 当前只支持PyTorch2.1版本。
 
 ## npu_grouped_mat_mul_all_reduce 类的调用方式
 

@@ -86,7 +86,7 @@ npu_fusion_attention(
 
 
 ## 输入限制
-- 输入query、key、value的B：batchsize必须相等，取值范围1~2M。非varlen prefix场景B最大支持2K，varlen prefix场景B最大支持1K。
+- 输入query、key、value的B：batch_size必须相等，取值范围1~2M。非varlen prefix场景B最大支持2K，varlen prefix场景B最大支持1K。
 - 输入query、key、value、pse的数据类型必须一致。pse_type=2或3的时候例外，此时pse需要传fp32的slope
 - 输入query、key、value的input_layout必须一致。
 - 输入query的N和key/value的N 必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。当Nq/Nkv > 1时，即为GQA，当Nkv=1时，即为MQA。

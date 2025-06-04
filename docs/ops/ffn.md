@@ -34,7 +34,7 @@ npu_ffn(Tensor x, Tensor weight1, Tensor weight2, str activation, *, Tensor? exp
 - weight1: 必选输入，专家的权重数据，公式中的W1，数据类型int4, int8, float16, bfloat16，输入在有/无专家时分别为[E, K1, N1]/[K1, N1]
 - weight2: 必选输入，专家的权重数据，公式中的W2，数据类型int4, int8, float16, bfloat16，输入在有/无专家时分别为[E, K2, N2]/[K2, N2]
     **说明：**
-    M表示token个数，对应transform中的BS(B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度)；K1表示第一组matmul的输入通道数，对应transform中的H(Head-Size）表示隐藏层的大小)；N1表示第一组matmul的输出通道数；K2表示第二组matmul的输入通道数；N2表示第二组matmul的输出通道数，对应transform中的H；E表示有专家场景的专家数。
+    M表示token个数，对应transform中的BS(B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度)；K1表示第一组matmul的输入通道数，对应transform中的H(Head-Size)表示隐藏层的大小；N1表示第一组matmul的输出通道数；K2表示第二组matmul的输入通道数；N2表示第二组matmul的输出通道数，对应transform中的H；E表示有专家场景的专家数。
 - activation: 必选输入，代表使用的激活函数，公式中的activation，当前支持fastgelu/gelu/relu/silu以及geglu/swiglu/reglu
 - expert_tokens: 可选输入，数据类型int64
 - expert_tokens_index：可选输入，数据类型int64
@@ -56,7 +56,7 @@ npu_ffn(Tensor x, Tensor weight1, Tensor weight2, str activation, *, Tensor? exp
 - weight1: 必选输入，专家的权重数据，公式中的W1，数据类型int4, int8, float16, bfloat16，输入在有/无专家时分别为[E, K1, N1]/[K1, N1]
 - weight2: 必选输入，专家的权重数据，公式中的W2，数据类型int4, int8, float16, bfloat16，输入在有/无专家时分别为[E, K2, N2]/[K2, N2]
     **说明：**
-    M表示token个数，对应transform中的BS(B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度)；K1表示第一组matmul的输入通道数，对应transform中的H(Head-Size）表示隐藏层的大小)；N1表示第一组matmul的输出通道数；K2表示第二组matmul的输入通道数；N2表示第二组matmul的输出通道数，对应transform中的H；E表示有专家场景的专家数。
+    M表示token个数，对应transform中的BS(B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度)；K1表示第一组matmul的输入通道数，对应transform中的H(Head-Size)表示隐藏层的大小；N1表示第一组matmul的输出通道数；K2表示第二组matmul的输入通道数；N2表示第二组matmul的输出通道数，对应transform中的H；E表示有专家场景的专家数。
 - activation: 必选输入，代表使用的激活函数，公式中的activation，当前支持fastgelu/gelu/relu/silu以及geglu/swiglu/reglu
 - expert_tokens: 可选输入，数据类型int64
 - expert_tokens_index：可选输入，数据类型int64
@@ -83,7 +83,7 @@ npu_ffn(Tensor x, Tensor weight1, Tensor weight2, str activation, *, Tensor? exp
 - weight1: 必选输入，专家的权重数据，公式中的W1，数据类型int4, int8, float16, bfloat16，输入在有/无专家时分别为[E, K1, N1]/[K1, N1]
 - weight2: 必选输入，专家的权重数据，公式中的W2，数据类型int4, int8, float16, bfloat16，输入在有/无专家时分别为[E, K2, N2]/[K2, N2]
     **说明：**
-    M表示token个数，对应transform中的BS(B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度)；K1表示第一组matmul的输入通道数，对应transform中的H(Head-Size）表示隐藏层的大小)；N1表示第一组matmul的输出通道数；K2表示第二组matmul的输入通道数；N2表示第二组matmul的输出通道数，对应transform中的H；E表示有专家场景的专家数。
+    M表示token个数，对应transform中的BS(B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度)；K1表示第一组matmul的输入通道数，对应transform中的H(Head-Size)表示隐藏层的大小；N1表示第一组matmul的输出通道数；K2表示第二组matmul的输入通道数；N2表示第二组matmul的输出通道数，对应transform中的H；E表示有专家场景的专家数。
 - activation: 必选输入，代表使用的激活函数，公式中的activation，当前支持fastgelu/gelu/relu/silu以及geglu/swiglu/reglu
 - expert_tokens: 可选输入，代表各专家的token数，数据类型int64
 - expert_tokens_index：可选输入，代表各专家的token数，数据类型int64

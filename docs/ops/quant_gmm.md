@@ -16,9 +16,9 @@ output_dtype=None, act_type=0)
 - weight：必选输入，参数为tensor，数据类型int8；
 - scale：必选输入，参数类型为tensor，数据类型int64，bfloat16，float32；
 - offset：保留参数，当前未使能；
-- per_token_scale：可选参数，参数类型为tensor，数据类型float32，默认值为none；
-- bias：可选输入，参数类型为tensor，数据类型int32, 默认值为none；
-- group_list：可选输入，参数类型为tensor，数据类型int64，默认值为none。不同接口中的数值定义不同，具体见上述接口说明中描述；
+- per_token_scale：可选参数，参数类型为tensor，数据类型float32，默认值为None；
+- bias：可选输入，参数类型为tensor，数据类型int32, 默认值为None；
+- group_list：可选输入，参数类型为tensor，数据类型int64，默认值为None。不同接口中的数值定义不同，具体见上述接口说明中描述；
 - output_dtype：可选输入，参数类型为torch.dtype，可选值为：torch.int8，torch.bfloat16，torch.float16，用于指定输出数据类型，默认值为None，此时输出类型为torch.float16;
 - act_type：可选参数，参数类型为int，用于指定激活函数类型，默认值为0，支持的激活函数类型如下：
   - 0：无激活函数；
