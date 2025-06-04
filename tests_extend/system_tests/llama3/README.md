@@ -1,8 +1,8 @@
-# LLAMA3-8B
+# Llama3-8B
 
 ## 训练
 
-LLAMA3-8B 训练的硬件配置:
+Llama3-8B 训练的硬件配置:
 
 | 硬件 |      配置      |
 | :--: | :-------------: |
@@ -42,7 +42,7 @@ LLAMA3-8B 训练的硬件配置:
    # 修改 ascend-toolkit 路径
    source /usr/local/Ascend/ascend-toolkit/set_env.sh
    ```
-3. 下载 LLAMA3-8B 的 [预训练权重和词表](https://hf-mirror.com/unsloth/llama-3-8b/tree/main)
+3. 下载 Llama3-8B 的 [预训练权重和词表](https://hf-mirror.com/unsloth/llama-3-8b/tree/main)
 
    ```shell
      #!/bin/bash

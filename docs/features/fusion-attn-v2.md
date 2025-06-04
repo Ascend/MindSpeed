@@ -12,4 +12,4 @@
 
 ## 使用效果
 
-基础效果等同于Flash attention，特定场景如[Alibi位置编码](./alibi.md)需手动开启。
+基础效果等同于FlashAttention，特定场景如[Alibi位置编码](./alibi.md)需手动开启。

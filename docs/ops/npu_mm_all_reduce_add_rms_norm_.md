@@ -96,7 +96,7 @@ $$
     - ``per_tensor`` 模式：``(1,)``
     - ``per_channel`` 模式：``(1, n)`` 或 ``(n,)``
     - ``per_group`` 模式：``(ceil(k,antiquant_group_size),n)``
-- ``antiquantOffset`` 若非空，shape 与 ``antiquant_scale``一致。
+- ``antiquant_offset`` 若非空，shape 与 ``antiquant_scale``一致。
 - 伪量化场景下，``x2`` 的数据类型需为 ``int8``，``x1``、``bias``（若支持）、``residual``、``gamma``、``antiquant_scale``、``antiquant_offset``计算输入的数据类型要一致。
 - 伪量化场景下，``antiquant_group_size`` 取值满足取值范围``[32, min(k-1, INT_MAX)]``且为32倍数。
 - 一个模型中的通算融合MC2算子，仅支持相同通信域。
