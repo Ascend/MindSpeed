@@ -2,7 +2,7 @@
 
 ## 问题分析
 
-重计算特性可以有效的减少显存使用，但是策略较为固定，无法最大限度使用显存资源。
+重计算特性可以有效地减少显存使用，但是策略较为固定，无法最大限度使用显存资源。
 
 ## 解决方案
 
@@ -18,7 +18,7 @@
 
 <p align="center"> <img src="../../sources/images/adaptive_recompute_a.png" height="500px" width="400px"></p>
 
-SwapManager 能需要内存管理适配 PTA 的 NPUPluggableAllocator 接口拦截 OOM，让 SwapManager 功能可以介入，流程如下图所示：
+SwapManager 需适配 PTA 的 NPUPluggableAllocator 接口拦截 OOM，让 SwapManager 功能可以介入，流程如下图所示：
 <p align="center"> <img src="../../sources/images/adaptive_recompute_b.png" height="300px" width="500px"></p>
 
 ## 使用场景

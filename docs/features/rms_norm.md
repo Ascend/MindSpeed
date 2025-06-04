@@ -3,7 +3,7 @@
 rms_norm常见于LLaMA、LLaMA2、Baichuan等LLM模型中用于归一化，由于torch侧没有提供rms_norm算子的接口，因此在模型中通常是以自定义的形式出现，这种形式的执行效率相对较低。
 
 ## 解决方法
-MindSpeed对将rms_norm操作合并成一个算子，减少数据传输和临时存储。算子接口见[link](../ops/rms_norm.md)。
+MindSpeed将rms_norm操作合并成一个算子，减少数据传输和临时存储。算子接口见[link](../ops/rms_norm.md)。
 
 ## 使用场景
 模型使用rms_norm作为归一化方式，脚本中设置了`--normalization RMSNorm`。

@@ -1,4 +1,4 @@
-# Rotary Postion Embedding 融合优化
+# Rotary Position Embedding 融合优化
 
 ## 问题分析
 

@@ -2,16 +2,16 @@
 
 ### 问题分析
 
-现有MoE无token丢弃方案在训练过程中实时all reduce通信全局最大专家容量作为所有rank的容量，引入频繁的all reduce开销。
+现有MoE无token丢弃方案在训练过程中实时all-reduce通信全局最大专家容量作为所有rank的容量，引入频繁的all-reduce开销。
 
 ### 优化方案
 
-采用滑窗预测，无需每一个step都进行all reduce通信，all reduce通信频次降低为1/window_size，对于超过预测值场景，使用实际最大专家容量值替换预测capacity。
+采用滑窗预测，无需每一个step都进行all-reduce通信，all-reduce通信频次降低为1/window_size，对于超过预测值场景，使用实际最大专家容量值替换预测capacity。
 
 #### 优化思路:
 
 1. MoE模型训练过程中capacity具有一定的连续性，维护一个滑动窗口来保存近几次统计的capacity来预估下一个窗口的capacity。
-2. 在Gate中不再每一个step都直接进行all reduce统计全局最大capacity，而是各个进程先判断当前的capacity能否满足不丢弃token，通过reduce统计全局的判断信息，若都能满足则无需进行all reduce通信，否则进行all reduce通信取得实际max capacity.
+2. 在Gate中不再每一个step都直接进行all-reduce统计全局最大capacity，而是各个进程先判断当前的capacity能否满足不丢弃token，通过reduce统计全局的判断信息，若都能满足则无需进行all-reduce通信，否则进行all-reduce通信取得实际max capacity.
 <p align="center"> <img src="../../../sources/images/moe_dynamic_padding_a.png" height="300px" width="600px"></p>
 
 ### 使用场景

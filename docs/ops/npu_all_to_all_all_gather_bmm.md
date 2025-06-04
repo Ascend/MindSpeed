@@ -18,7 +18,7 @@ def npu_alltoall_allgather_bmm(
 ```
 
 计算逻辑：
-bmm指BatchMatMul，AllToAllAllGahterBatchMatMul算子是实现AllToAll、AllGather集合通信与BatchMatMul计算并行的算子。
+bmm指BatchMatMul，AllToAllAllGatherBatchMatMul算子是实现AllToAll、AllGather集合通信与BatchMatMul计算并行的算子。
 大体计算流程为：AllToAll集合通信-->AllGather集合通信-->BatchMatMul-->激活（可选，可以没有）
 
 计算逻辑如下，其中y1Out y2OutOptional y3OutOptional为输出，x weight bias为输入，activating为激活函数（由act_type决定，当act_type为None时，表示不调用激活函数）

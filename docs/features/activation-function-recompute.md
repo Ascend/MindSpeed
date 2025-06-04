@@ -28,7 +28,7 @@ gelu函数重计算->后续模块A的反向。
 
 通过设计一种传入模块函数进行重计算的机制，在合适的时机，丢弃重计算模块输出的物理存储，保留逻辑视图。在反向时，在恰当时机，利用register_hook插入重计算流程，并利用传入的函数重新进行计算，得到结果。
 
-例如，gelu在mlp中的位置下图所示。反向计算需要前向产生的a，b，c, d。其中b, c的shape为(batch, seq , 4 * hidden_szie)，gelu为激活函数，其计算较少，故可将tensor c释放掉，反向在 4h->h 反向前重新计算。
+例如，gelu在mlp中的位置下图所示。反向计算需要前向产生的a，b，c, d。其中b, c的shape为(batch, seq , 4 * hidden_size)，gelu为激活函数，其计算较少，故可将tensor c释放掉，反向在 4h->h 反向前重新计算。
 
 ![现有框架](../../sources/images/activation_function_a.png)
 

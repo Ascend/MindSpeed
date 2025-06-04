@@ -18,7 +18,7 @@
 
 设置`--nd1-dim1-size`，默认为1，需要确保`--nd1-dim1-size`能够被`--tensor-model-parallel-size`整除。
 
-设置`--nd2-dim1-size`，默认为1，需要确保`--nd2-dim2-size`能够被`--tensor-model-parallel-size`整除。
+设置`--nd2-dim1-size`，默认为1，需要确保`--nd2-dim1-size`能够被`--tensor-model-parallel-size`整除。
 
 示例：`--tensor-model-parallel-size`为32，`--nd1-dim1-size`可以设置为2、4、8、16，`--nd2-dim1-size`可以设置为2、4、8、16，出于性能考虑(建议`--nd1-dim1-size`或者`--nd2-dim1-size`大于等于8)，可配置`--nd1-dim1-size`为8、`--nd2-dim1-size`为4。
 
