@@ -59,3 +59,11 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('mindspeed.core.tensor_parallel.random.CheckpointWithoutOutput', CheckpointWithoutOutput)
     aspm.register_patch('mindspeed.core.tensor_parallel.random.CheckpointFunctionWithoutOutput',
                         CheckpointFunctionWithoutOutput)
+
+    from ..mindspore.core.distributed.distributed_data_parallel import zero_grad_buffer
+    aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.zero_grad_buffer',
+                        zero_grad_buffer)
+
+    from ..mindspore.core.distributed.finalize_model_grads import _allreduce_layernorm_grads
+    aspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_layernorm_grads',
+                                 _allreduce_layernorm_grads)

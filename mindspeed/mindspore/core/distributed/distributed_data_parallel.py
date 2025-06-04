@@ -2,7 +2,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 from typing import Dict
 import logging
-
+import torch
 from megatron.core.distributed.distributed_data_parallel import logger
 
 from megatron.core import parallel_state
@@ -15,7 +15,7 @@ from megatron.core.distributed.param_and_grad_buffer import ParamAndGradBuffer
 from megatron.core.transformer.transformer_config import TransformerConfig
 
 from megatron.core.distributed.distributed_data_parallel import DistributedDataParallel
-import torch
+from mindspeed.mindspore.core.utils import cached_parameters
 
 
 def distributed_data_parallel_init(
@@ -209,3 +209,15 @@ def local_make_param_hook( # change name
             return param.grad
 
     return param_hook
+
+
+def zero_grad_buffer(self):
+    """
+    Zeros out all grad buffers. Needs to be called at the beginning of each
+    training iteration.
+    """
+    for param in cached_parameters(self.module):
+        if param.requires_grad:
+            param.grad_added_to_main_grad = False
+    for buffer in self.buffers + self.expert_parallel_buffers:
+        buffer.reset()
