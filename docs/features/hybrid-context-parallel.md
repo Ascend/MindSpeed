@@ -17,7 +17,7 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 可兼容FlashAttention，目前已默认开启FlashAttention。
 
-序列并行维度被分为Ulysses维度和ring attention维度，Ulysses维度和ring attention维度乘积即为序列并行维度。
+序列并行维度被分为Ulysses维度和Ring Attention维度，Ulysses维度和Ring Attention维度乘积即为序列并行维度。
 
 ## 使用方法
 

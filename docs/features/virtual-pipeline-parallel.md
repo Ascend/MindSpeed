@@ -23,7 +23,7 @@ Pipedream流水线并行切分粒度过大，运行过程中仍然有许多空�
     Device 2: [5, 6] [13, 14]
     Device 3: [7, 8] [15, 16]
 
-前向的顺序为 device 0 -> device 1 -> device 2 -> device 3 -> device 0 -> device 1 -> device 2 -> device 3
+前向的顺序为 Device 0 -> Device 1 -> Device 2 -> Device 3 -> Device 0 -> Device 1 -> Device 2 -> Device 3
 
 ## 使用场景
 

@@ -20,7 +20,7 @@
 
 输出：
 - dx：必选输出，数据类型float16, bfloat16, float32
-- dgammma：必选输出，数据类型float32
+- dgamma：必选输出，数据类型float32
 
 ## 案例
 

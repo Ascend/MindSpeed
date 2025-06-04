@@ -67,7 +67,7 @@ ATB安装方法：
 'customized_coc': {"[16384, 5120, 1920]": 8, "[16384, 1920, 5120]": 1}
 
 【只对通过融合算子使能的计算通信并行实现适用】
-'enable_coc_in_column_backward': 是否在ColumnParllelLinear的反向中使用COC（ColumnParallelLinear的反向中本来就有非互相依赖的计算通信并行），默认为False；
+'enable_coc_in_column_backward': 是否在ColumnParallelLinear的反向中使用COC（ColumnParallelLinear的反向中本来就有非互相依赖的计算通信并行），默认为False；
 
 【对脚本实现和融合算子实现都适用】
 'recompute_all_gather': 是否在ColumnParallelLinear的反向中重新计算all gather，默认为True。若为False，则将从前向保存all gather结果到反向，会减少反向计算时间但是会增加训练过程中的峰值内存占用；

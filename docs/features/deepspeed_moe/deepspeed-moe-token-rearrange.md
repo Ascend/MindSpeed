@@ -2,11 +2,11 @@
 
 ## 问题分析
 
-DeepSpeed MoE的token重排采用了两个BatchMatmul实现，时间复杂度为o(s^2)，而token重排进行计算时由于矩阵的稀疏性导致一些不必要的计算，存在优化空间。
+DeepSpeed MoE的token重排采用了两个BatchMatmul实现，时间复杂度为O(s^2)，而token重排进行计算时由于矩阵的稀疏性导致一些不必要的计算，存在优化空间。
 
 ## 解决方案
 
-重排操作可以通过等价的pytorch API: index_select来实现，降低计算时间复杂度到o(s)，从而提高训练性能。
+重排操作可以通过等价的pytorch API: index_select来实现，降低计算时间复杂度到O(s)，从而提高训练性能。
 
 ### 解决思路:
 

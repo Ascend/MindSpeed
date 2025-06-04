@@ -16,9 +16,9 @@ https://openreview.net/pdf?id=yLgr02IsXY
 
 ## 解决思路
 1. 从attention的输入开始切分，q和attention_mask在seq序列维度进行切分, k, v保持完整输入，可以使得切分attention后再拼接结果等价。 
-2. attention之后的dropout、残差、norm归一化以及MLP等计算在seq序列维度上均独立，切分后再拼接结果同样可以等价，所以在中间各个部分不需要拼接，直到所有计算完成后再拼接结果即可。
+2. attention之后的dropout、残差、norm归一化以及mlp等计算在seq序列维度上均独立，切分后再拼接结果同样可以等价，所以在中间各个部分不需要拼接，直到所有计算完成后再拼接结果即可。
 3. 切分后重新编排各个切分副本循环流水的顺序，使得计算和通信并行。
-4. 针对主流的megatron的序列并行sequence-parallel以及长序列并行的context-parallel进行适配，可以实现sp开启时mlp部分的all-gather和reduce-scatter通信隐藏。
+4. 针对主流的Megatron的序列并行sequence-parallel以及长序列并行的context-parallel进行适配，可以实现sp开启时mlp部分的all-gather和reduce-scatter通信隐藏。
 
 ## 使用场景
 
@@ -35,7 +35,7 @@ https://openreview.net/pdf?id=yLgr02IsXY
 1. 需要开启`--moe-model-type deepspeed_moe`以及`--use-flash-attn`的前提下使用特性
 2. 暂不支持`--use-ascend-mc2`、`--overlap-grad-reduce`、`--overlap-param-gather`以及nanopipe `--use-nanopipe`、ripipe `--recompute-in-bubble` `--recompute-in-advance`和自适应选择重计算。
 3. 需要保证设置的`--seq-length`即序列长度可以被`--ampipe-degree`整除，如果需要设置`--sequence-parallel`以及`--context-parallel-size > 1`，需要额外保证设置的`--seq-length`可以被tp和cp整除
-4. 同时开启ampipe特性以及mlp通信隐藏特性时，`--pipe-experts-multi-data N`多副本数量N必须被`--ampipe-degree M`ampipe切分数M整除且N>M，否则`--use-pipe-experts`不生效；同时额外设置`--pipe-experts-multi-stream`时，此限制可以放开至N>=M
+4. 同时开启ampipe特性以及mlp通信隐藏特性时，`--pipe-experts-multi-data N`多副本数量N必须被`--ampipe-degree M`ampipe切分数M整除且N>M，否则`--use-pipe-experts`不生效；同时额外设置`--pipe-experts-multi-stream`时，此限制可以放宽至N>=M
 
 ## 使用效果
 
