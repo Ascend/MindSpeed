@@ -20,6 +20,8 @@ def initialize_model_parallel(
     virtual_pipeline_model_parallel_size=None,
     pipeline_model_parallel_split_rank=None,
     context_parallel_size=1,
+    expert_model_parallel_size=1,
+    expert_tensor_parallel_size=None
 ):
     ps.destroy_model_parallel()
     ps.initialize_model_parallel(
@@ -28,4 +30,6 @@ def initialize_model_parallel(
         virtual_pipeline_model_parallel_size=virtual_pipeline_model_parallel_size,
         pipeline_model_parallel_split_rank=pipeline_model_parallel_split_rank,
         context_parallel_size=context_parallel_size,
+        expert_model_parallel_size=expert_model_parallel_size,
+        expert_tensor_parallel_size=expert_tensor_parallel_size
     )

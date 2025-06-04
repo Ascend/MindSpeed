@@ -59,12 +59,12 @@ class GmmExpertsImpl:
                 original_weight=self.weight1
             )
             if not is_recompute_activation:
-                intermediate_parallel = self.activation_func(fc1_output)
+                intermediate_parallel = self.activation_func_with_probs(fc1_output, permuted_probs.unsqueeze(-1))
             else:
                 self.activation_checkpoint_manager = CheckpointWithoutOutput()
-                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
+                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func_with_probs,
                                                                                       False,
-                                                                                      fc1_output)
+                                                                                      fc1_output, permuted_probs.unsqueeze(-1))
             fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                     gemm_fusion=gemm_fusion, original_weight=self.weight2)
         else:
@@ -73,12 +73,12 @@ class GmmExpertsImpl:
             w2 = self.weight2.view(-1, self.config.hidden_size)
             h = torch.matmul(permuted_local_hidden_states, w1)
             if not is_recompute_activation:
-                intermediate_parallel = self.activation_func(h)
+                intermediate_parallel = self.activation_func_with_probs(h, permuted_probs.unsqueeze(-1))
             else:
                 self.activation_checkpoint_manager = CheckpointWithoutOutput()
-                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
+                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func_with_probs,
                                                                                       False,
-                                                                                      h)
+                                                                                      h, permuted_probs.unsqueeze(-1))
             h = torch.matmul(intermediate_parallel, w2)
             fc2_output = h
 
