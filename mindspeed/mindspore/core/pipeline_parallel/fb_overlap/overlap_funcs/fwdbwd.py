@@ -230,7 +230,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     bwd_perm_a2a_handle = None
     if bwd_prob_handle:
         bwd_prob_handle.wait()
-    detached_mlp_input_grad, _ = run_graph_backward(bwd_layer_graph.perm1_graph, (perm1_out_grad, perm1_prob_out_grad))
+    detached_mlp_input_grad, probs_detached_grad = run_graph_backward(bwd_layer_graph.perm1_graph, (perm1_out_grad, perm1_prob_out_grad))
 
     WeightGradStore.start_decouple()
     if backward_ag_shared_handle is not None:
@@ -256,6 +256,9 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         output_grad.untyped_storage().resize_(0)
         bwd_layer_graph.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
         probs_grad = probs_grad.sum(dim=-1)
+
+    if args.moe_unperm2_mem_optim:
+        probs_grad = probs_detached_grad
     (detached_mlp_input_router_grad, ) = run_graph_backward(bwd_layer_graph.router_graph, probs_grad)
     detached_mlp_input_grad = detached_mlp_input_grad + detached_mlp_input_shared_grad + detached_mlp_input_router_grad
 
@@ -609,6 +612,8 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
     def alltoall_token_unperm2_func(detached_unperm_a2a_out, detached_shared_expert_output, residual2, probs):
         nonlocal unperm2_swap_manager
+        if args.moe_unperm2_mem_optim:
+            probs = None
         route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out, probs)
         if hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None:
             mlp_output = route_expert_output + detached_shared_expert_output
@@ -1226,7 +1231,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     if bwd_prob_handle:
         bwd_prob_handle.wait()
-    (detached_mlp_input_grad, _) = run_graph_backward(bwd_layer_graph.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
+    (detached_mlp_input_grad, probs_detached_grad) = run_graph_backward(bwd_layer_graph.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
     perm1_out_grad.untyped_storage().resize_(0)
 
     # router backward
@@ -1246,6 +1251,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         bwd_layer_graph.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
         probs_grad = probs_grad.sum(dim=-1)
 
+    if args.moe_unperm2_mem_optim:
+        probs_grad = probs_detached_grad
     (detached_mlp_input_router_grad, ) = run_graph_backward(bwd_layer_graph.router_graph, probs_grad)
     detached_mlp_input_grad = detached_mlp_input_grad + mlp_input_grad_sharedep + detached_mlp_input_router_grad
     (detached_attention_out_grad, ) = run_graph_backward(bwd_layer_graph.pre_mlp_layernorm_graph, detached_mlp_input_grad, keep_graph=True)
@@ -1291,6 +1298,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
         def alltoall_token_unperm2_func(detached_unperm_a2a_out, detached_shared_expert_output, residual2, probs):
             nonlocal unperm2_swap_manager
+            if args.moe_unperm2_mem_optim:
+                probs = None
             route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out, probs)
             if args.moe_unperm2_mem_optim:
                 unperm_a2a_out.untyped_storage().resize_(0)

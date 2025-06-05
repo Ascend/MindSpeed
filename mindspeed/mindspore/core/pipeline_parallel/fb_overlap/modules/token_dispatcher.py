@@ -8,6 +8,10 @@ from megatron.core.utils import make_viewless_tensor
 from megatron.training import get_args
 from mindspeed.core.pipeline_parallel.fb_overlap.modules.utils import TensorSwapManager
 
+from mindspeed.mindspore.op_builder import AlgorithmOpBuilder
+
+reuse_data_ptr = AlgorithmOpBuilder.load().reuse_data_ptr
+
 
 class StreamConfig:
     stream = None
@@ -77,3 +81,68 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         num_tokens_per_local_expert = num_local_tokens_per_expert
 
     return num_tokens_per_local_expert
+
+
+class PackProb(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, permutated_local_input_tokens, probs):
+        ctx.prob_dtype = probs.dtype
+        ctx.token_dtype = permutated_local_input_tokens.dtype
+        if ctx.token_dtype == torch.bfloat16 and ctx.prob_dtype == torch.bfloat16:
+            viewd_probs = probs
+        else:
+            probs_shape_new = probs.shape[:-1] + (probs.shape[-1] * 2,)
+            viewd_probs = torch.empty(probs_shape_new, dtype=ctx.token_dtype)
+            reuse_data_ptr(viewd_probs, probs, 0)
+
+        ctx.prob_split_sizes = [permutated_local_input_tokens.shape[-1], viewd_probs.shape[-1]]
+
+        packed_tokens = torch.cat((permutated_local_input_tokens, viewd_probs), dim=-1)
+        permutated_local_input_tokens.untyped_storage().resize_(0)
+        viewd_probs.untyped_storage().resize_(0)
+
+        return packed_tokens
+
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_tokens, grad_probs = grad_output.split(ctx.prob_split_sizes, dim=-1)
+        if ctx.token_dtype == torch.bfloat16 and ctx.prob_dtype == torch.bfloat16:
+            viewd_grad_probs = grad_probs
+        else:
+            grad_probs_shape = grad_probs.shape[:-1] + (grad_probs.shape[-1] // 2,)
+            viewd_grad_probs = torch.empty(grad_probs_shape, dtype=ctx.prob_dtype)
+            reuse_data_ptr(viewd_grad_probs, grad_probs, 0)
+
+        return grad_tokens.contiguous(), viewd_grad_probs.contiguous()
+
+
+class UnpackProb(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, packed_tokens, prob_split_sizes, orig_prob_dtype):
+        ctx.token_dtype = packed_tokens.dtype
+        ctx.orig_prob_dtype = orig_prob_dtype
+        tokens, probs = packed_tokens.split(prob_split_sizes, dim=-1)
+        if ctx.token_dtype == torch.bfloat16 and orig_prob_dtype == torch.bfloat16:
+            viewd_probs = probs
+        else:
+            probs_shape = probs.shape[:-1] + (probs.shape[-1] // 2,)
+            viewd_probs = torch.empty(probs_shape, dtype=orig_prob_dtype)
+            reuse_data_ptr(viewd_probs, probs, 0)
+            viewd_probs = viewd_probs.contiguous()
+
+        return tokens.contiguous(), viewd_probs
+
+    @staticmethod
+    def backward(ctx, grad_tokens, grad_probs):
+        if ctx.token_dtype == torch.bfloat16 and ctx.orig_prob_dtype == torch.bfloat16:
+            viewd_grad_probs = grad_probs
+        else:
+            grad_probs_shape = grad_probs.shape[:-1] + (grad_probs.shape[-1] * 2,)
+            viewd_grad_probs = torch.empty(grad_probs_shape, dtype=ctx.token_dtype)
+            reuse_data_ptr(viewd_grad_probs, grad_probs, 0)
+
+        grad_input = torch.cat((grad_tokens, viewd_grad_probs), dim=-1)
+
+        return grad_input, None, None
+

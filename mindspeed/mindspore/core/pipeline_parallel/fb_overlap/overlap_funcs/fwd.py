@@ -257,6 +257,8 @@ def transformer_layer_forward_moe(
 
     def alltoall_token_unperm2_func(detached_unperm_a2a_out, detached_shared_expert_output, residual2, probs): # @check input shared_expert might be none
         nonlocal unperm2_swap_manager
+        if args.moe_unperm2_mem_optim:
+            probs = None
         route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(self.mlp.token_dispatcher, detached_unperm_a2a_out, probs)
         if args.moe_unperm2_mem_optim or args.moe_zerc:
             unperm_a2a_out.untyped_storage().resize_(0)

@@ -137,7 +137,7 @@ def transformer_layer_backward_moe(
     if prob_handle:
         prob_handle.wait()
 
-    (mlp_input_grad_perm1, _) = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad))
+    (mlp_input_grad_perm1, probs_detached_grad) = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad))
 
 
 
@@ -152,6 +152,9 @@ def transformer_layer_backward_moe(
         probs_grad = layer_output_grad.to(probs_dtype) * self.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(probs_dtype)
         probs_grad = probs_grad.sum(dim=-1)
         self.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
+
+    if args.moe_unperm2_mem_optim:
+        probs_grad = probs_detached_grad
     (mlp_input_grad_router,) = run_graph_backward(self.router_graph, probs_grad)
     
     mlp_input_grad = mlp_input_grad_sharedep + mlp_input_grad_perm1 + mlp_input_grad_router
