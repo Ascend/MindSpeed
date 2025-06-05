@@ -62,6 +62,7 @@ from mindspeed.features_manager.transformer.module_rearrange.mcore_rearrange imp
 from mindspeed.features_manager.pipeline_parallel.variable_seq_length import VariableSequenceLengthFeature
 from mindspeed.features_manager.pipeline_parallel.multi_parameter import MultiParameterFeature
 from mindspeed.features_manager.pipeline_parallel.optimize_send_recv_comm import OptimizeSendRecvCommFeature
+from mindspeed.features_manager.pipeline_parallel.dualpipev_feature import DualpipeVFeature
 from mindspeed.features_manager.memory.reuse_fp32_param import ReuseFP32Param
 from mindspeed.features_manager.memory.smart_swap import SmartSwapFeature
 
@@ -167,7 +168,8 @@ def add_pipeline_parallel_features(features_list: List[MindSpeedFeature]):
         VariableSequenceLengthFeature(),
         MultiParameterFeature(),
         OptimizeSendRecvCommFeature(),
-        UnalignedPipelineFeature()
+        UnalignedPipelineFeature(),
+        DualpipeVFeature()
     ])
 
 
