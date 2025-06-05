@@ -147,7 +147,6 @@ def mindspeed_track_moe_metrics(
     """
     args = get_args()
     track_moe_metrics_impl(
-        args,
         reduce_aux_losses_tracker_across_ranks,
         get_moe_layer_wise_logging_tracker,
         clear_aux_losses_tracker,
@@ -157,4 +156,9 @@ def mindspeed_track_moe_metrics(
         wandb_writer=wandb_writer,
         total_loss_dict=total_loss_dict,
         per_layer_logging=per_layer_logging,
+        force_initialize=force_initialize,
+        track_names=track_names,
+        num_layers=num_layers,
+        moe_layer_freq=moe_layer_freq,
+        noop_layers=args.noop_layers
     )

@@ -94,7 +94,7 @@ def track_moe_metrics_mock(loss_scale, writer, total_loss_dict=None):
             for k, v in tracker.items()  # type: ignore
         }
         for name, loss_list in aux_losses.items():
-            loss_list_mean = get_mean(args, loss_list)
+            loss_list_mean = get_mean(loss_list, args.num_layers, args.noop_layers)
             if total_loss_dict is not None:
                 if name not in total_loss_dict:
                     total_loss_dict[name] = loss_list_mean

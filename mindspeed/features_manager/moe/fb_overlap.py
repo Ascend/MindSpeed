@@ -1,8 +1,6 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
 from argparse import ArgumentParser
-
-import megatron.core.models.gpt
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
@@ -15,8 +13,6 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--moe-fb-overlap', action='store_true')
         group.add_argument('--moe-unperm2-mem-optim-swap', action='store_true')
-
-
 
     def validate_args(self, args):
         self.incompatible_check(args, 'moe_alltoall_overlap_comm')
@@ -40,19 +36,17 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')
 
-
     def register_patches(self, patch_manager, args):
-        from mindspeed.core.transformer.moe.moe_feature.fb_overlap import (
-            linear_backward_wgrad_detach,
-            transformer_block_fb_overlap_init_wrapper,
-            forward_backward_pipelining_with_interleaving
-        )
-        from mindspeed.core.transformer.moe.moe_feature.fb_overlap.adaptor import (
-            _make_backward_post_hook,
-            get_moe_module_spec_wrapper
-        )
-
         if getattr(args, self.feature_name, None):
+            from mindspeed.core.transformer.moe.moe_feature.fb_overlap import (
+                linear_backward_wgrad_detach,
+                transformer_block_fb_overlap_init_wrapper,
+                forward_backward_pipelining_with_interleaving
+            )
+            from mindspeed.core.transformer.moe.moe_feature.fb_overlap.adaptor import (
+                _make_backward_post_hook,
+                get_moe_module_spec_wrapper
+            )
             patch_manager.register_patch('megatron.core.models.gpt.moe_module_specs.get_moe_module_spec', get_moe_module_spec_wrapper)
             patch_manager.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.__init__',
                                          transformer_block_fb_overlap_init_wrapper)
