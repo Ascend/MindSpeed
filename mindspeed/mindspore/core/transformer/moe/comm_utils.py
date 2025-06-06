@@ -28,19 +28,18 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
         global COMM_STREAM
         if COMM_STREAM is None:
             COMM_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
-        with torch_npu.npu.stream(COMM_STREAM):
-            if event:
-                event.wait()
-            if stream:
-                COMM_STREAM.wait_stream(stream)
-            handle = dist.all_to_all_single(
-                a2a_out,
-                input_.contiguous(),
-                output_split_sizes=output_split_sizes,
-                input_split_sizes=input_split_sizes,
-                group=group,
-                async_op=True
-            )
+        if event:
+            event.wait()
+        if stream:
+            COMM_STREAM.wait_stream(stream)
+        handle = dist.all_to_all_single(
+            a2a_out,
+            input_.contiguous(),
+            output_split_sizes=output_split_sizes,
+            input_split_sizes=input_split_sizes,
+            group=group,
+            async_op=True
+        )
     else:
         handle = dist.all_to_all_single(
             a2a_out,

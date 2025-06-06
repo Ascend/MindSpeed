@@ -120,13 +120,12 @@ def transformer_layer_forward_moe(
     shared_experts_vjp = None
     if not args.moe_zerc:
         if use_shared_experts:
-            with torch.npu.stream(overlap_stream.stream):
-                if shared_experts_allgather_handle is not None:
-                    shared_experts_allgather_handle.wait()
-                    shared_experts_allgather_handle = None
-                # Shared Experts Forward.
-                (shared_expert_output, _), shared_experts_vjp = run_graph_forward(self.mlp.shared_experts,
-                                                                                  detached_mlp_input)  # @check bias; cell as arg
+            if shared_experts_allgather_handle is not None:
+                shared_experts_allgather_handle.wait()
+                shared_experts_allgather_handle = None
+            # Shared Experts Forward.
+            (shared_expert_output, _), shared_experts_vjp = run_graph_forward(self.mlp.shared_experts,
+                                                                                detached_mlp_input)  # @check bias; cell as arg
         disp = self.mlp.token_dispatcher
         if disp.num_local_experts > 1:
             # No further synchronization is needed because torch.repeat_interleave() calls stream

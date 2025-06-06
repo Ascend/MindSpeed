@@ -455,15 +455,14 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
 
         shared_experts_vjp = None
         if use_shared_experts:
-            with torch.npu.stream(overlap_stream.stream):
-                if shared_experts_allgather_handle is not None:
-                    shared_experts_allgather_handle.wait()
-                    shared_experts_allgather_handle = None
+            if shared_experts_allgather_handle is not None:
+                shared_experts_allgather_handle.wait()
+                shared_experts_allgather_handle = None
 
-                def mlp_shared_expert_func(detached_mlp_input):
-                    shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
-                    return shared_expert_output
-                shared_expert_output, shared_experts_vjp = run_graph_forward(mlp_shared_expert_func, detached_mlp_input)
+            def mlp_shared_expert_func(detached_mlp_input):
+                shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
+                return shared_expert_output
+            shared_expert_output, shared_experts_vjp = run_graph_forward(mlp_shared_expert_func, detached_mlp_input)
         
         disp = fwd_layer.mlp.token_dispatcher
         if disp.num_local_experts > 1:
@@ -1035,17 +1034,16 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         # backward
         shared_experts_vjp = None
         if use_shared_experts:
-            with torch.npu.stream(overlap_stream.stream):
-                if shared_experts_allgather_handle is not None:
-                    shared_experts_allgather_handle.wait()
-                    shared_experts_allgather_handle = None
+            if shared_experts_allgather_handle is not None:
+                shared_experts_allgather_handle.wait()
+                shared_experts_allgather_handle = None
 
-                def mlp_shared_expert_func(detached_mlp_input):
-                    shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
-                    return shared_expert_output
+            def mlp_shared_expert_func(detached_mlp_input):
+                shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
+                return shared_expert_output
 
-                shared_expert_output, shared_experts_vjp = run_graph_forward(mlp_shared_expert_func,
-                                                                                detached_mlp_input)
+            shared_expert_output, shared_experts_vjp = run_graph_forward(mlp_shared_expert_func,
+                                                                            detached_mlp_input)
 
         if args.moe_zero_memory != 'disable':
             _, bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle = async_all_to_all(

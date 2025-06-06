@@ -1,5 +1,6 @@
 from functools import wraps
 import torch
+import torch.nn.functional as F
 from megatron.training import get_args
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput

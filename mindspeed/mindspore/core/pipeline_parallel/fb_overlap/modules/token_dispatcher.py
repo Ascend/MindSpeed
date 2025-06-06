@@ -2,6 +2,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import torch
 import acl
+import mindspore
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import permute, unpermute
 from megatron.core.utils import make_viewless_tensor
@@ -10,7 +11,8 @@ from mindspeed.core.pipeline_parallel.fb_overlap.modules.utils import TensorSwap
 
 from mindspeed.mindspore.op_builder import AlgorithmOpBuilder
 
-reuse_data_ptr = AlgorithmOpBuilder.load().reuse_data_ptr
+
+reuse_data_ptr = mindspore.utils._reuse_data_ptr
 
 
 class StreamConfig:
@@ -146,3 +148,50 @@ class UnpackProb(torch.autograd.Function):
 
         return grad_input, None, None
 
+
+def alltoall_token_perm1(
+    self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor,
+):
+    self.hidden_shape = hidden_states.shape
+    args = get_args()
+    if args.moe_unperm2_mem_optim:
+        self.probs = None
+    else:
+        self.probs = probs
+    assert probs.dim() == 2, "Expected 2D tensor for probs"
+    assert indices.dim() == 2, "Expected 2D tensor for indices"
+    tokens_per_expert = preprocess(self, indices)
+
+    event = torch.npu.current_stream().record_event()
+    global overlap_stream
+    if overlap_stream.stream is None:
+        overlap_stream.stream = torch.npu.Stream()      
+    torch.npu.current_stream().wait_event(event)
+    # Flatten the input tensor
+    # hidden_states: [S/TP, B, H] -> [S*B/TP, H]
+    hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
+
+    # Permutation 1: input to AlltoAll input
+    self.hiddden_shape_before_permute = hidden_states.shape
+    if self.cuda_sync_point == "before_permutation_1":
+        torch.cuda.current_stream().synchronize()
+    permutated_local_input_tokens, self.reversed_local_input_permutation_mapping = permute(
+        hidden_states,
+        indices,
+        num_out_tokens=self.num_out_tokens,
+        padded_mode=self.drop_and_pad,
+    )
+    permuted_local_probs = None
+    if args.moe_unperm2_mem_optim:
+        permuted_local_probs, _ = permute(
+            probs.view(-1, 1),
+            indices.view(-1, 1)
+        )
+        if '910B' in acl.get_soc_name():
+            permutated_local_input_tokens = PackProb.apply(permutated_local_input_tokens, permuted_local_probs)
+            self.prob_split_sizes = [hidden_states.shape[-1],
+                                    permutated_local_input_tokens.shape[-1] - hidden_states.shape[-1]]
+            self.orig_prob_format = probs.dtype
+            permuted_local_probs = None
+
+    return permutated_local_input_tokens, permuted_local_probs, tokens_per_expert
