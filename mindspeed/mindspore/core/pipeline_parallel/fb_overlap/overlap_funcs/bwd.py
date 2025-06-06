@@ -88,7 +88,7 @@ def transformer_layer_backward_moe(
                 ep_group
             )
 
-    (mlp_graph_grad,) = run_graph_backward(self.unperm1_graph, unperm1_out_grad)
+    (mlp_graph_grad, global_map_info_grad) = run_graph_backward(self.unperm1_graph, unperm1_out_grad)
     WeightGradStore.start_decouple()
     (perm2_graph_grad, detached_dispached_input_probs_grad) = run_graph_backward(self.grouped_mlp_graph, mlp_graph_grad, keep_grad=True)  # keep for dw commputation
     if not in_detach_stage:
@@ -137,7 +137,10 @@ def transformer_layer_backward_moe(
     if prob_handle:
         prob_handle.wait()
 
-    (mlp_input_grad_perm1, probs_detached_grad) = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad))
+    if args.moe_zerc:
+        mlp_input_grad_perm1, detach_probs_grad = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad, global_map_info_grad))
+    else:
+        (mlp_input_grad_perm1, probs_detached_grad) = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad))
 
 
 
@@ -155,6 +158,10 @@ def transformer_layer_backward_moe(
 
     if args.moe_unperm2_mem_optim:
         probs_grad = probs_detached_grad
+
+    if args.moe_zerc:
+        probs_grad = detach_probs_grad
+
     (mlp_input_grad_router,) = run_graph_backward(self.router_graph, probs_grad)
     
     mlp_input_grad = mlp_input_grad_sharedep + mlp_input_grad_perm1 + mlp_input_grad_router

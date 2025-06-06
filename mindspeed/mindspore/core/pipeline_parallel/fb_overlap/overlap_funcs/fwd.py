@@ -113,9 +113,23 @@ def transformer_layer_forward_moe(
 
     def alltoall_token_perm1_func(detached_mlp_input, probs_detached):
         nonlocal tokens_per_expert
-        perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(self.mlp.token_dispatcher, detached_mlp_input, probs_detached, indices)
-        return perm1_out, perm1_probs
-    (perm1_out, perm1_probs), perm1_vjp = run_graph_forward(alltoall_token_perm1_func, detached_mlp_input, probs_detached) # @check tokens_per_expert grad
+        if args.moe_zerc:
+            perm1_out, perm1_probs, tokens_per_expert, global_map_info = alltoall_token_perm1(self.mlp.token_dispatcher,
+                                                                                              detached_mlp_input,
+                                                                                              probs_detached, indices)
+            return perm1_out, perm1_probs, global_map_info
+        else:
+            perm1_out, perm1_probs, tokens_per_expert = alltoall_token_perm1(self.mlp.token_dispatcher,
+                                                                             detached_mlp_input,
+                                                                             probs_detached, indices)
+            return perm1_out, perm1_probs
+    if args.moe_zerc:
+        (perm1_out, perm1_probs, global_map_info), perm1_vjp = run_graph_forward(alltoall_token_perm1_func,
+                                                                                 detached_mlp_input,
+                                                                                 probs_detached)
+    else:
+        (perm1_out, perm1_probs), perm1_vjp = run_graph_forward(alltoall_token_perm1_func, detached_mlp_input,
+                                                                probs_detached)
 
     shared_experts_vjp = None
     if not args.moe_zerc:
@@ -159,7 +173,8 @@ def transformer_layer_forward_moe(
             shared_experts_allgather_handle.wait()
             shared_experts_allgather_handle = None
             # Shared Experts Forward.
-            shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
+            (shared_expert_output, _), shared_experts_vjp = run_graph_forward(self.mlp.shared_experts,
+                                                                              detached_mlp_input)  # @check bias; cell as arg
 
     if recomp_norm:
         self.norm_ckpt2.discard_output()
@@ -220,10 +235,17 @@ def transformer_layer_forward_moe(
     detached_expert_output = detach_tensor(expert_output, checkpoint_forward=checkpoint)
 
     # Token Unperm1 Forward
-    def alltoall_token_unperm1_func(detached_expert_output):
-        unperm1_out = alltoall_token_unperm1(self.mlp.token_dispatcher, detached_expert_output, None)
+    def alltoall_token_unperm1_func(detached_expert_output, global_map_info=None):
+        if args.moe_zerc:
+            unperm1_out = alltoall_token_unperm1(self.mlp.token_dispatcher, detached_expert_output, None,
+                                                 global_map_info)
+        else:
+            unperm1_out = alltoall_token_unperm1(self.mlp.token_dispatcher, detached_expert_output, None)
         return unperm1_out
-    unperm1_out, unperm1_vjp = run_graph_forward(alltoall_token_unperm1_func, detached_expert_output)
+
+    if not args.moe_zerc:
+        global_map_info = None
+    unperm1_out, unperm1_vjp = run_graph_forward(alltoall_token_unperm1_func, detached_expert_output, global_map_info)
     if not args.moe_zerc or args.moe_unperm2_mem_optim:
         expert_output.untyped_storage().resize_(0)
     if rs_shared_experts_handle is not None:
@@ -259,8 +281,6 @@ def transformer_layer_forward_moe(
         if args.moe_unperm2_mem_optim:
             probs = None
         route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(self.mlp.token_dispatcher, detached_unperm_a2a_out, probs)
-        if args.moe_unperm2_mem_optim or args.moe_zerc:
-            unperm_a2a_out.untyped_storage().resize_(0)
 
         if use_shared_experts:
             mlp_output = route_expert_output + detached_shared_expert_output
