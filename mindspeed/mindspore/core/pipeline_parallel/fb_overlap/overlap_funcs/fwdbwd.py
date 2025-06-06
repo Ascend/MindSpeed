@@ -550,12 +550,14 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
             recompute_needed_tensors = [None, None, None, None]
 
         # Token Unpermutaion Forward
-        def alltoall_token_unperm1_func(detached_expert_output):
+        global_map_info = None
+
+        def alltoall_token_unperm1_func(detached_expert_output, global_map_info=None):
             unperm1_out = alltoall_token_unperm1(fwd_layer.mlp.token_dispatcher, detached_expert_output, None)
             return unperm1_out
 
         detached_expert_output = detach_tensor(expert_output, checkpoint_forward=checkpoint)
-        unperm1_out, alltoall_token_unperm1_vjp = run_graph_forward(alltoall_token_unperm1_func, detached_expert_output)
+        unperm1_out, alltoall_token_unperm1_vjp = run_graph_forward(alltoall_token_unperm1_func, detached_expert_output, global_map_info)
 
 
         expert_output.untyped_storage().resize_(0)
@@ -1207,11 +1209,13 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         detached_expert_output = detach_tensor(expert_output)
 
         # Token Unpermutaion Forward
-        def alltoall_token_unperm1_func(detached_expert_output):
+        global_map_info = None
+
+        def alltoall_token_unperm1_func(detached_expert_output, global_map_info=None):
             unperm1_out = alltoall_token_unperm1(fwd_layer.mlp.token_dispatcher, detached_expert_output, None)
             return unperm1_out
 
-        unperm1_out, unperm1_vjp = run_graph_forward(alltoall_token_unperm1_func, detached_expert_output)
+        unperm1_out, unperm1_vjp = run_graph_forward(alltoall_token_unperm1_func, detached_expert_output, global_map_info)
 
         expert_output.untyped_storage().resize_(0)
         if rs_shared_experts_handle is not None:
