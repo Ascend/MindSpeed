@@ -25,19 +25,15 @@
 
 ## 使用场景
 
-使用了分布式优化器 + AdamW 的场景。
+使用了分布式优化器`--use-distributed-optimizer`且`--optimizer-selection`为`fused_adamw`的模型训练场景。
 
 ## 使用方法
 
 `--swap-optimizer`： 开启 swap optimizer 特性。
 
-`--swap-optimizer-times`： 设置 step 更新阶段进行 swap 的次数，越大并行的越多，可减少性能劣化，但会提高显存峰值。
-
-`--swap-optimizer-sizes`：设置每个 PP stage 要 swap 的显存大小，
-如 `--swap-optimizer-sizes 8` 每个 PP stage 都 swap 8 GB，
-或者 `--swap-optimizer-sizes 4 8` 表示 PP rank 0 swap 4GB，PP rank 1 swap 8 GB，此用法需要保证传入数量与 PP stage 数量一致。
-Swap 的实际大小无法严格与设置参数一致（NP问题），或大于设置参数或等于模型静态显存大小。
+`--swap-optimizer-times`： 默认值为16，用于设置 step 更新阶段进行 swap 的次数，越大并行的越多，可减少性能劣化，但会提高显存峰值。
 
 ## 注意事项
 
-当前本特性为 poc 特性，只适用于 MindSpeed-LLM deepseekV3 模型场景，与 `reuse-fp32-param`、`ema-adamw` 等其他优化器特性暂不兼容。
+1. 本特性仅适用于开启分布式优化器`--use-distributed-optimizer`且`--optimizer-selection`为`fused_adamw`的模型训练场景
+2. 本特性与 `--reuse-fp32-param`、fused ema adamw优化器等其他优化器相关特性暂不兼容。
