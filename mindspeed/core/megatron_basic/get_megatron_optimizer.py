@@ -124,7 +124,7 @@ def get_megatron_optimizer(
             )
 
         # Pass Gloo process groups into optimizer only if needed.
-        if use_gloo_process_groups or (not args.disable_gloo_group):
+        if use_gloo_process_groups and (not args.disable_gloo_group):
             data_parallel_group_gloo = mpu.get_data_parallel_group_gloo(
                 with_context_parallel=True, partial_data_parallel=True
             )
@@ -162,7 +162,7 @@ def get_megatron_optimizer(
             mpu.get_expert_tensor_model_pipeline_parallel_group()
         )
         # Pass Gloo process groups into optimizer only if needed.
-        if use_gloo_process_groups or (not args.disable_gloo_group):
+        if use_gloo_process_groups and (not args.disable_gloo_group):
             data_parallel_group_gloo = mpu.get_expert_data_parallel_group_gloo()
         else:
             data_parallel_group_gloo = None
