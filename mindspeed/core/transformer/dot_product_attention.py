@@ -920,6 +920,7 @@ class UnPadInputAttentionStrategy(AttentionStrategy):
         packed_seq_params: Optional[PackedSeqParams] = None,
     ):
         """forward function for unpad input attention strategy."""
+
         seq_length, bsz, n_head, _head_dim = (  # noqa
             query.shape[0],
             query.shape[1],
@@ -929,6 +930,38 @@ class UnPadInputAttentionStrategy(AttentionStrategy):
         query = query.transpose(0, 1).contiguous()
         key = key.transpose(0, 1).contiguous()
         value = value.transpose(0, 1).contiguous()
+
+        # this is for mm qwenvl special inference handling logic.
+        if attention_mask is not None and 0 not in attention_mask:
+            attention_mask = None
+        if attention_mask is None:
+            attention_mask_npu = torch.triu(
+                torch.ones(
+                    [query.shape[1], key.shape[1]],
+                    dtype=torch.bool,
+                    device=query.device,
+                ),
+                diagonal=1,
+            )
+            attn_output = torch_npu.npu_fusion_attention(
+                query,
+                key,
+                value,
+                n_head,
+                "BSND",
+                keep_prob=1.0,
+                scale=1.0 / math.sqrt(query.shape[-1]),
+                atten_mask=attention_mask_npu,
+            )[0]
+            attn_output = rearrange(
+                attn_output,
+                "b s h d -> s b (h d)",
+                s=seq_length,
+                b=bsz,
+            )
+            return attn_output
+
+        # unpad input handling logic for mm qwenvl
         query, key, value, indices_q, cu_seq_lens, max_seq_lens = self._unpad_input(
             query, key, value, attention_mask, seq_length
         )
