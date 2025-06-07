@@ -80,7 +80,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             hidden_states, scores, routing_map, ctx.shared_experts, save_tensors, shared_expert_gate, ctx
         )
         if isinstance(share_experts_output, tuple):
-            share_experts_output, rs_share_experts_output, rs_shared_experts_handle = share_experts_output
+            share_experts_output, rs_shared_experts_handle = share_experts_output
         else:
             if share_experts_output is not None:
                 share_experts_output.requires_grad_(True)
@@ -202,7 +202,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 # Recompute token rearrange in permutation1
 
                 permutated_local_input_tokens, _, _ = permute(
-                    detach_input.view(-1, detach_input.shape[-1]), routing_map, num_tokens
+                    detach_input.view(-1, detach_input.shape[-1]), routing_map, num_out_tokens=num_tokens
                 )
 
                 # Recompute expert parallel AlltoAll communication

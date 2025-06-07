@@ -109,7 +109,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         expert_input = (dispatched_input, tokens_per_expert)
 
         def func(dispatched_input, tokens_per_expert):
-            expert_output, mlp_bias = moe_layer.experts(dispatched_input, tokens_per_expert)
+            expert_output, mlp_bias = moe_layer.experts(dispatched_input, tokens_per_expert, None)
             output, mlp_bias = moe_layer.token_dispatcher.token_unpermutation(
                 expert_output, mlp_bias, reversed_local_input_permutation_mapping
             )
