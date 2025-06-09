@@ -1,3 +1,4 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 from mindspore.ops import auto_generate as gen
 from mindspeed.op_builder.fused_adamw_v2_builder import FusedAdamWV2OpBuilder

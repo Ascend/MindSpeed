@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 import torch_npu
 

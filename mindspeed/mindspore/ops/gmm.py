@@ -1,3 +1,4 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 from torch.library import impl
 from mindspore import ops
@@ -54,13 +55,14 @@ class GMMFunction(torch.autograd.Function):
 
         if ctx.gemm_fusion:
             if ctx.group_list_type == 0:
-                dx, _, dbias = GMMFunction.builder.load().npu_gmm_backward_fusion([grad_outputs], [weight], group_list,
-                                                                    ctx.group_list_type)
+                dx, _, dbias = ops.function.math_func.gmm_backward([grad_outputs, ], [x, ], [weight],
+                                                                   group_list=group_list)
                 npu_groupmatmul_add_fp32(x, grad_outputs, group_list, original_weight.main_grad)
                 
             elif ctx.group_list_type == 1:
-                dx, _, dbias = GMMFunction.builder2.load().npu_gmm_backward_fusion([grad_outputs], [weight], group_list,
-                                                                    ctx.group_list_type)
+                dx, _, dbias = ops.function.math_func.gmm_v2_backward([grad_outputs, ], [x, ], [weight],
+                                                                      group_list=group_list,
+                                                                      group_list_type=ctx.group_list_type)
                 group_list_v2 = torch.cumsum(group_list, dim=0)                                           
                 npu_groupmatmul_add_fp32(x, grad_outputs, group_list_v2, original_weight.main_grad)
 
@@ -85,7 +87,7 @@ class GMMFunction(torch.autograd.Function):
             else:
                 grad_weight = None
 
-            return None, dx[0], grad_weight, dbias, None
+            return None, dx[0], grad_weight, dbias, None, None
         else:
             if ctx.group_list_type == 0:
                 dx, dw, dbias = ops.function.math_func.gmm_backward([grad_outputs, ], [x, ], [weight],

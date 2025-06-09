@@ -1,3 +1,4 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 
 from megatron.core import mpu
