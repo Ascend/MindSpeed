@@ -73,13 +73,8 @@ class AlibiFeature(MindSpeedFeature):
                 raise AssertionError(
                     '--alibi-fusion-attn-type only support for `0, 2, 3`'
                 )
-            if args.alibi_fusion_attn_type == 0:
-                raise AssertionError(
-                    'fa v2 only support compress model currently. '
-                    'please use 2 or 3'
-                )
             # alibi is only support FA2
-            if args.alibi_fusion_attn_type in [2, 3]:
+            if args.alibi_fusion_attn_type in [0, 2, 3]:
                 args.use_fusion_attn_v2 = True
 
     def register_patches(self, patch_manager, args):

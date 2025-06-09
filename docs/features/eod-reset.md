@@ -8,12 +8,13 @@
 
 ## 使用方式
 ### 1. 数据准备
-首先确保每一个文档的末尾都添加了EOD Token。
+（1）首先确保每一个文档的末尾都添加了EOD Token  
+（2）对于--attention-mask-type为causal的情况，需要保证每个子序列都被pad到了2*cp的长度
 
 ### 2. 参数设置
-打开`--reset-attention-mask`选项
-
-使用`--reset-position-ids`选项，来代表位置编码是否reset。
+（1）打开`--reset-attention-mask`选项  
+（2）使用`--reset-position-ids`选项，来代表位置编码是否reset  
+（3）--attention-mask-type可以指定为causal或者general，两者计算结果等价。causal为加速实现，general为基线方案
 
 ### 3. 注意事项
 Ascend EOD Reset训练场景下mask-type为general时，Ring/Hybrid Attention比Ulysses下降较多，为正常现象；
