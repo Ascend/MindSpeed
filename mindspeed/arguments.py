@@ -53,10 +53,22 @@ def process_args(parser):
     parser = _add_dist_train_args(parser)
     parser = _add_ai_framework_args(parser)
     parser = _add_communication_overlap_args(parser)
+    parser = _add_autocast_args(parser)
+
 
     for feature in FEATURES_LIST:
         feature.register_args(parser)
 
+    return parser
+
+
+def _add_autocast_args(parser):
+    group = parser.add_argument_group(title='autocast')
+    group.add_argument('--enable-autocast', action='store_true',
+                       default=False, help='Enable autocast in forward_step')
+    group.add_argument('--autocast-dtype', type=str, default='bfloat16',
+                       choices=['bfloat16', 'float16'],
+                       help='Autocast data type (bfloat16 or float16)')
     return parser
 
 
