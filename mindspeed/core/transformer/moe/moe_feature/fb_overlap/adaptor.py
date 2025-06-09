@@ -8,6 +8,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.moe.moe_layer import MoESubmodules
 from megatron.core.transformer.mlp import MLPSubmodules
+from megatron.core.transformer.cuda_graphs import is_graph_capturing
 from megatron.training.utils import get_args
 from .modules.experts import MindSpeedFbOverlapGmmExperts
 from .modules.shared_experts import SharedExpertMLPFbOverlap
@@ -22,6 +23,8 @@ def _make_backward_post_hook(self, param: torch.nn.Parameter):
     """
 
     def hook(*unused):
+        if is_graph_capturing():
+            return
         if param in self.param_to_bucket_group:
             if not getattr(param, 'skip_grad_accum', False):
                 assert param.requires_grad

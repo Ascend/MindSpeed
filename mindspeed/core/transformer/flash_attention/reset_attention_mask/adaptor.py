@@ -16,6 +16,7 @@ from megatron.core.parallel_state import (
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_block import TransformerBlock
 from megatron.core.inference_params import InferenceParams
+from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
 
 from mindspeed.utils import get_position_ids, set_position_ids
@@ -227,7 +228,7 @@ def attention_forward(
     # Adjust key, value, and rotary_pos_emb for inference
     # ===================================================
     query, key, value, rotary_pos_emb, attn_mask_type = self._adjust_key_value_for_inference(
-        inference_params, query, key, value, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin
+        inference_context, query, key, value, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin, sequence_len_offset
     )
 
     # ================================================
@@ -366,11 +367,12 @@ def apply_rotary_pos_emb_thd(
 
 def Eod_get_rotary_seq_len(
     self,
-    inference_params: InferenceParams,
+    inference_context: BaseInferenceContext,
     transformer: TransformerBlock,
     transformer_input: Tensor,
     transformer_config: TransformerConfig,
     packed_seq_params: PackedSeqParams,
+    inference_params: Optional[BaseInferenceContext] = None,
 ) -> float:
     """Function to get the rotary sequence length with Eod.
 

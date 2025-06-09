@@ -39,7 +39,10 @@ def save_checkpoint(
         expert_rank=None,
         tensor_rank=None,
         pipeline_parallel=None,
-        expert_parallel=None):
+        expert_parallel=None,
+        non_persistent_ckpt=False,
+        train_data_iterator=None,
+        preprocess_common_state_dict_fn=None):
     """Save a model checkpoint.
 
     Checkpointing context is used to persist some checkpointing state

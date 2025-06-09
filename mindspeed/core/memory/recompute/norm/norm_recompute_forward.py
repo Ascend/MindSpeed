@@ -72,7 +72,7 @@ def norm_recompute_forward_impl(
         pre_cross_attn_layernorm_output,
         attention_mask=context_mask,
         key_value_states=context,
-        inference_params=inference_params,
+        inference_context=inference_context,
     )
 
     if isinstance(attention_output_with_bias, dict) and "context" in attention_output_with_bias:
