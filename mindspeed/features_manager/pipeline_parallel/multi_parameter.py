@@ -16,7 +16,7 @@ class MultiParameterFeature(MindSpeedFeature):
     def __init__(
         self,
         feature_name: str = "use-multiparameter-pipeline-model-parallel",
-        optimization_level: int = 0,
+        optimization_level: int = 2,
     ):
         super().__init__(feature_name, optimization_level)
 
