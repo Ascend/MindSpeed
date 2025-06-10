@@ -704,5 +704,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 此外，MindSpeed-Core 感谢以下团队对项目的贡献：
 
 - 微信基础架构中心
+- 科大讯飞AI工程院内核技术部
 
 感谢来自社区的每一个PR，欢迎贡献 MindSpeed-Core！
