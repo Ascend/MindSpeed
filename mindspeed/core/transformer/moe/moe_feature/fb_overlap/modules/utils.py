@@ -63,6 +63,7 @@ class NoopLayerGraph:
         else:
             self.unperm2_graph = (None, None)
         self.checkpointed = checkpointed
+        self.is_moe_layer = False
         self.layer = layer
 
     def record_layer_inputs(self, *args):

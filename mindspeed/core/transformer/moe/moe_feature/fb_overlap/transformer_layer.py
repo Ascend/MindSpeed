@@ -2,7 +2,7 @@
 
 from contextlib import nullcontext
 import torch
-from mindspeed.core.transformer.transformer_block import NoopTransformerLayer
+from mindspeed.core.pipeline_parallel.noop_layers.adaptor import NoopTransformerLayer
 from .modules.utils import (
     NoopLayerGraph, LayerGraph, is_p2p_comm_needed,
     p2p_comm_helper, P2PCommOutput, P2PCommParams

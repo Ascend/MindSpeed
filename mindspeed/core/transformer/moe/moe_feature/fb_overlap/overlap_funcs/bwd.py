@@ -160,11 +160,11 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
             manager.wait_swap_in()
     run_graph_backward(layer_graph.attn_graph)
 
-    return getattr(layer_graph, 'grad', None)
+    return getattr(layer_graph.layer_input, 'grad', None)
 
 
 def transformer_layer_backward_noop(layer_output_grad, layer_graph):
     run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
 
-    return getattr(layer_graph, 'grad', None)
+    return getattr(layer_graph.layer_input, 'grad', None)
 

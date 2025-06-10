@@ -58,3 +58,6 @@ from megatron.core.transformer.moe.legacy_a2a_token_dispatcher import MoEAlltoAl
 from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAllGatherTokenDispatcher
 from megatron.training import get_args
+from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.utils import make_viewless_tensor
+from megatron.core.inference.contexts import BaseInferenceContext

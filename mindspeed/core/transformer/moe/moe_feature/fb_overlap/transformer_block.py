@@ -5,12 +5,13 @@ from functools import wraps
 from typing import List, Union, Optional
 from contextlib import nullcontext
 from torch import Tensor
-from megatron.training import get_args
-from megatron.core import InferenceParams, parallel_state, tensor_parallel
-from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.utils import make_viewless_tensor
-from megatron.core.inference.contexts import BaseInferenceContext
-from mindspeed.core.transformer.transformer_block import NoopTransformerLayer
+from mindspeed.core.transformer.moe.moe_feature import (
+    get_args,
+    PackedSeqParams,
+    make_viewless_tensor,
+    BaseInferenceContext
+)
+from mindspeed.core.pipeline_parallel.noop_layers.adaptor import NoopTransformerLayer
 from .modules.utils import (
     detach_tensor, LayerGraph, P2PCommParams
 )

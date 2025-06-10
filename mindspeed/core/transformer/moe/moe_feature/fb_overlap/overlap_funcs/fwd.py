@@ -305,6 +305,16 @@ def transformer_layer_forward_dense(
     return output, context, graph
 
 
+class IdentityOPFunc(torch.autograd.Function):
+    @staticmethod
+    def forward(cls, x):
+        return x
+    
+    @staticmethod
+    def backward(cls, grad):
+        return grad
+    
+
 def transformer_layer_forward_noop(
     self,
     hidden_states,
@@ -320,6 +330,6 @@ def transformer_layer_forward_noop(
     checkpoint=False
 ):
     detached_layer_input = hidden_states
-    output = detached_layer_input.clone()
+    output = IdentityOPFunc.apply(detached_layer_input)
 
     return output, context, NoopLayerGraph(detached_layer_input, output, self, checkpointed=checkpoint)
