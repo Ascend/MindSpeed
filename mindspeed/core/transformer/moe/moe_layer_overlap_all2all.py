@@ -84,8 +84,8 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         else:
             if share_experts_output is not None:
                 share_experts_output.requires_grad_(True)
-            rs_share_experts_output = share_experts_output
             rs_shared_experts_handle = None
+        rs_share_experts_output = share_experts_output
         (expert_output, mlp_bias), *_ = forward_func(moe_layer.experts, (dispatched_input, tokens_per_expert, permuted_probs, ctx))
         save_tensors.append(expert_output)
 

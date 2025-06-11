@@ -745,9 +745,9 @@ def alltoall_token_permutation_new(
     # shared experts
     if shared_experts is not None:
         if get_args().moe_zero_memory != "disable":
-            (share_experts_output), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
+            (share_experts_output, _), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
         else:
-            (share_experts_output), *_ = forward_func(shared_experts, (hidden_states))
+            (share_experts_output, _), *_ = forward_func(shared_experts, (hidden_states))
         if shared_expert_gate is not None:
             with torch.enable_grad():
                 # tp not support shared expert gate for now
