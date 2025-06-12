@@ -1,3 +1,4 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 from functools import partial
 from time import sleep
