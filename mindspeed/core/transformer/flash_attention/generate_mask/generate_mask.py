@@ -58,10 +58,19 @@ def get_attention_mask(args):
         return _GLOBAL_ATTN_MASK
 
     device = 'npu'
-    compress = True
+    compress = False
 
-    if getattr(args, "multi_head_latent_attention", False):
-        compress = False
+    # fav2 do not support compress mode
+    if (
+        args.attention_mask_type == 'causal' and
+        args.use_flash_attn and
+        not args.use_fusion_attn_v2
+    ):
+        args.sparse_mode = 2
+        compress = True
+    
+    if args.attention_mask_on_cpu:
+        device = 'cpu'
 
     generate_attention_mask(args, compress, device)
 
