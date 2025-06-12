@@ -5,15 +5,21 @@ from mindspeed.core.transformer.moe.moe_feature import MoELayer as MegatronMoELa
 from mindspeed.core.transformer.moe.moe_feature import GroupedMLP as MegatronGroupedMLP
 from mindspeed.core.transformer.moe.moe_feature import MoEAlltoAllSEQTokenDispatcher as MegatronMoEAlltoAllSEQTokenDispatcher
 from mindspeed.core.transformer.moe.moe_feature import MoEAllGatherTokenDispatcher as MegatronMoEAllGatherTokenDispatcher
+from mindspeed.core.transformer.moe.moe_feature import MoEAlltoAllTokenDispatcher as MegatronMoEAlltoAllTokenDispatcher
 
 from mindspeed.core.transformer.moe.moe_feature.tp_extend_ep.moe_layer import All2AllSeqTpExtendEpMoELayerImpl
 from mindspeed.core.transformer.moe.moe_feature.tp_extend_ep.token_dispatcher import All2AllSeqTp2epDispatcherImpl
 from mindspeed.core.transformer.moe.moe_feature.tp_extend_ep.experts import TpExtendEpGmmExpertsImpl
 
-from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer import AlltoAllSeqOverlapMoeLayer, AllGatherOverlapMoeLayer
-from mindspeed.core.transformer.moe.moe_feature.overlap.token_dispatcher import MoEAlltoAllSeqOverLapDispatcher, MoEAllGatherOverLapDispatcher
-from mindspeed.core.transformer.moe.moe_feature.overlap.experts import OverLapGmmExpertsImpl
-
+from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer import (AlltoAllSeqOverlapMoeLayer, 
+                                                                          AllGatherOverlapMoeLayer,
+                                                                          AlltoAllOverlapMoeLayer
+                                                                         )
+from mindspeed.core.transformer.moe.moe_feature.overlap.token_dispatcher import (MoEAlltoAllSeqOverLapDispatcher,
+                                                                                 MoEAllGatherOverLapDispatcher,
+                                                                                 MoEAlltoAllOverLapDispatcher
+                                                                                )
+from mindspeed.core.transformer.moe.moe_feature.overlap.experts import OverLapGmmExpertsImpl, AlltoAllOverLapGmmExpertsImpl
 from mindspeed.core.transformer.moe.moe_feature.gmm.experts import GmmExpertsImpl
 
 
@@ -82,3 +88,24 @@ class MindSpeedGmmExperts(GmmExpertsImpl, MegatronGroupedMLP):
     # GroupedGEMM API
     def __init__(self, *args, **kwargs):
         GmmExpertsImpl.__init__(self, *args, **kwargs)
+
+
+#------------for alltoall dispatcher
+class MindSpeedAlltoAllOverlapMoeLayerAdaptor(AlltoAllOverlapMoeLayer):
+    # MoELayer of AlltoAll overlap API.
+    def __init__(self, *args, **kwargs):
+        if not hasattr(kwargs['config'], 'shared_expert_gate'):
+            kwargs['config'].shared_expert_gate = None
+        AlltoAllOverlapMoeLayer.__init__(self, *args, **kwargs)
+
+
+class MindSpeedMOEAlltoAllOverLapDispatcherAdaptor(MoEAlltoAllOverLapDispatcher, MegatronMoEAlltoAllTokenDispatcher):
+    # TokenDispatcher of AlltoAll overlap API.
+    def __init__(self, *args, **kwargs):
+        MoEAlltoAllOverLapDispatcher.__init__(self, *args, **kwargs)
+
+
+class MindSpeedAlltoALLOverLapGmmExperts(AlltoAllOverLapGmmExpertsImpl, MegatronGroupedMLP):
+    # GroupedGEMM API
+    def __init__(self, *args, **kwargs):
+        AlltoAllOverLapGmmExpertsImpl.__init__(self, *args, **kwargs)

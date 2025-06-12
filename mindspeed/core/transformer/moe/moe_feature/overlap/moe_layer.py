@@ -2,6 +2,7 @@
 # Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 
 from abc import ABC, abstractmethod
+from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer_overlap_all2allseq import MoELayerOverlapAllToAllSeq
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer_overlap_all2all import MoELayerOverlapAllToAll
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer_overlap_allgather import MoELayerOverlapAllGather
 from mindspeed.core.transformer.moe.moe_feature import (
@@ -9,7 +10,9 @@ from mindspeed.core.transformer.moe.moe_feature import (
     parallel_state,
     TopKRouter,
     MLP,
+    MegatronBaseMoeLayer,
     MLPSubmodules,
+    TransformerConfig,
     SharedExpertMLP)
 
 
@@ -110,7 +113,7 @@ class AlltoAllSeqOverlapMoeLayer(BaseMoELayer):
             self.shared_experts.with_shared_expert = True
 
     def forward(self, hidden_states):
-        return MoELayerOverlapAllToAll.apply(hidden_states, self.config, self)
+        return MoELayerOverlapAllToAllSeq.apply(hidden_states, self.config, self)
 
 
 class AllGatherOverlapMoeLayer(BaseMoELayer):
@@ -157,3 +160,55 @@ class AllGatherOverlapMoeLayer(BaseMoELayer):
 
     def forward(self, hidden_states):
         return MoELayerOverlapAllGather.apply(hidden_states, self.config, self)
+
+
+class AlltoAllOverlapMoeLayer(MegatronBaseMoeLayer):
+    """
+    Sets the MoE_layer when "moe-alltoall-overlap-comm" is used.
+    This function only used with 'alltoall' dispatcher.
+    """
+    def __init__(
+        self, config: TransformerConfig, submodules: MLPSubmodules = None, layer_number: int = None
+    ):
+        """
+        "moe-alltoall-overlap-comm" only supported "moe_grouped_gemm".
+        """
+        
+        self.submodules = submodules
+        self.config = config
+        super(AlltoAllOverlapMoeLayer, self).__init__(config=config, layer_number=layer_number)
+
+        self.moe_layer_recompute = config.moe_layer_recompute
+
+        # Initialize router
+        self.router = TopKRouter(config=self.config)
+
+        from mindspeed.core.transformer.moe.moe_feature.adaptor import MindSpeedMOEAlltoAllOverLapDispatcherAdaptor, \
+            MindSpeedAlltoALLOverLapGmmExperts
+        # Initialize experts
+        if not self.config.moe_grouped_gemm:
+            raise ValueError(
+                f"use '--moe-alltoall-overlap-comm' should open '--moe-grouped-gemm'."
+            )
+        else:
+            self.experts = MindSpeedAlltoALLOverLapGmmExperts(self.num_local_experts, self.config)
+
+        # Initialize token dispatcher
+        self.token_dispatcher = MindSpeedMOEAlltoAllOverLapDispatcherAdaptor(
+            self.num_local_experts, self.local_expert_indices, config=self.config
+        )
+
+        if self.config.add_bias_linear and self.config.moe_token_dispatcher_type != 'alltoall':
+            self.token_dispatcher.add_bias = self.config.add_bias_linear
+        else:
+            self.token_dispatcher.add_bias = None
+        
+        # Initialize shared experts
+        if self.use_shared_expert:
+            self.shared_experts = SharedExpertMLP(self.config, self.submodules.shared_experts)
+            self.shared_experts.with_shared_expert = True
+            if self.shared_expert_overlap:
+                self.token_dispatcher.set_shared_experts(self.shared_experts)
+
+    def forward(self, hidden_states):
+        return MoELayerOverlapAllToAll.apply(hidden_states, self.config, self)

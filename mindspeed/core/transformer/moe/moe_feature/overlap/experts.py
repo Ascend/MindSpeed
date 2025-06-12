@@ -3,17 +3,18 @@
 
 import torch
 import torch.nn.functional as F
-from mindspeed.core.transformer.moe.moe_feature import parallel_state, get_args, MLP
+from mindspeed.core.transformer.moe.moe_feature import parallel_state, get_args, MLP, GroupedMLP
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
-from mindspeed.core.transformer.moe.moe_feature.overlap.grouped_mlp_with_comp_and_comm_overlap_all2all import grouped_mlp_with_comp_and_comm_overlap_all2all
+from mindspeed.core.transformer.moe.moe_feature.overlap.grouped_mlp_with_comp_and_comm_overlap_all2allseq import grouped_mlp_with_comp_and_comm_overlap_all2allseq
 from mindspeed.core.transformer.moe.moe_feature.overlap.grouped_mlp_with_comp_and_comm_overlap_allgather import grouped_mlp_with_comp_and_comm_overlap_allgather
+from mindspeed.core.transformer.moe.moe_feature.overlap.grouped_mlp_with_comp_and_comm_overlap_all2all import grouped_mlp_with_comp_and_comm_overlap_all2all
 
 
 class OverLapGmmExpertsImpl:
     """
     An efficient implementation of the experts layer using GroupedGEMM.
-    Only used when open moe_alltoall_overlap_comm or moe_allgather_overlap_comm to overlap compute and communicate.
+    Only used when open moe_alltoall_overlap_comm and 'alltoallseq' dispatcher or moe_allgather_overlap_comm to overlap compute and communicate.
     """
     def __init__(self, num_local_experts, config=None):
         """
@@ -29,7 +30,7 @@ class OverLapGmmExpertsImpl:
         self.activation_checkpoint_manager = None
         if self.config.moe_tp_extend_ep:
             tp_size = parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE
-            # set tp size to 1 before GMM init to aviod weight sharding
+            # set tp size to 1 before GMM init to aviod weight sharding.
             parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = 1
         super().__init__(num_local_experts, config)
         if self.config.moe_tp_extend_ep:        
@@ -51,8 +52,8 @@ class OverLapGmmExpertsImpl:
             w1 = self.weight1.view(self.config.hidden_size, -1)
             w2 = self.weight2.view(-1, self.config.hidden_size)
         group_list = torch.cumsum(tokens_per_expert, dim=0)
-        if self.config.moe_alltoall_overlap_comm:
-            return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
+        if self.config.moe_token_dispatcher_type == 'alltoall_seq':
+            return grouped_mlp_with_comp_and_comm_overlap_all2allseq(permuted_local_hidden_states, w1, w2,
                                                                 (self.weight1, self.weight2, self.activation_func, 
                                                                 group_list, self.layer_number, self.config),
                                                                 ctx=ctx)
@@ -60,6 +61,39 @@ class OverLapGmmExpertsImpl:
             return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
                                                                     (self.weight1, self.weight2, self.activation_func, 
                                                                      group_list, self.layer_number, self.config))
+
+
+class AlltoAllOverLapGmmExpertsImpl(GroupedMLP):
+    """
+    An efficient implementation of the experts layer using GroupedGEMM.
+    Only used when open moe_alltoall_overlap_comm and 'alltoall' dispatcher to overlap compute and communicate.
+    """
+    def __init__(self, num_local_experts, config=None):
+        """
+        Args:
+            num_local_experts: experts in device
+            config: TransformerConfig
+        """
+        super().__init__(num_local_experts, config=config)
+        if self.config.gated_linear_unit:
+            assert (self.config.activation_func == F.silu
+                    ), 'Activation function must be silu when using fused_swiglu.'
+            self.activation_func = fused_swiglu
+
+    def forward(self, permuted_local_hidden_states, tokens_per_expert, ctx=None):
+        """Forward step of the GroupedMLP with MoE overlap."""   
+        if permuted_local_hidden_states.nelement() != 0:
+            w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
+            w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
+        else:
+            w1 = self.weight1.view(self.config.hidden_size, -1)
+            w2 = self.weight2.view(-1, self.config.hidden_size)
+        group_list = torch.cumsum(tokens_per_expert, dim=0)
+
+        return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
+                                                            (self.weight1, self.weight2, self.activation_func, 
+                                                            group_list, self.layer_number, self.config),
+                                                            ctx=ctx)
 
 
 def Zero_Memory_SharedExpertMlp_forward(self, hidden_states, moe_ctx):

@@ -3,13 +3,21 @@
 
 import torch
 from torch_npu.utils.collect_env import get_cann_version
+import torch.nn.functional as F
 from mindspeed.core.transformer.moe.moe_feature import (
     parallel_state, 
     tensor_parallel, 
     permute, 
     unpermute, 
+    bias_geglu_impl,
+    bias_gelu_impl,
+    bias_swiglu_impl,
     sort_chunks_by_idxs,
-    reduce_scatter_to_sequence_parallel_region
+    reduce_scatter_to_sequence_parallel_region,
+    MoEAlltoAllTokenDispatcher,
+    gather_from_sequence_parallel_region,
+    copy_to_tensor_model_parallel_region,
+    reduce_from_tensor_model_parallel_region
     )
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import (
     forward_func
@@ -447,3 +455,371 @@ class MoEAllGatherOverLapDispatcher:
             output_bias_total = output_bias_total.view(self.hidden_shape)
 
         return output_total, output_bias_total
+
+
+class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
+    """
+    An AlltoAll-based token dispatcher with overlap.
+    Same as MoEAlltoAllSeqOverLapDispatcher, also support moe-zero-memory.
+    The dispatcher support shared expert overlap method. 
+
+    Note that in the overlap method of different branches, the shared experts' forward 
+    function are defined in AlltoAllOverlapMoeLayer (without moe_shared_expert_overlap) 
+    or MoEAlltoAllOverLapDispatcher (with moe_shared_expert_overlap).
+    """
+
+    def __init__(self, num_local_experts, local_expert_indices, config):
+        """
+        Initialize the AlltoAll overlap token dispatcher.
+
+        Args:
+            num_local_experts (int): Number of local experts on the current device.
+            local_expert_indices (List[int]): Indices of local experts on the current device.
+            config (TransformerConfig): Configuration for the transformer model.
+        """
+    
+        self.num_local_experts = num_local_experts
+        self.config = config
+        self.local_expert_indices = local_expert_indices
+        # use MOEAlltoAllTokenDispatcher to init
+        super().__init__(num_local_experts, local_expert_indices, config)
+
+
+    def token_permutation(
+        self, 
+        hidden_states: torch.Tensor, 
+        probs: torch.Tensor, 
+        routing_map: torch.Tensor, 
+        save_tensors, 
+        moe_ctx=None
+    ):
+        """
+        Dispatch tokens to local experts using AlltoAll communication.
+
+        Args:
+            hidden_states (torch.Tensor): Input token embeddings.
+            probs (torch.Tensor): Probs of tokens assigned to experts.
+                Shape: [num_tokens, num_experts].
+            routing_map (torch.Tensor): Mapping of tokens assigned to experts.
+                Shape: [num_tokens, num_experts].
+            save_tensors (List): Save Tensors During permutation and unpermutation
+                for MoELayerOverlapAll2AllSeq's recompute.
+            moe_ctx: Config settings from MoELayerOverlapAll2All.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]:
+                - Permuted token embeddings for local experts.
+                - Number of tokens per expert.
+        """
+        self.hidden_shape = hidden_states.shape
+        self.probs = probs
+        self.routing_map = routing_map
+        assert probs.dim() == 2, "Expected 2D tensor for probs"
+        assert routing_map.dim() == 2, "Expected 2D tensor for routing map"
+        assert routing_map.dtype == torch.bool, "Expected bool tensor for mask"
+
+        def pre_forward_comm(hidden_states):
+            """
+            All Gather for SP before forward.
+            This function is used to overlap shared experts with the dispatcher.
+            It is only useful when --moe-shared-expert-overlap is set and may be changed.
+            Unlike megatron, the backward compute graph is rearrange, so torch < 2.2 can use
+            shared expert overlap.
+            """
+            self.shared_experts.gate_score = None
+            cached_fc1_input = None
+            assert self.shared_experts.config.moe_shared_expert_overlap
+            assert self.shared_experts.cached_output is None
+            self.shared_experts.stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(self.shared_experts.stream):
+                if self.shared_experts.use_shared_expert_gate:
+                    logits = torch.nn.functional.linear(hidden_states, self.shared_experts.gate_weight)
+                    self.shared_experts.gate_score = torch.nn.functional.sigmoid(logits)
+                if self.shared_experts.config.sequence_parallel:
+                    cached_fc1_input = gather_from_sequence_parallel_region(
+                        hidden_states, tensor_parallel_output_grad=True
+                    )
+                else:
+                    cached_fc1_input = copy_to_tensor_model_parallel_region(hidden_states)
+            return cached_fc1_input 
+
+        # Permutation 1: input to AlltoAll input
+        def alltoall_token_permutation1(hidden_states, routing_map):
+
+            tokens_per_expert = self.preprocess(self.routing_map)
+            tokens_per_expert = tokens_per_expert.to('npu', non_blocking=True)
+            hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
+            cached_fc1_input = None
+            # Megatron shared experts overlap settings.
+            # With Megatron shared experts overlap, the shared_experts move to dispatcher.
+            # Other conditions, the shared_experts belong to moe_layer.
+            if moe_ctx.shared_expert_overlap:
+                cached_fc1_input = pre_forward_comm(hidden_states.view(self.hidden_shape))
+
+            self.hidden_shape_before_permute = hidden_states.shape   
+    
+            if self.cuda_sync_point == "before_permutation_1":
+                torch.cuda.current_stream().synchronize()
+
+            permutated_local_input_tokens, reversed_local_input_permutation_mapping = permute(
+                hidden_states,
+                routing_map,
+                num_out_tokens=self.num_out_tokens,
+            )
+            return permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert, cached_fc1_input
+
+        (permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert, cached_fc1_input), *_ = forward_func(
+                                                                alltoall_token_permutation1, (hidden_states, routing_map))
+        self.reversed_local_input_permutation_mapping = reversed_local_input_permutation_mapping
+
+        # permute 1
+        save_tensors.append(permutated_local_input_tokens)
+        if self.shared_experts is not None:
+            moe_ctx.share_experts_graph_list.append(cached_fc1_input)
+
+        # Perform expert parallel AlltoAll communication
+        if self.cuda_sync_point == "before_ep_alltoall":
+            torch.cuda.current_stream().synchronize()
+        _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
+            permutated_local_input_tokens,
+            self.output_splits,
+            self.input_splits,
+            self.ep_group,
+        )
+
+
+        def linear_fc1_forward_and_act(cached_fc1_input):
+            """
+            Do Linear FC1 and activation function forward.
+            This function is used to overlap shared experts with the dispatcher.
+            It is only useful when --moe-shared-expert-overlap is set and may be changed.
+            """
+            assert self.shared_experts.config.moe_shared_expert_overlap
+            assert cached_fc1_input is not None
+            with torch.cuda.stream(self.shared_experts.stream):
+                # [s, b, 4 * h/p]
+                intermediate_parallel, bias_parallel = self.shared_experts.linear_fc1(cached_fc1_input)
+                cached_fc1_input = None
+
+                if self.shared_experts.config.bias_activation_fusion:
+                    if self.shared_experts.activation_func == F.gelu:
+                        if self.shared_experts.config.gated_linear_unit:
+                            intermediate_parallel = bias_geglu_impl(
+                                intermediate_parallel, bias_parallel
+                            )
+                        else:
+                            assert self.shared_experts.config.add_bias_linear is True
+                            intermediate_parallel = bias_gelu_impl(intermediate_parallel, bias_parallel)
+                    elif self.shared_experts.activation_func == F.silu and self.shared_experts.config.gated_linear_unit:
+                        intermediate_parallel = bias_swiglu_impl(
+                            intermediate_parallel,
+                            bias_parallel,
+                            self.shared_experts.config.activation_func_fp8_input_store,
+                        )
+                    else:
+                        raise ValueError("Only support fusion of gelu and swiglu")
+                else:
+                    if bias_parallel is not None:
+                        intermediate_parallel = intermediate_parallel + bias_parallel
+                    if self.shared_experts.config.gated_linear_unit:
+
+                        def glu(x):
+                            x = torch.chunk(x, 2, dim=-1)
+                            return self.shared_experts.config.activation_func(x[0]) * x[1]
+
+                        intermediate_parallel = glu(intermediate_parallel)
+                    else:
+                        intermediate_parallel = self.shared_experts.activation_func(intermediate_parallel)
+
+                cached_fc2_input = intermediate_parallel
+            return cached_fc2_input
+
+
+        #use Megatron shared expert overlap.
+        if self.shared_experts is not None:
+            self.cached_fc2_input, cached_fc1_input_detach = forward_func(\
+                linear_fc1_forward_and_act, (cached_fc1_input))
+            #fc1-fc2 graph
+            moe_ctx.share_experts_graph_list.append(self.cached_fc2_input)
+            #fc1 input
+            moe_ctx.share_experts_graph_list.append(cached_fc1_input_detach)
+
+        permute1_ep_all_to_all_handle.wait()
+
+        if self.tp_size > 1:
+            global_input_tokens = gather_from_sequence_parallel_region(
+                global_input_tokens,
+                group=self.tp_group,
+                output_split_sizes=(
+                    self.output_splits_tp.tolist() if self.output_splits_tp is not None else None
+                ),
+            )
+        permutated_local_input_tokens.untyped_storage().resize_(0)
+
+        def alltoall_token_permutation2(global_input_tokens):
+
+            # Permutation 2: Sort tokens by local expert.
+            if self.num_local_experts > 1:
+                global_input_tokens = sort_chunks_by_idxs(
+                    global_input_tokens,
+                    self.num_global_tokens_per_local_expert_cpu.ravel(),
+                    self.sort_input_by_local_experts,
+                )
+
+            if self.cuda_sync_point == "before_finish":
+                torch.cuda.current_stream().synchronize()
+
+            return global_input_tokens
+
+        # token premute2 input
+        (global_input_tokens), global_input_tokens_detach = forward_func(alltoall_token_permutation2,
+                                                                        global_input_tokens)
+        save_tensors.append(global_input_tokens_detach)
+        save_tensors.append(global_input_tokens)
+        global_input_tokens_detach.untyped_storage().resize_(0)
+
+        return global_input_tokens, tokens_per_expert
+
+    def token_unpermutation(
+        self, 
+        hidden_states: torch.Tensor, 
+        bias: torch.Tensor = None, 
+        save_tensors: list = None,
+        moe_ctx=None
+    ):
+        """
+        Reverse the token permutation to restore the original order.
+
+        Args:
+            hidden_states (torch.Tensor): Output from local experts.
+            bias (torch.Tensor, optional): Bias tensor (not supported).
+            save_tensors (List): Save Tensors During permutation and unpermutation
+                for MoELayerOverlapAll2All's recompute.
+
+        Returns:
+            Tuple[torch.Tensor, Optional[torch.Tensor]]:
+                - Unpermuted token embeddings in the original order.
+                - None (bias is not supported).
+        """
+        assert bias is None, "Bias is not supported in MoEAlltoAllTokenDispatcher"
+        
+        def alltoall_token_unpermutation1(hidden_states):
+
+            # Perform tensor parallel Reduce-Scatter
+            # Unpermutation 2: expert output to AlltoAll input
+            if self.num_local_experts > 1:
+                hidden_states = sort_chunks_by_idxs(
+                    hidden_states,
+                    self.num_global_tokens_per_local_expert_cpu.T.ravel(),
+                    self.restore_output_by_local_experts,
+                )
+
+            return hidden_states
+
+        hidden_states, unpermute1_input_detach = forward_func(alltoall_token_unpermutation1, hidden_states)
+        save_tensors.append(unpermute1_input_detach)
+        save_tensors.append(hidden_states)
+        unpermute1_input_detach.untyped_storage().resize_(0)
+
+        if self.tp_size > 1:
+            hidden_states = reduce_scatter_to_sequence_parallel_region(
+                hidden_states,
+                group=self.tp_group,
+                input_split_sizes=(
+                    self.output_splits_tp.tolist() if self.output_splits_tp is not None else None
+                ),
+            )
+        # Perform expert parallel AlltoAll communication
+        # hidden_states: [SEQL, H] -> [SEQL, H/TP]
+        _, permutated_local_input_tokens, handle = async_all_to_all(
+            hidden_states,
+            self.input_splits,
+            self.output_splits,
+            self.ep_group
+        )
+
+        def linear_fc2_forward(cached_fc2_input, overlapped_comm_output):
+            """
+            Do Linear FC2 forward.
+            This function is used to overlap shared experts with the dispatcher.
+            It is only useful when --moe-shared-expert-overlap is set and may be changed.
+            """
+            assert self.shared_experts.config.moe_shared_expert_overlap
+            assert cached_fc2_input is not None
+
+            with torch.cuda.stream(self.shared_experts.stream):
+                # [s, b, h]
+                cached_fc2_output, _ = self.shared_experts.linear_fc2(self.cached_fc2_input)
+                cached_fc2_input = None
+                return cached_fc2_output
+
+        def post_forward_comm(cached_fc2_output):
+            with torch.cuda.stream(self.shared_experts.stream):
+                if self.shared_experts.config.sequence_parallel:
+                    cached_output = reduce_scatter_to_sequence_parallel_region(
+                        cached_fc2_output
+                    )
+                else:
+                    cached_output = reduce_from_tensor_model_parallel_region(
+                        cached_fc2_output
+                    )
+                cached_fc2_output = None
+            return cached_output
+
+        #share expert
+        if self.shared_experts is not None:
+            cached_fc2_output, cached_fc2_input_detach, _ = forward_func(\
+                linear_fc2_forward, (self.cached_fc2_input, permutated_local_input_tokens))
+            shared_expert_output, post_forward_comm_input_detach = forward_func(post_forward_comm, cached_fc2_output)
+
+        handle.wait()
+        hidden_states.untyped_storage().resize_(0)
+
+        def alltoall_token_unpermutation2(permutated_local_input_tokens):
+            # Unpermutation 1: AlltoAll output to output
+            if self.config.moe_zero_memory != "disable":
+                output = UnpermuteWithoutActivation.apply(
+                    permutated_local_input_tokens,
+                    self.reversed_local_input_permutation_mapping,
+                    self.hidden_shape_before_permute,
+                    self.probs,
+                    self.routing_map,
+                )
+            else:
+                output = unpermute(
+                    permutated_local_input_tokens,
+                    self.reversed_local_input_permutation_mapping,
+                    probs=self.probs,
+                    restore_shape=self.hidden_shape_before_permute,
+                    routing_map=self.routing_map,
+                )
+            # Reshape the output tensor
+            output = output.view(self.hidden_shape)
+            return output
+
+        output, unpermute2_input_detach = forward_func(alltoall_token_unpermutation2, permutated_local_input_tokens)
+        save_tensors.append(unpermute2_input_detach)
+
+        if moe_ctx.shared_expert_overlap:
+            if moe_ctx.config.moe_zero_memory == "level1" and not moe_ctx.is_only_recompute_activation:
+                self.cached_fc2_input.untyped_storage().resize_(0)
+                moe_ctx.shared_act_out = self.cached_fc2_input
+
+        if self.shared_experts is not None:
+            with torch.cuda.stream(self.shared_experts.stream):
+                if self.shared_experts.use_shared_expert_gate:
+                    assert self.gate_score is not None
+                    shared_expert_output = shared_expert_output * self.gate_score
+                    self.gate_score = None
+            torch.cuda.current_stream().wait_stream(self.shared_experts.stream)
+            output += shared_expert_output
+            #fc2 graph
+            moe_ctx.share_experts_graph_list.append(cached_fc2_output)
+            #fc2 input
+            moe_ctx.share_experts_graph_list.append(cached_fc2_input_detach)
+            #post comm graph
+            moe_ctx.share_experts_graph_list.append(shared_expert_output)
+            #post comm input
+            moe_ctx.share_experts_graph_list.append(post_forward_comm_input_detach)
+            return output, None, shared_expert_output
+        return output, None, None

@@ -106,6 +106,9 @@ def mlp_init(
 
 
 def core_mlp_forward_wrapper(fn):
+    """
+    Setting args for zero_memory&recompute in MLP.
+    """
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         if isinstance(args, tuple):
@@ -189,7 +192,7 @@ def parallel_transformer_layer_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
-        if self.config.moe_alltoall_overlap_comm or self.config.moe_allgather_overlap_comm:
+        if self.config.moe_alltoall_overlap_comm or self.config.moe_allgather_overlap_comm or self.config.moe_alltoallseq_overlap_comm:
             self.mlp.experts.layer_number = self.layer_number
             if self.config.n_shared_experts:
                 self.mlp.shared_experts.layer_number = self.layer_number
