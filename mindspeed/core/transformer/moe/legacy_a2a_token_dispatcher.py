@@ -35,30 +35,29 @@ def allgather_token_permutation(self, hidden_states: torch.Tensor, max_prob: tor
     if self.tp_size > 1 or self.ep_size > 1:
         # [S*B/TP, H] -> [S*B, H]
         with torch.no_grad():
-            routing_map, gi_handle = routing_map if isinstance(routing_map,
-                                                              tuple) else gather_from_sequence_parallel_region_to_moe_async(
-                routing_map)
+            routing_map, gi_handle = routing_map if isinstance(
+                routing_map, tuple) else gather_from_sequence_parallel_region_to_moe_async(routing_map)
         max_prob, gp_handle = gather_from_sequence_parallel_region_to_moe_async(max_prob)
         hidden_states, ghs_handle = gather_from_sequence_parallel_region_to_moe_async(hidden_states)
-
 
     self.hidden_shape_before_permute = hidden_states.shape
 
     gi_handle.wait()
     self.local_map = routing_map[
-        :, self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
-    ].contiguous()   
+        :, self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
+    ].contiguous()
 
     gp_handle.wait()
-    self.local_probs =  max_prob[
-        :, self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
+    self.local_probs = max_prob[
+        :, self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
     ].contiguous()
 
     tokens_per_expert = self.local_map.sum(dim=0).long().cpu()
     ghs_handle.wait()
 
     if cann_version_check:
-        raise AssertionError('In this CANN version, the moe-permutation-async-comm is no longer supported by the Megatron upgrade. Please check the CANN version.')
+        raise AssertionError(
+            'In this CANN version, the moe-permutation-async-comm is no longer supported by the Megatron upgrade. Please check the CANN version.')
     else:
         permuted_local_hidden_states, _, self.reversed_local_input_permutation_mapping = permute(
             hidden_states, self.local_map
@@ -90,8 +89,7 @@ class NewIndePut(torch.autograd.Function):
 
 
 def allgather_token_unpermutation(self, hidden_states: torch.Tensor, bias: torch.Tensor = None, ):
-    #TODO: In new version, can we delete this patch?
-    
+
     # Stage1: unpermute the tokens and bias locally respectively.w
     if cann_version_check:
         unpermuted_local_hidden = torch.zeros_like(hidden_states)
@@ -120,7 +118,7 @@ def allgather_token_unpermutation(self, hidden_states: torch.Tensor, bias: torch
             self.config.expert_model_parallel_size > 1
     ):
         assert (
-                self.global_local_map is not None
+            self.global_local_map is not None
         ), "global_local_map is necessary for `AllGather`."
         ep_group_size = parallel_state.get_tensor_and_expert_parallel_world_size()
         # hidden_shape: [SeqLen/TP, MBS, HiddenSize], glboal_num_tokens = SeqLen/TP*MBS*(TP*EP)
@@ -261,7 +259,7 @@ def preprocess(self, routing_map: torch.Tensor) -> torch.Tensor:
         )
         # [tp_size, ep_size, num_experts] -> [tp_size, ep_size, num_local_experts]
         num_global_tokens_per_local_expert = num_global_tokens_per_expert[
-            :, :, self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
+            :, :, self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
         ].contiguous()
         # [tp_size, ep_size, num_local_experts] -> [tp_size, ep_size]
         num_global_tokens_per_rank = num_global_tokens_per_local_expert.sum(axis=2)
@@ -301,7 +299,7 @@ def preprocess(self, routing_map: torch.Tensor) -> torch.Tensor:
     if self.num_local_experts > 1:
         self.num_global_tokens_per_local_expert_cpu = num_global_tokens_per_local_expert.view(
             -1, self.num_local_experts
-            ).to(torch.device("cpu"), non_blocking=True)
+        ).to(torch.device("cpu"), non_blocking=True)
         if not hasattr(self, 'comm_stream'):
             self.comm_stream = torch.cuda.Stream()
         self.comm_stream.wait_stream(torch.cuda.current_stream())
@@ -365,7 +363,7 @@ def alltoall_token_permutation(
             global_input_tokens,
             self.num_global_tokens_per_local_expert_cpu.ravel(),
             self.sort_input_by_local_experts,
-            )
+        )
 
     # Perform tensor parallel All-Gather on the hidden dimension to obtain the input tokens.
     # global_input_tokens: [SEQL, H/TP] -> [SEQL, H]
@@ -379,53 +377,10 @@ def alltoall_token_permutation(
     return global_input_tokens, tokens_per_expert, None
 
 
-def alltoall_token_unpermutation_with_bmm(
-    self, hidden_states: torch.Tensor, bias: torch.Tensor = None,
-):
-    # if use op bmm_reducescatter_alltoall to skip reducescatter and alltoall
-    output = unpermute(
-        hidden_states,
-        self.reversed_local_input_permutation_mapping,
-        probs=self.probs,
-        padded_mode=self.drop_and_pad,
-        restore_shape=self.hidden_shape_before_permute,
-    )
-
-    if parallel_state.get_tensor_model_parallel_world_size() > 1:
-        output = tensor_parallel.all_to_all_hp2sp(output)
-
-    output = output.view(self.hidden_shape)
-    return output, None
-
-
-def alltoall_token_permutation_with_bmm(
-    self, hidden_states: torch.Tensor, probs: torch.Tensor, indices: torch.Tensor,
-):
-    # if use op alltoall_allgather_bmm to skip alltoall and allgather
-    self.hidden_states = hidden_states.shape
-    self.probs = probs
-    assert probs.dim() == 2, "Experted 2D tensor for probs"
-    assert indices.dim() == 2, "Experted 2D tensor for indices"
-    hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
-    tokens_per_expert = self.preprocess(indices)
-
-    if parallel_state.get_tensor_model_parallel_world_size() > 1:
-        hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
-
-    self.hidden_shape_before_permute = hidden_states.shape
-    permutated_local_input_tokens, _, self.reversed_local_input_permutation_mapping = permute(
-        hidden_states,
-        indices,
-        num_out_tokens=self.num_out_tokens,
-        padded_mode=self.drop_and_pad,
-    )
-    return permutated_local_input_tokens, tokens_per_expert, None
-
-
 def preprocess_tp_extend_ep(self, routing_map: torch.Tensor) -> torch.Tensor:
 
     num_local_tokens_per_expert = routing_map.sum(dim=0).long()
-    
+
     # num_local_tokens_per_expert: [num_experts]
 
     ep_size = self.config.expert_model_parallel_size
@@ -433,17 +388,17 @@ def preprocess_tp_extend_ep(self, routing_map: torch.Tensor) -> torch.Tensor:
         # probs: [num_experts, capacity]
         num_tokens = routing_map.size(0) * self.config.moe_router_topk
         self.capacity = get_capacity(
-                num_tokens=num_tokens,
-                num_experts=self.num_experts,
-                capacity_factor=self.config.moe_expert_capacity_factor,
-            )
+            num_tokens=num_tokens,
+            num_experts=self.num_experts,
+            capacity_factor=self.config.moe_expert_capacity_factor,
+        )
         self.num_out_tokens = self.capacity * self.num_experts
         num_tokens_per_local_expert = torch.full(
-                (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long
-            )
+            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long
+        )
         self.num_global_tokens_per_local_expert_cpu = torch.full(
-                (self.num_experts * self.tp_size,), self.capacity, dtype=torch.long
-            )
+            (self.num_experts * self.tp_size,), self.capacity, dtype=torch.long
+        )
         return num_tokens_per_local_expert
     elif self.config.moe_expert_capacity_factor is not None:
         # Token drop but no pad.
@@ -453,7 +408,7 @@ def preprocess_tp_extend_ep(self, routing_map: torch.Tensor) -> torch.Tensor:
         self.cuda_sync_point = "before_permutation_1"
     else:
         # Dropless
-        self.num_out_tokens = routing_map.size(0) * self.config.moe_router_topk 
+        self.num_out_tokens = routing_map.size(0) * self.config.moe_router_topk
         if self.ep_size > 1 or self.num_local_experts > 1:
             # Token dropless and enable ep. A synchronization is needed before expert parallel
             # AlltoAll communication to get the `input_splits` and `output_splits` CPU values.
@@ -478,8 +433,8 @@ def preprocess_tp_extend_ep(self, routing_map: torch.Tensor) -> torch.Tensor:
             num_local_tokens_per_expert, group=ps.get_expert_tensor_and_model_parallel_group()
         ).reshape(tp_extended_ep_size, self.num_experts)
         self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
-                                                  :, self.local_expert_indices
-                                                  ]
+            :, self.local_expert_indices
+        ]
         self.output_splits = (
             self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu"), non_blocking=True).numpy()
         )
@@ -499,10 +454,10 @@ def preprocess_tp_extend_ep(self, routing_map: torch.Tensor) -> torch.Tensor:
 
     if self.num_local_experts > 1:
         self.num_global_tokens_per_local_expert_cpu = (
-                self.num_global_tokens_per_local_expert.view(-1, self.num_local_experts).to(
-                    torch.device("cpu"), non_blocking=True
-                )
+            self.num_global_tokens_per_local_expert.view(-1, self.num_local_experts).to(
+                torch.device("cpu"), non_blocking=True
             )
+        )
 
         if not hasattr(self, 'comm_stream'):
             self.comm_stream = torch.cuda.Stream()
@@ -557,7 +512,7 @@ def alltoall_token_permutation_tp_extend_ep(
             self.num_global_tokens_per_local_expert_cpu.ravel(),
             self.sort_input_by_local_experts,
         )
-    
+
     return global_input_tokens, tokens_per_expert, None
 
 
@@ -618,7 +573,7 @@ def allgather_token_permutation_new(self, global_routing_map_tuple, global_probs
     if (self.config.tensor_model_parallel_size > 1) or (
             self.config.expert_model_parallel_size > 1
     ):
-        
+
         with (torch.no_grad()):
 
             gr_handle.wait()
@@ -632,7 +587,7 @@ def allgather_token_permutation_new(self, global_routing_map_tuple, global_probs
     self.local_map = global_routing_map[
         :, self.local_expert_indices[0]:self.local_expert_indices[-1] + 1
     ].contiguous()
-    tokens_per_expert = self.local_map.sum(dim=0).long().cpu()    
+    tokens_per_expert = self.local_map.sum(dim=0).long().cpu()
 
     self.hidden_shape_before_permute = global_hidden_states.shape
 
@@ -647,10 +602,9 @@ def allgather_token_permutation_new(self, global_routing_map_tuple, global_probs
     )
 
 
-
-def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor, 
-                                        bias: torch.Tensor = None, 
-                                        reversed_local_input_permutation_mapping: torch.Tensor = None):
+def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor,
+                                      bias: torch.Tensor = None,
+                                      reversed_local_input_permutation_mapping: torch.Tensor = None):
     # Stage1: unpermute the tokens and bias locally respectively.w
 
     permuted_probs = self.local_probs.T.contiguous().masked_select(
@@ -681,8 +635,8 @@ def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor,
             self.ep_size > 1
     ):
         output_total = reduce_scatter_to_sequence_parallel_region(
-                output_total, group=self.tp_ep_group
-            )
+            output_total, group=self.tp_ep_group
+        )
         if self.add_bias:
             output_bias_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region(
                 output_bias_total, group=self.tp_ep_group
@@ -697,8 +651,14 @@ def allgather_token_unpermutation_new(self, hidden_states: torch.Tensor,
 
 
 def alltoall_token_permutation_new(
-        self, hidden_states: torch.Tensor, probs: torch.Tensor, routing_map: torch.Tensor, shared_experts, save_tensors, shared_expert_gate, moe_ctx=None
-):
+        self,
+        hidden_states: torch.Tensor,
+        probs: torch.Tensor,
+        routing_map: torch.Tensor,
+        shared_experts,
+        save_tensors,
+        shared_expert_gate,
+        moe_ctx=None):
     self.hidden_shape = hidden_states.shape
     self.probs = probs
     self.routing_map = routing_map
@@ -711,8 +671,8 @@ def alltoall_token_permutation_new(
         tokens_per_expert = self.preprocess(routing_map)
         if not get_args().moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
             hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
-        self.hidden_shape_before_permute = hidden_states.shape   
- 
+        self.hidden_shape_before_permute = hidden_states.shape
+
         if self.cuda_sync_point == "before_permutation_1":
             torch.cuda.current_stream().synchronize()
         permutated_local_input_tokens, _, reversed_local_input_permutation_mapping = permute(
@@ -723,7 +683,7 @@ def alltoall_token_permutation_new(
         return permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert
 
     (permutated_local_input_tokens, reversed_local_input_permutation_mapping, tokens_per_expert), *_ = forward_func(
-                                                            alltoall_token_permutation1, (hidden_states, routing_map))
+        alltoall_token_permutation1, (hidden_states, routing_map))
     self.reversed_local_input_permutation_mapping = reversed_local_input_permutation_mapping
     # permute 1
     save_tensors.append(permutated_local_input_tokens)
@@ -753,7 +713,8 @@ def alltoall_token_permutation_new(
                 # tp not support shared expert gate for now
                 if parallel_state.get_tensor_model_parallel_world_size() > 1:
                     share_experts_output = reduce_scatter_to_sequence_parallel_region(share_experts_output)
-                share_experts_output = torch.nn.functional.sigmoid(shared_expert_gate(hidden_states)) * share_experts_output
+                share_experts_output = torch.nn.functional.sigmoid(
+                    shared_expert_gate(hidden_states)) * share_experts_output
     else:
         share_experts_output = None
 
@@ -866,155 +827,3 @@ def alltoall_token_unpermutation_new(
     save_tensors.append(unpermute2_input_detach)
 
     return output, None
-
-
-def allgather_token_permutation_npu(self, hidden_states: torch.Tensor, max_prob: torch.Tensor, max_ind: torch.Tensor):
-    self.hidden_shape = hidden_states.shape
-    # [S/TP, B, H] -> [S*B/TP, H]
-    hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
-
-    # Permute the tokens across the expert parallel devices.
-    if (self.config.tensor_model_parallel_size > 1) or (
-            self.config.expert_model_parallel_size > 1
-    ):
-        with torch.no_grad():
-            global_indices = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
-                max_ind
-            )
-            # Create a mask of mapping between global and local tokens where each
-            # element is True if it's between the local_expert_indices
-            global_local_mask = (global_indices >= self.local_expert_indices[0]) & (
-                    global_indices <= self.local_expert_indices[-1]
-            )
-            local_indices = global_indices.masked_select(global_local_mask)
-
-        ## local_probs calculation
-        # max_prob: [S/TP*B, topk] -> global_probs: [S*B*EP, topk]
-        global_probs = tensor_parallel.gather_from_sequence_parallel_region_to_moe(max_prob)
-        self.local_probs = global_probs.masked_select(global_local_mask)
-        self.local_probs = self.local_probs.view(-1, 1)
-        # Note that this allgather spans the communication domain of TP*EP.
-        #  [(S/TP)*B, H] -> [((S/TP)*B)*(TP*EP), H] = [S*B*EP, H]
-        global_hidden_states = tensor_parallel.gather_from_sequence_parallel_region_to_moe(
-            hidden_states, use_global_buffer=True
-        )
-        # Reshape global_local_mask to be compatible with Tensor.gather
-        global_local_map = global_local_mask.nonzero()[:, 0]
-        self.global_local_map = global_local_map.view(-1, 1).expand(-1, hidden_states.shape[-1])
-        local_hidden_states = moe_gather.apply(global_hidden_states, self.global_local_map)
-    else:
-        if self.router_topk > 1:
-            global_local_mask = torch.ones_like(max_ind).bool()
-            local_indices = max_ind.masked_select(global_local_mask)
-            self.local_probs = max_prob.masked_select(global_local_mask)
-            self.local_probs = self.local_probs.view(-1, 1)
-            global_local_map = global_local_mask.nonzero()[:, 0]
-            self.global_local_map = global_local_map.view(-1, 1).expand(
-                -1, hidden_states.shape[-1]
-            )
-            local_hidden_states = torch.gather(hidden_states, 0, self.global_local_map)
-        else:
-            local_indices = max_ind
-            self.local_probs = max_prob.view(-1, 1)
-            local_hidden_states = hidden_states
-            self.global_local_map = None
-
-    with torch.no_grad():
-        # The indices of local_indices that give its sorted order along dim 0.
-        self.indices = torch.argsort(local_indices, dim=0)
-        if self.config.deterministic_mode:
-            tokens_per_expert = torch.bincount(
-                local_indices.view(-1), minlength=self.config.num_moe_experts
-            )
-            if self.num_local_experts < self.config.num_moe_experts:
-                tokens_per_expert = tokens_per_expert[
-                                    self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
-                                    ]
-        else:
-            tokens_per_expert = torch.histc(
-                local_indices,
-                bins=self.num_local_experts,
-                min=self.local_expert_indices[0],
-                max=self.local_expert_indices[-1],
-            )
-        tokens_per_expert = tokens_per_expert.to(torch.long)
-
-    # Stage2: permute the tokens locally so that they are grouped by their expert assignment
-    # Reshape indices to be compatible with Tensor.gather
-
-    permuted_local_hidden_states, _, self.reversed_local_input_permutation_mapping = permute(
-        local_hidden_states, local_indices
-    )
-    return permuted_local_hidden_states, tokens_per_expert
-
-
-def alltoall_preprocess_npu(self, indices: torch.Tensor):
-    # use 0.7.0 implement for better performance
-    num_local_tokens_per_expert = torch.histc(
-        indices, bins=self.num_experts, min=0, max=self.num_experts
-    )
-    # num_local_tokens_per_expert: [num_experts]
-
-    ep_size = self.config.expert_model_parallel_size
-    if self.drop_and_pad:
-        # probs: [num_experts, capacity]
-        self.capacity = self.probs.size(1)
-        num_tokens_per_local_expert = torch.full(
-            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long,
-            device=torch.cuda.current_device()
-        )
-        return num_tokens_per_local_expert
-    elif self.config.moe_expert_capacity_factor is not None:
-        # Token drop but no pad.
-        self.num_out_tokens = num_local_tokens_per_expert.sum().to(
-            torch.device("cpu"), non_blocking=True
-        )
-        self.cuda_sync_point = "before_permutation_1"
-    elif ep_size > 1:
-        # Token dropless and enable ep.
-        self.cuda_sync_point = "before_ep_alltoall"
-    else:
-        # Token dropless and no ep.
-        self.cuda_sync_point = "before_finish"
-
-    if ep_size > 1:
-        # ===================================================
-        # Calculate input_splits, output_splits for alltoall-v.
-        # ===================================================
-        self.input_splits = (
-            num_local_tokens_per_expert.reshape(ep_size, self.num_local_experts)
-            .sum(axis=1)
-            .to(torch.device("cpu"), non_blocking=True)
-            .numpy()
-        )
-        num_global_tokens_per_expert = _gather_along_first_dim(
-            num_local_tokens_per_expert,
-            group=ps.get_expert_model_parallel_group()
-        ).reshape(ep_size, self.num_experts)
-        self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
-                                                  :, self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
-                                                  ]
-        self.output_splits = (
-            self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu")).numpy()
-        )
-        num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0)
-        # ===================================================
-        # num_global_tokens_per_expert: [ep_size, num_experts]
-        # num_global_tokens_per_local_expert: [ep_size, num_local_experts]
-        # num_tokens_per_local_expert: [num_local_experts]
-        # ===================================================
-    else:
-        self.num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
-            -1, self.num_experts
-        )
-        num_tokens_per_local_expert = num_local_tokens_per_expert
-
-    if self.num_local_experts > 1:
-        # No further synchronization is needed because torch.repeat_interleave() calls stream
-        # synchronization internally when the `output_size` parameter is not provided.
-        self.cuda_sync_point = "no_sync"
-        self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-            self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
-        )
-
-    return num_tokens_per_local_expert

@@ -23,64 +23,6 @@ class PipelineParallelParas:
         self.num_layers = num_layers
 
 
-
-def time_model_1f1b(paras):
-    # obtain the E2E time for 1F1B scheme
-    num_stages = paras.num_stages
-    num_micro_batches = paras.num_microbatches
-    fwd_durations = paras.fwd_durations
-    bwd_durations = paras.bwd_durations
-    p2p_matrix = paras.comm_matrix
-    fwd_start = np.zeros([num_stages, num_micro_batches])
-    bwd_start = np.zeros([num_stages, num_micro_batches])
-
-    warmup = [num_stages - s for s in range(num_stages)]
-    remaining = [num_micro_batches - warmup[p] for p in range(num_stages)]
-    # warm_up stage-0
-    for m in range(num_stages):
-        fwd_start[0, m] = m * fwd_durations[0]
-    # warm_up stage
-    for s in range(1, num_stages, 1):
-        fwd_start[s, 0] = fwd_start[s - 1, 0] + fwd_durations[s - 1] + p2p_matrix[s - 1][s]
-        for m in range(1, num_stages - s, 1):
-            fwd_start[s, m] = max(fwd_start[s - 1, m] + fwd_durations[s - 1] + p2p_matrix[s - 1][s],
-                                  fwd_start[s, m - 1] + fwd_durations[s])
-
-    # 0 micro batch at last stage bwd start
-    bwd_start[num_stages - 1, 0] = fwd_start[num_stages - 1, 0] + fwd_durations[num_stages - 1]
-    for s in range(num_stages - 2, -1, -1):
-        bwd_start[s, 0] = bwd_start[s + 1, 0] + bwd_durations[s + 1] + p2p_matrix[s + 1][s]
-
-    # steady state
-    for m in range(1, num_micro_batches, 1):
-        # forward time
-        for s in range(num_stages):
-            if m > remaining[s]:
-                continue
-            if s == 0:
-                fwd_start[s, m + num_stages - 1] = bwd_start[s, m - 1] + bwd_durations[s]
-            else:
-                fwd_start[s, m + num_stages - s - 1] = max(
-                    fwd_start[s - 1, m + num_stages - s - 1] + fwd_durations[s - 1] + p2p_matrix[s - 1][s],
-                    bwd_start[s, m - 1] + bwd_durations[s])
-
-        # backward time
-        for s in range(num_stages - 1, -1, -1):
-            # cool down stage
-            if m + num_stages - s > num_micro_batches:
-                bwd_start[s, m] = bwd_start[s + 1, m] + bwd_durations[s + 1] + p2p_matrix[s + 1][s]
-                continue
-
-            if s == num_stages - 1:
-                bwd_start[s, m] = fwd_start[s, m] + fwd_durations[s]
-            else:
-                bwd_start[s, m] = max(bwd_start[s + 1, m] + bwd_durations[s + 1] + p2p_matrix[s + 1][s],
-                                      fwd_start[s, m + num_stages - s - 1] + fwd_durations[s])
-
-    e2e_time = bwd_start[0, -1] + bwd_durations[0]
-    return e2e_time, fwd_start, bwd_start
-
-
 def time_model_nfmb(paras, stage_schedule):
     # 给定一个调度序列，计算端到端时间
     num_stages = paras.num_stages

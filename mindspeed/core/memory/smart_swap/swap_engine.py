@@ -199,41 +199,6 @@ class SwapEngine:
         swap_policy_config.size_coverage_weight += swap_policy_config.adjust_size_coverage_weight
         self.record_parameters()
 
-    def check_policy_valid(self, candidate: SwapPolicyCandidate):
-        # swap out free stage: (swap out op, swap in stage actual)
-        # swap in stage actual: (swap out free stage, swap in op)
-        # swap in free stage: (swap in op, )
-        if not candidate.is_optimizer_or_weight:
-            free_stage_opid = self.profiler_op_step.layer_start_opid[candidate.free_stage]
-            swap_in_stage_actual_opid = self.profiler_op_step.layer_start_opid[candidate.swap_in_stage_actual]
-            swap_in_free_stage_opid = self.profiler_op_step.layer_start_opid[candidate.swap_in_free_stage]
-            swap_out_opid = (
-                candidate.swap_out_op.op_id
-                if not candidate.is_optimizer_or_weight
-                else self.profiler_op_step.layer_start_opid[candidate.swap_out_stage]
-            )
-            swap_in_opid = (
-                candidate.swap_in_op.op_id
-                if not candidate.is_optimizer_or_weight
-                else self.profiler_op_step.layer_start_opid[candidate.swap_in_stage]
-            )
-            if not (free_stage_opid > swap_out_opid and free_stage_opid < swap_in_stage_actual_opid):
-                print(
-                    f"Error! swap_out_free_stage_opid [{free_stage_opid}] should be > swap_out_opid [{swap_out_opid}] and < swap_in_stage_actual_opid [{swap_in_stage_actual_opid}]"
-                )
-                return False
-            if not (swap_in_stage_actual_opid < swap_in_opid):
-                print(
-                    f"Error! swap_in_stage_actual_opid [{swap_in_stage_actual_opid}] should be < swap_in_opid [{swap_in_opid}]"
-                )
-                return False
-            if not (swap_in_free_stage_opid > swap_in_stage_actual_opid):
-                print(
-                    f"Error! swap_in_free_stage_opid [{swap_in_free_stage_opid}] should be > swap_in_stage_actual_opid [{swap_in_stage_actual_opid}]"
-                )
-                return False
-        return True
-
     @timer
     def make_policy(self):
         self.print_with_rank("Making policy ...", print_level=PrintLevel.INFO)

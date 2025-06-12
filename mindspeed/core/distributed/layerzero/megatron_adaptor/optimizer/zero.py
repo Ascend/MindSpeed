@@ -13,7 +13,7 @@ from apex.optimizers import FusedSGD as SGD
 from megatron.core.optimizer import MegatronOptimizer, OptimizerConfig
 from megatron.training.utils import print_rank_0
 from megatron.core import mpu
-from mindspeed.core.distributed.layerzero.debug.sum import all_gather_into_flat_tensor, print_total_grad_sum
+from mindspeed.core.distributed.layerzero.debug.sum import print_total_grad_sum
 from .sharded_grad_scaler import ShardedGradScaler
 from .clip import clip_grad_norm
 

@@ -82,25 +82,6 @@ def search_operator(working_dir, search_cfg, profile_count,
     return unsampled_profiling_info
 
 
-def generate_scale_config(model_config):
-    scale_config = model_config.copy()
-    scale_config.num_layers = 256
-
-    # parameter need to be adjusted
-    scale_config.tensor_model_parallel_size = 64
-    scale_config.num_attention_heads = 512
-    scale_config.hidden_size = 65536
-    scale_config.ffn_hidden_size = 229376
-    scale_config.context_parallel_size = 32
-    scale_config.seq_length = 131072
-    scale_config.max_position_embeddings = 131072
-    scale_config.expert_model_parallel_size = 32
-    scale_config.num_experts = 32
-    scale_config.pipeline_model_parallel_size = 16
-    scale_config.normalize()
-    return scale_config
-
-
 def scale_para(model_config, search_cfg, test=False):
     # load base parallel model config
     tp = search_cfg.tensor_model_parallel_size

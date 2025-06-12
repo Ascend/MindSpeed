@@ -247,25 +247,3 @@ def sync_reduce_scatter_along_last_dim(
     local_rank_input = local_rank_input.transpose(0, 2)
     output = sync_reduce_scatter_along_first_dim(local_rank_input, rs_comm_intf)
     return output.transpose(0, 2).contiguous()
-
-
-def async_reduce_scatter_along_last_dim(
-    local_rank_input, rs_comm_intf: CollectiveCommIntf = TPXCollectiveComm
-):
-    """Reduce-scatter the input tensor across model parallel group.
-
-    :param local_rank_input: input of local rank
-    :param rs_comm_intf: Reduce scatter comm intf.
-    :return:
-
-    Note: the result tensors should be handled as following:
-        rs_output = rs_output.transpose(0, 2).contiguous()
-
-    """
-    world_size = rs_comm_intf.get_comm_group_world_size()
-    # Bypass the function if we are using only 1 GPU.
-    if world_size == 1:
-        return None, local_rank_input
-
-    local_rank_input = local_rank_input.transpose(0, 2)
-    return async_reduce_scatter_along_first_dim(local_rank_input, rs_comm_intf)

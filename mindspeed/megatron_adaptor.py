@@ -67,7 +67,7 @@ def patch_features():
 
     set_log_config()
     log = getLogger(__name__)
-    log.info("start to patch features in megatron adaptor v2.")
+    log.info("start to patch features in megatron adaptor.")
 
     mindspeed_args = get_mindspeed_args()
     delete_lock_file()
