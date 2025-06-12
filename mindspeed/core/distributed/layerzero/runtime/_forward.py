@@ -193,12 +193,10 @@ def _pre_forward(
         state._exec_order_data.record_pre_forward(handle, module.training)
         if handle:
             handle._training_state = HandleTrainingState.FORWARD
-
-        with torch.autograd.profiler.record_function("Unshard Function"):
-            if unshard_fn is not None:
-                unshard_fn(state, handle)
-        if handle:
-            handle._use_unsharded_views(as_params=False)
+            if not handle.enter_backward:
+                with torch.autograd.profiler.record_function("Unshard Function"):
+                    if unshard_fn is not None:
+                        unshard_fn(state, handle)
         if constants.AUTO_CAST_INPUT and state.mixed_precision:
             # Recursively convert args and kwargs to specified precision.
             input_dtype: Optional[torch.dtype] = state.mixed_precision.param_dtype
@@ -300,7 +298,7 @@ def _pre_backward_hook(
         if not handle:
             return grad
         #! ensure that last handle has finished accumulate grad (backward) on cpu
-        if len(BACKWARD_POST_QUEUE) > 0:
+        while len(BACKWARD_POST_QUEUE) > 0:
             (_last_state, _last_handle) = BACKWARD_POST_QUEUE.popleft()
             _post_backward_hook(_last_state, _last_handle)
         handle._training_state = HandleTrainingState.BACKWARD_PRE
@@ -436,7 +434,6 @@ def _post_backward_final_callback_sync_gradients(
     if not (state._is_root and state._sync_gradients):
         raise RuntimeError("The post-backward sync callback should \
             only be called on the root FSDP instance with sync gradients")
-        
     while len(BACKWARD_POST_QUEUE) > 0:
         (_last_state, _last_handle) = BACKWARD_POST_QUEUE.popleft()
         _post_backward_hook(_last_state, _last_handle)
@@ -448,9 +445,8 @@ def _post_backward_final_callback_sync_gradients(
         zero3_state.training_state = TrainingState.IDLE
         handle: FlatParamHandle = zero3_state._handle
         #! if post_backward is done, but flat_param has not reduce scatter
-        if state.backward_reduce_scatter == BackwardReduceScatter.BACKWARD_PRE:
-            if handle and handle._ran_post_backward_hook and not handle.flat_param._post_backward_called:
-                reduce_scatter_sync_gradients(zero3_state, handle)
+        if not handle._ran_post_backward_hook:
+            _post_backward_hook(zero3_state, handle)
         if handle:
             handle._ran_pre_backward_hook = False
             handle._ran_post_backward_hook = False
@@ -466,20 +462,11 @@ def _post_backward_final_callback_sync_gradients(
             handle.prev_iter_synced = True
 
         _finalize_params(zero3_state)
-    while True:
-        rs_event = root_state._rs_event_queue._dequeue()
-        if rs_event:
-            (rs, last_handle) = rs_event
-            rs.wait()
-            last_handle.free_full_prec_grad()
-        else:
-            break
 
-    compute_stream = state._default_stream
-    compute_stream.wait_stream(root_state._post_backward_stream)
     for handle in state._all_handles:
         flat_param = handle.flat_param
         if flat_param.requires_grad:
+            handle.wait_reduce_scatter()
             handle.prepare_gradient_for_zero1()
     root_state._post_backward_callback_queued = False
 

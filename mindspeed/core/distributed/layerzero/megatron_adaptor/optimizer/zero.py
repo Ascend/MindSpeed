@@ -1,3 +1,4 @@
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import warnings
 
@@ -6,12 +7,9 @@ import torch
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import ProcessGroup
 
-from apex.optimizers import FusedAdam as Adam
-from apex.optimizers import FusedSGD as SGD
-from megatron.core.optimizer import MegatronOptimizer, OptimizerConfig
+from megatron.core.optimizer import MegatronOptimizer, OptimizerConfig, Adam, SGD
 from megatron.training.utils import print_rank_0
 from megatron.core import mpu
-from mindspeed.core.distributed.layerzero.debug.sum import all_gather_into_flat_tensor, print_total_grad_sum
 from .sharded_grad_scaler import ShardedGradScaler
 from .clip import clip_grad_norm
 
@@ -149,7 +147,7 @@ def pp_stages():
     if not mpu.is_initialized():
         return 1
     world_size = dist.get_world_size()
-    return world_size // len(mpu.get_pipeline_model_parallel_group())
+    return world_size // mpu.get_pipeline_model_parallel_group().size()
 
 
 def pp_broadcast_grad_scale(grad_scale, device):

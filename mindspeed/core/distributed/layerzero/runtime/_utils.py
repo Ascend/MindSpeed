@@ -13,7 +13,6 @@ import mindspeed.core.distributed.layerzero.zero3._traversal_utils as traversal_
 from mindspeed.core.distributed.layerzero.zero3._common_utils import (
     _assert_in_training_states,
     _get_module_zero3_state,
-    _no_dispatch_record_stream,
     clean_tensor_name,
     _ZeRO3State,
     TrainingState,
@@ -22,11 +21,6 @@ from mindspeed.core.distributed.layerzero.zero3.flat_param import (
     FlatParameter,
     FlatParamHandle,
 )
-
-
-def print0(msg):
-    if dist.get_rank() == 0:
-        print(msg)
 
 
 def _get_zero3_root_states_with_modules(

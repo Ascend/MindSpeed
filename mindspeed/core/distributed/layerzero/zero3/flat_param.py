@@ -32,7 +32,6 @@ from torch.nn.parameter import _ParameterMeta  # type: ignore[attr-defined]
 from mindspeed.core.distributed.layerzero.zero3._common_utils import (
     _DeviceHandle,
     _named_parameters_with_duplicates,
-    _no_dispatch_record_stream,
     _set_zero3_flattened,
     HandleTrainingState,
 )
@@ -352,6 +351,8 @@ class FlatParamHandle:
         self._ran_pre_backward_hook = False
         self._ran_post_backward_hook = False
         #!==================== add support for zero1 param & grad sync state=========================
+        self._ag_handle = None
+        self._rs_handle = None
         self._needs_param_sync = True
         self._param_synced = False
         self._grad_synced = False
@@ -950,7 +951,18 @@ class FlatParamHandle:
         padded_unsharded_flat_param = self._get_padded_unsharded_flat_tensor(param=True, free=False)
         padded_unsharded_flat_param = self._all_gather_flat_param(padded_unsharded_flat_param)
         self._use_unpadded_unsharded_flat_param(padded_unsharded_flat_param)
-            
+    
+    def wait_unshard(self):
+        if self._ag_handle is not None:
+            self._ag_handle.wait()
+            self._ag_handle = None
+        
+    def wait_reduce_scatter(self):
+        if self._rs_handle is not None:
+            self._rs_handle.wait()
+            self._rs_handle = None
+            self.free_full_prec_grad()
+        
     def needs_unshard(self) -> bool:
         """Returns if the handle's flat parameter needs to be unsharded."""
         padded_unsharded_flat_param = self._get_padded_unsharded_flat_tensor(free=False)
@@ -1020,11 +1032,13 @@ class FlatParamHandle:
             padded_unsharded_flat_param.numel() == expected_numel,
             f"Expects {expected_numel} numel but got {padded_unsharded_flat_param.numel()}")
         log0(f"All gather into full parameter from {source} with {process_group.size()=}")
-        dist.all_gather_into_tensor(
+        ag_handle = dist.all_gather_into_tensor(
             padded_unsharded_flat_param,
             sharded_flat_param,
             process_group,
+            async_op=True
         )
+        self._ag_handle = ag_handle
         return padded_unsharded_flat_param
 
     def _use_unpadded_unsharded_flat_param(
@@ -1140,10 +1154,7 @@ class FlatParamHandle:
     def alloc_full_prec_grad(self):
         if not self.already_load_full_prec_grad():
             flat_param = self.flat_param
-            full_prec_grad = flat_param._full_prec_grad_padded
-            self._check_storage_freed(full_prec_grad)
-            _alloc_storage(full_prec_grad, flat_param._padded_unsharded_size) 
-            full_prec_grad.zero_()
+            flat_param._full_prec_grad_padded = torch.zeros(flat_param._padded_unsharded_size[0], dtype=self._reduce_dtype, device=self.device)
             return 
                 
     def reload_full_prec_grad(self):
@@ -1158,13 +1169,13 @@ class FlatParamHandle:
             gpu_tensor.untyped_storage().copy_(cpu_tensor.untyped_storage(), non_blocking=True)
     
     def already_load_full_prec_grad(self):
+        if self.flat_param._full_prec_grad_padded is None:
+            return False
         gpu_tensor = self.flat_param._full_prec_grad_padded
         return gpu_tensor.device == self.device and gpu_tensor.untyped_storage().size() > 0
     
     def free_full_prec_grad(self):
-        full_prec_grad = self.flat_param._full_prec_grad_padded
-        self._check_on_compute_device(full_prec_grad)
-        _free_storage(full_prec_grad)
+        self.flat_param._full_prec_grad_padded = None
         
     def accumulate_grad(self):
         '''
@@ -1298,9 +1309,6 @@ class FlatParamHandle:
         unsharded_flat_tensor = self._get_padded_unsharded_flat_tensor(param)
         self._check_on_compute_device(unsharded_flat_tensor)
         # Do not free the memory until all ops in the current stream finish
-        _no_dispatch_record_stream(
-            unsharded_flat_tensor, self._device_handle.current_stream()
-        )
         _free_storage(unsharded_flat_tensor)
 
     def _use_sharded_flat_param(self) -> None:

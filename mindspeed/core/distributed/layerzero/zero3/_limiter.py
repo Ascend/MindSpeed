@@ -3,7 +3,7 @@ import collections
 
 class _FreeEventQueue:
 
-    def __init__(self, num_inflights: int = 3) -> None:
+    def __init__(self, num_inflights: int = 2) -> None:
         self._queue = collections.deque()
         self._max_num_inflight_all_gathers = num_inflights
 

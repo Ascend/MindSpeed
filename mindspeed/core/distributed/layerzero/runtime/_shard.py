@@ -25,8 +25,6 @@ class _PrefetchMode(Enum):
 def _unshard(
     state: "_ZeRO3State",
     handle: "FlatParamHandle",
-    unshard_stream: torch.Stream,
-    pre_unshard_stream: torch.Stream,
 ) -> None:
     """
     Unshards the handles in ``handles``. If the handles are in
@@ -39,20 +37,16 @@ def _unshard(
     if not handle or not handle.needs_unshard():
         return
 
-    with state._device_handle.stream(pre_unshard_stream):
-        handle.pre_unshard()
-
-    unshard_stream.wait_stream(pre_unshard_stream)
-    if state.limit_all_gathers:
-        event = state._free_event_queue.dequeue_if_needed()
-        if event:
-            with torch.profiler.record_function(
-                "LayerZeRO3.rate_limiter"
-            ):
-                event.synchronize()
-    with state._device_handle.stream(unshard_stream):
-        handle.unshard()
-        handle.post_unshard()
+    with state._device_handle.stream(state._unshard_stream):
+        if state.limit_all_gathers:
+            event = state._free_event_queue.dequeue_if_needed()
+            if event:
+                with torch.profiler.record_function(
+                    "LayerZeRO3.rate_limiter"
+                ):
+                    event.synchronize()
+    handle.pre_unshard()
+    handle.unshard()
 
 
 @no_type_check
@@ -97,22 +91,12 @@ def _pre_forward_backward_unshard(
     # `_unshard()` again
     if handle._training_state not in [HandleTrainingState.FORWARD, HandleTrainingState.BACKWARD_PRE]:
         return
-
+    
+    _unshard(state, handle)
+    handle.wait_unshard()
+    _prefetch_mode = _PrefetchMode.FORWARD if handle._training_state == HandleTrainingState.FORWARD else _PrefetchMode.BACKWARD
     in_forward = handle._training_state == HandleTrainingState.FORWARD
     stage = "forward" if in_forward else "backward"
-    guard_state = f"_needs_pre_{stage}_unshard"
-    if in_forward or getattr(handle, guard_state):
-        _unshard(
-            state,
-            handle,
-            state._unshard_stream,
-            state._pre_unshard_stream
-        )
-        setattr(handle, guard_state, False)
-        state._default_stream.wait_stream(state._unshard_stream)
-        handle._check_unsharded(handle.flat_param.data)
-
-    _prefetch_mode = _PrefetchMode.FORWARD if handle._training_state == HandleTrainingState.FORWARD else _PrefetchMode.BACKWARD
     with torch.profiler.record_function(
         f"LayerZeRO3._pre_{stage}_prefetch"
     ):
@@ -188,7 +172,7 @@ def _prefetch_handle(
         raise ValueError(f"Invalid prefetch mode on rank {state.zero3_rank}: {prefetch_mode}")
     # Prefetch the next set of handles without synchronizing to allow
     # the sync to happen as late as possible to maximize overlap
-    _unshard(state, handle, state._unshard_stream, state._pre_unshard_stream)
+    _unshard(state, handle)
     handle._training_state = prev_training_state
     handle._prefetched = True
 

@@ -228,7 +228,7 @@ def _init_core_state(
     state.training_state = TrainingState.IDLE
     state._is_root = None
     state._free_event_queue = _FreeEventQueue()
-    state._rs_event_queue = _FreeEventQueue()
+    state._rs_event_queue = _FreeEventQueue(num_inflights=1)
     state._offload_event_queue = _FreeEventQueue()
     state._offload_grads = offload_grads
     # ==========================================

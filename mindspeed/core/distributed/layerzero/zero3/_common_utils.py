@@ -354,14 +354,5 @@ def _assert_in_training_states(
         raise ValueError(msg)
 
 
-def _no_dispatch_record_stream(tensor: torch.Tensor, stream: torch.Stream) -> None:
-    if tensor.device.type not in ["cuda", torch._C._get_privateuse1_backend_name(), "npu"]:
-        return
-
-    # Don't no dispatch under torch compile like this
-    with no_dispatch():
-        tensor.record_stream(stream)
-
-
 def _same_storage_as_data_ptr(x: torch.Tensor, data_ptr: int) -> bool:
     return x._typed_storage()._data_ptr() == data_ptr

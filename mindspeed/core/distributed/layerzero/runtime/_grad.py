@@ -15,24 +15,21 @@ def _reduce_grad(state: _ZeRO3State, handle: FlatParamHandle) -> None:
     if accumulate grad, this func will not be called cause whole param unshard
     grad will be stored, rather than shard grad.
     """
-    flat_param = handle.flat_param
-    rs_event = state._rs_event_queue._dequeue()
-    if rs_event:
-        rs, last_hanlde = rs_event
-        rs.wait()
-        last_hanlde.free_full_prec_grad()
+    if not handle:
+        return
+    last_handle = state._rs_event_queue.dequeue_if_needed()
+    if last_handle:
+        last_handle.wait_reduce_scatter()
     padded_unsharded_grad, new_sharded_grad = handle._get_reduce_scatter_tensors()
     _div_if_needed(padded_unsharded_grad, state._gradient_predivide_factor)
-    state._post_backward_stream.wait_stream(state._default_stream)
-    with state._device_handle.stream(state._post_backward_stream):
-        dist.reduce_scatter_tensor(
+    
+    handle._rs_handle = dist.reduce_scatter_tensor(
             new_sharded_grad,
             padded_unsharded_grad,
             group=handle._get_reduce_scatter_group(),
+            async_op=True
         )
-        reduce_scatter_event = state._device_handle.Event()
-        reduce_scatter_event.record()
-        state._rs_event_queue.enqueue((reduce_scatter_event, handle))
+    state._rs_event_queue.enqueue(handle)
     #! remove all-reduce logic and shard grad accumulation, and grad view logic
     handle.set_shard_grad(new_sharded_grad)
 
