@@ -32,24 +32,6 @@ class FusionAttentionFeature(MindSpeedFeature):
             default=0,
             help='next-tockens is used by Flash attention'
         )
-        group.add_argument(
-            '--sparse-mode',
-            type=int,
-            default=0,
-            choices=[0, 1, 2, 3, 4, 5, 6, 7, 8],
-            help=(
-                'mask type for fusion attention '
-                '0: defaultMask '
-                '1: allMask '
-                '2: leftUpCausal '
-                '3: rightDownCausal '
-                '4: band '
-                '5: prefix compressed '
-                '6: prefix no uncompressed '
-                '7: varlen - rightDownCausal '
-                '8: varlen - leftUpCausal '
-            )
-        )
 
     def validate_args(self, args):
         if args.use_flash_attn and not (args.sparse_mode == 0 or args.sparse_mode == 2):
