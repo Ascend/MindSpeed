@@ -68,7 +68,7 @@ def zerc_alltoall_token_perm1(
     return permutated_local_input_tokens.type(input_dtype), permuted_local_probs, tokens_per_expert, global_map_info
 
 
-def zerc_alltoall_token_perm2(self, global_input_tokens, global_input_token_probs=None):
+def zerc_alltoall_token_perm2(self, global_input_tokens, global_input_token_probs=None, global_map_info=None):
     input_dtype = global_input_tokens.dtype
     self.probs = None
     # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
@@ -76,12 +76,12 @@ def zerc_alltoall_token_perm2(self, global_input_tokens, global_input_token_prob
     self.output_shape = [self.num_tokens, global_input_tokens.shape[1]]
     self.input_shape = global_input_tokens.shape
 
-    self.nr_token_id_recover_probs = torch.nonzero(self.global_map_info.detach().ravel()).ravel()  # check detach
-    self.nr_token_id_recover = self.nr_token_id_recover_probs % (self.global_map_info.shape[-1])
+    self.nr_token_id_recover_probs = torch.nonzero(global_map_info.detach().ravel()).ravel()  # check detach
+    self.nr_token_id_recover = self.nr_token_id_recover_probs % (global_map_info.shape[-1])
     global_input_tokens = global_input_tokens.index_select(0, self.nr_token_id_recover)
 
     if get_args().moe_unperm2_mem_optim:
-        global_input_token_probs = self.probs
+        global_input_token_probs = torch.index_select(global_map_info.ravel(), 0, self.nr_token_id_recover_probs)
 
     return global_input_tokens.type(input_dtype), global_input_token_probs
 

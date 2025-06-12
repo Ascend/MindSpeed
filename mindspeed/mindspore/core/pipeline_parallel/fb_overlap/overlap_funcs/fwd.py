@@ -199,9 +199,15 @@ def transformer_layer_forward_moe(
     if args.moe_unperm2_mem_optim and perm_prob_a2a_handle:
         perm_prob_a2a_handle.wait()
 
-    def alltoall_token_perm2_func(detached_perm_a2a_out, detached_perm_prob_a2a_out):
-        return alltoall_token_perm2(self.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out)
-    (dispached_input, dispached_input_probs), perm2_vjp = run_graph_forward(alltoall_token_perm2_func, detached_perm_a2a_out, detached_perm_prob_a2a_out)
+    if not args.moe_zerc:
+        global_map_info = None
+
+    def alltoall_token_perm2_func(detached_perm_a2a_out, detached_perm_prob_a2a_out, global_map_info=None):
+        if args.moe_zerc:
+            return alltoall_token_perm2(self.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out, global_map_info)
+        else:
+            return alltoall_token_perm2(self.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out)
+    (dispached_input, dispached_input_probs), perm2_vjp = run_graph_forward(alltoall_token_perm2_func, detached_perm_a2a_out, detached_perm_prob_a2a_out, global_map_info)
     perm_a2a_out.untyped_storage().resize_(0)
 
     # Grouped MLP Forward
@@ -243,8 +249,6 @@ def transformer_layer_forward_moe(
             unperm1_out = alltoall_token_unperm1(self.mlp.token_dispatcher, detached_expert_output, None)
         return unperm1_out
 
-    if not args.moe_zerc:
-        global_map_info = None
     unperm1_out, unperm1_vjp = run_graph_forward(alltoall_token_unperm1_func, detached_expert_output, global_map_info)
     if not args.moe_zerc or args.moe_unperm2_mem_optim:
         expert_output.untyped_storage().resize_(0)

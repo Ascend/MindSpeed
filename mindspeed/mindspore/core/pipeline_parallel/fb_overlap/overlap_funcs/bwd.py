@@ -95,7 +95,10 @@ def transformer_layer_backward_moe(
         WeightGradStore.end_decouple()
     
 
-    (perm_a2a_graph_grad, perm_prob_a2a_out_grad) = run_graph_backward(self.perm2_graph, (perm2_graph_grad, detached_dispached_input_probs_grad), keep_graph=True)  # keep for dw commutation
+    (perm_a2a_graph_grad, perm_prob_a2a_out_grad, perm2_global_map_info_grad) = run_graph_backward(self.perm2_graph, (perm2_graph_grad, detached_dispached_input_probs_grad), keep_graph=True)  # keep for dw commutation
+    if perm2_global_map_info_grad is not None:
+        global_map_info_grad = global_map_info_grad + perm2_global_map_info_grad
+
     if get_args().moe_zero_memory == 'level0':
         perm_a2a_handle.wait()
         perm_a2a_handle = None

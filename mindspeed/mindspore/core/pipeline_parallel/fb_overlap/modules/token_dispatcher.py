@@ -112,11 +112,12 @@ class PackProb(torch.autograd.Function):
         if ctx.token_dtype == torch.bfloat16 and ctx.prob_dtype == torch.bfloat16:
             viewd_grad_probs = grad_probs
         else:
+            grad_probs_contiguous = grad_probs.contiguous()
             grad_probs_shape = grad_probs.shape[:-1] + (grad_probs.shape[-1] // 2,)
             viewd_grad_probs = torch.empty(grad_probs_shape, dtype=ctx.prob_dtype)
-            reuse_data_ptr(viewd_grad_probs, grad_probs, 0)
+            reuse_data_ptr(viewd_grad_probs, grad_probs_contiguous, 0)
 
-        return grad_tokens.contiguous(), viewd_grad_probs.contiguous()
+        return grad_tokens.contiguous(), viewd_grad_probs.copy()
 
 
 class UnpackProb(torch.autograd.Function):
@@ -128,10 +129,11 @@ class UnpackProb(torch.autograd.Function):
         if ctx.token_dtype == torch.bfloat16 and orig_prob_dtype == torch.bfloat16:
             viewd_probs = probs
         else:
+            probs_contiguous = probs.contiguous()
             probs_shape = probs.shape[:-1] + (probs.shape[-1] // 2,)
             viewd_probs = torch.empty(probs_shape, dtype=orig_prob_dtype)
-            reuse_data_ptr(viewd_probs, probs, 0)
-            viewd_probs = viewd_probs.contiguous()
+            reuse_data_ptr(viewd_probs, probs_contiguous, 0)
+            viewd_probs = viewd_probs.copy()
 
         return tokens.contiguous(), viewd_probs
 

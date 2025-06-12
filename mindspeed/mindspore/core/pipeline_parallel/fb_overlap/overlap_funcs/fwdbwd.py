@@ -162,6 +162,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
 
     bwd_unperm_a2a_handle.wait()
     bwd_unperm_a2a_handle = None
+    # when open moe-unperm2-mem-optim, the global_map_info_grad here will be zero
     (detached_expert_output_grad, global_map_info_grad) = run_graph_backward(bwd_layer_graph.unperm1_graph,
                                                                              unperm1_out_grad)
     unperm1_out_grad.untyped_storage().resize_(0)
@@ -169,8 +170,11 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     detached_dispached_input_grad, detached_dispached_input_probs_grad = run_graph_backward(bwd_layer_graph.grouped_mlp_graph, detached_expert_output_grad,
                                                         keep_grad=True)  # keep for dw
     WeightGradStore.end_decouple()
-    detached_perm_a2a_out_grad, perm_prob_a2a_out_grad = run_graph_backward(bwd_layer_graph.perm2_graph, (detached_dispached_input_grad, detached_dispached_input_probs_grad),
+    detached_perm_a2a_out_grad, perm_prob_a2a_out_grad, perm2_global_map_info_grad = run_graph_backward(bwd_layer_graph.perm2_graph, (detached_dispached_input_grad, detached_dispached_input_probs_grad),
                                                        keep_graph=True)  # keep for dw
+    if perm2_global_map_info_grad is not None:
+        global_map_info_grad = global_map_info_grad + perm2_global_map_info_grad
+
     if args.moe_zero_memory == 'level0':
         with torch.no_grad():
             bwd_recomp_perm_a2a_handle.wait()
@@ -522,10 +526,13 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
             perm_prob_a2a_handle.wait()
 
-        def alltoall_token_perm2_func(detached_perm_a2a_out, detached_perm_prob_a2a_out):
+        # global_map_info is not used here, it's used in moe_zerc's forward_moe_backward_dense function
+        global_map_info = None
+
+        def alltoall_token_perm2_func(detached_perm_a2a_out, detached_perm_prob_a2a_out, global_map_info=None):
             return alltoall_token_perm2(fwd_layer.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out)
 
-        (dispached_input, dispached_input_probs), perm2_vjp = run_graph_forward(alltoall_token_perm2_func, detached_perm_a2a_out, detached_perm_prob_a2a_out)
+        (dispached_input, dispached_input_probs), perm2_vjp = run_graph_forward(alltoall_token_perm2_func, detached_perm_a2a_out, detached_perm_prob_a2a_out, global_map_info)
         perm_a2a_out.untyped_storage().resize_(0)
 
 
@@ -550,8 +557,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
             recompute_needed_tensors = [None, None, None, None]
 
         # Token Unpermutaion Forward
-        global_map_info = None
-
         def alltoall_token_unperm1_func(detached_expert_output, global_map_info=None):
             unperm1_out = alltoall_token_unperm1(fwd_layer.mlp.token_dispatcher, detached_expert_output, None)
             return unperm1_out
@@ -1134,7 +1139,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     if recomp_norm:
         fwd_layer.norm_ckpt2.discard_output()
 
-    perm_a2a_graph_grad, perm_prob_a2a_out_grad = run_graph_backward(bwd_layer_graph.perm2_graph, (perm2_graph_grad, detached_dispached_input_probs_grad), keep_graph=True)
+    # in forward, the 3rd input tensor of perm2 function is global_map_info, the grad of global_map_info will not be used here, it is used in moe_zerc's forward_moe_backward_moe function
+    perm_a2a_graph_grad, perm_prob_a2a_out_grad, _ = run_graph_backward(bwd_layer_graph.perm2_graph, (perm2_graph_grad, detached_dispached_input_probs_grad), keep_graph=True)
 
     _, perm1_out_grad, bwd_perm_a2a_handle = async_all_to_all(
         perm_a2a_graph_grad,
@@ -1181,10 +1187,13 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         if args.moe_unperm2_mem_optim and '910B' not in acl.get_soc_name():
             perm_prob_a2a_handle.wait()
 
-        def alltoall_token_perm2_func(detached_perm_a2a_out, detached_perm_prob_a2a_out):
+        # global_map_info is not used here, it's used in moe_zerc's forward_moe_backward_moe function
+        global_map_info = None
+
+        def alltoall_token_perm2_func(detached_perm_a2a_out, detached_perm_prob_a2a_out, global_map_info=None):
             return alltoall_token_perm2(fwd_layer.mlp.token_dispatcher, detached_perm_a2a_out, detached_perm_prob_a2a_out)
 
-        (dispached_input, dispached_input_probs), perm2_vjp = run_graph_forward(alltoall_token_perm2_func, detached_perm_a2a_out, detached_perm_prob_a2a_out)
+        (dispached_input, dispached_input_probs), perm2_vjp = run_graph_forward(alltoall_token_perm2_func, detached_perm_a2a_out, detached_perm_prob_a2a_out, global_map_info)
         perm_a2a_out.untyped_storage().resize_(0)
 
         # Grouped MLP Forward
@@ -1209,8 +1218,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         detached_expert_output = detach_tensor(expert_output)
 
         # Token Unpermutaion Forward
-        global_map_info = None
-
         def alltoall_token_unperm1_func(detached_expert_output, global_map_info=None):
             unperm1_out = alltoall_token_unperm1(fwd_layer.mlp.token_dispatcher, detached_expert_output, None)
             return unperm1_out
