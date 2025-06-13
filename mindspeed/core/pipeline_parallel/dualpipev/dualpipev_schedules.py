@@ -371,12 +371,12 @@ def pretrain_gpt_forward_step_dualpipe(data_iterator, model: GPTModel, extra_blo
     if extra_block_kwargs is not None:
         # excute forward backward overlaping
         output_tensor, model_graph, pp_comm_output = \
-            model(tokens, position_ids, attention_mask, labels=labels,
+            model(tokens, position_ids, attention_mask, labels=labels, loss_mask=loss_mask,
                   extra_block_kwargs=extra_block_kwargs)
         return (output_tensor, model_graph, pp_comm_output), partial(loss_func, loss_mask)
     else:
         output_tensor, model_graph = model(
-            tokens, position_ids, attention_mask, labels=labels)
+            tokens, position_ids, attention_mask, labels=labels, loss_mask=loss_mask)
         return (output_tensor, model_graph), partial(loss_func, loss_mask)
 
 
