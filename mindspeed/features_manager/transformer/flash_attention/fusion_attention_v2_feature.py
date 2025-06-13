@@ -32,7 +32,5 @@ class FusionAttentionV2Feature(MindSpeedFeature):
 
     def validate_args(self, args: Namespace):
         if args.use_fusion_attn_v2:
-            if args.use_flash_attn:
-                raise AssertionError(
-                    'can not enable fav1 and fav2 simultaneously'
-                )
+            args.use_flash_attn = True
+            LOG.warning("\"use_fusion_attn_v2\" is not recommended. This feature is not officially released.")
