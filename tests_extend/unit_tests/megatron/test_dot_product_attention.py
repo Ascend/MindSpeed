@@ -18,7 +18,7 @@ from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid
                                              get_context_parallel_for_hybrid_ring_world_size,
                                              get_context_parallel_for_hybrid_ring_rank,
                                              get_context_parallel_for_hybrid_ring_global_ranks)
-from mindspeed.core.transformer.flash_attention.generate_mask.generate_mask import get_attention_mask, set_attention_mask
+from mindspeed.model.transformer import get_attention_mask, set_attention_mask
 
 from tests_extend.commons import set_random_seed, initialize_model_parallel # noqa
 from tests_extend.unit_tests.common import DistributedTest # noqa
