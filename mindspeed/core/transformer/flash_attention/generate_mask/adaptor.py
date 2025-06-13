@@ -27,6 +27,7 @@ def dot_product_attention_forward_wrapper(fn):
             attention_mask is None and 
             self.attn_mask_type == AttnMaskType.causal
         ) and not getattr(self.config, 'is_llava', False):
+            self.config.sparse_mode = 2
             attention_mask = get_attention_mask(self.config)
         return fn(
             self, query, key, value, 
