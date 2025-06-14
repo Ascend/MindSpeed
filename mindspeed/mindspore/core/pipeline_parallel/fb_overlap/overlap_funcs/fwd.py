@@ -172,9 +172,9 @@ def transformer_layer_forward_moe(
         if shared_experts_allgather_handle is not None:
             shared_experts_allgather_handle.wait()
             shared_experts_allgather_handle = None
-            # Shared Experts Forward.
-            (shared_expert_output, _), shared_experts_vjp = run_graph_forward(self.mlp.shared_experts,
-                                                                              detached_mlp_input)  # @check bias; cell as arg
+        # Shared Experts Forward.
+        (shared_expert_output, _), shared_experts_vjp = run_graph_forward(self.mlp.shared_experts,
+                                                                          detached_mlp_input)  # @check bias; cell as arg
 
     if recomp_norm:
         self.norm_ckpt2.discard_output()
