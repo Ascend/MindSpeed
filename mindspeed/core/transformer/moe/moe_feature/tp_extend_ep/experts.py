@@ -41,12 +41,31 @@ class TpExtendEpGmmExpertsImpl:
         self.set_recompute_activation_func = False
         self.activation_checkpoint_manager = CheckpointWithoutOutput()
 
+        def activation_func_with_probs(x, probs):
+            dtype = x.dtype
+            res = self.activation_func(x) * probs
+            return res.to(dtype)
+
+        self.activation_func_with_probs = activation_func_with_probs
+
     def forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
         is_recompute_activation = should_recompute_activation(
             self.layer_number) and not self.config.moe_alltoall_overlap_comm and not \
             self.config.moe_allgather_overlap_comm
 
         gemm_fusion = self.config.gemm_gradient_accumulation_fusion
+
+        if self.config.moe_apply_probs_on_input:
+            assert (
+                self.config.moe_router_topk == 1
+            ), "`moe_apply_probs_on_input` only works with `moe_router_topk`=1."
+            original_dtype = permuted_local_hidden_states.dtype
+            permuted_local_hidden_states = (
+                permuted_probs.unsqueeze(-1) * permuted_local_hidden_states
+            )
+            permuted_local_hidden_states = permuted_local_hidden_states.to(original_dtype)
+            # Probs already applied, so reset to 1.
+            permuted_probs = torch.ones_like(permuted_probs)
 
         if permuted_local_hidden_states.nelement() != 0:
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
@@ -57,11 +76,12 @@ class TpExtendEpGmmExpertsImpl:
                 original_weight=self.weight1
             )
             if not is_recompute_activation:
-                intermediate_parallel = self.activation_func(fc1_output)
+                intermediate_parallel = self.activation_func_with_probs(fc1_output, permuted_probs.unsqueeze(-1))
             else:
-                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
+                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func_with_probs,
                                                                                       False,
-                                                                                      fc1_output)
+                                                                                      fc1_output,
+                                                                                      permuted_probs.unsqueeze(-1))
             fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                     gemm_fusion=gemm_fusion, original_weight=self.weight2)
         else:
@@ -70,11 +90,12 @@ class TpExtendEpGmmExpertsImpl:
             w2 = self.weight2.view(-1, self.config.hidden_size)
             h = torch.matmul(permuted_local_hidden_states, w1)
             if not is_recompute_activation:
-                intermediate_parallel = self.activation_func(h)
+                intermediate_parallel = self.activation_func_with_probs(h, permuted_probs.unsqueeze(-1))
             else:
-                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
+                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func_with_probs,
                                                                                       False,
-                                                                                      h)
+                                                                                      h,
+                                                                                      permuted_probs.unsqueeze(-1))
             h = torch.matmul(intermediate_parallel, w2)
             fc2_output = h
 

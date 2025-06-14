@@ -2,6 +2,7 @@
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 source "tests_extend/system_tests/env_npu.sh"
+export STREAMS_PER_DEVICE=32
 
 NPUS_PER_NODE=8
 MASTER_ADDR=localhost

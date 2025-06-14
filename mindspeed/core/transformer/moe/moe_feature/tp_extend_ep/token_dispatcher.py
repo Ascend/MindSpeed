@@ -186,11 +186,12 @@ class All2AllSeqTp2epDispatcherImpl:
 
         # Permutation 1: input to AlltoAll input
         self.hidden_shape_before_permute = hidden_states.shape
-        permutated_local_input_tokens, _, self.reversed_local_input_permutation_mapping = permute(
-            hidden_states,
-            routing_map,
-            num_out_tokens=self.num_out_tokens,
-        )
+        (
+            permutated_local_input_tokens,
+            permuted_probs,
+            self.reversed_local_input_permutation_mapping,
+        ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens)
+
 
         # Perform expert parallel AlltoAll communication
         global_input_tokens = tensor_parallel.all_to_all(
@@ -199,16 +200,23 @@ class All2AllSeqTp2epDispatcherImpl:
             self.output_splits,
             self.input_splits,
         )
+        global_probs = tensor_parallel.all_to_all(
+            parallel_state.get_expert_tensor_and_model_parallel_group(),
+            permuted_probs,
+            self.output_splits,
+            self.input_splits,
+        )
 
         # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
         if self.num_local_experts > 1:
-            global_input_tokens, _ = sort_chunks_by_idxs(
+            global_input_tokens, global_probs = sort_chunks_by_idxs(
                 global_input_tokens,
                 self.num_global_tokens_per_local_expert_cpu.ravel(),
                 self.sort_input_by_local_experts,
+                probs=global_probs,
             )
 
-        return global_input_tokens, tokens_per_expert, None
+        return global_input_tokens, tokens_per_expert, global_probs
 
     def token_unpermutation(
         self, hidden_states: torch.Tensor, bias: torch.Tensor = None,
@@ -248,7 +256,6 @@ class All2AllSeqTp2epDispatcherImpl:
         output = unpermute(
             permutated_local_input_tokens,
             self.reversed_local_input_permutation_mapping,
-            probs=self.probs,
             restore_shape=self.hidden_shape_before_permute,
             routing_map=self.routing_map,
         )

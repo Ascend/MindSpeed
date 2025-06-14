@@ -2,6 +2,7 @@
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 source "tests_extend/system_tests/env_npu.sh"
+export STREAMS_PER_DEVICE=32
 
 export TASK_QUEUE_ENABLE=0
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True

@@ -29,6 +29,8 @@
 # 开启PP支持动态形状
 --variable-seq-lengths 
 ```
+限制条件：
+1. 暂不支持 `--moe-token-dispatcher-type alltoall_seq`和`--moe-token-dispatcher-type allgather`
 
 ## 使用效果
 
