@@ -67,3 +67,10 @@ def mindspore_adaptation(aspm, mindspeed_args):
     from ..mindspore.core.distributed.finalize_model_grads import _allreduce_layernorm_grads
     aspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_layernorm_grads',
                                  _allreduce_layernorm_grads)
+    
+    from ..mindspore.legacy.model.module import fp32_to_float16, float16_to_fp32
+    aspm.register_patch('megatron.legacy.model.module.fp32_to_float16', fp32_to_float16)
+    aspm.register_patch('megatron.legacy.model.module.float16_to_fp32', float16_to_fp32)
+
+    from ..mindspore.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd
+    aspm.register_patch('mindspeed.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_bshd', apply_rotary_pos_emb_bshd)

@@ -3,6 +3,8 @@
 
 import torch
 from torch import Tensor
+import torch_npu
+from megatron.training import get_args
 from megatron.core.transformer.transformer_block import TransformerBlock
 from megatron.core.transformer.transformer_config import TransformerConfig
 
@@ -74,3 +76,26 @@ def local_rotate_half(x: Tensor, rotary_interleaved: bool) -> Tensor:
         x1, x2 = torch.chunk(x, 2, dim=-1)
         return torch.cat((-x2, x1), dim=-1)
     return torch.matmul(x, get_rotation_matrix(x))
+
+
+def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool = False) -> Tensor:
+    args = get_args()
+    _mscale = 1.0
+    if args.rope_scaling_type == "yarn":
+        _mscale = float(
+            yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale)
+            / yarn_get_mscale(args.rope_scaling_factor, args.rope_scaling_mscale_all_dim)
+        )
+
+    rot_dim = freqs.shape[-1]
+    t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
+    cos_ = (torch.cos(freqs) * _mscale).to(t.dtype)
+    sin_ = (torch.sin(freqs) * _mscale).to(t.dtype)
+
+    if args.use_fused_rotary_pos_emb:
+        mode = 1 if rotary_interleaved else 0
+        t = torch_npu.npu_rotary_position_embedding(t.contiguous(), cos_, sin_, mode).to(t.dtype)
+    else:
+        t = (t * cos_) + (_rotate_half(t, rotary_interleaved) * sin_)
+
+    return torch.cat((t, t_pass), dim=-1)
