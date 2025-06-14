@@ -2,7 +2,9 @@
 
 from contextlib import nullcontext
 import torch
+from megatron.training.utils import get_args
 from mindspeed.core.transformer.transformer_block import NoopTransformerLayer
+from mindspeed.utils import set_actual_seq_len, set_position_ids, get_actual_seq_len, get_position_ids
 from .modules.utils import (
     NoopLayerGraph, LayerGraph, is_p2p_comm_needed,
     p2p_comm_helper, P2PCommOutput, P2PCommParams
@@ -57,10 +59,48 @@ def transformer_layer_forward(
         else:
             layer_forward_func = transformer_layer_forward_dense
 
-        return layer_forward_func(
+        out = layer_forward_func(
             self, hidden_states, attention_mask,
             context, context_mask, rotary_pos_emb, inference_params, packed_seq_params, checkpoint=checkpoint
         )
+
+        if checkpoint:
+            # Record actual_seq_len for backward. This should be down in forward, otherwise, the actual_seq_len
+            # get in recompute stage would be wrong.
+            graph = out[2]
+            if get_args().reset_position_ids:
+                graph.actual_seq_len = get_actual_seq_len()
+                graph.position_ids = get_position_ids()
+
+        return out
+
+
+def transformer_layer_recompute(
+    bwd_layer_graph
+):
+    if not bwd_layer_graph.checkpointed:
+        return bwd_layer_graph
+    # Set actual_seq_len for recompute and avoid using actual_seq_len in forward context.
+    # Also Record the forward context for restore.
+    if get_args().reset_position_ids:
+        fwd_actual_seq_len = get_actual_seq_len()
+        fwd_position_ids = get_position_ids()
+        set_actual_seq_len(bwd_layer_graph.actual_seq_len)
+        set_position_ids(bwd_layer_graph.position_ids)
+    
+    # Recompute entire transformer layer for backward.
+    with torch.enable_grad():
+        _, _, restored_layer_graph = transformer_layer_forward(
+            bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
+        )
+        restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], bwd_layer_graph.unperm2_graph[1])
+    
+    # Restore acutal_seq_len in forward context.
+    if get_args().reset_position_ids:
+        set_actual_seq_len(fwd_actual_seq_len)
+        set_position_ids(fwd_position_ids)
+
+    return restored_layer_graph
 
 
 def transformer_layer_backward(
@@ -68,12 +108,8 @@ def transformer_layer_backward(
     layer_graph
 ):
     if layer_graph.checkpointed:
-        with torch.enable_grad():
-            _, _, restored_layer_graph = transformer_layer_forward(
-                layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
-            )
-            restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], layer_graph.unperm2_graph[1])
-            layer_graph = restored_layer_graph
+        layer_graph = transformer_layer_recompute(layer_graph)
+
     if isinstance(layer_graph, NoopLayerGraph):
         return transformer_layer_backward_noop(layer_output_grad, layer_graph)
     elif layer_graph.is_moe_layer:
@@ -156,9 +192,8 @@ def transformer_layer_forward_backward_overlaping(
 
 
         if bwd_layer_graph.checkpointed:
-            _, _, bwd_layer_graph = transformer_layer_forward(
-                bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
-            )
+            bwd_layer_graph = transformer_layer_recompute(bwd_layer_graph)
+
 
         out = fb_overlap_func(
             fwd_layer, hidden_states, attention_mask, bwd_layer_output_grad, bwd_layer_graph, bwd_unperm_a2a_handle,
@@ -171,5 +206,8 @@ def transformer_layer_forward_backward_overlaping(
                 attention_mask, context, context_mask, rotary_pos_emb,
                 inference_params, packed_seq_params, use_orig_layer_forward
             )
+            if get_args().reset_position_ids:
+                out[2].position_ids = get_position_ids()
+                out[2].actual_seq_len = get_actual_seq_len()
 
         return out
