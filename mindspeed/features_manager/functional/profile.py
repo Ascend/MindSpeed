@@ -7,7 +7,7 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 class ProfileFeature(MindSpeedFeature):
 
     def __init__(self):
-        super().__init__('profile', optimization_level=0)
+        super().__init__('profile', optimization_level=2)
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
