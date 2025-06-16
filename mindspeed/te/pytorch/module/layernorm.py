@@ -10,8 +10,7 @@ class MindSpeedTELayernorm(nn.Module):
         self.zero_centered_gamma = zero_centered_gamma
         if self.zero_centered_gamma:
             raise NotImplementedError("Zero-centered gamma is not supported in this dummy implementation.")
-        if self.sequence_parallel:
-            raise NotImplementedError("Sequence parallelism is not supported in this dummy implementation.")
+        setattr(self.weight, 'sequence_parallel', sequence_parallel)    
 
     def forward(self, x):
         return self.layer_norm(x)

@@ -78,8 +78,8 @@ class OverLapGmmExpertsImpl:
                                                                 ctx=ctx)
         else:
             return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                    (self.weight1, self.weight2, self.activation_func_with_probs,
-                                                                     permuted_probs, group_list, self.layer_number, self.config))
+                                                                    (self.weight1, self.weight2, self.activation_func,
+                                                                     group_list, self.layer_number, self.config))
 
 
 def Zero_Memory_SharedExpertMlp_forward(self, hidden_states, moe_ctx):
