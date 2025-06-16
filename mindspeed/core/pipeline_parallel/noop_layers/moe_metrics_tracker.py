@@ -12,7 +12,9 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-def get_mean(values: torch.Tensor, num_layers: int, noop_layers: set = None) -> torch.Tensor:
+def get_mean(
+    values: torch.Tensor, num_layers: int, noop_layers: set = None
+) -> torch.Tensor:
     """Calculate the mean of a tensor, excluding specified 'noop_layers'.
 
     Args:
@@ -33,16 +35,7 @@ def get_mean(values: torch.Tensor, num_layers: int, noop_layers: set = None) -> 
           used to adjust the mean calculation when excluding 'noop_layers'.
     """
     if isinstance(noop_layers, set) and noop_layers:
-        try:
-            return values.sum() / (num_layers - len(noop_layers))
-        except ZeroDivisionError as e:
-            logging.warning(
-                "num_layers is equal to length of noop_layers,"
-                "num_layers: %s, length of noop_layers: %s",
-                num_layers,
-                noop_layers,
-            )
-            raise e
+        return values.sum() / (num_layers - len(noop_layers))
     return values.mean()
 
 
@@ -83,8 +76,10 @@ def track_moe_metrics_impl(
         num_moe_layers = num_layers
     elif isinstance(moe_layer_freq, int):
         if not isinstance(num_layers, int):
-            raise AssertionError('num_layer must be int!')
-        moe_layer_pattern = [1 if (i % moe_layer_freq == 0) else 0 for i in range(num_layers)]
+            raise AssertionError("num_layer must be int!")
+        moe_layer_pattern = [
+            1 if (i % moe_layer_freq == 0) else 0 for i in range(num_layers)
+        ]
         num_moe_layers = sum(moe_layer_pattern)
     elif isinstance(moe_layer_freq, list):
         num_moe_layers = sum(moe_layer_freq)
@@ -98,7 +93,9 @@ def track_moe_metrics_impl(
         }
         for name, loss_list in aux_losses.items():
             # adaptation for
-            loss_list_mean = get_mean(values=loss_list, num_layers=num_moe_layers, noop_layers=noop_layers)
+            loss_list_mean = get_mean(
+                values=loss_list, num_layers=num_moe_layers, noop_layers=noop_layers
+            )
             if total_loss_dict is not None:
                 if name not in total_loss_dict:
                     # adaptation for loss_list.mean()

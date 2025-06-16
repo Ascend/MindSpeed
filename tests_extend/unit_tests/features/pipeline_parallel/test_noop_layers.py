@@ -7,6 +7,7 @@ from argparse import Namespace
 import torch
 import torch_npu
 import pytest
+from pytest_mock import MockFixture
 
 import mindspeed.megatron_adaptor
 
@@ -33,10 +34,16 @@ from megatron.training.initialize import (
 
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import (
     origin_flop_calculator,
+    mindspeed_calc_flop,
 )
 from mindspeed.core.pipeline_parallel.noop_layers.moe_metrics_tracker import (
     get_mean,
+    track_moe_metrics_impl,
 )
+from mindspeed.core.pipeline_parallel.noop_layers.transformer import (
+    build_layers_impl,
+)
+from mindspeed.core.pipeline_parallel.noop_layers.calc_flop import calc_flop
 from mindspeed.core.transformer.transformer_block import _get_layer_offset
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import (
     NoopTransformerLayer,
@@ -296,6 +303,7 @@ class TestNoopLayer(DistributedTest):
         total_loss_dict = dict()
         track_moe_metrics_mock(1, True, total_loss_dict)
         assert total_loss_dict.get(name) == 1
+        total_loss_dict.clear()
         del parallel_state._MOE_LAYER_WISE_LOGGING_TRACKER[name]
 
     @pytest.mark.parametrize(
@@ -397,5 +405,123 @@ class TestNoopLayer(DistributedTest):
         batch_size = 1
         megatron_flop = origin_flop_calculator(args, batch_size)
         mindspeed_flop = num_floating_point_operations(args, batch_size)
+        assert mindspeed_calc_flop(args, batch_size) == mindspeed_flop
         assert megatron_flop == megatron_expected
         assert mindspeed_flop == mindspeed_expected
+
+    @pytest.mark.parametrize(
+        " args, batch_size, expected",
+        [
+            (
+                Namespace(num_layers=2, noop_layers={1, 2}),
+                1,
+                2,
+            ),
+            (
+                Namespace(num_layers=2, noop_layers=[1, 2]),
+                2,
+                2,
+            ),
+        ],
+    )
+    def test_cacl_flop(self, args, batch_size, expected):
+
+        def func(x, y):
+            return x
+
+        ret = calc_flop(func, args, batch_size)
+        assert ret.num_layers == expected
+
+    @pytest.mark.parametrize(
+        "values, num_layers, noop_layers, expected",
+        [
+            (
+                torch.tensor([1.0, 2.0, 3.0, 4.0]),
+                4,
+                {1, 2},
+                torch.tensor(5.0),
+            ),
+            (
+                torch.tensor([1.0, 2.0, 3.0, 4.0]),
+                4,
+                [1, 2],
+                torch.tensor(2.5),
+            ),
+            (
+                torch.tensor([1.0, 2.0, 3.0, 4.0]),
+                4,
+                {1, 2, 3, 4},
+                torch.tensor([torch.inf, torch.inf, torch.inf, torch.inf]),
+            ),
+        ],
+    )
+    def test_get_mean(self, values, num_layers, noop_layers, expected):
+        ret = get_mean(values, num_layers, noop_layers) == expected
+        if ret.shape == torch.Size([]):
+            assert ret
+        elif ret.shape == torch.Size([4]):
+            assert ret[0]
+
+
+def test_track_mode_metrics_impl(mocker: MockFixture):
+
+    def mocker_func(*args, **kwarg):
+        return None
+
+    def mocker_func1(*agrs, **kwargs):
+        return {"test": {"values": torch.tensor([1.0, 2.0, 3.0, 4.0])}}
+
+    args = Namespace(num_layers=4, noop_layers={1, 2})
+    reduce_aux_losses_tracker_across_ranks = mocker_func
+    get_moe_layer_wise_logging_tracker = mocker_func1
+    clear_aux_losses_tracker = mocker_func
+    loss_scale = 1.0
+    args.num_layers = 4
+    loss_scale = torch.tensor(1.0)
+    writer = mocker.MagicMock()
+    writer.add_scalar = mocker_func
+    total_loss_dict = dict()
+    per_layer_logging = True
+    wandb_writer = mocker.MagicMock()
+    wandb_writer.log = mocker_func
+    # Test with noop layers
+    track_moe_metrics_impl(
+        reduce_aux_losses_tracker_across_ranks=reduce_aux_losses_tracker_across_ranks,
+        get_moe_layer_wise_logging_tracker=get_moe_layer_wise_logging_tracker,
+        clear_aux_losses_tracker=clear_aux_losses_tracker,
+        loss_scale=loss_scale,
+        iteration=1,
+        writer=writer,
+        wandb_writer=wandb_writer,
+        total_loss_dict=total_loss_dict,
+        per_layer_logging=per_layer_logging,
+    )
+    assert total_loss_dict == {"test": 2.5}
+
+
+def test_build_layers_impl(mocker: MockFixture):
+
+    class MockTransformer:
+        def __init__(self):
+            self.config = Namespace(noop_layers={1, 2})
+            self.submodules = Namespace(
+                layer_specs=[None, None, None],
+                layer_norm=True,
+            )
+            self.layers = None
+            self.post_process = False
+            self.post_layer_norm = False
+            self.final_layernorm = None
+
+    transformer = MockTransformer()
+    noop_transformer = NoopTransformerLayer
+    build_module = lambda x, **kwargs: x
+    mocker.patch(
+        "mindspeed.core.pipeline_parallel.noop_layers.transformer._get_layer_offset",
+        return_value=0,
+    )
+
+    build_layers_impl(transformer, noop_transformer, build_module)
+
+    assert isinstance(transformer.layers[1], NoopTransformerLayer)
+    assert isinstance(transformer.layers[2], NoopTransformerLayer)

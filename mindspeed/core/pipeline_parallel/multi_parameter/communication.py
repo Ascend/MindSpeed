@@ -266,7 +266,7 @@ def send_backward_impl(
     )
 
 
-def send_forward_and_barckward(
+def send_forward_and_backward(
     tensors: List[Optional[torch.Tensor]],
     tensor_shapes: List[Optional[dict]],
     config: Config,
@@ -323,7 +323,7 @@ def send_forward_recv_backward_impl(
         List[Optional[torch.Tensor]]: the output tensors
             for the backward step.
     """
-    return send_forward_and_barckward(
+    return send_forward_and_backward(
         output_tensors, tensor_shapes, config, send_forward_recv_backward_
     )
 
@@ -350,7 +350,7 @@ def send_backward_recv_forward_impl(
         List[Optional[torch.Tensor]]: the output tensors
             for the forward step.
     """
-    return send_forward_and_barckward(
+    return send_forward_and_backward(
         input_tensor_grads,
         tensor_shapes,
         config,
