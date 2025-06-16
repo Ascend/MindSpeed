@@ -236,7 +236,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     if bwd_prob_handle:
         bwd_prob_handle.wait()
     if args.moe_zerc:
-        detached_mlp_input_grad, detach_probs_grad = run_graph_backward(bwd_layer_graph.perm1_graph, (
+        detached_mlp_input_grad, probs_detached_grad = run_graph_backward(bwd_layer_graph.perm1_graph, (
         perm1_out_grad, perm1_prob_out_grad, global_map_info_grad))
     else:
         detached_mlp_input_grad, probs_detached_grad = run_graph_backward(bwd_layer_graph.perm1_graph,
@@ -271,7 +271,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         probs_grad = probs_detached_grad
 
     if args.moe_zerc:
-        probs_grad = detach_probs_grad
+        probs_grad = probs_detached_grad
     (detached_mlp_input_router_grad, ) = run_graph_backward(bwd_layer_graph.router_graph, probs_grad)
     detached_mlp_input_grad = detached_mlp_input_grad + detached_mlp_input_shared_grad + detached_mlp_input_router_grad
 

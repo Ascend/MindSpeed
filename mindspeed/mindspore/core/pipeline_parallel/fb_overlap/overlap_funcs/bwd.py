@@ -141,7 +141,7 @@ def transformer_layer_backward_moe(
         prob_handle.wait()
 
     if args.moe_zerc:
-        mlp_input_grad_perm1, detach_probs_grad = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad, global_map_info_grad))
+        mlp_input_grad_perm1, probs_detached_grad = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad, global_map_info_grad))
     else:
         (mlp_input_grad_perm1, probs_detached_grad) = run_graph_backward(self.perm1_graph, (perm1_out_grad, perm1_prob_out_grad))
 
@@ -163,7 +163,7 @@ def transformer_layer_backward_moe(
         probs_grad = probs_detached_grad
 
     if args.moe_zerc:
-        probs_grad = detach_probs_grad
+        probs_grad = probs_detached_grad
 
     (mlp_input_grad_router,) = run_graph_backward(self.router_graph, probs_grad)
     
