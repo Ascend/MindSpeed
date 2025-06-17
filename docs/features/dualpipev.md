@@ -55,7 +55,7 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 
 在启动脚本中额外添加`--dualpipev-dw-detach`来开启cooldown阶段的dw分离。
 
-使用DualPipeV时，模型层数设置应为`PP*2`的倍数。同时每个PP组的micro batch数至少设置为`PP*2`。与VPP等其他流水特性不兼容。与长序列并行、tp_2d等特性暂不兼容。
+使用DualPipeV时，模型层数设置应为`PP*2`的倍数。同时每个PP组的micro batch数至少设置为`PP*2`。与VPP等其他流水特性不兼容。与长序列并行、异步DDP、swap-attention、tp_2d等特性暂不兼容。
 
 
 ## 使用效果

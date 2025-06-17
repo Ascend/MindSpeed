@@ -22,6 +22,9 @@ class DualpipeVFeature(MindSpeedFeature):
             if args.overlap_grad_reduce:
                 raise AssertionError(
                     "The dualpipev and overlap_grad_reduce are incompatible.")
+            if args.swap_attention:
+                raise AssertionError(
+                    "The dualpipev and swap_attention are incompatible.")
             if args.context_parallel_size > 1:
                 raise AssertionError(
                     "The dualpipev and context_parallel are incompatible.")

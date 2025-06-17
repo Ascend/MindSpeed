@@ -600,6 +600,7 @@ def forward_step_with_model_graph(
         context_manager = torch.autocast("cuda", dtype=config.autocast_dtype)
     else:
         context_manager = contextlib.nullcontext()
+    set_post_process_flag(_unwrap_megatron_model(model).post_process)
     with context_manager:
         if checkpoint_activations_microbatch is None:
             output_tensor, loss_func = forward_step_func(
@@ -713,8 +714,8 @@ def forward_backward_pipelining_with_cutinhalf(
     first_val_step: bool = None,
 ):
     args = get_args()
-
-    set_shared_embedding_from_dual_chunk(model[0], model[1])
+    if parallel_state.get_pipeline_model_parallel_rank() == 0:
+        set_shared_embedding_from_dual_chunk(model[0], model[1])
     assert (
         isinstance(model, list) and len(model) == 2
     ), 'Dualpipe Schedule only support chunk model for two consecutive chunks'
