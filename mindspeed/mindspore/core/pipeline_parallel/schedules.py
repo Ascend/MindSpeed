@@ -245,7 +245,7 @@ def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, c
         output_tensor_grad = [output_tensor_grad]
 
     # Backward pass.
-    scale_sense_shape = getattr(output_tensor[0], '_shape_before_deallocate', output_tensor[0])
+    scale_sense_shape = getattr(output_tensor[0], '_shape_before_deallocate', output_tensor[0].shape)
     if output_tensor_grad[0] is None and config.grad_scale_func is not None:
         output_tensor_grad[0] = config.grad_scale_func(torch.ones_like(output_tensor[0])).reshape(scale_sense_shape)
     if output_tensor_grad[0] is None:
