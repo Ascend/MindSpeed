@@ -6,6 +6,7 @@ Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 from argparse import ArgumentParser, Namespace
 
+import torch
 from mindspeed.features_manager.feature import MindSpeedFeature
 from mindspeed.patch_utils import MindSpeedPatchesManager
 
@@ -29,6 +30,19 @@ class MultiParameterFeature(MindSpeedFeature):
             help="can transfer multi parameters from "
             "stage to stage in pipeline model parallel",
         )
+
+    def validate_args(self, args):
+        if getattr(args, "use_multiparameter_pipeline_model_parallel", False):
+            tensor_shape = (int(args.seq_length / args.context_parallel_size), args.micro_batch_size, args.hidden_size)
+
+            if getattr(args, "bf16", False):
+                dtype = torch.bfloat16
+            elif getattr(args, "fp16", False):
+                dtype = torch.float16
+            else:
+                dtype = torch.float32
+
+            args.pipeline_tensor_shapes = [{"shape": tensor_shape, "dtype": dtype}]
 
     def register_patches(
         self,
