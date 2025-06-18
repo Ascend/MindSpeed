@@ -57,7 +57,6 @@ def track_moe_metrics_impl(
 ):
     """Track metrics of moe during training."""
     # Aux loss logging
-    reduce_aux_losses_tracker_across_ranks()
     tracker = get_moe_layer_wise_logging_tracker()
 
     # Initialize the tracker if force_initialize is True

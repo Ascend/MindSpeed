@@ -172,7 +172,13 @@ def _get_layer_offset(args):
         num_layers // parallel_state.get_pipeline_model_parallel_world_size()
     )
 
-    if parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
+    if args.schedules_method == "dualpipev":
+        num_layers_per_dualpipe_chunk = num_layers_per_pipeline_rank // 2
+        if args.dualpipev_first_chunk:
+            offset = pipeline_rank * num_layers_per_dualpipe_chunk
+        else:
+            offset = args.num_layers - (pipeline_rank + 1) * num_layers_per_dualpipe_chunk
+    elif parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
         vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
         vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
 
