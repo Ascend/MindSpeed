@@ -31,14 +31,9 @@ def dot_product_attention_forward_impl(
     assert attention_bias is None, \
         "Attention bias is not supported for DotProductAttention."
 
-    if packed_seq_params is None:
-        seq_length, bsz, n_head, head_dim = (
-            query.shape[0], query.shape[1], query.shape[2], query.shape[3]
-        )
-    else:
-        seq_length, n_head, head_dim = (
-            query.shape[0], query.shape[1], query.shape[2]
-        )
+    seq_length, bsz, n_head, head_dim = (
+        query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+    )
 
     sparse_mode = self.config.sparse_mode
     if attn_mask_type == AttnMaskType.no_mask:
