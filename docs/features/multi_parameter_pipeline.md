@@ -41,6 +41,9 @@
 --num-layers-per-virtual-pipeline-stage 1 \
 --use-multiparameter-pipeline-model-parallel \
 ```
+## 使用限制
+
+1. 暂不兼容--moe-fb-overlap和dualpipev特性。
 
 ## 使用效果
 

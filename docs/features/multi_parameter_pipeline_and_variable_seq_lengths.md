@@ -44,6 +44,10 @@
 --use-multiparameter-pipeline-model-parallel \
 --variable-seq-lengths \
 ```
+## 使用限制
+
+1. 暂不兼容--moe-fb-overlap和dualpipev特性。
+
 
 ## 使用效果
 同时支持在流水线并行中各阶段间传递多个参数和处理变长输入数据。
