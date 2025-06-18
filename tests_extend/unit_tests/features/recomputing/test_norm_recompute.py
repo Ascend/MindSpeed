@@ -20,7 +20,13 @@ class TestNormRecompute(DistributedTest):
     args = parse_args(None, True)
     set_args(args)
 
-    def test_checkpoint_recompute(self):
+    def test_norm_recompute(self):
+        args = parse_args(None, True)
+        args.recompute_norm = True
+        args.num_layers = 4
+        args.recompute_norm_num_layers = 2
+        args.transformer_pipeline_model_parallel_size = 2
+        set_args(args)
         self.norm_recopute()
 
     def norm_recopute(self):

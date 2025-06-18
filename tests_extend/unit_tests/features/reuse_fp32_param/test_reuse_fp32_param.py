@@ -17,9 +17,25 @@ from megatron.core.timers import DummyTimer
 from megatron.core.transformer import TransformerConfig
 from megatron.training.training import get_model
 from megatron.training.utils import unwrap_model
-
+from mindspeed.features_manager.memory.reuse_fp32_param import ReuseFP32Param
 from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.commons import set_random_seed, initialize_model_parallel
+
+
+class ReuseParamFeatureTset:
+    @staticmethod
+    def reg_reuse_param_patch():
+        from mindspeed.patch_utils import MindSpeedPatchesManager as pm
+        args = parse_args(None, True)
+        set_args(args)
+        args.reuse_fp32_param = True
+        args.bf16 = True
+
+        reuse_param_feature_func = ReuseFP32Param()
+
+        reuse_param_feature_func.validate_args(args)
+        reuse_param_feature_func.register_patches(pm, args)
+        pm.apply_patches()
 
 
 def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_kwargs):
@@ -78,6 +94,7 @@ class Timers:
 
 class TestDistributedOptimizer(DistributedTest):
     world_size = 8
+    ReuseParamFeatureTset().reg_reuse_param_patch()
 
     @pytest.mark.parametrize("is_deterministic", [False])
     @pytest.mark.parametrize("tp_pp", [(4, 1), (2, 2), (8, 1)])
