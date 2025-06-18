@@ -68,7 +68,10 @@ def attention_init(
     )
     self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
     self.num_query_groups_per_partition = divide(self.config.num_query_groups, world_size)
-
+    
+    self.key_hidden_size = self.hidden_size_per_attention_head
+    self.val_hidden_size = self.hidden_size_per_attention_head
+    
     self.core_attention = build_module(
         submodules.core_attention,
         config=self.config,
