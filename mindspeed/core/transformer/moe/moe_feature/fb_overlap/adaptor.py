@@ -13,6 +13,7 @@ from megatron.training.utils import get_args
 from .modules.experts import MindSpeedFbOverlapGmmExperts
 from .modules.shared_experts import SharedExpertMLPFbOverlap
 from .modules.moe_layer import MindSpeedFbOverlapMoELayer
+from .vpp_schedules import forward_backward_pipelining_with_interleaving
 
 
 def _make_backward_post_hook(self, param: torch.nn.Parameter):
@@ -45,6 +46,19 @@ def _make_backward_post_hook(self, param: torch.nn.Parameter):
             param.skip_grad_accum = False
 
     return hook
+
+
+def get_forward_backward_func_vpp_overlap_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        global_args = get_args()
+        # use moe-fb-overlap customized vpp schedules for fwd&bwd overlaping if training is enabled.
+        if torch.is_grad_enabled() and global_args.moe_fb_overlap:
+            return forward_backward_pipelining_with_interleaving
+        
+        return fn(*args, **kwargs)
+    
+    return wrapper
 
 
 def get_moe_module_spec_wrapper(fn):

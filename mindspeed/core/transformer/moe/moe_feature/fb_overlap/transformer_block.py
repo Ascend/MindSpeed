@@ -4,6 +4,7 @@ import types
 from functools import wraps
 from typing import List, Union, Optional
 from contextlib import nullcontext
+import torch
 from torch import Tensor
 from mindspeed.core.transformer.moe.moe_feature import (
     get_args,
@@ -143,7 +144,8 @@ def transformer_block_forward(
         layer_graphs[-1].unperm2_graph = (layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
         hidden_states = self.final_layernorm(detached_hidden_states)
 
-    self.set_fwd_layer_graphs(layer_graphs)
+    if torch.is_grad_enabled() or get_args().schedules_method == 'dualpipev':
+        self.set_fwd_layer_graphs(layer_graphs)
 
     return hidden_states
 
@@ -269,8 +271,9 @@ def transformer_block_forward_backward_overlaping(
         fwd_layer_graphs[-1].unperm2_graph = (fwd_layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
         fwd_hidden_states = fwd_block.final_layernorm(detached_hidden_states)
 
-    self.set_fwd_layer_graphs(fwd_layer_graphs)
-    self.set_pp_comm_output(pp_comm_output)
+    if torch.is_grad_enabled() or get_args().schedules_method == 'dualpipev':
+        self.set_fwd_layer_graphs(fwd_layer_graphs)
+        self.set_pp_comm_output(pp_comm_output)
 
     return fwd_hidden_states
 

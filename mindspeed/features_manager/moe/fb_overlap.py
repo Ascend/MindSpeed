@@ -44,11 +44,11 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             from mindspeed.core.transformer.moe.moe_feature.fb_overlap import (
                 linear_backward_wgrad_detach,
                 transformer_block_fb_overlap_init_wrapper,
-                forward_backward_pipelining_with_interleaving
             )
             from mindspeed.core.transformer.moe.moe_feature.fb_overlap.adaptor import (
                 _make_backward_post_hook,
-                get_moe_module_spec_wrapper
+                get_moe_module_spec_wrapper,
+                get_forward_backward_func_vpp_overlap_wrapper
             )
             patch_manager.register_patch('megatron.core.models.gpt.moe_module_specs.get_moe_module_spec', get_moe_module_spec_wrapper)
             patch_manager.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.__init__',
@@ -58,8 +58,8 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             patch_manager.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_backward_post_hook',
                                          _make_backward_post_hook)
             if getattr(args, 'num_layers_per_virtual_pipeline_stage', None):
-                patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_with_interleaving',
-                                             forward_backward_pipelining_with_interleaving)
+                patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
+                                              get_forward_backward_func_vpp_overlap_wrapper)
 
 
 
