@@ -114,7 +114,7 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
 
                 fc1_output = fused_alltoall_gather_bmm(permuted_local_hidden_states, w1, None, bmm_param)
             else:
-                fc1_output = gg.ops.gmm(
+                fc1_output = gg.gmm(
                     permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
                     original_weight=self.weight1
                 )
@@ -128,7 +128,7 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
                 # revert the output shape: [E, C, H/TP] -> [E*C, H/TP]
                 fc2_output = fc2_output.view(-1, fc2_output.shape[2])
             else:
-                fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
+                fc2_output = gg.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight2)
         else:
             assert torch.count_nonzero(tokens_per_expert) == 0
@@ -148,6 +148,5 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert):
 
         # when backward to output of dense_4h_to_h,
         # recompute and restore the output of activation function.
-        if fc2_output.requires_grad:
-            fc2_output.register_hook(self.activation_checkpoint_manager.recompute)
+        fc2_output.register_hook(self.activation_checkpoint_manager.recompute)
     return fc2_output, None
