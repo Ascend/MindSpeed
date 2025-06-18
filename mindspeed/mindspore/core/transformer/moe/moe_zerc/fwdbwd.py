@@ -455,7 +455,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping_zerc(
             )
             last_comm_handle = bwd_unperm_a2a_handle
     else:
-        unperm1_out_grad, shared_expert_output_grad, residual2_grad = bwd_layer_output_grad
+        unperm1_out_grad, shared_expert_output_grad, residual2_grad, probs_grad = bwd_layer_output_grad
 
     if args.moe_zero_memory == 'level0':
         with torch.no_grad():
@@ -664,14 +664,13 @@ def transformer_layer_forward_moe_backward_moe_overlaping_zerc(
         )
         last_comm_handle = bwd_prob_handle
     # launch shared expert grad allgather here
-    shared_experts_grad = bwd_layer_output_grad if bwd_unperm_a2a_handle is None else bwd_layer_output_grad[1]
     if tp_size > 1:
         _, backward_ag_shared, backward_ag_shared_handle = async_all_gather(
-            shared_experts_grad, tp_group, event=last_comm_handle,
+            shared_expert_output_grad, tp_group, event=last_comm_handle,
             stream=torch.npu.current_stream() if last_comm_handle else None
         )
     else:
-        backward_ag_shared = shared_experts_grad
+        backward_ag_shared = shared_expert_output_grad
         backward_ag_shared_handle = None
 
     # Grouped MLP dw computation

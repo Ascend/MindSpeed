@@ -950,7 +950,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             )
             last_comm_handle = bwd_unperm_a2a_handle
     else:
-        unperm1_out_grad, shared_expert_output_grad, residual2_grad = bwd_layer_output_grad
+        unperm1_out_grad, shared_expert_output_grad, residual2_grad, probs_grad = bwd_layer_output_grad
 
     if args.moe_zero_memory == 'level0':
         with torch.no_grad():
