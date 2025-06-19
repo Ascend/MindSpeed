@@ -34,11 +34,12 @@ class MultiParameterFeature(MindSpeedFeature):
 
     def validate_args(self, args):
         self.incompatible_check(args, 'moe_fb_overlap')
-        if getattr(args, "schedules_method", False) == "dualpipev":
-            raise AssertionError(
-                "The dualpipev and use_multiparameter_pipeline_model_parallel are incompatible.")
 
         if getattr(args, "use_multiparameter_pipeline_model_parallel", False):
+            if getattr(args, "schedules_method", False) == "dualpipev":
+                raise AssertionError(
+                    "The dualpipev and use_multiparameter_pipeline_model_parallel are incompatible."
+                )
             tensor_shape = (int(args.seq_length / args.context_parallel_size), args.micro_batch_size, args.hidden_size)
 
             if getattr(args, "bf16", False):

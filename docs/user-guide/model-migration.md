@@ -75,7 +75,7 @@ end
 
 ## 模型选取
 
-- 选择[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)仓库core_r0.10.0分支，
+- 选择[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)仓库core_r0.12.1分支，
 使用仓库根目录下的pretrain_gpt.py中内置的GPT模型作为迁移的模型。
 
 - 迁移前要保证选定的模型能在三方平台（如GPU）上运行，并输出精度和性能基线。
@@ -84,7 +84,7 @@ end
 
 仅仅一行代码就可以轻松使能`MindSpeed`的各项功能，完成对`Megatron-LM`的模型迁移。
 
-**步骤1** 参考安装指南完成基础环境的搭建。
+**步骤1** 参考[安装指南](./installation.md)完成基础环境的搭建。
 
 **步骤2** 在`Megatron-LM`仓库根目录下修改`pretrain_gpt.py`文件，
 在`import torch`下新增一行：
