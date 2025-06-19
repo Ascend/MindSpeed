@@ -74,3 +74,6 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from ..mindspore.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd
     aspm.register_patch('mindspeed.core.models.common.embeddings.rotary_pos_embedding.apply_rotary_pos_emb_bshd', apply_rotary_pos_emb_bshd)
+
+    from .ops.npu_rotary_position_embedding import npu_rotary_position_embedding
+    aspm.register_patch('mindspeed.ops.npu_rotary_position_embedding.npu_rotary_position_embedding', npu_rotary_position_embedding, force_patch=True)
