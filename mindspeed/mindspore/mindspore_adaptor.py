@@ -1,3 +1,5 @@
+from mindspeed.mindspore.adaptor_utils import clear_wrapper
+
 
 def mindspore_adaptation(aspm, mindspeed_args):
     if not hasattr(mindspeed_args, "ai_framework") or mindspeed_args.ai_framework != "mindspore" or mindspeed_args.optimization_level < 0:
@@ -5,9 +7,14 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from .core.fusions.npu_moe_token_permute import permute_wrapper
     aspm.register_patch('megatron.core.transformer.moe.moe_utils.permute', permute_wrapper, force_patch=True)
-    from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
-    aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
-                        reuse_fp32_param_distrib_optimizer_init_wrapper, force_patch=True)
+
+    if mindspeed_args.reuse_fp32_param:
+        original_func_name = 'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__'
+        from megatron.core.optimizer.distrib_optimizer import DistributedOptimizer
+        clear_wrapper(aspm, original_func_name, DistributedOptimizer.__init__)
+        from .optimizer.distrib_optimizer import reuse_fp32_param_distrib_optimizer_init_wrapper
+        aspm.register_patch(original_func_name, reuse_fp32_param_distrib_optimizer_init_wrapper, force_patch=True)
+
     from .core.distributed.distributed_data_parallel import distributed_data_parallel_init, \
         local_make_param_hook
     aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
@@ -87,3 +94,6 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('mindspeed.ops.fusion_attention_v2.npu_fusion_attention', npu_fusion_attention)
     aspm.register_patch('mindspeed.ops.fusion_attention_v2.npu_fusion_attention_grad', npu_fusion_attention_grad)
     aspm.register_patch('mindspeed.ops.npu_ring_attention_update.npu_ring_attention_update', npu_ring_attention_update)
+
+    from mindspeed.mindspore.ops.npu_matmul_add import npu_matmul_add_fp32
+    aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, force_patch=True)
