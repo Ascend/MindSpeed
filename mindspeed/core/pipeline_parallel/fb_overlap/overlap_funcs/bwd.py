@@ -77,7 +77,7 @@ def transformer_layer_backward_moe(
                     permutated_local_input_tokens = hidden_states.index_select(0, _select_index)
                 else:
                     permutated_local_input_tokens, _ = permute(
-                        hidden_states, indices
+                        hidden_states, indices, num_out_tokens=self.num_out_tokens
                     )
                 return permutated_local_input_tokens
 

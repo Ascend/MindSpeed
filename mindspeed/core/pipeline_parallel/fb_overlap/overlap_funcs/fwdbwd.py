@@ -98,7 +98,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
                     permutated_local_input_tokens = hidden_states.index_select(0, _select_index)
                 else:
                     permutated_local_input_tokens, _ = permute(
-                        hidden_states, indices
+                        hidden_states, indices, num_out_tokens=bwd_layer_graph.num_out_tokens
                     )
                 return permutated_local_input_tokens
             bwd_perm1_out = recomp_token_permutation1(bwd_input_before_perm1, bwd_indices, bwd_select_index)
@@ -413,7 +413,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
                 shared_expert_output, _ = fwd_layer.mlp.shared_experts(detached_mlp_input)
 
         disp = fwd_layer.mlp.token_dispatcher
-        if disp.num_local_experts > 1:
+        if disp.num_local_experts > 1 and disp.config.moe_expert_capacity_factor is None:
             # No further synchronization is needed because torch.repeat_interleave() calls stream
             # synchronization internally when the `output_size` parameter is not provided.
             disp.cuda_sync_point = "no_sync"
@@ -589,6 +589,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         fwd_layer.mlp.token_dispatcher.input_splits, fwd_layer.mlp.token_dispatcher.output_splits, fwd_layer,
         checkpointed=checkpoint
     )
+    graph.num_out_tokens = fwd_layer.mlp.token_dispatcher.num_out_tokens
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
     if hasattr(fwd_layer.self_attention, 'swap_managers'):
@@ -840,7 +841,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             def recomp_token_permutation1(hidden_states, indices):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
                 permutated_local_input_tokens, _ = permute(
-                    hidden_states, indices
+                    hidden_states, indices, num_out_tokens=bwd_layer_graph.num_out_tokens
                 )
                 return permutated_local_input_tokens
 
@@ -911,7 +912,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             last_comm_handle = bwd_recomp_perm_a2a_handle
 
         disp = fwd_layer.mlp.token_dispatcher
-        if disp.num_local_experts > 1:
+        if disp.num_local_experts > 1 and disp.config.moe_expert_capacity_factor is None:
             # No further synchronization is needed because torch.repeat_interleave() calls stream
             # synchronization internally when the `output_size` parameter is not provided.
             disp.cuda_sync_point = "no_sync"
@@ -1182,6 +1183,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         fwd_layer.mlp.token_dispatcher.input_splits, fwd_layer.mlp.token_dispatcher.output_splits, fwd_layer,
         checkpointed=checkpoint
     )
+    graph.num_out_tokens = fwd_layer.mlp.token_dispatcher.num_out_tokens
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
     if hasattr(fwd_layer.self_attention, 'swap_managers'):

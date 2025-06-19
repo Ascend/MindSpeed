@@ -81,6 +81,15 @@ def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         )
         num_tokens_per_local_expert = num_local_tokens_per_expert
 
+    # Token Drop needs num_out_tokens before token
+    if self.config.moe_expert_capacity_factor is not None and self.num_local_experts > 1:
+        # No further synchronization is needed because torch.repeat_interleave() calls stream
+        # synchronization internally when the `output_size` parameter is not provided.
+        self.cuda_sync_point = "no_sync"
+        self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+            self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
+        )
+
     return num_tokens_per_local_expert
 
 
@@ -144,10 +153,15 @@ def alltoall_token_perm1(
 ):
     self.hidden_shape = hidden_states.shape
     args = get_args()
+    self.probs = probs
     if args.moe_unperm2_mem_optim:
         self.probs = None
-    else:
-        self.probs = probs
+        if self.config.moe_expert_capacity_factor is not None:
+            if not (hasattr(self, 'cached_all_one_probs') and self.cached_all_one_probs is not None):
+                self.cached_all_one_probs = torch.ones_like(probs)
+                self.cached_all_one_probs.requires_grad = False
+            self.probs = self.cached_all_one_probs
+
     assert probs.dim() == 2, "Expected 2D tensor for probs"
     assert indices.dim() == 2, "Expected 2D tensor for indices"
     tokens_per_expert = preprocess(self, indices)
@@ -155,7 +169,10 @@ def alltoall_token_perm1(
     event = torch.npu.current_stream().record_event()
     global overlap_stream
     if overlap_stream.stream is None:
-        overlap_stream.stream = torch.npu.Stream()      
+        if self.config.moe_expert_capacity_factor is None:
+            overlap_stream.stream = torch.npu.Stream()
+        else:
+            overlap_stream.stream = torch.npu.current_stream()
     with torch.npu.stream(overlap_stream.stream):
         torch.npu.current_stream().wait_event(event)
         # Flatten the input tensor
@@ -176,7 +193,8 @@ def alltoall_token_perm1(
         if args.moe_unperm2_mem_optim:
             permuted_local_probs, _ = permute(
                 probs.view(-1, 1),
-                indices.view(-1, 1)
+                indices.view(-1, 1),
+                num_out_tokens=self.num_out_tokens
             )
             if '910B' in acl.get_soc_name():
                 permutated_local_input_tokens = PackProb.apply(permutated_local_input_tokens, permuted_local_probs)
@@ -277,7 +295,7 @@ def alltoall_token_unperm2(self, permutated_local_input_tokens, probs=None):
         restore_shape=self.hiddden_shape_before_permute,
     )
     output_swap_manager = None
-    if args.moe_unperm2_mem_optim:
+    if args.moe_unperm2_mem_optim and self.config.moe_expert_capacity_factor is None:
         output_unperm = output_unperm.view(-1, self.router_topk, output_unperm.shape[-1])
         output = output_unperm.sum(dim=1)
     elif args.moe_unperm2_mem_optim_swap:

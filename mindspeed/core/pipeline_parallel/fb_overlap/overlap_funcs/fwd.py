@@ -104,7 +104,7 @@ def transformer_layer_forward_moe(
                 # Shared Experts Forward.
                 shared_expert_output, _ = self.mlp.shared_experts(detached_mlp_input)
         disp = self.mlp.token_dispatcher
-        if disp.num_local_experts > 1:
+        if disp.num_local_experts > 1 and disp.config.moe_expert_capacity_factor is None:
             # No further synchronization is needed because torch.repeat_interleave() calls stream
             # synchronization internally when the `output_size` parameter is not provided.
             disp.cuda_sync_point = "no_sync"
@@ -261,6 +261,7 @@ def transformer_layer_forward_moe(
         self.mlp.token_dispatcher.input_splits, self.mlp.token_dispatcher.output_splits, self,
         checkpointed=checkpoint
     )
+    graph.num_out_tokens = self.mlp.token_dispatcher.num_out_tokens
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
     if hasattr(self.self_attention, 'swap_managers'):

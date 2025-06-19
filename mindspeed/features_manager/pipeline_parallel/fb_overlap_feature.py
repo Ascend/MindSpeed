@@ -22,7 +22,7 @@ class FwdBwdOverlapFeature(MindSpeedFeature):
         self.incompatible_check(args, 'overlap_grad_reduce')
         self.incompatible_check(args, 'moe_hierarchical_alltoallv')
         self.incompatible_check(args, 'moe_zero_memory_num_layers')
-        self.incompatible_check(args, 'moe_expert_capacity_factor')
+        self.incompatible_check(args, 'moe_pad_expert_input_to_capacity')
         self.incompatible_check(args, 'use_nanopipe')
         self.incompatible_check(args, 'automated_pipeline')
         self.incompatible_check(args, 'recompute_in_bubble')
@@ -39,6 +39,8 @@ class FwdBwdOverlapFeature(MindSpeedFeature):
             self.dependency_check(args, 'moe_tp_extend_ep')
         if args.moe_unperm2_mem_optim and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim currently only can be used with --moe-fb-overlap')
+        if args.moe_unperm2_mem_optim and args.moe_expert_capacity_factor is not None and args.use_fused_moe_token_permute_and_unpermute:
+            raise AssertionError('--moe-unperm2-mem-optim do not support moe_expert_capacity_factor when fused_moe_token_permute_and_unpermute is enabled')
         if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')
         if args.moe_unperm2_mem_optim and args.moe_unperm2_mem_optim_swap:
