@@ -468,7 +468,10 @@ class AttentionWithCp(torch.autograd.Function):
             if is_eod_reset:
                 # SBH -> TND
                 # fa varlen mode require TND layout
-                q, k, v = [sbh_to_tnd(x, n) for x in [q, k, v]]
+                kv_n = n // (q.shape[-1] // v.shape[-1])
+                q = sbh_to_tnd(q, n)
+                k = sbh_to_tnd(k, kv_n)
+                v = sbh_to_tnd(v, kv_n)
 
                 # only first half of each sub sequence KV block need to be calculated when i <= rank
                 kv_index = packed_seq_params.kv_index
