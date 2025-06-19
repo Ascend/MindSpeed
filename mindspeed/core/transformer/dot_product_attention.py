@@ -443,6 +443,22 @@ class AttentionStrategy:
         """Reshape query, key, and value tensors
         based on packed sequence parameters.
         """
+        if (
+            getattr(self._attention.config, "use_repeat_kv", False)
+            and self._attention.num_attention_heads_per_partition
+            // self._attention.num_query_groups_per_partition
+            > 1
+        ):
+            key = key.repeat_interleave(
+                self._attention.num_attention_heads_per_partition
+                // self._attention.num_query_groups_per_partition,
+                dim=2,
+            )
+            value = value.repeat_interleave(
+                self._attention.num_attention_heads_per_partition
+                // self._attention.num_query_groups_per_partition,
+                dim=2,
+            )
 
         if packed_seq_params is not None:  # TND
             query, key, value = [
