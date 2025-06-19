@@ -47,11 +47,11 @@ class TestConv3dDepthParallel(DistributedTest):
                                        stride=(4, 4, 4), param_async=True, sp_size=1, dtype=torch.bfloat16)
 
         conv1_clone = Conv3DSequenceParallel(pg=group, in_channels=8, out_channels=4, kernel_size=(3, 3, 3),
-                                             stride=(4, 4, 4), param_async=True, sp_size=1, dtype=torch.bfloat16)
+                                             stride=(4, 4, 4), param_async=True, sp_size=4, dtype=torch.bfloat16)
         conv2_clone = Conv3DSequenceParallel(pg=group, in_channels=4, out_channels=2, kernel_size=(3, 3, 3),
-                                             stride=(4, 4, 4), param_async=True, sp_size=1, dtype=torch.bfloat16)
+                                             stride=(4, 4, 4), param_async=True, sp_size=4, dtype=torch.bfloat16)
         conv3_clone = Conv3DSequenceParallel(pg=group, in_channels=2, out_channels=1, kernel_size=(3, 3, 3),
-                                             stride=(4, 4, 4), param_async=True, sp_size=1, dtype=torch.bfloat16)
+                                             stride=(4, 4, 4), param_async=True, sp_size=4, dtype=torch.bfloat16)
 
         conv1_clone.conv3d = deepcopy(conv1.conv3d)
         conv2_clone.conv3d = deepcopy(conv2.conv3d)
@@ -87,6 +87,7 @@ class TestConv3dDepthParallel(DistributedTest):
             output_data2 = model2(input_data2)
             loss2 = criterion(output_data2.float(), target[i].float())
             loss2.backward()
+            model2.wait_all_handles()
             optimizer2.step()
             loss2_lst.append(float(loss2))
 

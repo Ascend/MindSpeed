@@ -88,7 +88,7 @@ GPT_ARGS="
     --group-query-attention \
     --num-query-groups 8 \
     --lr 2.0e-4 \
-    --min-lr 2.0e-4 \
+    --min-lr 2.0e-5 \
     --weight-decay 0.1 \
     --clip-grad 1.0 \
     --adam-beta1 0.9 \
