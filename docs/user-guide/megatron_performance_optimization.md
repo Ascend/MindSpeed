@@ -26,8 +26,10 @@ num_head 要能被 tp_size*cp_size 整除。
 设置`--context-parallel-size`，默认为1，根据用户需求配置。
 同时设置`--context-parallel-algo ulysses_cp_algo`。
 
-#### 执行脚本
-拷贝 MindSpeed 目录下的 tests_extend 目录到 Megatron 目录， 并在 Megatron 目录下执行如下命令：
+#### 示例脚本
+1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录
+2. 修改 `tests_extend/system_tests/feature_tests/ulysses.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径
+3. 执行如下命令：
 
 ```
 bash tests_extend/system_tests/feature_tests/ulysses.sh
@@ -69,8 +71,10 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 | --megatron-cp-in-bnsd                    | 开启后，FA使用BNSD计算。                                                          |
 | --cp-window-size [int]                   | 可选，默认为`1`，即使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。|
 
-#### 执行脚本
-首先拷贝 MindSpeed 目录下的 tests_extend 目录到 Megatron 目录，然后在该目录下将`tests_extend/system_tests/feature_tests/ring_attention.sh`文件中`cp-window-size`参数改为1，最后执行如下命令：
+#### 示例脚本
+1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录
+2. 修改 `tests_extend/system_tests/feature_tests/ring_attention.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径， 并 设置 `cp-window-size`为1
+3. 执行如下命令：
 
 ```
 bash tests_extend/system_tests/feature_tests/ring_attention.sh
@@ -98,7 +102,7 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 
 已开启Ring Attention的训练场景
 
-Ring Attention使能方式参考[此处](ring-attention-context-parallel.md)
+Ring Attention使能方式参考[此处](../../docs/features/ring-attention-context-parallel.md)
 
 
 ### 使用方法
@@ -109,8 +113,10 @@ Ring Attention使能方式参考[此处](ring-attention-context-parallel.md)
 |------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
 | --cp-window-size [int] | 默认为`1`，即使用原始的Ring Attention算法,将`--cp-window-size`设置为大于1的整数，即可使能Double Ring Attention算法,该参数为Double Ring Attention算法中双层Ring Attention的内层窗口大小； |
 
-#### 执行脚本
-拷贝 MindSpeed 目录下的 tests_extend 目录到 Megatron 目录， 并在 Megatron 目录下执行如下命令：
+#### 示例脚本
+1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录
+2. 修改 `tests_extend/system_tests/feature_tests/ring_attention.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径， 并设置 `cp-window-size`为2
+3. 执行如下命令：
 
 ```
 bash tests_extend/system_tests/feature_tests/ring_attention.sh
@@ -157,8 +163,10 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置。
 
-#### 执行脚本
-拷贝 MindSpeed 目录下的 tests_extend 目录到 Megatron 目录， 并在 Megatron 目录下执行如下命令：
+#### 示例脚本
+1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录
+2. 修改 `tests_extend/system_tests/feature_tests/hybrid.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径
+3. 执行如下命令：
 
 ```
 bash tests_extend/system_tests/feature_tests/hybrid.sh
