@@ -1,28 +1,32 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
-#  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+#  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
+import logging
 from logging import getLogger
-from typing import Optional
+import torch
 
-import mindtorch.torch as torch
+from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
+from megatron.core.utils import is_float8tensor, log_single_rank
 
+from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
-from megatron.core.distributed.param_and_grad_buffer import _ParamAndGradBuffer
+from megatron.core.distributed.param_and_grad_buffer import _ParamAndGradBuffer, partition_buckets
 
 logger = getLogger(__name__)
 
 
 def distributed_data_parallel_init(
         self,
-        config,
+        config: TransformerConfig,
         ddp_config: DistributedDataParallelConfig,
         module: torch.nn.Module,
-        data_parallel_group: torch.distributed.ProcessGroup,
-        expert_data_parallel_group: Optional[torch.distributed.ProcessGroup] = None,
         disable_bucketing: bool = False,
 ):
     from megatron.core.distributed.distributed_data_parallel import DistributedDataParallel
     from megatron.core import parallel_state
-    super(DistributedDataParallel, self).__init__(config=config)
+    super(DistributedDataParallel, self).__init__(config=config, module=module)
+    if has_config_logger_enabled(config):
+        log_config_to_disk(config, locals(), prefix=type(self).__name__)
+
     self.module = module
 
     # If bucket_size is not provided as an input, use sane default.
@@ -30,15 +34,19 @@ def distributed_data_parallel_init(
     # ring-reduce implementations are large enough to remain bandwidth-bound rather than
     # latency-bound.
     if ddp_config.bucket_size is None:
-        dp_size = parallel_state.get_data_parallel_world_size()
-        ddp_config.bucket_size = max(40000000, 1000000 * dp_size)
+        ddp_config.bucket_size = max(
+            40000000, 1000000 * parallel_state.get_data_parallel_world_size()
+        )
     # Set bucket_size to infinity if overlap_grad_reduce is False.
     if not ddp_config.overlap_grad_reduce:
         ddp_config.bucket_size = None
 
     self.ddp_config = ddp_config
-    if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-        logger.info(f'Setting up DistributedDataParallel with config {self.ddp_config}')
+    log_single_rank(
+        logger,
+        logging.INFO,
+        f'Setting up DistributedDataParallel with config {self.ddp_config}',
+    )
 
     # Turn off bucketing if we are on a pipeline stage that is not the first (since
     # data-parallel communication on these stages is not on the critical path), or if
@@ -50,16 +58,20 @@ def distributed_data_parallel_init(
     if disable_bucketing:
         self.bucket_size = None
 
-    self.module = module
-    self.param_to_buffer = {}
+    self.param_to_bucket_group = {}
 
     # Group parameters by their gradient type.
     param_to_name = {}
     dense_params = []
     expert_parallel_params = []
+    self.params_with_grad = []
     for name, param in self.module.named_parameters():
         if not param.requires_grad:
             continue
+
+        # Track params with grad to enable direct setting
+        # of param.grad_added_to_main_grad
+        self.params_with_grad.append(param)
 
         param.grad_added_to_main_grad = False
         param_to_name[param] = name
@@ -69,22 +81,66 @@ def distributed_data_parallel_init(
         else:
             expert_parallel_params.append(param)
 
-    def allocate_buffers_for_parameters(
-            input_params, data_parallel_group, gradient_scaling_factor,
+    def _allocate_buffers_for_parameters(
+            input_params, data_parallel_group, gradient_scaling_factor
     ):
         param_and_grad_dtype_to_params = {}
+        param_and_grad_dtype_to_offsets = {}
+        param_and_grad_dtype_to_indices = {}
 
         # Group parameters by their gradient type.
         for param in input_params:
-            if not param.requires_grad:
-                continue
+            assert param.requires_grad
 
             param_dtype = param.dtype
+            if is_float8tensor(param):
+                # Currently TE's Float8Tensor is a wrapper of torch.Tensor. It has a "fake"
+                # dtype (usually a higher precision dtype such as bfloat16), but its actual
+                # data is stored in the form of a torch uint8 tensor within the Float8Tensor's
+                # ".data" attribute. Therefore, when creating the param buffer for fp8 params,
+                # it is necessary to use torch.uint8, not the "fake" dtype got from
+                # "param.dtype".
+                param_dtype = torch.uint8
             grad_dtype = torch.float if self.ddp_config.grad_reduce_in_fp32 else param.dtype
 
             params = param_and_grad_dtype_to_params.get((param_dtype, grad_dtype), [])
             params.append(param)
             param_and_grad_dtype_to_params[(param_dtype, grad_dtype)] = params
+
+            # Get the index of each param among the params with same dtype, if a param is fp8,
+            # use its "fake" high precision dtype to find which params have same dtype with it.
+            # We need these indices to load a non-native-fp8 checkpoint in native-fp8 mode.
+            offset = param_and_grad_dtype_to_offsets.get((param.dtype, grad_dtype), 0)
+            param_and_grad_dtype_to_offsets[(param.dtype, grad_dtype)] = offset + 1
+            indices = param_and_grad_dtype_to_indices.get((param_dtype, grad_dtype), [])
+            indices.append(offset)
+            param_and_grad_dtype_to_indices[(param_dtype, grad_dtype)] = indices
+
+        if not config.calculate_per_token_loss:
+            if self.ddp_config.average_in_collective:
+                # Collective is averaging gradients in collective with data_parallel_group.
+                # Hence the gradient_scaling_factor should be equal to 1 when data_parallel_group is DP*EP
+                # and gradient_scaling_factor should be 1/EP when data_parallel_group is DP
+                if torch.distributed.get_world_size(
+                        group=data_parallel_group
+                ) == parallel_state.get_data_parallel_world_size(with_context_parallel=True):
+                    assert gradient_scaling_factor == 1.0
+                else:
+                    assert gradient_scaling_factor == (
+                            1.0
+                            / (
+                                    parallel_state.get_data_parallel_world_size(
+                                        with_context_parallel=True
+                                    )
+                                    // torch.distributed.get_world_size(group=data_parallel_group)
+                            )
+                    )
+            else:
+                target_gradient_scaling_factor = (
+                        1.0
+                        / parallel_state.get_data_parallel_world_size(with_context_parallel=True)
+                )
+                assert gradient_scaling_factor == target_gradient_scaling_factor
 
         # Allocate the grad buffers and map the grads.
         buffers = []
@@ -99,29 +155,82 @@ def distributed_data_parallel_init(
                     self.bucket_size,
                     param_to_name,
                     gradient_scaling_factor,
+                    param_and_grad_dtype_to_indices[(param_dtype, grad_dtype)],
                 )
             )
-            for param in params:
-                self.param_to_buffer[param] = buffers[-1]
 
-        return buffers
+        # In some scenarios, we want to put buckets from different buffers into a group so that
+        # their communication can be aggregated. For example, when there are both fp8 buffers
+        # and bf16 buffers in the model and vpp is enabled, each model chunk will have an fp8
+        # bucket and a bf16 bucket, which doubles the number of communication kernels, and
+        # because of the use of CUDA_DEVICE_MAX_CONNECTIONS=1, having multiple back-to-back
+        # communications will prevent the overlap of the communication kernels with computation
+        # kernels.
+        # If bucketing is explicitly disabled, then put all buckets in a buffer into a single
+        # bucket group.
+        bucket_groups = partition_buckets(buffers, force_single_bucket_group=disable_bucketing)
+
+        if self.ddp_config.num_distributed_optimizer_instances > 1:
+            assert (
+                self.ddp_config.use_distributed_optimizer
+            ), 'Partial DistOpt cannot be used without DistOpt'
+            communication_stream = torch.cuda.Stream(device=torch.cuda.current_device())
+            for bucket_group in bucket_groups:
+                bucket_group.inter_distributed_optimizer_instance_group = (
+                    parallel_state.get_inter_partial_data_parallel_group()
+                )
+                bucket_group.communication_stream = communication_stream
+
+        # Set `next_param_gather_bucket_group` for different bucket groups by iterating through
+        # buckets in reverse order (since all-gathers happen in reverse order of buckets).
+        if self.ddp_config.use_distributed_optimizer and self.ddp_config.overlap_param_gather:
+            num_bucket_groups = len(bucket_groups)
+            for i in range(1, num_bucket_groups):
+                bucket_groups[num_bucket_groups - i].next_param_gather_bucket_group = (
+                    bucket_groups[num_bucket_groups - i - 1]
+                )
+
+        # Create map from param to bucket group, used in pre_hook.
+        for bucket_group in bucket_groups:
+            for bucket in bucket_group.buckets:
+                for param in bucket.params_list:
+                    self.param_to_bucket_group[param] = bucket_group
+
+        return buffers, bucket_groups
 
     if config.calculate_per_token_loss:
         gradient_scaling_factor = 1.0
+        expert_gradient_scaling_factor = 1.0
     else:
-        data_parallel_world_size = torch.distributed.get_world_size(data_parallel_group)
-        gradient_scaling_factor = 1.0 / data_parallel_world_size
+        if self.ddp_config.average_in_collective:
+            gradient_scaling_factor = 1.0
+            expert_gradient_scaling_factor = (
+                    1.0 / parallel_state.get_expert_model_parallel_world_size()
+            )
+        else:
+            data_parallel_world_size = parallel_state.get_data_parallel_world_size(
+                with_context_parallel=True
+            )
+
+            gradient_scaling_factor = 1.0 / data_parallel_world_size
+            expert_gradient_scaling_factor = 1.0 / data_parallel_world_size
 
     # Allocate the param+grad buffers for dense params' grads.
-    self.buffers = allocate_buffers_for_parameters(
-        dense_params, data_parallel_group, gradient_scaling_factor=gradient_scaling_factor,
+    self.buffers, self.bucket_groups = _allocate_buffers_for_parameters(
+        dense_params,
+        parallel_state.get_data_parallel_group(
+            with_context_parallel=True, partial_data_parallel=True
+        ),
+        gradient_scaling_factor=gradient_scaling_factor,
     )
 
     # Allocate separate param+grad buffers for expert parallel params' grads.
-    self.expert_parallel_buffers = allocate_buffers_for_parameters(
-        expert_parallel_params,
-        expert_data_parallel_group,
-        gradient_scaling_factor=gradient_scaling_factor,
+    self.expert_parallel_buffers, self.expert_parallel_bucket_groups = (
+        _allocate_buffers_for_parameters(
+            expert_parallel_params,
+            parallel_state.get_expert_data_parallel_group(),
+            gradient_scaling_factor=expert_gradient_scaling_factor,
+        )
     )
 
     # Delete references to weight_tensor if they exist since we don't want two parameter copies
@@ -145,3 +254,13 @@ def distributed_data_parallel_init(
         if param.requires_grad:
             # Expand so we get access to grad_fn.
             param_tmp = param.expand_as(param)
+            # Get the gradient accumulator function.
+            self.grad_accs.append(param.register_hook(self._make_backward_post_hook(param)))
+
+    self.use_forward_hook = (
+            self.ddp_config.use_distributed_optimizer and self.ddp_config.overlap_param_gather
+    )
+    self.remove_forward_pre_hook_handles = {}
+    if self.use_forward_hook:
+        self.enable_forward_pre_hook()
+    self.overlap_param_gather_with_optimizer_step = False

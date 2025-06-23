@@ -1,6 +1,6 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
-#  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
-import mindtorch.torch as torch
+# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+#  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
+import torch
 
 
 def allreduce_layernorm_grads(model, config):

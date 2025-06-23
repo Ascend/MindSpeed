@@ -46,6 +46,7 @@ def process_args(parser):
     parser = _add_deepseek_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
     parser = _add_auto_settings_args(parser)
+    parser = _add_ai_framework_args(parser)
 
     for feature in FEATURES_LIST:
         feature.register_args(parser)
@@ -76,6 +77,13 @@ def _add_deepseek_args(parser):
     group.add_argument('--rope-scaling-original-max-position-embeddings', type=int, default=None,
                        help='Yarn rope: rope original max position embeddings')
 
+    return parser
+
+
+def _add_ai_framework_args(parser):
+    group = parser.add_argument_group(title='ai framework')
+    group.add_argument('--ai-framework', type=str, default='pytorch', choices=['pytorch', 'mindspore'],
+                       help='support pytorch and mindspore')
     return parser
 
 

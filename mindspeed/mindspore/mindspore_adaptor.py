@@ -1,12 +1,11 @@
-#  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+#  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
 
 import contextlib
 import functools
 import types
 import sys
 
-import mindtorch
-import mindtorch.torch as torch
+import torch
 import mindspore
 from mindspore import context
 
@@ -38,13 +37,13 @@ def multi_tensor_l2norm(overflow_buf, tensor_lists, per_parameter):
     ret_per_tensor = [] if per_parameter else None
     for grads_for_norm in tensor_lists:
         for grad in grads_for_norm:
-            grad_norm = mindtorch.torch.norm(grad, norm_type)
+            grad_norm = torch.norm(grad, norm_type)
             total_grad_norm += grad_norm ** norm_type
         if per_parameter:
             ret_per_tensor.append(total_grad_norm.clone())
     # if not list
     if not tensor_lists:
-        grad_norm = mindtorch.torch.cuda.FloatTensor([0])
+        grad_norm = torch.cuda.FloatTensor([0])
         total_grad_norm = grad_norm ** norm_type
     # norm_type can not zero
     if norm_type != 0:
@@ -58,7 +57,7 @@ def multi_tensor_scale(overflow_buf, tensor_lists, scale):
     if len(tensor_lists[0]) != len(tensor_lists[1]):
         raise AssertionError('The size of tensor list must be same, but got {} and {}'.format(len(tensor_lists[0]),
                                                                                               len(tensor_lists[1])))
-    with mindtorch.torch.no_grad():
+    with torch.no_grad():
         for i in range(len(tensor_lists[0])):
             tensor_lists[1][i].copy_(tensor_lists[0][i] * scale)
 
@@ -108,12 +107,12 @@ def _custom_bwd(bwd):
 
 
 def bprop_commn(self, grad_output):
-    grad_output = mindtorch.torch.cast_to_adapter_tensor(grad_output)
+    grad_output = torch.cast_to_adapter_tensor(grad_output)
     if isinstance(grad_output, (list, tuple)):
         res = self.backward(self.ctx, *grad_output)
     else:
         res = self.backward(self.ctx, grad_output)
-    res = mindtorch.torch.cast_to_ms_tensor(res)
+    res = torch.cast_to_ms_tensor(res)
     if res is None:
         return 0
     elif isinstance(res, (list, tuple)):
@@ -172,86 +171,78 @@ def megatron_training_adaptation(mspm):
 
 
 def megatron_core_adaptation(mspm):
-    from mindspeed.mindspore.core.distributed.finalize_model_grads import allreduce_layernorm_grads
-    from mindspeed.mindspore.core.optimizer.optimizer import float16_optimizer_init
-    from mindspeed.mindspore.core.optimizer.optimizer import float16_optimizer_collect_for_unscaling
-    from mindspeed.mindspore.core.optimizer.optimizer import mixed_precision_optimizer_unscale_and_check_for_nan
-    from mindspeed.mindspore.core.optimizer.clip_grads import clip_grad_norm_fp32
-    from mindspeed.mindspore.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy_backward
-    from mindspeed.mindspore.core.utils import make_viewless_tensor
+    from mindspeed.mindspore.core.pipeline_parallel.schedules import deallocate_output_tensor
     from mindspeed.mindspore.core.pipeline_parallel.schedules import forward_backward_no_pipelining
+    from mindspeed.mindspore.core.pipeline_parallel.schedules import forward_backward_pipelining_with_interleaving
+    from mindspeed.mindspore.core.pipeline_parallel.schedules import forward_backward_pipelining_without_interleaving
     from mindspeed.mindspore.core.distributed.distributed_data_parallel import distributed_data_parallel_init
-    from mindspeed.mindspore.core.distributed.param_and_grad_buffer import get
-    from mindspeed.mindspore.core.tensor_parallel.mappings import mapping_reduce
-    from mindspeed.mindspore.core.tensor_parallel.mappings import reduce_from_model_parallel_region_bprop
-    from mindspeed.mindspore.core.tensor_parallel.mappings import scatter_to_sequence_parallel_region_bprop
-    from mindspeed.mindspore.core.tensor_parallel.mappings import reduce_scatter_to_sequence_parallel_region_bprop
-    from mindspeed.mindspore.core.tensor_parallel.mappings import gather_from_model_parallel_region_bprop
-    from mindspeed.mindspore.core.tensor_parallel.mappings import copy_to_model_parallel_region_bprop
-    from mindspeed.mindspore.core.tensor_parallel.mappings import scatter_to_model_parallel_region_bprop
-    from mindspeed.mindspore.core.tensor_parallel.mappings import gather_from_sequence_parallel_region_bprop
-    from mindspeed.mindspore.core.tensor_parallel.cross_entropy import bocab_parallel_cross_entropy_bprop
-    from mindspeed.mindspore.core.tensor_parallel.layers import linear_with_frozen_weight_bprop
-    from mindspeed.mindspore.core.tensor_parallel.layers import \
-        linear_with_grad_accumulation_and_async_communication_bprop
 
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._reduce', mapping_reduce)
+    from mindspeed.mindspore.core.tensor_parallel.layers import backward
+    from mindspeed.mindspore.core.tensor_parallel.random import checkpoint_function_backward
+    from mindspeed.mindspore.core.models.gpt.gpt_model import model_forward
+    from mindspeed.mindspore.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd
+    from mindspeed.mindspore.optimizer.adamw import adamw
+
+
     mspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
                         distributed_data_parallel_init)
-    mspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_no_pipelining',
-                        forward_backward_no_pipelining)
-    mspm.register_patch('megatron.core.utils.make_viewless_tensor', make_viewless_tensor)
-    mspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_layernorm_grads',
-                        allreduce_layernorm_grads)
-    mspm.register_patch('megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__',
-                        float16_optimizer_init)
+    mspm.register_patch('megatron.core.pipeline_parallel.schedules.deallocate_output_tensor',
+                        deallocate_output_tensor)
+    mspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_no_pipelining', forward_backward_no_pipelining, force_patch=True)
+    mspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_with_interleaving', forward_backward_pipelining_with_interleaving, force_patch=True)
+    mspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_without_interleaving', forward_backward_pipelining_without_interleaving, force_patch=True)
+
+    mspm.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward', backward, create_dummy=True)
+    mspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
+                        checkpoint_function_backward, force_patch=True)
+    mspm.register_patch('megatron.core.models.gpt.gpt_model.GPTModel.forward', model_forward, force_patch=True)
+    mspm.register_patch('megatron.core.models.common.embeddings.rope_utils._apply_rotary_pos_emb_bshd',
+                        apply_rotary_pos_emb_bshd, force_patch=True)
+    mspm.register_patch('mindspeed.optimizer.adamw.adamw', adamw, force_patch=True)
+
+
+def auto_settings_adaptation(mspm):
+    from mindspeed.mindspore.auto_settings.auto_settings import ms_init, _init_global_group
+    from mindspeed.mindspore.auto_settings.module.parse.profiling_parse import ms_get_settings
+    from mindspeed.mindspore.auto_settings.module.parse.profiling_parse.profiling_constant import SpecialOperatorName
+    from mindspeed.mindspore.auto_settings.module.parse.profiling_parse.profiling_memory_parse import analyse_cann_and_driver, analyse_loss
+    from mindspeed.mindspore.auto_settings.profile.profiler import profiler_run
+    from mindspeed.mindspore.auto_settings.profile.runner import runner_run
+    from mindspeed.mindspore.auto_settings.utils.utils import get_module_info
+    from mindspeed.mindspore.auto_settings.config.system_config import __post_init__
+    from mindspeed.mindspore.auto_settings.module.time_cost_black import get_module_time
+
+    mspm.register_patch('mindspeed.auto_settings.auto_settings.AutoSettings.init',
+                        ms_init)
+    mspm.register_patch('mindspeed.auto_settings.auto_settings._init_global_group',
+                        _init_global_group)
+    mspm.register_patch('mindspeed.auto_settings.module.parse.profiling_parse.get_settings',
+                        ms_get_settings)
+    mspm.register_patch('mindspeed.auto_settings.module.parse.profiling_parse.profiling_constant.SpecialOperatorName',
+                        SpecialOperatorName)
+    mspm.register_patch('mindspeed.auto_settings.module.parse.profiling_parse.profiling_memory_parse.AnalyseMemoryMsg.analyse_cann_and_driver',
+                        analyse_cann_and_driver)
     mspm.register_patch(
-        'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._collect_main_grad_data_for_unscaling',
-        float16_optimizer_collect_for_unscaling)
-    mspm.register_patch(
-        'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer._unscale_main_grads_and_check_for_nan',
-        mixed_precision_optimizer_unscale_and_check_for_nan)
-    mspm.register_patch('megatron.core.optimizer.clip_grads.clip_grad_norm_fp32', clip_grad_norm_fp32)
-    mspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBuffer._get', get)
-    mspm.register_patch('megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.backward',
-                        vocab_parallel_cross_entropy_backward)
-
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._ReduceFromModelParallelRegion.bprop',
-                        reduce_from_model_parallel_region_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._ScatterToSequenceParallelRegion.bprop',
-                        scatter_to_sequence_parallel_region_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._ReduceScatterToSequenceParallelRegion.bprop',
-                        reduce_scatter_to_sequence_parallel_region_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.cross_entropy._VocabParallelCrossEntropy.bprop',
-                        bocab_parallel_cross_entropy_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._GatherFromModelParallelRegion.bprop',
-                        gather_from_model_parallel_region_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._CopyToModelParallelRegion.bprop',
-                        copy_to_model_parallel_region_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._ScatterToModelParallelRegion.bprop',
-                        scatter_to_model_parallel_region_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.mappings._GatherFromSequenceParallelRegion.bprop',
-                        gather_from_sequence_parallel_region_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.layers.LinearWithFrozenWeight.bprop',
-                        linear_with_frozen_weight_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.bprop',
-                        linear_with_grad_accumulation_and_async_communication_bprop, create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.random._CUDA_RNG_STATE_TRACKER', DummyTracker(),
-                        create_dummy=True)
-    mspm.register_patch('megatron.core.tensor_parallel.random.CudaRNGStatesTracker', DummyTracker,
-                        create_dummy=True)
+        'mindspeed.auto_settings.module.parse.profiling_parse.profiling_memory_parse.AnalyseMemoryMsg.analyse_loss',
+        analyse_loss)
+    mspm.register_patch('mindspeed.auto_settings.profile.profiler.Profiler.run',
+                        profiler_run)
+    mspm.register_patch('mindspeed.auto_settings.profile.runner.Runner.run',
+                        runner_run)
+    mspm.register_patch('mindspeed.auto_settings.utils.utils.get_module_info',
+                        get_module_info)
+    mspm.register_patch('mindspeed.auto_settings.config.system_config.SystemConfig.__post_init__',
+                        __post_init__)
+    mspm.register_patch('mindspeed.auto_settings.module.time_cost_black.TimeCostBlack.get_module_time',
+                        get_module_time)
 
 
-def exe_adaptation():
+def exe_mindspore_adaptation(mindspeed_args):
     print('=====Enter Mindspore adaptor =====')
+    if not hasattr(mindspeed_args, "ai_framework") or mindspeed_args.ai_framework != "mindspore" or mindspeed_args.optimization_level < 0:
+        return
     from mindspeed.patch_utils import MindSpeedPatchesManager as mspm
-    apex_adaptation(mspm)
-    te_adaptation(mspm)
-    mspm.apply_patches()
-    megatron_torch_adaptation(mspm)
-    megatron_training_adaptation(mspm)
     megatron_core_adaptation(mspm)
+    auto_settings_adaptation(mspm)
     mspm.apply_patches()
 
-
-exe_adaptation()

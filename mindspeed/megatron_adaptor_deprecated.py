@@ -12,6 +12,7 @@ from torch.distributed import all_gather_into_tensor, reduce_scatter_tensor
 from torch_npu.contrib import transfer_to_npu
 from mindspeed.features_manager import FEATURES_LIST
 from mindspeed.deprecate import AutoExecuteFunction, Deprecated, MEGATRON_ADAPTOR_DEPRECATED_TIME
+from .mindspore.mindspore_adaptor import exe_mindspore_adaptation
 
 from .arguments import process_args
 
@@ -1126,6 +1127,8 @@ def exe_adaptation():
         # Advanced acceleration algorithm
         adaptation_l2(aspm, mindspeed_args)
         LOG.info("Adaptation L2  for megatron")
+
+    exe_mindspore_adaptation(mindspeed_args)
 
     aspm.apply_patches()
 
