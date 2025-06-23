@@ -126,7 +126,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
 **步骤2**
 
-下载Alpaca数据集（https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-000010-a09b74b3ef9c3b56.parquet）放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
+在huggingface的网站（https://huggingface.co/datasets/tatsu-lab/alpaca）下载Alpaca的train-00000-of-000010-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
 
 如果出现下载速度太慢或者无法访问下载的情况，
 请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
@@ -220,7 +220,7 @@ DISTRIBUTED_ARGS="
 # GPT模型参数
 GPT_ARGS="
     --num-layers 24 \
-    --hidden-size 1024 \ 
+    --hidden-size 1024 \
     --num-attention-heads 16 \
     --seq-length 1024 \
     --max-position-embeddings 1024 \
@@ -289,7 +289,7 @@ hierarchical_context_parallel_sizes: Optional[list[int]] = None
 如果需要进行模型加载重新训练，
 参考[模型保存与加载](#模型保存与加载)章节完成模型的二次训练。
 
-- 若训练过程中提示部分CUDA接口报错，可能是部分API(算子API或者框架API)不支持引起，
+- 若训练过程中提示部分CUDA接口报错，可能是部分API（算子API或者框架API）不支持引起，
 用户可进入[昇腾MindSpeed开源社区](https://gitee.com/ascend/MindSpeed)提出ISSUE求助。
 
 #### 多机多卡训练
@@ -463,11 +463,11 @@ hierarchical_context_parallel_sizes: Optional[list[int]] = None
 
 **后续处理**
 
-- `pretrain_distributed.sh`训练脚本默认配置了模型保持路径，
+- `pretrain_distributed.sh`训练脚本默认配置了模型保存路径，
 如果需要进行模型加载重新训练，
 参考[模型保存与加载](#模型保存与加载)章节完成模型的二次训练。
 
-- 若训练过程中提示部分CUDA接口报错，可能是部分API(算子API或者框架API)不支持引起，
+- 若训练过程中提示部分CUDA接口报错，可能是部分API（算子API或者框架API）不支持引起，
 用户可进入[昇腾MindSpeed开源社区](https://gitee.com/ascend/MindSpeed)提出ISSUE求助。
 
 ## 模型保存与加载
@@ -551,6 +551,7 @@ GPT_ARGS="
     --clip-grad 1.0 \
     --fp16 \
     --transformer-impl local \
+    --use-checkpoint-opt_param-scheduler
 "
 
 #数据集配置
