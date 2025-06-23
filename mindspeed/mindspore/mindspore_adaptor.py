@@ -97,3 +97,6 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from mindspeed.mindspore.ops.npu_matmul_add import npu_matmul_add_fp32
     aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, force_patch=True)
+
+    from mindspeed.mindspore.core.transformer.transformer import core_mlp_forward_wrapper
+    aspm.register_patch('megatron.core.transformer.mlp.MLP.forward', core_mlp_forward_wrapper)
