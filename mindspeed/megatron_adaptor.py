@@ -346,10 +346,15 @@ def mcore_optimizer_adapation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
                         reuse_fp32_param_param_and_grad_buffer_init_wrapper)
 
-    if mindspeed_args.param_and_grad_buffer_pad:
+    if mindspeed_args.param_and_grad_buffer_pad or mindspeed_args.ddp_bucket_optimization:
         from .core.distributed.param_and_grad_buffer import param_and_grad_buffer_init_pad
         aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.__init__',
                             param_and_grad_buffer_init_pad)
+    if mindspeed_args.ddp_bucket_optimization:
+        from .core.distributed.param_and_grad_buffer import update_pad
+        aspm.register_patch('megatron.core.distributed.ParamAndGradBuffer.update',
+                            update_pad, create_dummy=True)
+
 
 
 def mcore_pipeline_parallel_adaptation(aspm, mindspeed_args):
@@ -564,9 +569,10 @@ def megatron_training_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.training.utils.get_batch_on_this_tp_rank', get_batch_on_this_tp_rank)
     if mindspeed_args.op_cal_tflops:
         aspm.register_patch('megatron.training.training.training_log', training_log)
+    if mindspeed_args.async_log_allreduce or mindspeed_args.ddp_bucket_optimization:
+        aspm.register_patch('megatron.training.training.train_step', train_step)
     if mindspeed_args.async_log_allreduce:
         from mindspeed.core.data_parallel.async_log_allreduce import forward_step_wrapper
-        aspm.register_patch('megatron.training.training.train_step', train_step)
         aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step', forward_step_wrapper)
     aspm.register_patch('megatron.training.tokenizer.tokenizer.build_tokenizer', build_tokenizer_wrapper)
 

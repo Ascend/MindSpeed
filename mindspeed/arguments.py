@@ -246,6 +246,8 @@ def _add_distributed_args(parser):
                        help='Local rank passed from distributed launcher for torch2.x.')
     group.add_argument('--param-and-grad-buffer-pad', type=int, default=None,
                        help='Use this argument to ensure that all buckets start at a memory address that is needed-byte. Set 512 for Ascend')
+    group.add_argument('--ddp-bucket-optimization', action='store_true', default=False,
+                       help='Use binary search based bucket optimization algorithm')
     group.add_argument('--use-nanopipe', action='store_true',
                        default=False, help='use nano pipeline parallelism for reduce bubble.')
     group.add_argument('--use-nanopipe-swap', action='store_true',

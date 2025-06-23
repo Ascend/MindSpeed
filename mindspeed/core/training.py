@@ -158,6 +158,92 @@ def train_step_decorator(train_step):
         return ret
     return wrapper
 
+BUCKET_NUM = 1
+BUCKET_NUM_LEFT = 0
+BUCKET_NUM_RIGHT = 0
+BUCKET_NUM_SET = []
+FLAG_EXP = True
+FLAG_BIN = False
+DURATION_LIST = []
+LAST_DURATION = -1
+ITERATION = 0
+
+
+def bucket_need_update():
+    global FLAG_EXP, FLAG_BIN
+    args = get_args()
+    return args.ddp_bucket_optimization and (FLAG_EXP or FLAG_BIN)
+
+
+def bucket_optimization(duration, model, iteration, start_iteration, step_iteration):
+    import math
+    global BUCKET_NUM, BUCKET_NUM_LEFT, BUCKET_NUM_RIGHT, BUCKET_NUM_SET
+    global FLAG_EXP, FLAG_BIN, DURATION_LIST, LAST_DURATION
+
+    def update_ddp_bucket_size(model, bucket_count):
+        grad_numel = 0
+        per_model_buffers = {}
+        for (model_chunk_idx, model_chunk) in enumerate(model):
+            if hasattr(model_chunk, 'buffers'):
+                per_model_buffers[model_chunk_idx] = model_chunk.buffers
+        for ParamAndGradBuffers in list(per_model_buffers.values()):
+            for p in ParamAndGradBuffers:
+                grad_numel += p.numel
+        
+        bucket_size = grad_numel // bucket_count
+        for ParamAndGradBuffers in list(per_model_buffers.values()):
+            for p in ParamAndGradBuffers:
+                p.update(bucket_size)
+
+    if iteration < start_iteration:
+        return
+
+    DURATION_LIST.append(duration)
+    if iteration == start_iteration:
+        update_ddp_bucket_size(model, BUCKET_NUM)
+        return
+
+    if (iteration - start_iteration) % step_iteration != 0:
+        return
+
+    duration_avg = sum(DURATION_LIST) / len(DURATION_LIST)
+    DURATION_LIST.clear()
+    print_rank_0(f'bucket_num = {BUCKET_NUM}, old elapsed time per iteration = {LAST_DURATION * 1000}(ms), \
+        elapsed time per iteration = {duration_avg * 1000}(ms)')
+    if FLAG_EXP:
+        if duration_avg < LAST_DURATION or LAST_DURATION < 0:
+            BUCKET_NUM *= 2
+            update_ddp_bucket_size(model, BUCKET_NUM)
+            LAST_DURATION = duration_avg
+        else:
+            # duration rise up, change to binary search stage
+            FLAG_EXP = False
+            FLAG_BIN = True
+            BUCKET_NUM_LEFT = BUCKET_NUM // 2
+            BUCKET_NUM_RIGHT = BUCKET_NUM
+            BUCKET_NUM = math.floor((BUCKET_NUM_LEFT + BUCKET_NUM_RIGHT) / 2)
+            BUCKET_NUM_SET.append(BUCKET_NUM)
+            BUCKET_NUM_SET.append(BUCKET_NUM + 1)
+    if FLAG_BIN:
+        print_rank_0(f'bucket num left = {BUCKET_NUM_LEFT}, bucket num right = {BUCKET_NUM_RIGHT}')
+        if BUCKET_NUM_LEFT == BUCKET_NUM_RIGHT:
+            # best bucket num is found
+            FLAG_BIN = False
+            BUCKET_NUM = BUCKET_NUM_LEFT
+        if len(BUCKET_NUM_SET) > 0:
+            if len(BUCKET_NUM_SET) == 1:
+                LAST_DURATION = duration_avg
+            BUCKET_NUM = BUCKET_NUM_SET.pop(0)
+            update_ddp_bucket_size(model, BUCKET_NUM)
+        else:
+            if duration_avg < LAST_DURATION:
+                BUCKET_NUM_LEFT = BUCKET_NUM
+            else:
+                BUCKET_NUM_RIGHT = BUCKET_NUM - 1
+            BUCKET_NUM = math.floor((BUCKET_NUM_LEFT + BUCKET_NUM_RIGHT) / 2)
+            BUCKET_NUM_SET.append(BUCKET_NUM)
+            BUCKET_NUM_SET.append(BUCKET_NUM + 1)
+
 
 def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration,
                  loss_scale, report_memory_flag, skipped_iter,
@@ -557,6 +643,7 @@ def save_checkpoint_and_time_decorator(save_checkpoint_and_time):
 
 def train_step(forward_step_func, data_iterator,
                model, optimizer, opt_param_scheduler, config):
+    global ITERATION
     """Single training step."""
     args = get_args()
     timers = get_timers()
@@ -565,6 +652,9 @@ def train_step(forward_step_func, data_iterator,
     for model_chunk in model:
         model_chunk.zero_grad_buffer()
     optimizer.zero_grad()
+
+    if bucket_need_update() and ITERATION == 0:
+        timers('iteration', log_level=0).start(barrier=True)
 
     # Forward pass.
     forward_backward_func = get_forward_backward_func()
@@ -611,9 +701,9 @@ def train_step(forward_step_func, data_iterator,
     if args.empty_unused_memory_level >= 2:
         torch.cuda.empty_cache()
 
+    loss_reduced = {}
     if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
         # Average loss across microbatches.
-        loss_reduced = {}
         if args.async_log_allreduce:
             # when async_log_allreduce is on, loss_reduced is list[tuple(dict,torch.distributed.group)]
             losses_reduced_keys = losses_reduced[0][0].keys()
@@ -639,5 +729,8 @@ def train_step(forward_step_func, data_iterator,
                     numerator += val
                     denominator += 1
             loss_reduced[key] = numerator / denominator
-        return loss_reduced, skipped_iter, grad_norm, num_zeros_in_grad
-    return {}, skipped_iter, grad_norm, num_zeros_in_grad
+    if bucket_need_update():
+        ITERATION += 1
+        iteration_duration = timers('iteration').elapsed(barrier=True)
+        bucket_optimization(iteration_duration, model, ITERATION, 5, 5)
+    return loss_reduced, skipped_iter, grad_norm, num_zeros_in_grad
