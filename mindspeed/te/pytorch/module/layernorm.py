@@ -2,15 +2,11 @@
 import torch.nn as nn
 
 
-class MindSpeedTELayernorm(nn.Module):
+class MindSpeedTELayernorm(nn.LayerNorm):
     def __init__(self, hidden_size, eps=1e-5, sequence_parallel=False, zero_centered_gamma=False, **kwargs):
-        super(MindSpeedTELayernorm, self).__init__()
-        self.layer_norm = nn.LayerNorm(hidden_size, eps=eps)
+        super(MindSpeedTELayernorm, self).__init__(hidden_size, eps=eps)
         self.sequence_parallel = sequence_parallel
         self.zero_centered_gamma = zero_centered_gamma
+        setattr(self.weight, 'sequence_parallel', sequence_parallel)
         if self.zero_centered_gamma:
             raise NotImplementedError("Zero-centered gamma is not supported in this dummy implementation.")
-        setattr(self.weight, 'sequence_parallel', sequence_parallel)    
-
-    def forward(self, x):
-        return self.layer_norm(x)
