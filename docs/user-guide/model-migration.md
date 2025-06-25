@@ -126,7 +126,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
 **步骤2**
 
-在huggingface的网站（https://huggingface.co/datasets/tatsu-lab/alpaca）下载Alpaca的train-00000-of-000010-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
+在huggingface的网站(https://huggingface.co/datasets/tatsu-lab/alpaca)下载Alpaca的train-00000-of-000010-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
 
 如果出现下载速度太慢或者无法访问下载的情况，
 请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
