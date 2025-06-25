@@ -73,7 +73,7 @@ MindSpeed 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型�
 ☀️ 下载源码安装：
 
  ```shell
- git clone -b core_r0.8.0 https://gitee.com/ascend/MindSpeed.git
+ git clone -b 2.1.0_core_r0.8.0 https://gitee.com/ascend/MindSpeed.git
  pip install -e MindSpeed
  ```
 
@@ -900,19 +900,18 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 ---
 # 版本配套表
 
-💡 **PyTorch Extension**版本号采用`{PyTorch版本}-{昇腾版本}`命名规则，前者为**PyTorch Extension**匹配的PyTorch版本，后者用于匹配CANN版本，详细匹配如下：
+MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表如下：
 
-| MindSpeed版本             | Megatron版本      | PyTorch版本   | torch_npu版本 | CANN版本  | Python版本                               | 硬件形态     |
-|-------------------------|-----------------|------------- |-------------|---------|----------------------------------------|----------|
-| master（主线）              | Core 0.8.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.7.0（主线）         | Core 0.7.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| core_r0.6.0（主线）         | Core 0.6.0      |   2.1.0     | 在研版本        | 在研版本    | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.0_core_r0.7.0（商用）   | Core 0.7.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.0_core_r0.6.0（商用）   | Core 0.6.0      |  2.1.0     | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC3_core_r0.7.0（商用） | Core 0.7.0      |  2.1.0     | 6.0.RC3     | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC3_core_r0.6.0（商用） | Core 0.6.0      |  2.1.0     | 6.0.RC3     | 8.0.RC3 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC2（商用）             | Core 0.6.0      |  2.1.0     | 6.0.RC2     | 8.0.RC2 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
-| 1.0.RC1（商用）             | commitid bcce6f |  2.1.0     | 6.0.RC1     | 8.0.RC1 | Python3.8.x, Python3.9.x, Python3.10.x | Atlas 200T A2 Box16,  Atlas 800T A2,  Atlas 900 A2 PODc |
+| MindSpeed版本           | Megatron版本  | PyTorch版本    | torch_npu版本 | CANN版本  | Python版本                               |
+|-----------------------|-------------|--------------|-------------|---------|----------------------------------------|
+| master（主线）            | Core 0.12.1 | 2.1.0, 2.6.0 | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
+| core_r0.10.0（主线）      | Core 0.10.0 | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
+| core_r0.9.0（主线）       | Core 0.9.0  | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
+| 2.1.0_core_0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.1.RC1     | 8.2.RC1 | Python3.9.x, Python3.10.x              |
+| 2.1.0_core_r0.8.0（商用） | Core 0.8.0  | 2.1.0        | 7.1.RC1     | 8.2.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
+| 2.0.0_core_r0.8.0（商用） | Core 0.8.0  | 2.1.0        | 7.0.0       | 8.1.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
+| 1.0.0_core_r0.7.0（商用） | Core 0.7.0  | 2.1.0        | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x |
+| 1.0.0_core_r0.6.0（商用） | Core 0.6.0  | 2.1.0        | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x |
 
 [昇腾辅助软件](https://gitee.com/ascend/pytorch#%E6%98%87%E8%85%BE%E8%BE%85%E5%8A%A9%E8%BD%AF%E4%BB%B6)中有更多关于PyTorch和CANN的版本信息。
 
@@ -930,15 +929,17 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 🛠️ MindSpeed 版本维护策略：
 
-| **MindSpeed版本**     | **维护策略** | **当前状态** | **发布时间**   | **后续状态**         | **EOL日期** |
-|---------------------|----------|----------|------------|------------------|-----------|
-| 2.0.0_core_r0.8.0   | 常规版本     | 维护       | 2025/03/30 | 预计2025/9/30起无维护	 |           |
-| 1.0.0_core_r0.7.0   | 常规版本     | 维护       | 2024/12/30 | 预计2025/6/30起无维护	 |           |
-| 1.0.0_core_r0.6.0   | 常规版本     | 维护       | 2024/12/30 | 预计2025/6/30起无维护	 |           |
-| 1.0.RC3_core_r0.7.0 | 常规版本     | 停止维护     | 2024/09/30 | 2025/3/30起无维护	   |           |
-| 1.0.RC3_core_r0.6.0 | 常规版本     | 停止维护     | 2024/09/30 | 2025/3/30起无维护	   |           |
-| 1.0.RC2             | 常规版本     | 停止维护     | 2024/06/30 | 2024/12/30起无维护	  |           |
-| 1.0.RC1             | 常规版本     | 停止维护     | 2024/03/30 | 2024/9/30起无维护    |           |
+| **MindSpeed版本**     | **维护策略** | **当前状态** | **发布时间**   | **后续状态**          | **EOL日期** |
+|---------------------|----------|----------|------------|-------------------|-----------|
+| 2.1.0_core_0.12.1   | 常规版本     | 维护       | 2025/06/30 | 预计2025/12/30起无维护	 |           |
+| 2.1.0_core_r0.8.0   | 常规版本     | 维护       | 2025/06/30 | 预计2025/12/30起无维护	 |           |
+| 2.0.0_core_r0.8.0   | 常规版本     | 维护       | 2025/03/30 | 预计2025/9/30起无维护	  |           |
+| 1.0.0_core_r0.7.0   | 常规版本     | 停止维护     | 2024/12/30 | 2025/6/30起无维护	    |           |
+| 1.0.0_core_r0.6.0   | 常规版本     | 停止维护     | 2024/12/30 | 2025/6/30起无维护	    |           |
+| 1.0.RC3_core_r0.7.0 | 常规版本     | 停止维护     | 2024/09/30 | 2025/3/30起无维护	    |           |
+| 1.0.RC3_core_r0.6.0 | 常规版本     | 停止维护     | 2024/09/30 | 2025/3/30起无维护	    |           |
+| 1.0.RC2             | 常规版本     | 停止维护     | 2024/06/30 | 2024/12/30起无维护	   |           |
+| 1.0.RC1             | 常规版本     | 停止维护     | 2024/03/30 | 2024/9/30起无维护     |           |
 
 ---
 
