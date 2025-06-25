@@ -113,6 +113,7 @@ DISTRIBUTED_ARGS="
     --master_port $MASTER_PORT
 "
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --num-layers-per-virtual-pipeline-stage 1 \
@@ -155,7 +156,7 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
-    --distributed-backend nccl \
+    --distributed-backend nccl
 set +x
 
 ```
