@@ -42,6 +42,7 @@ def transformer_layer_forward_moe(
     tp_group = parallel_state.get_tensor_model_parallel_group()
     use_shared_experts = hasattr(self.mlp, 'shared_experts') and self.mlp.shared_experts is not None
     recomp_norm = getattr(args, 'recompute_norm', False)
+    self.mlp.experts.layer_number = self.layer_number
 
     detached_layer_input = hidden_states
 

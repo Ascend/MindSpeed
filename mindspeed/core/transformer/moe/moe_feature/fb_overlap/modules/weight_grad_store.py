@@ -131,6 +131,8 @@ class WeightGradStore:
                     cache_gmm.append(cache)
                 else:
                     cache_mm.append(cache)
+            if len(cache_gmm) == 0:
+                return
             cls.cache = cache_gmm
 
         if cls.gather_stream is None:

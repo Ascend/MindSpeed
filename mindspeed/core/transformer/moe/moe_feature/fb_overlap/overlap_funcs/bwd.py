@@ -53,7 +53,7 @@ def transformer_layer_backward_moe(
     if use_shared_experts:
         shared_experts.linear_fc2_act_fc1_backward(self.shared_experts_graph)
 
-    if get_args().moe_zero_memory == 'level0' or should_recompute_activation(self.layer.layer_number):
+    if self.act_ckpt_manager is not None:
         self.act_ckpt_manager.recompute(True)
     handle.wait()
 

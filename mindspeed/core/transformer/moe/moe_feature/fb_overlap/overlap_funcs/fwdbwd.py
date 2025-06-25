@@ -115,6 +115,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     a2a_hooked_on_attention = getattr(fwd_layer.self_attention, 'a2a_hooked_on_attention', False)
     fwd_dispatcher = fwd_layer.mlp.token_dispatcher
     bwd_dispatcher = bwd_layer_graph.layer.mlp.token_dispatcher
+    fwd_layer.mlp.experts.layer_number = fwd_layer.layer_number
 
     # Launch swap-in
     if bwd_layer_graph.unperm2_swap_manager:
@@ -239,7 +240,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     bwd_unperm_a2a_handle.wait()
     bwd_unperm_a2a_handle = None
     run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
-    if args.moe_zero_memory == 'level0' or should_recompute_activation(bwd_layer_graph.layer.layer_number):
+    if bwd_layer_graph.act_ckpt_manager is not None:
         bwd_layer_graph.act_ckpt_manager.recompute(True)
     unperm1_out_grad.untyped_storage().resize_(0)
 
