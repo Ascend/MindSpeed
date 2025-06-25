@@ -22,6 +22,9 @@ class DualpipeVFeature(MindSpeedFeature):
             if args.overlap_grad_reduce:
                 raise AssertionError(
                     "The dualpipev and overlap_grad_reduce are incompatible.")
+            if not args.untie_embeddings_and_output_weights:
+                raise AssertionError(
+                    "The dualpipev requires untie_embeddings_and_output_weights.")
             if args.swap_attention:
                 raise AssertionError(
                     "The dualpipev and swap_attention are incompatible.")

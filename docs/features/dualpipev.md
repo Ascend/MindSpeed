@@ -62,4 +62,4 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 
 在开启DualPipeV和MoE跨microbatch前反向通信掩盖后可以对MoE的All2All通信进行掩盖，获得性能提升。
 
-相比VPP，DualPipeV的流水排布使得warmup阶段每张卡上的激活显存更加均衡，峰值显存更少。
+开启DualPipeV可能会造成内存峰值上升，原因是DualPipeV中output head会被分配到PP rank0，这会同时带来静态内存和动态内存的上升。但在某些场景（例如设置模型后N层为空层时）中，由于尾stage在PP rank0,DualPipeV开启后峰值内存会降低。因此开启DualPipeV之后的内存变化需要具体分析。
