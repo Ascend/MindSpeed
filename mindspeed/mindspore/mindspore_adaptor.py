@@ -85,16 +85,6 @@ def mindspore_adaptation(aspm, mindspeed_args):
     from .ops.npu_rotary_position_embedding import npu_rotary_position_embedding
     aspm.register_patch('mindspeed.ops.npu_rotary_position_embedding.npu_rotary_position_embedding', npu_rotary_position_embedding, force_patch=True)
 
-    from .core.context_parallel.utils import general_out_update
-    from .ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
-    from .ops.npu_ring_attention_update import npu_ring_attention_update
-
-    aspm.register_patch('mindspeed.core.context_parallel.utils.general_out_update', general_out_update)
-    aspm.register_patch('mindspeed.core.context_parallel.ring_context_parallel.general_out_update', general_out_update)
-    aspm.register_patch('mindspeed.ops.fusion_attention_v2.npu_fusion_attention', npu_fusion_attention)
-    aspm.register_patch('mindspeed.ops.fusion_attention_v2.npu_fusion_attention_grad', npu_fusion_attention_grad)
-    aspm.register_patch('mindspeed.ops.npu_ring_attention_update.npu_ring_attention_update', npu_ring_attention_update)
-
     from mindspeed.mindspore.ops.npu_matmul_add import npu_matmul_add_fp32
     aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, force_patch=True)
 

@@ -96,7 +96,7 @@ def distributed_data_parallel_init(
             param_and_grad_dtype_to_params[(param_dtype, grad_dtype)] = params
 
         if not config.calculate_per_token_loss:
-            target_gradient_scaling_factor = 1.0 / parallel_state.get_data_parallel_world_size(with_context_parallel=True)
+            target_gradient_scaling_factor = 1.0 / parallel_state.get_data_parallel_world_size()
             if self.ddp_config.average_in_collective:
                 # Collective is averaging gradients in collective with data_parallel_group.
                 assert (
@@ -137,7 +137,7 @@ def distributed_data_parallel_init(
                 1.0 / parallel_state.get_expert_model_parallel_world_size()
             )
         else:
-            data_parallel_world_size = parallel_state.get_data_parallel_world_size(with_context_parallel=True)
+            data_parallel_world_size = parallel_state.get_data_parallel_world_size()
             gradient_scaling_factor = 1.0 / data_parallel_world_size
             expert_gradient_scaling_factor = 1.0 / data_parallel_world_size
 
