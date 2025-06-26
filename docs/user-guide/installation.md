@@ -65,6 +65,7 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
 
  ```shell
  git clone https://gitee.com/ascend/MindSpeed.git
+ cd MindSpeed
  git checkout 2.1.0_core_0.12.1
  ```
 
