@@ -90,3 +90,6 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from mindspeed.mindspore.core.transformer.transformer import core_mlp_forward_wrapper
     aspm.register_patch('megatron.core.transformer.mlp.MLP.forward', core_mlp_forward_wrapper)
+
+    from .core.transformer.transformer_block import NoopTransformerLayer
+    aspm.register_patch('mindspeed.core.transformer.transformer_block.NoopTransformerLayer', NoopTransformerLayer, force_patch=True)
