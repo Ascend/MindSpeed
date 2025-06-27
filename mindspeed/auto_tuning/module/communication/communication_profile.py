@@ -9,7 +9,7 @@ class ProfileTimeInfo():
 class TpProfileTimeInfo(ProfileTimeInfo):
     def __init__(self):
         super(TpProfileTimeInfo, self).__init__()
-        # Total time when communication hiding is not performed
+        #Total time when communication hiding is not performed
         self.fixedtotal_tp_time = 0
         self.fixedwait_tp_time = 0
 
@@ -23,7 +23,7 @@ class Mc2ProfileTimeInfo(ProfileTimeInfo):
 class CpProfileTimeInfo(ProfileTimeInfo):
     def __init__(self):
         super(CpProfileTimeInfo, self).__init__()
-        # Total time when communication hiding is not performed
+        #Total time when communication hiding is not performed
         self.attn_cp_time = 0
         self.attn_cpbw_time = 0
         self.vector_cp_time = 0
@@ -32,7 +32,7 @@ class CpProfileTimeInfo(ProfileTimeInfo):
 class DpProfileTimeInfo(ProfileTimeInfo):
     def __init__(self):
         super(DpProfileTimeInfo, self).__init__()
-        # Total time when communication hiding is not performed
+        #Total time when communication hiding is not performed
         self.overlap_grad_reduce = 0
         self.overlap_param_gather = 0
         self.overlap = 0
@@ -40,8 +40,8 @@ class DpProfileTimeInfo(ProfileTimeInfo):
         self.total_otherzero_time = 0
         self.mlp_ag_time = 0
         self.mlp_rs_time = 0
-        self.other_ag_time = 0
-        self.other_rs_time = 0
+        self.attn_ag_time = 0
+        self.attn_rs_time = 0
 
 
 class EpProfileTimeInfo(ProfileTimeInfo):
@@ -53,7 +53,7 @@ class EpProfileTimeInfo(ProfileTimeInfo):
 class PpProfileTimeInfo(ProfileTimeInfo):
     def __init__(self):
         super(PpProfileTimeInfo, self).__init__()
-        # Total time when communication hiding is not performed
+        #Total time when communication hiding is not performed
         self.each_pp_time = 0
         self.bubble_end_time = 0
         self.bubble_start_time = 0

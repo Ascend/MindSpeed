@@ -15,7 +15,8 @@ class Block(OperatorList):
             dp[index] = [[] for _ in range(n + 1)]
         for i in range(1, m + 1):
             for j in range(1, n + 1):
-                if list1[i - 1].type == list2[j - 1].type:
+                if list1[i - 1].type == list2[j - 1].type or \
+     ('MatMulV' in list1[i - 1].type and 'MatMulV' in list2[j - 1].type):
                     dp[i][j] = dp[i - 1][j - 1].copy()
                     dp[i][j].append(list1[i - 1])
                 else:
@@ -68,24 +69,3 @@ class BaseBlock(Block):
                 profile_list.fw = self.longest_common_subsequence(profile_list.fw, fw)
                 profile_list.bw = self.longest_common_subsequence(profile_list.bw, bw)
         return profile_list
-        #
-
-    #
-    def reset_index_name(self, list1, list2):
-        m, n = len(list1), len(list2)
-        i, j = 0, 0
-        index = 0
-        last_mat = (0, 0)
-        first_mat = 0
-        while 1:
-            list1, i, j, last_mat, first_mat = self.reset_index_name_single(list1, list2, i, j, last_mat)
-            if j < n - 1 and index < 3:
-                # Skip a base operator.
-                index += 1
-                i = last_mat[0] + 1
-                j += 1
-            else:
-                break
-        if first_mat == 0:
-            first_mat = last_mat[0] + 1
-        return list1, first_mat

@@ -2,7 +2,7 @@ import csv
 import json
 import os
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_constant import SpecialOperatorName
-from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_constant import NumberConstant
+from mindspeed.auto_tuning.utils.utils import NumberConstant
 from mindspeed.auto_tuning.utils.file_utils import check_file_size
 
 

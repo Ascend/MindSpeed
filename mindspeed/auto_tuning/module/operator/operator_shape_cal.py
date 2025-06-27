@@ -1,4 +1,4 @@
-import ast
+from ast import literal_eval
 import math
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -6,52 +6,41 @@ from sklearn.linear_model import LinearRegression
 from mindspeed.auto_tuning.config.search_config import SearchConfig
 
 
-def cal_new_shape_new(cal_arr, search_cfg: SearchConfig):
+def cal_new_shape_new(cal_arr, search_cfg: SearchConfig, seq_ratio: int):
     tp = search_cfg.tp
     cp = search_cfg.cp
     ep = search_cfg.ep or 1
     mbs = search_cfg.mbs
     num_experts = search_cfg.num_experts or 1
-    cal_arr = ast.literal_eval(cal_arr)
+    cal_arr = literal_eval(cal_arr)
     result_arr = []
-    base = 0.0001
     mbs_flag = False
     if mbs > 1:
         mbs_flag = True
     for inner_arr in cal_arr:
         result = []
         for item in inner_arr:
-            dis = item - float(int(item))
-            if abs(dis - 0) <= base:
-                result.append(int(item))
-            elif abs(dis - 0.1) <= base:
-                result.append(math.ceil(int(item) * ep / num_experts))
-            elif abs(dis - 0.2) <= base and mbs_flag:
-                result.append(math.ceil(int(item) * mbs / cp))
-            elif abs(dis - 0.2) <= base:
-                result.append(math.ceil(int(item) / cp))
-            elif abs(dis - 0.3) <= base and mbs_flag:
-                result.append(math.ceil(int(item) * mbs / cp * ep / num_experts))
-            elif abs(dis - 0.3) <= base:
-                result.append(math.ceil(int(item) / cp * ep / num_experts))
-            elif abs(dis - 0.4) <= base:
-                result.append(math.ceil(int(item) / tp))
-            elif abs(dis - 0.5) <= base:
-                result.append(math.ceil(int(item) / tp * ep / num_experts))
-            elif abs(dis - 0.6) <= base and mbs_flag:
-                result.append(math.ceil(int(item) * mbs / tp / cp))
-            elif abs(dis - 0.6) <= base:
-                result.append(math.ceil(int(item) / tp / cp))
-            elif abs(dis - 0.7) <= base and mbs_flag:
-                result.append(math.ceil(int(item) * mbs / tp / cp * ep / num_experts))
-            elif abs(dis - 0.7) <= base:
-                result.append(math.ceil(int(item) / tp / cp * ep / num_experts))
+            temp = int(item) * seq_ratio
+            # dis = int(10 * (item - float(int(item))))可能会出现浮点数精度问题
+            # 为解决浮点数问题，使用以下代码
+            dis = str(10 * (item - float(int(item))))
+            dis = int(dis[0]) + int(1 if int(dis[2]) >= 5 else 0)
+
+            if 1 & dis == 1:  # 按位与运算，代表ep存在
+                temp = temp * ep / num_experts
+            if 2 & dis == 2:  # cp存在
+                temp = temp / cp
+                if mbs_flag:
+                    temp = temp * mbs
+            if 4 & dis == 4:  # tp存在
+                temp = temp / tp
+            result.append(math.ceil(temp))
         result_arr.append(result)
     return result_arr
 
 
-def cal_new_shape_tce(cal_arr, search_cfg: SearchConfig):
-    result_cal_arr = cal_new_shape_new(cal_arr, search_cfg)
+def cal_new_shape_tce(cal_arr, search_cfg: SearchConfig, seq_ratio: int):
+    result_cal_arr = cal_new_shape_new(cal_arr, search_cfg, seq_ratio)
     result_str = ';'.join([','.join(map(str, arr)) if arr else '' for arr in result_cal_arr])
     return result_str
 
@@ -105,17 +94,17 @@ def cal_operator_flops(input_shape, output_shape, types):
             x_item *= input_shape_arr_before[1]
 
     # FLOPs(MatMul) = x*y*n; [x, n] * [n, y] == [x, y]
-    if types in ['MatMul', 'MatMulCommon']:
+    if types in ['MatMul', 'MatMulCommon', 'MatMulV3', 'MatMulV2', 'MatMulVX']:
         input_shape_arr_after = [int(str_num) for str_num in input_shape.split(';')[1].split(',')]
         x_item = 2 * mul_shape(output_shape_arr)
         if input_shape_arr_before[0] in output_shape_arr:
             x_item *= input_shape_arr_before[1]
         else:
             x_item *= input_shape_arr_before[0]
-        # The input matrix A needs to be transposed, resulting in additional FLOPs.
+        # 输入矩阵A需要进行转置，产生额外FLOPs
         if output_shape_arr[0] != input_shape_arr_before[0]:
             x_item += 2 * mul_shape(input_shape_arr_before)
-        # The input matrix B needs to be transposed, resulting in additional FLOPs.
+        # 输入矩阵B需要进行转置，产生额外FLOPs
         if output_shape_arr[1] != input_shape_arr_after[1]:
             x_item += 2 * mul_shape(input_shape_arr_after)
 
@@ -156,9 +145,9 @@ def cal_operator_duration_with_shape(shape_model_w, shape_model_b, flops):
 
 def model_operator_with_tp(operator_notes_index_list):
     """
-        For operators with the same TP and index-name, the duration decreases linearly with TP, duration ~ w / tp.
-        Calculate the proportion of TP as a1 and the proportion of CP as a2.
-        The final result is d = model_w_tp / TP + model_w_cp / CP.
+        方式一：相同TP的同一个index-name算子duration随TP线性下降duration ~ w / tp
+        分别求出TP的比例a1，CP的比例a2
+        最后结果是 d = model_w_tp / TP + model_w_cp / CP
     """
     result_tp = 0
     for operator_notes_index in operator_notes_index_list:
@@ -176,3 +165,41 @@ def linear_regression(x, y):
     w = model.coef_[0]
     b = model.intercept_
     return w[0], b[0]
+
+
+def print_operator_shape(print_list, information_level=0):
+    levels = {
+        1: ['name', 'index_name'],
+        2: ['index_name', 'input_shape', 'output_shape'],
+        3: ['index_name', 'duration', 'input_shape', 'output_shape']
+    }
+    attributes_list = levels.get(information_level, [])
+
+    result = ", ".join(
+        f"{attr}: {getattr(obj, attr)}" for obj in print_list for attr in attributes_list if hasattr(obj, attr))
+    print(result)
+
+
+def print_operator_cal_shape(print_list, information_level=0):
+    levels = {
+        1: ['index_name', 'input_cal', 'output_cal'],
+        2: ['index_name', 'duration', 'input_cal', 'output_cal'],
+        3: ['index_name', 'duration', 'input_cal', 'output_cal', 'input_shape', 'output_shape', 'types']
+    }
+    attributes_list = levels.get(information_level, [])
+
+    result = ", ".join(
+        f"{attr}: {getattr(obj, attr)}" for obj in print_list for attr in attributes_list if hasattr(obj, attr))
+    print(result)
+
+
+def print_operator_note_shape(print_list, information_level=0):
+    levels = {
+        1: ['index_name', 'input_shape', 'output_shape'],
+        2: ['tp', 'cp', 'ep', 'index_name', 'input_shape', 'output_shape'],
+    }
+    attributes_list = levels.get(information_level, [])
+
+    result = ", ".join(
+        f"{attr}: {getattr(obj, attr)}" for obj in print_list for attr in attributes_list if hasattr(obj, attr))
+    print(result)

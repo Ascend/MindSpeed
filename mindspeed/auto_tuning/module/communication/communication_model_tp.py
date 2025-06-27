@@ -1,4 +1,5 @@
 from mindspeed.auto_tuning.module.communication.communication_model import CommunicationModel
+from mindspeed.auto_tuning.utils.utils import NumberConstant
 
 
 class TpModel(CommunicationModel):
@@ -21,7 +22,7 @@ class TpModel(CommunicationModel):
         tp = config.tp
         cp = config.cp
         pp = config.pp
-        s = config.seq_length / 1000
+        s = config.seq_length / NumberConstant.CONVERSION_TIME
         total_time = tp_profile_time_info.total_comm_time
         wait_time = tp_profile_time_info.wait_comm_time
         overlap_time = tp_profile_time_info.overlap_comm_time
@@ -83,7 +84,7 @@ class TpModel(CommunicationModel):
     def performance(self, search_cfg):
         tp = search_cfg.tensor_model_parallel_size
         cp = search_cfg.context_parallel_size
-        s = search_cfg.seq_length / 1000
+        s = search_cfg.seq_length / NumberConstant.CONVERSION_TIME
         tp_overlap_time = 0
         tp_time = 0
         if tp > 1:

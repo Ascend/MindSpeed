@@ -1,7 +1,9 @@
 from copy import deepcopy
 from typing import List
-from mindspeed.auto_tuning.module.hardware import Hardware
-from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_constant import NumberConstant
+import torch.cuda as cuda
+from mindspeed.auto_tuning.mindspeed_adaptor.mindspeed_settings import MindSpeedSettings as Settings
+from mindspeed.auto_tuning.utils.utils import NumberConstant
+from mindspeed.auto_tuning.config.search_config import SearchConfig
 
 
 class ProfilingConfig:
@@ -9,7 +11,7 @@ class ProfilingConfig:
         Basic parameters of profiling
     """
 
-    def __init__(self, search_cfg=None, args=None):
+    def __init__(self, search_cfg: SearchConfig, args=None):
         self.search_cfg = deepcopy(search_cfg)
         self.per_micro_layer = search_cfg.num_layers // search_cfg.pp
         self.vpp = search_cfg.vpp if search_cfg.vpp else 1
@@ -18,14 +20,14 @@ class ProfilingConfig:
 
         # hardware config
         if args:
-            if isinstance(args, Hardware):
-                self.nodes = args.num_nodes
+            if isinstance(args, Settings):
+                self.nodes = args.nnodes
                 self.devices_per_node = args.devices_per_node
                 self.node_rank = args.node_rank
             else:
-                self.nodes = args.nnodes
-                self.devices_per_node = args.nproc_per_node
-                self.node_rank = args.node_rank
+                self.nodes = args.world_size // cuda.device_count()
+                self.devices_per_node = cuda.device_count()
+                self.node_rank = args.rank // cuda.device_count()
         else:
             self.nodes = 1
             self.devices_per_node = 8
@@ -44,7 +46,7 @@ class ProfilingConfig:
             fw_idx = self._calculate_fw_idx(fw_idx, i, micro)
             bw_idx = self._calculate_bw_idx(bw_idx, i, micro)
             bw_layer_end.append([bw_norm_index[bw_idx - 1]])
-            if self.search_cfg.is_full_recompute:
+            if self.search_cfg.is_full_recompute():
                 if warm_micro_num <= micro + 1:
                     recompute_fw.append([fw_norm_index[fw_idx]])
                     fw_idx += NumberConstant.FW_NORM_OP_NUM_ENABLE_PP_OTHER_STAGE
@@ -66,7 +68,6 @@ class ProfilingConfig:
         fw_norm_index = [fw_norm_index[i * 2: (i + 1) * 2] for i in range(len(fw_norm_index) // 2)]
         bw_norm_index = [bw_norm_index[i * 2: (i + 1) * 2] for i in range(len(bw_norm_index) // 2)]
         warm_micro_num = self._calculate_warm_micro_num()
-
         for micro in range(self.micro_num):
             if micro < warm_micro_num:
                 fw_layer_start.append([fw_norm_index[micro][0]])
@@ -77,13 +78,14 @@ class ProfilingConfig:
                     recompute_fw.extend(
                         [[index[0]] for index in fw_norm_index[len(fw_norm_index) - warm_micro_num:]])
             bw_layer_end.append([bw_norm_index[micro][-1]])
-        if self.search_cfg.is_full_recompute:
+        if self.search_cfg.is_full_recompute():
             if len(recompute_fw) != self.micro_num:
                 for i in range(len(recompute_fw), self.micro_num):
                     recompute_fw.append([fw_norm_index[i + self.micro_num][0]])
             bw_per_micro_opt_num = bw_norm_index[0][-1] - recompute_fw[0][0]
         else:
             bw_per_micro_opt_num = bw_norm_index[1][0] - bw_norm_index[0][0]
+
         fw_per_micro_opt_num = fw_layer_start[1][0] - fw_layer_start[0][0]
         return fw_layer_start, bw_layer_end, recompute_fw, fw_per_micro_opt_num, bw_per_micro_opt_num
 
@@ -97,7 +99,7 @@ class ProfilingConfig:
         fw_layer_start = []
         bw_layer_end = []
         recompute_fw = []
-        if self.search_cfg.is_full_recompute:
+        if self.search_cfg.is_full_recompute():
             fw_micro_rms_num = len(fw_norm_index) // self.micro_num
 
             fw_norm_index = [fw_norm_index[fw_micro_rms_num * i:fw_micro_rms_num * (i + 1)]
@@ -172,6 +174,7 @@ class ProfilingModelInfo:
         self.optimizer = ProfilingLayerInfo()
         self.hccl_memory = []
         self.cann_and_driver_memory = []
+        self.recompute_memory = []
         self.communication_matrix = []
         self.context_parallel_comm = []
         self.pipeline_parallel_comm = []
@@ -204,6 +207,7 @@ class BaseParallelCommunication:
         self.total_time_ms: float = 0.0
         self.wait_time_ms: float = 0.0
         self.overlap_time_ms: float = 0.0
+        self.avg_ratio: float = 0.0
         self.details: List[dict] = []
 
 
@@ -257,3 +261,7 @@ class PipelineParallelCommunication(BaseParallelCommunication):
     """
         Pipeline parallel communication
     """
+
+    def __init__(self):
+        super(PipelineParallelCommunication, self).__init__()
+        self.min_pp_time: float = 0.0

@@ -1,14 +1,10 @@
 import os
-import stat
-import pickle
-import subprocess
-import time
 
-import torch
+import torch.distributed as dist
 from mindspeed.auto_tuning.utils.logger import get_logger
-from mindspeed.auto_tuning.utils.restricted_unpickler import restricted_loads
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_config import ProfilingModelInfo
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_parse import ProfilingParser
+from mindspeed.auto_tuning.utils.file_utils import restricted_read, restricted_write
 
 
 class GatherNodeProfiling:
@@ -44,49 +40,40 @@ class GatherNodeProfiling:
             self.logger.info(f'Get pp profiling parse result.')
             for pkl_file in pkl_files:
                 node_pkl_path = os.path.join(pkl_path, pkl_file)
-                with open(node_pkl_path, 'rb') as f:
-                    pkl_model = restricted_loads(f)
+                pkl_model = restricted_read(node_pkl_path)
                 self._fuse_models(pkl_model)
         else:
             node_pkl_path = os.path.join(pkl_path, pkl_files[0])
-            with open(node_pkl_path, 'rb') as f:
-                pkl_model = restricted_loads(f)
+            pkl_model = restricted_read(node_pkl_path)
             self.fusion_model = pkl_model
         return self.fusion_model
 
     def parse_node_pkl(self, args):
         parent_dir = os.path.dirname(self.profiling_file_path)
-        ootb_node_path = os.path.join(parent_dir, f'ootb_{args.node_rank}.pkl')
-        with open(ootb_node_path, 'rb') as f:
-            cfg = restricted_loads(f)
+        at_node_path = os.path.join(parent_dir, f'at_{args.node_rank}.pkl')
+        cfg = restricted_read(at_node_path)
         profiling_parser = ProfilingParser(self.profiling_file_path, search_cfg=cfg, args=args)
         profiling_res = profiling_parser.parser()
         if args.pipeline_model_parallel_size > 1 and profiling_parser.nodes > 1:
             ranks = [i * profiling_parser.devices_per_node for i in range(profiling_parser.nodes)]
-            profiling_group = torch.distributed.new_group(ranks)
+            profiling_group = dist.new_group(ranks, backend=dist.Backend.GLOO)
             gather_objects = [None for _ in range(profiling_parser.nodes)]
-            torch.distributed.all_gather_object(gather_objects, profiling_res, group=profiling_group)
+            dist.all_gather_object(gather_objects, profiling_res, group=profiling_group)
             for i in range(profiling_parser.nodes):
                 pkl_path = os.path.join(self.profiling_file_path, 'pkl_path')
                 if not os.path.exists(pkl_path):
                     os.mkdir(pkl_path)
                 pkl_node_path = os.path.join(pkl_path, f'node_{i}.pkl')
-                flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-                mode = stat.S_IWUSR | stat.S_IRUSR
-                with os.fdopen(os.open(pkl_node_path, flags, mode=mode), 'wb') as f:
-                    pickle.dump(gather_objects[i], f)
+                restricted_write(pkl_node_path, gather_objects[i])
 
-            torch.distributed.barrier(group=profiling_group)
-            torch.distributed.destroy_process_group(group=profiling_group)
+            dist.barrier(group=profiling_group)
+            dist.destroy_process_group(group=profiling_group)
         else:
             pkl_path = os.path.join(self.profiling_file_path, 'pkl_path')
             if not os.path.exists(pkl_path):
                 os.mkdir(pkl_path)
             pkl_node_path = os.path.join(pkl_path, f'node_{args.node_rank}.pkl')
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-            mode = stat.S_IWUSR | stat.S_IRUSR
-            with os.fdopen(os.open(pkl_node_path, flags, mode=mode), 'wb') as f:
-                pickle.dump(profiling_res, f)
+            restricted_write(pkl_node_path, profiling_res)
 
     def _fuse_models(self, new_model):
         if new_model.stage_id not in self.stage_id_list:

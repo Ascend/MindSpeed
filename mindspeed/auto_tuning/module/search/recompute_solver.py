@@ -127,7 +127,7 @@ class RecomputeSolver:
             sub_layer_memory_time_rate = get_module_memory_time_rate(sub_layer_recompute_info)
             if sub_layer_memory_time_rate < parent_module_memory_time_rate:
                 continue
-            if not sub_layer_recompute_info.memory or len(children_layer_name) == 1 and children_layer_name[0].memory == sub_layer.get("memory"):
+            if not sub_layer_recompute_info.memory or len(children_layer_name) == 1 and children_layer_name[0].memory == sub_layer.get("memory"):  # 剪枝，剪掉只有一个子节点的而且里外层memory相等的
                 continue
             module_layers.append(sub_layer_recompute_info)
             self.recompute_module.update({cur_layer_name: sub_layer_recompute_info})

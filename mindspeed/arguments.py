@@ -1,5 +1,6 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
+import os
 from dataclasses import make_dataclass, field
 from functools import wraps
 import argparse
@@ -46,7 +47,7 @@ def process_args(parser):
     parser = _add_profile_args(parser)
     parser = _add_auto_parallel_args(parser)
     parser = _add_deepseek_args(parser)
-    parser = _auto_tuning_args(parser)
+    parser = _add_auto_tuning_args(parser)
     parser = _add_auto_parallel_mm_args(parser)
     parser = _add_hccl_group_buffer_args(parser)
     parser = _add_layerzero_args(parser)
@@ -106,15 +107,90 @@ def _add_deepseek_args(parser):
     return parser
 
 
-def _auto_tuning_args(parser):
-    group = parser.add_argument_group(title='auto_tuning')
+def _add_auto_tuning_args(parser):
+    group = parser.add_argument_group(title="auto_tuning")
 
-    group.add_argument('--auto-tuning', action='store_true', help='enable auto tuning')
-    group.add_argument('--auto-tuning-work-dir', type=str, default='./auto_tuning_dir',
-                       help="auto tuning working path.")
-    group.add_argument('--auto-tuning-ranks', type=int, default=16, help='the global size of auto tuning')
-    group.add_argument('--auto-tuning-log-level', type=str, default='info', choices=['debug', 'info', 'warning'],
-                       help='auto tuning log level, could be debug, info or warning')
+    group.add_argument(
+        "--auto-tuning",
+        action="store_true",
+        help="Enable auto tuning."
+    )
+    group.add_argument(
+        "--auto-tuning-work-dir",
+        type=str,
+        default=os.getcwd(),
+        help="Auto tuning's working directory. By default current directory."
+    )
+    group.add_argument(
+        "--auto-tuning-ranks",
+        type=int,
+        default=16,
+        help="The world size (# of ranks) for auto tuning to search in."
+    )
+    group.add_argument(
+        "--auto-tuning-log-level",
+        type=str,
+        default="info",
+        choices=["warning", "info", "debug"],
+        help="Auto tuning's log level, can be warning, info or debug. By default info."
+    )
+    group.add_argument(
+        "--auto-tuning-database-address",
+        type=str,
+        default=None,
+        help="IP Address of WAAS Online Database."
+    )
+    group.add_argument(
+        "--auto-tuning-database-port",
+        type=int,
+        default=None,
+        help="IP Port of WAAS Online Database."
+    )
+
+    # These follow torchrun args
+    group.add_argument(
+        "--nnodes",
+        type=str,
+        default="1:1",
+        help="Number of nodes, or the range of nodes in form <minimum_nodes>:<maximum_nodes>."
+        "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--nproc-per-node",
+        "--nproc_per_node",
+        type=str,
+        default="1",
+        help="Number of workers per node; supported values: [auto, cpu, gpu, int]."
+        "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--node-rank",
+        "--node_rank",
+        type=int,
+        default=0,
+        help="Rank of the node for multi-node distributed training."
+        "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--master-addr",
+        "--master_addr",
+        default="127.0.0.1",
+        type=str,
+        help="Address of the master node (rank 0) that only used for static rendezvous. It should "
+        "be either the IP address or the hostname of rank 0. For single node multi-proc training "
+        "the --master-addr can simply be 127.0.0.1; IPv6 should have the pattern "
+        "`[0:0:0:0:0:0:0:1]`."
+        "Will be passed into torchrun."
+    )
+    group.add_argument(
+        "--master-port",
+        "--master_port",
+        default=29500,
+        type=int,
+        help="Port on the master node (rank 0) to be used for communication during distributed "
+        "training. It is only used for static rendezvous."
+        "Will be passed into torchrun."
+    )
 
     return parser
 

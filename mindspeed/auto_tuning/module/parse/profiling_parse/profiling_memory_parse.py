@@ -16,6 +16,7 @@ class AnalyseMemoryMsg(ProfilingConfig):
         self._update_norm_op()
         self.fw_memory_indices: List[List[int]]
         self.bw_memory_indices: List[List[int]]
+        self.recompute_fw: List[List[int]]
         self.fw_memory_per_micro_opt_num: int
         self.bw_memory_per_micro_opt_num: int
         self.stage_id = stage_id
@@ -45,17 +46,17 @@ class AnalyseMemoryMsg(ProfilingConfig):
         fw_memory_indices, bw_memory_indices = self._analyse_norm_op()
         if self.search_cfg.pp > 1:
             self.fw_memory_indices, \
-                self.bw_memory_indices, \
-                recompute_fw, \
-                self.fw_memory_per_micro_opt_num, \
-                self.bw_memory_per_micro_opt_num = \
+            self.bw_memory_indices, \
+            self.recompute_fw, \
+            self.fw_memory_per_micro_opt_num, \
+            self.bw_memory_per_micro_opt_num = \
                 self.search_first_operator_idx_for_per_layer_enable_pp(fw_memory_indices, bw_memory_indices)
         else:
             self.fw_memory_indices, \
-                self.bw_memory_indices, \
-                recompute_fw, \
-                self.fw_memory_per_micro_opt_num, \
-                self.bw_memory_per_micro_opt_num = \
+            self.bw_memory_indices, \
+            self.recompute_fw, \
+            self.fw_memory_per_micro_opt_num, \
+            self.bw_memory_per_micro_opt_num = \
                 self.search_first_operator_idx_for_per_layer_disable_pp(fw_memory_indices, bw_memory_indices)
 
     def analyse_embedding(self):
@@ -120,6 +121,14 @@ class AnalyseMemoryMsg(ProfilingConfig):
         for msg in self._memory_details[self.bw_memory_indices[-1][-1] + 1:]:
             op_start_memory, op_peak_memory = self.compare_memory(msg, op_start_memory, op_peak_memory)
         return [op_start_memory], [op_peak_memory]
+
+    def analyse_recompute(self):
+        recompute_memory = 0
+        if self.recompute_fw:
+            recompute_memory = float(self._memory_details[self.recompute_fw[0][0] + \
+                               self.fw_memory_per_micro_opt_num - 1][SpecialKeyName.ALLOCATED_MEMORY]) - \
+                               float(self._memory_details[self.recompute_fw[0][0]][SpecialKeyName.ALLOCATED_MEMORY])
+        return [recompute_memory]
 
     def _analyse_norm_op(self):
         fw_memory_indices, bw_memory_indices = [], []

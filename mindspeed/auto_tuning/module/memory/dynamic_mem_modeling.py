@@ -10,6 +10,7 @@ from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_config import 
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
 from mindspeed.auto_tuning.utils.utils import get_prof_dir
 
+
 ProfileResult = namedtuple("ProfileResult", ["cfg", "prof"])
 MemModule = namedtuple(
     "MemModule",
@@ -17,6 +18,7 @@ MemModule = namedtuple(
         "checkpoint_activation_layer",
         "checkpoint_activation_embedding",
         "checkpoint_activation_loss",
+        "checkpoint_activation_recompute",
         "forward_peak",
         "loss_peak",
         "backward_peak",
@@ -36,6 +38,9 @@ class DynamicMemModeling:
         self.ckpt_act_embedding: float = None
         self.ckpt_act_tp_b_embedding: float = None
         self.ckpt_act_loss: float = None
+        self.ckpt_act_recompute: float = None
+        self.ckpt_act_tp_b_recompute: float = None
+        self.ckpt_act_seq_b_recompute: float = None
         self.forward_peak: float = None
         self.tp_b_forward_peak: float = None
         self.backward_peak: float = None
@@ -56,6 +61,7 @@ class DynamicMemModeling:
         checkpoint_activation_layer, \
             checkpoint_activation_embedding, \
             checkpoint_activation_loss, \
+            _, \
             forward_peak, \
             loss_peak, \
             backward_peak, \
@@ -109,7 +115,7 @@ class DynamicMemModeling:
         baseline_cfg.num_layers = 1
         baseline_cfg.seq_length = self.BASELINE_SEQLEN
         if self.model_cfg.is_moe():
-            baseline_cfg.num_experts = 4
+            baseline_cfg.num_experts = 16
             baseline_cfg.expert_model_parallel_size = 1
         result.append(baseline_cfg)
 
@@ -145,6 +151,11 @@ class DynamicMemModeling:
                                               tp4seq4k_prof,
                                               tp8seq4k_prof)
         self._get_ckpt_act_loss_modeling(baseline_cfg, tp4seq4k_prof)
+        self._get_ckpt_act_recompute_modeling(
+            ProfileResult(cfg=baseline_cfg, prof=tp4seq4k_prof),
+            ProfileResult(cfg=seq8k_cfg, prof=tp4seq8k_prof),
+            ProfileResult(cfg=tp8_cfg, prof=tp8seq4k_prof)
+        )
         self._get_forward_peak_modeling(baseline_cfg,
                                         tp8_cfg,
                                         tp4seq4k_prof,
@@ -169,6 +180,8 @@ class DynamicMemModeling:
         self._logger.debug(f"{self.ckpt_act_embedding}, {self.ckpt_act_tp_b_embedding}")
         self._logger.debug("== ckpt_act_loss:")
         self._logger.debug(f"{self.ckpt_act_loss}")
+        self._logger.debug("== ckpt_act_recompute:")
+        self._logger.debug(f"{self.ckpt_act_recompute}, {self.ckpt_act_tp_b_recompute}, {self.ckpt_act_seq_b_recompute}")
         self._logger.debug("== forward_peak:")
         self._logger.debug(f"{self.forward_peak}, {self.tp_b_forward_peak}")
         self._logger.debug("== backward_peak:")
@@ -180,9 +193,16 @@ class DynamicMemModeling:
 
     def cal_dynamic_mem(self,
                         cfg: SearchConfig
-                        ) -> Tuple[List[float], float]:
+                        ) -> Tuple[List[float], float, float]:
         mem_module = self._cal_mem_module(cfg)
-        optimizer_peak = mem_module[-1]
+        _, \
+            _, \
+            _, \
+            ckpt_act_recompute, \
+            _, \
+            _, \
+            _, \
+            optimizer_peak = mem_module
 
         nlayer = self.model_cfg.num_layers // cfg.pp
         if cfg.layers_per_vpp:
@@ -198,7 +218,7 @@ class DynamicMemModeling:
                                                     stage_id)
             peak_mem *= (cfg.mbs / 1)  # mbs in profiling cfg equals 1
             dynamic_mem_stages.append(peak_mem)
-        return dynamic_mem_stages, optimizer_peak
+        return dynamic_mem_stages, ckpt_act_recompute, optimizer_peak
 
     def _get_ckpt_act_layer_modeling(self,
                                      base_cfg: SearchConfig,
@@ -229,6 +249,28 @@ class DynamicMemModeling:
         self.ckpt_act_loss = base_cfg.tp * \
             (base_prof.backward.start_memory[0][0] -
              base_prof.loss.start_memory[0][0])
+
+    def _get_ckpt_act_recompute_modeling(
+        self,
+        base_res: ProfileResult,
+        bi_seq_res: ProfileResult,
+        bi_tp_res: ProfileResult
+    ) -> None:
+        base_cfg, base_prof = base_res
+        bi_seq_cfg, bi_seq_prof = bi_seq_res
+        bi_tp_cfg, bi_tp_prof = bi_tp_res
+        base_ckpt_act_recompute = base_prof.recompute_memory[0]
+        bi_seq_ckpt_act_recompute = bi_seq_prof.recompute_memory[0]
+        bi_tp_ckpt_act_recompute = bi_tp_prof.recompute_memory[0]
+
+        self.ckpt_act_seq_b_recompute = (base_ckpt_act_recompute *
+                                         (bi_seq_cfg.seq_length // base_cfg.seq_length) -
+                                         bi_seq_ckpt_act_recompute) * base_cfg.tp
+        self.ckpt_act_tp_b_recompute = bi_tp_ckpt_act_recompute * \
+            (bi_tp_cfg.tp // base_cfg.tp) - \
+            base_ckpt_act_recompute
+        self.ckpt_act_recompute = base_ckpt_act_recompute * base_cfg.tp - \
+            self.ckpt_act_tp_b_recompute * (base_cfg.tp - 1)
 
     def _get_forward_peak_modeling(self,
                                    base_cfg: SearchConfig,
@@ -313,6 +355,11 @@ class DynamicMemModeling:
 
         checkpoint_activation_loss = self.ckpt_act_loss * nseq / tp
 
+        checkpoint_activation_recompute = \
+            ((self.ckpt_act_recompute +
+              tp_w * self.ckpt_act_tp_b_recompute) * nseq -
+             self.ckpt_act_seq_b_recompute * (nseq - 1)) / tp
+
         forward_peak = \
             (self.forward_peak +
              tp_w * self.tp_b_forward_peak) * nseq / tp
@@ -333,6 +380,7 @@ class DynamicMemModeling:
         self._logger.debug(f"== checkpoint_activation_layer: {checkpoint_activation_layer}")
         self._logger.debug(f"== checkpoint_activation_embedding: {checkpoint_activation_embedding}")
         self._logger.debug(f"== checkpoint_activation_loss: {checkpoint_activation_loss}")
+        self._logger.debug(f"== checkpoint_activation_recompute: {checkpoint_activation_recompute}")
         self._logger.debug(f"== forward_peak: {forward_peak}")
         self._logger.debug(f"== loss_peak: {loss_peak}")
         self._logger.debug(f"== backward_peak: {backward_peak}")
@@ -342,6 +390,7 @@ class DynamicMemModeling:
             checkpoint_activation_layer,
             checkpoint_activation_embedding,
             checkpoint_activation_loss,
+            checkpoint_activation_recompute,
             forward_peak,
             loss_peak,
             backward_peak,

@@ -1,16 +1,12 @@
 from typing import List
-from dataclasses import replace
 
-from mindspeed.auto_tuning.module.hardware import Hardware
+from mindspeed.auto_tuning.mindspeed_adaptor.mindspeed_settings import MindSpeedSettings as Settings
 from mindspeed.auto_tuning.config.model_config import ModelConfig
 from mindspeed.auto_tuning.config.search_config import SearchConfig
 
 
 def stage_1_discrete_search_space_prune(
-        mcfg: ModelConfig,
-        pod_limit=0,
-        model_in_pod=False,
-        device_fluctuation_down_ratio=0
+        mcfg: ModelConfig
 ) -> List[SearchConfig]:
     """
     Stage 1 prune is without any modeling.
@@ -29,38 +25,31 @@ def stage_1_discrete_search_space_prune(
     list of dict: A list of valid configurations (tp, cp, pp, dp, ep, zero which stored as a dict) that satisfy all constraints.
     """
 
-    num_devices = mcfg.global_world_size
-    device_type = Hardware().device_type
+    num_devices = Settings().search_world_size
+    device_type = Settings().device_type
 
     valid_configs: List[SearchConfig] = list()
 
     # Iterate over all possible combinations of tp, cp, pp, dp, ep and zero
     # Prune tp based on device_type, tp = 1 or 8 only if running on 910B
-    tp_search_list = [2 ** i for i in range(num_devices + 1)]
-    if "910B" in device_type:
-        tp_search_list = [1, 8]
-    for tp in tp_search_list:
-
-        # Check if tp is less than or equal to pod_limit
-        if 0 < pod_limit < tp:
-            continue
+    for tp in [2 ** i for i in range(1, Settings().devices_per_node.bit_length())]:
 
         for cp in range(1, num_devices // tp + 1):
+
+            if mcfg.seq_length % cp != 0:
+                continue
 
             # Check cp long sequence based on device_type
             if cp > 1:
                 if ("910B" in device_type) and \
                         ((mcfg.seq_length // cp) < 8 * 1024):
                     continue
-                if ("910_9" in device_type) and \
+                if ("910_93" in device_type) and \
                         ((mcfg.seq_length // cp) < 4 * 1024):
                     continue
 
             for pp in range(1, num_devices // (tp * cp) + 1):
 
-                # Check if tp * pp is less than or equal to pod_limit
-                if model_in_pod and tp * pp > pod_limit:
-                    continue
                 # Check if layer_number is divisible by pp
                 if mcfg.num_layers % pp != 0:
                     continue
@@ -68,25 +57,22 @@ def stage_1_discrete_search_space_prune(
                 for dp in range(1, num_devices // (tp * cp * pp) + 1):
 
                     # Check device number compatibility
-                    if device_fluctuation_down_ratio > 0:
-                        if not ((1 - device_fluctuation_down_ratio) * num_devices < tp * cp * pp * dp <= num_devices):
-                            continue
-                    else:
-                        if tp * cp * pp * dp != num_devices:
-                            continue
-                    # Check if micro_batch_number is divisible by dp
-                    if mcfg.num_micro_batches % dp != 0:
-                        continue
-                    # Check if micro_batch_number / (pp * dp) is greater than 1
-                    if mcfg.num_micro_batches // (pp * dp) <= 1:
+                    if tp * cp * pp * dp != num_devices:
                         continue
 
-                    num_experts = mcfg.num_experts if mcfg.num_experts else 1
-                    for ep in range(1, min(cp * dp, num_experts) + 1):
+                    ep_search_domain = [None]
+                    # Search ep only if is moe
+                    if mcfg.num_experts:
+                        ep_search_domain = list(range(1, min(cp * dp, mcfg.num_experts) + 1))
+                    for ep in ep_search_domain:
 
-                        # Check if (ep | cp * dp) and (ep | expert_number)
-                        if ((cp * dp) % ep != 0) or (num_experts % ep != 0):
-                            continue
+                        if mcfg.num_experts and ep:
+                            if (cp * dp) % ep != 0:
+                                continue
+
+                            extend_ep = tp * ep if mcfg.moe_tp_extend_ep else ep
+                            if mcfg.num_experts % extend_ep != 0:
+                                continue
 
                         layers_per_vpp_search_domain = [None]
                         # Search vpp only if pp is enabled
@@ -103,25 +89,24 @@ def stage_1_discrete_search_space_prune(
                                 continue
 
                             for mbs in [1, 2]:
-                                cfg_zero0 = SearchConfig()
-                                cfg_zero0.copy_from_config(mcfg)
-                                cfg_zero0.tensor_model_parallel_size = tp
-                                cfg_zero0.context_parallel_size = cp
-                                cfg_zero0.pipeline_model_parallel_size = pp
-                                cfg_zero0.num_layers_per_virtual_pipeline_stage = \
-                                    layers_per_vpp
-                                cfg_zero0.use_distributed_optimizer = False
-                                cfg_zero0.micro_batch_size = mbs
+                                num_micro_batches = mcfg.global_batch_size // mbs
+                                if num_micro_batches % dp != 0:
+                                    continue
+                                if num_micro_batches // (pp * dp) <= 1:
+                                    continue
+                                cfg = SearchConfig()
+                                cfg.copy_from_config(mcfg)
+                                cfg.world_size = num_devices
+                                cfg.tensor_model_parallel_size = tp
+                                cfg.context_parallel_size = cp
+                                cfg.pipeline_model_parallel_size = pp
+                                cfg.num_layers_per_virtual_pipeline_stage = layers_per_vpp
+                                cfg.use_distributed_optimizer = dp * cp // (ep or 1) > 1
+                                cfg.micro_batch_size = mbs
                                 if mcfg.is_moe():
-                                    cfg_zero0.expert_model_parallel_size = ep
-                                cfg_zero0.normalize()
+                                    cfg.expert_model_parallel_size = ep or 1
+                                cfg.normalize()
 
-                                valid_configs.append(cfg_zero0)
-
-                                # When (dp * cp > 1), zero can be 1; add this config to the list
-                                if dp * cp > 1:
-                                    cfg_zero1 = replace(cfg_zero0,
-                                                        use_distributed_optimizer=True)
-                                    valid_configs.append(cfg_zero1)
+                                valid_configs.append(cfg)
 
     return valid_configs

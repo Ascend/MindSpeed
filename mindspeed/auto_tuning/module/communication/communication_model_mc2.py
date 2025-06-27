@@ -1,5 +1,5 @@
 from mindspeed.auto_tuning.module.communication.communication_model import CommunicationModel
-from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_constant import NumberConstant
+from mindspeed.auto_tuning.utils.utils import NumberConstant
 
 
 class Mc2Model(CommunicationModel):
@@ -50,7 +50,7 @@ class Mc2Model(CommunicationModel):
     def performance(self, search_cfg):
         tp = search_cfg.tensor_model_parallel_size
         cp = search_cfg.context_parallel_size
-        s = search_cfg.seq_length / 1000
+        s = search_cfg.seq_length / NumberConstant.CONVERSION_TIME
         mc2_time = 0
         if tp > 1:
             mc2_time = self.comm.hccs_w * (s / (tp * cp)) + self.comm.hccs_b

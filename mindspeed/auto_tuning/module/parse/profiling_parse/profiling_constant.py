@@ -1,22 +1,3 @@
-class NumberConstant:
-    """
-    Constant for number
-    """
-    CONVERSION_TIME = 1000.0
-    FW_NORM_OP_NUM_DISABLE_PP = 3
-    BW_NORM_OP_NUM_DISABLE_PP = 3
-    FW_NORM_OP_NUM_ENABLE_PP_LAST_STAGE = 3
-    FW_NORM_OP_NUM_ENABLE_PP_OTHER_STAGE = 2
-
-    @property
-    def conversion_time(self: any) -> float:
-        """
-        time conversion us to ms
-        :return: time conversion
-        """
-        return self.CONVERSION_TIME
-
-
 class OperatorDetails:
     def __init__(self, name, type_, input_shapes, output_shapes, duration_us, wait_time_us, accelerator_core):
         self.name: str = name
@@ -50,3 +31,4 @@ class SpecialKeyName:
     ELAPSE_TIME_MS = 'Elapse Time(ms)'
     WAIT_TIME_MS = 'Wait Time(ms)'
     IDLE_TIME_MS = 'Idle Time(ms)'
+    TRANSIT_TIME_MS = 'Transit Time(ms)'

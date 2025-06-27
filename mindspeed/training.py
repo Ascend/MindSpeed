@@ -165,10 +165,13 @@ def pretrain(train_valid_test_dataset_provider,
                         args_defaults=args_defaults)
 
     if (os.getenv("OOTB_OPTIMIZER_PARSE_ARGS", "FALSE") == "TRUE"):
-        working_dir = get_args().profile_save_path
-        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
-        hardware = MindSpeedAdaptor.get_hardware(working_dir=working_dir)
-        MindSpeedAdaptor.get_model_args(get_args(), hardware, working_dir)
+        args = get_args()
+        if not args.vocab_size:
+            from megatron.training.tokenizer.tokenizer import build_tokenizer
+            tokenizer = build_tokenizer(args)
+            args.vocab_size = tokenizer.vocab_size
+        from mindspeed.auto_tuning.mindspeed_adaptor import get_settings
+        get_settings(args, args.profile_save_path)
         print_rank_0("================OOTB_OPTIMIZER_PARSE_ARGS END EXIT!====================")
 
         return
@@ -223,10 +226,8 @@ def pretrain(train_valid_test_dataset_provider,
     config = get_model_config(model[0])
 
     if (os.getenv("OOTB_OPTIMIZER_PARSE_MODEL", "FALSE") == "TRUE"):
-        output_path = args.profile_save_path
-        from mindspeed.auto_tuning.mindspeed_adaptor import MindSpeedAdaptor
-        hardware = MindSpeedAdaptor.get_hardware()
-        MindSpeedAdaptor.get_model_params(model, mpu.get_pipeline_model_parallel_rank(), hardware, output_path)
+        from mindspeed.auto_tuning.mindspeed_adaptor import get_model_params
+        get_model_params(model, mpu.get_pipeline_model_parallel_rank(), args.profile_save_path)
         print_rank_0("================OOTB_OPTIMIZER_PARSE_MODEL END EXIT!====================")
         return
 

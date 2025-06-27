@@ -75,7 +75,6 @@ class ProfilingParser(ProfilingConfig):
         self._validate_file_path('kernel_details.csv', '_kernel_details_csv_path')
         self._validate_file_path('memory_record.csv', '_memory_record_csv_path')
         self._validate_file_path('operator_memory.csv', '_operator_memory_csv_path')
-        self._validate_file_path('npu_module_mem.csv', '_npu_module_mem_csv_path')
         self._validate_file_path('communication.json', '_communication_json_path')
         self._validate_file_path('op_statistic.csv', '_op_statistic_csv_path')
 
@@ -189,6 +188,7 @@ class ProfilingParser(ProfilingConfig):
         self.model.optimizer.start_memory.append(optimizer_start)
         self.model.optimizer.peak_memory.append(optimizer_peak)
         self.model.cann_and_driver_memory = memory_cls.analyse_cann_and_driver(memory_record_details)
+        self.model.recompute_memory = memory_cls.analyse_recompute()
 
     def _parse_communication_info(self, communication_details, kernel_details):
         communication_cls = AnalyseCommunicationMsg(self.search_cfg, communication_details, kernel_details)

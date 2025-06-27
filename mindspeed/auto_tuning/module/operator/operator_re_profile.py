@@ -1,29 +1,24 @@
 import os
-import stat
 import random
-import pickle
 
+from mindspeed.auto_tuning.mindspeed_adaptor.mindspeed_settings import MindSpeedSettings as Settings
 from mindspeed.auto_tuning.utils.logger import get_logger
-from mindspeed.auto_tuning.utils.runner.model_executor import ExecutorFlag, ModelExecutor
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_node_parse import GatherNodeProfiling
-from mindspeed.auto_tuning.utils.runner.torchrun_runner import TorchRunRunner
 from mindspeed.auto_tuning.config.search_config import SearchConfig
 from mindspeed.auto_tuning.utils.utils import get_prof_dir
 from mindspeed.auto_tuning.module.operator.operator import OperatorPerformance
 from mindspeed.auto_tuning.module.operator.operator_database import OperatorHistory
-
 
 logger = get_logger('operator_re_profile')
 
 
 def search_operator(working_dir, search_cfg, communication, profile_count,
                     scale_flag=False):
-    # After a certain amount of profiling, the rest operators have not been found will be predicted using
-    # regression method.
-    executor = ModelExecutor(TorchRunRunner())
+    # 拉到一定量的profiling之后其余均使用线性预测的方式
     profiling_results = []
     search_cfg_list = [search_cfg]
     model_config = communication.model_cfg
+    # Not Found list 保存全局变量
     seed = 1234
     random.seed(seed)
     unsampled_profiling_info = []
@@ -46,21 +41,16 @@ def search_operator(working_dir, search_cfg, communication, profile_count,
         re_profiling_config.expert_model_parallel_size = profiling_config.expert_model_parallel_size
         re_profiling_config.prepare_for_profiling()
 
-        from mindspeed.auto_tuning.module.hardware import Hardware
         res_dir = os.path.join(working_dir, get_prof_dir(re_profiling_config, re_profile=True))
         if not os.path.exists(res_dir):
             profile_count[0] += 1
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-            mode = stat.S_IWUSR | stat.S_IRUSR
-            pkl_filename = os.path.join(working_dir, f'ootb_{Hardware().node_rank}.pkl')
-            with os.fdopen(os.open(pkl_filename, flags, mode=mode), 'wb') as f:
-                pickle.dump(re_profiling_config, f)
-            executor.execute(working_dir=working_dir, output_filename=res_dir, cfg=re_profiling_config,
-                             flag=ExecutorFlag.PROFILE)
+            Settings().executor.execute(
+                output_filename=res_dir,
+                cfg=re_profiling_config
+            )
         profiling_node_parse = GatherNodeProfiling(res_dir)
         profiling_res = profiling_node_parse.fuse_node_pkl()
 
-        re_profiling_config.jit_compile = search_cfg.jit_compile
         profiling_results.append([re_profiling_config, profiling_res])
 
         operator_list = OperatorPerformance(model_config, working_dir=working_dir)
@@ -79,10 +69,10 @@ def search_operator(working_dir, search_cfg, communication, profile_count,
                                                input_shape=operator.input_shapes.replace('"', ''),
                                                output_shape=operator.output_shapes.replace('"', ''),
                                                duration=operator.duration_us,
-                                               device=Hardware().device_type,
+                                               device=Settings().device_type,
                                                jit=int(model_config.jit_compile),
-                                               cann="8.0.RC2.alpha002",
-                                               driver="24.1.rc2.b030",
+                                               cann=Settings().cann_version,
+                                               driver=Settings().driver_version,
                                                dtype=model_config.dtype.value[0])
             operator_history_list.append(operator_history.convert_to_dict())
         operator_list.db.operator_history_dao.insert_history(operator_history_list)

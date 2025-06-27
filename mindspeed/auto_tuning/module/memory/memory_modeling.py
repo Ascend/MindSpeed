@@ -18,8 +18,6 @@ class MemoryModeling:
 
     @classmethod
     def set_model_cfg(cls, model_cfg: ModelConfig) -> None:
-        if cls._static_modeling and cls._dynamic_modeling:
-            raise ValueError("ModelConfig has yet been set.")
         cls._static_modeling = StaticMemModeling(model_cfg)
         cls._dynamic_modeling = DynamicMemModeling(model_cfg)
         cls._logger = get_logger("memory")
@@ -35,10 +33,10 @@ class MemoryModeling:
         cls._dynamic_modeling.model_dynamic_mem(working_dir)
 
     @classmethod
-    def estimate(cls, cfg: SearchConfig) -> Tuple[float, float]:
+    def estimate(cls, cfg: SearchConfig) -> Tuple[float, float, float]:
         cls._logger.debug("==========Memory Estimate Summary==========")
         static_mem = cls._static_modeling.cal_static_mem(cfg)
-        dynamic_mem, optimizer_peak = \
+        dynamic_mem, recompute_mem, optimizer_peak = \
             cls._dynamic_modeling.cal_dynamic_mem(cfg)
         peak_stage_mem = float(0)
         for stage_id in range(cfg.pp):
@@ -52,4 +50,4 @@ class MemoryModeling:
         cls._logger.debug(f"optimizer peak memory: {optimizer_peak} MB")
         cls._logger.debug("==========Memory Estimate Summary End==========")
 
-        return max(peak_stage_mem, optimizer_peak), optimizer_peak
+        return recompute_mem, peak_stage_mem, optimizer_peak

@@ -1,5 +1,4 @@
 import os
-
 from sqlalchemy import Column, Integer, String, UniqueConstraint, text, desc
 from sqlalchemy import create_engine, Float
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -98,28 +97,14 @@ class OperatorHistoryDAO(object):
     def insert_history(self, data_list):
         def insert_data(session, dict_list):
             for data in dict_list:
-                update_query = text('''
-                                            UPDATE operator_history
-                                            SET duration = (duration + :duration) / 2
-                                            WHERE types = :types AND accelerator_core = :accelerator_core AND input_shape = :input_shape AND
-                                                  output_shape = :output_shape AND device = :device AND jit = :jit AND cann = :cann AND
-                                                  driver = :driver AND dtype = :dtype
-                                            ''')
-                result = session.execute(update_query, data)
-                if result.rowcount == 0:
-                    query = text('''
-                                                INSERT INTO operator_history
-                                                (types, accelerator_core, input_shape, output_shape, duration, device, jit, cann, driver, dtype, reverse1)
-                                                SELECT :types, :accelerator_core, :input_shape, :output_shape, :duration, :device, :jit, :cann, :driver, :dtype, :reverse1
-                                                WHERE NOT EXISTS(
-                                                    SELECT 1 FROM operator_history WHERE
-                                                    types = :types AND accelerator_core = :accelerator_core AND input_shape = :input_shape AND
-                                                    output_shape = :output_shape AND device = :device AND jit = :jit AND cann = :cann AND
-                                                    driver = :driver AND dtype = :dtype
-                                                )
-                                        ''')
-                    session.execute(query, data)
-                    session.commit()
+                query = text('''
+                            INSERT OR REPLACE INTO operator_history 
+                            (types, accelerator_core, input_shape, output_shape, duration, device, jit, cann, driver, dtype, reverse1)
+                            VALUES (:types, :accelerator_core, :input_shape, :output_shape, :duration, :device, :jit, :cann, :driver, :dtype, :reverse1)
+                            ON CONFLICT(types, accelerator_core, input_shape, output_shape, device, jit, cann, driver, dtype)
+                            DO UPDATE SET duration = (operator_history.duration + EXCLUDED.duration) / 2
+                        ''')
+                session.execute(query, data)
 
         self.db_connection.execute(insert_data, data_list)
 

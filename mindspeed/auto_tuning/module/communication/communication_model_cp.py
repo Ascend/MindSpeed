@@ -1,4 +1,5 @@
 from mindspeed.auto_tuning.module.communication.communication_model import CommunicationModel
+from mindspeed.auto_tuning.utils.utils import NumberConstant
 _GLOBAL_ATTN_FORWARD_KERNEL_NAMES = [
     "aclnnFlashAttentionScore_FlashAttentionScore_FlashAttentionScore"
 ]
@@ -37,7 +38,7 @@ class CpModel(CommunicationModel):
         cp = config.cp
         pp = config.pp
         dp = config.dp
-        s = config.seq_length / 1000
+        s = config.seq_length / NumberConstant.CONVERSION_TIME
 
         # CP's communication volume is CP-1 times the forward KV, backward KV, and dKV per machine.
         if cp > 1:
@@ -187,15 +188,15 @@ class CpModel(CommunicationModel):
                 attn_gb_list.append(item)
                 attn_bw += float(item.duration_us)
         # Attention, one of them is shadowed. attn_bw needs to be calculated.
-        attention = attention / 1000
-        attn_bw = attn_bw / 1000
+        attention = attention / NumberConstant.CONVERSION_TIME
+        attn_bw = attn_bw / NumberConstant.CONVERSION_TIME
         return attention, attn_bw
 
     def performance(self, search_cfg):
         tp = search_cfg.tensor_model_parallel_size
         pp = search_cfg.pipeline_model_parallel_size
         cp = search_cfg.context_parallel_size
-        s = search_cfg.seq_length / 1000
+        s = search_cfg.seq_length / NumberConstant.CONVERSION_TIME
         cp_time = 0.0
         comm_x = (cp - 1) * s / (tp * cp) * pp
         K = cp * tp / self.hccs_dev_num

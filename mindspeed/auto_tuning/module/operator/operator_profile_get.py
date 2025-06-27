@@ -28,6 +28,7 @@ class OriginalProfileData(object):
 class OriginalProfileDataList(object):
     def __init__(self):
         self.data_list = []
+        self.layer_time = []
 
     def get_origin_profile_data(self, profiling_results):
         for config, model in profiling_results:
@@ -42,6 +43,19 @@ class OriginalProfileDataList(object):
 
             self.data_list.append(origin_profile_data)
 
+            forward_time, backward_time = self.get_forward_backward_time(profile_list_fw, profile_list_bw)
+            self.layer_time.append([forward_time, backward_time])
+
+    @staticmethod
+    def get_forward_backward_time(profile_fw, profile_bw):
+        total_time_fw = 0
+        total_time_bw = 0
+        for operator in profile_fw:
+            total_time_fw += float(operator.duration_us)
+        for operator in profile_bw:
+            total_time_bw += float(operator.duration_us)
+        return total_time_fw, total_time_bw
+
     @staticmethod
     def get_profinfo_list_from_profiling(items, forwardflag):
         operator_info_list = []
@@ -49,7 +63,7 @@ class OriginalProfileDataList(object):
         cp_flag1 = 0
         cp_flag = 0
         for (index, item) in enumerate(items):
-            # Mark forward network part for CP
+            # CP 正向FN部分打标记
             if forwardflag == 1:
                 if "ConcatD" in item.name and index < (len(items) - 2):
                     if "hcom_send" in items[index + 1].name or "hcom_send" in items[index + 2].name:
@@ -59,9 +73,9 @@ class OriginalProfileDataList(object):
                         cp_flag1 = 0
                         continue
                     item.name = "cp_for_flag_" + item.name
-            # Mark the backward part for CP
+            # CP 反向部分打标记
             if forwardflag == 0:
-                # Mark froward network part for CP re-computation
+                # CP 反向FN重计算部分
                 if cp_flag == 0 and "ConcatD" in item.name and index < (len(items) - 2):
                     if "hcom_send" in items[index + 1].name or "hcom_send" in items[index + 2].name:
                         cp_flag1 = 2
@@ -70,7 +84,7 @@ class OriginalProfileDataList(object):
                         cp_flag1 = 0
                         continue
                     item.name = "cp_re_flag_" + item.name
-                # Mark backward network part for CP
+                # CP 反向FN部分
                 if cp_flag == 0 and "Concat" in item.name and index < (len(items) - 2):
                     if "ZerosLike" in items[index + 1].name:
                         cp_flag = 1
@@ -80,7 +94,7 @@ class OriginalProfileDataList(object):
                 if cp_flag == 1:
                     item.name = "cp_back_flag_" + item.name
 
-            # Mark EP part
+            # EP部分打标记
             if "alltoall" in item.name:
                 alltoall_flag = alltoall_flag + 1
             if alltoall_flag % 2 == 1:

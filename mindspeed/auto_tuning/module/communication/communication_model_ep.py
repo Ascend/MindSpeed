@@ -1,4 +1,5 @@
 from mindspeed.auto_tuning.module.communication.communication_model import CommunicationModel
+from mindspeed.auto_tuning.utils.utils import NumberConstant
 
 
 class EpModel(CommunicationModel):
@@ -15,7 +16,7 @@ class EpModel(CommunicationModel):
         cp = config.cp
         ep = config.ep
         pp = config.pp
-        s = config.seq_length / 1000
+        s = config.seq_length / NumberConstant.CONVERSION_TIME
         experts = config.num_experts if config.num_experts else 1
 
         if ep and ep > 1:
@@ -104,7 +105,7 @@ class EpModel(CommunicationModel):
         pp = search_cfg.pipeline_model_parallel_size
         cp = search_cfg.context_parallel_size
         ep = search_cfg.expert_model_parallel_size
-        s = search_cfg.seq_length / 1000
+        s = search_cfg.seq_length / NumberConstant.CONVERSION_TIME
         ep_time = 0.0
         experts = search_cfg.num_experts if search_cfg.num_experts else 1
         comm_x = experts * s * (ep - 1) * pp / ep / tp / cp

@@ -2,7 +2,6 @@ from typing import Optional
 from dataclasses import dataclass
 
 from mindspeed.auto_tuning.config.model_config import ModelConfig
-from mindspeed.auto_tuning.module.hardware import Hardware
 
 
 @dataclass
@@ -12,24 +11,34 @@ class SearchConfig(ModelConfig):
 
     def __str__(self) -> str:
         rt = list()
-        if self.performance:
-            rt.append(f"{'Performance':<30}{str(self.performance):<40}")
-        if self.memory:
-            rt.append(f"{'Memory':<30}{str(self.memory):<40}")
-        return super().__str__() + "\n" + "\n".join(rt)
+        rt.append(f"{'Data Parallel Size':<30}{self.data_parallel_size}")
+        rt.append(f"{'Tensor Parallel Size':<30}{self.tensor_model_parallel_size}")
+        rt.append(f"{'Pipeline Parallel Size':<30}{self.pipeline_model_parallel_size}")
+        rt.append(f"{'Virtual Pipeline Size':<30}{self.vpp}")
+        rt.append(f"{'Context Parallel Size':<30}{self.context_parallel_size}")
+        rt.append(f"{'Expert Parallel Size':<30}{self.expert_model_parallel_size}")
+        rt.append(f"{'ZeRO1':<30}{self.use_distributed_optimizer}")
+        rt.append(f"{'MC2':<30}{self.use_ascend_mc2}")
+        rt.append(f"{'Token Rearrange':<30}{self.enable_token_rearrange_opt}")
+        rt.append(f"{'Micro Batch Size':<30}{self.micro_batch_size}")
+        rt.append(f"{'Recompute layer':<30}{self.recompute_num_layers}")
+        return "\n".join(rt)
 
-    def copy_from_config(self, cfg: ModelConfig) -> None:
+    def copy_from_config(self, cfg: ModelConfig):
         for k, v in vars(cfg).items():
-            if k in self.__dict__:
-                self.__dict__[k] = v
+            setattr(self, k, v)
 
     def prepare_for_profiling(self) -> None:
-        self.use_distributed_optimizer = True
+        from mindspeed.auto_tuning.mindspeed_adaptor.mindspeed_settings import MindSpeedSettings as Settings
+        self.micro_batch_size = 1
+        self.world_size = Settings().profiling_world_size
+        self.num_layers_per_virtual_pipeline_stage = None
         self.recompute_granularity = "full"
         self.recompute_method = "block"
-        self.adaptive_recompute_device_swap = False
-        self.global_world_size = Hardware().num_devices
-        self.micro_batch_size = 1
+        self.recompute_num_layers = self.num_layers // self.pp
+        self.use_distributed_optimizer = True
+        if self.is_moe():
+            self.enable_token_rearrange_opt = True
 
         self.normalize()
         self.global_batch_size = self.dp * self.pp * self.mbs
@@ -38,7 +47,6 @@ class SearchConfig(ModelConfig):
         self.profile = True
         self.profile_step_start = 8
         self.profile_step_end = 9
-        self.profile_ranks = list(range(Hardware().num_devices))
         self.profile_level = "level1"
         self.profile_with_cpu = True
         self.profile_with_stack = False
@@ -46,15 +54,4 @@ class SearchConfig(ModelConfig):
         self.profile_record_shapes = True
 
     def normalize(self) -> None:
-        self.data_parallel_size = self.global_world_size // \
-            (self.tp * self.cp * self.pp)
-
-        if self.is_moe():
-            self.enable_token_rearrange_opt = True
-
-        if self.adaptive_recompute_device_swap:
-            self.recompute_granularity = None
-            self.recompute_method = None
-            self.recompute_num_layers = None
-        elif self.is_full_recompute():
-            self.recompute_num_layers = self.num_layers // self.pp
+        self.data_parallel_size = self.world_size // (self.tp * self.cp * self.pp)
