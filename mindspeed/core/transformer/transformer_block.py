@@ -2,13 +2,15 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 
 from functools import wraps
+from contextlib import nullcontext
 import torch
 from torch import Tensor
 
-from megatron.core import tensor_parallel, parallel_state, mpu
+from megatron.core import InferenceParams, tensor_parallel, parallel_state, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
+from megatron.core.utils import make_viewless_tensor
 from megatron.training import get_args
 from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 from mindspeed.core.tensor_parallel.comm_autograd_function import auto_grad_sync_gather_along_last_dim, \
@@ -19,11 +21,7 @@ from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPY
 def transformer_block_checkpointed_forward_wrapper(forward_func):
     @wraps(forward_func)
     def row_parallel_forward(*args, **kwargs):
-        global_args = get_args()
-        if global_args.recompute_method != 'block' and not global_args.swap_attention:
-            output = forward_func(*args, **kwargs)
-        else:
-            output = transformer_block_checkpointed_forward(*args, **kwargs)
+        output = transformer_block_checkpointed_forward(*args, **kwargs)
         return output
 
     return row_parallel_forward
@@ -64,30 +62,15 @@ def transformer_block_checkpointed_forward(
         return custom_forward
 
     def checkpoint_handler(forward_func):
-        if self.config.fp8:
-            from transformer_engine.pytorch.distributed import checkpoint as te_checkpoint
-
-            return te_checkpoint(
-                forward_func,
-                self.config.distribute_saved_activations,
-                tensor_parallel.random.get_cuda_rng_tracker,
-                parallel_state.get_tensor_model_parallel_group(),
-                hidden_states,
-                attention_mask,
-                context,
-                context_mask,
-                rotary_pos_emb,
-            )
-        else:
-            return tensor_parallel.checkpoint(
-                forward_func,
-                self.config.distribute_saved_activations,
-                hidden_states,
-                attention_mask,
-                context,
-                context_mask,
-                rotary_pos_emb,
-            )
+        return tensor_parallel.checkpoint(
+            forward_func,
+            self.config.distribute_saved_activations,
+            hidden_states,
+            attention_mask,
+            context,
+            context_mask,
+            rotary_pos_emb,
+        )
 
     # Checkpoint the input activation of only a set number of individual
     # Transformer layers and skip the rest.
@@ -100,7 +83,9 @@ def transformer_block_checkpointed_forward(
         if not global_args.swap_attention:
             l = 0
             while l < self.num_layers_per_pipeline_rank:
-                hidden_states = checkpoint_handler(custom(l, l + 1))
+                hidden_states, context = checkpoint_handler(
+                    custom(l, l + self.config.recompute_num_layers)
+                )
 
                 l += self.config.recompute_num_layers
         else:
@@ -230,3 +215,116 @@ def transformer_block_forward_wrapper(fn):
             hidden_states = auto_grad_sync_gather_along_last_dim(hidden_states, TPYCollectiveComm)
         return hidden_states
     return wrapper
+
+
+def transformer_block_forward(
+    self,
+    hidden_states: Tensor,
+    attention_mask: Tensor,
+    context: Tensor = None,
+    context_mask: Tensor = None,
+    rotary_pos_emb: Tensor = None,
+    inference_params: InferenceParams = None,
+    packed_seq_params: PackedSeqParams = None,
+):
+    # hidden_states (float): [s, b, h]
+    # attention_mask (bool): [1, 1, s, s]
+
+    if not self.pre_process:
+        # See set_input_tensor()
+        hidden_states = self.input_tensor
+
+    # Viewless tensor.
+    # - We only need to create a viewless tensor in the case of micro batch
+    #   size (mbs) == 1, since in this case, 'hidden_states.transpose()'
+    #   above creates a view tensor, and '.contiguous()' is a pass-through.
+    #   For mbs >= 2, '.contiguous()' creates a new tensor, eliminating
+    #   the need to make it viewless.
+    #
+    #   However, we don't explicitly check mbs == 1 here because
+    #   make_viewless_tensor() has negligible overhead when its input
+    #   is already viewless.
+    #
+    # - For the 'else' case above, calling make_viewless_tensor() here is
+    #   likely redundant, since p2p_communication.py (likely originator)
+    #   already creates viewless tensors. That said, make_viewless_tensor()
+    #   is called here to be future-proof and corner-case-proof.
+    hidden_states = make_viewless_tensor(
+        inp=hidden_states, requires_grad=True, keep_graph=True,
+    )
+
+    if self.config.sequence_parallel:
+        rng_context = tensor_parallel.get_cuda_rng_tracker().fork()
+    else:
+        rng_context = nullcontext()
+
+    if self.config.fp8:
+        args = get_args()
+        import transformer_engine  # To keep out TE dependency when not training in fp8
+        from mindspeed.te.fp8.metadata import FP8Config
+        from mindspeed.te.fp8.fp8 import fp8_autocast
+        from mindspeed.te.fp8.recipes.recipe import RecipeConfig
+        from mindspeed.te.fp8.recipes import SCALING_TYPE_MAP
+        from mindspeed.te.fp8.constants import Format
+        scale_type = SCALING_TYPE_MAP[args.fp8_recipe]
+
+        if self.config.fp8 == 'hybrid':
+            fp8_config = FP8Config(
+                inputs=(scale_type, RecipeConfig(fp8_format=Format.E4M3)),
+                weight=(scale_type, RecipeConfig(fp8_format=Format.E4M3)),
+                grads=(scale_type, RecipeConfig(fp8_format=Format.E5M2)),
+                default=(scale_type, RecipeConfig())
+            )
+        elif self.config.fp8 == 'hif8':
+            fp8_config = FP8Config(
+                inputs=(scale_type, RecipeConfig(fp8_format=Format.HiF8)),
+                weight=(scale_type, RecipeConfig(fp8_format=Format.HiF8)),
+                grads=(scale_type, RecipeConfig(fp8_format=Format.HiF8)),
+                default=(scale_type, RecipeConfig())
+            )
+        else:
+            fp8_config = FP8Config(default=(scale_type, RecipeConfig()))
+        fp8_group = None
+        if parallel_state.model_parallel_is_initialized():
+            fp8_group = parallel_state.get_amax_reduction_group(with_context_parallel=True)
+
+        fp8_context = fp8_autocast(enabled=True, fp8_config=fp8_config, fp8_group=fp8_group)
+    else:
+        fp8_context = nullcontext()
+
+    with rng_context and fp8_context:
+        # Forward pass.
+        if self.config.recompute_granularity == 'full' and self.training:
+            hidden_states = self._checkpointed_forward(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                context=context,
+                context_mask=context_mask,
+                rotary_pos_emb=rotary_pos_emb,
+                packed_seq_params=packed_seq_params,
+            )
+        else:
+            for layer in self.layers:
+                with self.offload_context:
+                    hidden_states, context = layer(
+                        hidden_states=hidden_states,
+                        attention_mask=attention_mask,
+                        context=context,
+                        context_mask=context_mask,
+                        rotary_pos_emb=rotary_pos_emb,
+                        inference_params=inference_params,
+                        packed_seq_params=packed_seq_params,
+                    )
+
+                if (
+                        torch.is_grad_enabled()
+                        and self.config.cpu_offloading
+                        and self.group_prefetch_offload_commit_async is not None
+                ):
+                    hidden_states = self.group_prefetch_offload_commit_async(hidden_states)
+
+    # Final layer norm.
+    if self.post_process and self.post_layer_norm:
+        hidden_states = self.final_layernorm(hidden_states)
+
+    return hidden_states

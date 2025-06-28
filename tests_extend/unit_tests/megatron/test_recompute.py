@@ -18,6 +18,7 @@ from mindspeed.model.transformer import set_attention_mask
 class TestRecompute(DistributedTest):
     world_size = 8
     args = parse_args(None, True)
+    args.reduce_recompute_for_last_chunk = False
     set_args(args)
 
     @pytest.mark.parametrize("granularity", ['selective', 'full'])

@@ -199,12 +199,17 @@ def mcore_models_adaptation(aspm, mindspeed_args):
     megatron.core.jit.jit_fuser = dummy_jit
 
     from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec
+    from .core.models.gpt.gpt_layer_specs import get_gpt_layer_te_spec
     from .core.models.common.embeddings.rotary_pos_embedding import get_pos_emb_on_this_cp_rank, \
         rotary_embedding_init_wrapper
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.get_pos_emb_on_this_cp_rank',
                         get_pos_emb_on_this_cp_rank)
-    aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_with_transformer_engine_spec',
-                        get_gpt_layer_local_spec)
+    if mindspeed_args.transformer_impl == 'transformer_engine':
+        aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_with_transformer_engine_spec',
+                            get_gpt_layer_te_spec)
+    else:
+        aspm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_with_transformer_engine_spec',
+                            get_gpt_layer_local_spec)
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.__init__',
                         rotary_embedding_init_wrapper)
     from .core.models.common.embeddings.language_model_embedding import language_model_embedding_forward_wrapper
@@ -292,6 +297,11 @@ def mcore_transformer_adaptation(aspm, args):
     if hasattr(args, "multi_head_latent_attention") and args.multi_head_latent_attention:
         from mindspeed.core.transformer.attention import self_attention_init_mla_wrapper
         aspm.register_patch('megatron.core.transformer.attention.SelfAttention.__init__', self_attention_init_mla_wrapper)
+    from mindspeed.te.module.linear import TERowParallelLinear, TEColumnParallelLinear
+    aspm.register_patch('megatron.core.transformer.custom_layers.transformer_engine.TEColumnParallelLinear',
+                        TEColumnParallelLinear)
+    aspm.register_patch('megatron.core.transformer.custom_layers.transformer_engine.TERowParallelLinear',
+                        TERowParallelLinear)
 
 
 def mcore_parallel_state_adaptation(aspm):
@@ -1005,6 +1015,19 @@ def dist_train_adaptation(aspm, args):
         aspm.register_patch('megatron.training.checkpointing.get_checkpoint_name', dist_train.checkpointing.get_checkpoint_name_wrapper)
 
 
+def megatron_te_adaptation(pm, mindspeed_args):
+    if hasattr(mindspeed_args, "fp8_format") or mindspeed_args.comm_overlap_type in ["mc2", "coc", "coc_kernel"] \
+            or mindspeed_args.transformer_impl == "transformer_engine":
+        from .core.transformer.transformer_block import transformer_block_forward
+        from .te.fp8.constants import Format
+        from .te.module.linear import TEColumnParallelLinear, TERowParallelLinear
+        pm.register_patch('megatron.core.transformer.custom_layers.transformer_engine.TELayerNormColumnParallelLinear',
+                          TEColumnParallelLinear)
+        pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.forward',
+                          transformer_block_forward)
+        pm.register_patch('transformer_engine.common.recipe.Format', Format)
+
+
 def optimizer_selection(aspm, mindspeed_args):
     if mindspeed_args.optimizer_selection == 'fused_torch_adamw':
         from .optimizer.adamw import FusedTorchAdamW as AdamW
@@ -1082,6 +1105,7 @@ def adaptation_l2(aspm, mindspeed_args):
     tensor_2d_adaptation(aspm, mindspeed_args)
     auto_parallel_mm_adaptation(aspm, mindspeed_args)
     dist_train_adaptation(aspm, mindspeed_args)
+    megatron_te_adaptation(aspm, mindspeed_args)
 
     for feature in FEATURES_LIST:
         if getattr(mindspeed_args, feature.feature_name, None) and feature.optimization_level == 2:
@@ -1148,8 +1172,6 @@ def exe_adaptation():
         
     aspm.apply_patches()
 
-    # accelerate package will check TE on sys.modules，so we need remove this patch
-    del sys.modules['transformer_engine']
 
 
 exe_adaptation()

@@ -55,6 +55,7 @@ def process_args(parser):
     parser = _add_ai_framework_args(parser)
     parser = _add_communication_overlap_args(parser)
     parser = _add_autocast_args(parser)
+    parser = _add_te_args(parser)
 
 
     for feature in FEATURES_LIST:
@@ -212,6 +213,24 @@ def _add_profile_args(parser):
                        help="Profile save path.")
     group.add_argument('--profile-ranks', nargs='+', type=int, default=[-1],
                        help='Global ranks to profile.The default value of -1 means to profile all ranks')
+    return parser
+
+
+def _add_te_args(parser):
+    group = parser.add_argument_group(title='te')
+    # ascend turbo
+    group.add_argument('--comm-overlap-type', type=str, default='default',
+                       choices=['default', 'mc2', 'coc_kernel', 'coc'], help='communication overlap type')
+    group.add_argument('--transformer-impl', default='local',
+                       choices=['local', 'transformer_engine'],
+                       help='Which Transformer implementation to use.')
+    group.add_argument('--fp8-recipe', default='delayed',
+                       choices=['tensorwise', 'delayed', 'mxfp8', 'blockwise'],
+                       help='Which fp8 recipe to use for FP8 tensors in the forward and backward pass',
+                       dest='fp8_recipe')
+    group.add_argument('--fp8-format', default=None, choices=['e4m3', 'hybrid', 'hif8'],
+                       help='Which fp8 format scheme to use for FP8 tensors in the forward and backward pass',
+                       dest='fp8')
     return parser
 
 
@@ -882,10 +901,13 @@ def validate_args_wrapper(validate_args):
             args.shape_order = 'SBH'
         if overlap_param_gather_without_mcore_models:
             args.use_legacy_models = True
-        if args.transformer_impl == 'transformer_engine':
-            args.transformer_impl = 'local'
-        if args.fp8:
-            raise AssertionError('NPU not supported FP8.')
+        if args.fp8 and args.transformer_impl == 'local':
+            raise AssertionError('FP8 just support TE implement.')
+        if args.transformer_impl == "transformer_engine" and args.use_legacy_models:
+            raise AssertionError('transformer engine only support for mcore models')
+        if args.fp8 == 'hif8':
+            if args.fp8_recipe != 'tensorwise':
+                raise ValueError("hif8 only support tensorwise scaling type")
         if args.tp_comm_overlap:
             args.tp_comm_overlap = False
         if args.recompute_method == "uniform":
