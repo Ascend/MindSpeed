@@ -44,9 +44,10 @@ def checkpoint_function_backward(ctx, *args):
     local_set_cuda_rng_state(ctx.fwd_cuda_rng_state) # 用这里的还是megatron ? 
     get_cuda_rng_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
 
+    detached_inputs = detach_variable(inputs)
     # Compute the forward pass.
     with torch.enable_grad():
-        outputs, f_vjp = torch.autograd.vjp(ctx.run_function, *inputs)
+        outputs, f_vjp = torch.autograd.vjp(ctx.run_function, *detached_inputs)
 
     # Set the states back to what it was at the start of this function.
     torch.set_rng_state(bwd_cpu_rng_state)
