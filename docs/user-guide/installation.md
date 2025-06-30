@@ -9,7 +9,7 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
 | master（主线）            | Core 0.12.1 | 2.1.0, 2.6.0 | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
 | core_r0.10.0（主线）      | Core 0.10.0 | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
 | core_r0.9.0（主线）       | Core 0.9.0  | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
-| 2.1.0_core_0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.1.RC1     | 8.2.RC1 | Python3.9.x, Python3.10.x              |
+| 2.1.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.1.RC1     | 8.2.RC1 | Python3.9.x, Python3.10.x              |
 | 2.1.0_core_r0.8.0（商用） | Core 0.8.0  | 2.1.0        | 7.1.RC1     | 8.2.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
 | 2.0.0_core_r0.8.0（商用） | Core 0.8.0  | 2.1.0        | 7.0.0       | 8.1.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
 | 1.0.0_core_r0.7.0（商用） | Core 0.7.0  | 2.1.0        | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x |
@@ -59,14 +59,14 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
   </tr>
 </table>
 
-### 2. 下载MindSpeed源码并切换至2.1.0_core_0.12.1分支
+### 2. 下载MindSpeed源码并切换至2.1.0_core_r0.12.1分支
 
 
 
  ```shell
  git clone https://gitee.com/ascend/MindSpeed.git
  cd MindSpeed
- git checkout 2.1.0_core_0.12.1
+ git checkout 2.1.0_core_r0.12.1
  ```
 
 ### 3. 安装MindSpeed
