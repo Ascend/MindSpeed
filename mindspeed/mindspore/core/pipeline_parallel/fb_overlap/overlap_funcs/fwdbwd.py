@@ -623,33 +623,33 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         else:
             detached_shared_expert_output = None
 
-    unperm2_swap_manager = None
+        unperm2_swap_manager = None
 
-    def alltoall_token_unperm2_func(detached_unperm_a2a_out, detached_shared_expert_output, residual2, probs):
-        nonlocal unperm2_swap_manager
-        if args.moe_unperm2_mem_optim:
-            probs = None
-        route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out, probs)
-        if hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None:
-            mlp_output = route_expert_output + detached_shared_expert_output
+        def alltoall_token_unperm2_func(detached_unperm_a2a_out, detached_shared_expert_output, residual2, probs):
+            nonlocal unperm2_swap_manager
             if args.moe_unperm2_mem_optim:
-                shared_expert_output.untyped_storage().resize_(0)
-        else:
-            mlp_output = route_expert_output
+                probs = None
+            route_expert_output, unperm2_swap_manager = alltoall_token_unperm2(fwd_layer.mlp.token_dispatcher, detached_unperm_a2a_out, probs)
+            if hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None:
+                mlp_output = route_expert_output + detached_shared_expert_output
+                if args.moe_unperm2_mem_optim:
+                    shared_expert_output.untyped_storage().resize_(0)
+            else:
+                mlp_output = route_expert_output
 
-        if recomp_norm:
-            mlp_output.register_hook(fwd_layer.norm_ckpt2.recompute)
+            if recomp_norm:
+                mlp_output.register_hook(fwd_layer.norm_ckpt2.recompute)
 
-        with fwd_layer.bias_dropout_add_exec_handler():
-            hidden_states = fwd_layer.mlp_bda(fwd_layer.training, fwd_layer.config.bias_dropout_fusion)(
-                (mlp_output, None), residual2, fwd_layer.hidden_dropout
-            )
-        return hidden_states
+            with fwd_layer.bias_dropout_add_exec_handler():
+                hidden_states = fwd_layer.mlp_bda(fwd_layer.training, fwd_layer.config.bias_dropout_fusion)(
+                    (mlp_output, None), residual2, fwd_layer.hidden_dropout
+                )
+            return hidden_states
 
 
-    hidden_states, alltoall_token_unperm2_vjp = run_graph_forward(alltoall_token_unperm2_func, detached_unperm_a2a_out,
-                                                                  detached_shared_expert_output, residual2,
-                                                                  probs_detached)
+        hidden_states, alltoall_token_unperm2_vjp = run_graph_forward(alltoall_token_unperm2_func, detached_unperm_a2a_out,
+                                                                      detached_shared_expert_output, residual2,
+                                                                      probs_detached)
 
 
     # Jit compiled function creates 'view' tensor. This tensor
