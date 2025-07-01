@@ -946,7 +946,7 @@ class AttentionWithCp(torch.autograd.Function):
                 cp_config.fetch_ptrs = (seq_lens, half_seq_lens, cp_config.q_index, cp_config.kv_index)
 
                 cp_config.softmax_indices = get_selection_indices_for_tnd_softmax_update(q.shape[0], q.shape[1],
-                                                                                         half_seq_lens[2]).to(q.device)
+                                                                                         tuple(half_seq_lens[2])).to(q.device)
             else:
                 # split chunk[i]~chunk[cp_size-i-1] into chunk[i] and chunk[cp_size-i-1],, [2s, b, h] -> [2, s, b, h]
                 q, k, v = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, k, v]]

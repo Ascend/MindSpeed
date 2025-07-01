@@ -5,6 +5,7 @@ import torch_npu
 import torch.distributed as dist
 import numpy as np
 from einops import rearrange
+from functools import lru_cache
 from scipy.sparse.linalg import eigsh
 from mindspeed.ops.npu_ring_attention_update import npu_ring_attention_update
 from mindspeed.core.context_parallel import get_args
@@ -38,7 +39,7 @@ def tnd_to_sbh(x, b):
     s, h = t // b, int(n * d)
     return x.view(b, s, n, d).transpose(0, 1).view(s, b, h)
 
-
+@lru_cache(maxsize=8)
 def get_selection_indices_for_tnd_softmax_update(t, n, sub_seq_len):
     full_indices = list(range(t * n))
     cur_seq_start_idx = 0
