@@ -52,11 +52,7 @@ def deallocate_output_tensor_(out, deallocate_pipeline_outputs=False):
     assert isinstance(out, torch.Tensor), "expected Tensor, found %s." % type(out).__name__
     assert out._base is None, "counter-productive to free a view of another tensor."
     out._shape_before_deallocate = out.shape
-    out.data = torch.empty(
-        (1,),
-        device=out.device,
-        dtype=out.dtype,
-    )
+    out.untyped_storage().resize_(0)
 
 
 def forward_step(
