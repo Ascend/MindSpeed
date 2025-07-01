@@ -40,7 +40,7 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from .core.pipeline_parallel.schedules import forward_step, backward_step, forward_backward_no_pipelining
     from .core.pipeline_parallel.schedules import forward_backward_pipelining_with_interleaving, \
-        forward_backward_pipelining_without_interleaving  # NOTE there's import patch
+        forward_backward_pipelining_without_interleaving, deallocate_output_tensor_  # NOTE there's import patch
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_step', forward_step, force_patch=True)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.backward_step', backward_step, force_patch=True)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_no_pipelining',
@@ -49,6 +49,8 @@ def mindspore_adaptation(aspm, mindspeed_args):
                         forward_backward_pipelining_with_interleaving)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_without_interleaving',
                         forward_backward_pipelining_without_interleaving)
+    aspm.register_patch('megatron.core.pipeline_parallel.schedules.deallocate_output_tensor',
+                        deallocate_output_tensor_)
 
     from .core.tensor_parallel.data import local_build_key_size_numel_dictionaries  # resolve error
     aspm.register_patch('megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries',
@@ -87,6 +89,3 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from mindspeed.mindspore.ops.npu_matmul_add import npu_matmul_add_fp32
     aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, force_patch=True)
-
-    from .core.transformer.transformer_block import NoopTransformerLayer
-    aspm.register_patch('mindspeed.core.transformer.transformer_block.NoopTransformerLayer', NoopTransformerLayer, force_patch=True)
