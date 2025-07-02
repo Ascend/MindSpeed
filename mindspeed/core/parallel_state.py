@@ -123,7 +123,7 @@ def hccl_buffer_auto_adaptive():
 
     context_parallel_algo = args.context_parallel_algo
     num_attention_heads = args.num_attention_heads
-    group_query_attention = args.group_query_attention
+    num_query_groups = args.num_query_groups
 
     global _HCCL_GROUP_BUFFER
     #The DP group, DP-CP group, and DP-EP group .Here, we take the default value of 200M.
@@ -199,8 +199,8 @@ def hccl_buffer_auto_adaptive():
         hccl_cp_buffer_size = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / tensor_model_parallel_size / 1024 / 1024)
         _HCCL_GROUP_BUFFER['cp'] = hccl_cp_buffer_size
     elif context_parallel_algo == 'megatron_cp_algo' :
-        hccl_cp2_buffer_size = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * group_query_attention / tensor_model_parallel_size / 1024 / 1024)
-        hccl_cp_buffer_size = 2 * 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * group_query_attention / tensor_model_parallel_size / 1024 / 1024)
+        hccl_cp2_buffer_size = 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * num_query_groups / tensor_model_parallel_size / 1024 / 1024)
+        hccl_cp_buffer_size = 2 * 2 * math.ceil(seq_length / context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * num_query_groups / tensor_model_parallel_size / 1024 / 1024)
         if args.cp_window_size > 1:
             if args.use_cp_send_recv_overlap:
                 _HCCL_GROUP_BUFFER['cp2'] = hccl_cp2_buffer_size
@@ -220,7 +220,7 @@ def hccl_buffer_auto_adaptive():
         ulysses_context_parallel_size = args.ulysses_degree_in_cp
         ring_context_parallel_size = context_parallel_size / ulysses_context_parallel_size
         hccl_cp_ulysess_buffer_size = 2 * math.ceil(seq_length / ulysses_context_parallel_size * micro_batch_size * hidden_size / tensor_model_parallel_size / 1024 / 1024)
-        hccl_cp_ring_buffer_size = 2 * math.ceil(seq_length / ring_context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * group_query_attention / tensor_model_parallel_size / 1024 / 1024)
+        hccl_cp_ring_buffer_size = 2 * math.ceil(seq_length / ring_context_parallel_size * micro_batch_size * hidden_size / num_attention_heads * num_query_groups / tensor_model_parallel_size / 1024 / 1024)
         if args.cp_window_size > 1:
             if args.use_cp_send_recv_overlap:
                 _HCCL_GROUP_BUFFER['cp_ulysses'] = hccl_cp_ulysess_buffer_size
