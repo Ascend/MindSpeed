@@ -58,7 +58,8 @@ class ContextParallelFeature(MindSpeedFeature):
                 raise AssertionError("--ulysses-degree-in-cp must be specified in hybrid_cp_algo")
             ring_degree, remainder = divmod(args.context_parallel_size, args.ulysses_degree_in_cp)
             if not (ring_degree > 1 and remainder == 0):
-                raise AssertionError("--ulysses-degree-in-cp must be devisible by --context-parallel-size")
+                raise AssertionError("--ulysses-degree-in-cp must be divisible by --context-parallel-size and "
+                                     "--ulysses-degree-in-cp divided by --context-parallel-size must be greater than 1")
             args.ring_degree = ring_degree
 
             head, remainder = divmod(args.num_attention_heads,
