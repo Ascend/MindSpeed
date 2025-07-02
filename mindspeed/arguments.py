@@ -607,6 +607,10 @@ def validate_args_wrapper(validate_args):
         model_parallel_size = args.pipeline_model_parallel_size * args.tensor_model_parallel_size
         args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
 
+        if args.variable_seq_lengths and (not (getattr(args, "pipeline_model_parallel_size", 1) >= 2)):
+            raise AssertionError("--pipeline-model-parallel-size needs to be greater than 2 or equal to 2 if you want "
+                                "to use --variable-seq-lengths")
+
         if args.dist_train:
             from mindspeed.multi_modal.dist_train.config.dist_train_config import get_all_config
             if args.tensor_model_parallel_size > 1 and seq_parallel_enabled:
@@ -776,7 +780,9 @@ def validate_args_wrapper(validate_args):
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'hybrid_cp_algo':
             assert args.ulysses_degree_in_cp is not None, "--ulysses-degree-in-cp must be specified in hybrid_cp_algo"
             ring_degree, remainder = divmod(args.context_parallel_size, args.ulysses_degree_in_cp)
-            assert ring_degree > 1 and remainder == 0, "--ulysses-degree-in-cp must be devisible by --context-parallel-size"
+            if not (ring_degree > 1 and remainder == 0):
+                raise AssertionError("--ulysses-degree-in-cp must be divisible by --context-parallel-size, and "
+                                     "--ulysses-degree-in-cp divided by --context-parallel-size must be greater than 1")
             args.ring_degree = ring_degree
 
             head, remainder = divmod(args.num_attention_heads, args.ulysses_degree_in_cp * args.tensor_model_parallel_size)
