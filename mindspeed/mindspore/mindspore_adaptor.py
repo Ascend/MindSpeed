@@ -76,6 +76,9 @@ def mindspore_adaptation(aspm, mindspeed_args):
     from ..mindspore.core.distributed.finalize_model_grads import _allreduce_layernorm_grads
     aspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_layernorm_grads',
                                  _allreduce_layernorm_grads)
+
+    from ..mindspore.core.timers import _get_global_min_max_time
+    aspm.register_patch('megatron.core.timers.Timers._get_global_min_max_time', _get_global_min_max_time)
     
     from ..mindspore.legacy.model.module import fp32_to_float16, float16_to_fp32
     aspm.register_patch('megatron.legacy.model.module.fp32_to_float16', fp32_to_float16)
