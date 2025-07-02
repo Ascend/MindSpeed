@@ -548,6 +548,11 @@ def validate_args_wrapper(validate_args):
             if args.rank == 0:
                 print('Resetting global batch size to {}'.format(
                     args.global_batch_size), flush=True)
+
+        if args.variable_seq_lengths and (not (getattr(args, "pipeline_model_parallel_size", 1) >= 2)):
+            raise AssertionError("--pipeline-model-parallel-size needs to be greater than 2 or equal to 2 if you want "
+                                 "to use --variable-seq-lengths")
+
         if args.optimize_vpp_send_recv_comm and args.num_layers_per_virtual_pipeline_stage is None:
             raise AssertionError('--optimize-vpp-send-recv-comm can only be used with pipeline with interleaving.')
 
@@ -683,7 +688,9 @@ def validate_args_wrapper(validate_args):
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'hybrid_cp_algo':
             assert args.ulysses_degree_in_cp is not None, "--ulysses-degree-in-cp must be specified in hybrid_cp_algo"
             ring_degree, remainder = divmod(args.context_parallel_size, args.ulysses_degree_in_cp)
-            assert ring_degree > 1 and remainder == 0, "--ulysses-degree-in-cp must be devisible by --context-parallel-size"
+            if not (ring_degree > 1 and remainder == 0):
+                raise AssertionError("--ulysses-degree-in-cp must be divisible by --context-parallel-size, and "
+                                     "--ulysses-degree-in-cp divided by --context-parallel-size must be greater than 1")
             args.ring_degree = ring_degree
 
             head, remainder = divmod(args.num_attention_heads, args.ulysses_degree_in_cp * args.tensor_model_parallel_size)
