@@ -4,7 +4,7 @@
 
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)是NVIDIA提出的一种分布式训练加速库，
 支持数据并行和模型并行，在大模型训练中得到广泛应用。
-经过[MindSpeed](https://gitee.com/ascend/MindSpeed)昇腾平台的兼容性适配，
+经过[MindSpeed](https://gitee.com/ascend/MindSpeed/tree/2.1.0_core_r0.12.1/)昇腾平台的兼容性适配，
 现已支持在昇腾平台上高效运行。
 
 本手册的主要目标是指导具有一定`Megatron-LM`模型训练基础的用户将原本在其他硬件平台（例如GPU）上训练的模型迁移到昇腾平台（NPU）。
@@ -75,7 +75,7 @@ end
 
 ## 模型选取
 
-- 选择[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)仓库core_r0.12.1分支，
+- 选择[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)仓库core_v0.12.1分支，
 使用仓库根目录下的pretrain_gpt.py中内置的GPT模型作为迁移的模型。
 
 - 迁移前要保证选定的模型能在三方平台（如GPU）上运行，并输出精度和性能基线。
@@ -152,7 +152,7 @@ python convert_parquet.py
 ```python
 import json
 import pandas as pd
-data_df = pd.read_parquet("train-00000-of-00001-a09b74b3ef9c3b56.parquet")
+data_df = pd.read_parquet("train-00000-of-000010-a09b74b3ef9c3b56.parquet")
 data_df['text'] = data_df['text'].apply(lambda v: json.dumps({"text": v}))
 with open("alpaca_json.json", encoding='utf-8', mode='w') as f:
     for i, row in data_df.iterrows():
@@ -580,6 +580,10 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
 ```
 
 在终端下运行`bash pretrain_single.sh`。
-终端标准输出上出现如下每步迭代结果的训练日志表明加载模型重新训练成功。
+终端标准输出上出现如下ckpt加载日志表示执行了模型加载，
+
+![model_load](../../sources/images/model-load.png)
+
+同时终端标准输出出现每步迭代结果的训练日志表明加载模型后正常重新训练成功。
 
 ![iter_result](../../sources/images/iter_result.png)
