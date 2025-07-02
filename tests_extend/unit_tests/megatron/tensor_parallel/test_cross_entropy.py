@@ -2,15 +2,15 @@ import pytest
 import torch
 import torch.nn.functional as F
 import torch_npu
+
 from mindspeed import megatron_adaptor
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
+from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
+from megatron.core.tensor_parallel import mappings
 
 from commons import set_random_seed, initialize_model_parallel
 from unit_tests.common import DistributedTest
-
-from megatron.core.tensor_parallel.cross_entropy import vocab_parallel_cross_entropy
-from megatron.core.tensor_parallel import mappings
 
 
 class IdentityLayer(torch.nn.Module):
