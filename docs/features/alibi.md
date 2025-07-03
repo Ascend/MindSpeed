@@ -20,11 +20,11 @@ Alibi算法给attention score添加了一个预设的线性偏置矩阵（如下
 
 （1）对于不开启`--use-fusion-attn-v2`特性的情况，设置`--position-embedding-type alibi`即可调用该算法。
 
-（2）对于开启`--use-fusion-attn-v2`特性的情况设置，需要设置`--position-embedding-type alibi`和`--alibi-fusion-attn-type 2`（支持0，2，3）。
-0表示生成alibi后传入，1暂不开放， 2和3表示核内生成， 3做pse的时候会做sqrt。
-如果要设置alibi为对角线对称取反，则需设置`alibi_diagonal_opposite`，反之（亦是默认情况，且与2和3时核内生成一致）无需进行设置。
+（2）对于开启`--use-fusion-attn-v2`特性的情形下，需要设置`--position-embedding-type alibi`和`--alibi-fusion-attn-type 2`。`--alibi-fusion-attn-type`目前仅支持取0或2，
+0表示生成alibi后传入，1暂不开放， 2表示核内生成。
+如果要设置alibi为对角线对称取反，则需设置`alibi_diagonal_opposite`，反之（亦是默认情况，且与2时核内生成一致）无需进行设置。
 
-（3）目前alibi位置编码已经支持ring-attention长序列并行，当前只支持mask为causal的场景，以及 `--alibi-fusion-attn-type` 为2，3的压缩模式。暂不支持ulysses长序列并行和混合长序列并行。
+（3）目前alibi位置编码已经支持ring-attention长序列并行，当前只支持mask为causal的场景，以及 `--alibi-fusion-attn-type` 为2的压缩模式。暂不支持ulysses长序列并行和混合长序列并行。
 
 （4）开启`--use-fusion-attn-v2`特性和长序列并行时，alibi编码不支持开启dropout。
 
