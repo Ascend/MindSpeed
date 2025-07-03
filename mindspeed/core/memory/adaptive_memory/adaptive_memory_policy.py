@@ -148,10 +148,8 @@ class AdaptMemPolicyManager(metaclass=SingletonBase):
 
     def is_contained_prefetch_parents_comb(self, prefetch_parents_list, swap_list):
         prefetch_parents_list_copy = prefetch_parents_list.copy()
-        prefetch_parents_list_copy.sort()
-        swap_list_copy = swap_list.copy()
-        swap_list_copy.sort()
-        return prefetch_parents_list_copy == swap_list_copy
+        swap_list_copy = set(swap_list.copy())
+        return swap_list_copy.issubset(prefetch_parents_list_copy)
 
 
     def update_hccl_memory(self):
