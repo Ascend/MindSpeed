@@ -127,6 +127,8 @@ class SwapManager(metaclass=SingletonBase):
         ori_tensor_base = ori_tensor._base
         if ori_tensor_base is not None and ori_tensor_base.dim() >= 5:
             return True
+        if ori_tensor.storage().size() != ori_tensor.numel():
+            return True
         if ori_tensor_base is not None and ori_tensor_base.grad_fn is None and ori_tensor_base.requires_grad:
             return True
         return False

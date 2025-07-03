@@ -2,6 +2,8 @@
 
 from enum import Enum, IntEnum
 from typing import Set, Dict
+import importlib
+import io
 import pickle
 import torch
 from megatron.core import parallel_state as ps
@@ -199,6 +201,20 @@ def broadcast_in_mp_dp(tensor, src, mp, dp):
         torch.distributed.broadcast(tensor, src=broadcast_src, group=broadcast_group)
 
 
+class _RestrictedUnpickler(pickle.Unpickler):
+    def find_class(self, module: str, name: str):
+        if module.startswith("mindspeed.core.memory.adaptive_memory"):
+            module_ = importlib.import_module(module)
+            clazz = getattr(module_, name)
+            if isinstance(clazz, type):
+                return clazz
+        raise pickle.UnpicklingError("global '%s.%s' is forbidden" % (module, name))
+
+
+def restricted_loads(s):
+    return _RestrictedUnpickler(s).load()
+
+
 def broadcast_obj(obj):
     mp = ps.get_tensor_model_parallel_world_size()
     dp = ps.get_data_parallel_world_size(True)
@@ -214,6 +230,6 @@ def broadcast_obj(obj):
     else:
         obj_tensor_npu = torch.empty(obj_len, dtype=torch.uint8, device=torch.npu.current_device())
     broadcast_in_mp_dp(obj_tensor_npu, src, mp, dp)
-    result = pickle.loads(obj_tensor_npu.cpu().numpy().tobytes())
+    result = restricted_loads(io.BytesIO(obj_tensor_npu.cpu().numpy().tobytes()))
     del obj_tensor_npu
     return result
