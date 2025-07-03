@@ -1,12 +1,11 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
 import sys
 import time
-import pickle
+import ast
 from copy import deepcopy
 from typing import List
 
 import torch
-import numpy as np
 from megatron.training import print_rank_0, get_args
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core import parallel_state as ps
@@ -414,8 +413,8 @@ class AdaptMemGraphSolver(metaclass=SingletonBase):
         apm = AdaptMemPolicyManager()
         for key, times in self.adapt_mem_policy.items():
             temp_adapt_mem_policy_list = [times]
-            key_recompute = eval(key[0])
-            key_swap = eval(key[1])
+            key_recompute = ast.literal_eval(key[0])
+            key_swap = ast.literal_eval(key[1])
             if key_recompute == apm.without_adaptive_comb.recompute and key_swap == apm.without_adaptive_comb.swap:
                 temp_adapt_mem_policy_list.append(LayerAction.NONE)
                 temp_adapt_mem_policy_list.extend([ModuleAction.NONE] * apm.adapt_modules_num)

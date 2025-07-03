@@ -23,11 +23,18 @@ class RecomputeHook(metaclass=SingletonBase):
     @staticmethod
     def hook_checkpoint_forward(forward_func):
         def custom_forward(*args, **kwargs):
+            tensor_item_keys_in_kwargs = [x for x in kwargs.keys() if torch.is_tensor(kwargs[x])]
+            tensor_item_values_in_kwargs = [x for x in kwargs.values() if torch.is_tensor(x)]
+            non_tensor_item_in_kwargs = {k: v for k, v in kwargs.items() if not torch.is_tensor(v)}
+            origin_args_length = len(args)
+
             def inside_forward(*new_args):
-                origin_args = new_args[:len(args)]
-                origin_kwargs = dict(zip(kwargs.keys(), new_args[len(args):]))
+                origin_args = new_args[:origin_args_length]
+                origin_kwargs = {**dict(zip(tensor_item_keys_in_kwargs, new_args[origin_args_length:])),
+                                 **non_tensor_item_in_kwargs}
                 return forward_func(*origin_args, **origin_kwargs)
-            new_args = args + tuple(kwargs.values())
+            
+            new_args = args + tuple(tensor_item_values_in_kwargs)
             return tensor_parallel.checkpoint(inside_forward, False, *new_args)
         return custom_forward
 
