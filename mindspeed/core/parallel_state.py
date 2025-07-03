@@ -292,6 +292,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         data_parallel_size = 1 # dp 1
         rank = torch.distributed.get_rank()
         all_ep_groups = []
+        timeout = timedelta(minutes=distributed_timeout_minutes)
         if order == "tp-cp-ep-dp-pp":
             # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
             initialize_model_parallel(
@@ -343,9 +344,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     )
                     all_data_parallel_group_ranks_with_cp.append(list(ranks_with_cp))
 
-            timeout = timedelta(minutes=distributed_timeout_minutes)
-
-            # # Regenerate ep related groups because ep is set to 1 in initialize_model_parallel func
+            # Regenerate ep related groups because ep is set to 1 in initialize_model_parallel func
             rank_generator = megatron.core.parallel_state.RankGenerator(
                 tp=tensor_model_parallel_size,
                 ep=expert_model_parallel_size,
@@ -374,7 +373,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             for ranks in rank_generator.get_ranks('ep', independent_ep=True):
                 all_ep_groups.append(list(ranks))
                 group = torch.distributed.new_group(
-                    ranks, pg_options=get_nccl_options('exp', nccl_comm_cfgs)
+                    ranks, timeout=timeout, pg_options=get_nccl_options('exp', nccl_comm_cfgs)
                 )
                 if rank in ranks:
                     megatron.core.parallel_state._EXPERT_MODEL_PARALLEL_GROUP = group
@@ -436,21 +435,24 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             tensor_model_parallel_size,
             pipeline_model_parallel_size,
             context_parallel_size,
-            nccl_comm_cfgs
+            nccl_comm_cfgs,
+            distributed_timeout_minutes
         )
 
         initialize_context_parallel_group_for_hybrid_cp(
             tensor_model_parallel_size,
             pipeline_model_parallel_size,
             context_parallel_size,
-            nccl_comm_cfgs
+            nccl_comm_cfgs,
+            distributed_timeout_minutes
         )
 
         initialize_context_parallel_group_for_double_ring(
             tensor_model_parallel_size,
             pipeline_model_parallel_size,
             context_parallel_size,
-            nccl_comm_cfgs
+            nccl_comm_cfgs,
+            distributed_timeout_minutes
         )
 
         global _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM
@@ -460,7 +462,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         for i in range(num_pipeline_model_parallel_groups):
             ranks = range(i, world_size, num_pipeline_model_parallel_groups)
             group = torch.distributed.new_group(
-                ranks, pg_options=megatron.core.parallel_state.get_nccl_options('pp_new_stream', nccl_comm_cfgs)
+                ranks, timeout=timeout, pg_options=megatron.core.parallel_state.get_nccl_options('pp_new_stream', nccl_comm_cfgs)
             )
             if rank in ranks:
                 _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
@@ -474,6 +476,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             tensor_model_parallel_size=tensor_model_parallel_size,
             nd1_dim1_size=nd1_dim1_sz,
             nd2_dim1_size=nd2_dim1_sz,
+            distributed_timeout_minutes=distributed_timeout_minutes
         )
 
         if args.tp_2d:
@@ -529,7 +532,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
 
                 print(f'{all_tp_x_ep_groups=}')
                 all_tp_x_ep_groups = [tp_x_ep_ranks for tp_x_ep_ranks in all_tp_x_ep_groups]
-                timeout = timedelta(minutes=distributed_timeout_minutes)
+
 
                 global _TP_X_EP_GROUP
                 for tp_x_ep_ranks in all_tp_x_ep_groups:
@@ -577,8 +580,10 @@ def initialize_context_parallel_group_for_send_recv_overlap(
         tensor_model_parallel_size,
         pipeline_model_parallel_size,
         context_parallel_size,
-        nccl_comm_cfgs
+        nccl_comm_cfgs,
+        distributed_timeout_minutes=30
 ):
+    timeout = timedelta(minutes=distributed_timeout_minutes)
     from megatron.training import get_args
     if not get_args().use_cp_send_recv_overlap:
         return
@@ -605,7 +610,7 @@ def initialize_context_parallel_group_for_send_recv_overlap(
             for k in range(tensor_model_parallel_size):
                 ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
                 group_send_recv_overlap = torch.distributed.new_group(
-                    ranks, pg_options=megatron.core.parallel_state.get_nccl_options('cp2', nccl_comm_cfgs)
+                    ranks, timeout=timeout, pg_options=megatron.core.parallel_state.get_nccl_options('cp2', nccl_comm_cfgs)
                 )
                 if rank in ranks:
                     _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP = group_send_recv_overlap
@@ -615,8 +620,10 @@ def initialize_context_parallel_group_for_hybrid_cp(
         tensor_model_parallel_size,
         pipeline_model_parallel_size,
         context_parallel_size,
-        nccl_comm_cfgs
+        nccl_comm_cfgs,
+        distributed_timeout_minutes=30
 ):
+    timeout = timedelta(minutes=distributed_timeout_minutes)
     from megatron.training import get_args
     if (not hasattr(get_args(), 'context_parallel_algo') or
             (
@@ -657,7 +664,7 @@ def initialize_context_parallel_group_for_hybrid_cp(
                 for m in range(ring_degree):
                     ulysses_ranks = [ranks[idx] for idx in range(m * ulysses_degree, (m + 1) * ulysses_degree)]
                     ulysses_group = torch.distributed.new_group(
-                        ulysses_ranks,
+                        ulysses_ranks, timeout=timeout,
                         pg_options=megatron.core.parallel_state.get_nccl_options('cp_ulysses', nccl_comm_cfgs)
                     )
                     if rank in ulysses_ranks:
@@ -668,7 +675,7 @@ def initialize_context_parallel_group_for_hybrid_cp(
                 for m in range(ulysses_degree):
                     ring_ranks = [ranks[idx] for idx in range(m, len(ranks), ulysses_degree)]
                     ring_group = torch.distributed.new_group(
-                        ring_ranks, pg_options=megatron.core.parallel_state.get_nccl_options('cp_ring', nccl_comm_cfgs)
+                        ring_ranks, timeout=timeout, pg_options=megatron.core.parallel_state.get_nccl_options('cp_ring', nccl_comm_cfgs)
                     )
                     if rank in ring_ranks:
                         _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_RING = ring_group
@@ -680,7 +687,9 @@ def initialize_context_parallel_group_for_double_ring(
         pipeline_model_parallel_size,
         context_parallel_size,
         nccl_comm_cfgs,
+        distributed_timeout_minutes=30
 ):
+    timeout = timedelta(minutes=distributed_timeout_minutes)
     from megatron.training import get_args
     import megatron.core.parallel_state as ps
     args = get_args()
@@ -714,10 +723,10 @@ def initialize_context_parallel_group_for_double_ring(
         inter_size = ring_size // window_size
         for wid in range(inter_size):
             intra_ranks = [ring_global_ranks[idx] for idx in range(wid * window_size, (wid + 1) * window_size)]
-            intra_group = torch.distributed.new_group(intra_ranks, pg_options=ps.get_nccl_options('cp_ring_intra', nccl_comm_cfgs))
+            intra_group = torch.distributed.new_group(intra_ranks, timeout=timeout, pg_options=ps.get_nccl_options('cp_ring_intra', nccl_comm_cfgs))
             intra_group_for_send_recv_overlap = None
             if args.use_cp_send_recv_overlap:
-                intra_group_for_send_recv_overlap = torch.distributed.new_group(intra_ranks, pg_options=ps.get_nccl_options('cp_ring_intra_overlap', nccl_comm_cfgs))
+                intra_group_for_send_recv_overlap = torch.distributed.new_group(intra_ranks, timeout=timeout, pg_options=ps.get_nccl_options('cp_ring_intra_overlap', nccl_comm_cfgs))
 
             if rank in intra_ranks:
                 _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW = intra_ranks
@@ -1051,7 +1060,9 @@ def initialize_ndmm_parallel_group(
         tensor_model_parallel_size: int = 1,
         nd1_dim1_size: int = 1,
         nd2_dim1_size: int = 1,
+        distributed_timeout_minutes: int = 30,
 ):
+    timeout = timedelta(minutes=distributed_timeout_minutes)
     import megatron.core.parallel_state as ps
     from megatron.training import get_args
     from megatron.training.global_vars import _ensure_var_is_not_initialized
@@ -1118,11 +1129,11 @@ def initialize_ndmm_parallel_group(
             )
             tp_nd1_dim1_groups.append(list(ranks))
             group = torch.distributed.new_group(
-                ranks, pg_options=ps.get_nccl_options('nd1_dim1', nccl_comm_cfgs)
+                ranks, timeout=timeout, pg_options=ps.get_nccl_options('nd1_dim1', nccl_comm_cfgs)
             )
             if args.enable_overlap_ag_with_matmul or args.enable_backward_overlap_ag_with_matmul:
                 tp_x_ag_overlap_group = torch.distributed.new_group(
-                    ranks, pg_options=ps.get_nccl_options('ag_x_sd_rcv_overlap', nccl_comm_cfgs)
+                    ranks, timeout=timeout, pg_options=ps.get_nccl_options('ag_x_sd_rcv_overlap', nccl_comm_cfgs)
                 )
             else:
                 tp_x_ag_overlap_group = None
@@ -1140,11 +1151,11 @@ def initialize_ndmm_parallel_group(
             )
             tp_nd1_dim2_groups.append(list(ranks))
             group = torch.distributed.new_group(
-                ranks, pg_options=ps.get_nccl_options('nd1_dim2', nccl_comm_cfgs)
+                ranks, timeout=timeout, pg_options=ps.get_nccl_options('nd1_dim2', nccl_comm_cfgs)
             )
             if args.enable_overlap_ag_with_matmul or args.enable_backward_overlap_ag_with_matmul:
                 tp_y_ag_overlap_group = torch.distributed.new_group(
-                    ranks, pg_options=ps.get_nccl_options('ag_y_sd_rcv_overlap', nccl_comm_cfgs)
+                    ranks, timeout=timeout, pg_options=ps.get_nccl_options('ag_y_sd_rcv_overlap', nccl_comm_cfgs)
                 )
             else:
                 tp_y_ag_overlap_group = None
@@ -1160,7 +1171,7 @@ def initialize_ndmm_parallel_group(
             )
             tp_nd2_dim1_groups.append(list(ranks))
             group = torch.distributed.new_group(
-                ranks, pg_options=ps.get_nccl_options('nd2_dim1', nccl_comm_cfgs)
+                ranks, timeout=timeout, pg_options=ps.get_nccl_options('nd2_dim1', nccl_comm_cfgs)
             )
             if rank in ranks:
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM1 = group
@@ -1174,7 +1185,7 @@ def initialize_ndmm_parallel_group(
             )
             tp_nd2_dim2_groups.append(list(ranks))
             group = torch.distributed.new_group(
-                ranks, pg_options=ps.get_nccl_options('nd2_dim2', nccl_comm_cfgs)
+                ranks, timeout=timeout, pg_options=ps.get_nccl_options('nd2_dim2', nccl_comm_cfgs)
             )
             if rank in ranks:
                 _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND2_DIM2 = group
