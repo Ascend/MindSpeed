@@ -14,7 +14,7 @@ class AlibiFeature(MindSpeedFeature):
 
     Usage:
       "--position-embedding-type alibi"
-      "--alibi-fusion-attn-type [2, 3]"
+      "--alibi-fusion-attn-type 0 or 2"
       "[--alibi-diagonal-opposite]"
     """
 
@@ -58,7 +58,7 @@ class AlibiFeature(MindSpeedFeature):
         group.add_argument(
             '--alibi-fusion-attn-type',
             type=int,
-            help='alibi pse type, support for 0,2,3'
+            help='alibi pse type, support for 0,2'
         )
         group.add_argument(
             '--alibi-diagonal-opposite',
@@ -69,12 +69,12 @@ class AlibiFeature(MindSpeedFeature):
         
     def validate_args(self, args):
         if args.alibi_fusion_attn_type is not None:
-            if args.alibi_fusion_attn_type not in [0, 2, 3]:
+            if args.alibi_fusion_attn_type not in [0, 2]:
                 raise AssertionError(
-                    '--alibi-fusion-attn-type only support for `0, 2, 3`'
+                    '--alibi-fusion-attn-type only support for `0, 2`'
                 )
             # alibi is only support FA2
-            if args.alibi_fusion_attn_type in [0, 2, 3]:
+            if args.alibi_fusion_attn_type in [0, 2]:
                 args.use_fusion_attn_v2 = True
 
     def register_patches(self, patch_manager, args):
