@@ -1,9 +1,12 @@
 import os
 import types
 from functools import wraps
+from typing import List
 
 import torch
 from megatron.training import get_args
+from megatron.core import tensor_parallel
+from megatron.core.transformer.module import param_is_not_shared
 
 
 @torch.no_grad()
@@ -322,11 +325,140 @@ def optimizer_exp_avg_save_sign(optimizer, fp32_param, int32_tensor, odd_even_te
     if "exp_avg_sq" in optimizer.state[fp32_param]:
         int32_tensor.sub_(odd_even_tensor)
         sign_tensor = torch.sign(odd_even_tensor - 0.5).reshape(optimizer.state[fp32_param]["exp_avg_sq"].shape)
-        optimizer.state[fp32_param]["exp_avg_sq"].mul_(sign_tensor)
+        if hasattr(optimizer.state[fp32_param]["exp_avg_sq"], "meta"):
+            exp_avg_sq = optimizer.state[fp32_param]["exp_avg_sq"].meta.dequantization(
+                optimizer.state[fp32_param]["exp_avg_sq"].data)
+            exp_avg_sq.mul_(sign_tensor)
+            optimizer.state[fp32_param]["exp_avg_sq"].data.copy_(
+                optimizer.state[fp32_param]["exp_avg_sq"].meta.quantization(exp_avg_sq.data))
+        else:
+            optimizer.state[fp32_param]["exp_avg_sq"].mul_(sign_tensor)
 
 
 def optimizer_exp_avg_load_sign(optimizer, fp32_param, int32_tensor):
     if "exp_avg_sq" in optimizer.state[fp32_param]:
-        odd_even_tensor = (torch.sign(optimizer.state[fp32_param]["exp_avg_sq"]) > 0).reshape(-1)
+        if hasattr(optimizer.state[fp32_param]["exp_avg_sq"], "meta"):
+            exp_avg_sq = optimizer.state[fp32_param]["exp_avg_sq"].meta.dequantization(
+                optimizer.state[fp32_param]["exp_avg_sq"].data)
+            odd_even_tensor = (torch.sign(exp_avg_sq) > 0).reshape(-1)
+        else:
+            odd_even_tensor = (torch.sign(optimizer.state[fp32_param]["exp_avg_sq"]) > 0).reshape(-1)
         optimizer.state[fp32_param]["exp_avg_sq"].abs_()
         int32_tensor.add_(odd_even_tensor)
+
+
+def _collect_main_grad_data_for_unscaling_wrapper(func):
+    @wraps(func)
+    def _collect_main_grad_data_for_unscaling_func(self):
+        main_grads = func(self)
+        meta_grads_scale_inv = []
+        for main_group in self.fp32_from_float16_groups:
+            for main_param in main_group:
+                if hasattr(main_param, "quant_grad"):
+                    meta_grads_scale_inv.append(main_param.quant_grad.meta.scale_inv)
+
+        return main_grads, meta_grads_scale_inv
+
+    return _collect_main_grad_data_for_unscaling_func
+
+
+def _copy_model_grads_to_main_grads(self):
+    # This only needs to be done for the float16 group.
+    args = get_args()
+    for model_group, main_group in zip(self.float16_groups, self.fp32_from_float16_groups):
+        for model_param, main_param in zip(model_group, main_group):
+            if hasattr(model_param, 'main_grad'):
+                if args.quant_grads:
+                    main_param.quant_grad = model_param.main_grad
+                else:
+                    main_param.grad = model_param.main_grad.float()
+            else:
+                if model_param.grad is not None:
+                    if args.quant_grads:
+                        main_param.quant_grad = model_param.grad
+                    else:
+                        main_param.grad = model_param.grad.float()
+
+            # Safe to deallocate model's grad/main_grad after copying.
+            # (If using contiguous buffers, main_grad's memory should
+            # persist and therefore should not be deallocated.)
+            model_param.grad = None
+
+    # For fp32 grads, we need to reset the grads to main grad.
+    for model_group in self.fp32_from_fp32_groups:
+        for model_param in model_group:
+            if args.quant_grads:
+                model_param.quant_grad = model_param.main_grad
+            else:
+                model_param.grad = model_param.main_grad
+
+
+def _unscale_main_grads_and_check_for_nan(self):
+
+    # Collect main grads.
+    main_grads, meta_grads_scale_inv = self._collect_main_grad_data_for_unscaling()
+
+    # Reset found inf.
+    self.found_inf.fill_(0.0)
+
+    # Unscale and set found inf/nan
+    torch._amp_foreach_non_finite_check_and_unscale_(
+        main_grads, self.found_inf, self.grad_scaler.inv_scale
+    )
+
+    if len(meta_grads_scale_inv) > 0:
+        torch._amp_foreach_non_finite_check_and_unscale_(
+            meta_grads_scale_inv, self.found_inf, self.grad_scaler.inv_scale
+        )
+
+    # Update across all model parallel instances.
+    torch.distributed.all_reduce(
+        self.found_inf, op=torch.distributed.ReduceOp.MAX, group=self.get_model_parallel_group()
+    )
+
+    # Check for nan.
+    found_inf_flag = self.found_inf.item() > 0
+
+    return found_inf_flag
+
+
+def get_main_grads_for_grad_norm(self):
+    """
+    Get main_grads that should be taken into account to compute the grad norm.
+    Filter parameters based on:
+      - grad should not be None.
+      - parameter should not be shared (i.e., grads shouldn't be double counted while
+        computing norms).
+      - should not be a replica due to tensor model parallelism.
+    """
+    params = self.get_parameters()
+    grads_for_norm = []
+    for param in params:
+        if hasattr(param, "quant_grad"):
+            grad = param.quant_grad
+        else:
+            grad = param.grad
+        grad_not_none = grad is not None
+        is_not_shared = param_is_not_shared(param)
+        is_not_tp_duplicate = tensor_parallel.param_is_not_tensor_parallel_duplicate(param)
+        if grad_not_none and is_not_shared and is_not_tp_duplicate:
+            grads_for_norm.append(grad)
+
+    return grads_for_norm
+
+
+def _zero_grad_group_helper_wrapper(func):
+    @wraps(func)
+    def _zero_grad_group_helper_func(group: List[torch.nn.Parameter], set_to_none: bool):
+        func(group, set_to_none)
+        for param in group:
+            if hasattr(param, "quant_grad"):
+                if set_to_none:
+                    param.quant_grad = None
+                else:
+                    if param.quant_grad.grad_fn is not None:
+                        param.quant_grad.detach_()
+                    else:
+                        param.quant_grad.requires_grad_(False)
+                    param.quant_grad.zero_()
+    return _zero_grad_group_helper_func

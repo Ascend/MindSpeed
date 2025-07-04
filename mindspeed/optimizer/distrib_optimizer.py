@@ -956,7 +956,11 @@ def fp16_tensor_convert_to_fp32_tensor_deterministic(shard_fp32_from_float16_gro
             assert shard_int32_tensor.numel() == shard_fp32_param.numel()
             loops = shard_int32_tensor.numel() // TRANSPOSE_BF16_BLOCK_SIZE
             remain = shard_int32_tensor.numel() % TRANSPOSE_BF16_BLOCK_SIZE
-            exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
+            if hasattr(optimizer.state[shard_fp32_param]["exp_avg_sq"], "meta"):
+                exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].meta.dequantization(
+                    optimizer.state[shard_fp32_param]["exp_avg_sq"].data).reshape(-1)
+            else:
+                exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
             for loop in range(loops):
                 odd_even_tensor = torch.sign(exp_avg_sq_flatten[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE] > 0)
                 shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE].add_(odd_even_tensor)
@@ -977,7 +981,11 @@ def fp32_tensor_convert_to_fp16_tensor_deterministic(shard_fp32_from_float16_gro
             assert shard_int32_tensor.numel() == shard_fp32_param.numel()
             loops = shard_int32_tensor.numel() // TRANSPOSE_BF16_BLOCK_SIZE
             remain = shard_int32_tensor.numel() % TRANSPOSE_BF16_BLOCK_SIZE
-            exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
+            if hasattr(optimizer.state[shard_fp32_param]["exp_avg_sq"], "meta"):
+                exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].meta.dequantization(
+                    optimizer.state[shard_fp32_param]["exp_avg_sq"].data).reshape(-1)
+            else:
+                exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
             shard_int32_tensor.add_(32768)
             for loop in range(loops):
                 odd_even_tensor = ((shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE] & 131071) == 65536).int()
@@ -989,6 +997,11 @@ def fp32_tensor_convert_to_fp16_tensor_deterministic(shard_fp32_from_float16_gro
                 shard_int32_tensor[-remain:].sub_(odd_even_tensor)
                 sign_tensor = torch.sign(odd_even_tensor - 0.5)
                 exp_avg_sq_flatten[-remain:].mul_(sign_tensor)
+            if hasattr(optimizer.state[shard_fp32_param]["exp_avg_sq"], "meta"):
+                ori_shape = optimizer.state[shard_fp32_param]["exp_avg_sq"].shape
+                optimizer.state[shard_fp32_param]["exp_avg_sq"].data.copy_(
+                    optimizer.state[shard_fp32_param]["exp_avg_sq"].meta.quantization(exp_avg_sq_flatten.data).reshape(
+                        ori_shape))
 
 
 def get_parameter_state_dp_zero_hccl(self):
@@ -1198,3 +1211,48 @@ def load_parameter_state_from_dp_zero_hccl(self, state_dict):
                         tensor_to_copy_into.data.copy_(
                             recv_tensor[gbuf_local_start:gbuf_local_end]
                         )
+
+
+def _collect_main_grad_data_for_unscaling_quant_distrib_optimizer(self):
+    main_grads, meta_grads_scale_inv, meta_grads_amax = [], [], []
+    for group in self.optimizer.param_groups:
+        for param in group["params"]:
+            if param.grad is not None:
+                main_grads.append(param.grad.data)
+    args = get_args()
+    if args.quant_grads:
+        meta_grads_scale_inv = [
+            param.quant_grad.meta.scale_inv
+            for group in self.optimizer.param_groups
+            for param in group["params"]
+        ]
+        meta_grads_amax = [
+            param.quant_grad.meta.amax_history[0]
+            for group in self.optimizer.param_groups
+            for param in group["params"]
+        ]
+
+    return main_grads, meta_grads_scale_inv, meta_grads_amax
+
+
+def _copy_model_grads_to_main_grads_quant_distrib_optimizer(self):
+    args = get_args()
+
+    def copy_group_grads(model_groups, shard_main_groups):
+        for model_group, shard_main_group in zip(model_groups, shard_main_groups):
+            for model_param, shard_main_param in zip(model_group, shard_main_group):
+                param_range_map = self._get_model_param_range_map(model_param)
+                param_range = param_range_map["param"]
+                assert param_range.size == shard_main_param.nelement()
+
+                model_grad = model_param.main_grad
+                shard_model_grad = model_grad.view(-1)[param_range.start: param_range.end]
+                if args.quant_grads:
+                    shard_main_param.quant_grad = shard_model_grad
+                    shard_main_param.quant_grad.meta = model_grad.meta
+                else:
+                    shard_main_param.grad = shard_model_grad.float()
+
+    # Copy model groups to shard groups.
+    copy_group_grads(self.model_float16_groups, self.shard_fp32_from_float16_groups)
+    copy_group_grads(self.model_fp32_groups, self.shard_fp32_groups)

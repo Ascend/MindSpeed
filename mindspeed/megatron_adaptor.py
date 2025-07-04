@@ -218,10 +218,15 @@ def mcore_models_adaptation(aspm, mindspeed_args):
     from .core.models.common.embeddings.rotary_pos_embedding import rotary_embedding_get_rotary_seq_len_wrapper
     aspm.register_patch('megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len',
                         rotary_embedding_get_rotary_seq_len_wrapper)
-    # Fix DDP scaling factor with Context Parallel
-    from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_with_cp
-    aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
-                        distributed_data_parallel_init_with_cp)
+    if mindspeed_args.quant_grads:
+        from .core.distributed.distributed_data_parallel import distributed_data_parallel_init
+        aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
+                            distributed_data_parallel_init)
+    else:
+        # Fix DDP scaling factor with Context Parallel
+        from .core.data_parallel.distributed_data_parallel import distributed_data_parallel_init_with_cp
+        aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
+                            distributed_data_parallel_init_with_cp)
 
     if not mindspeed_args.automated_pipeline and mindspeed_args.noop_layers:
         from .core.transformer.transformer_block import _build_layers
@@ -483,6 +488,70 @@ def megatron_legacy_adaptation(aspm):
                         build_pretraining_data_loader_decorator)
     aspm.register_patch('megatron.legacy.model.language_model.parallel_lm_logits', parallel_lm_logits)
     aspm.register_patch('megatron.legacy.model.language_model.Embedding.forward', embedding_forward_wrapper)
+
+
+def optimzier_quantization_adaptation(aspm, args):
+    from .model.language_model import transformer_language_model_init_wrapper
+    from .core.models.gpt.gpt_model import gptmodel_init_wrapper
+    from .core.tensor_parallel.layers import copy_tensor_model_parallel_attributes_wrapper
+    aspm.register_patch('megatron.legacy.model.language_model.TransformerLanguageModel.__init__',
+                        transformer_language_model_init_wrapper)
+    aspm.register_patch('megatron.core.models.gpt.gpt_model.GPTModel.__init__',
+                        gptmodel_init_wrapper)
+    aspm.register_patch('megatron.core.tensor_parallel.layers.copy_tensor_model_parallel_attributes',
+                        copy_tensor_model_parallel_attributes_wrapper)
+    if args.quant_grads:
+        from .optimizer.optimizer import (_collect_main_grad_data_for_unscaling_wrapper,
+                                          _copy_model_grads_to_main_grads,
+                                          _unscale_main_grads_and_check_for_nan,
+                                          get_main_grads_for_grad_norm,
+                                          _zero_grad_group_helper_wrapper)
+        from .core.distributed.finalize_model_grads import (_allreduce_word_embedding_grads,
+                                                            _allreduce_position_embedding_grads,
+                                                            _allreduce_layernorm_grads)
+        from .core.distributed.distributed_data_parallel import distributed_data_parallel_init, _make_param_hook
+        from .core.distributed.param_and_grad_buffer import (param_and_grad_buffer_init_wrapper,
+                                                             bucket_init_wrapper,
+                                                             bucket_start_grad_sync)
+        from .optimizer.clip_grads import clip_grad_norm_fp32
+        from .optimizer.distrib_optimizer import (_collect_main_grad_data_for_unscaling_quant_distrib_optimizer,
+                                                  _copy_model_grads_to_main_grads_quant_distrib_optimizer)
+        aspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_word_embedding_grads',
+                            _allreduce_word_embedding_grads)
+        aspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_position_embedding_grads',
+                            _allreduce_position_embedding_grads)
+        aspm.register_patch('megatron.core.distributed.finalize_model_grads._allreduce_layernorm_grads',
+                            _allreduce_layernorm_grads)
+        aspm.register_patch(
+            'megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_param_hook',
+            _make_param_hook)
+        aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.Bucket.__init__',
+                            bucket_init_wrapper)
+        aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.Bucket.start_grad_sync',
+                            bucket_start_grad_sync)
+        aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.ParamAndGradBuffer.__init__',
+                            param_and_grad_buffer_init_wrapper)
+        aspm.register_patch(
+            'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._collect_main_grad_data_for_unscaling',
+            _collect_main_grad_data_for_unscaling_wrapper)
+        aspm.register_patch(
+            'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._copy_model_grads_to_main_grads',
+            _copy_model_grads_to_main_grads)
+        aspm.register_patch(
+            'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer._unscale_main_grads_and_check_for_nan',
+            _unscale_main_grads_and_check_for_nan)
+        aspm.register_patch('megatron.core.optimizer.optimizer.MegatronOptimizer.get_main_grads_for_grad_norm',
+                            get_main_grads_for_grad_norm)
+        aspm.register_patch('megatron.core.optimizer.optimizer._zero_grad_group_helper',
+                            _zero_grad_group_helper_wrapper)
+        aspm.register_patch('megatron.core.optimizer.clip_grads.clip_grad_norm_fp32',
+                            clip_grad_norm_fp32)
+        aspm.register_patch(
+            'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._collect_main_grad_data_for_unscaling',
+            _collect_main_grad_data_for_unscaling_quant_distrib_optimizer)
+        aspm.register_patch(
+            'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._copy_model_grads_to_main_grads',
+            _copy_model_grads_to_main_grads_quant_distrib_optimizer)
 
 
 def legacy_model_fusions_adaptation(aspm):
@@ -1089,6 +1158,7 @@ def adaptation_l2(aspm, mindspeed_args):
     mcore_multiparam_pipeline_parallel_adaptation(aspm, mindspeed_args)
     mcore_tensor_parallel_adaptation(aspm, mindspeed_args)
     mcore_transformer_adaptation(aspm, mindspeed_args)
+    optimzier_quantization_adaptation(aspm, mindspeed_args)
 
     # megatron legacy
     megatron_legacy_adaptation(aspm)
