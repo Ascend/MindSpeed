@@ -673,8 +673,8 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('The parameter rope_scaling_original_max_position_embeddings should be set '
                                      'when use yarn.')
 
-        # alibi type [2, 3] is only support FA2
-        if args.alibi_fusion_attn_type in [2, 3]:
+        # alibi type 2 only support FA2
+        if args.alibi_fusion_attn_type == 2:
             args.use_fusion_attn_v2 = True
         if args.use_fusion_attn_v2:
             args.use_flash_attn = True
@@ -780,8 +780,8 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError(
                     '--use-fused-rotary-pos-emb must enable with'
                     '--position-embedding-type=rope')
-        if args.alibi_fusion_attn_type is not None and args.alibi_fusion_attn_type not in [0, 2, 3]:
-            raise AssertionError('--alibi-fusion-attn-type only support for `0, 2, 3`')
+        if args.alibi_fusion_attn_type is not None and args.alibi_fusion_attn_type not in [0, 2]:
+            raise AssertionError('--alibi-fusion-attn-type only support for `0, 2`')
         if args.reuse_fp32_param and not args.bf16:
             raise AssertionError('--reuse-fp32-param only support for `bf16`')
         if args.use_pipe_experts:
@@ -870,7 +870,7 @@ def validate_args_wrapper(validate_args):
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'megatron_cp_algo':
             assert args.seq_length % (2 * args.context_parallel_size) == 0, f"sequence length must be divisible by 2 * context_parallel_size"
             if args.position_embedding_type == 'alibi':
-                assert args.alibi_fusion_attn_type in [2, 3] and args.attention_mask_type == 'causal', f"megatron_cp_algo only support alibi type in [2, 3] and attention_mask_type is causal"
+                assert (args.alibi_fusion_attn_type == 2) and (args.attention_mask_type == 'causal'), f"megatron_cp_algo only support alibi type 2 and attention_mask_type is causal"
             
             assert args.cp_window_size >= 1 and args.cp_window_size < args.context_parallel_size, f'cp_window_size should in range [1, context_parallel_size) when using double_ring_attention.'
             n_window, remainder = divmod(args.context_parallel_size, args.cp_window_size)
@@ -1184,7 +1184,7 @@ def _add_alibi_args(parser):
 
     group.add_argument('--alibi-fusion-attn-type',
                     type=int,
-                    help='alibi pse type, support for 0,2,3')
+                    help='alibi pse type, support for 0,2')
 
     group.add_argument('--alibi-diagonal-opposite',
                        action='store_true',
