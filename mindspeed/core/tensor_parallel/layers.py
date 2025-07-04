@@ -1967,19 +1967,3 @@ class Nd_ParallelLinear(torch.nn.Module):
             output_bias = self.bias
 
         return output, output_bias
-
-
-_OPTIMIZER_QUANTIZATION_ATTRIBUTE = ['keep_fp32']
-
-
-def copy_tensor_model_parallel_attributes_wrapper(func):
-    @wraps(func)
-    def copy_tensor_model_parallel_attributes_func(destination_tensor, source_tensor):
-        def maybe_copy(attribute):
-            if hasattr(source_tensor, attribute):
-                setattr(destination_tensor, attribute, getattr(source_tensor, attribute))
-
-        func(destination_tensor, source_tensor)
-        for attribute in _OPTIMIZER_QUANTIZATION_ATTRIBUTE:
-            maybe_copy(attribute)
-    return copy_tensor_model_parallel_attributes_func

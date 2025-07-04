@@ -568,10 +568,6 @@ def _add_algorithm_args(parser):
                        help='optimize send_recv communication in pipeline with interleaving.')
     group.add_argument('--enable-zero3', action='store_true', default=False,
                        help='Use this flag to enable zero3, including the segmentation of the parameters, gradients, and optimizers of the row-parallel and column-parallel models, as well as the overlap optimization of the gradient reduce sactter and weight all gather.')
-    group.add_argument('--quant-states', default=None, choices=['fp8', 'hif8', 'mxfp8'],
-                       help='Select the quantization type for optimzier states.')
-    group.add_argument('--quant-grads', action='store_true',
-                       help='Enable fp16 quantization for main gradients.')
     return parser
 
 

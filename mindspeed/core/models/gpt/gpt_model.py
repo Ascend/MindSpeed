@@ -26,14 +26,3 @@ def gpt_forward_wrapper(fn):
         return fn(*args, **kwargs)
 
     return wrapper
-
-
-def gptmodel_init_wrapper(init_func):
-    @wraps(init_func)
-    def gptmodel_init_func(self, *args, **kwargs):
-        init_func(self, *args, **kwargs)
-        if self.config.quant_states:
-            for param_name, param in self.named_parameters():
-                if "output_layer" in param_name or "embedding" in param_name:
-                    setattr(param, 'keep_fp32', True)
-    return gptmodel_init_func

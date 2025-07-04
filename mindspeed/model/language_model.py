@@ -159,14 +159,3 @@ def model_parallel_config_post_init_wrapper(init_func):
             )
 
     return wrapper
-
-
-def transformer_language_model_init_wrapper(init_func):
-    @wraps(init_func)
-    def transformer_language_model_init_func(self, *args, **kwargs):
-        init_func(self, *args, **kwargs)
-        if get_args().quant_states:
-            for param_name, param in self.named_parameters():
-                if "output_layer" in param_name or "embedding" in param_name:
-                    setattr(param, 'keep_fp32', True)
-    return transformer_language_model_init_func
