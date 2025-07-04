@@ -62,7 +62,8 @@ atb::Tensor AtTensor2Tensor(const at::Tensor atTensor)
 
 void RunAtbCmd(atb::Operation *op, const ParamSetter &paramsetter, const std::string &name)
 {
-    auto contextPtr = GetContext();
+    auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);
+    auto contextPtr = GetContext(acl_stream);
     uint64_t workspaceSize = OperationSetup(paramsetter.variantPack, op, contextPtr);
     auto workspaceTensor = GetWorkspaceTensor(workspaceSize, op);
     const void *workspacePtr = nullptr;
@@ -125,16 +126,12 @@ at::Tensor GetWorkspaceTensor(uint64_t workspaceSize, atb::Operation *operation)
     return workspaceTensor;
 }
 
-atb::Context* GetContext()
-{        
+atb::Context* GetContext(aclrtStream stream)
+{
     if (msContext == nullptr) {
         auto status = atb::CreateContext(&msContext);
         TORCH_CHECK(status == 0, "create context failed!");
-        int32_t devId = 0;
-        aclrtGetDevice(&devId);
-        aclrtStream stream = c10_npu::getCurrentNPUStream(devId).stream(false);
-        TORCH_CHECK(stream != nullptr, "get current stream failed");
-        msContext->SetExecuteStream(stream);
     }
+    msContext->SetExecuteStream(stream);
     return msContext;
 }
