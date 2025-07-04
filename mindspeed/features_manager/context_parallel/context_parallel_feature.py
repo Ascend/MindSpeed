@@ -34,8 +34,8 @@ class ContextParallelFeature(MindSpeedFeature):
             if args.seq_length % (2 * args.context_parallel_size) != 0:
                 raise AssertionError("sequence length must be divisible by 2 * context_parallel_size")
             if args.position_embedding_type == 'alibi':
-                if not (args.alibi_fusion_attn_type in [2, 3] and args.attention_mask_type == 'causal'):
-                    raise AssertionError("megatron_cp_algo only support alibi type in [2, 3] and attention_mask_type is causal")
+                if not ((args.alibi_fusion_attn_type == 2) and (args.attention_mask_type == 'causal')):
+                    raise AssertionError("megatron_cp_algo only support alibi type 2 and attention_mask_type causal")
 
             if not (args.cp_window_size >= 1 and args.cp_window_size < args.context_parallel_size):
                 raise AssertionError('cp_window_size should in range [1, context_parallel_size) when using double_ring_attention.')
