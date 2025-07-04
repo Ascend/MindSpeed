@@ -28,7 +28,7 @@
 #endif
 
 atb::Tensor AtTensor2Tensor(const at::Tensor atTensor);
-atb::Context* GetContext();
+atb::Context* GetContext(aclrtStream stream);
 at::Tensor GetWorkspaceTensor(uint64_t workspaceSize, atb::Operation *operation);
 uint64_t OperationSetup(atb::VariantPack variantPack, atb::Operation *operation, atb::Context* contextPtr);
 class ParamSetter {
