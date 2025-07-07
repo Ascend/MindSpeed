@@ -146,7 +146,7 @@ class UnalignedGatherFromSequenceParallelRegion(torch.autograd.Function):
     def backward(ctx, grad_output):
         if ctx.tensor_parallel_output_grad:
             return (
-                unaligned_reduce_scatter_to_sequence_parallel_region(grad_output),
+                unaligned_reduce_scatter_to_sequence_parallel_region(grad_output, ctx.parallel_group),
                 None, 
                 None, 
                 None
@@ -154,7 +154,7 @@ class UnalignedGatherFromSequenceParallelRegion(torch.autograd.Function):
             
         else:
             return (
-                unaligned_split_along_first_dim(grad_output),
+                unaligned_split_along_first_dim(grad_output, ctx.parallel_group),
                 None,
                 None,
                 None
