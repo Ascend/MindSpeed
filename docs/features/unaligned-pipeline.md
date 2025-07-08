@@ -2,7 +2,7 @@
 
 ## 背景与挑战
 
-类Megatron-LM框架已成为大模型训练的主流方案之一，PP(流水并行 Pipeline Parallelism) 和VPP（虚拟流水并行 Virtual Pipeline Parallelism）是大模型训练的基本并行范式，该范式在部分场景存在计算不均衡问题。具体而言：
+类Megatron-LM框架已成为大模型训练的主流方案之一，PP(流水并行 Pipeline Parallelism) 和VPP（虚拟流水线并行 Virtual Pipeline Parallelism）是大模型训练的基本并行范式，该范式在部分场景存在计算不均衡问题。具体而言：
 
 - **嵌入层（Embedding Layer）**：在处理文本或分类数据时，嵌入层将高维稀疏特征转换为低维稠密向量表示。此过程涉及索引查找和潜在的大规模矩阵乘法，特别是在自然语言处理应用中，词汇表可能包含数十万乃至数百万词条。高维度的查找与转换操作会消耗大量计算资源。
 

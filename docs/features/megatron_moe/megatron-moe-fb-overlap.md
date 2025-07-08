@@ -1,6 +1,6 @@
 # MoE跨microbatch间AlltoAll通信掩盖
 
-## 背景
+## 背景与挑战
 MoE模型训练的关键瓶颈在于高昂的AllToAll(A2A)通信耗时，显著影响训练MFU。另外，相同microbatch内，A2A通信和计算存在依赖，因此A2A通信难掩盖。
 
 在DeepSeek V3模型训练中，DeepSeek团队创新性地提出了双向流水跨MicroBatch间AllToAll(A2A)掩盖，即DualPipe算法。
@@ -14,7 +14,7 @@ Dualpipe从流水线两端同时输入micro batch，同时借鉴ZeroBubble思想
 
 由于正向和反向计算是不同的microbatch，因此正向和反向的计算不存在顺序依赖关系，根据上述正向和反向的顺序，可用Attention(F)掩盖Combine(B)，MLP(B)计算掩盖Dispatch(F)，MLP(F)掩盖Dispatch(B)，Attention(B)掩盖Combine(F)。同时DeepSeek团队为计算和通信分配了固定的CUDA SM数量，缓解计算和通信的SM资源抢占问题。
 
-## 实现设计
+## 解决方案
 MindSpeed基于昇腾硬件特点，设计实现了一套高性能的MoE跨microbatch间A2A通信掩盖方案，通过细粒度的计算和通信流水排布，实现了warmup/cooldown阶段A2A通信**50**%掩盖，1F1B阶段A2A通信**100**%掩盖的效果。在DeepSeek V3模型上结合DualpipeV相比MindSpeed已有A2A掩盖特性`--moe-alltoall-overlap-comm`端到端性能提升**10**%。
 
 ### 跨microbatch间A2A通信掩盖
@@ -33,7 +33,7 @@ MindSpeed实现的1F1B细粒度计算和通信流水排布如下图：
 ### 基于DualpipeV和Megatron VPP的跨microbatch间A2A通信掩盖
 MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具体细节参见[DualpipeV介绍](../dualpipev.md)。
 
-另外，我们注意到在传统Megatron VPP（虚拟流水线并行）的基础上，也可以实现MoE跨microbatch间的A2A通信掩盖，只需要在warmup阶段相比于原始VPP多做一个warmup mircrobatch，具体见下图：
+另外，我们注意到在传统Megatron VPP（虚拟流水线并行）的基础上，也可以实现MoE跨microbatch间的A2A通信掩盖，只需要在warmup阶段相比于原始VPP多做一个warmup microbatch，具体见下图：
 
 ![vpp+moe_fb_overlap](../../../sources/images/vpp_overlap.png)
 

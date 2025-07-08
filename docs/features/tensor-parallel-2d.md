@@ -1,6 +1,6 @@
 # 高维张量并行
 
-## 问题分析
+## 背景与挑战
 
 大模型训练时，张量并行（TP）将模型参数切分到多个设备上以减少其内存的占用，在训练过程中为了更新参数梯度信息等，需要引入allreduce通信。当集群规模较大时，如果设置TP域很大时，其通信开销会变得很大，使得训练效率降低。
 
@@ -18,7 +18,7 @@
 
 #### 分布式normalization
 
-在transformer网络中，normalization会将每一层神经元的输入都转成均值方差都一样的，加快其收敛。在MLP和attention层分别进行2D张量并行时，其输入和输出都分别在first-dim和last-dim做了tp_x和tp_y的切分，如果继续使用原LayerNorm或者RMSNorm需要先将input进行沿first-dim进行all-gather(x)和沿last-dim进行all-gather(y)操作，才能保证input数据的完整性。为了提升这部分的性能，采用了分布式normalization。其处理流程如下：
+在transformer网络中，normalization会将每一层神经元的输入都转换成均值方差都一样的，加快其收敛。在MLP和attention层分别进行2D张量并行时，其输入和输出都分别在first-dim和last-dim做了tp_x和tp_y的切分，如果继续使用原LayerNorm或者RMSNorm需要先将input进行沿first-dim进行all-gather(x)和沿last-dim进行all-gather(y)操作，才能保证input数据的完整性。为了提升这部分的性能，采用了分布式normalization。其处理流程如下：
 
 ##### **步骤1：计算输入的总和**
 

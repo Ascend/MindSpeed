@@ -1,6 +1,6 @@
 # MindSpeed Mask归一实现阐述
 
-## 问题分析
+## 背景与挑战
 ### 1. Megatron源码阐述
 [1] 各device通过 `pretrain_gpt.py#L93`-`def get_batch` 去获取各项数据，包括AttnMask。
 

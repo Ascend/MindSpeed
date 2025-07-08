@@ -37,7 +37,7 @@ $$
 - x：必选输入，List[Tensor]，数据类型float16，bfloat16。支持的最大长度为64个。
 - weight：必选输入，List[Tensor]，数据类型float16, bfloat16。支持的最大长度为64个。
 - bias：可选输入，List[Tensor]，数据类型float16, float32。支持的最大长度为64个。对于实际无bias的场景，可以直接不指定bias参数或设置为None。
-- group_list：可选输入，Optional[List[int64]]，缺省none。代表输入和输出M方向的matmul大小分布，支持的最大长度为64个。
+- group_list：可选输入，Optional[List[int64]]，缺省None。代表输入和输出M方向的matmul大小分布，支持的最大长度为64个。
 
 输出：
 - y：List[Tensor]，数据类型float16, bfloat16。支持的最大长度为64个。

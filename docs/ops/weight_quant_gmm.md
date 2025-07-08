@@ -13,7 +13,7 @@ npu_weight_quant_gmm_v2(x, weight, antiquant_scale, *, antiquant_offset=None, bi
 - x：必选输入，参数为tensor，数据类型float16，bfloat16；
 - weight：必选输入，参数为tensor，数据类型int8；
 - antiquant_scale：必选输入，参数类型为tensor，数据类型float16，bfloat16；
-- antiquant_offset：可选参数，参数类型为tensor，数据类型float16，bfloat16，默认值为None，当前不支持传none；
+- antiquant_offset：可选参数，参数类型为tensor，数据类型float16，bfloat16，默认值为None，当前不支持传None；
 - bias：可选输入，参数类型为tensor，数据类型float16，float32，默认值为None；
 - group_list：可选输入，参数类型为tensor，数据类型int64，默认值为None。不同接口中的数值定义不同，具体见上述接口说明中描述；
 - act_type：可选参数，参数类型为int，用于指定激活函数类型，默认值为0，表示无激活函数，当前只支持默认值0；
@@ -26,7 +26,7 @@ npu_weight_quant_gmm_v2(x, weight, antiquant_scale, *, antiquant_offset=None, bi
 
 - npu_weight_quant_gmm接口中，group_list必须为非负单调非递减数列，且长度不能为1；
 - npu_weight_quant_gmm_v2接口中，group_list必须为非负数列，长度不能为1，且数据类型仅支持tensor；
-- x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为false时$x_i$的K轴或当transpose_x为true时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为false时$weight_i$的N轴或当transpose_weight为true时$weight_i$的K轴；
+- x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为False时$x_i$的K轴或当transpose_x为True时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为False时$weight_i$的N轴或当transpose_weight为True时$weight_i$的K轴；
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647；
 - x，antiquant_scale，antiquant_offset，y的数据类型应保持一致
 - 当需要输出y数据类型为bfloat16时，bias类型为float32；

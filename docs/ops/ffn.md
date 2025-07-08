@@ -44,8 +44,8 @@ npu_ffn(Tensor x, Tensor weight1, Tensor weight2, str activation, *, Tensor? exp
 - bias1: 可选输入，权重数据修正值，公式中的b1，数据类型int32, float16, float32，输入在有/无专家时分别为[E, N1]/[N1]
 - bias2: 可选输入，权重数据修正值，公式中的b2，数据类型int32, float16, float32，输入在有/无专家时分别为[E, N2]/[N2]
 - inner_precise：可选输入，表示高精度或者高性能选择，数据类型支持int64, 该参数仅对float16生效，bfloat16和int8不区分高精度和高性能。
-    -   innerPrecise为0时，代表开启高精度模式，算子内部采用float32数据类型计算
-    -   innerPrecise为1时，代表高性能模式
+    -   inner_precise为0时，代表开启高精度模式，算子内部采用float32数据类型计算
+    -   inner_precise为1时，代表高性能模式
 
 输出：
 - y：必选输出，数据类型float16, bfloat16
@@ -70,8 +70,8 @@ npu_ffn(Tensor x, Tensor weight1, Tensor weight2, str activation, *, Tensor? exp
 - deq_scale1：可选输入，量化参数，第一组matmul的反量化缩放系数，数据类型uint64, int64, float32, bfloat16，输入在有/无专家时分别为[E, N1]/[N1]
 - deq_scale2：可选输入，量化参数，第二组matmul的反量化缩放系数，数据类型uint64, int64, float32, bfloat16，输入在有/无专家时分别为[E, N2]/[N2]
 - inner_precise：可选输入，表示高精度或者高性能选择，数据类型支持int64, 该参数仅对float16生效，bfloat16和int8不区分高精度和高性能。
-    -   innerPrecise为0时，代表开启高精度模式，算子内部采用float32数据类型计算
-    -   innerPrecise为1时，代表高性能模式
+    -   inner_precise为0时，代表开启高精度模式，算子内部采用float32数据类型计算
+    -   inner_precise为1时，代表高性能模式
 - output_dtype：可选输入，表示输出y的数据类型，为空时输出y的数据类型为float16，不为空时支持float16, bfloat16
 
 输出：
@@ -99,8 +99,8 @@ npu_ffn(Tensor x, Tensor weight1, Tensor weight2, str activation, *, Tensor? exp
     **说明：**
     G表示伪量化per-in-group场景下，antiquantOffsetOptional、antiquantScaleOptional的组数。
 - inner_precise：可选输入，表示高精度或者高性能选择，数据类型支持int64, 该参数仅对float16生效，bfloat16和int8不区分高精度和高性能。
-    -   innerPrecise为0时，代表开启高精度模式，算子内部采用float32数据类型计算
-    -   innerPrecise为1时，代表高性能模式
+    -   inner_precise为0时，代表开启高精度模式，算子内部采用float32数据类型计算
+    -   inner_precise为1时，代表高性能模式
 
 输出：
 - y：必选输出，数据类型float16, bfloat16
@@ -125,7 +125,7 @@ npu_ffn(Tensor x, Tensor weight1, Tensor weight2, str activation, *, Tensor? exp
 -   当weight1/weight2的数据类型为int4时，其shape最后一维必须为偶数。
 -   伪量化场景，per-in-group下，antiquantScale1和antiquantOffset1中的K1需要能整除组数G，antiquantScale2和antiquantOffset2中的K2需要能整除组数G。
 -   伪量化场景，per-in-group下目前只支持weight是int4数据类型的场景。
--   innerPrecise参数在bfloat16非量化场景，只能配置为0；float16非量化场景，可以配置为0或者1；量化或者伪量化场景，0和1都可配置，但是配置后不生效。
+-   inner_precise参数在bfloat16非量化场景，只能配置为0；float16非量化场景，可以配置为0或者1；量化或者伪量化场景，0和1都可配置，但是配置后不生效。
 
 ## npu_ffn 接口的调用方式
 ```python

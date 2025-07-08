@@ -6,7 +6,7 @@
 
 ## 解决方案
 
-为了解决多模态场景下ZeRO3通信域过大带来额外开销过大的问题，采用分层ZeRO，其将优化器状态进行ZeRO1，micro-batch中使用ZeRO3参数进行参数重建；在运行时参数是重建参数的视图，用后销毁完整参数；每次优化器更新前将梯度同步到ZeRO1，更新后将ZeRO1参数同步到ZeRO3。达到和TP+zero1近似的内存节省效果，同时具有较好的通信隐藏。
+为了解决多模态场景下ZeRO3通信域过大带来额外开销过大的问题，采用分层ZeRO，其将优化器状态进行ZeRO1，micro-batch中使用ZeRO3参数进行参数重建；在运行时参数是重建参数的视图，用后销毁完整参数；每次优化器更新前将梯度同步到ZeRO1，更新后将ZeRO1参数同步到ZeRO3。达到和TP+ZeRO1近似的内存节省效果，同时具有较好的通信隐藏。
 
 ### 解决思路
 
@@ -18,10 +18,10 @@ ZeRO3通信组: 部分dp并行的通信组, ZeRO1的通信组子集；
 
 #### 参数划分管理
 
-不同的zero3通信组内local rank一致的设备上应保存一致的参数分片；
-所有的zero3分片在dp域内进行划分；
-zero1的参数划分将所有管理的可训练参数拉平为一维张量, 然后均匀划分到zero1通信组设备；
-一个zero1通信组内进行参数与梯度同步。
+不同的ZeRO3通信组内local rank一致的设备上应保存一致的参数分片；
+所有的ZeRO3分片在dp域内进行划分；
+ZeRO1的参数划分将所有管理的可训练参数拉平为一维张量, 然后均匀划分到ZeRO1通信组设备；
+一个ZeRO1通信组内进行参数与梯度同步。
 
 #### 参数同步与梯度同步
 
@@ -44,7 +44,7 @@ zero1的参数划分将所有管理的可训练参数拉平为一维张量, 然�
 ```
 config.yml可配置项：
 ```
-    zero3_size: int  # zero3通信组的大小，大于0的整数，一般在机内进行zero3
+    zero3_size: int  # ZeRO3通信组的大小，大于0的整数，一般在机内进行ZeRO3
     transformer_layers:  Optional[Iterable[torch.nn.Module]] = None   # 被包装层的class层级name： module.submodule.class
     param_dtype: Optional[Literal["fp16", "bf16", "fp32"]] = "fp16"   # 混合精度相关：运行时参数精度
     reduce_dtype:  Optional[Literal["fp16", "bf16", "fp32"]] = "fp16" # 混合精度相关：运行时梯度精度

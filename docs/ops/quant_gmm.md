@@ -36,7 +36,7 @@ output_dtype=None, act_type=0)
 
 - npu_quant_gmm接口中，group_list必须为非负单调非递减数列，且长度不能为1；
 - npu_quant_gmm_v2接口中，group_list必须为非负数列，长度不能为1，且数据类型仅支持tensor；
-- x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为false时$x_i$的K轴或当transpose_x为true时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为false时$weight_i$的N轴或当transpose_weight为true时$weight_i$的K轴；
+- x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为False时$x_i$的K轴或当transpose_x为True时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为False时$weight_i$的N轴或当transpose_weight为True时$weight_i$的K轴；
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647；
 - 当需要输出y数据类型为int8时，指定output_dtype为torch.int8，scale类型为int64，per_token_scale为空，此时只支持act_type=0，即无激活函数；该场景当前仅支持单算子模式，图模式不支持；
 - 当需要输出y数据类型为bfloat16时，output_dtype为torch.bfloat16，scale类型为bfloat16；

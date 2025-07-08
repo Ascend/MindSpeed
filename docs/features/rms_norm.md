@@ -1,15 +1,19 @@
 # rms_norm融合优化
-## 问题分析
-rms_norm常见于LLaMA、LLaMA2、Baichuan等LLM模型中用于归一化，由于torch侧没有提供rms_norm算子的接口，因此在模型中通常是以自定义的形式出现，这种形式的执行效率相对较低。
+
+## 背景与挑战
+在诸如LLaMA、LLaMA2和Baichuan等大型语言模型（LLM）中，RMSNorm（Root Mean Square Norm）作为一种归一化技术被广泛应用。然而，由于PyTorch框架本身未直接提供RMSNorm运算符接口，模型中常以自定义形式实现RMSNorm，这在一定程度上影响了执行效率。
 
 ## 解决方法
-MindSpeed将rms_norm操作合并成一个算子，减少数据传输和临时存储。算子接口见[link](../ops/rms_norm.md)。
+MindSpeed 针对上述情况，对RMSNorm操作进行了融合优化，将其集成到单个运算符中，有效减少了数据传输次数和临时存储需求。算子接口见[link](../ops/rms_norm.md)。
 
 ## 使用场景
-模型使用rms_norm作为归一化方式，脚本中设置了`--normalization RMSNorm`。
+当模型选用RMSNorm作为其归一化方法，并且训练脚本中已包含以下配置时：
+`--normalization RMSNorm`。
 
 ## 使用方法
-Legacy分支下，设置`--use-fused-rmsnorm`即可调用rms_norm融合算子。mcore分支下默认使能该融合算子，与竞品策略保持一致。
+启用RMSNorm融合优化，需在训练脚本中加入以下参数配置：
+`--use-fused-rmsnorm`
+Mcore分支下该算子仅支持使能融合特性。
 
 ## 使用效果 
-开启融合算子可以节省内存，提升性能。
+在LLaMA2-7B模型下，启用融合算子RMSNorm后，内存节省约12%，性能提升约2.7%，不仅能够有效节省内存资源，还能提升模型训练效率。
