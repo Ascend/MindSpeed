@@ -706,10 +706,6 @@ def validate_args_wrapper(validate_args):
         model_parallel_size = args.pipeline_model_parallel_size * args.tensor_model_parallel_size
         args.data_parallel_size = args.world_size // (model_parallel_size * args.context_parallel_size)
 
-        if args.variable_seq_lengths and (not (getattr(args, "pipeline_model_parallel_size", 1) >= 2)):
-            raise AssertionError("--pipeline-model-parallel-size needs to be greater than 2 or equal to 2 if you want "
-                                "to use --variable-seq-lengths")
-
         if args.dist_train:
             from mindspeed.multi_modal.dist_train.config.dist_train_config import get_all_config
             if args.tensor_model_parallel_size > 1 and seq_parallel_enabled:
