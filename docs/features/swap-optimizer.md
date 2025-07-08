@@ -1,6 +1,6 @@
 # Swap Optimizer
 
-## 问题分析
+## 背景与挑战
 
 在大模型训练中，通常会通过 BF16 格式进行前反向的计算，在梯度更新的时候使用 FP32 的格式，
 因此导致优化器中需要保存一份 FP32 的权重以及两个 FP32 的动量，显存占用为 `参数量 * 12` Bytes。
@@ -18,7 +18,7 @@
 为了不冲击显存峰值，需要每复制一份权重就将权重 swap 到 host 侧。权重加载的时候同理，每次加载一份权重就进行 swap 操作，
 由于只在初始化阶段，因此对性能影响可忽略。
 2. 在 step 阶段，为了 h2d 和 d2h 的并行，会先一次性下发大约 `numel(shard_fp32_from_float16_groups) // swap_optimizer_times` 
-大小参数的 h2d 操作，再做 adamw 计算以及 copy 到模型权重（bf16），最后再 d2h 释放显存。
+大小参数的 h2d 操作，再做 AdamW 计算以及 copy 到模型权重（bf16），最后再 d2h 释放显存。
 3. 由于 d2h 与 h2d 是异步拷贝，为了保证时序正确，第二轮的 d2h 需要等前一轮的 h2d 操作结束之后再下发第二轮。
 
 ![img.png](../../sources/images/swap-optimizer.png)

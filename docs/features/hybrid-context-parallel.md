@@ -1,6 +1,6 @@
 # 混合长序列并行
 
-## 问题分析
+## 背景与挑战
 
 从生成性AI到科研模型，长序列训练正在变得非常重要。 在生成性AI领域，会话式AI、长文档摘要和视频生成等任务都需要在空间和时间层面对长上下文进行推理。 同样，章节和书籍级别的摘要（数万甚至数十万字）在会话式AI和摘要任务中也受到重视。现有的数据、张量和流水线等并行方法无法在序列维度进行切分。当序列维度(S)增长时，训练内存开销会以 $O$($S^2$) 的速度增长。因此需要针对长序列场景进行特定的优化解决长训练场景的训练需求。
 
@@ -12,7 +12,8 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 ## 解决方案
 对Ulysses和Ring Attention做融合，实现混合序列并行，以此解决两个方案各自缺陷。
-
+具体细节可参见文献[USP: A Unified Sequence Parallelism Approach for Long Context Generative AI](https://arxiv.org/abs/2405.07719)。
+ 
 ## 使用场景
 
 可兼容FlashAttention，目前已默认开启FlashAttention。
@@ -21,13 +22,43 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 ## 使用方法
 
-设置`--context-parallel-size`，默认为1，根据用户需求配置。
+<table><thead>
+  <tr>
+    <th width='200'>重要参数</th>
+    <th>参数说明</th>
 
-设置`--context-parallel-algo hybrid_cp_algo`，以使能混合序列并行。
+  </tr></thead>
+<tbody>
 
-设置`--ulysses-degree-in-cp`，需要确保`--context-parallel-size`可以被该参数整除且大于1。例如当设置`--context-parallel-size=8`时，可以设置`--ulysses-degree-in-cp=2`或`--ulysses-degree-in-cp=4`。
+  <tr>
+    <td rowspan="7"> --context-parallel-size [int]</td>
+    <td>必选，设置长序列并行大小，默认为1，根据用户需求配置。</td>
 
-同时需要确保`--ulysses-degree-in-cp`可以被attention head数整除。
+</tr>
+<tbody>
+
+  <tr>
+    <td rowspan="7"> --ulysses-degree-in-cp [int]
+</td>
+    <td>需要确保--context-parallel-size可以被该参数整除且大于1。
+例如当设置--context-parallel-size为8时，可以设置--ulysses-degree-in-cp为2或--ulysses-degree-in-cp为4。
+
+<br>同时需要确保--ulysses-degree-in-cp可以被num-attention-heads数整除。</td>
+</tr>
+<tbody>
+
+  <tr>
+    <td rowspan="7"> --context-parallel-algo<b>    hybrid_cp_algo</b></td>
+    <td>可选，设置长序列并行算法。
+<br>
+ulysses_cp_algo：开启Ulysses长序列并行。
+<br>
+<b>hybrid_cp_algo</b>：开启Hybrid长序列并行。
+<br>
+megatron_cp_algo：开启Ring Attention长序列并行。</td>
+
+  </tr>
+  <tbody></table>
 
 混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置。
 

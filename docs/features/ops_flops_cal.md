@@ -1,6 +1,6 @@
 # TFLOPS计算
 
-## 问题分析
+## 背景与挑战
 
 当前大模型在计算MFU时，依靠框架理论打印值TFLOPS/有效算力得到，但是理论值计算适用于一般模型，如果针对模型结构进行变动，将不再适用，同时HFU的计算目前需要手动计算。
 
@@ -10,7 +10,7 @@
 
 ### 解决思路:
 
-目前支持的涉及MatMul的算子有MatMul、BatchMatMul、FlashAttention、MC2相关融合算子、coc相关融合算子、GEMM相关融合算子、matmul_add_fp32融合算子。
+目前支持的涉及MatMul的算子有MatMul、BatchMatMul、FlashAttention、MC2相关融合算子、CoC相关融合算子、GEMM相关融合算子、matmul_add_fp32融合算子。
 
 ## 使用方法
 

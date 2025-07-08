@@ -1,6 +1,6 @@
 # Context Parallelism特性中的KV缓存优化
 
-## 问题分析
+## 背景与挑战
 Context Parallelism特性在attention计算前将序列在sequence维度切分，在attention计算时，需要计算全量的序列，因此在attention计算时，会有CP的通信产生。
 
 1. Ring CP在attention计算时通过send/recv方式循环接收其他卡的KV，最终保证Q能关注到全量KV，保持和不拆解情况的数学等价性。当前，前向计算完成后KV被丢弃，反向时需要再次send-recv拿到KV。 当在短序列计算过程中通信时间会大于计算时间，导致计算时间无法掩盖通信时间的情况，从而导致性能变差。因此，需要针对计算时间不足以掩盖通信时间的情况进行优化来加速该场景下的训练需求。
@@ -15,7 +15,7 @@ Context Parallelism特性在attention计算前将序列在sequence维度切分�
 
 2. 在GQA模型，一个head的情况下，Ulysses Attention长序列并行的基础上加入AllGather KV + All2All Q的方案，减少repeat操作以及transpose等内存非连续的开销，提高训练性能。
 
-3. 在Ulysses使用All2All和AllGather方案加入KV缓存功能，可选择进行(1)缓存所有K,V，(2)只缓存K以及(3)设置分层缓存的方式在前向中将通信前的KV进行缓存始终保留至反向再进行重通信进行计算，节省内存。All2All方案只能在做了Repeat的情况下可以开启KV缓存。
+3. 在Ulysses使用All2All和AllGather方案加入KV缓存功能，可选择进行(1)缓存所有K,V，(2)只缓存K以及(3)设置分层缓存的方式在前向中将通信前的KV进行缓存始终保留至反向再进行重新通信进行计算，节省内存。All2All方案只能在做了Repeat的情况下可以开启KV缓存。
 
 ### 解决思路:
 1. Ring方案中序列被切分成CP份并行计算，在不同rank上计算出自己的K和V，同时send-recv其他rank的K和V。例如rank0上的K0/V0和K7V7发送给“下游”的rank，同时接收“上游”rank发送过来的K3/V3和K4/V4，每张卡重复执行相同的动作CP-1次，最终每个切分后的序列可以“关注”到全局的KV，计算得到完整attention结果。反向计算逻辑同理，初始时每个rank有自己的KV，在计算出自己的gradient后，之后步骤将接收到的K和V分块以及dK和dV发送给其他rank，同时接收其他rank的K、V分块以及dK和dV分块，并把接收到的K和V作为输入计算和更新梯度，实现计算和通信并行。
@@ -23,7 +23,7 @@ Context Parallelism特性在attention计算前将序列在sequence维度切分�
 
 2. 在GQA模型，一个head的情况下，使用AllGather KV的通信方式替换原有的Repeat-All2All KV方式获取全量的sequence，对Q仍然使用All2All方案。
 
-3. Ulysses方案中，将在前向进行Repeat-All2All或者AllGather通信前的KV进行缓存带到反向，并使用通信后的KV进行计算确保计算的正确性，反向在拿到Repeat-All2All或者AllGather通信前的KV的时候，对KV进行Repeat-All2All或者AllGather重通信进行梯度计算。因为进行重通信会有性能损失，因此可以缓存K、V的一部分，或者每经过N个Layer缓存一次，灵活组合，在内存限制内达到最优的性能。
+3. Ulysses方案中，将在前向进行Repeat-All2All或者AllGather通信前的KV进行缓存带到反向，并使用通信后的KV进行计算确保计算的正确性，反向在拿到Repeat-All2All或者AllGather通信前的KV的时候，对KV进行Repeat-All2All或者AllGather重新通信进行梯度计算。因为进行重新通信会有性能损失，因此可以缓存K、V的一部分，或者每经过N个Layer缓存一次，灵活组合，在内存限制内达到最优的性能。
 
 灵活缓存方案如下，
 1. 支持配置缓存K、V的layer间隔：缓存部分K、V可通过考虑在不同layer之间进行缓存来实现，通过增加一个参数interval来控制缓存的间隔层数。例如interval=1时，那么就会在编号为0，2，4，...的layer中对K、V进行缓存，依次类推。缓存间隔支持从0开始，不超过rank上的layer数量，间隔默认值等于0。

@@ -1,25 +1,25 @@
 # Rotary Position Embedding 融合优化
 
-## 问题分析
+## 背景与挑战
 
-Rotary Position Embedding（RoPE）是一种大模型文本位置信息编码（Position Embedding）的解决方案。RoPE通过绝对位置编码的形式实现了相对位置信息的注入，融合了绝对和相对位置编码的优点，同时具备较好的长度外推性。目前RoPE方案已经被较多的大模型采用，例如LLaMA和GLM。
-
-然而，目前torch并没有针对RoPE做特定的实现和优化，在模型侧通常是通过自定义的方式实现，且Rotary Embedding的计算方式较为复杂，实现方式的计算和内存开销需要优化。
+RoPE (Rotary Positional Embedding，旋转式位置嵌入) 是一种位置编码技术，广泛应用于大型语言模型中，用于有效编码文本序列的位置信息。RoPE结合了绝对位置编码的稳定性与相对位置编码的灵活性，同时具备优秀的长度泛化能力。尽管RoPE已经在诸如LLaMA和GLM等多个前沿模型中得到采纳，但PyTorch框架目前尚未提供专门针对RoPE的实现与优化。因此，模型开发者通常需要通过自定义方式来实现RoPE，而这往往伴随着较高的计算和内存开销。
 
 ## 解决方案
-`torch_npu`侧将Rotary Embedding操作合并成一个算子，减少数据传输和临时储存，优化模型训练性能。MindSpeed调用`torch_npu`侧接口实现算子融合。
+为了解决上述问题，我们引入了针对Rotary Embedding的融合优化方案。通过将RoPE操作整合为单一算子，我们显著减少了数据传输次数和临时存储需求，进而优化了模型训练的性能。这一优化由MindSpeed通过调用torch_npu侧接口实现，有效提升了RoPE在模型中的执行效率。
 
 ## 使用场景
 
-模型侧使用了Rotary Embedding作为Position Embedding解决方案。
+适用于将Rotary Embedding作为位置编码方案的模型架构。
 
 ## 使用方法
 
-首先确保`--position-embedding-type`选项设置为`rope`。
+* 确保模型配置中已设定以下参数：
+`--position-embedding-type  rope`
 
-同时开启`--use-fused-rotary-pos-emb`选项，以启用融合算子。
+* 同时，启用RoPE融合算子需设置如下参数：
+`--use-fused-rotary-pos-emb`
 
 ## 使用效果
 
-使用融合算子可以提升训练性能。
+通过运用融合优化的RoPE算子，模型训练的性能将得到提升，同时有效降低了内存消耗和计算成本，在LLaMA2-7B模型下，性能提升约1%。
 

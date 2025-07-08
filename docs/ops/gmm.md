@@ -10,7 +10,7 @@ npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=F
 输入：
 - x：必选输入，为tensor，数据类型float16, bfloat16, float32
 - weight：必选输入，为tensor，数据类型float16, bfloat16, float32
-- bias：可选输入，为tensor，数据类型float16, float32, 默认值为None。训练场景下，仅支持bias为none
+- bias：可选输入，为tensor，数据类型float16, float32, 默认值为None。训练场景下，仅支持bias为None
 - group_list：可选输入，数据类型list[int64], tensor，默认值为None。不同接口中的数值定义不同，具体如上。
 - group_type：可选输入，数据类型int64，代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则group_type取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组，默认值为0。
 - gemm_fusion:可选输入，为bool，数据类型True，False，用于反向累加梯度的时候使能GMM+ADD融合算子，默认值为False。
@@ -28,7 +28,7 @@ npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=F
     |  0  |  1. weight中tensor需为3维，x，y中tensor需为2维<br>2. 必须传group_list，如果调用npu_gmm接口，则最后一个值与x中tensor的第一维相等，如果调用npu_gmm_v2接口，则数值的总和与x中tensor的第一维相等  |
     |  2  |  1. x，weight中tensor需为2维，y中tensor需为2维<br>2. 必须传group_list，如果调用npu_gmm接口，则最后一个值与x中tensor的第一维相等，如果调用npu_gmm_v2接口，则数值的总和与x中tensor的第一维相等  |
 - group_type不支持group_type=1的场景，其中昇腾310系列处理器支持转置的场景为group_type为0，x为单tensor，weight为单tensor，y为单tensor。
-- x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为false时$x_i$的K轴或当transpose_x为true时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为false时$weight_i$的N轴或当transpose_weight为true时$weight_i$的K轴。
+- x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为False时$x_i$的K轴或当transpose_x为True时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为False时$weight_i$的N轴或当transpose_weight为True时$weight_i$的K轴。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
 
 ## 反向接口
@@ -41,7 +41,7 @@ npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=F
 输出：
 - grad_x：必选输出，数据类型float16, bfloat16, float32
 - grad_weight：必选输出，数据类型float16, bfloat16, float32
-- grad_bias：当前不支持，默认为none
+- grad_bias：当前不支持，默认为None
 
 ## gmm 类的调用方式
 
