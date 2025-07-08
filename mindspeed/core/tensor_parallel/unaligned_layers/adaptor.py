@@ -105,10 +105,9 @@ def gather_from_sequence_parallel_region_adaptor(inputs, tensor_parallel_output_
     world_size = torch.distributed.get_world_size(group)
     
     dim_size = torch.tensor(inputs.shape[0], dtype=torch.long, device=inputs.device)
-    torch.distributed.all_reduce(dim_size, group)
+    torch.distributed.all_reduce(dim_size, group=group)
     total_dim_size = dim_size.item()
     
-    group = get_tensor_model_parallel_group()
     if total_dim_size % world_size != 0:
         return unaligned_gather_from_sequence_parallel_region(inputs, total_dim_size, group, tensor_parallel_output_grad)
     else:
