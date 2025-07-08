@@ -1,6 +1,6 @@
 # Ring Attention长序列并行
 
-## 问题分析
+## 背景与挑战
 
 从生成性AI到科研模型，长序列训练正在变得非常重要。 在生成性AI领域，会话式AI、长文档摘要和视频生成等任务都需要在空间和时间层面对长上下文进行推理。 同样，章节和书籍级别的摘要（数万甚至数十万字）在会话式AI和摘要任务中也非常重要。现有的数据、张量和流水线等并行方法无法在序列维度进行切分。当序列维度(S)增长时，训练内存开销会以 $O$($S^2$) 的速度增长。因此需要针对长序列场景进行特定的优化解决长训练场景的训练需求。
 
@@ -35,7 +35,7 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 | --seq-length [int]                       | 输入序列的长度。                                                                                                                                                     |
 | --use-cp-send-recv-overlap               | 建议开启，开启后支持send receive overlap功能。                                                                                                                            |
 | --attention-mask-type [general/causal]   | 可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置general代表全量计算。                                                                                                          |
-| --context-parallel-algo megatron_cp_algo | 长序列并行算法选项，默认项为`ulysses_cp_algo`，当设置为`megatron_cp_algo`时开启Ring Attention。                                                                                     |
+| --context-parallel-algo <b>megatron_cp_algo</b> | 长序列并行算法选项，默认项为`ulysses_cp_algo`，当设置为`megatron_cp_algo`时开启Ring Attention。                                                                                     |
 | --megatron-cp-in-bnsd                    | 开启后，FA使用BNSD计算。                                                          |
 | --cp-window-size [int]                   | 可选，默认为`1`，即使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。|
 

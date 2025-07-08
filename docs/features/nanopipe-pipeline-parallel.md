@@ -1,42 +1,46 @@
 # nanopipe流水线并行
 
-## 问题分析
+## 背景与挑战
 
-流水线并行是AI大模型大规模分布式训练的关键组成部分之一，但其效率受到流水线中bubble的影响，为了提高吞吐量，需要降低其bubble比例。
+流水线并行是AI大模型分布式训练的关键组成部分之一，但其效率受到流水线中空泡的影响，为了提高吞吐量，需要降低其空泡比例。nanopipe展示了另一个角度下的优化思路。
 
 ## 解决方案
 
-在大模型流水线调度中，反向的input梯度和weight梯度通常是一起调度计算的，然而，通过分析它们计算的依赖关系，可以发现其实只有input梯度的计算存在相互层间的依赖关系。因此，通过独立调度反向的input梯度和weight梯度的计算，我们可以减少流水线调度的bubble。
+在大模型流水线调度中，反向的输入梯度和权重梯度通常是一起调度计算的，然而，通过分析他们计算的依赖关系，可以发现其实只有输入梯度的计算存在相互层间的依赖关系。因此，通过独立调度反向的输入梯度和权重梯度的计算，可以减少流水线调度的空泡。
 
-反向input梯度和weight梯度一起调度的Interleaved 1F1B如下图所示：
+##### 图1 反向输入梯度和权重梯度一起调度的Interleaved 1F1B
 
 ![img](../../sources/images/virtual-pipeline.PNG)
 
-独立调度input梯度和weight梯度的nano-pipe如下图所示：
+##### 图2 独立调度输入梯度和权重梯度的nanopipe
 
 ![img](../../sources/images/nanopipe.png)
 
-独立调度weight计算展示图如下图所示：
+##### 图3 独立调度权重计算展示图
 
 ![img](../../sources/images/FBW.png)
+<br>
+分离权重梯度计算流程，可通过修改RowParallelLinear和ColumnParallelLinear的backward实现，将对权重的梯度计算进行剥离，先存储在调度器上权重的梯度计算队列中。在需要对权重的梯度计算时，从调度器上权重的梯度计算队列中，依次出队，然后计算对应的梯度。
 
-### 解决思路:
-
-* 分离weight梯度计算流程，通过修改RowParallelLinear和ColumnParallelLinear的backward实现，将对weight的梯度计算进行剥离，先存储在调度器的dw计算队列中。
-* 在需要对dw计算时，从调度器的dw计算队列中pop出一个计算，然后计算对应的梯度。
 
 ## 使用场景
 
-在训练模型时，降低bubble的比例，从而提升计算效率，达到更好的流水线并行。此特性暂只适配`--use-legacy-models`。
+在训练模型时，降低空泡的比例，从而提升计算效率，达到更好的流水线并行。此特性暂时仅适用于Legacy分支，即脚本中配置`--use-legacy-models`。
 
 ## 使用方法
 
-nanopipe依赖于vpp，设置`--num-layers-per-virtual-pipeline-stage N`。要求`--pipeline-model-parallel-size` > 2
-设置`--use-nanopipe`，默认为False，根据用户需求配置。
+* nanopipe依赖于虚拟流水线并行，需设置如下参数。
+`--num-layers-per-virtual-pipeline-stage N   # 开启虚拟流水线并行`
+N表示每个虚拟流水线阶段的层数。
+<br>
+* 在脚本中配置以下参数，使能nanopipe流水线并行。
+`--use-nanopipe` 
+`--pipeline-model-parallel-size  N   # 开启流水线并行，N大于2`
+默认为False，根据用户需求配置。
 
 ## 使用效果
 
-提升计算效率，减少bubble占比。如下表所示：
+通过流水线并行，nanopipe可以更快地处理大量的数据，提高数据处理的效率和准确性，提升计算的速度，减少空泡占比，如下表所示：
 
 | device | TP | SP | PP | SEQ | hidden-size | Nano vs vpp收益 |
 | :-----: | :----: | :----: | :-----:| :----: | :----: | :-----: |
@@ -45,7 +49,7 @@ nanopipe依赖于vpp，设置`--num-layers-per-virtual-pipeline-stage N`。要�
 
 # nanoswap
 
-## 问题分析
+## 背景与挑战
 
 使用nano时grad从前向到反向需要持续存储在npu上，生命周期过长，多次累加会增大npu内存的峰值。
 

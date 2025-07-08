@@ -66,52 +66,46 @@ MindSpeed 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型�
 </table>
 
 
+# 安装
 
+MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`，具体请参考 [部署文档](./docs/user-guide/installation.md) 安装 MindSpeed Core 指定分支及其依赖软件。
 
-### 2. 安装 MindSpeed
-
-☀️ 下载源码安装：
-
- ```shell
- git clone -b 2.1.0_core_r0.8.0 https://gitee.com/ascend/MindSpeed.git
- pip install -e MindSpeed
- ```
-
-如需使用Ascend Transformer Boost（ATB）加速库算子，请先安装 CANN-NNAL 并初始化添加环境，例如：
- ```shell
-# CANN-NNAL默认安装路径为：/usr/local/Ascend/nnal
-# 运行CANN-NNAL默认安装路径下atb文件夹中的环境配置脚本set_env.sh
-source /usr/local/Ascend/nnal/atb/set_env.sh 
- ```
-
-### 3. 获取 Megatron-LM 并指定分支
-
-☀️ 获取并切换 Megatron-LM 版本至 core_r0.8.0 的release版本，如下所示：
+获取并切换 Megatron-LM 版本至 core_r0.8.0 版本，可参考：
  ```shell
  git clone https://github.com/NVIDIA/Megatron-LM.git
  cd Megatron-LM
  git checkout core_r0.8.0
  ```
 
+当前版本配套表如下：
+
+| 软件               | 版本                       |
+|------------------|--------------------------|
+| MindSpeed Core分支 | 2.1.0_core_r0.8.0       |
+| Mcore版本          | 0.8.0                   |
+| CANN版本           | 8.2.RC1                  |
+| PyTorch            | 2.1.0           |
+| torch_npu版本      | 7.1.RC1                  |
+| Python版本         | Python3.8.x、Python3.9.x、Python3.10.x |
+
+
 # 快速上手
 
-1. 仅仅一行代码就可以轻松使能 MindSpeed 的各项功能。以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
+使用MindSpeed Core仅须增加一行代码，即可在昇腾训练设备上运行Megatron-LM，并进一步参考[特性介绍](#特性介绍) 使能MindSpeed的各项加速特性。
 
-    ```diff
-     import os
-     import torch
-    +import mindspeed.megatron_adaptor
-     from functools import partial
-     from typing import Union
-    ```
+以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
 
-2. （可选）若未准备好相应训练数据，则需进行数据集的下载及处理供后续使用。数据集准备流程可参考
-<a href="https://www.hiascend.com/document/detail/zh/Pytorch/700/modthirdparty/Mindspeedguide/mindspeed_0003.html">数据集处理</a>。
+  ```Python
+    import torch
+    import mindspeed.megatron_adaptor # 新增代码行
+    from functools import partial
+    from contextlib import nullcontext
+    import inspect
+  ```
 
-3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。以下示例脚本可供参考。
-    ```shell
-    MindSpeed/tests_extend/example/train_distributed.sh
-    ```
+
+具体操作可以参考[快速上手指导](./docs/user-guide/getting_started.md)。
+
 ---
 # 自定义优化级别
 MindSpeed 提供了多层次的优化解决方案，并划分为三个层级，用户可根据实际需求灵活启用任意层级。高层级兼容低层级的能力，确保了整个系统的稳定性和扩展性。
@@ -182,7 +176,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr>
   <tbody>
   <tr>
-    <td rowspan="5"> Megatron 虚拟流水并行</td>
+    <td rowspan="5"> Megatron 虚拟流水线并行</td>
     <td><a href="docs/features/virtual-pipeline-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
@@ -258,7 +252,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/double-ring.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
@@ -282,7 +276,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/dualpipev.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 </table>
 
@@ -468,7 +462,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr></thead>
 <tbody>
   <tr>
-    <td rowspan="5"> Ascend nano-pipe流水线并行 </td>
+    <td rowspan="5"> Ascend nanopipe流水线并行 </td>
     <td><a href="docs/features/nanopipe-pipeline-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
@@ -488,7 +482,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/tensor-parallel-2d.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   </table>
 
@@ -544,7 +538,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tr>
   <tbody>
   <tr>
-    <td rowspan="5"> Ascend Megatron MoE 负载感知内存均衡算 </td>
+    <td rowspan="5"> Ascend Megatron MoE 负载感知内存均衡算法 </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-adaptive-recompute-activation.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">❌</td>
@@ -681,7 +675,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/multi_parameter_pipeline.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
@@ -689,7 +683,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/multi_parameter_pipeline_and_variable_seq_lengths.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
@@ -827,31 +821,31 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> npu_fused_moe_token_permute  </td>
     <td><a href="docs/ops/npu_fused_moe_token_permute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> npu_fused_moe_token_unpermute  </td>
     <td><a href="docs/ops/npu_fused_moe_token_unpermute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> npu_ring_attention_update  </td>
     <td><a href="docs/ops/npu_ring_attention_update.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
     <td rowspan="5"> npu_matmul_add_fp32  </td>
     <td><a href="docs/ops/npu_matmul_add.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>
     <td rowspan="5"> npu_groupmatmul_add_fp32 </td>
     <td><a href="docs/ops/npu_groupmatmul_add.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 <tbody>
   <tr>
@@ -875,7 +869,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> npu_apply_fused_ema_adamw  </td>
     <td><a href="docs/ops/npu_apply_fused_ema_adamw.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 </table>
 
@@ -979,5 +973,6 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
 此外，MindSpeed-Core 感谢以下团队对项目的贡献：
 
 - 微信基础架构团队
+- 科大讯飞AI工程院内核技术部
 
 感谢来自社区的每一个PR，欢迎贡献 MindSpeed-Core！

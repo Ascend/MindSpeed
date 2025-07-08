@@ -1,6 +1,6 @@
 # MoE token dropless性能优化
 
-### 问题分析
+### 背景与挑战
 
 现有MoE无token丢弃方案在训练过程中实时all-reduce通信全局最大专家容量作为所有rank的容量，引入频繁的all-reduce开销。
 

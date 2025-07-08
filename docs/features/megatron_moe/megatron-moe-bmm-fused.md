@@ -1,6 +1,6 @@
 # Megatron MoE BMM
 
-## 问题分析
+## 背景与挑战
 
 针对MoE的drop and pad场景，所有专家上tokens数量相同，使用bmm融合算子(融合前后的通信操作)替换gmm算子能达到更好的效果。
 

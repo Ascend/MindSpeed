@@ -1,6 +1,6 @@
 # MoE Hierarchical Alltoallv分层通信
 
-## 问题分析
+## 背景与挑战
 
 大模型训练过程中，在MoE Layer中前向和反向均有两次alltoallv进行数据传输。在原本的实现中，多卡多机组成了一个规模较大的通信组，机间机内同时进行alltoallv通信，造成机间的冗余通信较多。
 

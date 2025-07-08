@@ -1,8 +1,8 @@
-# Megatron MoE Grouped GEMM
+# Megatron MoE Grouped GEMM (GMM)
 
-## 问题分析
+## 背景与挑战
 
-针对MoE单卡多专家计算，存在细碎的专家计算操作与通信，通过Grouped GEMM算子对多专家计算进行合并，提升MoE单卡多专家训练性能。
+针对MoE单卡多专家计算，存在细碎的专家计算操作与通信，通过Grouped GeMM（Grouped General Matrix Multiplication）算子对多专家计算进行合并，提升MoE单卡多专家训练性能。
 
 ## 解决方案
 
@@ -52,7 +52,7 @@ y = npu_gmm(x, weight, bias=None, group_list=None, group_type=0, gemm_fusion=Fal
 输入：
 - x：必选输入，为tensor，数据类型float16, bfloat16, float32
 - weight：必选输入，为tensor，数据类型float16, bfloat16, float32
-- bias：可选输入，为tensor，数据类型float16, float32, 默认值为None。训练场景下，仅支持bias为none
+- bias：可选输入，为tensor，数据类型float16, float32, 默认值为None。训练场景下，仅支持bias为None
 - group_list：可选输入，数据类型list[int64], tensor，默认值为None。
 - group_type：可选输入，数据类型int64，代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则group_type取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组，默认值为0。
 - gemm_fusion:可选输入，为bool，数据类型True，False，用于反向累加梯度的时候使能GMM+ADD融合算子，默认值为False。

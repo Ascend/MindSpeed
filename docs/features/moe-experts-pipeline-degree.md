@@ -1,6 +1,6 @@
 # MoE Experts Pipeline Degree大专家流水
 
-## 问题分析
+## 背景与挑战
 
 该功能在面向megatron+mindspeed框架MoE类模型大专家的情况下，专家的计算时间和通信时间在每层神经网络中占比大，严重影响性能和内存。
 

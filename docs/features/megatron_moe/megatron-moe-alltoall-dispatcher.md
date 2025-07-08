@@ -1,6 +1,6 @@
 # Alltoall Dispatcher 分支优化
 
-## 问题分析
+## 背景与挑战
 ### 1. repeat_interleave 并行
 在 Alltoall dispatcher 分支中，调用了 repeat_interleave 算子，此算子只使用了单个 block dim 在单个下发流上进行串行计算，且耗时较长，算子的输出也是在 alltoall、permute、alltoallv 之后才用到。
 
@@ -21,5 +21,8 @@
 ## 使用方法
 开启参数 `--moe-permutation-async-comm`。
 
-## 场景限制
+##### 注意：
 由于开启 `--moe-grouped-gemm` 后，专家计算被单一算子合并，因此计算通信并行优化会失效。
+
+## 使用效果
+开启后可降低训练时长，提高性能。

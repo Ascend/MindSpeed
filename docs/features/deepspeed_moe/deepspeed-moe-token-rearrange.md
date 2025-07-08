@@ -1,22 +1,18 @@
 # Token 重排性能优化
 
-## 问题分析
+## 背景与挑战
 
-DeepSpeed MoE的token重排采用了两个BatchMatmul实现，时间复杂度为O(s^2)，而token重排进行计算时由于矩阵的稀疏性导致一些不必要的计算，存在优化空间。
+在DeepSpeed MoE（Mixture of Experts，混合专家）框架中，Token重排操作原通过两个BatchMatmul实现，其时间复杂度为O(s2)。然而，由于矩阵的稀疏特性，原方法在重排计算中产生了不必要的计算负担，存在潜在的优化空间。
 
 ## 解决方案
+通过采用等价且更加高效的PyTorch API : index_select，重排操作的时间复杂度得以降低至O(s)，从而显著提升了模型训练的整体性能。
 
-重排操作可以通过等价的pytorch API: index_select来实现，降低计算时间复杂度到O(s)，从而提高训练性能。
-
-### 解决思路:
-
-1. 重排过程：top1gating/top2gating 函数计算出每个专家选择的token的索引：expert_select_token_idx，shape为: [E*C]，MoE前向过程中根据此索引通过index_select API实现token的重排；
-
-2. 反重排过程：top1gating/top2gating 函数同时需要计算每个token在各个专家输出的索引位置：token_rearrange_ec_idx，shape为：[S]。在MoE前向过程中，token经过专家输出后通过index_select API 从[E*C, M]的专家输出中恢复token的输出：[S, M]，最后乘以token选择对应专家的权重，得到MoE layer的输出。
+* 重排过程：在top1gating或top2gating函数中，计算出每个专家选择的Token索引expert_select_token_idx，其形状为[E*C]。在MoE前向传播过程中，依据此索引，通过index_select API实现Token的重排。
++ 反重排过程：top1gating或top2gating函数还需计算每个Token在各专家输出中的索引位置token_rearrange_ec_idx，形状为[S]。在MoE前向传播过程中，Token经过专家处理后，通过index_select API从[E*C,M]形状的专家输出中恢复出Token的输出[S,M]，最后乘以Token对应专家的选择权重，以得到MoE层的最终输出。
 
 ## 使用场景
 
-进MoE层时实际序列长度8K以上。
+当进入MoE层的实际序列长度达到或超过8K时，此优化策略将展现出显著的效果。
 
 ## 使用方法
 
@@ -24,5 +20,5 @@ DeepSpeed MoE的token重排采用了两个BatchMatmul实现，时间复杂度为
 
 ## 使用效果
 
-预期性能收益在2%~3%左右。
+预期性能提升幅度大约在2%至3%之间，具体收益取决于模型的具体配置和数据集特性。
 
