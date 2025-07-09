@@ -95,6 +95,17 @@ def ensure_contiguous_wrapper(fn):
     return wrapper
 
 
+def torch_load_wrapper(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "weights_only" not in kwargs:
+            kwargs["weights_only"] = False
+        res = fn(*args, **kwargs)
+        return res
+
+    return wrapper
+
+
 def multi_tensor_applier(op, noop_flag_buffer, tensor_lists, *args):
     return op(noop_flag_buffer, tensor_lists, *args)
 
@@ -157,6 +168,7 @@ def torch_adaptation(aspm):
     aspm.register_patch('torch.Tensor.view', ensure_contiguous_wrapper)
     aspm.register_patch('torch.distributed._all_gather_base', all_gather_into_tensor)
     aspm.register_patch('torch.distributed._reduce_scatter_base', reduce_scatter_tensor)
+    aspm.register_patch('torch.load', torch_load_wrapper)
     # lmc is supported python >=3.9
     if sys.version_info < (3, 9):
         aspm.register_patch('math.lcm', lcm, create_dummy=True)
