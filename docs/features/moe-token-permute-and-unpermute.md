@@ -8,18 +8,10 @@ Token路由：确定每个token应该由哪个专家处理。这可以通过专�
 结果重组(Unpermute)：处理完成后，需要将来自不同专家的结果重组回原始的token顺序。
 在上述流程中，数据重排和结果重组步骤是性能瓶颈之一。这是因为这两个步骤涉及到大量的数据移动，特别是在使用分布式训练时。
 ## 解决方法
-为了优化这一过程，可以考虑将数据重排和结果重组步骤合并成一个操作。MindSpeed将MoE Token Permute和Unpermute操作分别融合成一个算子，提升模型训练性能。算子接口分别见[link](../ops/npu_fused_moe_token_permute.md),[link](../ops/npu_fused_moe_token_unpermute.md)。
+为了优化这一过程，可以考虑将数据重排和结果重组步骤合并成一个操作。MindSpeed将MoE Token Permute和Unpermute操作分别融合成一个算子，提升模型训练性能。
 
 ## 使用方法
-### 前提条件
-开启专家并行，并且`moe-token-dispatcher-type`设置为`alltoall`，即脚本中需包含以下参数：</br>
-`--moe-token-dispatcher-type alltoall`</br>
-`--expert-model-parallel-size M \`</br>
-`--num-experts N \`</br>
-满足以上前提时，设置`--use-fused-moe-token-permute-and-unpermute`即可调用Moe Token Permute和Unpermute融合算子。
-
-### 备注
-该融合算子不支持moe-expert-capacity-factor和moe-pad-expert-input-to-capacity。
+即将支持
 
 ## 使用效果 
 启用融合算子后，不仅能够有效节省内存资源，还能提升模型训练性能。
