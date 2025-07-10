@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from __future__ import annotations
 
 from mindspeed.auto_tuning.utils.singleton import Singleton

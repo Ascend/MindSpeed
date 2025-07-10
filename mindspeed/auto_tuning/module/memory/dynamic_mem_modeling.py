@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from typing import no_type_check, List, Tuple
 from collections import namedtuple
 from dataclasses import replace

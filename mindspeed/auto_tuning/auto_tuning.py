@@ -1,4 +1,4 @@
-import logging
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import os
 import time
 from argparse import Namespace

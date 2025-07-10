@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import numpy as np
 from mindspeed.auto_tuning.utils.logger import get_logger
 

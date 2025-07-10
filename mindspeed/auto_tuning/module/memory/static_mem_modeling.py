@@ -1,5 +1,4 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
-
 from typing import no_type_check, Any, List, DefaultDict, Iterable, Set, Tuple
 from collections import defaultdict
 from copy import deepcopy

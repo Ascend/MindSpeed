@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from copy import deepcopy
 from typing import List, Dict
 from mindspeed.auto_tuning.config.search_config import SearchConfig

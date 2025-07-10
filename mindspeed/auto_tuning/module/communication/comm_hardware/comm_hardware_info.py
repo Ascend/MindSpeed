@@ -1,6 +1,6 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import json
 import os
-import sys
 from enum import Enum
 from pathlib import Path
 from megatron.training import get_args
@@ -15,12 +15,12 @@ class HccsDev(Enum):
     hccs_dev_num_910_9391 = 64
     hccs_dev_num_910_93 = 384
     hccs_dev_num_910_93_roce = 16
-    # A5
-    hccs_dev_num_910_95 = 64
+    # Public
+    hccs_dev_num_910_public = 64
 
 
-_A5_HCCS_FILENAME = "A5_hccs_info.json"
-_A5_ROCE_FILENAME = "Topo.json" # 文件名
+_Public_HCCS_FILENAME = "Public_hccs_info.json"
+_Public_ROCE_FILENAME = "Topo.json" # 文件名
 _RANKTABLE_FILENAME = "ranktable_info.json"
 
 
@@ -34,10 +34,10 @@ class CommHardInfo(object):
             self.max_hccs_rank_num = HccsDev.hccs_dev_num_910_93_roce.value
         if "910_9391" in device_type:
             self.max_hccs_rank_num = HccsDev.hccs_dev_num_910_9391.value
-        if "910_95" in device_type:
-            self.a5_hccs = HccsA5Top()
-            self.a5_roce = RoceA5Top()
-            self.max_hccs_rank_num = HccsDev.hccs_dev_num_910_95.value
+        if "910_public" in device_type:
+            self.public_hccs = HccsPublicTop()
+            self.public_roce = RocePublicTop()
+            self.max_hccs_rank_num = HccsDev.hccs_dev_num_910_public.value
         if "910B" in device_type:
             self.max_hccs_rank_num = HccsDev.hccs_dev_num_910b.value
         with Path(__file__).parent.joinpath(_RANKTABLE_FILENAME).open(encoding="utf-8") as f:
@@ -53,34 +53,34 @@ class CommHardInfo(object):
     def calbandwidth(self, bandwidth_910b, min_domain):
         # roce
         if min_domain > self.max_hccs_rank_num:
-            if "910_95" in self.hard_type:
+            if "910_public" in self.hard_type:
                 args = get_args()
-                return self.a5_roce.calbandwidth(str(args.master_addr))
+                return self.public_roce.calbandwidth(str(args.master_addr))
             return 1
         # hccs
         if "910B" in self.hard_type:
             return bandwidth_910b
         if "910_93" in self.hard_type:
             return 1
-        if "910_95" in self.hard_type:
-            self.a5_hccs.calbandwidth([4])
-            return self.a5_hccs.bandwidth
+        if "910_public" in self.hard_type:
+            self.public_hccs.calbandwidth([4])
+            return self.public_hccs.bandwidth
         return 1
 
 
-class HccsA5Top(object):
+class HccsPublicTop(object):
     def __init__(self):
-        self.hccs_a5_bandwidth = [[]]
+        self.hccs_public_bandwidth = [[]]
         self.x_max = 0
         self.y_max = 0
         self.x_y_max = 0
         self.logger = get_logger("CommPerfPredictor")
 
-        with Path(__file__).parent.joinpath(_A5_HCCS_FILENAME).open(encoding="utf-8") as f:
+        with Path(__file__).parent.joinpath(_Public_HCCS_FILENAME).open(encoding="utf-8") as f:
             check_file_size(f)
-            a5_hccs_dict = json.load(f)
+            public_hccs_dict = json.load(f)
             # "dict" x,y,bandwidth
-            self.hccs_a5_bandwidth = a5_hccs_dict["dict"]
+            self.hccs_public_bandwidth = public_hccs_dict["dict"]
         self.bandwidth = 0
 
     def calbandwidth(self, top):
@@ -98,22 +98,22 @@ class HccsA5Top(object):
             y = top[1]
         self.bandwidth = self.calbandwidthxy(x, y)
         if self.bandwidth == 0:
-            self.logger.error("A5 hccs dict has not info with x = ", x, "y = ", y)
+            self.logger.error("Public hccs dict has not info with x = ", x, "y = ", y)
 
     def calbandwidthxy(self, x, y):
-        for item in self.hccs_a5_bandwidth:
+        for item in self.hccs_public_bandwidth:
             if item[0] == x and item[1] == y:
                 self.bandwidth = item[2]
                 return item[2]
-        for item in self.hccs_a5_bandwidth:
+        for item in self.hccs_public_bandwidth:
             if item[0] * item[1] == x * y:
                 return item[y]
         return 0
 
 
-class RoceA5Top(object):
+class RocePublicTop(object):
     def __init__(self):
-        self.a5_roce_dict = None
+        self.public_roce_dict = None
         self.bandwidth = 0
         self.logger = get_logger("CommPerfPredictor")
         self._validate_and_load_topo()
@@ -121,10 +121,10 @@ class RoceA5Top(object):
     def calbandwidth(self, master_ip):
         leaf_bandwidths = None
         local_bandwidth = None
-        if not self.a5_roce_dict:
+        if not self.public_roce_dict:
             return 1
         try:
-            for switches in self.a5_roce_dict["switches"]:
+            for switches in self.public_roce_dict["switches"]:
                 if switches["ip"] in master_ip:
                     for elem in switches["npu_info_list"]:
                         if local_bandwidth is None or local_bandwidth > elem["port_bandwidths"]:
@@ -148,19 +148,19 @@ class RoceA5Top(object):
         return self.bandwidth 
 
     def _validate_and_load_topo(self):
-        topo_path = Path(Settings().work_dir) / _A5_ROCE_FILENAME
+        topo_path = Path(Settings().work_dir) / _Public_ROCE_FILENAME
         if not topo_path.is_file():
             self.logger.debug("No Topo File or Wrong Dictionary")
             return
         try:
             with topo_path.open(encoding="utf-8") as f:
                 check_file_size(f)
-                self.a5_roce_dict = json.load(f)
+                self.public_roce_dict = json.load(f)
         except json.JSONDecodeError as e:
             raise AssertionError(
                 "Topo json load failed",
-                "The 910_95 needs to have topo file for communication model") from e
-        self._validate_json_structure(self.a5_roce_dict)
+                "The 910_public needs to have topo file for communication model") from e
+        self._validate_json_structure(self.public_roce_dict)
 
     def _validate_json_structure(self, data):
         if "switches" not in data:

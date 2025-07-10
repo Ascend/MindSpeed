@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 class ProfileTimeInfo():
     def __init__(self):
         # Profile source information

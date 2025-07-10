@@ -1,6 +1,5 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import codecs
-import logging
 import os
 import pickle
 import time

@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from typing import List
 
 from mindspeed.auto_tuning.module.parse.profiling_parse.profiling_meta_parse import StructureAnalyseTool

@@ -1,6 +1,5 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import json
-import pickle
 from kubernetes import client, config
 from mindspeed.auto_tuning.utils.logger import get_logger
 

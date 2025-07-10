@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from mindspeed.auto_tuning.utils.logger import get_logger
 from mindspeed.auto_tuning.module.operator.operator_change_block import ChangeBlock
 from mindspeed.auto_tuning.module.operator.operator_elemental import ChangeOperatorList

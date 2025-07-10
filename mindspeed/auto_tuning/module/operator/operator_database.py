@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import os
 from sqlalchemy import Column, Integer, String, UniqueConstraint, text, desc
 from sqlalchemy import create_engine, Float

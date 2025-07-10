@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from copy import deepcopy
 from typing import List
 import torch.cuda as cuda

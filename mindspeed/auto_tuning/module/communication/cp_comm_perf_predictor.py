@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from mindspeed.auto_tuning.config.search_config import SearchConfig
 from mindspeed.auto_tuning.module.communication.comm_perf_linear_model_factory import (
     CommPerfLinearModelFactory,

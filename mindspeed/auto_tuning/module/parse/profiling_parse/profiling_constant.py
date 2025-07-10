@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 class OperatorDetails:
     def __init__(self, name, type_, input_shapes, output_shapes, duration_us, wait_time_us, accelerator_core):
         self.name: str = name

@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import copy
 from mindspeed.auto_tuning.module.operator.operator_elemental import ProfileList
 
