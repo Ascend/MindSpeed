@@ -507,7 +507,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> Ascend Auto Settings 并行策略自动搜索系统 </td>
     <td><a href="docs/features/auto_settings.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
   <tr>
@@ -582,18 +582,6 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5"> npu_grouped_mat_mul_all_reduce  </td>
     <td><a href="docs/ops/npu_grouped_mat_mul_all_reduce.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_fused_moe_token_permute  </td>
-    <td><a href="docs/ops/npu_fused_moe_token_permute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_fused_moe_token_unpermute  </td>
-    <td><a href="docs/ops/npu_fused_moe_token_unpermute.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
