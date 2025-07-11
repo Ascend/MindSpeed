@@ -1,6 +1,6 @@
 # 快速上手
 
-按照如下步骤操作，即可实现Megatron-LM在昇腾设备上的高效运行，且无缝集成并充分发挥MindSpeed所提供的丰富加速与优化技术。
+请先参考[软件安装](./installation.md)进行环境准备，环境准备后按照如下步骤操作，即可实现Megatron-LM在昇腾设备上的高效运行，且无缝集成并充分发挥MindSpeed所提供的丰富加速与优化技术。
 
 ### 1. 在Megatron-LM中导入MindSpeed适配器
 
