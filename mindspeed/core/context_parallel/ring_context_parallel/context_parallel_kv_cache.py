@@ -68,7 +68,7 @@ class ContextParallelKVCache:
         first_step_with_full_cache = self.cache_policy == "full" and index > 0
 
         if not first_step_with_full_cache and not is_last_step:
-            self.outer_ring_p2p.async_send_recv(send_tensor=self.cur_kv, recv_tensor=self.outer_next_kv, shapes=shapes)
+            self.outer_ring_p2p.async_send_recv(send_tensor=self.cur_kv.clone(), recv_tensor=self.outer_next_kv, shapes=shapes)
 
     def communicate_inner_ring_kv(self, index, shapes=None):
         """
