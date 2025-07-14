@@ -134,10 +134,10 @@ def distributed_data_parallel_init(
         if self.ddp_config.average_in_collective:
             gradient_scaling_factor = 1.0
             expert_gradient_scaling_factor = (
-                1.0 / parallel_state.get_expert_model_parallel_world_size(with_context_parallel=True)
+                1.0 / parallel_state.get_expert_model_parallel_world_size()
             )
         else:
-            data_parallel_world_size = parallel_state.get_data_parallel_world_size()
+            data_parallel_world_size = parallel_state.get_data_parallel_world_size(with_context_parallel=True)
             gradient_scaling_factor = 1.0 / data_parallel_world_size
             expert_gradient_scaling_factor = 1.0 / data_parallel_world_size
 
