@@ -955,6 +955,19 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
 
 ⚠️ [MindSpeed 安全声明](SECURITYNOTE.md)
 
+# 免责声明
+
+## 致MindSpeed使用者
+1. MindSpeed提供的所有内容仅供您用于非商业目的。
+2. 对于MindSpeed测试用例以及示例文件中所涉及的各模型和数据集，平台仅用于功能测试，华为不提供任何模型权重和数据集，如您使用这些数据进行训练，请您特别注意应遵守对应模型和数据集的License，如您因使用这些模型和数据集而产生侵权纠纷，华为不承担任何责任。
+3. 如您在使用MindSpeed过程中，发现任何问题（包括但不限于功能问题、合规问题），请在Gitee提交issue，我们将及时审视并解决。
+
+## 致数据所有者
+如果您不希望您的模型或数据集在MindSpeed中被提及，或希望更新MindSpeed中有关的描述，请在Gitee提交issue，我们将根据您的issue要求删除或更新您相关描述。衷心感谢您对MindSpeed的理解和贡献。
+
+## License声明
+Ascend MindSpeed中涉及的模型，如模型目录下存在License的，以该License为准。如模型目录下不存在License的，以Apache 2.0许可证许可，对应许可证文本可查阅Ascend MindSpeed根目录。
+
 ---
 
 # 致谢
