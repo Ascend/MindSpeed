@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,7 +14,7 @@
 
 def make_viewless_tensor(inp, requires_grad, keep_graph):
     '''
-    Entry-point for creating viewless tensors.
+    Entrypoint for creating viewless tensors.
 
     This method should be used, rather than calling 'MakeViewlessTensor'
     or '_kernel_make_viewless_tensor' directly. This method acts as a
@@ -22,7 +22,7 @@ def make_viewless_tensor(inp, requires_grad, keep_graph):
     should be used to create the tensor.
     '''
 
-    # return tensor as-is, if not a 'view'
+    # return tensor asis, if not a 'view'
     try:
         if inp._base is None:
             return inp
