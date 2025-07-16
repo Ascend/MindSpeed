@@ -1,4 +1,5 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+import os
 from argparse import ArgumentParser
 
 from mindspeed.features_manager.feature import MindSpeedFeature
@@ -22,6 +23,12 @@ class BuildTokenizerFeature(MindSpeedFeature):
         group.add_argument("--tokenizer-not-use-fast", action='store_false',
                            help="HuggingFace tokenizer not use the fast version.")
 
+    def validate_args(self, args):
+        tokenizer_path = getattr(args, 'tokenizer_name_or_path', None)
+        if tokenizer_path:
+            args.tokenizer_name_or_path = os.path.realpath(tokenizer_path)
+        if args.tokenizer_name_or_path and (not os.path.exists(args.tokenizer_name_or_path)):
+            raise AssertionError(f'{args.tokenizer_name_or_path} not exists!')
 
     def register_patches(self, patch_manager, args):
         if args.tokenizer_type == "PretrainedFromHF":

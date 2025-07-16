@@ -30,6 +30,7 @@ def restricted_read(file_path: str) -> Any:
     file_mode = stat.S_IWUSR | stat.S_IRUSR
     open_mode = "rb"
     encoding = None
+    file_path = os.path.realpath(file_path)
     with os.fdopen(
         os.open(file_path, open_flags, mode=file_mode),
         mode=open_mode,

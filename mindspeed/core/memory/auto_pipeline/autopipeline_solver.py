@@ -476,11 +476,11 @@ def save_profiling_data(policy, config_file):
             parsed_contents.append(instance)
         with open(config_file, "w") as f:
             json.dump(parsed_contents, f, ensure_ascii=False)
-            os.chmod(config_file, 0o644)
+            os.chmod(config_file, 0o640)
     else:
         with open(config_file, "w") as f:
             json.dump([instance], f, ensure_ascii=False)
-            os.chmod(config_file, 0o644)
+            os.chmod(config_file, 0o640)
 
 
 def solve_autopipeline(context):
