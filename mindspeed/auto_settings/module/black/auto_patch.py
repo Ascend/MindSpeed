@@ -21,7 +21,7 @@ class AutoPatcher(metaclass=Singleton):
         self.handles = []
         # name format in mcore
         self.profile_modules = ('embedding', '0', 'final_layernorm', 'output_layer')
-        self.save_path = save_path
+        self.save_path = os.path.realpath(save_path)
         atexit.register(self.export_to_file)
         self.logger = get_logger("AutoPatcher")
 
@@ -31,6 +31,8 @@ class AutoPatcher(metaclass=Singleton):
             self.logger.info(f"rank: {torch.distributed.get_rank()} saving context: {self.context}")
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             modes = stat.S_IWUSR | stat.S_IRUSR
+            if os.path.exists(self.save_path):
+                self.logger.warning(f'{self.save_path} will be overwrited !')
             with open(self.save_path, 'w') as fout:
                 fout.write(json.dumps(self.context))
 
