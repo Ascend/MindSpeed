@@ -1,5 +1,6 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
+import os
 from dataclasses import make_dataclass, field
 from functools import wraps
 import argparse
@@ -514,6 +515,11 @@ def core_transformer_config_from_args_wrapper(fn):
 def validate_args_wrapper(validate_args):
     @wraps(validate_args)
     def wrapper(args, defaults=None):
+        if args.tokenizer_name_or_path:
+            args.tokenizer_name_or_path = os.path.realpath(args.tokenizer_name_or_path)
+        if args.tokenizer_name_or_path and (not os.path.exists(args.tokenizer_name_or_path)):
+            raise AssertionError(f'{args.tokenizer_name_or_path} not exists!')
+        
         if args.dist_train:
             if not hasattr(args, 'mm_model'):
                 raise ValueError('DistTrain must work with MindSpeed-MM')

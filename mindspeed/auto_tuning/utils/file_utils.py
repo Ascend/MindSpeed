@@ -2,6 +2,7 @@ import os
 
 
 def check_file_size(file):
+    file = os.path.realpath(file)
     max_file_size = 5 * 1024 * 1024 * 1024
     if os.fstat(file.fileno()).st_size <= max_file_size:
         return
