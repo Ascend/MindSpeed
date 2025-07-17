@@ -55,7 +55,7 @@ class CommHardInfo(object):
         if min_domain > self.max_hccs_rank_num:
             if "910_public" in self.hard_type:
                 args = get_args()
-                return self.public_roce.calbandwidth(str(args.master_addr))
+                return 4  # public理论通信带宽
             return 1
         # hccs
         if "910B" in self.hard_type:
@@ -64,7 +64,7 @@ class CommHardInfo(object):
             return 1
         if "910_public" in self.hard_type:
             self.public_hccs.calbandwidth([4])
-            return self.public_hccs.bandwidth
+            return 4  # public理论通信带宽
         return 1
 
 
