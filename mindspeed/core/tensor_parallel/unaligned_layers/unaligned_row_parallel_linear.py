@@ -108,7 +108,7 @@ class UnalignedRowParallelLinear(torch.nn.Module):
                     init_method,
                     partition_dim=1,
                     stride=stride,
-                    expert_parallel=(self.is_expert and self.expert_parallel),
+                    is_expert=(self.is_expert and self.expert_parallel),
                 )
         setattr(self.weight, 'allreduce', not (self.is_expert and self.expert_parallel))
 
