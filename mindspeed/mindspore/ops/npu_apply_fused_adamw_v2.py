@@ -23,6 +23,7 @@ def npu_apply_fused_adamw_v2(param: torch.Tensor,
                              maximize: bool = False,
                              ):
     success = True
+    state_step = state_step - 1
     if max_exp_avg_sq is None:
         adamw_opt(param, exp_avg, exp_avg_sq, exp_avg_sq, grad, state_step, lr, beta1, beta2, weight_decay, eps, amsgrad, maximize)
     else:
