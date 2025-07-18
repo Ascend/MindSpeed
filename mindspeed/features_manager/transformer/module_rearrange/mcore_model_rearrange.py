@@ -9,7 +9,7 @@ def mindspeed_self_attention_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         config = args[0] if len(args) > 1 else kwargs['config']
-        if config.overlap_param_gather:
+        if getattr(config, 'overlap_param_gather', False):
             config.reset_attention_order = True
         fn(self, *args, **kwargs)
     return wrapper

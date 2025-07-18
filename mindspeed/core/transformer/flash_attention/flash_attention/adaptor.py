@@ -31,9 +31,14 @@ def dot_product_attention_forward_impl(
     assert attention_bias is None, \
         "Attention bias is not supported for DotProductAttention."
 
-    seq_length, bsz, n_head, head_dim = (
-        query.shape[0], query.shape[1], query.shape[2], query.shape[3]
-    )
+    if packed_seq_params is None:
+        seq_length, bsz, n_head, head_dim = (
+            query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+        )
+    else:
+        seq_length, n_head, head_dim = (
+            query.shape[0], query.shape[1], query.shape[2]
+        )
 
     sparse_mode = self.config.sparse_mode
     if attn_mask_type == AttnMaskType.no_mask:
@@ -48,12 +53,6 @@ def dot_product_attention_forward_impl(
     if packed_seq_params is not None: # TND
         actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
         actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
-        query, key, value = (
-            [
-                rearrange(x, 's b h d -> (b s) h d')
-                for x in [query, key, value]
-            ]
-        )
         shape_order = 'TND'
     else: # SBH
         actual_seq_qlen = None
@@ -82,14 +81,5 @@ def dot_product_attention_forward_impl(
         actual_seq_qlen=actual_seq_qlen,
         actual_seq_kvlen=actual_seq_kvlen
     )[0]
-
-    if packed_seq_params is not None:
-        output = (
-            rearrange(
-                output,
-                '(b s) h d -> s b (h d)',
-                s=seq_length, b=bsz
-            )
-        )
         
     return output

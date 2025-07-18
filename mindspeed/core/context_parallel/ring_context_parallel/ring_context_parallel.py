@@ -9,7 +9,7 @@ from einops import rearrange
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
 from mindspeed.core.context_parallel import get_args
 from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import ContextParallelKVCache
-from mindspeed.core.context_parallel.utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, sbh_to_tnd, tnd_to_sbh, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
+from mindspeed.core.context_parallel.utils import RingP2P, tnd_out_update, causal_out_update, general_out_update, forward_update, unflatten_softmax, flatten_softmax, get_selection_indices_for_tnd_softmax_update
 
 
 def causal_forward_fetch(q_block_id, kv_block_id, q, cur_k, cur_v, attn_mask=None):
@@ -927,12 +927,6 @@ class AttentionWithCp(torch.autograd.Function):
 
         if cp_config.causal:
             if cp_config.is_eod_reset:
-                # SBH -> TND
-                # fa varlen mode require TND layout
-                kv_n = n // (q.shape[-1] // v.shape[-1])
-                q = sbh_to_tnd(q, n)
-                k = sbh_to_tnd(k, kv_n)
-                v = sbh_to_tnd(v, kv_n)
 
                 # only first half of each sub sequence KV block need to be calculated when i <= rank
                 cp_config.kv_index = packed_seq_params.kv_index
@@ -1025,7 +1019,7 @@ class AttentionWithCp(torch.autograd.Function):
             ctx.cp_config.half_sub_out_seq_len = half_seq_lens[2]
             ctx.cp_config.sub_out_seq_len = sub_out_seq_len
             ctx.cp_config.softmax_indices = cp_config.softmax_indices
-            return tnd_to_sbh(attn_out, bsz)
+            return attn_out
 
         return attn_out
 
@@ -1038,8 +1032,7 @@ class AttentionWithCp(torch.autograd.Function):
         n = ctx.n
         shapes = ctx.shapes
         softmax_scale = ctx.softmax_scale
-        if cp_config.causal and cp_config.is_eod_reset:
-            dout = sbh_to_tnd(dout, n)
+
         # Reversed order of forward
         inner_size = len(cp_config.cp_inner_ranks)
         outer_size = len(cp_config.cp_outer_ranks)
@@ -1148,9 +1141,7 @@ class AttentionWithCp(torch.autograd.Function):
             dq = activation_func_1(dq)
 
         # [2, s, b, h] -> [2s, b, h]
-        if cp_config.causal and cp_config.is_eod_reset:
-            dq, dk, dv = [tnd_to_sbh(x, ctx.bsz) for x in [dq, dk, dv]]
-        elif cp_config.causal:
+        if cp_config.causal:
             dq, dk, dv = [x.view(-1, *x.shape[2:]) for x in [dq, dk, dv]]
         return dq, dk, dv, None, None, None, None, None, None, None
 

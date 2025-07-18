@@ -22,6 +22,7 @@ from mindspeed.features_manager.affinity.affinity import AffinityFeature
 
 from mindspeed.features_manager.megatron_basic.requirements_basic import RequirementsBasicFeature
 from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBasicFeature
+from mindspeed.features_manager.megatron_basic.transformer_engine_basic import TransformerEngineBasicFeature
 from mindspeed.features_manager.pipeline_parallel import NoopLayersFeature
 from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import RiPipeSchedulesBubbleFeature, \
     RiPipeSchedulesAdvanceFeature
@@ -99,6 +100,7 @@ def add_megatron_basic_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         RequirementsBasicFeature(),
         MegatronBasicFeature(),
+        TransformerEngineBasicFeature()
     ])
 
 

@@ -5,14 +5,13 @@ from functools import wraps
 import torch
 import torch_npu
 
-from megatron.training import get_args
-from mindspeed.functional.tflops_calculate.tflops_utils import set_count, get_flops_counter
+from mindspeed.args_utils import get_full_args
 
 
 def train_wrapper(train):
     @wraps(train)
     def wrapper(*args, **kwargs):
-        args_ = get_args()
+        args_ = get_full_args()
         if args_.profile:
             args_.profile_npu = True
             args_.profile = False
@@ -62,7 +61,7 @@ def train_wrapper(train):
 def train_step_wrapper(train_step):
     @wraps(train_step)
     def wrapper(*args, **kwargs):
-        args_ = get_args()
+        args_ = get_full_args()
         ret = train_step(*args, **kwargs)
         is_profile = args_.profile_npu and (
                 (torch.distributed.get_rank() in args_.profile_ranks)

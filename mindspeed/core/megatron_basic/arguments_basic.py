@@ -1,16 +1,18 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-from argparse import Namespace
+import inspect
+from logging import getLogger
 from functools import wraps
 from dataclasses import make_dataclass, field
 
-from megatron.training import get_args
-from megatron.training.arguments import _print_args
-
+from mindspeed.args_utils import get_full_args
 from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
+
+LOG = getLogger(__name__)
 
 
 def extra_args_provider_decorator(extra_args_provider):
     """Make a extra args parser  for megatron."""
+
     @wraps(extra_args_provider)
     def wrapper(parser):
         if extra_args_provider is not None:
@@ -54,6 +56,7 @@ def validate_args_wrapper(validate_args):
         MindSpeedFeaturesManager.validate_features_args(args=args)
 
         # _print_args is patched, so it has three arguments.
+        from megatron.training.arguments import _print_args
         _print_args("arguments", args, True)
 
         return args
@@ -79,14 +82,33 @@ def transformer_config_post_init_wrapper(fn):
         fn(self)
         if self.num_moe_experts is None:
             self.variable_seq_lengths = _ori_var_seq
-        args_items = vars(get_args()).items()
+
+    return wrapper
+
+
+def transformer_config_init_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        known_config = {}
+        unknown_config = {}
+        full_args = vars(get_full_args()).copy()
+        full_args.update(dict(kwargs))
+
+        config_key = inspect.signature(self.__class__).parameters
+        for key, value in full_args.items():
+            if key in config_key:
+                known_config[key] = value
+            else:
+                unknown_config[key] = value
+
         fields = []
-        for key, value in args_items:
+        for key, value in unknown_config.items():
             if not hasattr(self, key):
                 fields.append((str(key), type(value), field(init=False)))
         self.__class__ = make_dataclass(self.__class__.__name__, fields=fields, bases=(self.__class__,))
-
-        for key, value in args_items:
+        for key, value in unknown_config.items():
             if not hasattr(self, key):
                 setattr(self, key, value)
+        fn(self, *args, **kwargs)
+
     return wrapper

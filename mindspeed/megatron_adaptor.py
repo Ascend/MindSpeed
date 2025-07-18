@@ -3,7 +3,6 @@
 import os
 import sys
 import shutil
-import argparse
 from multiprocessing import Lock
 from logging import getLogger
 from pathlib import Path
@@ -11,50 +10,13 @@ from pathlib import Path
 from torch.utils.cpp_extension import _get_build_directory
 from torch_npu.contrib import transfer_to_npu
 
+from mindspeed.args_utils import get_mindspeed_args
 from mindspeed.log_config import set_log_config
 from mindspeed.deprecate import AutoExecuteFunction
 from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
-from mindspeed.arguments import process_args
 
-_ARGS = None
 LOG = getLogger(__name__)
 _IS_FEATURES_PATCHED = False
-
-
-def add_args(args, key, value):
-    if key is not None:
-        key = key[2:].replace('-', '_')
-        if value is None:
-            value = True
-        elif len(value) == 1:
-            value = value[0]
-        setattr(args, key, value)
-
-
-def parser_unknown_args(args, unknown):
-    i = 0
-    key = value = None
-    while i < len(unknown):
-        if unknown[i].startswith("--"):
-            add_args(args, key, value)
-            key = unknown[i]
-            value = None
-        else:
-            if value is None:
-                value = [unknown[i]]
-            else:
-                value.append(unknown[i])
-        i += 1
-    add_args(args, key, value)
-
-
-def get_mindspeed_args():
-    global _ARGS
-    if _ARGS is None:
-        parser = argparse.ArgumentParser(description='MindSpeed Arguments', allow_abbrev=False)
-        _ARGS, unknown = process_args(parser).parse_known_args()
-        parser_unknown_args(_ARGS, unknown)
-    return _ARGS
 
 
 @AutoExecuteFunction
@@ -93,6 +55,15 @@ def delete_lock_file():
         if files:
             LOG.info("Process (PID:%s is deleting Lock directory", os.getpid())
             shutil.rmtree(directory)
+
+
+def repatch(args):
+    MindSpeedFeaturesManager.remove_patches()
+    mindspeed_args = get_mindspeed_args()
+    for k, v in args.items():
+        setattr(mindspeed_args, k, v)
+    MindSpeedFeaturesManager.apply_features_pre_patches(mindspeed_args)
+    MindSpeedFeaturesManager.apply_features_patches(mindspeed_args)
 
 
 patch_features()

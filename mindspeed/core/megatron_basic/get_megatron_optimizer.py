@@ -11,7 +11,7 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.optimizer import _get_param_groups_and_buffers, _get_megatron_optimizer_based_on_param_groups
 from megatron.core import mpu
 from megatron.core.utils import log_single_rank
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def get_megatron_optimizer(
         Instance of MegatronOptimizer.
     """
 
-    args = get_args()
+    args = get_full_args()
     log_single_rank(logger, logging.INFO, f'Setting up optimizer with config {config}')
 
     # Separate out first model chunk if overlapping param AG with optimizer step.

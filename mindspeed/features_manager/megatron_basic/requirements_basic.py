@@ -27,15 +27,17 @@ class RequirementsBasicFeature(MindSpeedFeature):
         self.optimizer_selection(patch_manager, args)
 
     def te_adaptation(self, pm, args):
-        from mindspeed.core.megatron_basic.requirements_basic import version_wrapper
+        from mindspeed.core.megatron_basic.requirements_basic import version_wrapper, dummy_compile
         from mindspeed.te.pytorch import MindSpeedTELayernorm
-        pm.register_patch('torch.compile', torch.jit.script)
+        pm.register_patch('torch.compile', dummy_compile)
+        pm.register_patch('torch.jit.script', dummy_compile)
         # Need replace modules before import megatron
         pm.register_patch('importlib.metadata.version', version_wrapper)
         pm.register_patch('transformer_engine.pytorch.LayerNorm', MindSpeedTELayernorm, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.LayerNormLinear', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.DotProductAttention', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.Linear', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.GroupedLinear', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.distributed.CudaRNGStatesTracker', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.common.recipe.DelayedScaling', torch.nn.Module, create_dummy=True)
         pm.register_patch('flash_attn.flash_attn_interface.flash_attn_unpadded_func', create_dummy=True)

@@ -23,6 +23,6 @@ class AnsCompressTensorFeature(MindSpeedFeature):
             self.incompatible_check(args, "recompute_activation_function")
     
     def register_patches(self, patch_manager, args):
-        from mindspeed.core.memory.compress_dense.adaptor import mindspeed_compress_dense_forward
         if getattr(args, self.feature_name, "disable") != "disable":
+            from mindspeed.core.memory.compress_dense.adaptor import mindspeed_compress_dense_forward
             patch_manager.register_patch('megatron.core.transformer.mlp.MLP.forward', mindspeed_compress_dense_forward)

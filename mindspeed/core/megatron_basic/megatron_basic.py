@@ -98,3 +98,29 @@ def get_device_wrapper(func):
             device = func(*args, **kwargs)
         return device
     return wrapper
+
+
+def get_device_arch_version():
+    return 8
+
+
+def preload_tensors(self, write_buckets, non_blocking=True):
+    """
+    Preloads tensors in `state_dict` to host memory via CPU memory.
+
+    Args:
+        write_buckets (List): List of `WriteBucket` objects that define what to
+            save in a checkpoint.
+        non_blocking (bool, optional): knob to enable pinned D2H memcpy. Default is True.
+    """
+    result = []
+
+    for bucket in write_buckets:
+        file_name, storage_key, (bytes_data, tensor_data) = bucket
+        tensor_data = [
+            (item, tensor.to("cpu", non_blocking=False) if not tensor.is_cpu else tensor.clone()) for item, tensor in tensor_data
+        ]
+        result.append((file_name, storage_key, (bytes_data, tensor_data)))
+    if non_blocking:
+        torch.cuda.synchronize()
+    return result

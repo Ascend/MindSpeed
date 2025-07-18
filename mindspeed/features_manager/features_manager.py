@@ -61,3 +61,7 @@ class MindSpeedFeaturesManager:
         """Validate arguments of all features."""
         for feature in cls.FEATURES_LIST:
             feature.validate_args(args)
+
+    @classmethod
+    def remove_patches(cls):
+        MindSpeedPatchesManager.remove_patches()

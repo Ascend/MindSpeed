@@ -21,8 +21,7 @@ from megatron.core.utils import (
     log_on_each_pipeline_stage,
 )
 from megatron.core.fp8_utils import is_float8tensor
-from megatron.training import get_args
-
+from mindspeed.args_utils import get_full_args
 
 logger = getLogger(__name__)
 
@@ -41,7 +40,7 @@ def pipe_register_grad_ready_wrapper(register_grad_ready):
 def reuse_fp32_param_param_and_grad_buffer_init_wrapper(init_func):
     @wraps(init_func)
     def reuse_fp32_param_param_and_grad_buffer_init(*args, **kwargs):
-        global_args = get_args()
+        global_args = get_full_args()
         math_ceil = math.ceil
         if global_args.reuse_fp32_param and global_args.use_distributed_optimizer:
             def ceil_even(x):
@@ -310,9 +309,8 @@ def param_and_grad_buffer_init_pad(
             # due to a constraint with the reduce_scatter op, which requires
             # all tensors have equal size.)
             # 512-byte for Ascend, 256-byte for nv.
-
             element_size = 4 if param_dtype == torch.float else 2
-            global_args = get_args()
+            global_args = get_full_args()
             align_size = global_args.param_and_grad_buffer_pad // element_size
             return _pad(bucket_end_index, self.data_parallel_world_size * align_size)
         return bucket_end_index

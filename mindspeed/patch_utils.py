@@ -28,6 +28,7 @@ class Patch:
         self.orig_func = None
 
         self.patch_func = None
+        self.final_patch_func = None
         self.wrappers = []
         if new_func is None:
             new_func = dummy_function_wrapper(orig_func_name)
@@ -68,6 +69,15 @@ class Patch:
                 else:
                     i += 1
 
+    def remove_patch(self):
+        for _, value in sys.modules.copy().items():
+            if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
+                    and id(getattr(value, self.orig_func_name)) == self.final_patch_func:
+                setattr(value, self.orig_func_name, self.orig_func)
+        self.patch_func = None
+        self.final_patch_func = None
+        self.is_applied = False
+
     def apply_patch(self):
         if self.is_applied:
             return
@@ -83,11 +93,12 @@ class Patch:
 
         if self.orig_func_name is not None:
             setattr(self.orig_module, self.orig_func_name, final_patch_func)
-        for key, value in sys.modules.copy().items():
+        for _, value in sys.modules.copy().items():
             if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
                     and id(getattr(value, self.orig_func_name)) == self.orig_func_id:
                 setattr(value, self.orig_func_name, final_patch_func)
         self.is_applied = True
+        self.final_patch_func = final_patch_func
 
     @staticmethod
     def parse_path(module_path, function_name, create_dummy):
@@ -153,6 +164,12 @@ class MindSpeedPatchesManager:
         patch.remove_wrappers(wrappers_name)
         if remove_check and wrappers_len == len(patch.wrappers):
             raise RuntimeError('Remove wrappers has not remove anything.')
+
+    @staticmethod
+    def remove_patches():
+        for patch in MindSpeedPatchesManager.patches_info.values():
+            patch.remove_patch()
+            patch.remove_wrappers()
 
     @staticmethod
     def apply_patches():
