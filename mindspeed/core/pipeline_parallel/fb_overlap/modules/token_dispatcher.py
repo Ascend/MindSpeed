@@ -170,7 +170,7 @@ def alltoall_token_perm1(
     global overlap_stream
     if overlap_stream.stream is None:
         if self.config.moe_expert_capacity_factor is None:
-            overlap_stream.stream = torch.npu.Stream()
+            overlap_stream.stream = torch.npu.current_stream()
         else:
             overlap_stream.stream = torch.npu.current_stream()
     with torch.npu.stream(overlap_stream.stream):
