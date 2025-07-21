@@ -152,10 +152,10 @@ class GraphSolver:
         self.broadcast_in_mp_dp(policy_len_tensor, src)
         policy_len = tuple(policy_len_tensor.cpu().numpy().tolist())
         if global_rank == src:
-            recompute_policy_tensor = torch.tensor(recompute_policy_list, dtype=torch.int8,
+            recompute_policy_tensor = torch.tensor(recompute_policy_list, dtype=torch.int32,
                                                    device=torch.npu.current_device())
         else:
-            recompute_policy_tensor = torch.empty(policy_len, dtype=torch.int8,
+            recompute_policy_tensor = torch.empty(policy_len, dtype=torch.int32,
                                                   device=torch.npu.current_device())
 
         self.broadcast_in_mp_dp(recompute_policy_tensor, src)
