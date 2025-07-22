@@ -24,7 +24,7 @@ class SwapAttentionFeature(MindSpeedFeature):
             raise AssertionError('adaptive selective recompute is not compatible with swap_attention feature')
 
         self.incompatible_check(args, 'adaptive_memory_optimization')
-        is_enable_lora = hasattr(args, "lora_target_modules") and args.lora_target_modules
+        is_enable_lora = hasattr(args, "lora_target_modules") and (len(args.lora_target_modules) != 0)
         if is_enable_lora:
             raise AssertionError('swap attention is not compatible with LoRA')
 
