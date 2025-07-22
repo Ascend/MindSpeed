@@ -379,7 +379,8 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 rs_shared_experts_handle.wait()
             output_sum = output + rs_share_experts_output
             share_experts_output_dtype = share_experts_output.dtype
-            del output, share_experts_output
+            output.untyped_storage().resize_(0)
+            share_experts_output.untyped_storage().resize_(0)
             share_experts_output = torch.tensor(1, dtype=share_experts_output_dtype)
         else:
             output_sum = mindspore.ops.stop_gradient(output)
@@ -604,15 +605,15 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
             ctx.shared_experts_func = None
             share_experts_graph = None
             if backward_ag_shared_handle is not None:
-                del backward_ag_shared
+                backward_ag_shared.untyped_storage().resize_(0)
         if handle is not None:
             handle.wait()
-            del unpermute2_input_grad
+            unpermute2_input_grad.untyped_storage().resize_(0)
 
         unpermute1_input_detach_grad = _convert_python_data(ctx.unpermutation_func1(unpermute1_backward_input)[0])
         ctx.unpermutation_func1 = None
 
-        del unpermute1_backward_input
+        unpermute1_backward_input.untyped_storage().resize_(0)
 
         if moe_hierarchical_alltoallv:
             set_all2all_experts_output((permute1_graph, scores_ep, hidden_states_ep))
@@ -630,12 +631,12 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         else:
             _convert_python_data(ctx.experts_func(unpermute1_input_detach_grad))
             ctx.experts_func = None
-            del unpermute1_input_detach_grad
+            unpermute1_input_detach_grad.untyped_storage().resize_(0)
             permute1_backward_input, bw_permute1_ep_all2all_handle = get_all2all_experts_output()
             bw_permute1_ep_all2all_handle.wait()
-            del permute2_input_detach
+            permute2_input_detach.untyped_storage().resize_(0)
             hidden_states_grad = _convert_python_data(ctx.permutation_func1(permute1_backward_input)[0])
-            del permute1_backward_input
+            permute1_backward_input.untyped_storage().resize_(0)
         if l_aux_graph is not None:
             l_aux_graph.backward(l_aux_detach.grad, retain_graph=True)
         if moe_zero_memory != "disable":

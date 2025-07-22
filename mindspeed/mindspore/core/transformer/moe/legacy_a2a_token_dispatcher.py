@@ -299,7 +299,7 @@ def alltoall_token_permutation_new(
 
     if permute1_ep_all_to_all_handle is not None:
         permute1_ep_all_to_all_handle.wait()
-        del permutated_local_input_tokens
+        permutated_local_input_tokens.untyped_storage().resize_(0)
 
     def alltoall_token_permutation2(global_input_tokens):
         # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
@@ -338,7 +338,7 @@ def alltoall_token_permutation_new(
                                                                      global_input_tokens)
     save_tensors.append(global_input_tokens_detach)
     save_tensors.append(global_input_tokens)
-    del global_input_tokens_detach
+    global_input_tokens_detach.untyped_storage().resize_(0)
 
     return share_experts_output, global_input_tokens, tokens_per_expert, vjp_shared_experts, vjp_alltoall_token_permutation1, vjp_alltoall_token_permutation2
 
@@ -380,7 +380,7 @@ def alltoall_token_unpermutation_new(
         hidden_states, unpermute1_input_detach, vjp_alltoall_token_unpermutation1 = forward_func(alltoall_token_unpermutation1, hidden_states)
         save_tensors.append(unpermute1_input_detach)
         save_tensors.append(hidden_states)
-        del unpermute1_input_detach
+        unpermute1_input_detach.untyped_storage().resize_(0)
 
     ep_group = parallel_state.get_expert_model_parallel_group()
     if get_args().moe_tp_extend_ep:
@@ -404,7 +404,7 @@ def alltoall_token_unpermutation_new(
         )
     if handle is not None:
         handle.wait()
-        del hidden_states
+        hidden_states.untyped_storage().resize_(0)
 
     def alltoall_token_unpermutation2(permutated_local_input_tokens, probs):
         # Unpermutation 1: AlltoAll output to output
@@ -449,7 +449,7 @@ def alltoall_token_unpermutation_new(
     should_resize = not self.drop_and_pad and not moe_hierarchical_alltoallv and \
                     not get_args().use_fused_moe_token_permute_and_unpermute or get_args().moe_zero_memory != "disable"
     if should_resize:
-        del unpermute2_input_detach
+        unpermute2_input_detach.untyped_storage().resize_(0)
     save_tensors.append(output)
 
     if moe_hierarchical_alltoallv:
