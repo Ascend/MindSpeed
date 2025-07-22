@@ -32,7 +32,7 @@ from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.transformer.cuda_graphs import create_cudagraphs
 from megatron.core import parallel_state
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
-from mindspeed_llm.core.transformer.multi_token_prediction import MTPLossAutoScaler
+from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler
 from megatron.core.enums import ModelType
 from megatron.core.utils import (
     get_attr_wrapped_model,
