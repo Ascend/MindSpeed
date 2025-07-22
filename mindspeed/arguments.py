@@ -949,7 +949,7 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('Only ckpt-format = torch is supported.')
 
         if args.swap_attention and hasattr(args, "lora_target_modules"):
-            if args.lora_target_modules is not []:
+            if len(args.lora_target_modules) != 0:
                 raise AssertionError('swap attention is not compatible with LoRA')
 
         from megatron.training.arguments import _print_args
