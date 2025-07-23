@@ -1,8 +1,13 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 from functools import wraps
 from megatron.training import get_args
 import mindtorch.torch as torch
+try:
+    from einops import rearrange
+except ImportError:
+    rearrange = None
 
 
 def generate_attention_mask(args, attention_mask, device):
