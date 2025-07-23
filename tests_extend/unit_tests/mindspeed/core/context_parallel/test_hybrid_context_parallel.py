@@ -139,7 +139,7 @@ def run_hybridattn_cp(cp_size, u_size, bs, seq_len, dtype, cp_args):
 
     # core branch use core.transformer.DotProductAtttention as core attention
     config = TransformerConfig(num_layers=2, hidden_size=n * d, num_attention_heads=n, use_cpu_initialization=True,
-                               context_parallel_size=cp_size)
+                               context_parallel_size=cp_size, cp_comm_type=[None] * 2)
     local_attn = DotProductAttention(config=config, layer_number=1,
                                          attn_mask_type=AttnMaskType.causal, attention_type='self', attention_dropout=0.)
     

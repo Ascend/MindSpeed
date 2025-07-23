@@ -22,6 +22,7 @@ def set_mc2_args(args):
     args.optimize_recomp_communication_level = True
     args.sequence_parallel = 1
     args.use_cp_send_recv_overlap = False
+    args.num_query_groups = None
     return args
 
 
@@ -34,7 +35,7 @@ class TestMC2(DistributedTest):
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
-                                               num_attention_heads=4,
+                                               num_attention_heads=8,
                                                use_cpu_initialization=True)
         transformer_config.sequence_parallel = args.sequence_parallel
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
@@ -71,7 +72,7 @@ class TestMC2(DistributedTest):
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
-                                               num_attention_heads=4,
+                                               num_attention_heads=8,
                                                use_cpu_initialization=True)
         transformer_config.sequence_parallel = args.sequence_parallel
         set_random_seed(args.seed)

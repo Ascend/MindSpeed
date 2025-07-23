@@ -20,6 +20,7 @@ def set_unaligned_linear_args(args):
     args.seq_len = 180
     args.batch_size = 8
     args.sequence_parallel = True
+    args.num_query_groups = None
 
 
 class TestUnalignedLinear(DistributedTest):
@@ -31,10 +32,14 @@ class TestUnalignedLinear(DistributedTest):
         set_unaligned_linear_args(args)
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
+                                               tensor_model_parallel_size=1,
+                                               sequence_parallel=False,
                                                hidden_size=160,
                                                num_attention_heads=18,
                                                use_cpu_initialization=True)
         transformer_config.sequence_parallel = args.sequence_parallel
+        transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
+        transformer_config.gradient_accumulation_fusion = False
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
         set_random_seed(args.seed)
         input_size = transformer_config.hidden_size
@@ -70,10 +75,14 @@ class TestUnalignedLinear(DistributedTest):
         set_unaligned_linear_args(args)
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
+                                               tensor_model_parallel_size=1,
+                                               sequence_parallel=False,
                                                hidden_size=160,
                                                num_attention_heads=18,
                                                use_cpu_initialization=True)
         transformer_config.sequence_parallel = args.sequence_parallel
+        transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
+        transformer_config.gradient_accumulation_fusion = False
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
         set_random_seed(args.seed)
         input_size = transformer_config.hidden_size

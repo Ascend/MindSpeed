@@ -9,7 +9,7 @@ import torch_npu
 import pytest
 from pytest_mock import MockFixture
 
-import mindspeed.megatron_adaptor
+from mindspeed.megatron_adaptor import repatch
 
 from megatron.core.transformer import TransformerConfig
 from megatron.core.transformer.enums import ModelType
@@ -53,42 +53,8 @@ from tests_extend.unit_tests.common import DistributedTest
 
 
 os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
-# Setting sys.argv is mainly to ensure that --noop-layers is not None,
-# so that the code block (which will be executed
-# after determining that noop_layers is not None)
-# will be executed in megatron_adaptor.
-sys.argv = [
-    sys.argv[0],
-    "--noop-layers",
-    "22,23",
-    "--num-layers",
-    "24",
-    "--hidden-size",
-    "8",
-    "--ffn-hidden-size",
-    "8",
-    "--num-attention-heads",
-    "8",
-    "--tokenizer-type",
-    "Llama2Tokenizer",
-    "--tokenizer-model",
-    "/home/dataset/model/llama-2-7b-hf/tokenizer.model",
-    "--seq-length",
-    "128",
-    "--max-position-embeddings",
-    "128",
-    "--micro-batch-size",
-    "1",
-    "--global-batch-size",
-    "8",
-    "--lr-warmup-fraction",
-    "0.01",
-    "--bf16",
-    "--data-path",
-    "/home/dataset/llama2/alpaca_text_document",
-    "--seed",
-    "1234",
-]
+
+_ARGS = None
 
 
 def track_moe_metrics_mock(loss_scale, writer, total_loss_dict=None):
@@ -162,14 +128,33 @@ class TestNoopLayer(DistributedTest):
         )
 
     def set_args(self, tp_pp_vp_stage, num_layers, noop_layers):
-        args = parse_args(ignore_unknown_args=True)
+        global _ARGS
+        if _ARGS is None:
+            args = parse_args(ignore_unknown_args=True)
+        else:
+            args = _ARGS
         (tp, pp, vp_stage) = tp_pp_vp_stage
         args.tensor_model_parallel_size = tp
         args.pipeline_model_parallel_size = pp
+        args.pipeline_dtype = torch.float32
         args.num_layers_per_virtual_pipeline_stage = vp_stage
         args.model_type = ModelType.encoder_or_decoder
         args.noop_layers = noop_layers
         args.num_layers = num_layers
+        args.hidden_size = 8
+        args.ffn_hidden_size = 8
+        args.num_attention_heads = 8
+        args.tokenizer_type = "Llama2Tokenizer"
+        args.tokenizer_model = "/home/dataset/model/llama-2-7b-hf/tokenizer.model"
+        args.seq_length = 128
+        args.max_position_embeddings = 128
+        args.micro_batch_size = 1
+        args.global_batch_size = 8
+        args.lr_warmup_fraction = 0.01
+        args.bf16 = True
+        args.overlap_p2p_comm = True
+        args.data_path = "/home/dataset/llama2/alpaca_text_document"
+        args.seed = 1234
         # In validate_args(), first get args.batch_size,
         # and then del args.batch_size, so you need to set some parameters
         # first to prevent errors from running validate_args() again.
@@ -183,8 +168,14 @@ class TestNoopLayer(DistributedTest):
         args.encoder_seq_length = None
         args.start_weight_decay = None
         args.end_weight_decay = None
+        args.num_query_groups = None
+
+        if _ARGS is None:
+            repatch(vars(args))
         validate_args(args)
         set_args(args)
+        _ARGS = args
+
 
     def initialize_distributed(self):
         args = get_args()

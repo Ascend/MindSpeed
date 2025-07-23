@@ -42,7 +42,9 @@ def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_k
     # default_config_kwargs=dict(num_layers=8, hidden_size=16, num_attention_heads=8, use_cpu_initialization=True)
     default_config_kwargs = dict(num_layers=1, hidden_size=32, num_attention_heads=8, use_cpu_initialization=True)
     default_config_kwargs.update(**config_kwargs)
+    default_config_kwargs['num_query_groups'] = None
     transformer_config = TransformerConfig(**default_config_kwargs)
+
     # pre_process = parallel_state.is_pipeline_first_stage()
     # post_process = parallel_state.is_pipeline_last_stage()
     model = GPTModel(config=transformer_config, transformer_layer_spec=get_gpt_layer_local_spec(), vocab_size=128,

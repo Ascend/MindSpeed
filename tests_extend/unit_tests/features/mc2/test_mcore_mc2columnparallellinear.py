@@ -23,13 +23,14 @@ def set_mc2_args(args):
     args.sequence_parallel = True
     args.use_cp_send_recv_overlap = False
     args.vocab_size = 512
+    args.num_query_groups = None
     return args
 
 
 def set_transformer_config():
     return TransformerConfig(num_layers=1,
                              hidden_size=12,
-                             num_attention_heads=4,
+                             num_attention_heads=8,
                              use_cpu_initialization=True)
 
 
@@ -56,6 +57,7 @@ class TestMC2(DistributedTest):
         set_args(args)
 
         transformer_config = set_transformer_config()
+        transformer_config.gradient_accumulation_fusion = False
         transformer_config.sequence_parallel = args.sequence_parallel
         initialize_model_parallel(args.tensor_model_parallel_size, 1)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
@@ -96,6 +98,7 @@ class TestMC2(DistributedTest):
         set_args(args)
 
         transformer_config = set_transformer_config()
+        transformer_config.gradient_accumulation_fusion = False
         transformer_config.sequence_parallel = args.sequence_parallel
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.vocab_size

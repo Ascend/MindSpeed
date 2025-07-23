@@ -22,6 +22,7 @@ def set_coc_args(args):
     args.optimize_recomp_communication_level = True
     args.sequence_parallel = 1
     args.use_cp_send_recv_overlap = False
+    args.num_query_groups = None
     return args
 
 
@@ -34,7 +35,7 @@ class TestCoC(DistributedTest):
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
-                                               num_attention_heads=4,
+                                               num_attention_heads=8,
                                                use_cpu_initialization=True)
 
         # ----------COC SETTING----------
@@ -79,7 +80,7 @@ class TestCoC(DistributedTest):
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
-                                               num_attention_heads=4,
+                                               num_attention_heads=8,
                                                use_cpu_initialization=True)
 
         # ----------COC SETTING----------
@@ -124,7 +125,7 @@ class TestCoC(DistributedTest):
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
-                                               num_attention_heads=4,
+                                               num_attention_heads=8,
                                                use_cpu_initialization=True)
 
         # ----------COC SETTING----------
@@ -167,7 +168,7 @@ class TestCoC(DistributedTest):
         set_args(args)
         transformer_config = TransformerConfig(num_layers=1,
                                                hidden_size=12,
-                                               num_attention_heads=4,
+                                               num_attention_heads=8,
                                                use_cpu_initialization=True)
 
         # ----------COC SETTING----------

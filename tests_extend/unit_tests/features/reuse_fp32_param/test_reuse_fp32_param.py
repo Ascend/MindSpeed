@@ -30,6 +30,7 @@ class ReuseParamFeatureTset:
         set_args(args)
         args.reuse_fp32_param = True
         args.bf16 = True
+        args.num_query_groups = None
 
         reuse_param_feature_func = ReuseFP32Param()
 
@@ -46,6 +47,7 @@ def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_k
                                  bf16=True)
     default_config_kwargs.update(**config_kwargs)
     transformer_config = TransformerConfig(**default_config_kwargs)
+    transformer_config.gradient_accumulation_fusion = False
     model = GPTModel(config=transformer_config, transformer_layer_spec=get_gpt_layer_local_spec(), vocab_size=1024,
                      max_sequence_length=64, pre_process=pre_process, post_process=post_process)
 
@@ -64,6 +66,7 @@ def init_mock_args(args, use_distributed_optimizer=False, reuse_fp32_param=False
     args.use_distributed_optimizer = use_distributed_optimizer
     args.ddp_bucket_size = None
     args.reuse_fp32_param = reuse_fp32_param
+    args.num_query_groups = None
     return args
 
 

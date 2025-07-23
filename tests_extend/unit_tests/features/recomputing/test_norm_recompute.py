@@ -26,6 +26,7 @@ class TestNormRecompute(DistributedTest):
         args.num_layers = 4
         args.recompute_norm_num_layers = 2
         args.transformer_pipeline_model_parallel_size = 2
+        args.num_query_groups = None
         set_args(args)
         self.norm_recopute()
 
@@ -36,6 +37,7 @@ class TestNormRecompute(DistributedTest):
         config = TransformerConfig(num_layers=4, hidden_size=12, num_attention_heads=4, use_cpu_initialization=True)
         config.hidden_dropout = 0
         config.attention_dropout = 0
+        config.gradient_accumulation_fusion = False
         transformer_block_ref = TransformerBlock(config, get_gpt_layer_local_spec(), post_layer_norm=True)
         transformer_block_test = TransformerBlock(config, get_gpt_layer_local_spec(), post_layer_norm=True)
         transformer_block_test.load_state_dict(transformer_block_ref.state_dict().copy())

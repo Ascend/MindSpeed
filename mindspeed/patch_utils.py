@@ -82,7 +82,8 @@ class Patch:
         if self.is_applied:
             return
 
-        self.orig_module, self.orig_func = Patch.parse_path(self.orig_module_name, self.orig_func_name, self.create_dummy)
+        if self.orig_module is None:
+            self.orig_module, self.orig_func = Patch.parse_path(self.orig_module_name, self.orig_func_name, self.create_dummy)
 
         final_patch_func = self.orig_func
         if self.patch_func is not None:

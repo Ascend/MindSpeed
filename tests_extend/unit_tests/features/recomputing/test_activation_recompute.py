@@ -23,6 +23,7 @@ class ActRecomputeFeatureTset:
         args.num_layers = 4
         args.recompute_activation_function = True
         args.recompute_activation_function_num_layers = 2
+        args.num_query_groups = None
         set_args(args)
 
         recompute_activation_feature_func = RecomputeActivationFeature()
@@ -60,6 +61,7 @@ class TestActivationRecompute(DistributedTest):
         config.attention_dropout = 0
         config.layer_number = 4
         config.transformer_pipeline_model_parallel_size = 2
+        config.gradient_accumulation_fusion = False
         transformer_block_ref = MLP(config, submodules=submodules)
         transformer_block_test = MLP(config, submodules=submodules)
         transformer_block_test.load_state_dict(transformer_block_ref.state_dict().copy())

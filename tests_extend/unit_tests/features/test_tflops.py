@@ -37,6 +37,7 @@ def set_mc2_args(args):
     args.optimize_recomp_communication_level = True
     args.sequence_parallel = 1
     args.use_cp_send_recv_overlap = False
+    args.num_query_groups = None
     return args
 
 

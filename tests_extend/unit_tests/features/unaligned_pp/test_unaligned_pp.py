@@ -78,6 +78,7 @@ class TestUnalignedPP(DistributedTest):
         args.model_type = ModelType.encoder_or_decoder
         args.pipeline_num_transformer_layers = pipeline_num_transformer_layers
         args.num_layers = num_layers
+        args.pipeline_dtype = torch.float32
         # In validate_args(), first get args.batch_size, and then del args.batch_size, so you need to set some
         # parameters first to prevent errors from running validate_args() again.
         args.batch_size = None
@@ -90,6 +91,7 @@ class TestUnalignedPP(DistributedTest):
         args.encoder_seq_length = None
         args.start_weight_decay = None
         args.end_weight_decay = None
+        args.num_query_groups = None
         args.transformer_impl = "local"
         validate_args(args)
         set_args(args)

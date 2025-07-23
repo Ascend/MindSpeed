@@ -52,6 +52,7 @@ def init_mock_args(args, use_distributed_optimizer=False, swap_optimizer=False):
     args.use_distributed_optimizer = use_distributed_optimizer
     args.ddp_bucket_size = None
     args.swap_optimizer = swap_optimizer
+    args.num_query_groups = None
     return args
 
 

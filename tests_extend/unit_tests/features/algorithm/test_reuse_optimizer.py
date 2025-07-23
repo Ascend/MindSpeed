@@ -50,6 +50,7 @@ def init_mock_args(args, use_distributed_optimizer=False, reuse_fp32_param=False
     args.use_distributed_optimizer = use_distributed_optimizer
     args.ddp_bucket_size = None
     args.reuse_fp32_param = reuse_fp32_param
+    args.num_query_groups = None
     return args
 
 

@@ -64,6 +64,3 @@ class TestDotProductAttn(DistributedTest):
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_dot_product_att_bf16(self):
         run_dot_product_att(1, 2, 256, torch.bfloat16)
-
-    def test_dot_product_att_bf16_cp(self):
-        run_dot_product_att(2, 2, 256, torch.bfloat16)

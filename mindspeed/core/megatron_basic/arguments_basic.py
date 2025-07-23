@@ -109,6 +109,6 @@ def transformer_config_init_wrapper(fn):
         for key, value in unknown_config.items():
             if not hasattr(self, key):
                 setattr(self, key, value)
-        fn(self, *args, **kwargs)
+        fn(self, *args, **known_config)
 
     return wrapper
