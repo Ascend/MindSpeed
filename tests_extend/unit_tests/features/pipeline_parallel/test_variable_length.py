@@ -122,6 +122,8 @@ def test_communicate_impl(mocker: MockFixture, config, expected):
         get_pipeline_model_parallel_prev_rank=lambda: [2],
         batched_p2p_ops=lambda **kwargs: {},
         p2p_ops=lambda **kwargs: {},
+        original_batched_p2p_ops=lambda **kwargs: {},
+        original_p2p_ops=lambda **kwargs: {}
     )
     assert prev.sum() == expected[0]
     assert next.sum() == expected[1]

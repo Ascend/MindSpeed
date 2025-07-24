@@ -55,7 +55,6 @@ def _p2p_ops_eod(
 
     args = get_args()
     bsz = args.micro_batch_size
-    block_size = args.seq_length // args.context_parallel_size
 
     if tensor_send_next is not None:
         tensor_length = torch.tensor(prev_actual_seq_len.numel()).npu()
@@ -120,7 +119,8 @@ def _p2p_ops_eod(
             reqs["req"] = req
             set_actual_seq_len(actual_seq_len_buffer)
 
-            position_ids_buffer = torch.empty((block_size, bsz), dtype=torch.int64, device=torch.cuda.current_device())
+            dynamic_seq_len = tensor_recv_prev.shape[0]
+            position_ids_buffer = torch.empty((dynamic_seq_len, bsz), dtype=torch.int64, device=torch.cuda.current_device())
             req = torch.distributed.irecv(
                 tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_recv_odd_send_group,
             )
@@ -155,7 +155,8 @@ def _p2p_ops_eod(
             reqs["req"] = req
             set_actual_seq_len(actual_seq_len_buffer)
 
-            position_ids_buffer = torch.empty((block_size, bsz), dtype=torch.int64, device=torch.cuda.current_device())
+            dynamic_seq_len = tensor_recv_prev.shape[0]
+            position_ids_buffer = torch.empty((dynamic_seq_len, bsz), dtype=torch.int64, device=torch.cuda.current_device())
             req = torch.distributed.irecv(
                 tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_send_odd_recv_group,
             )
@@ -437,13 +438,5 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = F
         )
     # emb [seq_length, .., dim]
     emb = emb[:, None, None, :]
-
-    position_ids = get_position_ids()
-    s, b = position_ids.shape
-    emb = emb[position_ids.view(-1)].squeeze(1).reshape(s, b, 1, -1)
-
-    if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
-        # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
-        emb = get_pos_emb_on_this_cp_rank(emb, 0)
 
     return emb

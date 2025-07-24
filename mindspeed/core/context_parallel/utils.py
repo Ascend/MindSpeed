@@ -676,3 +676,48 @@ class AdaptiveCpOps:
         CACHED_MASK_LIST = mask_list
         return mask_list
         
+
+def round_up(x, n):
+    return (x + n - 1) // n * n
+
+
+def divisible(tensor, divisor):
+    rem = tensor % divisor
+    return torch.all(remainder == 0).item()
+
+
+def pad_data(actual_seq_len, batch, cp_size, tp_size):
+    from math import lcm
+    pad_to = lcm(2, tp_size) * cp_size
+    if divisible(tensor, pad_to):
+        return actual_seq_len
+
+    first_seq_len = actual_seq_len[0:1]
+    per_seq_lens = torch.cat((first_seq_len, torch.diff(actual_seq_len)))
+    per_seq_lens_padded = round_up(per_seq_lens, pad_to)
+    total_len = torch.sum(per_seq_lens_padded)
+    actual_seq_len_padded = torch.cumsum(per_seq_lens_padded, dim=0)
+    original_seqs = actual_seq_len.tolist()
+    n_seq = len(actual_seq_len)
+    
+    def pad(data):
+        if data is None:
+            return data
+        buffer = torch.zeros(total_len, device='npu', dtype=data.dtype)
+        data = data.view(-1)
+
+        buffer[0:original_seqs[0]] = data[0:original_seqs[0]]
+        for i in range(n_seq - 1):
+            buffer_start = actual_seq_len_padded[i]
+            data_start, data_end = original_seqs[i], original_seqs[i + 1]
+            buffer_end = buffer_start + data_end - data_start
+            buffer[buffer_start: buffer_end] = data[data_start: data_end]
+
+        return buffer.view((1, -1))
+
+    batch['tokens'] = pad(batch['tokens'])
+    batch['labels'] = pad(batch['labels'])
+    batch['loss_mask'] = pad(batch['loss_mask'])
+    batch['position_ids'] = pad(batch['position_ids'])
+
+    return torch.tensor(actual_seq_len_padded, device='npu')        

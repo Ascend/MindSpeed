@@ -15,7 +15,8 @@ from mindspeed.core.context_parallel.utils import (set_scheduling_info,
                                                    get_adaptive_cp_mask_list_by_user,
                                                    get_adaptive_cp_grid_mask_by_user,
                                                    generate_adaptive_cp_mask_list_by_user,
-                                                   generate_adaptive_cp_grid_mask_by_user)
+                                                   generate_adaptive_cp_grid_mask_by_user,
+                                                   pad_data)
 
 _ACTUAL_SEQ_LEN = None
 _REARRANGE_IDX_TENSOR = None
@@ -151,7 +152,7 @@ def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len)
     args = get_args()
 
     actual_seq_len_lst = list(actual_seq_len * get_ring_degree())
-    batched_index = batch_index(actual_seq_len_lst, args.seq_length)
+    batched_index = [actual_seq_len_lst]
     index = get_index(batched_index, cp_size, cp_rank)
 
     for key, val in batch.items():
@@ -449,6 +450,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         if args.reset_attention_mask:
             actual_seq_len = broadcast_dynamic(data['actual_seq_len'])
             if args.attention_mask_type == 'causal':
+                actual_seq_len = pad_data(actual_seq_len, batch, args.context_parallel_size, args.tensor_model_parallel_size)
                 actual_seq_len /= get_ring_degree()
             set_actual_seq_len(actual_seq_len)
 
@@ -509,6 +511,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         if args.reset_attention_mask:
             actual_seq_len = broadcast_dynamic(None)
             if args.attention_mask_type == 'causal':
+                actual_seq_len = pad_data(actual_seq_len, batch, args.context_parallel_size, args.tensor_model_parallel_size)
                 actual_seq_len /= get_ring_degree()
             set_actual_seq_len(actual_seq_len)
 

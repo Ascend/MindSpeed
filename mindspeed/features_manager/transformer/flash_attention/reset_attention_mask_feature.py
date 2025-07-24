@@ -25,6 +25,7 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
                                          get_batch_on_this_cp_rank_wrapper)
 
             patch_manager.register_patch('megatron.core.pipeline_parallel.p2p_communication._p2p_ops', _p2p_ops_eod)
+            patch_manager.register_patch('megatron.core.pipeline_parallel.p2p_communication._batched_p2p_ops', _p2p_ops_eod)
             patch_manager.register_patch('megatron.core.models.gpt.gpt_model.GPTModel.forward', gpt_forward_wrapper)
             patch_manager.register_patch('megatron.core.transformer.attention.Attention.forward', attention_forward)
             patch_manager.register_patch(

@@ -143,6 +143,8 @@ def communicate_impl(
     get_pipeline_model_parallel_prev_rank: Callable,
     batched_p2p_ops: Callable,
     p2p_ops: Callable,
+    original_batched_p2p_ops: Callable,
+    original_p2p_ops: Callable,
     wait_on_reqs: bool = True,
 ) -> Tuple[torch.Tensor, torch.Tensor, Iterable[torch.distributed.P2POp]]:
     """Communicate tensors between stages. Used as helper method in other
@@ -176,6 +178,8 @@ def communicate_impl(
             lobal rank that preceeds the caller in the pipeline
         batched_p2p_ops: A function to perform batched p2p operations.
         p2p_ops: A function to perform p2p operations.
+        original_batched_p2p_ops: Original function to perform batched p2p operations.
+        original_p2p_ops: Original function to perform p2p operations.
 
         wait_on_reqs (boolean, optional, default=False):
             For non-batched p2p communication, wait on each request
@@ -191,6 +195,7 @@ def communicate_impl(
 
     tensor_recv_prev_func = None
     tensor_recv_next_func = None
+    config.batch_p2p_comm = False
 
     if not config.variable_seq_lengths:
         recv_prev_shape = tensor_shape
@@ -206,8 +211,8 @@ def communicate_impl(
             get_pipeline_model_parallel_group,
             get_pipeline_model_parallel_next_rank,
             get_pipeline_model_parallel_prev_rank,
-            batched_p2p_ops,
-            p2p_ops,
+            original_batched_p2p_ops,
+            original_p2p_ops,
             tensor_dim,
         )
 

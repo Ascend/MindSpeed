@@ -15,8 +15,11 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_next_rank,
     get_pipeline_model_parallel_prev_rank,
 )
+# _p2p_ops在某些特性中可能被替换
+# 需要保证communiacte_shape的时候使用的是原先的版本
 from megatron.core.pipeline_parallel.p2p_communication import (
-    _batched_p2p_ops, _p2p_ops)
+    _batched_p2p_ops as _original_batched_p2p_ops, 
+    _p2p_ops as _original_p2p_ops)
 
 from .communicate import Shape, communicate_impl, communicate_shapes_impl
 
@@ -67,6 +70,9 @@ def mindspeed_communicate(
         - tensor_recv_next: torch.Tensor if recv_next is True, None otherwise.
         - reqs: p2p communication requests.
     """
+    from megatron.core.pipeline_parallel.p2p_communication import (
+        _batched_p2p_ops, 
+        _p2p_ops)
 
     return communicate_impl(
         tensor_send_next=tensor_send_next,
@@ -80,6 +86,8 @@ def mindspeed_communicate(
         get_pipeline_model_parallel_prev_rank=get_pipeline_model_parallel_prev_rank,  # noqa
         batched_p2p_ops=_batched_p2p_ops,
         p2p_ops=_p2p_ops,
+        original_batched_p2p_ops=_original_batched_p2p_ops,
+        original_p2p_ops=_original_p2p_ops,
         wait_on_reqs=wait_on_reqs,
     )
 
@@ -121,7 +129,7 @@ def mindspeed_commuticate_shapes(
         get_pipeline_model_parallel_group=get_pipeline_model_parallel_group,
         get_pipeline_model_parallel_next_rank=get_pipeline_model_parallel_next_rank,  # noqa
         get_pipeline_model_parallel_prev_rank=get_pipeline_model_parallel_prev_rank,  # noqa
-        batched_p2p_ops=_batched_p2p_ops,
-        p2p_ops=_p2p_ops,
+        batched_p2p_ops=_original_batched_p2p_ops,
+        p2p_ops=_original_p2p_ops,
         tensor_dim=tensor_dim,
     )
