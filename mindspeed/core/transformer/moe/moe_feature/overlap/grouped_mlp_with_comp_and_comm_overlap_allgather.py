@@ -1,5 +1,4 @@
-# Copyright (c) 2025, Huawei Technologies.
-# All rights reserved.
+# Copyright (c) 2025, Huawei Technologies. All rights reserved.
 
 import torch
 import acl

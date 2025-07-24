@@ -51,8 +51,8 @@ from megatron.core.parallel_state import (
 )
 
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region
-from megatron.core.transformer.moe.moe_layer import MoELayer, BaseMoELayer
-from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
+from megatron.core.transformer.moe.moe_layer import MoELayer, BaseMoELayer, BaseMoELayer as MegatronBaseMoeLayer
+from megatron.core.transformer.moe.shared_experts import SharedExpertMLP, set_tensor_grad_fn_sequence_sr
 from megatron.core.transformer.moe.experts import GroupedMLP
 from megatron.core.transformer.moe.legacy_a2a_token_dispatcher import MoEAlltoAllSEQTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
@@ -61,3 +61,6 @@ from megatron.training import get_args
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import make_viewless_tensor
 from megatron.core.inference.contexts import BaseInferenceContext
+from megatron.core.fusions.fused_bias_geglu import bias_geglu_impl
+from megatron.core.fusions.fused_bias_gelu import bias_gelu_impl
+from megatron.core.fusions.fused_bias_swiglu import bias_swiglu_impl

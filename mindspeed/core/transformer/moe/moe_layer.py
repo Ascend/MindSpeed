@@ -113,7 +113,7 @@ def moe_adaptive_forward(self, hidden_states: torch.Tensor):
     return output, mlp_bias
 
 
-def zero_memory_SharedExpertMlp_forward(self, hidden_states, moe_ctx):
+def zero_memory_shared_expert_mlp_forward(self, hidden_states, moe_ctx):
     """Shared expert forward function with zero_memory."""
     output, _ = MLP.forward(self, hidden_states, moe_ctx)
     if self.use_shared_expert_gate:

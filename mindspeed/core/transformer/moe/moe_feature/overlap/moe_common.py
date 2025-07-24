@@ -6,7 +6,7 @@ import torch
 import torch_npu
 import torch.nn.functional as F
 from mindspeed.core.transformer.moe.moe_feature import (
-     parallel_state, MLP, build_module, get_args, TransformerConfig, MLPSubmodules, TransformerConfig)
+     parallel_state, MLP, build_module, TransformerConfig, MLPSubmodules, TransformerConfig)
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
@@ -106,6 +106,9 @@ def mlp_init(
 
 
 def core_mlp_forward_wrapper(fn):
+    """
+    A wrapper about setting args for zero_memory&recompute in MLP.
+    """
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         if isinstance(args, tuple):
@@ -144,6 +147,7 @@ def core_mlp_forward_wrapper(fn):
                 self.activation_func = self.origin_activation_func
             output, output_bias = fn(self, *args, **kwargs)
         elif moe_zero_memory == "level1" and not only_recompute_activation(self.config, layer_number=self.layer_number):
+            # Only for zm1 in alltoall_seq dispatcher.
             if self.with_shared_expert:
                 self.activation_function = activation_function
                 hidden_states = args[0]
