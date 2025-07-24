@@ -37,6 +37,7 @@ except ImportError:
     HAVE_FSDP2 = False
 
 from mindspeed.core.pipeline_parallel.dualpipev.dualpipev_schedules import get_dualpipe_chunk
+from mindspeed.core.pipeline_parallel.dualpipev.mtp_utils import model_provider_mtp
 
 
 def get_transformer_layer_offset(config: TransformerConfig):
@@ -186,8 +187,14 @@ def pretrain(
     # Model, optimizer, and learning rate.
     timers('model-and-optimizer-setup', log_level=0).start(barrier=True)
     app_metrics['app_build_optimizer_start_time'] = one_logger_utils.get_timestamp_in_ms()
-    model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
-        model_provider, model_type, checkpointing_context=checkpointing_context)
+
+    #If with MTP, change model_provider func.
+    if args.mtp_num_layers is not None:
+        model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
+            model_provider_mtp, model_type, checkpointing_context=checkpointing_context)
+    else:
+        model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
+            model_provider, model_type, checkpointing_context=checkpointing_context)
 
     timers('model-and-optimizer-setup').stop()
     print_datetime('after model, optimizer, and learning rate '
@@ -312,6 +319,10 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     args = get_args()
     args.model_type = model_type
 
+    use_dualpipe_mtp = None
+    if args.mtp_num_layers is not None:
+        use_dualpipe_mtp = False
+
     assert model_type != ModelType.encoder_and_decoder, \
         "Interleaved schedule not supported for model with both encoder and decoder"
     model = []
@@ -319,22 +330,41 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     pre_process, post_process = False, False
     if mpu.is_pipeline_first_stage():
         pre_process = True
-
+        use_dualpipe_mtp = True
+        
     args.dualpipev_first_chunk = True
-    first_model = model_provider_func(
-        pre_process=pre_process,
-        post_process=post_process
-    )
-    first_model.model_type = model_type
-    model.append(first_model)
+    if args.mtp_num_layers:
+        first_model = model_provider_func(
+            pre_process=pre_process,
+            post_process=post_process,
+            use_dualpipe_mtp=False
+        )
+        first_model.model_type = model_type
+        model.append(first_model)
 
-    args.dualpipev_first_chunk = False
-    second_model = model_provider_func(
-        pre_process=post_process,
-        post_process=pre_process
-    )
-    second_model.model_type = model_type
-    model.append(second_model)
+        args.dualpipev_first_chunk = False
+        second_model = model_provider_func(
+            pre_process=post_process,
+            post_process=pre_process,
+            use_dualpipe_mtp=use_dualpipe_mtp
+        )
+        second_model.model_type = model_type
+        model.append(second_model)
+    else:
+        first_model = model_provider_func(
+            pre_process=pre_process,
+            post_process=post_process
+        )
+        first_model.model_type = model_type
+        model.append(first_model)
+
+        args.dualpipev_first_chunk = False
+        second_model = model_provider_func(
+            pre_process=post_process,
+            post_process=pre_process
+        )
+        second_model.model_type = model_type
+        model.append(second_model)
 
     if not isinstance(model, list):
         model = [model]

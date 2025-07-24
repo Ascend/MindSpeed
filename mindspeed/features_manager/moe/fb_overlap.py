@@ -44,6 +44,8 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             from mindspeed.core.transformer.moe.moe_feature.fb_overlap import (
                 linear_backward_wgrad_detach,
                 transformer_block_fb_overlap_init_wrapper,
+                mtp_block_fb_overlap_forward_wrapper,
+                dualpipev_fb_overlap_mtp_layer_forward
             )
             from mindspeed.core.transformer.moe.moe_feature.fb_overlap.adaptor import (
                 _make_backward_post_hook,
@@ -61,5 +63,10 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
                 patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
                                               get_forward_backward_func_vpp_overlap_wrapper)
 
+            if getattr(args, 'mtp_num_layers', None):
+                patch_manager.register_patch('megatron.core.transformer.multi_token_prediction.MultiTokenPredictionBlock.forward', 
+                                             mtp_block_fb_overlap_forward_wrapper)
+                patch_manager.register_patch('megatron.core.transformer.multi_token_prediction.MultiTokenPredictionLayer.forward', 
+                                             dualpipev_fb_overlap_mtp_layer_forward)
 
 

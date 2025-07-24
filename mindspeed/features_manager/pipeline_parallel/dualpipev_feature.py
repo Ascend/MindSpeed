@@ -55,6 +55,8 @@ class DualpipeVFeature(MindSpeedFeature):
             get_model, dualpipev_fp16forward, get_num_layers_to_build, train_step,
             _allreduce_embedding_grads_wrapper, evaluate, get_transformer_layer_offset, pretrain, get_batch_on_this_tp_rank
         )
+        from mindspeed.core.pipeline_parallel.dualpipev.mtp_utils import (setup_embeddings_and_output_layer_with_mtp,
+                                                                         dualpipev_get_mtp_num_layers_to_build)
 
         if args.schedules_method == "dualpipev":
 
@@ -76,3 +78,9 @@ class DualpipeVFeature(MindSpeedFeature):
             patch_manager.register_patch('megatron.core.transformer.transformer_layer.get_transformer_layer_offset', get_transformer_layer_offset)
             patch_manager.register_patch('megatron.training.training.pretrain', pretrain)
             patch_manager.register_patch('megatron.training.utils.get_batch_on_this_tp_rank', get_batch_on_this_tp_rank)
+
+            if getattr(args, 'mtp_num_layers', None):
+                patch_manager.register_patch("megatron.core.models.common.language_module.language_module.LanguageModule.setup_embeddings_and_output_layer", 
+                                            setup_embeddings_and_output_layer_with_mtp)
+                patch_manager.register_patch("megatron.core.transformer.multi_token_prediction.get_mtp_num_layers_to_build",
+                                            dualpipev_get_mtp_num_layers_to_build)

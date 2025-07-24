@@ -1,7 +1,7 @@
 # Copyright (c) 2025; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core import parallel_state, tensor_parallel, InferenceParams
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler, TopKRouter
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
@@ -33,7 +33,9 @@ from megatron.core.tensor_parallel.mappings import (
     scatter_to_tensor_model_parallel_region,
     _reduce_scatter_along_first_dim,
     _gather_along_first_dim,
-    _split_along_first_dim
+    _split_along_first_dim,
+    scatter_to_sequence_parallel_region,
+    all_gather_last_dim_from_tensor_parallel_region
 )
 
 from megatron.core.tensor_parallel.utils import VocabUtility, divide, split_tensor_along_last_dim
@@ -51,6 +53,7 @@ from megatron.core.parallel_state import (
 )
 
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region
+from megatron.core.transformer.multi_token_prediction import MultiTokenPredictionBlockSubmodules
 from megatron.core.transformer.moe.moe_layer import MoELayer, BaseMoELayer, BaseMoELayer as MegatronBaseMoeLayer
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP, set_tensor_grad_fn_sequence_sr
 from megatron.core.transformer.moe.experts import GroupedMLP

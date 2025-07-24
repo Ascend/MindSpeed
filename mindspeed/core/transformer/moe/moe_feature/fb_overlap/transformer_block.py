@@ -1,5 +1,5 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
-#  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 import types
 from functools import wraps
 from typing import List, Union, Optional
@@ -7,7 +7,7 @@ from contextlib import nullcontext
 import torch
 from torch import Tensor
 from mindspeed.core.transformer.moe.moe_feature import (
-    get_args,
+    get_args, InferenceParams,
     PackedSeqParams,
     make_viewless_tensor,
     BaseInferenceContext
@@ -17,6 +17,67 @@ from .modules.utils import (
     detach_tensor, LayerGraph, P2PCommParams
 )
 from .transformer_layer import transformer_layer_backward, transformer_layer_forward_backward_overlaping
+
+
+def mtp_block_fb_overlap_forward_wrapper(fwd):
+    @wraps(fwd)
+    def wrapper(
+        self,
+        input_ids: Tensor,
+        position_ids: Tensor,
+        hidden_states: Tensor,
+        attention_mask: Tensor,
+        labels: Tensor = None,
+        context: Tensor = None,
+        context_mask: Tensor = None,
+        rotary_pos_emb: Tensor = None,
+        rotary_pos_cos: Tensor = None,
+        rotary_pos_sin: Tensor = None,
+        attention_bias: Tensor = None,
+        inference_params: InferenceParams = None,
+        packed_seq_params: PackedSeqParams = None,
+        sequence_len_offset: Tensor = None,
+        extra_block_kwargs: dict = None,
+        runtime_gather_output: Optional[bool] = None,
+        loss_mask: Optional[Tensor] = None,
+        embedding=None,
+        output_layer=None,
+        output_weight: Optional[torch.Tensor] = None,
+        compute_language_model_loss=None,
+        bwd_block_output_grad=None,
+        bwd_block_graphs=None,
+        pp_comm_params: P2PCommParams = None,
+        bwd_pp_comm_params: P2PCommParams = None
+        ):
+    
+        hidden_states_main_model = fwd(
+            self, 
+            input_ids,
+            position_ids,
+            hidden_states,
+            attention_mask,
+            labels,
+            context,
+            context_mask,
+            rotary_pos_emb,
+            rotary_pos_cos,
+            rotary_pos_sin,
+            attention_bias,
+            inference_params,
+            packed_seq_params,
+            sequence_len_offset,
+            extra_block_kwargs,
+            runtime_gather_output,
+            loss_mask,
+            embedding,
+            output_layer,
+            output_weight,
+            compute_language_model_loss,
+        )
+        
+        return hidden_states_main_model
+
+    return wrapper
 
 
 def transformer_block_fb_overlap_init_wrapper(init_fn):

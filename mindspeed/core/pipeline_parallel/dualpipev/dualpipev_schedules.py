@@ -21,6 +21,7 @@ from megatron.core import ModelParallelConfig
 from megatron.core.pipeline_parallel.p2p_communication import _communicate
 from megatron.core.pipeline_parallel.schedules import backward_step, set_current_microbatch, custom_backward, finish_embedding_wgrad_compute
 from megatron.core.models.gpt import GPTModel
+from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.gpt_model import gpt_model_backward
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.transformer_layer import P2PCommParams
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
@@ -400,6 +401,7 @@ def forward_step_no_model_graph(
                 # preserve legacy loss averaging behavior (ie, over the number of microbatches)
                 assert len(outputs) == 2
                 output_tensor, loss_reduced = outputs
+                output_tensor *= parallel_state.get_context_parallel_world_size()
                 output_tensor /= num_microbatches
             forward_data_store.append(loss_reduced)
         else:
@@ -420,6 +422,20 @@ def forward_step_no_model_graph(
         )
         # Set the loss scale
         MoEAuxLossAutoScaler.set_loss_scale(loss_scale / num_microbatches)
+
+    # Set the loss scale for Multi-Token Prediction (MTP) loss.
+    if hasattr(config, 'mtp_num_layers') and config.mtp_num_layers is not None:
+        # Calculate the loss scale based on the grad_scale_func if available, else default to 1.
+        loss_scale = (
+            config.grad_scale_func(torch.ones(1, device=output_tensor.device))
+            if config.grad_scale_func is not None
+            else torch.ones(1, device=output_tensor.device)
+        )
+        # Set the loss scale
+        if config.calculate_per_token_loss:
+            MTPLossAutoScaler.set_loss_scale(loss_scale)
+        else:
+            MTPLossAutoScaler.set_loss_scale(loss_scale / num_microbatches)
 
     # If T5 model (or other model with encoder and decoder)
     # and in decoder stack, then send encoder_hidden_state
@@ -624,6 +640,7 @@ def forward_step_with_model_graph(
                 # preserve legacy loss averaging behavior (ie, over the number of microbatches)
                 assert len(outputs) == 2
                 output_tensor, loss_reduced = outputs
+                output_tensor *= parallel_state.get_context_parallel_world_size()
                 output_tensor /= num_microbatches
             forward_data_store.append(loss_reduced)
         else:
@@ -651,6 +668,20 @@ def forward_step_with_model_graph(
         )
         # Set the loss scale
         MoEAuxLossAutoScaler.set_loss_scale(loss_scale / num_microbatches)
+
+    # Set the loss scale for Multi-Token Prediction (MTP) loss.
+    if hasattr(config, 'mtp_num_layers') and config.mtp_num_layers is not None:
+        # Calculate the loss scale based on the grad_scale_func if available, else default to 1.
+        loss_scale = (
+            config.grad_scale_func(torch.ones(1, device=output_tensor[0].device))
+            if config.grad_scale_func is not None
+            else torch.ones(1, device=output_tensor[0].device)
+        )
+        # Set the loss scale
+        if config.calculate_per_token_loss:
+            MTPLossAutoScaler.set_loss_scale(loss_scale)
+        else:
+            MTPLossAutoScaler.set_loss_scale(loss_scale / num_microbatches)
 
     # If T5 model (or other model with encoder and decoder)
     # and in decoder stack, then send encoder_hidden_state
