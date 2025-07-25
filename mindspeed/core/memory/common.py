@@ -6,12 +6,12 @@ from torch import Tensor
 
 from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.training import get_args
 from mindspeed.core.memory.adaptive_memory.adaptive_memory_swap_manager import SwapManager as AdaptiveMemorySwapManager
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager as AdaptiveRecomputingSwapManager
 
 
 def swap_out_by_size(size):
+    from megatron.training import get_args
     args = get_args()
     if args.adaptive_memory_optimization:
         return AdaptiveMemorySwapManager().swap_out_by_size(size)

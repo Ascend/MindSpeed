@@ -1,7 +1,9 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 import argparse
 from logging import getLogger
+from mindspeed.log_config import log_warning_once
 from mindspeed.features_manager import MindSpeedFeaturesManager
+
 
 _MINDSPEED_ARGS = None
 LOG = getLogger(__name__)
@@ -55,6 +57,6 @@ def get_full_args():
         if full_args is None:
             full_args = get_mindspeed_args()
     except ImportError:
-        LOG.warning('Failed from megatron.training import get_args, use mindspeed arguments.')
+        log_warning_once(LOG, 'Failed from megatron.training import get_args, use mindspeed arguments.')
         full_args = get_mindspeed_args()
     return full_args

@@ -34,6 +34,8 @@ LOGGING_CONFIG = {
     },
 }
 
+_warned_messages = set()
+
 
 def set_log_config():
     """Make log config effect."""
@@ -57,3 +59,13 @@ def log_rank_0(log: Callable, message: str):
             log(message)
     else:
         log(message)
+
+
+def log_warning_once(logger, message):
+    """
+    Logs a warning message only once. Subsequent calls with the same message
+    will be ignored.
+    """
+    if message not in _warned_messages:
+        logger.warning(message)
+        _warned_messages.add(message)

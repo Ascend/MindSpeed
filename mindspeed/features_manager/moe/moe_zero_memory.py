@@ -34,8 +34,8 @@ class MoEZeroMemoryFeature(MindSpeedFeature):
             raise AssertionError('`--moe-zero-memory` only support `--moe-alltoall-overlap-comm` or `dualpipev` for now.')
 
     def register_patches(self, patch_manager, args):
-        from mindspeed.core.transformer.moe.moe_feature.overlap.experts import zero_memory_shared_expert_mlp_forward
         if args.moe_zero_memory != 'disable' and args.moe_alltoall_overlap_comm:
+            from mindspeed.core.transformer.moe.moe_feature.overlap.experts import zero_memory_shared_expert_mlp_forward
             patch_manager.register_patch(
                 'megatron.core.transformer.moe.shared_experts.SharedExpertMLP.forward',
                 zero_memory_shared_expert_mlp_forward)
