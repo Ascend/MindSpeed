@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 import sys
 from argparse import ArgumentParser
+from typing import Any
 
 import torch
 from mindspeed.features_manager.feature import MindSpeedFeature
@@ -25,6 +26,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
         self.apex_adaptation(patch_manager, args)
         self.torch_adaptation(patch_manager, args)
         self.optimizer_selection(patch_manager, args)
+        self.triton_adaptation(patch_manager, args)
 
     def te_adaptation(self, pm, args):
         from mindspeed.core.megatron_basic.requirements_basic import version_wrapper, dummy_compile
@@ -82,3 +84,16 @@ class RequirementsBasicFeature(MindSpeedFeature):
         # lmc is supported python >=3.9
         if sys.version_info < (3, 9):
             pm.register_patch('math.lcm', lcm, create_dummy=True)
+
+    def triton_adaptation(self, pm, args):
+        from mindspeed.core.megatron_basic.requirements_basic import dummy_compile, dummy_function
+        from numpy import int64, float32, dtype
+        pm.register_patch('triton.language.int64', int64, create_dummy=True)
+        pm.register_patch('triton.language.float32', float32, create_dummy=True)
+        pm.register_patch('triton.language.constexpr', Any, create_dummy=True)
+        pm.register_patch('triton.language.dtype', dtype, create_dummy=True)
+        pm.register_patch('triton.language.F', Any, create_dummy=True)
+        pm.register_patch('triton.Config', dummy_function, create_dummy=True)
+        pm.register_patch('triton.autotune', dummy_compile, create_dummy=True)
+        pm.register_patch('triton.jit', dummy_compile, create_dummy=True)
+
