@@ -37,9 +37,6 @@ class VariableSequenceLengthFeature(MindSpeedFeature):
 
     def pre_validate_args(self, args: Namespace):
         self._var_seq_lengths = args.variable_seq_lengths
-        if args.variable_seq_lengths and (not (getattr(args, "pipeline_model_parallel_size", 1) >= 2)):
-            raise AssertionError("--pipeline-model-parallel-size needs to be greater than 2 or equal to 2 if you want "
-                                 "to use --variable-seq-lengths")
 
     def post_validate_args(self, args: Namespace):
         args.variable_seq_lengths = self._var_seq_lengths
