@@ -193,10 +193,14 @@ def parallel_transformer_layer_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
+        from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer import AllGatherOverlapMoeLayer, AlltoAllSeqOverlapMoeLayer, AlltoAllOverlapMoeLayer
         if self.config.moe_alltoall_overlap_comm or self.config.moe_allgather_overlap_comm:
-            self.mlp.experts.layer_number = self.layer_number
-            if self.config.n_shared_experts:
-                self.mlp.shared_experts.layer_number = self.layer_number
+            if self.mlp.__class__ is (AllGatherOverlapMoeLayer or AlltoAllSeqOverlapMoeLayer or AlltoAllOverlapMoeLayer):
+                self.mlp.experts.layer_number = self.layer_number
+                if self.config.moe_shared_expert_intermediate_size:
+                    self.mlp.shared_experts.layer_number = self.layer_number
+            else:
+                self.mlp.layer_number = self.layer_number
     return wrapper
 
 
