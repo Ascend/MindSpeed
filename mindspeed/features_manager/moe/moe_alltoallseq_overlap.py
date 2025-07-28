@@ -38,10 +38,10 @@ class MoEAlltoAllSeqOverLapFeature(MindSpeedFeature):
             raise AssertionError('`--moe-alltoall-overlap-comm` needs `moe_tp_extend_ep`.')
         #Share Experts convert & check.
         if args.n_shared_experts is not None and args.moe_shared_expert_intermediate_size is None:
-            args.moe_shared_expert_intermediate_size = args.n_shared_experts * args.ffn_hidden_size
+            args.moe_shared_expert_intermediate_size = args.n_shared_experts * args.moe_ffn_hidden_size
             print(f'Using shared experts. Convert n_shared_experts to moe_shared_expert_intermediate_size, the moe_shared_expert_intermediate_size is {args.moe_shared_expert_intermediate_size}.')
         elif args.n_shared_experts is None and args.moe_shared_expert_intermediate_size is not None:
-            args.n_shared_experts = args.moe_shared_expert_intermediate_size // args.ffn_hidden_size
+            args.n_shared_experts = args.moe_shared_expert_intermediate_size // args.moe_ffn_hidden_size
             print(f'Using shared experts. Convert moe_shared_expert_intermediate_size to n_shared_experts, the n_shared_experts is {args.n_shared_experts}.')
         #Zero Memory check.
         if args.moe_zero_memory_num_layers is not None:
