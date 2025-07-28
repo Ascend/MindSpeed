@@ -70,9 +70,11 @@ class Patch:
                     i += 1
 
     def remove_patch(self):
-        for _, value in sys.modules.copy().items():
+        for key, value in sys.modules.copy().items():
+            if 'mindspeed' in key:
+                continue
             if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
-                    and id(getattr(value, self.orig_func_name)) == self.final_patch_func:
+                    and id(getattr(value, self.orig_func_name)) == id(self.final_patch_func):
                 setattr(value, self.orig_func_name, self.orig_func)
         self.patch_func = None
         self.final_patch_func = None
