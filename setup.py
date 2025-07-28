@@ -1,8 +1,7 @@
 import os
-import platform
 import sys
-import stat
-import subprocess
+from pathlib import Path
+
 import setuptools
 
 if sys.version_info < (3,):
@@ -25,7 +24,6 @@ try:
 except FileNotFoundError:
     long_description = ''
 
-
 ###############################################################################
 #                             Dependency Loading                              #
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
@@ -43,9 +41,6 @@ def package_files(directory):
 
 
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mindspeed')
-
-if os.getenv('CI_BUILD', '0') != '1':
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
 
 setuptools.setup(
     name=__package_name__,
@@ -79,6 +74,7 @@ setuptools.setup(
         'Operating System :: OS Independent',
     ],
     python_requires='>=3.8',
+    install_requires=Path("requirements.txt").read_text().splitlines(),
     packages=setuptools.find_packages(),
     # Add in any packaged data.
     include_package_data=True,
