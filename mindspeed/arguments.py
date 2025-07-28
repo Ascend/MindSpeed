@@ -465,9 +465,7 @@ def validate_args_wrapper(validate_args):
                     raise AssertionError('deepspeed_moe only support with --use-legacy-models')
 
         #validate optimizer
-        if args.optimizer_selection == 'fused_adamw': 
-            print("[WARNING] The default AdamW optimizer is no longer recommended for new edition, Use the torch fused AdamW optimizer by argument --optimizer-selection fused_torch_adamw")
-        elif args.optimizer_selection == 'fused_ema_adamw':
+        if args.optimizer_selection == 'fused_ema_adamw':
             if args.reuse_fp32_param:
                 raise AssertionError('fused_ema_adamw optimizer is not compatible with reuse_fp32_param')
 
