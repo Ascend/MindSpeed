@@ -11,7 +11,8 @@ class MindSpeedFbOverlapMoELayer(BaseMoELayer):
         self.submodules = submodules
         # shared_expert two param mutual conversion
         if config.n_shared_experts:
-            config.moe_shared_expert_intermediate_size = config.n_shared_experts * config.moe_ffn_hidden_size
+            config.moe_shared_expert_intermediate_size = config.n_shared_experts * (
+                config.moe_ffn_hidden_size if config.moe_ffn_hidden_size is not None else config.ffn_hidden_size)
         super(MindSpeedFbOverlapMoELayer, self).__init__(config, layer_number)
 
         self.moe_layer_recompute = False
