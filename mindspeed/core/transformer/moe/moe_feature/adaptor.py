@@ -43,8 +43,12 @@ class MindSpeedAlltoAllSEQTptoEpMoELayer(All2AllSeqTpExtendEpMoELayerImpl, Megat
 
         # shared_expert two param mutual conversion
         if kwargs['config'].n_shared_experts:
-            kwargs['config'].moe_shared_expert_intermediate_size = kwargs['config'].n_shared_experts * \
-                                                                   kwargs['config'].moe_ffn_hidden_size
+            kwargs['config'].moe_shared_expert_intermediate_size = (
+                kwargs['config'].n_shared_experts *
+                (kwargs['config'].moe_ffn_hidden_size
+                 if kwargs['config'].moe_ffn_hidden_size is not None
+                 else kwargs['config'].ffn_hidden_size)
+            )
         All2AllSeqTpExtendEpMoELayerImpl.__init__(self, *args, **kwargs)
         
         

@@ -289,6 +289,12 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/swap-optimizer.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
+  <tbody>
+    <tr>
+    <td rowspan="5">  Virtual Optimizer</td>
+    <td><a href="docs/features/virtual-optimizer.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
 </table>
 
 
@@ -399,7 +405,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
-  <tbody>
+<tbody>
   <tr>
     <td rowspan="5"> Ascend Megatron MoE Alltoall Dispatcher 性能优化 </td>
     <td><a href="docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md">link</a></td>
@@ -417,7 +423,13 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <td><a href="docs/features/shared-experts.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
-  <tbody>
+<tbody>
+  <tr>
+    <td rowspan="5"> 1F1B Overlap  </td>
+    <td><a href="docs/features/megatron_moe/megatron-moe-fb-overlap.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
 </table>
 
 
@@ -705,6 +717,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 1. MindSpeed提供的所有内容仅供您用于非商业目的。
 2. 对于MindSpeed测试用例以及示例文件中所涉及的各模型和数据集，平台仅用于功能测试，华为不提供任何模型权重和数据集，如您使用这些数据进行训练，请您特别注意应遵守对应模型和数据集的License，如您因使用这些模型和数据集而产生侵权纠纷，华为不承担任何责任。
 3. 如您在使用MindSpeed过程中，发现任何问题（包括但不限于功能问题、合规问题），请在Gitee提交issue，我们将及时审视并解决。
+4. MindSpeed功能依赖的Megatron等第三方开源软件，均由第三方社区提供和维护，因第三方开源软件导致的问题的修复依赖相关社区的贡献和反馈。您应理解，MindSpeed仓库不保证对第三方开源软件本身的问题进行修复，也不保证会测试、纠正所有第三方开源软件的漏洞和错误。
 
 ## 致数据所有者
 如果您不希望您的模型或数据集在MindSpeed中被提及，或希望更新MindSpeed中有关的描述，请在Gitee提交issue，我们将根据您的issue要求删除或更新您相关描述。衷心感谢您对MindSpeed的理解和贡献。
