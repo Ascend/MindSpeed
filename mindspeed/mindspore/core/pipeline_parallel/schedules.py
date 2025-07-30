@@ -281,7 +281,10 @@ def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, c
     # In such cases, we intentionally skip the backward pass while preserving zero gradients.
     grad_ = C.GradOperation(True, True, True)
     _pynative_executor.check_run(grad_, config.forward_step_func, None, None, input_tensor[0], create_graph=False)
-    _pynative_executor.grad(config.forward_step_func, grad_, None, None, input_tensor[0], output_tensor_grad[0])
+    if len(output_tensor_grad[0]) == 1:
+        _pynative_executor.grad(config.forward_step_func, grad_, None, None, input_tensor[0], output_tensor_grad[0][0])
+    else:
+        _pynative_executor.grad(config.forward_step_func, grad_, None, None, input_tensor[0], output_tensor_grad[0])
 
     # Collect the grad of the input_tensor.
     input_tensor_grad = [None]
