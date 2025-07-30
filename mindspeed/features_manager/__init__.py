@@ -18,6 +18,7 @@ from mindspeed.features_manager.fusions.grouped_matmul import GroupedMatmulFeatu
 from mindspeed.features_manager.fusions.fused_bias_swiglu import FusedSwigluFeature
 from mindspeed.features_manager.fusions.fused_softmax import FusedSoftmaxFeature
 from mindspeed.features_manager.fusions.fused_rope import FusedRoPEFeature
+from mindspeed.features_manager.fusions.fused_moe_permute import FusedMoEPermuteFeature
 from mindspeed.features_manager.affinity.affinity import AffinityFeature
 
 from mindspeed.features_manager.megatron_basic.requirements_basic import RequirementsBasicFeature
@@ -111,6 +112,7 @@ def add_fusions_features(features_list: List[MindSpeedFeature]):
         FusedSwigluFeature(),
         FusedSoftmaxFeature(),
         FusedRoPEFeature(),
+        FusedMoEPermuteFeature(),
     ])
 
 
