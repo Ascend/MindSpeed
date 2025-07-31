@@ -38,8 +38,8 @@ class MoEAlltoAllOverLapFeature(MindSpeedFeature):
                     raise AssertionError('`--moe-alltoall-overlap-comm` with `alltoall_seq` dispatcher needs `--moe-permutation-async-comm`.')
                 if not args.moe_grouped_gemm:
                     raise AssertionError('`--moe-alltoall-overlap-comm` with `alltoall_seq` dispatcher needs `--moe-grouped-gemm`.')
-                if not args.moe_tp_extend_ep and args.moe_alltoall_seq_overlap_comm:
-                    raise AssertionError('`--moe-alltoall-overlap-comm` with `alltoall_seq` needs `moe_tp_extend_ep`.')
+                if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
+                    raise AssertionError('`When tp > 1, --moe-alltoall-overlap-comm` with `alltoall_seq` needs `moe_tp_extend_ep`.')
 
     def register_patches(self, patch_manager, args):
         from mindspeed.core.transformer.moe.moe_feature.adaptor import MindSpeedAlltoAllOverlapMoeLayerAdaptor, MindSpeedAlltoAllSeqOverlapMoeLayerAdaptor

@@ -193,11 +193,11 @@ def parallel_transformer_layer_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
-        from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer import AllGatherOverlapMoeLayer, AlltoAllSeqOverlapMoeLayer, AlltoAllOverlapMoeLayer
+        from megatron.core.transformer.moe.moe_layer import MoELayer
         if self.config.moe_alltoall_overlap_comm or self.config.moe_allgather_overlap_comm:
-            if self.mlp.__class__ is (AllGatherOverlapMoeLayer or AlltoAllSeqOverlapMoeLayer or AlltoAllOverlapMoeLayer):
+            if self.mlp.__class__ is MoELayer:
                 self.mlp.experts.layer_number = self.layer_number
-                if self.config.moe_shared_expert_intermediate_size:
+                if self.config.moe_shared_expert_intermediate_size or self.config.n_shared_experts:
                     self.mlp.shared_experts.layer_number = self.layer_number
             else:
                 self.mlp.layer_number = self.layer_number
