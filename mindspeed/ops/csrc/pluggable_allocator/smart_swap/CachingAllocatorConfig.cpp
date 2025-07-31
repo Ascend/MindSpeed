@@ -43,7 +43,14 @@ size_t CachingAllocatorConfig::parseMaxSplitSize(const std::vector<std::string> 
 {
     consumeToken(config, ++i, ':');
     if (++i < config.size()) {
-        size_t val1 = static_cast<size_t>(stoi(config[i]));
+        size_t val1 = 0;
+        try{
+            val1 = static_cast<size_t>(stoi(config[i]));
+        } catch (const std::invalid_argument& e){
+            TORCH_CHECK(false, "Error, expecting digit string in config");
+        } catch (const std::out_of_range& e){
+            TORCH_CHECK(false, "Error, out of int range");
+        }
         val1 = std::max(val1, kLargeBuffer / (1024 * 1024));
         val1 = std::min(val1, (std::numeric_limits<size_t>::max() / (1024 * 1024)));
         m_max_split_size = val1 * 1024 * 1024;

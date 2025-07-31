@@ -90,7 +90,6 @@ features:
                      pp_size: 2,
                      load_ckpt_dir: ./ckpt_llama_tp2pp2,
                      extra_args: '"--use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"',
-                     memory_fragmentation: 1,
                      ascend_mc2: 1
             }
         }

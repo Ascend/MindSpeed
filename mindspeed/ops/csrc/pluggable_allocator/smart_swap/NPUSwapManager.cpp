@@ -386,6 +386,7 @@ int SwapExecutor::SwapOut(c10::intrusive_ptr<c10::StorageImpl> storageImplPtr, b
     auto allocatorCPU = at_npu::native::getCachingHostAllocator();
     size_t size = storageImplPtr->nbytes();
     at::DataPtr dataPtrCpu = allocatorCPU->allocate(size);
+    TORCH_CHECK(dataPtrCpu, "Get dataPtrCpu failed.");
 
     NPUSwapManager::GetInstance().tensorPtrCountMap[reinterpret_cast<size_t>(dataPtrCpu.get())]++;
 
@@ -463,6 +464,7 @@ not be used anymore. swapOutStorageImplMap.find(uniqueId[%lu])->second.weak_coun
     auto allocatorNPU = c10_npu::NPUCachingAllocator::allocator.load();
     size_t size = storageImplPtr->nbytes();
     at::DataPtr dataPtrNpu = allocatorNPU->allocate(size);
+    TORCH_CHECK(dataPtrNpu, "Get dataPtrNpu failed.");
 
     if (NPUSwapManager::GetInstance().config.enableProfiler) {
         NPUSwapManager::GetInstance().ReportInfoToSwapProfiler(false, dataPtrCpu, dataPtrNpu, size);
