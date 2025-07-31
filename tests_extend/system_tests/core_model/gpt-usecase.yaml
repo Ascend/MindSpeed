@@ -42,10 +42,6 @@ products:
   - { id: [ 'async-ddp-param-gather-01' ], use_mcore: [ True ], tp_size: [ 1 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
   - { id: [ 'async-ddp-param-gather-02' ], use_mcore: [ True ], tp_size: [ 2 ], pp_size: [ 4 ], vp_size: [ 1 ], extra_args: [ '"--sequence-parallel --use-distributed-optimizer --overlap-grad-reduce --overlap-param-gather"' ] }
 
-  # -- 内存碎片优化： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/memory-fragmentation.md
-  - { id: [ 'memory-fragmentation' ], use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], training_dtype: [ bf16, fp16 ],  memory_fragmentation: [ 1 ] }
-
-
   # -- 计算通信并行 ~ CoC ： https://gitee.com/ascend/MindSpeed/blob/master/docs/features/communication-over-computation.md
   #  需要安装cann-nnal包
   - { id: [ 'coc-01' ], use_mcore: [ True, False ],  tp_size: [ 8 ], pp_size: [ 1 ], coc_parallel_num: [ 2, 4, 8 ], extra_args: [ '"--sequence-parallel --use-ascend-coc"' ] }

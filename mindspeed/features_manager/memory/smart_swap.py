@@ -17,8 +17,6 @@ class SmartSwapFeature(MindSpeedFeature):
                            action='store_true', default=False, help='Enable the smart swap feature.')
 
     def validate_args(self, args):
-        self.incompatible_check(args, 'memory_fragmentation')
-
         adaptive_recompute_enable = getattr(args, "adaptive_recompute_device_size", -1) > 0 or getattr(args, "adaptive-recompute-device-swap", False)
         if args.smart_swap and adaptive_recompute_enable:
             raise AssertionError('smart swap is not compatible with adaptive selective recompute')
@@ -26,7 +24,7 @@ class SmartSwapFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):
             adaptive_recompute_enable = getattr(args, "adaptive_recompute_device_size", -1) > 0 or getattr(args, "adaptive-recompute-device-swap", False)
-            if not args.memory_fragmentation and not adaptive_recompute_enable:
+            if not adaptive_recompute_enable:
                 from mindspeed.core.memory.smart_swap.swap_adaptor import change_allocator
                 time.sleep(SWAP_DELAY)
                 change_allocator()
