@@ -152,7 +152,11 @@ def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len)
     args = get_args()
 
     actual_seq_len_lst = list(actual_seq_len * get_ring_degree())
-    batched_index = [actual_seq_len_lst]
+    if args.micro_batch_size == 1:
+        batched_index = [actual_seq_len_lst]
+    else:
+        # when no pad, the batch dim is kept
+        batched_index = batch_index(actual_seq_len_lst, args.seq_length)
     index = get_index(batched_index, cp_size, cp_rank)
 
     for key, val in batch.items():

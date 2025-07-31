@@ -683,13 +683,13 @@ def round_up(x, n):
 
 def divisible(tensor, divisor):
     rem = tensor % divisor
-    return torch.all(remainder == 0).item()
+    return torch.all(rem == 0).item()
 
 
 def pad_data(actual_seq_len, batch, cp_size, tp_size):
     from math import lcm
     pad_to = lcm(2, tp_size) * cp_size
-    if divisible(tensor, pad_to):
+    if divisible(actual_seq_len, pad_to):
         return actual_seq_len
 
     first_seq_len = actual_seq_len[0:1]

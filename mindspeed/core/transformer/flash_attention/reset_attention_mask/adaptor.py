@@ -121,6 +121,9 @@ def _p2p_ops_eod(
             set_actual_seq_len(actual_seq_len_buffer)
 
             dynamic_seq_len = tensor_recv_prev.shape[0]
+            # If SP on, sequence would be divided by tp_size
+            if args.sequence_parallel:
+                dynamic_seq_len *= args.tensor_model_parallel_size
             position_ids_buffer = torch.empty((dynamic_seq_len, bsz), dtype=torch.int64, device=torch.cuda.current_device())
             req = torch.distributed.irecv(
                 tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_recv_odd_send_group,
@@ -157,6 +160,9 @@ def _p2p_ops_eod(
             set_actual_seq_len(actual_seq_len_buffer)
 
             dynamic_seq_len = tensor_recv_prev.shape[0]
+            # If SP on, sequence would be divided by tp_size
+            if args.sequence_parallel:
+                dynamic_seq_len *= args.tensor_model_parallel_size
             position_ids_buffer = torch.empty((dynamic_seq_len, bsz), dtype=torch.int64, device=torch.cuda.current_device())
             req = torch.distributed.irecv(
                 tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_send_odd_recv_group,
