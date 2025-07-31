@@ -25,6 +25,7 @@ from mindspeed.features_manager.megatron_basic.requirements_basic import Require
 from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBasicFeature
 from mindspeed.features_manager.megatron_basic.transformer_engine_basic import TransformerEngineBasicFeature
 from mindspeed.features_manager.pipeline_parallel import NoopLayersFeature
+from mindspeed.features_manager.pipeline_parallel.optimize_p2p_comm import OptimizeP2PCommFeature
 from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import RiPipeSchedulesBubbleFeature, \
     RiPipeSchedulesAdvanceFeature
 
@@ -170,6 +171,7 @@ def add_pipeline_parallel_features(features_list: List[MindSpeedFeature]):
         RiPipeSchedulesBubbleFeature(),
         RiPipeSchedulesAdvanceFeature(),
         NoopLayersFeature(),
+        OptimizeP2PCommFeature(),
         VariableSequenceLengthFeature(),
         MultiParameterFeature(),
         OptimizeSendRecvCommFeature(),
