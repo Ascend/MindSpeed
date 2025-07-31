@@ -9,7 +9,8 @@ from mindspeed.core.transformer.moe.moe_feature import (
     permute, 
     unpermute, 
     sort_chunks_by_idxs,
-    reduce_scatter_to_sequence_parallel_region
+    reduce_scatter_to_sequence_parallel_region,
+    MoEAlltoAllSEQTokenDispatcher
     )
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import (
     forward_func
@@ -70,18 +71,18 @@ class MoEAlltoAllSeqOverLapDispatcher:
         if self.config.moe_tp_extend_ep:
             from mindspeed.core.transformer.moe.moe_feature.adaptor import MindSpeedMOEAlltoAllSEQTptoEpTokenDispatcher
             self.disaptor = MindSpeedMOEAlltoAllSEQTptoEpTokenDispatcher(num_local_experts, local_expert_indices, config)
+        else:
+            self.disaptor = MoEAlltoAllSEQTokenDispatcher(num_local_experts, local_expert_indices, config)
 
     def preprocess_overlap(self, routing_map):
-        if self.config.moe_tp_extend_ep:
-            num_tokens_per_local_expert = self.disaptor.preprocess(routing_map)
-        else:
-            num_tokens_per_local_expert = self.preprocess(routing_map)
+
+        num_tokens_per_local_expert = self.disaptor.preprocess(routing_map)
         self.num_global_tokens_per_local_expert = self.disaptor.num_global_tokens_per_local_expert
         self.input_splits = self.disaptor.input_splits
         self.output_splits = self.disaptor.output_splits
         self.num_out_tokens = self.disaptor.num_out_tokens
         self.num_global_tokens_per_local_expert_cpu = self.disaptor.num_global_tokens_per_local_expert_cpu
-        self.comm_stream = self.disaptor.comm_stream
+        self.comm_stream = self.disaptor.comm_stream if self.config.moe_tp_extend_ep else None
         return num_tokens_per_local_expert
 
     def token_permutation(

@@ -34,8 +34,8 @@ class MoEAlltoAllSeqOverLapFeature(MindSpeedFeature):
                 raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-permutation-async-comm`.')
             if not args.moe_grouped_gemm:
                 raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-grouped-gemm`.')
-        if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm:
-            raise AssertionError('`--moe-alltoall-overlap-comm` needs `moe_tp_extend_ep`.')
+        if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
+            raise AssertionError('`When tp > 1, --moe-alltoall-overlap-comm` needs `moe_tp_extend_ep`.')
         #Share Experts convert & check.
         if args.n_shared_experts is not None and args.moe_shared_expert_intermediate_size is None:
             args.moe_shared_expert_intermediate_size = args.n_shared_experts * (
