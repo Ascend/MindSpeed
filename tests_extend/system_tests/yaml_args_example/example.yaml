@@ -331,7 +331,6 @@ master_port: null
 max_position_embeddings: 131072
 max_tokens_to_oom: 12000
 mbs_idx: null
-memory_fragmentation: False
 merge_file: null
 micro_batch_size: 1
 min_loss_scale: 1.0

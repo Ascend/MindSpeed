@@ -450,9 +450,6 @@ def _add_automated_pipeline_args(parser):
                        action='store_false',
                        help='To store the status of optimized mbs in automated pipeline performance'
                        )
-    group.add_argument('--memory-fragmentation',
-                       action='store_true', default=False,
-                       help='Enable the memory fragmentation feature.')
     group.add_argument('--smart-swap',
                        action='store_true', default=False, help='Enable the smart swap feature.')
     return parser
@@ -850,14 +847,8 @@ def validate_args_wrapper(validate_args):
             assert not args.swap_attention, 'adaptive selective recompute is not compatible with swap_attention feature'
             assert not args.recompute_in_advance and not args.recompute_in_bubble, 'adaptive selective recompute ' \
                 'is not compatible with ripipe schedule'
-            assert not args.memory_fragmentation, \
-                'adaptive selective recompute is not compatible with memory fragmentation'
-        if args.memory_fragmentation:
-            assert not args.use_fused_rotary_pos_emb, \
-                'memory fragmentation is not compatible with use_fused_rotary_pos_emb'
         if args.smart_swap:
             assert not adaptive_recompute_enable, 'smart swap is not compatible with adaptive selective recompute'
-            assert not args.memory_fragmentation, 'smart swap is not compatible with memory fragmentation'
         if args.adaptive_memory_optimization:
             assert args.ampipe_degree <= 1, 'adaptive memory optimization is not compatible with ampipe'
             assert not adaptive_recompute_enable, 'adaptive memory optimization is not compatible with adaptive recomputing'
@@ -867,8 +858,6 @@ def validate_args_wrapper(validate_args):
                 'adaptive memory optimization is not compatible with recompute_activation_function'
             assert not args.swap_attention, 'adaptive memory optimization is not compatible with swap_attention feature'
             assert not args.recompute_in_bubble, 'adaptive memory optimization is not compatible with recompute_in_bubble'
-            assert not args.memory_fragmentation, \
-                'adaptive memory optimization is not compatible with memory_fragmentation'
         if args.use_flash_attn:
             assert args.sparse_mode == 0 or args.sparse_mode == 2, f"Only supports sparse modes 0 and 2"
         args.create_attention_mask_in_dataloader = False

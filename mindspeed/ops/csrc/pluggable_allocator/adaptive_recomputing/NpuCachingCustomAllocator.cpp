@@ -48,6 +48,7 @@ void *NpuCachingCustomAllocator::malloc(int device, size_t size, aclrtStream str
         0 <= device && static_cast<size_t>(device) < device_allocator.size(),
         "device index out of range.");
   Block *block = device_allocator[device]->malloc(device, size, stream);
+  TORCH_CHECK(block, "Allocate Block failed.");
   add_allocated_block(block);
   void *devPtr = static_cast<void *>(block->ptr);
   return devPtr;

@@ -620,69 +620,6 @@ def megatron_training_ema_adaptation(aspm, mindspeed_args):
         aspm.register_patch('megatron.training.checkpointing._load_base_checkpoint', _load_base_checkpoint)
 
 
-def memory_fragmentation_adaptation(aspm, args):
-    from megatron.legacy.model.transformer import ParallelTransformerLayer
-    if args.memory_fragmentation:
-        from .core.memory.memory_fragmentation.pluggable_allocator_adpator import change_allocator
-        time.sleep(10)
-        change_allocator()
-
-        from .core.memory.memory_fragmentation.memory_recorder import memory_recorder_wrapper
-        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', memory_recorder_wrapper)
-
-        from .core.memory.memory_fragmentation.malloc_recorder import malloc_recorder_wrapper
-        aspm.register_patch('megatron.training.training.train_step', malloc_recorder_wrapper)
-
-        from .core.memory.memory_fragmentation.optimizer_init_precise import optimizer_init_wrapper
-        aspm.register_patch('megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step', optimizer_init_wrapper)
-
-        from .core.memory.adaptive_recomputing.adaptive_recompute import allowed_recomputing_module_wrapper
-        allowed_recomputing_module_wrapper(ParallelTransformerLayer)
-        from .core.memory.adaptive_recomputing.adaptive_recompute import setup_model_and_optimizer_wrapper
-        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
-    if (args.adaptive_recompute_enable and not args.memory_fragmentation) or args.swap_attention:
-        from .core.memory.adaptive_recomputing.adaptive_recompute import allowed_recomputing_module_wrapper
-        if hasattr(args, "use_legacy_models") and not args.use_legacy_models:
-            from megatron.core.transformer.transformer_layer import TransformerLayer
-            allowed_recomputing_module_wrapper(TransformerLayer)
-        else:
-            allowed_recomputing_module_wrapper(ParallelTransformerLayer)
-        from .core.memory.adaptive_recomputing.adaptive_recompute import setup_model_and_optimizer_wrapper
-        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
-    if args.smart_swap and (not args.memory_fragmentation and not args.adaptive_recompute_enable):
-        from .core.memory.smart_swap.swap_adaptor import change_allocator
-        time.sleep(10)
-        change_allocator()
-        from .core.memory.smart_swap.swap_megatron_adaptor import train_step_wrapper
-        aspm.register_patch('megatron.training.training.train_step', train_step_wrapper)
-    if args.adaptive_memory_optimization and not (args.adaptive_recompute_enable or args.memory_fragmentation or args.swap_attention or args.smart_swap):
-        from .core.memory.adaptive_memory.adaptive_memory_opt import addup_allowed_mem_adapt_module
-        if hasattr(args, "use_legacy_models") and args.use_legacy_models:
-            addup_allowed_mem_adapt_module(ParallelTransformerLayer)
-        else:
-            from megatron.core.transformer.transformer_layer import TransformerLayer
-            addup_allowed_mem_adapt_module(TransformerLayer)
-        from .core.memory.adaptive_memory.adaptive_memory_opt import setup_adapt_memory_optimizer_wrapper
-        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_adapt_memory_optimizer_wrapper)
-        from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
-        time.sleep(10)
-        change_allocator()
-
-    if os.getenv('OOTB_OPTIMIZER_PROFILING', 'FALSE') == 'TRUE':
-        print(f"OOTB_OPTIMIZER_PROFILING success open")
-        from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
-        import megatron.training
-        from mindspeed.auto_tuning.module.parse.recompute_parser import allowed_recompute_parser_module_wrapper
-        allowed_recompute_parser_module_wrapper(megatron.legacy.model.transformer.ParallelTransformerLayer)
-        from mindspeed.auto_tuning.module.parse.recompute_parser import setup_model_and_optimizer_decorator
-        aspm.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_decorator)
-        print(f"setup_model_and_optimizer_decorator success")
-
-    if args.adaptive_recompute_enable or args.memory_fragmentation:
-        import megatron.training.initialize
-        aspm.register_patch('megatron.training.initialize_megatron', megatron.training.initialize.initialize_megatron)
-
-
 def mcore_moe_adaptation_l0(pm):
     from .core.transformer.moe.grouped_gemm_util import Ops, grouped_gemm_is_available, get_device_capability, \
         assert_grouped_gemm_is_available
@@ -1087,7 +1024,6 @@ def adaptation_l2(aspm, mindspeed_args):
 
     megatron_training_adaptation(aspm, mindspeed_args)
     megatron_training_ema_adaptation(aspm, mindspeed_args)
-    memory_fragmentation_adaptation(aspm, mindspeed_args)
     coc_adaptation(aspm, mindspeed_args)
     mcore_moe_adaptation(aspm, mindspeed_args)
     deepspeed_moe_adaptation(aspm, mindspeed_args)
@@ -1134,7 +1070,7 @@ def exe_adaptation():
     delete_lock = Lock()
     delete_lock_file(build_directory, delete_lock)
     mindspeed_args.adaptive_recompute_enable = mindspeed_args.adaptive_recompute_device_size > 0 or mindspeed_args.adaptive_recompute_device_swap
-    if (mindspeed_args.adaptive_recompute_enable and not mindspeed_args.memory_fragmentation) or mindspeed_args.swap_attention:
+    if (mindspeed_args.adaptive_recompute_enable) or mindspeed_args.swap_attention:
         from .core.memory.adaptive_recomputing.pluggable_allocator_adpator import change_allocator
         if not mindspeed_args.swap_attention:
             time.sleep(10)
