@@ -151,6 +151,7 @@ def apex_adaptation(aspm):
                         create_dummy=True)
     aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, create_dummy=True)
     aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16', npu_matmul_add_fp16, create_dummy=True)
+    aspm.register_patch('apex.optimizers.FusedSGD', torch.optim.SGD, create_dummy=True)
 
 
 def torch_adaptation(aspm):

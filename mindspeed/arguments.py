@@ -548,11 +548,6 @@ def validate_args_wrapper(validate_args):
             if args.rank == 0:
                 print('Resetting global batch size to {}'.format(
                     args.global_batch_size), flush=True)
-
-        if args.variable_seq_lengths and (not (getattr(args, "pipeline_model_parallel_size", 1) >= 2)):
-            raise AssertionError("--pipeline-model-parallel-size needs to be greater than 2 or equal to 2 if you want "
-                                 "to use --variable-seq-lengths")
-
         if args.optimize_vpp_send_recv_comm and args.num_layers_per_virtual_pipeline_stage is None:
             raise AssertionError('--optimize-vpp-send-recv-comm can only be used with pipeline with interleaving.')
 
