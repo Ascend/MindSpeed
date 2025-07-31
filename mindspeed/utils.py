@@ -16,7 +16,7 @@ import torch_npu
 import numpy as np
 from megatron.core import mpu
 from megatron.core import parallel_state
-from megatron.training.global_vars import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
                                              get_context_parallel_for_hybrid_ulysses_rank,

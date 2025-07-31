@@ -5,6 +5,7 @@ from typing import Optional
 
 import torch
 from torch import Tensor
+from einops import rearrange
 
 from megatron.training import get_args
 from megatron.training.global_vars import get_args as get_global_args
@@ -224,6 +225,7 @@ def attention_forward(
     # Get the query, key and value tensors based on the type of attention -
     # self or cross attn.
     query, key, value = self.get_query_key_value_tensors(hidden_states, key_value_states)
+    bsz = query.shape[1]
 
     # ===================================================
     # Adjust key, value, and rotary_pos_emb for inference
@@ -249,6 +251,9 @@ def attention_forward(
         key = apply_rotary_pos_emb(
             key, k_pos_emb, config=self.config, cu_seqlens=cu_seqlens_kv,
         )
+    
+    if packed_seq_params is not None:
+        query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
 
     # ==================================
     # core attention computation
@@ -278,6 +283,8 @@ def attention_forward(
     # =================
     # Output. [sq, b, h]
     # =================
+    if packed_seq_params is not None:
+        core_attn_out = rearrange(core_attn_out, '(b s) h d -> s b (h d)', b=bsz)
 
     output, bias = self.linear_proj(core_attn_out)
 

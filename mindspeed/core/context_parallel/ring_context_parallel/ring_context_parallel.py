@@ -1,11 +1,12 @@
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+from functools import lru_cache
 from abc import ABC, abstractmethod
 from typing import Any
 from dataclasses import dataclass
+from einops import rearrange
 import torch
 import torch_npu
-from einops import rearrange
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention, npu_fusion_attention_grad
 from mindspeed.core.context_parallel import get_args
 from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import ContextParallelKVCache
@@ -423,6 +424,24 @@ def get_unaligned_cp_shapes(shapes, block_id, next_block_id):
         return None
     unaligned_cp_shapes = [shapes[block_id], shapes[next_block_id]]
     return unaligned_cp_shapes
+
+
+@lru_cache(maxsize=8)
+def compute_qkv_index(seq_lens):
+    full_indices = list(range(seq_lens[-1]))
+    prev_eod_pos = 0
+    kv_indices = []
+    q_indices = []
+    for eod_pos in seq_lens:
+        mid = (eod_pos + prev_eod_pos) // 2
+        kv_indices.extend(full_indices[prev_eod_pos:mid])
+        q_indices.extend(full_indices[mid:eod_pos])
+        prev_eod_pos = eod_pos
+    
+    kv_index = torch.tensor(kv_indices, device=torch.npu.current_device())
+    q_index = torch.tensor(q_indices, device=torch.npu.current_device())
+
+    return q_index, kv_index
 
 
 class AttentionStrategy(ABC):
@@ -913,13 +932,20 @@ class AttentionWithCp(torch.autograd.Function):
                              cp_config.cp_group_for_intra_window_send_recv_overlap)
         outer_ring = RingP2P(cp_config.cp_outer_ranks, cp_config.cp_group, cp_config.cp_group_for_send_recv_overlap)
 
-        cp_config.actual_seq_kvlen = packed_seq_params.cu_seqlens_q.tolist() if packed_seq_params else None
-        cp_config.actual_seq_qlen = packed_seq_params.cu_seqlens_kv.tolist() if packed_seq_params else None
+        if packed_seq_params is not None and packed_seq_params.cu_seqlens_q_padded is not None:
+            cu_seqlens_q_padded_div_cp = packed_seq_params.cu_seqlens_q_padded // cp_config.cp_size
+            q_index, kv_index = compute_qkv_index(tuple(cu_seqlens_q_padded_div_cp.tolist()))
+            packed_seq_params.q_index = q_index
+            packed_seq_params.kv_index = kv_index
+            cp_config.actual_seq_kvlen = cu_seqlens_q_padded_div_cp.tolist() if packed_seq_params else None
+            cp_config.actual_seq_qlen = cu_seqlens_q_padded_div_cp.tolist() if packed_seq_params else None
+        else:
+            cp_config.actual_seq_kvlen = packed_seq_params.cu_seqlens_q.tolist() if packed_seq_params else None
+            cp_config.actual_seq_qlen = packed_seq_params.cu_seqlens_kv.tolist() if packed_seq_params else None
         cp_config.is_eod_reset = (cp_config.actual_seq_kvlen is not None) and (cp_config.actual_seq_qlen is not None)
-        seq_len, bsz, hidden = q.shape
 
         if softmax_scale is None:
-            head_dim = q.shape[-1] // n
+            head_dim = q.shape[-1] if packed_seq_params is not None and cp_para['causal'] else q.shape[-1] // n
             softmax_scale = head_dim ** (-0.5)
         if cp_config.causal and attn_mask is None:
             attn_mask = torch.ones((2048, 2048), dtype=torch.bool, device=q.device)
@@ -1006,7 +1032,6 @@ class AttentionWithCp(torch.autograd.Function):
         ctx.n = n
         ctx.softmax_scale = softmax_scale
         ctx.cp_dkv_outer_ranks = cp_para.get('cp_dkv_outer_ranks', cp_config.cp_global_ranks)
-        ctx.bsz = bsz
         ctx.shapes = shapes
         ctx.cp_config = cp_config.get_backward_config()
 
@@ -1141,7 +1166,7 @@ class AttentionWithCp(torch.autograd.Function):
             dq = activation_func_1(dq)
 
         # [2, s, b, h] -> [2s, b, h]
-        if cp_config.causal:
+        if cp_config.causal and not cp_config.is_eod_reset:
             dq, dk, dv = [x.view(-1, *x.shape[2:]) for x in [dq, dk, dv]]
         return dq, dk, dv, None, None, None, None, None, None, None
 

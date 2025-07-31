@@ -17,9 +17,9 @@
 import warnings
 
 import torch
-from megatron.training import get_args, get_tokenizer
 from megatron.core import parallel_state, mpu, tensor_parallel
 from megatron.core.transformer.module import MegatronModule
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 try:
@@ -88,7 +88,7 @@ def get_attention_mask():
     # EoD 模式 Ring Attention的实现
     # general 为基线方案，causal 为加速方案
     # 如果 cp > 1 且使用了Ring Attention 并行（包括Hybrid并行）。则Mask为动态生成的，不需要额外的Mask
-    if args.reset_attention_mask:
+    if getattr(args, 'reset_attention_mask', False):
         if args.attention_mask_type == 'general':
             args.sparse_mode = 2
             if args.context_parallel_size == 1 or args.context_parallel_algo == 'ulysses_cp_algo':
@@ -102,7 +102,7 @@ def get_attention_mask():
             compress = True
 
 
-    if args.attention_mask_on_cpu:
+    if getattr(args, 'attention_mask_on_cpu', False):
         device = 'cpu'
 
     if should_generate_mask:

@@ -83,9 +83,6 @@ class DotProductAttentionImpl():
         if packed_seq_params is not None: # TND
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
             actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
-            query, key, value = (
-                [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
-            )
             shape_order = 'TND'
         else: # SBH
             actual_seq_qlen = None
@@ -110,10 +107,5 @@ class DotProductAttentionImpl():
             actual_seq_qlen=actual_seq_qlen,
             actual_seq_kvlen=actual_seq_kvlen
         )[0]
-
-        if packed_seq_params is not None:
-            output = (
-                rearrange(output, '(b s) h d -> s b (h d)', s=seq_length, b=bsz)
-            )
 
         return output
