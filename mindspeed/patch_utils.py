@@ -84,8 +84,10 @@ class Patch:
         if self.is_applied:
             return
 
+        current_module, current_func = Patch.parse_path(self.orig_module_name, self.orig_func_name, self.create_dummy)
+
         if self.orig_module is None:
-            self.orig_module, self.orig_func = Patch.parse_path(self.orig_module_name, self.orig_func_name, self.create_dummy)
+            self.orig_module, self.orig_func = current_module, current_func
 
         final_patch_func = self.orig_func
         if self.patch_func is not None:
@@ -98,7 +100,7 @@ class Patch:
             setattr(self.orig_module, self.orig_func_name, final_patch_func)
         for _, value in sys.modules.copy().items():
             if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
-                    and id(getattr(value, self.orig_func_name)) == self.orig_func_id:
+                    and id(getattr(value, self.orig_func_name)) == id(current_func):
                 setattr(value, self.orig_func_name, final_patch_func)
         self.is_applied = True
         self.final_patch_func = final_patch_func

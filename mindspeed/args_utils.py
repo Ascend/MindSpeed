@@ -34,6 +34,7 @@ def parser_unknown_args(args, unknown):
                 value.append(unknown[i])
         i += 1
     add_args(args, key, value)
+    return args
 
 
 def get_mindspeed_args(get_defaults=False):
@@ -44,7 +45,8 @@ def get_mindspeed_args(get_defaults=False):
     parser = argparse.ArgumentParser(description='MindSpeed Arguments', allow_abbrev=False)
     MindSpeedFeaturesManager.register_features_args(parser)
     args, unknown = parser.parse_known_args() if not get_defaults else parser.parse_known_args([])
-    parser_unknown_args(vars(args), unknown)
+    args = parser_unknown_args(vars(args), unknown)
+    args = argparse.Namespace(**args)
     if not get_defaults:
         _MINDSPEED_ARGS = args
     return args
