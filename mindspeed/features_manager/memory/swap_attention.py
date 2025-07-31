@@ -25,7 +25,7 @@ class SwapAttentionFeature(MindSpeedFeature):
 
         self.incompatible_check(args, 'adaptive_memory_optimization')
         is_enable_lora = hasattr(args, "lora_target_modules") and (len(args.lora_target_modules) != 0)
-        if is_enable_lora:
+        if is_enable_lora and args.swap_attention:
             raise AssertionError('swap attention is not compatible with LoRA')
 
     def register_patches(self, patch_manager, args):
