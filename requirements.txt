@@ -13,7 +13,6 @@ einops
 scipy
 sentencepiece
 pytest
-tokenizers<=0.20.3
 transformers>=4.43.2
 gpytorch
 pandas
