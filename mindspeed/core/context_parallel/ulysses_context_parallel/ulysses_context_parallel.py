@@ -574,6 +574,13 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
             output (Tensor): ulysses attention output with shape [s, b, h*d] or [s*b, h, d]
         """
         # q, k, v: [s, b, h, d]
+        
+        if len(query.shape) == 3:
+            ctx.sbh_input = True
+            n = attn_para.get('n_head')
+            kv_n = n // (query.shape[-1] // key.shape[-1])
+            query = query.view(*query.shape[:-1], n, query.shape[-1] // n)
+            key, value = [x.view(*x.shape[:-1], kv_n, x.shape[-1] // kv_n) for x in [key, value]]
 
         # communication parameters
         spg = ulysses_comm_para.get('spg')
@@ -736,6 +743,11 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
         dq, dk, dv = attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]
 
         dq, dk, dv = ulysses_comm.comm_backward(dq, dk, dv)
+        if ctx.sbh_input:
+            s, b = dq.shape[0], dq.shape[1]
+            dq = dq.view(s, b, -1)
+            dk = dk.view(s, b, -1)
+            dv = dv.view(s, b, -1)
 
         return dq, dk, dv, None, None
 

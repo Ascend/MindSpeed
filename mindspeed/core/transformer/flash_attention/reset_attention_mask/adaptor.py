@@ -257,8 +257,9 @@ def attention_forward(
         key = apply_rotary_pos_emb(
             key, k_pos_emb, config=self.config, cu_seqlens=cu_seqlens_kv,
         )
+    is_ulysses_algo = (getattr(self.config, 'context_parallel_algo', None) == 'ulysses_cp_algo')
     
-    if packed_seq_params is not None:
+    if packed_seq_params is not None and not is_ulysses_algo:
         query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
 
     # ==================================
@@ -289,7 +290,7 @@ def attention_forward(
     # =================
     # Output. [sq, b, h]
     # =================
-    if packed_seq_params is not None:
+    if packed_seq_params is not None and not is_ulysses_algo:
         core_attn_out = rearrange(core_attn_out, '(b s) h d -> s b (h d)', b=bsz)
 
     output, bias = self.linear_proj(core_attn_out)

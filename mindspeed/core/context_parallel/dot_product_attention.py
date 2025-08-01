@@ -153,6 +153,7 @@ class CPDotProductAttentionImpl:
                             self.config.sparse_mode = 1
 
         sparse_mode = self.config.sparse_mode
+        is_ulysses_algo = (getattr(self.config, 'context_parallel_algo', None) == 'ulysses_cp_algo')
 
         if packed_seq_params is not None and self.config.attention_mask_type == 'causal':
             attention_mask = torch.triu(
@@ -162,13 +163,13 @@ class CPDotProductAttentionImpl:
 
         assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
 
-        if packed_seq_params is not None:
+        if packed_seq_params is not None and not is_ulysses_algo:
             #TND
             T, n_head, D = query.shape[0], query.shape[1], query.shape[2]
         else:
             seq_length, bsz, n_head = query.shape[0], query.shape[1], query.shape[2]
 
-        if packed_seq_params is not None:
+        if packed_seq_params is not None and not is_ulysses_algo:
             # TND
             cp_size = parallel_state.get_context_parallel_world_size()
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
@@ -208,6 +209,7 @@ class CPDotProductAttentionImpl:
             attn_para['next_tokens'] = self.config.next_tockens
             attn_para['keep_prob'] = 1 - self.attention_dropout.p
             attn_para['sparse_mode'] = sparse_mode
+            attn_para['n_head'] = n_head
             output = ulyssesattn_context_parallel(query, key, value, attn_para, self.ulysses_comm_para)
 
             return output
