@@ -35,6 +35,7 @@ class AutoPatcher(metaclass=Singleton):
                 self.logger.warning(f'{self.save_path} will be overwrited !')
             with open(self.save_path, 'w') as fout:
                 fout.write(json.dumps(self.context))
+                os.chmod(self.save_path, 0o640)
 
     @staticmethod
     def get_memory_status():
