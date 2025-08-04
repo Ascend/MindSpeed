@@ -25,7 +25,7 @@ from megatron.core.pipeline_parallel.schedules import (
     send_backward_recv_forward,
     recv_backward,
     get_pp_rank_microbatches,
-    get_pp_rank_microbatches
+    get_schedule_table
 )
 
 from megatron.core.pipeline_parallel import p2p_communication
