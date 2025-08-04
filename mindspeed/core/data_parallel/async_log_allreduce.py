@@ -60,7 +60,6 @@ def get_async_reduced_loss_value(x, key):
             f"when using --async-log-allreduce , type of the first input must be {torch.distributed.Work}, but got {type(handle)}.")
     handle.wait()
 
-    val = val / torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
     return val
 
 
