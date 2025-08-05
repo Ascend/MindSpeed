@@ -334,7 +334,7 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   <tr>
     <td rowspan="5">  Ascend Moe Token Permute and Unpermute 融合算子</td>
     <td><a href="docs/features/moe-token-permute-and-unpermute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
   <tr>

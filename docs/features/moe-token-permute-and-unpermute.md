@@ -8,10 +8,13 @@ Token路由：确定每个token应该由哪个专家处理。这可以通过专�
 结果重组(Unpermute)：处理完成后，需要将来自不同专家的结果重组回原始的token顺序。
 在上述流程中，数据重排和结果重组步骤是性能瓶颈之一。这是因为这两个步骤涉及到大量的数据移动，特别是在使用分布式训练时。
 ## 解决方法
-为了优化这一过程，可以考虑将数据重排和结果重组步骤合并成一个操作。MindSpeed将MoE Token Permute和Unpermute操作分别融合成一个算子，提升模型训练性能。
+为了优化这一过程，MindSpeed将MoE Token Permute和Unpermute操作分别融合成一个算子，提升模型训练性能。
 
 ## 使用方法
-即将支持
+启动脚本添加`--moe-permute-fusion` 或  `--use-fused-moe-token-permute-and-unpermute`。两者等价，但推荐优先使用`--moe-permute-fusion`。
+
+## 使用限制
+仅限于版本标识为 `CANN 8.3.RC1` / `PTA 7.2.RC1 `及其后续所有迭代版本的系统环境。
 
 ## 使用效果 
 启用融合算子后，不仅能够有效节省内存资源，还能提升模型训练性能。

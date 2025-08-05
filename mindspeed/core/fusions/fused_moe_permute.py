@@ -6,29 +6,42 @@ from typing import Optional
 import torch
 import torch_npu
 from megatron.core.transformer.moe.moe_utils import maybe_move_tensor_to_cpu
-from torch_npu import npu_moe_token_unpermute_with_routing_map
+from megatron.core.transformer.moe.moe_utils import permute as megatron_permute
+from megatron.core.transformer.moe.moe_utils import unpermute as megatron_unpermute
+
+from mindspeed.te.pytorch.permutation import MoePermuteMaskMap, MoeUnpermuteMaskMap
 
 
-def unpermute_wrapper(fn):
-    @wraps(fn)
-    def wrapper(
-            permuted_tokens: torch.Tensor,
-            sorted_indices: torch.Tensor,
-            restore_shape: torch.Size,
-            probs: torch.Tensor = None,
-            routing_map: torch.Tensor = None,
-            fused: bool = False,
-            drop_and_pad: bool = False,
-    ) -> torch.Tensor:
-        if fused:
-            return npu_moe_token_unpermute_with_routing_map(
-                permuted_tokens, sorted_indices, restore_shape, probs=probs, routing_map=routing_map,
-                drop_and_pad=drop_and_pad)
-        else:
-            return fn(permuted_tokens, sorted_indices, restore_shape, probs=probs, routing_map=routing_map, fused=fused,
-                      drop_and_pad=drop_and_pad)
+def permute(
+        tokens,
+        routing_map,
+        probs: Optional[torch.Tensor] = None,
+        num_out_tokens: Optional[int] = None,
+        fused: bool = False,
+        drop_and_pad: bool = False,
+) -> torch.Tensor:
+    if fused:
+        return MoePermuteMaskMap.apply(tokens, routing_map, probs, num_out_tokens, drop_and_pad)
+    else:
+        return megatron_permute(tokens, routing_map, probs=probs, num_out_tokens=num_out_tokens, fused=fused,
+                                drop_and_pad=drop_and_pad)
 
-    return wrapper
+
+def unpermute(
+        permuted_tokens: torch.Tensor,
+        sorted_indices: torch.Tensor,
+        restore_shape: torch.Size,
+        probs: torch.Tensor = None,
+        routing_map: torch.Tensor = None,
+        fused: bool = False,
+        drop_and_pad: bool = False,
+) -> torch.Tensor:
+    if fused:
+        return MoeUnpermuteMaskMap.apply(
+            permuted_tokens, sorted_indices, restore_shape, probs, routing_map, drop_and_pad)
+    else:
+        return megatron_unpermute(permuted_tokens, sorted_indices, restore_shape, probs=probs, routing_map=routing_map,
+                                  fused=fused, drop_and_pad=drop_and_pad)
 
 
 def sort_chunks_by_idxs_wrapper(fn):
