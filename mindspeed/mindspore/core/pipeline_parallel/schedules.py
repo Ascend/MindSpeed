@@ -43,6 +43,20 @@ from megatron.core.utils import (
 import torch
 
 
+def deallocate_output_tensor_(out, deallocate_pipeline_outputs=False):
+    '''Pseudo-deallocate (i.e., set to scalar) the output tensor's '.data' field.
+
+    This method should be called right after the output tensor has been
+    sent to the next pipeline stage. At this point, the output tensor is
+    only useful for its '.grad_fn' field, and not its '.data'.
+    '''
+    if (out is None) or (not deallocate_pipeline_outputs):
+        return
+    assert isinstance(out, torch.Tensor), "expected Tensor, found %s." % type(out).__name__
+    assert out._base is None, "counter-productive to free a view of another tensor."
+    out.untyped_storage().resize_(0)
+
+
 def forward_step(
     forward_step_func,
     data_iterator,
@@ -265,10 +279,11 @@ def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, c
         output_tensor_grad = [output_tensor_grad]
 
     # Backward pass.
+    scale_sense_shape = getattr(output_tensor[0], '_shape_before_deallocate', output_tensor[0].shape)
     if output_tensor_grad[0] is None and config.grad_scale_func is not None:
-        output_tensor_grad[0] = config.grad_scale_func(torch.ones_like(output_tensor[0]))
+        output_tensor_grad[0] = config.grad_scale_func(torch.ones_like(output_tensor[0])).reshape(scale_sense_shape)
     if output_tensor_grad[0] is None:
-        output_tensor_grad[0] = torch.ones_like(output_tensor[0])
+        output_tensor_grad[0] = torch.ones_like(output_tensor[0]).reshape(scale_sense_shape)
     
     # set input tensor for backpropagation
     if not parallel_state.is_pipeline_first_stage():
@@ -281,10 +296,7 @@ def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, c
     # In such cases, we intentionally skip the backward pass while preserving zero gradients.
     grad_ = C.GradOperation(True, True, True)
     _pynative_executor.check_run(grad_, config.forward_step_func, None, None, input_tensor[0], create_graph=False)
-    if len(output_tensor_grad[0]) == 1:
-        _pynative_executor.grad(config.forward_step_func, grad_, None, None, input_tensor[0], output_tensor_grad[0][0])
-    else:
-        _pynative_executor.grad(config.forward_step_func, grad_, None, None, input_tensor[0], output_tensor_grad[0])
+    _pynative_executor.grad(config.forward_step_func, grad_, None, None, input_tensor[0], output_tensor_grad[0])
 
     # Collect the grad of the input_tensor.
     input_tensor_grad = [None]
