@@ -11,6 +11,7 @@ import random
 import os
 import re
 import math
+import ast
 import torch
 import torch_npu
 import numpy as np
@@ -724,3 +725,41 @@ def batch_index(seq1d, seq_len):
     indexes = [0] + [bisect_right(seq1d, p) for p in end_points]
     seq_batch = [seq1d[indexes[i]:indexes[i + 1]] for i in range(len(indexes) - 1)]
     return [[elem - i * seq_len for elem in seq] for i, seq in enumerate(seq_batch)]
+
+
+def _get_dtype(dtype: str):
+    DTYPE_MAP = {
+        'fp16': torch.float16,
+        'bf16': torch.bfloat16,
+        'fp32': torch.float32,
+        'fp64': torch.float64,
+        'int8': torch.int8,
+        'int16': torch.int16,
+        'int32': torch.int32,
+        'int64': torch.int64
+    }
+    if dtype not in DTYPE_MAP:
+        raise ValueError(f"Unsupported dtype: {dtype}")
+    return DTYPE_MAP[dtype]
+
+
+def convert_str_dict_to_real_types(config_dict: dict, key: str, value: str):
+    if value.lower() == 'none':
+        config_dict[key] = None
+        return
+    if value.lower() == 'true':
+        config_dict[key] = True
+        return
+    if value.lower() == 'false':
+        config_dict[key] = False
+        return
+    try:
+        config_dict[key] = _get_dtype(value)
+    except ValueError:
+        try:
+            config_dict[key] = int(value)
+        except ValueError:
+            try:
+                config_dict[key] = ast.literal_eval(value)
+            except ValueError:
+                config_dict[key] = value
