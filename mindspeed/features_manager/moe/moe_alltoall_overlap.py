@@ -41,6 +41,11 @@ class MoEAlltoAllOverLapFeature(MindSpeedFeature):
                 if not args.moe_tp_extend_ep and args.moe_alltoall_overlap_comm and args.tensor_model_parallel_size > 1:
                     raise AssertionError('`When tp > 1, --moe-alltoall-overlap-comm` with `alltoall_seq` needs `moe_tp_extend_ep`.')
 
+            #Convert Megatron Shared_experts to MindSpeed version. This convert operation only for some judge.
+            if args.n_shared_experts is None and args.moe_shared_expert_intermediate_size is not None:
+                args.n_shared_experts = args.moe_shared_expert_intermediate_size // (
+                    args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size)
+
     def register_patches(self, patch_manager, args):
         from mindspeed.core.transformer.moe.moe_feature.adaptor import MindSpeedAlltoAllOverlapMoeLayerAdaptor, MindSpeedAlltoAllSeqOverlapMoeLayerAdaptor
         from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import mlp_init, parallel_transformer_layer_init_wrapper, core_mlp_forward_wrapper

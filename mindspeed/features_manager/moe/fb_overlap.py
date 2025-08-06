@@ -19,7 +19,6 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         self.incompatible_check(args, 'overlap_grad_reduce')
         self.incompatible_check(args, 'moe_hierarchical_alltoallv')
         self.incompatible_check(args, 'moe_zero_memory_num_layers')
-        self.incompatible_check(args, 'moe_expert_capacity_factor')
         self.incompatible_check(args, 'use_nanopipe')
         self.incompatible_check(args, 'automated_pipeline')
         self.incompatible_check(args, 'recompute_in_bubble')
@@ -34,7 +33,6 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             raise AssertionError('fb overlap only support moe zero memory level 0.')
         if args.moe_fb_overlap and (args.expert_tensor_parallel_size != 1 or args.expert_model_parallel_size == 1):
             raise AssertionError('fb overlap only support expert-tensor-parallel-size=1 and expert-model-parallel-size > 1')
-
 
         if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')

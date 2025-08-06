@@ -210,7 +210,9 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
                     ctx.cached_fc1_input.untyped_storage().resize_(cached_fc1_input_size)
                     ctx.cached_fc1_input.untyped_storage().copy_(cached_fc1_input_.untyped_storage())
                     shared_fc1_out, bias_parallel = ctx.moe_layer.token_dispatcher.shared_experts.linear_fc1(cached_fc1_input_)
-                    cached_fc1_input_.untyped_storage().resize_(0)
+                    #Avoid cached_fc1_input memory blast when TP=1.
+                    if parallel_state.get_expert_tensor_parallel_world_size() > 1:
+                        cached_fc1_input_.untyped_storage().resize_(0)
 
                 permute1_ep_all_to_all_handle.wait()
                 permutated_local_input_tokens.untyped_storage().resize_(0)
@@ -359,8 +361,10 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         if n_shared_experts:
             with torch.cuda.stream(ctx.moe_layer.shared_experts.stream):
                 backward_func(cached_fc1_input_graph, cached_fc1_input_detach.grad) 
-                cached_fc1_input_graph.untyped_storage().resize_(0) 
-                cached_fc1_input_detach.grad.untyped_storage().resize_(0) 
+                #Avoid cached_fc1_input memory blast when TP=1.
+                if parallel_state.get_expert_tensor_parallel_world_size() > 1:
+                    cached_fc1_input_graph.untyped_storage().resize_(0) 
+                    cached_fc1_input_detach.grad.untyped_storage().resize_(0) 
 
         if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             if n_shared_experts:

@@ -757,7 +757,9 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
                 moe_ctx.cached_fc1_output = self.cached_fc1_output
                 moe_ctx.cached_fc1_output.untyped_storage().resize_(0)
                 moe_ctx.cached_fc1_input = self.cached_fc1_input
-                moe_ctx.cached_fc1_input.untyped_storage().resize_(0)
+                #Avoid cached_fc1_input memory blast when TP=1 with zm1.
+                if parallel_state.get_expert_tensor_parallel_world_size() > 1:
+                    moe_ctx.cached_fc1_input.untyped_storage().resize_(0)
             #fc1 input
             moe_ctx.share_experts_graph_list.append(cached_fc1_input_detach)
 

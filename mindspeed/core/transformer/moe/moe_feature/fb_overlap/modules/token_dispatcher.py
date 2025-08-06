@@ -45,10 +45,44 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
         Returns:
             torch.Tensor: Tensor containing the number of tokens assigned to local expert.
         """
+        if self.drop_and_pad:
+            # Drop and pad the input to capacity.
+            num_tokens = routing_map.size(0) * self.config.moe_router_topk
+            self.capacity = get_capacity(
+                num_tokens=num_tokens,
+                num_experts=self.num_experts,
+                capacity_factor=self.moe_expert_capacity_factor,
+            )
+            self.num_out_tokens = self.capacity * self.num_experts
+            # [num_local_experts], number of tokens processed by each expert.
+            num_tokens_per_local_expert = torch.full(
+                (self.num_local_experts,),
+                self.capacity * self.tp_size * self.ep_size,
+                dtype=torch.long,
+            )
+            # [tp_size * ep_size, num_local_experts]. Represents the number of tokens sent
+            # to each local expert by all ranks.
+            self.num_global_tokens_per_local_expert = torch.full(
+                (self.num_experts * self.tp_size,),
+                self.capacity,
+                dtype=torch.long,
+                device=self.permute_idx_device,
+            )
+            return num_tokens_per_local_expert
+
         num_local_tokens_per_expert = routing_map.sum(dim=0).long()
 
-        # Dropless
-        self.num_out_tokens = routing_map.size(0) * self.config.moe_router_topk
+        if self.config.moe_expert_capacity_factor is not None:
+            # Drop tokens to capacity, no padding.
+            self.num_out_tokens = num_local_tokens_per_expert.sum()
+
+            # A synchronization is needed before the first permutation
+            # to get the `num_out_tokens` CPU value.
+            self._maybe_update_cuda_sync_point("before_permutation_1")
+        else:
+            # Dropless
+            self.num_out_tokens = routing_map.size(0) * self.config.moe_router_topk
+
         if self.ep_size > 1 or self.num_local_experts > 1:
             # Token dropless and enable ep. A synchronization is needed before expert parallel
             # AlltoAll communication to get the `input_splits` and `output_splits` CPU values.
@@ -111,9 +145,10 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             num_tokens_per_local_expert = num_local_tokens_per_expert
 
         if self.num_local_experts > 1:
-            self.num_global_tokens_per_local_expert_cpu = num_global_tokens_per_local_expert.view(
+            self.num_global_tokens_per_local_expert = num_global_tokens_per_local_expert.view(
                 -1, self.num_local_experts
             ).to(torch.device("cpu"), non_blocking=True)
+            self.num_global_tokens_per_local_expert_cpu = self.num_global_tokens_per_local_expert
 
         return num_tokens_per_local_expert
 
@@ -156,11 +191,10 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
         with torch.npu.stream(self.overlap_stream):
             self.overlap_stream.wait_event(event)
             permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
-                hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens
+                hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens, drop_and_pad=self.drop_and_pad,
             )
 
         return permutated_local_input_tokens, permuted_probs, tokens_per_expert
-
 
     def async_dispatch_comm(
         self, permutated_local_input_tokens, permutated_local_input_token_probs=None,
@@ -200,9 +234,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
                     event=prob_comm_handle, stream=torch.npu.current_stream()
                 )
 
-
         return (global_input_tokens, comm_handle), (global_input_token_probs, prob_comm_handle)
-
 
     def backward_async_dispatch_comm(
         self, tokens_grad, token_probs_grad=None,
@@ -235,18 +267,42 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
         return (tokens_grad, tokens_comm_handle), (token_probs_grad, token_probs_comm_handle)
 
 
-    def token_permute2(self, global_input_tokens, global_input_token_probs, num_global_tokens_per_local_expert_cpu=None):
-        num_global_tokens_per_local_expert_cpu = num_global_tokens_per_local_expert_cpu \
-            if num_global_tokens_per_local_expert_cpu is not None else self.num_global_tokens_per_local_expert_cpu
+    def token_permute2(self, global_input_tokens, global_input_token_probs, num_global_tokens_per_local_expert=None):
+        num_global_tokens_per_local_expert = num_global_tokens_per_local_expert \
+            if num_global_tokens_per_local_expert is not None else self.num_global_tokens_per_local_expert
 
         # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
         if self.num_local_experts > 1:
-            global_input_tokens, global_input_token_probs = sort_chunks_by_idxs(
-                global_input_tokens,
-                num_global_tokens_per_local_expert_cpu.ravel(),
-                self.sort_input_by_local_experts,
-                probs=global_input_token_probs,
-            )
+            if self.drop_and_pad:
+                global_input_tokens = (
+                    global_input_tokens.view(
+                        self.tp_size * self.ep_size,
+                        self.num_local_experts,
+                        self.capacity,
+                        *global_input_tokens.size()[1:],
+                    )
+                    .transpose(0, 1)
+                    .contiguous()
+                    .flatten(start_dim=0, end_dim=2)
+                )
+                global_probs = (
+                    global_probs.view(
+                        self.tp_size * self.ep_size,
+                        self.num_local_experts,
+                        self.capacity,
+                        *global_probs.size()[1:],
+                    )
+                    .transpose(0, 1)
+                    .contiguous()
+                    .flatten(start_dim=0, end_dim=2)
+                )
+            else:
+                global_input_tokens, global_input_token_probs = sort_chunks_by_idxs(
+                    global_input_tokens,
+                    num_global_tokens_per_local_expert.ravel(),
+                    self.sort_input_by_local_experts,
+                    probs=global_input_token_probs,
+                )
 
         if self.cuda_sync_point == "before_finish":
             torch.cuda.current_stream().synchronize()
@@ -274,14 +330,26 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
         # Unpermutation 2: expert output to AlltoAll input
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
         if self.num_local_experts > 1:
-            hidden_states, _ = sort_chunks_by_idxs(
-                hidden_states,
-                self.num_global_tokens_per_local_expert_cpu.T.ravel(),
-                self.restore_output_by_local_experts,
-            )
+            if self.drop_and_pad:
+                hidden_states = (
+                    hidden_states.view(
+                        self.num_local_experts,
+                        self.tp_size * self.ep_size,
+                        self.capacity,
+                        *hidden_states.size()[1:],
+                    )
+                    .transpose(0, 1)
+                    .contiguous()
+                    .flatten(start_dim=0, end_dim=2)
+                )
+            else:
+                hidden_states, _ = sort_chunks_by_idxs(
+                    hidden_states,
+                    self.num_global_tokens_per_local_expert.T.ravel(),
+                    self.restore_output_by_local_experts,
+                )
 
         return hidden_states
-
 
     def async_combine_comm(self, hidden_states, input_splits=None, output_splits=None, input_splits_tp=None, wait_event=None):
 
@@ -308,7 +376,6 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
 
         return permutated_local_input_tokens, comm_handle
 
-
     def backward_async_combine_comm(self, tokens_grad, input_splits=None, output_splits=None, output_splits_tp=None, wait_event=None):
 
         _, tokens_grad, comm_handle = async_all_to_all(
@@ -325,7 +392,6 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
 
         return tokens_grad, comm_handle
 
-
     def token_unpermute2(self, permutated_local_input_tokens):
 
         # Unpermutation 1: AlltoAll output to output
@@ -334,6 +400,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             self.reversed_local_input_permutation_mapping,
             restore_shape=self.hidden_shape_before_permute,
             routing_map=self.routing_map,
+            drop_and_pad=self.drop_and_pad
         )
 
         # Reshape the output tensor
