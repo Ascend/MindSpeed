@@ -167,20 +167,20 @@ class CPDotProductAttentionImpl:
             #TND
             T, n_head, D = query.shape[0], query.shape[1], query.shape[2]
         else:
-            seq_length, bsz, n_head = query.shape[0], query.shape[1], query.shape[2]
+            seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
 
         if packed_seq_params is not None and not is_ulysses_algo:
             # TND
             cp_size = parallel_state.get_context_parallel_world_size()
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
             actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
-            shape_order = 'TND'  # The shape_order only used when cp=1
+            shape_order = 'TND'
         else:
             # SBH
-            actual_seq_qlen = None
-            actual_seq_kvlen = None
+            actual_seq_qlen = None if packed_seq_params is None else packed_seq_params.cu_seqlens_q.tolist()
+            actual_seq_kvlen = None if packed_seq_params is None else packed_seq_params.cu_seqlens_kv.tolist()
             query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
-            shape_order = 'SBH'  # The shape_order only used when cp=1
+            shape_order = 'SBH'
 
         if attn_mask_type == AttnMaskType.no_mask:
             sparse_mode = 0  # default mask
@@ -282,6 +282,11 @@ class CPDotProductAttentionImpl:
                                                         self.attention_dropout.p)
 
         else:
+            # For EoD ulysses
+            if packed_seq_params is not None:
+                query, key, value = [rearrange(x, 's b (h d) -> (b s) h d', d=head_dim) for x in [query, key, value]]
+                shape_order = 'TND'
+
             if self.config.use_fusion_attn_v2:
                 output = npu_fusion_attention(
                     query, key, value, n_head, shape_order,
@@ -313,4 +318,8 @@ class CPDotProductAttentionImpl:
                     actual_seq_qlen=actual_seq_qlen,
                     actual_seq_kvlen=actual_seq_kvlen
                 )[0]
+
+            if packed_seq_params is not None:
+                output = rearrange(output, '(b s) h d -> s b (h d)', b=bsz)
+                shape_order = 'TND'
         return output

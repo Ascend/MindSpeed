@@ -453,7 +453,9 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         if args.reset_attention_mask:
             actual_seq_len = broadcast_dynamic(data['actual_seq_len'])
-            if args.attention_mask_type == 'causal':
+            if args.attention_mask_type == 'causal' \
+              and args.context_parallel_size > 1 \
+              and args.context_parallel_algo == 'megatron_cp_algo':
                 actual_seq_len = pad_data(actual_seq_len, batch, args.context_parallel_size, args.tensor_model_parallel_size)
                 actual_seq_len /= get_ring_degree()
             set_actual_seq_len(actual_seq_len)
@@ -514,7 +516,9 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         if args.reset_attention_mask:
             actual_seq_len = broadcast_dynamic(None)
-            if args.attention_mask_type == 'causal':
+            if args.attention_mask_type == 'causal' \
+              and args.context_parallel_size > 1 \
+              and args.context_parallel_algo == 'megatron_cp_algo':
                 actual_seq_len = pad_data(actual_seq_len, batch, args.context_parallel_size, args.tensor_model_parallel_size)
                 actual_seq_len /= get_ring_degree()
             set_actual_seq_len(actual_seq_len)

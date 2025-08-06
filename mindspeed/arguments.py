@@ -644,6 +644,9 @@ def validate_args_wrapper(validate_args):
 
         if args.context_parallel_size > 1 and args.position_embedding_type == 'alibi':
             assert args.context_parallel_algo == 'megatron_cp_algo', f"alibi only support megatron_cp_algo"
+        if args.context_parallel_size == 1 and args.context_parallel_algo == 'ulysses_cp_algo':
+            print("[WARNING] It doesn't make sense to set ulysses_cp_algo when CP=1. Setting it to default: megatron_cp_algo")
+            args.context_parallel_algo = 'megatron_cp_algo'
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'ulysses_cp_algo':
             assert args.seq_length % args.context_parallel_size == 0, f"sequence length must be divisible by context_parallel_size"
             head, remainder = divmod(args.num_attention_heads, args.context_parallel_size * args.tensor_model_parallel_size)
