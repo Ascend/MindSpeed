@@ -86,6 +86,8 @@ from mindspeed.features_manager.tensor_parallel.vocab_parallel import ReplaceInd
 from mindspeed.features_manager.distributed.layerzero import LayerZeroFeature
 from mindspeed.features_manager.optimizer.swap_optimizer_feature import SwapOptimizerFeature
 
+from mindspeed.features_manager.ai_framework.ms_patch_feature import MindSporePatchFeature
+
 FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
@@ -277,6 +279,12 @@ def add_swap_optimizer_feature(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_ai_framework_feature(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        MindSporePatchFeature(),
+    ])
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -301,6 +309,7 @@ def create_features_list():
     add_disable_gloo_group_feature(features_list)
     add_swap_optimizer_feature(features_list)
     add_transformer_features(features_list)
+    add_ai_framework_feature(features_list)
     return features_list
 
 

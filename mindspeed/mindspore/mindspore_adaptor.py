@@ -10,11 +10,11 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
                         reuse_fp32_param_distrib_optimizer_init_wrapper, force_patch=True)
     from .core.distributed.distributed_data_parallel import distributed_data_parallel_init, \
-        local_make_param_hook
+        _make_backward_post_hook
     aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
                         distributed_data_parallel_init, force_patch=True)
-    aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_param_hook',
-                        local_make_param_hook)
+    aspm.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_backward_post_hook',
+                        _make_backward_post_hook)
 
     from .core.distributed.param_and_grad_buffer import register_grad_ready
     aspm.register_patch('megatron.core.distributed.param_and_grad_buffer.register_grad_ready',
@@ -25,9 +25,6 @@ def mindspore_adaptation(aspm, mindspeed_args):
         'megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len',
         get_rotary_seq_len)  # name overlap
     aspm.register_patch('megatron.core.models.common.embeddings._rotate_half', local_rotate_half)
-
-    from .core.optimizer import get_megatron_optimizer  # this is under __init__.py
-    aspm.register_patch('megatron.core.optimizer.get_megatron_optimizer', get_megatron_optimizer)  # name overlap
 
     from .core.optimizer.optimizer import megatron_optimizer_init
     aspm.register_patch('megatron.core.optimizer.optimizer.MegatronOptimizer.__init__', megatron_optimizer_init)
@@ -43,7 +40,7 @@ def mindspore_adaptation(aspm, mindspeed_args):
                         forward_backward_pipelining_with_interleaving)
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.forward_backward_pipelining_without_interleaving',
                         forward_backward_pipelining_without_interleaving)
-    aspm.register_patch('megatron.core.pipeline_parallel.schedules.deallocate_output_tensor_',
+    aspm.register_patch('megatron.core.pipeline_parallel.schedules.deallocate_output_tensor',
                         deallocate_output_tensor_)
 
     from .core.tensor_parallel.data import local_build_key_size_numel_dictionaries  # resolve error
@@ -58,7 +55,17 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.tensor_parallel.random.CheckpointFunction.backward',
                         checkpoint_function_backward, force_patch=True)
 
+    from .core.timers import _get_global_min_max_time
+    aspm.register_patch('megatron.core.timers.Timers._get_global_min_max_time', _get_global_min_max_time)
+
     from .core.tensor_parallel.random import CheckpointWithoutOutput, CheckpointFunctionWithoutOutput
     aspm.register_patch('mindspeed.core.tensor_parallel.random.CheckpointWithoutOutput', CheckpointWithoutOutput)
     aspm.register_patch('mindspeed.core.tensor_parallel.random.CheckpointFunctionWithoutOutput',
                         CheckpointFunctionWithoutOutput)
+
+    from mindspeed.mindspore.ops.npu_matmul_add import npu_matmul_add_fp32
+    aspm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, force_patch=True)
+    aspm.register_patch('mindspeed.ops.npu_matmul_add.npu_matmul_add_fp32', npu_matmul_add_fp32)
+
+    from mindspeed.mindspore.core.optimizer.adamw import step_func
+    aspm.register_patch('apex.optimizers.FusedAdam.step', step_func)
