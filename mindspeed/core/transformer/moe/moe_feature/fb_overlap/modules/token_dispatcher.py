@@ -68,6 +68,8 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
                 dtype=torch.long,
                 device=self.permute_idx_device,
             )
+            if self.config.moe_pad_expert_input_to_capacity:
+                num_tokens_per_local_expert = num_tokens_per_local_expert.to('npu')
             return num_tokens_per_local_expert
 
         num_local_tokens_per_expert = routing_map.sum(dim=0).long()
@@ -285,12 +287,12 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
                     .contiguous()
                     .flatten(start_dim=0, end_dim=2)
                 )
-                global_probs = (
-                    global_probs.view(
+                global_input_token_probs = (
+                    global_input_token_probs.view(
                         self.tp_size * self.ep_size,
                         self.num_local_experts,
                         self.capacity,
-                        *global_probs.size()[1:],
+                        *global_input_token_probs.size()[1:],
                     )
                     .transpose(0, 1)
                     .contiguous()
