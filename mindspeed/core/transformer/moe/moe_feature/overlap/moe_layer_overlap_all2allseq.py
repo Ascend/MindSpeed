@@ -48,9 +48,7 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
         ctx.moe_shared_expert_intermediate_size = config.moe_shared_expert_intermediate_size
         ctx.n_shared_experts = n_shared_experts
         ctx.moe_zero_memory = moe_zero_memory
-        shared_expert_gate = hasattr(config, 'shared_expert_gate') and config.shared_expert_gate
         group_limited_greedy = hasattr(config, 'moe_router_load_balancing_type') and config.moe_router_load_balancing_type == "group_limited_greedy"
-        ctx.shared_expert_gate = shared_expert_gate
 
         if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             ctx.activation_func_with_probs = moe_layer.experts.activation_func_with_probs
@@ -72,13 +70,8 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
         else:
             ctx.shared_experts = None
 
-        if shared_expert_gate:
-            shared_expert_gate = moe_layer.shared_expert_gate
-        else:
-            shared_expert_gate = None
-
         (share_experts_output, dispatched_input, tokens_per_expert, global_probs) = moe_layer.token_dispatcher.token_permutation(
-            hidden_states, scores, routing_map, ctx.shared_experts, save_tensors, shared_expert_gate, ctx
+            hidden_states, scores, routing_map, ctx.shared_experts, save_tensors, ctx
         )
 
         if isinstance(share_experts_output, tuple):

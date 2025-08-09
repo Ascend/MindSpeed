@@ -102,7 +102,6 @@ class MoEAlltoAllSeqOverLapDispatcher:
         routing_map: torch.Tensor, 
         shared_experts, 
         save_tensors, 
-        shared_expert_gate, 
         moe_ctx=None
     ):
         """
@@ -117,8 +116,6 @@ class MoEAlltoAllSeqOverLapDispatcher:
             shared_experts: A Mindspeed shared_experts Model.
             save_tensors (List): Save Tensors During permutation and unpermutation
                 for MoELayerOverlapAll2AllSeq's recompute.
-            shared_expert_gate: Use shared_expert_gate to replace reduce_scatter 
-                in shared_expert with TP=1.
             moe_ctx: Config settings from MoELayerOverlapAll2All.
 
         Returns:
@@ -182,12 +179,6 @@ class MoEAlltoAllSeqOverLapDispatcher:
                 (share_experts_output), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
             else:
                 (share_experts_output), *_ = forward_func(shared_experts, (hidden_states))
-            if shared_expert_gate is not None:
-                with torch.enable_grad():
-                    # tp not support shared expert gate for now.
-                    if parallel_state.get_tensor_model_parallel_world_size() > 1:
-                        share_experts_output = reduce_scatter_to_sequence_parallel_region(share_experts_output)
-                    share_experts_output = torch.nn.functional.sigmoid(shared_expert_gate(hidden_states)) * share_experts_output
         else:
             share_experts_output = None
 

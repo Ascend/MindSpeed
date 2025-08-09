@@ -1,6 +1,6 @@
 # MoE Token Permute and Unpermute 融合优化
 
-## 问题分析
+## 背景与挑战
 在MoE架构中，MoEAlltoAllTokenDispatcher调度器负责将token令牌分配给各个专家进行处理，并将处理后的结果重新组合回原始的token顺序。这个过程通常涉及到以下步骤：
 Token路由：确定每个token应该由哪个专家处理。这可以通过专家门控机制（gating mechanism）来完成，门控机制为每个token选择最适合的专家。
 数据重排(Permute)：将token按选择的专家进行分组，以便每个专家可以并行处理属于它的token。这通常涉及到对token的重排操作。

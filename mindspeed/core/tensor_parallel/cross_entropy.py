@@ -12,7 +12,7 @@ def calculate_predicted_logits(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     # subtraction the maximum value.
     # Use in-place to reduce memory pressure.
-    vocab_parallel_logits = vocab_parallel_logits - logits_max.unsqueeze(dim=-1)
+    vocab_parallel_logits -= logits_max.unsqueeze(dim=-1)
 
     # Create a mask of valid vocab ids (1 means it needs to be masked).
     target_mask = (target < vocab_start_index) | (target >= vocab_end_index)

@@ -60,7 +60,7 @@ class TestTensorParallelCrossEntropy(DistributedTest):
 
     def tensor_parallel_cross_entropy(self, batch_size, seq_length, vocab_size, logits_scale, seed):
         identity, logits, target = self.get_logits_and_target(batch_size, seq_length, vocab_size, logits_scale, seed)
-        logits_parallel = mappings.scatter_to_tensor_model_parallel_region(logits)
+        logits_parallel = mappings.scatter_to_tensor_model_parallel_region(logits).clone()
         loss = vocab_parallel_cross_entropy(logits_parallel, target).mean()
         loss.backward()
         return loss, identity.weight.grad

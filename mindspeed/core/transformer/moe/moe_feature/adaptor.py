@@ -38,8 +38,6 @@ class MindSpeedTpExtendEpGmmExperts(TpExtendEpGmmExpertsImpl, MegatronGroupedMLP
 class MindSpeedAlltoAllSEQTptoEpMoELayer(All2AllSeqTpExtendEpMoELayerImpl, MegatronMoELayer):
     # MoELayer of AlltoAllSEQ API which support tp_extend_ep
     def __init__(self, *args, **kwargs):
-        if not hasattr(kwargs['config'], 'shared_expert_gate'):
-            kwargs['config'].shared_expert_gate = None
 
         # shared_expert two param mutual conversion
         if kwargs['config'].n_shared_experts:
@@ -55,8 +53,6 @@ class MindSpeedAlltoAllSEQTptoEpMoELayer(All2AllSeqTpExtendEpMoELayerImpl, Megat
 class MindSpeedAlltoAllSeqOverlapMoeLayerAdaptor(AlltoAllSeqOverlapMoeLayer, MegatronMoELayer):
     # MoELayer of AlltoAllSEQ overlap API which support tp_extend_ep
     def __init__(self, *args, **kwargs):
-        if not hasattr(kwargs['config'], 'shared_expert_gate'):
-            kwargs['config'].shared_expert_gate = None
 
         AlltoAllSeqOverlapMoeLayer.__init__(self, *args, **kwargs)
 
@@ -70,8 +66,6 @@ class MindSpeedMOEAlltoAllSeqOverLapDispatcherAdaptor(MoEAlltoAllSeqOverLapDispa
 class MindSpeedAllGatherOverlapMoeLayerAdaptor(AllGatherOverlapMoeLayer, MegatronMoELayer):
     # MoELayer of AllGather with overlap.
     def __init__(self, *args, **kwargs):
-        if not hasattr(kwargs['config'], 'shared_expert_gate'):
-            kwargs['config'].shared_expert_gate = None
 
         AllGatherOverlapMoeLayer.__init__(self, *args, **kwargs)
 
@@ -98,8 +92,6 @@ class MindSpeedGmmExperts(GmmExpertsImpl, MegatronGroupedMLP):
 class MindSpeedAlltoAllOverlapMoeLayerAdaptor(AlltoAllOverlapMoeLayer):
     # MoELayer of AlltoAll overlap API.
     def __init__(self, *args, **kwargs):
-        if not hasattr(kwargs['config'], 'shared_expert_gate'):
-            kwargs['config'].shared_expert_gate = None
         AlltoAllOverlapMoeLayer.__init__(self, *args, **kwargs)
 
 
