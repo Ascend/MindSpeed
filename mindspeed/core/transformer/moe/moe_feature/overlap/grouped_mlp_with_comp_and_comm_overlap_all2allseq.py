@@ -218,7 +218,6 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
             if config.gemm_gradient_accumulation_fusion:
 
                 npu_groupmatmul_add_fp32(mm1_inputs, act_inputs.grad, group_list, original_weight1.main_grad)
-                npu_groupmatmul_add_fp32(mm1_inputs, permuted_probs_inputs_detach.grad, group_list, original_weight1.main_grad)
             
                 if hasattr(original_weight1, 'grad_added_to_main_grad'):
                     if getattr(weights1, 'zero_out_wgrad', False):
