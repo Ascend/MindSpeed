@@ -50,9 +50,6 @@ def validate_args_wrapper(validate_args):
         # make post validation after megatron validation.
         MindSpeedFeaturesManager.post_validate_features_args(args=args)
 
-        args.create_attention_mask_in_dataloader = False
-        args.reduce_recompute_for_last_chunk = False
-
         MindSpeedFeaturesManager.validate_features_args(args=args)
 
         # _print_args is patched, so it has three arguments.

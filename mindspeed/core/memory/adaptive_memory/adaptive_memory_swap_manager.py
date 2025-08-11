@@ -5,8 +5,8 @@ import torch
 import torch_npu
 from numpy import mean
 from torch.cuda import Event
-from megatron.training import print_rank_0
 
+from mindspeed.utils import print_rank_0
 from .adaptive_memory_tool import SingletonBase, CpuTensorCache
 from .adaptive_memory_tool import FuncLocationMgr, broadcast_obj
 from .adaptive_memory_tool import AdaptiveStepMgr

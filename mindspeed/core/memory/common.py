@@ -172,7 +172,7 @@ def transformer_block_checkpointed_forward(
             # With self.recompute_num_layers = 2, we will recompute layers 0,4 for stage 0, and 2,6 for stage 1.
             # With self.recompute_num_layers = 3, we will recompute layers 0,1,4 for stage 0, and 2,3,6 for stage 1.
             def should_recompute():
-                if self.config.reduce_recompute_for_last_chunk:
+                if getattr(self.config, 'reduce_recompute_for_last_chunk', False):
                     def is_last_layer():
                         return (layer_idx == self.num_layers_per_pipeline_rank - 1) and mpu.is_pipeline_last_stage()
 

@@ -7,7 +7,7 @@ import io
 import pickle
 import torch
 from megatron.core import parallel_state as ps
-from megatron.training import print_rank_0
+from mindspeed.utils import print_rank_0
 
 BYTES_PER_MB = 1024 * 1024
 

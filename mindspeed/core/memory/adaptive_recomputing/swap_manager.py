@@ -1,8 +1,8 @@
 import os
 import time
 
-from megatron.training import print_rank_0
 from mindspeed.core.memory.adaptive_recomputing.swappable_tensor import SwappableTensor
+from mindspeed.utils import print_rank_0
 
 
 class SwapManagerMeta(type):

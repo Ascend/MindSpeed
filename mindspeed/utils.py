@@ -420,7 +420,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         tokens = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         labels = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
         loss_mask = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.float32, device=torch.cuda.current_device())
-        if args.create_attention_mask_in_dataloader:
+        if getattr(args, 'create_attention_mask_in_dataloader', False):
             attention_mask = torch.empty(
                 (args.micro_batch_size, 1, args.seq_length, args.seq_length), dtype=torch.bool, device=torch.cuda.current_device()
             )
@@ -763,3 +763,12 @@ def convert_str_dict_to_real_types(config_dict: dict, key: str, value: str):
                 config_dict[key] = ast.literal_eval(value)
             except ValueError:
                 config_dict[key] = value
+
+
+def print_rank_0(message):
+    """If distributed is initialized, print only on rank 0."""
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0:
+            print(message, flush=True)
+    else:
+        print(message, flush=True)
