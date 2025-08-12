@@ -26,6 +26,9 @@ class GenerateMaskFeature(MindSpeedFeature):
                 self.optimization_level <= args.optimization_level and
                 need_apply
             ) or self.default_patches
+    
+    def validate_args(self, args):
+        args.create_attention_mask_in_dataloader = False
 
     def register_patches(self, patch_manager, args):
         if int(getattr(args, 'context_parallel_size', 1)) < 2:
