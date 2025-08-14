@@ -104,7 +104,8 @@ def get_device_arch_version():
     return 8
 
 
-def preload_tensors(self, write_buckets, non_blocking=True):
+@staticmethod
+def preload_tensors(write_buckets, non_blocking=True):
     """
     Preloads tensors in `state_dict` to host memory via CPU memory.
 
