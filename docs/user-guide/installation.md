@@ -24,39 +24,42 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
 
 在安装MindSpeed之前，请参考[版本配套表](#版本配套表)，安装配套的昇腾软件栈，软件列表如下：
 
-<table border="0">
-  <tr>
-    <th>依赖软件</th>
-    <th>软件安装指南</th>
-  </tr>
-
-  <tr>
-    <td>昇腾NPU驱动</td>
-    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/softwareinst/instg/instg_0005.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">驱动固件安装指南</a> 》</td>
-  </tr>
-  <tr>
-    <td>昇腾NPU固件</td>
-  </tr>
-  <tr>
-    <td>Toolkit（开发套件）</td>
-    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/softwareinst/instg/instg_quick.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a> 》</td>
-  </tr>
-  <tr>
-    <td>Kernel（算子包）</td>
-  </tr>
-  <tr>
-    <td>NNAL（Ascend Transformer Boost加速库）</td>
-  </tr>
-  <tr>
-    <td>PyTorch</td>
-    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/Pytorch/710/configandinstg/instg/insg_0001.html">Ascend Extension for PyTorch 配置与安装</a> 》</td>
-  </tr>
-  <tr>
-    <td>torch_npu插件</td>
-  </tr>
-  <tr>
-    <td>apex</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th>依赖软件</th>
+      <th>软件安装指南</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>昇腾NPU驱动</td>
+      <td rowspan="2">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/softwareinst/instg/instg_0005.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">驱动固件安装指南</a>》</td>
+    </tr>
+    <tr>
+      <td>昇腾NPU固件</td>
+    </tr>
+    <tr>
+      <td>Toolkit（开发套件）</td>
+      <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/softwareinst/instg/instg_quick.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a>》</td>
+    </tr>
+    <tr>
+      <td>Kernel（算子包）</td>
+    </tr>
+    <tr>
+      <td>NNAL（Ascend Transformer Boost加速库）</td>
+    </tr>
+    <tr>
+      <td>PyTorch</td>
+      <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/Pytorch/710/configandinstg/instg/insg_0001.html">Ascend Extension for PyTorch 配置与安装</a>》</td>
+    </tr>
+    <tr>
+      <td>torch_npu插件</td>
+    </tr>
+    <tr>
+      <td>apex</td>
+    </tr>
+  </tbody>
 </table>
 
 ### 2. 下载MindSpeed源码master分支

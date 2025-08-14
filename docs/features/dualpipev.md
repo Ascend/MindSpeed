@@ -22,26 +22,27 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 ![dualpipev_profiling](../../sources/images/dualpipev_profiling.png)
 
 下表展示了不同流水排布中bubble对比。
-<table><thead>
-  <tr>
-    <th width='150'>流水策略</th>
-    <th width='250'>气泡</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> 1f1b </td>
-    <td>(PP-1)*(F+B)</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> VPP </td>
-    <td>(PP-1)*(F+B)/v</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> DualPipeV </td>
-    <td>(PP-1)*(F&B+B-W)-F</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="150">流水策略</th>
+      <th width="250">气泡</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1f1b</td>
+      <td>(PP-1)*(F+B)</td>
+    </tr>
+    <tr>
+      <td>VPP</td>
+      <td>(PP-1)*(F+B)/v</td>
+    </tr>
+    <tr>
+      <td>DualPipeV</td>
+      <td>(PP-1)*(F&amp;B+B-W)-F</td>
+    </tr>
+  </tbody>
 </table>
 
 ## 使用场景

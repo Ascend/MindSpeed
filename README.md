@@ -83,30 +83,31 @@ MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`�
 
 MindSpeed Core 加速特性分为三个层级，用户可根据实际需求选择通过设置启动脚本中的 `--optimization-level {层级}` 参数来自定义开启的优化层级。该参数支持以下配置：
 
-<table><thead>
-  <tr>
-    <th width='50'>层级</th>
-    <th width='180'>层级名称</th>
-    <th width='600'>介绍</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5" style="text-align: center; vertical-align: middle"> 0 </td>
-    <td>基础功能兼容</a></td>
-    <td>提供Megatron-LM框架对NPU的基本功能适配。</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5" style="text-align: center; vertical-align: middle"> 1 </td>
-    <td>亲和性增强🔥</a></td>
-    <td>在L0基础上使能部分融合算子与昇腾亲和计算改写。</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5" style="text-align: center; vertical-align: middle"> 2 </td>
-    <td>加速特性使能🔥🔥</a></td>
-    <td>默认值。在L0、L1基础上开启更丰富的加速特性，加速特性通常通过具体参数使能，可参考“特性介绍”章节。</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="50">层级</th>
+      <th width="180">层级名称</th>
+      <th width="600">介绍</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center; vertical-align: middle">0</td>
+      <td>基础功能兼容</td>
+      <td>提供Megatron-LM框架对NPU的基本功能适配。</td>
+    </tr>
+    <tr>
+      <td style="text-align: center; vertical-align: middle">1</td>
+      <td>亲和性增强🔥</td>
+      <td>在L0基础上使能部分融合算子与昇腾亲和计算改写。</td>
+    </tr>
+    <tr>
+      <td style="text-align: center; vertical-align: middle">2</td>
+      <td>加速特性使能🔥🔥</td>
+      <td>默认值。在L0、L1基础上开启更丰富的加速特性，加速特性通常通过具体参数使能，可参考"特性介绍"章节。</td>
+    </tr>
+  </tbody>
 </table>
 
 
@@ -123,430 +124,407 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 ## Megatron特性支持
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>
-  </tr></thead>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Megatron 数据并行</td>
+      <td><a href="docs/features/data-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 张量并行</td>
+      <td><a href="docs/features/tensor-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 流水并行</td>
+      <td><a href="docs/features/pipeline-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 虚拟流水线并行</td>
+      <td><a href="docs/features/virtual-pipeline-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 分布式优化器</td>
+      <td><a href="docs/features/distributed-optimizer.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 序列并行</td>
+      <td><a href="docs/features/sequence-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 异步DDP</td>
+      <td><a href="docs/features/async-ddp.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 权重更新通信隐藏</td>
+      <td><a href="docs/features/async-ddp-param-gather.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron 重计算</td>
+      <td><a href="docs/features/recomputation.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td> Megatron 分布式权重</td>
+      <td><a href="docs/features/dist_ckpt.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
 <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 数据并行</td>
-    <td><a href="docs/features/data-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Megatron 张量并行</td>
-    <td><a href="docs/features/tensor-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 流水并行</td>
-    <td><a href="docs/features/pipeline-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 虚拟流水线并行</td>
-    <td><a href="docs/features/virtual-pipeline-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 分布式优化器</td>
-    <td><a href="docs/features/distributed-optimizer.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 序列并行</td>
-    <td><a href="docs/features/sequence-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 异步DDP</td>
-    <td><a href="docs/features/async-ddp.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 权重更新通信隐藏 </td>
-    <td><a href="docs/features/async-ddp-param-gather.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 重计算</td>
-    <td><a href="docs/features/recomputation.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Megatron 分布式权重</td>
-    <td><a href="docs/features/dist_ckpt.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-
 </table>
 
 
 ## 并行策略特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Ulysses 长序列并行</td>
-    <td><a href="docs/features/ulysses-context-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Ring Attention 长序列并行</td>
-    <td><a href="docs/features/ring-attention-context-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-   <tr>
-    <td rowspan="5"> Ascend Double Ring Attention 长序列并行</td>
-    <td><a href="docs/features/double-ring.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend 混合长序列并行</td>
-    <td><a href="docs/features/hybrid-context-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend 自定义空操作层</td>
-    <td><a href="docs/features/noop-layers.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
   <tbody>
     <tr>
-      <td rowspan="5"> Ascend DualPipeV</td>
+      <td>Ascend Ulysses 长序列并行</td>
+      <td><a href="docs/features/ulysses-context-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Ring Attention 长序列并行</td>
+      <td><a href="docs/features/ring-attention-context-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Double Ring Attention 长序列并行</td>
+      <td><a href="docs/features/double-ring.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend 混合长序列并行</td>
+      <td><a href="docs/features/hybrid-context-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend 自定义空操作层</td>
+      <td><a href="docs/features/noop-layers.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend DualPipeV</td>
       <td><a href="docs/features/dualpipev.md">link</a></td>
       <td style="text-align: center; vertical-align: middle">✅</td>
     </tr>
+  </tbody>
 </table>
 
 ## 内存优化特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend 激活函数重计算 </td>
-    <td><a href="docs/features/activation-function-recompute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend 重计算流水线独立调度 </td>
-    <td><a href="docs/features/recompute_independent_pipelining.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend Mask归一</td>
-    <td><a href="docs/features/generate-mask.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend BF16 参数副本复用</td>
-    <td><a href="docs/features/reuse-fp32-param.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend swap_attention</td>
-    <td><a href="docs/features/swap_attention.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
   <tbody>
     <tr>
-    <td rowspan="5">  Ascend Norm重计算</td>
-    <td><a href="docs/features/norm-recompute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
+      <td>Ascend 激活函数重计算</td>
+      <td><a href="docs/features/activation-function-recompute.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
     <tr>
-    <td rowspan="5">  Ascend Hccl Buffer 自适应</td>
-    <td><a href="docs/features/hccl-group-buffer-set.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
+      <td>Ascend 重计算流水线独立调度</td>
+      <td><a href="docs/features/recompute_independent_pipelining.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
     <tr>
-    <td rowspan="5">  Ascend Swap Optimizer</td>
-    <td><a href="docs/features/swap-optimizer.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
+      <td>Ascend Mask归一</td>
+      <td><a href="docs/features/generate-mask.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
     <tr>
-    <td rowspan="5">  Virtual Optimizer</td>
-    <td><a href="docs/features/virtual-optimizer.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
+      <td>Ascend BF16 参数副本复用</td>
+      <td><a href="docs/features/reuse-fp32-param.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend swap_attention</td>
+      <td><a href="docs/features/swap_attention.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Norm重计算</td>
+      <td><a href="docs/features/norm-recompute.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Hccl Buffer 自适应</td>
+      <td><a href="docs/features/hccl-group-buffer-set.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Swap Optimizer</td>
+      <td><a href="docs/features/swap-optimizer.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Virtual Optimizer</td>
+      <td><a href="docs/features/virtual-optimizer.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+  </tbody>
 </table>
 
 
 ## 亲和计算特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend rms_norm 融合算子 </td>
-    <td><a href="docs/features/rms_norm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend swiglu 融合算子 </td>
-    <td><a href="docs/features/swiglu.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend rotary_embedding 融合算子 </td>
-    <td><a href="docs/features/rotary-embedding.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend flash attention</td>
-    <td><a href="docs/features/flash-attention.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5">  Ascend Moe Token Permute and Unpermute 融合算子</td>
-    <td><a href="docs/features/moe-token-permute-and-unpermute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend npu_matmul_add_fp32 梯度累加融合算子</td>
-    <td><a href="docs/features/npu_matmul_add.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-    <tbody>
+<table>
+  <thead>
     <tr>
-    <td rowspan="5">  Ascend 计算通信并行优化</td>
-    <td><a href="docs/features/communication-over-computation.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-    <tbody>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
+  <tbody>
     <tr>
-    <td rowspan="5"> Ascend MC2</td>
-    <td><a href="docs/features/mc2.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-    <tbody>
+      <td>Ascend rms_norm 融合算子</td>
+      <td><a href="docs/features/rms_norm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
     <tr>
-    <td rowspan="5">  Ascend fusion_attention_v2 </td>
-    <td><a href="docs/features/fusion-attn-v2.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
+      <td>Ascend swiglu 融合算子</td>
+      <td><a href="docs/features/swiglu.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend rotary_embedding 融合算子</td>
+      <td><a href="docs/features/rotary-embedding.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend flash attention</td>
+      <td><a href="docs/features/flash-attention.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Moe Token Permute and Unpermute 融合算子</td>
+      <td><a href="docs/features/moe-token-permute-and-unpermute.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend npu_matmul_add_fp32 梯度累加融合算子</td>
+      <td><a href="docs/features/npu_matmul_add.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend 计算通信并行优化</td>
+      <td><a href="docs/features/communication-over-computation.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>Ascend MC2</td>
+      <td><a href="docs/features/mc2.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>Ascend fusion_attention_v2</td>
+      <td><a href="docs/features/fusion-attn-v2.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+  </tbody>
 </table>
 
 
 ## 通信优化特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
   <tbody>
-  <tr>
-    <td rowspan="5"> Ascend Gloo 存档落盘优化 </td>
-    <td><a href="docs/features/hccl-replace-gloo.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend 高维张量并行  </td>
-    <td><a href="docs/features/tensor-parallel-2d.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  </table>
+    <tr>
+      <td>Ascend Gloo 存档落盘优化</td>
+      <td><a href="docs/features/hccl-replace-gloo.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend 高维张量并行</td>
+      <td><a href="docs/features/tensor-parallel-2d.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+  </tbody>
+</table>
 
 ## Mcore MoE特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Megatron MoE GMM  </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-gmm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Megatron MoE Allgather Dispatcher 性能优化  </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Megatron MoE Alltoall Dispatcher 性能优化 </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Megatron MoE TP拓展EP </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-tp-extend-ep.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-<tbody>
-  <tr>
-    <td rowspan="5"> Megatron MoE alltoall dispatcher分支通信隐藏优化 </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-alltoall-overlap-comm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-<tbody>
-  <tr>
-    <td rowspan="5"> Megatron MoE allgather dispatcher分支通信隐藏优化 </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-allgather-overlap-comm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend 共享专家  </td>
-    <td><a href="docs/features/shared-experts.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> 1F1B Overlap  </td>
-    <td><a href="docs/features/megatron_moe/megatron-moe-fb-overlap.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Ascend Megatron MoE GMM</td>
+      <td><a href="docs/features/megatron_moe/megatron-moe-gmm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Megatron MoE Allgather Dispatcher 性能优化</td>
+      <td><a href="docs/features/megatron_moe/megatron-moe-allgather-dispatcher.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Megatron MoE Alltoall Dispatcher 性能优化</td>
+      <td><a href="docs/features/megatron_moe/megatron-moe-alltoall-dispatcher.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Megatron MoE TP拓展EP</td>
+      <td><a href="docs/features/megatron_moe/megatron-moe-tp-extend-ep.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Megatron MoE alltoall dispatcher分支通信隐藏优化</td>
+      <td><a href="docs/features/megatron_moe/megatron-moe-alltoall-overlap-comm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>Megatron MoE allgather dispatcher分支通信隐藏优化</td>
+      <td><a href="docs/features/megatron_moe/megatron-moe-allgather-overlap-comm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend 共享专家</td>
+      <td><a href="docs/features/shared-experts.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>1F1B Overlap</td>
+      <td><a href="docs/features/megatron_moe/megatron-moe-fb-overlap.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+  </tbody>
 </table>
 
 
 ## 关键场景特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5">  Ascend EOD Reset训练场景   </td>
-    <td><a href="docs/features/eod-reset.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend alibi  </td>
-    <td><a href="docs/features/alibi.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Ascend EOD Reset训练场景</td>
+      <td><a href="docs/features/eod-reset.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend alibi</td>
+      <td><a href="docs/features/alibi.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+  </tbody>
 </table>
 
 ## 多模态特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend fused ema adamw优化器   </td>
-    <td><a href="docs/features/fused_ema_adamw_optimizer.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend PP支持动态形状</td>
-    <td><a href="docs/features/variable_seq_lengths.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend PP支持多参数传递</td>
-    <td><a href="docs/features/multi_parameter_pipeline.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend PP支持多参数传递和动态形状</td>
-    <td><a href="docs/features/multi_parameter_pipeline_and_variable_seq_lengths.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend 非对齐线性层</td>
-    <td><a href="docs/features/unaligned_linear.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend 非对齐Ulysses长序列并行</td>
-    <td><a href="docs/features/unaligned-ulysses-context-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Ascend fused ema adamw优化器</td>
+      <td><a href="docs/features/fused_ema_adamw_optimizer.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>Ascend PP支持动态形状</td>
+      <td><a href="docs/features/variable_seq_lengths.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend PP支持多参数传递</td>
+      <td><a href="docs/features/multi_parameter_pipeline.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend PP支持多参数传递和动态形状</td>
+      <td><a href="docs/features/multi_parameter_pipeline_and_variable_seq_lengths.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend 非对齐线性层</td>
+      <td><a href="docs/features/unaligned_linear.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend 非对齐Ulysses长序列并行</td>
+      <td><a href="docs/features/unaligned-ulysses-context-parallel.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+  </tbody>
 </table>
 
 ## 其它特性
 
-<table><thead>
-  <tr>
-    <th width='250'>特性名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend TFLOPS计算   </td>
-    <td><a href="docs/features/ops_flops_cal.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Auto Settings 并行策略自动搜索系统 </td>
-    <td><a href="docs/features/auto_settings.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend 确定性计算  </td>
-    <td><a href="docs/features/npu_deterministic.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="250">特性名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Ascend TFLOPS计算</td>
+      <td><a href="docs/features/ops_flops_cal.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>Ascend Auto Settings 并行策略自动搜索系统</td>
+      <td><a href="docs/features/auto_settings.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>Ascend 确定性计算</td>
+      <td><a href="docs/features/npu_deterministic.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+  </tbody>
 </table>
 
 
@@ -556,126 +534,111 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 
 部分自定义算子设置为公开接口，公开接口设置说明请参照 MindSpeed 安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。
 
-<table><thead>
-  <tr>
-    <th width='250'>自定义算子名称</th>
-    <th>介绍</th>
-    <th>Released</th>    
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_dropout_add_layer_norm   </td>
-    <td><a href="docs/ops/npu_dropout_add_layer_norm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_rotary_position_embedding  </td>
-    <td><a href="docs/ops/npu_rotary_position_embedding.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> fusion_attention  </td>
-    <td><a href="docs/ops/fusion_attention.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> rms_norm   </td>
-    <td><a href="docs/ops/rms_norm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> swiglu  </td>
-    <td><a href="docs/ops/swiglu.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_mm_all_reduce_add_rms_norm  </td>
-    <td><a href="docs/ops/npu_mm_all_reduce_add_rms_norm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_mm_all_reduce_add_rms_norm_  </td>
-    <td><a href="docs/ops/npu_mm_all_reduce_add_rms_norm_.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_gmm   </td>
-    <td><a href="docs/ops/gmm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_grouped_mat_mul_all_reduce  </td>
-    <td><a href="docs/ops/npu_grouped_mat_mul_all_reduce.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
+<table>
+  <thead>
+    <tr>
+      <th width="250">自定义算子名称</th>
+      <th>介绍</th>
+      <th>Released</th>
+    </tr>
+  </thead>
   <tbody>
-  <tr>
-    <td rowspan="5"> npu_ring_attention_update  </td>
-    <td><a href="docs/ops/npu_ring_attention_update.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_matmul_add_fp32  </td>
-    <td><a href="docs/ops/npu_matmul_add.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> npu_groupmatmul_add_fp32 </td>
-    <td><a href="docs/ops/npu_groupmatmul_add.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_apply_fused_ema_adamw  </td>
-    <td><a href="docs/ops/npu_apply_fused_ema_adamw.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> lcal_coc  </td>
-    <td><a href="docs/ops/lcal_coc.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> ffn  </td>
-    <td><a href="docs/ops/ffn.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_all_to_all_all_gather_bmm  </td>
-    <td><a href="docs/ops/npu_all_to_all_all_gather_bmm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_bmm_reduce_scatter_all_to_all  </td>
-    <td><a href="docs/ops/npu_bmm_reduce_scatter_all_to_all.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> quant_gmm  </td>
-    <td><a href="docs/ops/quant_gmm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_apply_fused_adamw_v2  </td>
-    <td><a href="docs/ops/npu_apply_fused_adamw_v2.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
+    <tr>
+      <td>npu_dropout_add_layer_norm</td>
+      <td><a href="docs/ops/npu_dropout_add_layer_norm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_rotary_position_embedding</td>
+      <td><a href="docs/ops/npu_rotary_position_embedding.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>fusion_attention</td>
+      <td><a href="docs/ops/fusion_attention.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>rms_norm</td>
+      <td><a href="docs/ops/rms_norm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>swiglu</td>
+      <td><a href="docs/ops/swiglu.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_mm_all_reduce_add_rms_norm</td>
+      <td><a href="docs/ops/npu_mm_all_reduce_add_rms_norm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_mm_all_reduce_add_rms_norm_</td>
+      <td><a href="docs/ops/npu_mm_all_reduce_add_rms_norm_.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_gmm</td>
+      <td><a href="docs/ops/gmm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_grouped_mat_mul_all_reduce</td>
+      <td><a href="docs/ops/npu_grouped_mat_mul_all_reduce.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_ring_attention_update</td>
+      <td><a href="docs/ops/npu_ring_attention_update.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_matmul_add_fp32</td>
+      <td><a href="docs/ops/npu_matmul_add.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_groupmatmul_add_fp32</td>
+      <td><a href="docs/ops/npu_groupmatmul_add.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+    <tr>
+      <td>npu_apply_fused_ema_adamw</td>
+      <td><a href="docs/ops/npu_apply_fused_ema_adamw.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>lcal_coc</td>
+      <td><a href="docs/ops/lcal_coc.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>ffn</td>
+      <td><a href="docs/ops/ffn.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>npu_all_to_all_all_gather_bmm</td>
+      <td><a href="docs/ops/npu_all_to_all_all_gather_bmm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>npu_bmm_reduce_scatter_all_to_all</td>
+      <td><a href="docs/ops/npu_bmm_reduce_scatter_all_to_all.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>quant_gmm</td>
+      <td><a href="docs/ops/quant_gmm.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td>npu_apply_fused_adamw_v2</td>
+      <td><a href="docs/ops/npu_apply_fused_adamw_v2.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
+  </tbody>
 </table>
 
 ---

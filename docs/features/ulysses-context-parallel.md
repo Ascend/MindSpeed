@@ -38,31 +38,29 @@ num-attention-heads要能够被tensor-model-parallel-size * context-parallel-siz
 
 ## 使用方法
 
-<table><thead>
-  <tr>
-    <th width='200'>重要参数</th>
-    <th>参数说明</th>
-
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="7"> --context-parallel-size [int]</td>
-    <td>必选，设置长序列并行大小，默认为1，根据用户需求配置。</td>
-
-</tr>
-<tbody>
-  <tr>
-    <td rowspan="7"> --context-parallel-algo<b>    ulysses_cp_algo</b></td>
-    <td>可选，设置长序列并行算法。
-<br>
-<b>ulysses_cp_algo</b>：开启Ulysses长序列并行，缺省值。
-<br>
-hybrid_cp_algo：开启Hybrid长序列并行。
-<br>
-megatron_cp_algo：开启Ring Attention长序列并行。</td>
-
-  </tr>
-  <tbody></table>
+<table>
+  <thead>
+    <tr>
+      <th width="200">重要参数</th>
+      <th>参数说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>--context-parallel-size [int]</td>
+      <td>必选，设置长序列并行大小，默认为1，根据用户需求配置。</td>
+    </tr>
+    <tr>
+      <td>--context-parallel-algo <b>ulysses_cp_algo</b></td>
+      <td>
+        可选，设置长序列并行算法。<br>
+        <b>ulysses_cp_algo</b>：开启Ulysses长序列并行，缺省值。<br>
+        hybrid_cp_algo：开启Hybrid长序列并行。<br>
+        megatron_cp_algo：开启Ring Attention长序列并行。
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ## 使用效果
 
