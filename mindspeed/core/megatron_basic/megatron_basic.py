@@ -54,6 +54,44 @@ def _compile_dependencies():
               'seconds'.format(time.time() - start_time), flush=True)
 
 
+def add_layer_norm_sp_support(config, instance):
+    setattr(instance, 'config', config)
+    sequence_parallel = False if not hasattr(config, 'sequence_parallel') else config.sequence_parallel
+    persist_layer_norm = False if not hasattr(config, 'persist_layer_norm') else config.persist_layer_norm
+    setattr(instance, 'sequence_parallel', sequence_parallel)
+    setattr(instance.weight, 'sequence_parallel', sequence_parallel)
+    setattr(instance.bias, 'sequence_parallel', sequence_parallel)
+    setattr(instance, 'persist_layer_norm', persist_layer_norm)
+
+
+class WrappedTorchNormImpl:
+    def __new__(
+            cls,
+            config,
+            hidden_size: int,
+            eps: float = 1e-5,
+            persist_layer_norm: bool = False,
+            zero_centered_gamma: bool = False,
+            normalization: str = "LayerNorm",
+    ):
+        if getattr(config, 'memory_efficient_layer_norm', False):
+            raise AssertionError(f"memory_efficient_layer_norm not support by torch LayerNorm")
+        if config.normalization == "LayerNorm":
+            norm_instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps)
+        elif config.normalization == "RMSNorm":
+            from packaging.version import Version
+            global _torch_version
+            if not _torch_version >= Version("2.4.0a0"):
+                raise AssertionError('Torch RMSNorm requires PyTorch version >= 2.4.0')
+            norm_instance = torch.nn.RMSNorm(normalized_shape=hidden_size, eps=eps)
+        elif config.normalization == "L2Norm":
+            norm_instance = torch.nn.L2Norm(normalized_shape=hidden_size, eps=eps)
+        else:
+            raise Exception("Only LayerNorm, RMSNorm and L2Norm are currently supported")
+        add_layer_norm_sp_support(config, norm_instance)
+        return norm_instance
+
+
 class PTNorm:
 
     def __new__(cls, config, hidden_size: int, eps: float = 1e-5):
@@ -65,7 +103,13 @@ class PTNorm:
                     last_dim_split_comm_intf=TPYCollectiveComm(),
                 )
             else:
-                instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps,)
+                try:
+                    # using apex implementation
+                    from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
+                    instance = FusedLayerNorm(config=config, hidden_size=hidden_size, eps=eps)
+                except ImportError:
+                    # using torch implementation
+                    instance = WrappedTorchNormImpl(config=config, hidden_size=hidden_size, eps=eps)
         elif config.normalization == "RMSNorm":
             if getattr(config, "tp_2d", False):
                 instance = RMSNorm2D(

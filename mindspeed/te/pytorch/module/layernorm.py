@@ -8,5 +8,6 @@ class MindSpeedTELayernorm(nn.LayerNorm):
         self.sequence_parallel = sequence_parallel
         self.zero_centered_gamma = zero_centered_gamma
         setattr(self.weight, 'sequence_parallel', sequence_parallel)
+        setattr(self.bias, 'sequence_parallel', sequence_parallel)
         if self.zero_centered_gamma:
             raise NotImplementedError("Zero-centered gamma is not supported in this dummy implementation.")
