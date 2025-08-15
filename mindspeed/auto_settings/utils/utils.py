@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Optional
 
 from mindspeed.auto_settings.config.model_config import ModelConfig
@@ -97,3 +98,53 @@ def get_module_info(file_path, key, sub_key=None):
         return float('inf')
     except KeyError:
         return float('inf')
+    
+    
+def check_path_is_link(path: str):
+    if os.path.islink(os.path.normpath(path)):
+        raise ValueError("The path should not be a symbolic link file. "
+                         f"Please check the input path:{path}.")
+        
+        
+def check_path_length_lt(path: str, max_path_length=4096):
+    path_length = path.__len__()
+    if path_length > max_path_length:
+        raise ValueError(f"The length of path should not be greater than {max_path_length}, but got {path_length}. "
+                         f"Please check the input path within the valid length range:{path[:max_path_length]}.")
+        
+        
+def standardize_path(
+    path: str,
+    max_path_length=4096,
+    check_link=True,
+    check_read=True,
+    check_write=True
+):
+    """
+    check path
+    param: path
+    return: data real path after check
+    """
+    if path:
+        path = os.path.realpath(path)
+    else:
+        return None
+
+    if os.path.exists(path):
+        if check_read and not os.access(path, os.R_OK):
+            raise RuntimeError(f"File {path} not readable")
+
+        if check_write and not os.access(path, os.W_OK):
+            raise RuntimeError(f"File {path} not writable")
+    else:
+        print(f"Path: {path} not exists")
+
+    check_path_length_lt(path, max_path_length)
+    if check_link:
+        check_path_is_link(path)
+
+    pattern = r'(\.|/|_|-|\s|[~0-9a-zA-Z]|[\u4e00-\u9fa5])+'
+    if not re.fullmatch(pattern, path):
+        raise RuntimeError(f"Invalid input path: {path}")
+
+    return path

@@ -5,6 +5,7 @@ import pickle
 import stat
 
 from mindspeed.auto_settings.utils.mem_utils import mem_gb_to_b
+from mindspeed.auto_settings.utils.utils import standardize_path
 
 _ALLOWED_MAX_FILE_SIZE = mem_gb_to_b(5)
 
@@ -30,7 +31,7 @@ def restricted_read(file_path: str) -> Any:
     file_mode = stat.S_IWUSR | stat.S_IRUSR
     open_mode = "rb"
     encoding = None
-    file_path = os.path.realpath(file_path)
+    file_path = standardize_path(file_path, check_write=False)
     with os.fdopen(
         os.open(file_path, open_flags, mode=file_mode),
         mode=open_mode,
@@ -45,6 +46,7 @@ def restricted_write(file_path: str, obj: object):
     file_mode = stat.S_IWUSR | stat.S_IRUSR
     open_mode = "wb"
     encoding = None
+    file_path = standardize_path(file_path, check_read=False)
     with os.fdopen(
         os.open(file_path, open_flags, mode=file_mode),
         mode=open_mode,
