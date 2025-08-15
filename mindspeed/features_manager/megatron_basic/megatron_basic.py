@@ -33,8 +33,10 @@ class MegatronBasicFeature(MindSpeedFeature):
         pm.register_patch('megatron.core.tensor_parallel.random._set_cuda_rng_state', _set_cuda_rng_state)
 
         # norm patches
-        from mindspeed.core.megatron_basic.megatron_basic import PTNorm, WrappedTorchNormImpl
-        pm.register_patch('megatron.core.transformer.torch_norm.WrappedTorchNorm', WrappedTorchNormImpl)
+        from mindspeed.core.megatron_basic.megatron_basic import PTNorm
+        pm.register_patch('megatron.core.models.gpt.gpt_layer_specs.LNImpl', PTNorm)
+        pm.register_patch('megatron.core.transformer.torch_norm.WrappedTorchNorm', PTNorm)
+        pm.register_patch('megatron.core.transformer.transformer_block.LayerNormImpl', PTNorm)
         pm.register_patch('megatron.core.extensions.transformer_engine.TENorm', PTNorm)
 
         # coalescing_manager patches
