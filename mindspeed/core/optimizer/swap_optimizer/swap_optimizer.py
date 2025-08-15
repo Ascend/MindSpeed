@@ -4,7 +4,7 @@ from typing import List, Dict, Tuple
 import torch
 from megatron.core.optimizer.distrib_optimizer import DistributedOptimizer as MegatronDistributedOptimizer
 from megatron.core import tensor_parallel
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.ops.npu_apply_fused_adamw_v2 import npu_apply_fused_adamw_v2
 
 
