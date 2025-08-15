@@ -51,7 +51,7 @@ MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具�
 1. 当前仅支持`--moe-token-dispatcher-type=alltoall`, 暂不支持`allgather/alltoall_seq` Dispatcher。
 2. 不建议同时使用`--swap-attention`，开启后性能劣化。
 3. 当前需设置`--expert-tensor-parallel-size=1`，暂不支持专家TP。
-4. 当前暂不支持Megatron MoE Token Drop&Pad模式，仅支持Dropless。
+4. 当前暂不支持Megatron MoE Token Drop&Pad模式，支持Dropless及Drop模式。
 5. 当前依赖GroupedMatmul, 确保打开`--moe-grouped-gemm`。
 6. 当前仅支持`--moe-zero-memory=level0`，且不支持`moe-zero-memory-num-layers`配置。
 7. 当前暂不支持异步DP通信掩盖，需关闭`--overlap-grad-reduce`。
