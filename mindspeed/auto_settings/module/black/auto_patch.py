@@ -9,6 +9,7 @@ import torch
 
 from mindspeed.auto_settings.utils.logger import get_logger
 from mindspeed.auto_settings.utils.singleton import Singleton
+from mindspeed.auto_settings.utils.utils import standardize_path
 
 
 class AutoPatcher(metaclass=Singleton):
@@ -21,7 +22,7 @@ class AutoPatcher(metaclass=Singleton):
         self.handles = []
         # name format in mcore
         self.profile_modules = ('embedding', '0', 'final_layernorm', 'output_layer')
-        self.save_path = os.path.realpath(save_path)
+        self.save_path = standardize_path(save_path, check_read=False)
         atexit.register(self.export_to_file)
         self.logger = get_logger("AutoPatcher")
 
