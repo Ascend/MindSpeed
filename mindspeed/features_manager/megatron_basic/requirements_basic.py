@@ -55,7 +55,6 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('fused_layer_norm_cuda', create_dummy=True)
         pm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32', npu_matmul_add_fp32, create_dummy=True)
         pm.register_patch('fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16', npu_matmul_add_fp16, create_dummy=True)
-        pm.register_patch('apex.contrib.layer_norm.layer_norm.FastLayerNormFN', FastLayerNormFN, create_dummy=True)
         pm.register_patch('apex.normalization.fused_layer_norm.FusedLayerNormAffineFunction',
                           FusedLayerNormAffineFunction, create_dummy=True)
         
