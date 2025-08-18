@@ -60,13 +60,19 @@ def transformer_layer_forward(*args, **kwargs):
 
 def transformer_layer_backward(
     layer_output_grad,
-    layer_graph
+    layer_graph,
+    if_mtp=False
 ):
     if layer_graph.checkpointed:
         with torch.enable_grad():
-            _, _, restored_layer_graph = transformer_layer_forward(
-                layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
-            )
+            if if_mtp:
+                _, _, restored_layer_graph = transformer_layer_forward(
+                    layer_graph.layer, layer_graph.layer_input, checkpoint=False
+                )
+            else:
+                _, _, restored_layer_graph = transformer_layer_forward(
+                    layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
+                )
             restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], layer_graph.unperm2_graph[1])
             layer_graph = restored_layer_graph
     if isinstance(layer_graph, NoopLayerGraph):
@@ -254,7 +260,22 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     else:
         fp8_context = nullcontext()
 
+    # MTP-layer only has one transformer layer. 
+    # With fb overlap, the transformer layer is MTPTransformerLayer.
     with rng_context, fp8_context:
+
+        # recompute settings.
+        checkpoint = False
+        if self.config.recompute_granularity == 'full' and self.training:
+            if self.config.recompute_method == 'block':
+                recompute_skip_num_layers = 0
+                if self.config.fp8 and not hidden_states.requires_grad:
+                    recompute_skip_num_layers += 1
+                checkpoint = True
+            if self.config.recompute_method == 'uniform':
+                assert self.config.recompute_num_layers == 1
+                checkpoint = True
+
         decoder_input = self.enorm(decoder_input)
         decoder_input = make_viewless_tensor(
             inp=decoder_input, requires_grad=True, keep_graph=True
@@ -285,6 +306,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
             attention_bias,
             inference_params,
             packed_seq_params,
+            checkpoint
         )
 
     # Layer norm before shared head layer.
@@ -356,5 +378,5 @@ class MTPTransformerLayer(torch.autograd.Function):
     @staticmethod
     def backward(ctx, layer_output_grad, context, layer_graph):
         layer_graph = ctx.graph
-        layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
+        layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph, if_mtp=True)
         return None, None, layer_graph.layer_input.grad, None, None, None, None, None, None, None, None, None, None

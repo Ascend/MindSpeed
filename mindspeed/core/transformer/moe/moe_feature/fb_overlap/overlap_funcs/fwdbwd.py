@@ -53,8 +53,6 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     raise NotImplementedError('forward dense & backward moe is not yet implemented.')
 
 
-
-
 def transformer_layer_forward_moe_backward_dense_overlaping(
     fwd_layer,
     hidden_states,
@@ -76,8 +74,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     checkpoint=False
 ):
     raise NotImplementedError('forward moe & backward dense is not yet implemented.')
-
-
 
 
 def transformer_layer_forward_moe_backward_moe_overlaping(
@@ -173,7 +169,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     with checkpoint_context:
 
         # Residual connection.
-        detached_layer_input = hidden_states
+        detached_layer_input = detach_tensor(hidden_states)
         residual1 = detached_layer_input
 
         # input_layernorm + AttentionForward

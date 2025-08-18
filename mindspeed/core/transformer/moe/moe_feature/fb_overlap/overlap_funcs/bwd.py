@@ -81,8 +81,6 @@ def transformer_layer_backward_moe(
     if use_shared_experts:
         shared_experts.post_backward_comm(wait_event=perm_a2a_handle)
 
-
-
     run_graph_backward(self.unperm1_graph, unperm1_out_grad)
     WeightGradStore.start_decouple()
     run_graph_backward(self.grouped_mlp_graph, keep_grad=True)  # keep for dw commputation
@@ -142,7 +140,6 @@ def transformer_layer_backward_moe(
         for manager in self.attn_swap_managers:
             manager.wait_swap_in()
     run_graph_backward(self.attn_graph)
-
 
     self.recompute_needed_tensors = [None for _ in range(len(self.recompute_needed_tensors))]
 
