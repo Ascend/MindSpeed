@@ -25,6 +25,7 @@ DISTRIBUTED_ARGS="
 "
 
 GPT_ARGS="
+    --transformer-impl local \
     --tensor-model-parallel-size ${TP} \
     --pipeline-model-parallel-size ${PP} \
     --sequence-parallel \

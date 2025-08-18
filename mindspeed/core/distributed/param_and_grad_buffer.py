@@ -2,6 +2,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import logging
 import math
+import warnings
 from contextlib import nullcontext
 from functools import wraps
 from logging import getLogger
@@ -124,7 +125,15 @@ def finish_param_sync(self, skip_next_bucket_dispatch: bool = False):
         self.param_gather_handle = None
         # Dispatch next bucket's asynchronous param AG.
         if self.next_param_gather_bucket_group is not None and not skip_next_bucket_dispatch:
-            self.next_param_gather_bucket_group.start_param_sync()
+            if self.next_param_gather_bucket_group.param_gather_dispatched:
+                warnings.warn(
+                    "The next bucket's parameter all-gather operation has already been "
+                    "dispatched. This may be caused by a mismatch between the order of "
+                    "parameter registration and forward pass execution, which will "
+                    "hurt the communication-computation overlap performance."
+                )
+            else:
+                self.next_param_gather_bucket_group.start_param_sync()
 
 
 # The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
