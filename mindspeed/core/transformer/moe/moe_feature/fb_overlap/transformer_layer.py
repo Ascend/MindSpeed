@@ -61,18 +61,12 @@ def transformer_layer_forward(*args, **kwargs):
 def transformer_layer_backward(
     layer_output_grad,
     layer_graph,
-    if_mtp=False
 ):
     if layer_graph.checkpointed:
         with torch.enable_grad():
-            if if_mtp:
-                _, _, restored_layer_graph = transformer_layer_forward(
-                    layer_graph.layer, layer_graph.layer_input, checkpoint=False
-                )
-            else:
-                _, _, restored_layer_graph = transformer_layer_forward(
-                    layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
-                )
+            _, _, restored_layer_graph = transformer_layer_forward(
+                layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
+            )
             restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], layer_graph.unperm2_graph[1])
             layer_graph = restored_layer_graph
     if isinstance(layer_graph, NoopLayerGraph):
@@ -306,7 +300,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
             attention_bias,
             inference_params,
             packed_seq_params,
-            checkpoint
+            False
         )
 
     # Layer norm before shared head layer.
@@ -371,6 +365,12 @@ class MTPTransformerLayer(torch.autograd.Function):
                                                         packed_seq_params,
                                                         checkpoint)
 
+        #Record MTP-layer input for backward recompute.
+        if checkpoint:
+            graph.record_layer_inputs(
+                attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
+                rotary_pos_sin, attention_bias, inference_params, packed_seq_params
+            )
         output = bwd_synchronize_check.apply(output)
         ctx.graph = graph
         return output, context, graph
@@ -378,5 +378,5 @@ class MTPTransformerLayer(torch.autograd.Function):
     @staticmethod
     def backward(ctx, layer_output_grad, context, layer_graph):
         layer_graph = ctx.graph
-        layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph, if_mtp=True)
+        layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
         return None, None, layer_graph.layer_input.grad, None, None, None, None, None, None, None, None, None, None
