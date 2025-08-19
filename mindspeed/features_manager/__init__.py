@@ -75,6 +75,7 @@ from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFe
 from mindspeed.features_manager.tokenizer.build_tokenizer import BuildTokenizerFeature
 from mindspeed.features_manager.distributed.buffer_pad import BufferPadFeature
 from mindspeed.features_manager.distributed.torch_fully_sharded_data_parallel import TorchFullyShardedDataParallelFeature
+from mindspeed.features_manager.custom_fsdp.custom_fsdp_feature import CustomFSDPFeature
 from mindspeed.features_manager.tensor_parallel.tp_2d import TP2dFeature
 from mindspeed.features_manager.compress_dense.compress_dense import AnsCompressTensorFeature
 from mindspeed.features_manager.disable_gloo_group.disable_gloo_group_feature import DisableGlooGroupFeature
@@ -245,6 +246,7 @@ def add_distributed_features(features_list: List[MindSpeedFeature]):
         BufferPadFeature(),
         LayerZeroFeature(),
         TorchFullyShardedDataParallelFeature(),
+        CustomFSDPFeature()
     ])
 
 
