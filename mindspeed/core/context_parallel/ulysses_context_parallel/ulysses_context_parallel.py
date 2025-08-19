@@ -574,7 +574,8 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
             output (Tensor): ulysses attention output with shape [s, b, h*d] or [s*b, h, d]
         """
         # q, k, v: [s, b, h, d]
-        
+        ctx.sbh_input = False
+
         if len(query.shape) == 3:
             ctx.sbh_input = True
             n = attn_para.get('n_head')

@@ -265,7 +265,7 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
                         probs=global_probs,
                     )
                     global_probs.untyped_storage().resize_(0)
-                    if not moe_tp_extend_ep and parallel_state.get_expert_tensor_and_model_parallel_group() > 1 and ctx.moe_grouped_gemm:
+                    if not moe_tp_extend_ep and parallel_state.get_expert_tensor_and_model_parallel_world_size() > 1 and ctx.moe_grouped_gemm:
                         global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
                             global_input_tokens
                         )
