@@ -20,17 +20,12 @@ class TorchFullyShardedDataParallelFeature(MindSpeedFeature):
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        group.add_argument('--fsdp2-config-str',
-                           type=str,
-                           help='fsdp2 fully_shard interface parameters str, ex: \'key1=value1;key2=value2\''
-                                'note: for parameters of type class, we will split them into the base type to input the key.'
-                                'for example, for the parameter mp_policy(MixedPrecisionPolicy), we will name its sub-attribute as'
-                                'mp_policy_param_dtype and input it as the key.Currently, parameters such as module, offload_policy, shard_placement_fn'
-                                'and mesh are not supported for input')
+        group.add_argument('--fsdp2-config-path',
+                           type=str)
 
     def validate_args(self, args):
-        if not args.use_torch_fsdp2 and args.fsdp2_config_str:
-            raise AssertionError('--fsdp2-config-str only used when --use-torch-fsdp2')
+        if not args.use_torch_fsdp2 and args.fsdp2_config_path:
+            raise AssertionError('--fsdp2-config-path only used when --use-torch-fsdp2')
 
     def register_patches(self, patch_manager, args):
         from mindspeed.core.distributed.torch_fully_sharded_data_parallel.torch_fully_sharded_data_parallel_adaptor import torch_fully_sharded_data_parallel_init

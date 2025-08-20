@@ -3,9 +3,12 @@ Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 """
 
-from typing import Optional, Set
+from typing import Optional, Set, Iterable, Union
+import dataclasses
+import importlib
 
 import torch
+import yaml
 
 try:
     from torch.distributed import DeviceMesh
@@ -15,7 +18,7 @@ try:
 except ImportError:
     HAVE_FSDP = False
 
-from torch.distributed import ProcessGroup
+from torch.distributed import ProcessGroup, get_process_group_ranks
 from torch.distributed.fsdp import MixedPrecisionPolicy
 
 from megatron.core.fp8_utils import is_float8tensor
@@ -28,35 +31,149 @@ from megatron.core.models.common.embeddings.language_model_embedding import Lang
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.distributed import TorchFullyShardedDataParallel
 
-from mindspeed.utils import convert_str_dict_to_real_types
+from mindspeed.utils import convert_str_dict_to_real_types, _get_dtype
 
 
-def get_fsdp2_config_attrs(fsdp2_config_str):
-    config_dict = {}
+def _get_class_type(name: str) -> type:
+    """
+    Args:
+        name (str): module.class
 
-    # split key-value pairs, data example: key1=value1;key2=value2
-    pairs = [pair.strip() for pair in fsdp2_config_str.split(';') if pair.strip()]
+    Returns:
+        type: Class Type
+    """
+    names = name.rsplit('.', 1)
+    if len(names) == 1:
+        raise RuntimeError(f"Please Provide a module.class name, got {name}")
+    module_name, class_name = names
+    module = importlib.import_module(module_name)
+    class_type = getattr(module, class_name, None)
+    return class_type
 
-    for pair in pairs:
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        value = value.strip()
 
-        convert_str_dict_to_real_types(config_dict, key, value)
+@dataclasses.dataclass
+class Fsdp2Config:
+    sharding_size: Optional[int] = None
+    sub_modules_to_wrap: Optional[Iterable[torch.nn.Module]] = None
+    reshard_after_forward: Union[bool, int] = True
+    # mp_policy
+    param_dtype: Optional[torch.dtype] = None
+    reduce_dtype: Optional[torch.dtype] = None
+    output_dtype: Optional[torch.dtype] = None
+    cast_forward_inputs: bool = True
 
-    return config_dict
+    ignored_modules: Optional[Iterable[torch.nn.Module]] = None
+
+    def to_dict(self):
+        mp_policy = self._mp_policy()
+        
+        kwargs = {
+            "mp_policy": mp_policy,
+            "reshard_after_forward": self.reshard_after_forward
+        }
+        return kwargs
+
+    def _mp_policy(self):
+        param_dtype = _get_dtype(self.param_dtype) if self.param_dtype else None
+        reduce_dtype = _get_dtype(self.reduce_dtype) if self.reduce_dtype else None
+        output_dtype = _get_dtype(self.output_dtype) if self.output_dtype else None
+        return MixedPrecisionPolicy(param_dtype=param_dtype,
+                                    reduce_dtype=reduce_dtype,
+                                    output_dtype=output_dtype,
+                                    cast_forward_inputs=self.cast_forward_inputs)
+
+    def _str_to_module(self, module_names: Iterable[str]) -> Set[torch.nn.Module]:
+        if module_names:
+            try:
+                module_set = set(_get_class_type(m_class_name) for m_class_name in module_names)
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError(f"Module {module_names} Not Found, \
+                                          check yaml config file and your model, or add it to PYTHONPATH") from e
+        else:
+            module_set = set()
+        return module_set 
+
+    @classmethod
+    def load_from_yaml(cls, yml_file: str):
+        with open(yml_file, 'r') as f:
+            config = yaml.safe_load(f)
+        kwargs = {}
+        for f in dataclasses.fields(cls):
+            if f.name in config:
+                kwargs[f.name] = config[f.name]
+        return cls(**kwargs)
+    
+    def __post_init__(self):
+        """Post-initialization processing to convert string module names to classes"""
+        if self.sub_modules_to_wrap:
+            self.sub_modules_to_wrap = self._str_to_module(self.sub_modules_to_wrap)
+        if self.ignored_modules:
+            self.ignored_modules = self._str_to_module(self.ignored_modules)
 
 
 def get_fsdp2_mixed_precision_policy(fsdp2_config: dict):
     mp_policy_param_dtype = fsdp2_config.pop('mp_policy_param_dtype', None)
     mp_policy_reduce_dtype = fsdp2_config.pop('mp_policy_reduce_dtype', None)
     mp_policy_output_dtype = fsdp2_config.pop('mp_policy_output_dtype', None)
-    mp_policy_cast_forward_inputs = fsdp2_config.pop('mp_policy_cast_forward_inputs', False)
+    mp_policy_cast_forward_inputs = fsdp2_config.pop('mp_policy_cast_forward_inputs', True)
     fsdp2_config['mp_policy'] = MixedPrecisionPolicy(param_dtype=mp_policy_param_dtype,
                                                         reduce_dtype=mp_policy_reduce_dtype,
                                                         output_dtype=mp_policy_output_dtype,
                                                         cast_forward_inputs=mp_policy_cast_forward_inputs)
     return fsdp2_config
+
+
+def _create_device_mesh(sharding_size: Optional[int], process_group: ProcessGroup) -> DeviceMesh:
+    """
+    Create a DeviceMesh for FSDP (Fully Sharded Data Parallel).
+    
+    Args:
+        sharding_size (int): Number of processes in each FSDP group (sharding dimension)
+        process_group (ProcessGroup): The process group containing all participating ranks
+        
+    Returns:
+        DeviceMesh: A 1D or 2D device mesh for parallel training
+    """
+    if sharding_size is None:
+        sharding_size = torch.distributed.get_world_size(process_group)
+    # Get total number of processes in the group
+    world_size = torch.distributed.get_world_size(process_group)
+    
+    # Get global ranks of all processes in this group
+    group_global_ranks = torch.tensor(
+        get_process_group_ranks(process_group), 
+        dtype=torch.int
+    )
+    
+    # Calculate DDP group size (data parallel dimension)
+    replicating_size = world_size // sharding_size
+    
+    # Validate configuration
+    if replicating_size * sharding_size != world_size:
+        raise ValueError(
+            f"World size {world_size} must be divisible by sharding_size {sharding_size}. "
+            f"Current configuration would leave {world_size % sharding_size} ranks unassigned."
+        )
+    
+    # Create 1D mesh (FSDP-only) or 2D mesh (FSDP+DDP hybrid)
+    if replicating_size == 1:
+        # Pure FSDP case - single dimension mesh
+        mesh = group_global_ranks
+        device_mesh = DeviceMesh(
+            "npu",  # NPU device type (change to "cuda" for GPUs)
+            mesh, 
+            mesh_dim_names=["Shard"]
+        )
+    else:
+        # Hybrid FSDP+DDP case - two dimensional mesh
+        mesh = group_global_ranks.view(replicating_size, sharding_size)
+        device_mesh = DeviceMesh(
+            "npu",
+            mesh,
+            mesh_dim_names=["Replicate", "Shard"]  # [data_parallel, model_sharding]
+        )
+    
+    return device_mesh
 
 
 def torch_fully_sharded_data_parallel_init(
@@ -84,17 +201,13 @@ def torch_fully_sharded_data_parallel_init(
     else:
         self.process_group = process_group
 
-    self.device_mesh = DeviceMesh.from_group(self.process_group, "npu")
-    kwargs = {
-        "mesh": self.device_mesh,
-        "reshard_after_forward": getattr(ddp_config, "reshard_after_forward", True),
-    }
-
-    # manually convert str to dist configuration
-    if hasattr(ddp_config, 'fsdp2_config_str'):
-        fsdp2_config = get_fsdp2_config_attrs(ddp_config.fsdp2_config_str)
-        fsdp2_config = get_fsdp2_mixed_precision_policy(fsdp2_config)
-        kwargs.update(fsdp2_config)
+    fsdp2_kwargs = {}
+    if hasattr(ddp_config, 'fsdp2_config_path'):
+        fsdp2_config = Fsdp2Config.load_from_yaml(ddp_config.fsdp2_config_path)
+        fsdp2_kwargs.update(fsdp2_config.to_dict())
+    
+    self.device_mesh = _create_device_mesh(fsdp2_config.sharding_size, self.process_group)
+    fsdp2_kwargs["mesh"] = self.device_mesh
 
     self.ddp_config = ddp_config
 
@@ -120,21 +233,40 @@ def torch_fully_sharded_data_parallel_init(
     # Save the custom attributes on Parameters before FSDP overwrites them.
     attrs = save_custom_attrs(self.module)
 
-    sub_modules_to_wrap = set(sub_modules_to_wrap)
-    for sub_module in self.module.modules():
-        fsdp_modules = getattr(sub_module, "_fsdp_modules", [])
-        for f in fsdp_modules:
-            sub_modules_to_wrap.add(f)
+    sub_modules_to_wrap = sub_modules_to_wrap if fsdp2_config.sub_modules_to_wrap is None else fsdp2_config.sub_modules_to_wrap
+    if fsdp2_config.sub_modules_to_wrap is None:
+        sub_modules_to_wrap = set(sub_modules_to_wrap)
+        for sub_module in self.module.modules():
+            fsdp_modules = getattr(sub_module, "_fsdp_modules", [])
+            for f in fsdp_modules:
+                sub_modules_to_wrap.add(f)
+    
+    # collect ignored params
+    ignored_params = set()
+    if fsdp2_config.ignored_modules:
+        for sub_module in self.module.modules():
+            if isinstance(sub_module, tuple(fsdp2_config.ignored_modules)):
+                ignored_params.update(sub_module.parameters())
+    fsdp2_kwargs["ignored_params"] = ignored_params
+
+    def _post_order_traverse(module: torch.nn.Module):
+        """Post-order traversal of model submodules (recursive implementation).
+        
+        Yields child modules before their parents.
+        """
+        for child in module.children():
+            yield from _post_order_traverse(child)
+        yield module
 
     prev_module = None
-    for sub_module in reversed(list(self.module.modules())):
+    for sub_module in _post_order_traverse(self.module):
         # Wrap individual submodules to fetch parameters just-in-time rather than
         # conservatively fetching all parameters at the start of each iteration.
         if any(
                 isinstance(sub_module, sub_module_to_wrap)
                 for sub_module_to_wrap in sub_modules_to_wrap
         ):
-            fully_shard(sub_module, **kwargs)
+            fully_shard(sub_module, **fsdp2_kwargs)
 
             # Explicitly set the FSDP backward prefetch schedule to prevent activation
             # recomputation from disrupting the automatically generated default schedule.
@@ -145,6 +277,6 @@ def torch_fully_sharded_data_parallel_init(
             prev_module = sub_module
 
     # Wrap the root module as required by the FSDP API.
-    fully_shard(self.module, **kwargs)
+    fully_shard(self.module, **fsdp2_kwargs)
 
     restore_custom_attrs(self.module, attrs)

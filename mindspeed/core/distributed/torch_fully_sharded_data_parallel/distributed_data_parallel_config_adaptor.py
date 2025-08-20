@@ -18,8 +18,8 @@ def distributed_data_parallel_init_wrapper(fn):
         for key, value in full_args.items():
             if key in config_key:
                 known_config[key] = value
-            elif key == 'fsdp2_config_str':
-                setattr(self, 'fsdp2_config_str', value)
+            elif key == 'fsdp2_config_path':
+                setattr(self, 'fsdp2_config_path', value)
             else:
                 unknown_config[key] = value
 

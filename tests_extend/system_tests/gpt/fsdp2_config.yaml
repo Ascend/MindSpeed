@@ -1,0 +1,5 @@
+reshard_after_forward: False
+param_dtype: "bf16"
+reduce_dtype: "fp32"
+output_dtype: "bf16"
+cast_forward_inputs: True

@@ -97,7 +97,7 @@ GPT_ARGS="
     --bf16 \
     --untie-embeddings-and-output-weights \
     --use-torch-fsdp2 \
-    --fsdp2-config-str reshard_after_forward=false;shard_placement_fn=None;mp_policy_param_dtype=bf16;mp_policy_reduce_dtype=fp32;mp_policy_output_dtype=bf16;mp_policy_cast_forward_inputs=true \
+    --fsdp2-config-path tests_extend/system_tests/gpt/fsdp2_config.yaml \
 "
 
 DATA_ARGS="
