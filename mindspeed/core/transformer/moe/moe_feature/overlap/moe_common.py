@@ -114,7 +114,7 @@ def core_mlp_forward_wrapper(fn):
         if isinstance(args, tuple):
             args = list(args)
 
-        if self.config.profile and not self.config.num_experts:
+        if getattr(self.config, 'profile', False) and not self.config.num_experts:
             from mindspeed.auto_settings.module.black.patch.hccl_operator import MOEOrMLPStartOp, MOEOrMLPEndOp
             args[0] = MOEOrMLPStartOp.apply(args[0])
             activation_func_1 = torch.nn.Softplus()
@@ -180,7 +180,7 @@ def core_mlp_forward_wrapper(fn):
             if output.requires_grad:
                 output.register_hook(self.activation_checkpoint_manager.recompute)
 
-        if self.config.profile and not self.config.num_experts:
+        if getattr(self.config, 'profile', False) and not self.config.num_experts:
             activation_func_2 = torch.nn.Softshrink()
             output = activation_func_2(output)
             output = MOEOrMLPEndOp.apply(output)

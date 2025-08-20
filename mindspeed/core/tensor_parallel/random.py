@@ -7,7 +7,6 @@ import torch
 from torch import _C
 from torch_npu.npu import _lazy_call, device as device_ctx_manager
 from torch.utils.checkpoint import _get_autocast_kwargs
-from megatron.training import get_args
 from megatron.core.tensor_parallel.utils import gather_split_1d_tensor
 from megatron.core.tensor_parallel.random import get_cuda_rng_tracker
 from megatron.core.utils import safely_set_viewless_tensor_data
@@ -18,6 +17,7 @@ from megatron.core.parallel_state import (
     is_pipeline_last_stage,
     get_virtual_pipeline_model_parallel_rank,
 )
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from torch.utils.cpp_extension import _get_build_directory
 from torch_npu.contrib import transfer_to_npu
 
+from mindspeed.args_utils import get_full_args
 from mindspeed.args_utils import get_mindspeed_args
 from mindspeed.log_config import set_log_config
 from mindspeed.deprecate import AutoExecuteFunction
@@ -59,11 +60,11 @@ def delete_lock_file():
 
 def repatch(args):
     MindSpeedFeaturesManager.remove_patches()
-    mindspeed_args = get_mindspeed_args()
+    full_args = get_full_args()
     for k, v in args.items():
-        setattr(mindspeed_args, k, v)
-    MindSpeedFeaturesManager.apply_features_pre_patches(mindspeed_args)
-    MindSpeedFeaturesManager.apply_features_patches(mindspeed_args)
+        setattr(full_args, k, v)
+    MindSpeedFeaturesManager.apply_features_pre_patches(full_args)
+    MindSpeedFeaturesManager.apply_features_patches(full_args)
 
 
 patch_features()

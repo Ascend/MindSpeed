@@ -170,10 +170,10 @@ class TestNoopLayer(DistributedTest):
         args.end_weight_decay = None
         args.num_query_groups = None
 
-        if _ARGS is None:
-            repatch(vars(args))
         validate_args(args)
         set_args(args)
+        if _ARGS is None:
+            repatch(vars(args))
         _ARGS = args
 
 

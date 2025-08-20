@@ -60,10 +60,10 @@ from megatron.core.transformer.moe.experts import GroupedMLP
 from megatron.core.transformer.moe.legacy_a2a_token_dispatcher import MoEAlltoAllSEQTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAllGatherTokenDispatcher
-from megatron.training import get_args
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import make_viewless_tensor
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.fusions.fused_bias_geglu import bias_geglu_impl
 from megatron.core.fusions.fused_bias_gelu import bias_gelu_impl
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu_impl
+from mindspeed.args_utils import get_full_args as get_args
