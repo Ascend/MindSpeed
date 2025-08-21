@@ -16,6 +16,7 @@
 from functools import lru_cache
 from typing import Any, Tuple, Union
 import torch
+from safetensors.torch import _float8_e4m3fn, _float8_e5m2, _SIZE
 
 
 def get_torch_storage_size(tensor: "torch.Tensor") -> int:
@@ -75,21 +76,4 @@ def storage_ptr(tensor: "torch.Tensor") -> Union[int, Tuple[Any, ...]]:
 
 @lru_cache()
 def _get_dtype_size(dtype: "torch.dtype") -> int:
-    # torch.float8 formats require 2.1; we do not support these dtypes on earlier versions
-    _float8_e4m3fn = getattr(torch, "float8_e4m3fn", None)
-    _float8_e5m2 = getattr(torch, "float8_e5m2", None)
-    _SIZE = {
-        torch.int64: 8,
-        torch.float32: 4,
-        torch.int32: 4,
-        torch.bfloat16: 2,
-        torch.float16: 2,
-        torch.int16: 2,
-        torch.uint8: 1,
-        torch.int8: 1,
-        torch.bool: 1,
-        torch.float64: 8,
-        _float8_e4m3fn: 1,
-        _float8_e5m2: 1,
-    }
     return _SIZE[dtype]
