@@ -25,7 +25,8 @@ class TestNormRecompute(DistributedTest):
         args.recompute_norm = True
         args.num_layers = 4
         args.recompute_norm_num_layers = 2
-        args.transformer_pipeline_model_parallel_size = 2
+        args.pipeline_model_parallel_size = 2
+        args.pipeline_dtype = torch.float32
         args.num_query_groups = None
         set_args(args)
         self.norm_recopute()

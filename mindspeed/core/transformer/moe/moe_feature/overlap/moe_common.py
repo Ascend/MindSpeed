@@ -306,7 +306,7 @@ def only_recompute_activation(config, layer_number):
 
     vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
     vpp_size = config.virtual_pipeline_model_parallel_size
-    pp_size = config.transformer_pipeline_model_parallel_size
+    pp_size = config.pipeline_model_parallel_size
 
     if vpp_size is not None:
         layer_per_chunk = config.num_layers_per_virtual_pipeline_stage

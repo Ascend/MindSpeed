@@ -60,7 +60,7 @@ class TestActivationRecompute(DistributedTest):
         config.hidden_dropout = 0
         config.attention_dropout = 0
         config.layer_number = 4
-        config.transformer_pipeline_model_parallel_size = 2
+        config.pipeline_model_parallel_size = 2
         config.gradient_accumulation_fusion = False
         transformer_block_ref = MLP(config, submodules=submodules)
         transformer_block_test = MLP(config, submodules=submodules)

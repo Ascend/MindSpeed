@@ -114,7 +114,7 @@ def get_attention_mask():
 def should_recompute(args, layer_number, num_recompute):
     vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
     vpp_size = args.virtual_pipeline_model_parallel_size
-    pp_size = args.transformer_pipeline_model_parallel_size
+    pp_size = args.pipeline_model_parallel_size
 
     if vpp_size is not None:
         layer_per_chunk = args.num_layers_per_virtual_pipeline_stage
