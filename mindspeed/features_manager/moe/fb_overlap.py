@@ -37,6 +37,10 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')
 
+        if args.moe_fb_overlap and (getattr(args, 'schedules_method', None) != 'dualpipev' and \
+            getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is None):
+            raise AssertionError('The fb overlap needs virtual pipeline or dualpipeV schedules.')
+
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):
             from mindspeed.core.transformer.moe.moe_feature.fb_overlap import (

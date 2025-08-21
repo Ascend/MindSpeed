@@ -169,7 +169,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     with checkpoint_context:
 
         # Residual connection.
-        detached_layer_input = detach_tensor(hidden_states)
+        detached_layer_input = hidden_states
+        if getattr(args, 'schedules_method', None) == 'dualpipev':
+            detached_layer_input = detach_tensor(hidden_states)
         residual1 = detached_layer_input
 
         # input_layernorm + AttentionForward
