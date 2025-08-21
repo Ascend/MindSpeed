@@ -79,3 +79,25 @@ def mindspore_adaptation(aspm, mindspeed_args):
     from mindspeed.mindspore.third_party.huggingface_hub._torch import get_torch_storage_size, storage_ptr
     aspm.register_patch('huggingface_hub.serialization._torch.get_torch_storage_size', get_torch_storage_size)
     aspm.register_patch('huggingface_hub.serialization._torch.storage_ptr', storage_ptr)
+
+    from mindspeed.mindspore.core.models.common.language_module.language_module import setup_embeddings_and_output_layer
+    aspm.register_patch(
+        'megatron.core.models.common.language_module.language_module.LanguageModule.setup_embeddings_and_output_layer',
+        setup_embeddings_and_output_layer)
+
+    # accelerate
+    from mindspeed.mindspore.third_party.accelerate.extract import extract_model_from_parallel
+    aspm.register_patch('accelerate.utils.extract_model_from_parallel', extract_model_from_parallel)
+
+    # transformers
+    from mindspeed.mindspore.third_party.transformers.configuration_utils import dict_torch_dtype_to_str
+    aspm.register_patch('transformers.configuration_utils.PretrainedConfig.dict_torch_dtype_to_str',
+                        dict_torch_dtype_to_str)
+
+    from mindspeed.mindspore.third_party.transformers.modeling_utils import load_state_dict, \
+        _load_state_dict_into_meta_model, safe_open, get_parameter_dtype
+    aspm.register_patch('transformers.modeling_utils.load_state_dict', load_state_dict)
+    aspm.register_patch('transformers.modeling_utils._load_state_dict_into_meta_model',
+                        _load_state_dict_into_meta_model)
+    aspm.register_patch('transformers.modeling_utils.safe_open', safe_open)
+    aspm.register_patch('transformers.modeling_utils.get_parameter_dtype', get_parameter_dtype)
