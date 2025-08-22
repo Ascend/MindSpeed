@@ -326,12 +326,12 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
         permute1_prob_backward_input, bw_permute1_prob_all2all_handle) = get_all2all_experts_output()
 
         bw_permute1_prob_all2all_handle.wait()
-        backward_func(permuted_probs_graph, permute1_prob_backward_input)
-        permute1_prob_backward_input.untyped_storage().resize_(0)
-        
+
         bw_permute1_ep_all2all_handle.wait()
-        backward_func(permute1_graph, permute1_backward_input)
+        torch.autograd.backward([permute1_graph, permuted_probs_graph],
+                                grad_tensors=[permute1_backward_input, permute1_prob_backward_input])
         permute1_backward_input.untyped_storage().resize_(0)
+        permute1_prob_backward_input.untyped_storage().resize_(0)
 
         if l_aux_graph is not None:
             l_aux_graph.backward(l_aux_detach.grad, retain_graph=True)

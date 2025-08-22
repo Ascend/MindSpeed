@@ -142,7 +142,8 @@ class MoEAlltoAllSeqOverLapDispatcher:
                 permutated_local_input_tokens,
                 permuted_probs,
                 self.reversed_local_input_permutation_mapping,
-            ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens)
+            ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
+                        fused=self.config.moe_permute_fusion)
 
             return permutated_local_input_tokens, permuted_probs, tokens_per_expert
 
@@ -277,6 +278,7 @@ class MoEAlltoAllSeqOverLapDispatcher:
             self.reversed_local_input_permutation_mapping,
             restore_shape=self.hidden_shape_before_permute,
             routing_map=self.routing_map,
+            fused=self.config.moe_permute_fusion
         )
 
         # Perform tensor parallel AlltoAll communication.
@@ -710,7 +712,7 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
                 permutated_local_input_tokens,
                 permuted_probs,
                 self.reversed_local_input_permutation_mapping,
-            ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens)
+            ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens, fused=self.config.moe_permute_fusion)
 
             return permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping, tokens_per_expert, self.cached_fc1_input
 
@@ -903,6 +905,7 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
             probs=None,
             restore_shape=self.hidden_shape_before_permute,
             routing_map=self.routing_map,
+            fused=self.config.moe_permute_fusion
         )
         # Reshape the output tensor
         output = output.view(self.hidden_shape)

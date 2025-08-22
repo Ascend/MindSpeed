@@ -190,11 +190,18 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             torch.cuda.current_stream().synchronize()
 
         event = torch.npu.current_stream().record_event()
-        with torch.npu.stream(self.overlap_stream):
-            self.overlap_stream.wait_event(event)
+        if self.config.moe_permute_fusion:
             permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
-                hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens, drop_and_pad=self.drop_and_pad,
+                hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
+                fused=self.config.moe_permute_fusion, drop_and_pad=self.drop_and_pad,
             )
+        else:
+            with torch.npu.stream(self.overlap_stream):
+                self.overlap_stream.wait_event(event)
+                permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
+                    hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
+                    drop_and_pad=self.drop_and_pad,
+                )
 
         return permutated_local_input_tokens, permuted_probs, tokens_per_expert
 
@@ -402,6 +409,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             self.reversed_local_input_permutation_mapping,
             restore_shape=self.hidden_shape_before_permute,
             routing_map=self.routing_map,
+            fused=self.config.moe_permute_fusion,
             drop_and_pad=self.drop_and_pad
         )
 

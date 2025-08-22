@@ -377,7 +377,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         bw_permute1_prob_all2all_handle.wait()
         backward_func(permuted_probs_graph, permute1_prob_backward_input)
         permute1_prob_backward_input.untyped_storage().resize_(0)
-        backward_func(permute1_graph, permute1_backward_input) 
+        backward_func(permute1_graph, permute1_backward_input)
         permute1_backward_input.untyped_storage().resize_(0)
 
         if l_aux_graph is not None:

@@ -11,10 +11,15 @@ Token路由：确定每个token应该由哪个专家处理。这可以通过专�
 为了优化这一过程，MindSpeed将MoE Token Permute和Unpermute操作分别融合成一个算子，提升模型训练性能。
 
 ## 使用方法
-启动脚本添加`--moe-permute-fusion` 或  `--use-fused-moe-token-permute-and-unpermute`。两者等价，但推荐优先使用`--moe-permute-fusion`。
+1. 启动脚本添加`--moe-permute-fusion` 或  `--use-fused-moe-token-permute-and-unpermute`。两者等价，但推荐优先使用`--moe-permute-fusion`。
+2. 建议如下配置获得最佳性能，否则某些场景开启该融合算子可能性能劣化。
+(1)`--moe-token-dispatcher-type alltoall`时, 设置`--expert-tensor-parallel-size 1` 
+(2)`--moe-token-dispatcher-type alltoall_seq`时, 开启`--moe-tp-extend-ep`
 
 ## 使用限制
-仅限于版本标识为 `CANN 8.3.RC1` / `PTA 7.2.RC1 `及其后续所有迭代版本的系统环境。
+1. 当前仅支持`--moe-token-dispatcher-type alltoall` 和 `--moe-token-dispatcher-type alltoall_seq`, 不支持`--moe-token-dispatcher-type allgather`
+2. 当`--moe-token-dispatcher-type alltoall` 和 `--moe-alltoall-overlap-comm` 同时开启，暂不支持开启该融合算子
+3. 仅限于版本标识为 `CANN 8.3.RC1` / `PTA 7.2.RC1 `及其后续所有迭代版本的系统环境。
 
 ## 使用效果 
 启用融合算子后，不仅能够有效节省内存资源，还能提升模型训练性能。

@@ -190,7 +190,7 @@ class All2AllSeqTp2epDispatcherImpl:
             permutated_local_input_tokens,
             permuted_probs,
             self.reversed_local_input_permutation_mapping,
-        ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens)
+        ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens, fused=self.config.moe_permute_fusion)
 
 
         # Perform expert parallel AlltoAll communication
@@ -258,6 +258,7 @@ class All2AllSeqTp2epDispatcherImpl:
             self.reversed_local_input_permutation_mapping,
             restore_shape=self.hidden_shape_before_permute,
             routing_map=self.routing_map,
+            fused=self.config.moe_permute_fusion
         )
 
         # Reshape the output tensor
