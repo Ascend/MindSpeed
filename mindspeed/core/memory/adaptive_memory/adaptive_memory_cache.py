@@ -43,7 +43,7 @@ class AdaptiveLayerMemPolicy:
     def identity(self) -> str:
         self.sort_modules()
         modules = ",".join(self.recompute) + ":" + ",".join(self.swap)
-        return hashlib.md5(modules.encode('utf-8')).hexdigest()
+        return hashlib.sha256(modules.encode('utf-8')).hexdigest()
 
     def sort_modules(self):
         self.recompute.sort()
@@ -158,28 +158,28 @@ class PolicyCacheManager(metaclass=SingletonBase):
             "driver": driver_version
         }
 
-    def _scan_dir_recursively(self, dir_name, md5s):
+    def _scan_dir_recursively(self, dir_name, sha256s):
         with os.scandir(dir_name) as it:
             for entry in it:
                 if entry.is_dir(follow_symlinks=False):
-                    self._scan_dir_recursively(entry.path, md5s)
+                    self._scan_dir_recursively(entry.path, sha256s)
                 elif entry.is_file(follow_symlinks=False):
                     if not entry.path.endswith(".py"):
                         return
-                    md5_instance = hashlib.md5()
+                    sha256_instance = hashlib.sha256()
                     with open(entry.path, "rb") as f:
-                        md5_instance.update(f.read())
-                    md5s.append(md5_instance.hexdigest())
+                        sha256_instance.update(f.read())
+                    sha256s.append(sha256_instance.hexdigest())
 
     def _get_source_code_hash(self):
         mindspeed_path, = mindspeed.__path__
-        md5s = []
-        self._scan_dir_recursively(mindspeed_path, md5s)
-        sorted(md5s)
-        md5_instance = hashlib.md5()
-        for x in md5s:
-            md5_instance.update(x.encode('utf-8'))
-        return md5_instance.hexdigest()
+        sha256s = []
+        self._scan_dir_recursively(mindspeed_path, sha256s)
+        sorted(sha256s)
+        sha256_instance = hashlib.sha256()
+        for x in sha256s:
+            sha256_instance.update(x.encode('utf-8'))
+        return sha256_instance.hexdigest()
 
     def _buildup_filename(self):
         args = get_args()
@@ -207,7 +207,7 @@ class PolicyCacheManager(metaclass=SingletonBase):
         software_versions = self._get_software_version()
         arguments.update(software_versions)
         args_content = json.dumps(arguments, sort_keys=True)
-        args_md5 = hashlib.md5(args_content.encode('utf-8')).hexdigest()
+        args_sha256 = hashlib.sha256(args_content.encode('utf-8')).hexdigest()
 
         mindspeed_home = os.path.dirname(os.path.dirname(mindspeed.__file__))
         adaptive_home = os.path.join(mindspeed_home, "adaptive_mem")
@@ -215,7 +215,7 @@ class PolicyCacheManager(metaclass=SingletonBase):
         file_abs_name_list = []
 
         for i in range(pp):
-            file_name = f"b{mbs}_s{seq_len}_h{hidden}_tp{tp}_cp{cp}_w{world_size}_sp{sp}_ep{ep}_dp{dp}_stage{i}_{args_md5}.policy"
+            file_name = f"b{mbs}_s{seq_len}_h{hidden}_tp{tp}_cp{cp}_w{world_size}_sp{sp}_ep{ep}_dp{dp}_stage{i}_{args_sha256}.policy"
             file_abs_name = os.path.join(adaptive_home, file_name)
             file_abs_name_list.append(file_abs_name)
 
