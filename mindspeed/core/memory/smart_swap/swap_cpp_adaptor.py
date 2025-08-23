@@ -1,4 +1,5 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+import hashlib
 from collections import Counter
 from enum import Enum
 from typing import List, Dict
@@ -69,7 +70,8 @@ class SwapStage:
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash((self.stage_type, self.micro_batch_index, self.layer_index))
+        content = f"({self.stage_type}, {self.micro_batch_index}, {self.layer_index})"
+        return int(hashlib.sha256(content.encode('utf-8')).hexdigest(), 16)
 
     def copy(self):
         # return a python SwapStage copy
@@ -290,7 +292,8 @@ class UniqueSwapPtr:
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash((self.ptr_base, self.index))
+        content = f"({self.ptr_base}, {self.index})"
+        return int(hashlib.sha256(content.encode('utf-8')).hexdigest(), 16)
 
 
 class ProfilerTensorInfo:
@@ -362,7 +365,8 @@ class ProfilerOpInfo:
         return not self.__eq__(other)
 
     def __hash__(self):
-        return hash((self.op_name, self.op_id, self.stage))
+        content = f"({self.op_name}, {self.op_id}, {self.stage})"
+        return int(hashlib.sha256(content.encode('utf-8')).hexdigest(), 16)
 
     def __lt__(self, other):
         if not isinstance(other, ProfilerOpInfo):
