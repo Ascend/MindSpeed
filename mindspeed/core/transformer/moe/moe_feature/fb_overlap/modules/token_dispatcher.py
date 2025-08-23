@@ -70,6 +70,11 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             )
             if self.config.moe_pad_expert_input_to_capacity:
                 num_tokens_per_local_expert = num_tokens_per_local_expert.to('npu')
+            if self.num_local_experts > 1:
+                if self.num_global_tokens_per_local_expert.device.type != 'cpu':
+                    self.num_global_tokens_per_local_expert = (
+                        self.num_global_tokens_per_local_expert.to(torch.device("cpu"), non_blocking=True))
+                self.num_global_tokens_per_local_expert_cpu = self.num_global_tokens_per_local_expert
             return num_tokens_per_local_expert
 
         num_local_tokens_per_expert = routing_map.sum(dim=0).long()
@@ -304,7 +309,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
                     .transpose(0, 1)
                     .contiguous()
                     .flatten(start_dim=0, end_dim=2)
-                )
+                ) if global_input_token_probs is not None else None
             else:
                 global_input_tokens, global_input_token_probs = sort_chunks_by_idxs(
                     global_input_tokens,

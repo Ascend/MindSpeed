@@ -39,6 +39,12 @@ class FusedMoEPermuteFeature(MindSpeedFeature):
                 "When '--moe-token-dispatcher-type alltoall' and '--moe-alltoall-overlap-comm' are enabled at the same"
                 " time, the fusion operator is not currently supported")
 
+        if args.moe_permute_fusion and args.moe_expert_capacity_factor and not args.moe_pad_expert_input_to_capacity:
+            raise AssertionError(
+                "The --moe-permute-fusion can only be enabled if '--moe-expert-capacity-factor' and "
+                "'--moe-pad-expert-input-to-capacity' are enabled at the same time. If only "
+                "--moe-expert-capacity-factor is enabled, the moe permute fusion is not supported.")
+
     def pre_register_patches(self, pm, args):
         # The following patch is to pass the TransformerConfig.__post_init__ check
         pm.register_patch('transformer_engine.pytorch.permutation.moe_permute', torch.nn.Module, create_dummy=True)
