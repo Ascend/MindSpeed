@@ -15,7 +15,6 @@ from .adaptive_memory_tool import AdaptiveStepMgr, SingletonBase, ContextKey as 
 from .adaptive_memory_function import FunctionCtxMgr
 from .adaptive_memory_swap_manager import SwapManager, LayerProfilingHook
 from .adaptive_memory_apply import AdaptMemApplyManager
-from .cpu_binder import bind_cpus
 from .adaptive_memory_cache import PolicyCacheManager
 
 
@@ -150,13 +149,9 @@ def _register_one_module(module):
             _register_one_module(child)
 
 
-def cal_swap_profiling_step(num_micro_batches):
+def cal_swap_profiling_step():
     swap_depth = AdaptiveMemoryPrefetch().prefetch_deep_end - AdaptiveMemoryPrefetch().prefetch_deep_start + 1
-    swap_profiling_times = 4
-    swap_profiling_steps = swap_profiling_times // num_micro_batches
-    if swap_profiling_times % num_micro_batches != 0:
-        swap_profiling_steps += 1
-    return swap_profiling_steps * swap_depth * AdaptiveMemoryPrefetch().each_depth_run_times
+    return swap_depth * AdaptiveMemoryPrefetch().each_depth_run_times
 
 
 def cal_profiling_step(num_micro_batches):
@@ -173,7 +168,7 @@ def init_profiling_steps():
     # cal profiling step
     recompute_profiling_steps = cal_profiling_step(num_micro_batches)
     # cal swap profiling step
-    swap_profiling_steps = cal_swap_profiling_step(num_micro_batches)
+    swap_profiling_steps = cal_swap_profiling_step()
     # init step
     AdaptiveStepMgr().init_steps(recompute_profiling_steps, swap_profiling_steps)
     print_rank_0(f"init profiling steps, recompute:{recompute_profiling_steps}, swap:{swap_profiling_steps}")
@@ -181,7 +176,7 @@ def init_profiling_steps():
 
 def update_swap_profiling_step_and_deep_list():
     # update swap profiling step
-    swap_profiling_steps = cal_swap_profiling_step(get_num_microbatches())
+    swap_profiling_steps = cal_swap_profiling_step()
     # update deep_list
     AdaptiveMemoryPrefetch().solve_prefetch_config()
     AdaptiveStepMgr().init_steps(AdaptiveStepMgr().recompute_profiling_steps, swap_profiling_steps)
@@ -201,9 +196,7 @@ def setup_adapt_memory_optimizer_wrapper(setup_model_and_optimizer):
         register_custom_hooks(models)
 
         AdaptiveMemoryPrefetch().solve_prefetch_config()
-        # 绑核
-        if "910B" in acl.get_soc_name() or "910A" in acl.get_soc_name():
-            bind_cpus(torch.cuda.device_count(), torch.cuda.current_device(), 0)
+
         # 加载历史策略
         PolicyCacheManager().load_cache_file()
 
