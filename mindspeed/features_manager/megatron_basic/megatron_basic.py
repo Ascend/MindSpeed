@@ -50,10 +50,6 @@ class MegatronBasicFeature(MindSpeedFeature):
         from mindspeed.core.fp8_utils import quantize_param_shard
         pm.register_patch('megatron.core.fp8_utils.quantize_param_shard', quantize_param_shard)
 
-        # fix get_megatron_optimizer for core_r0.12.0
-        from mindspeed.core.megatron_basic.get_megatron_optimizer import get_megatron_optimizer
-        pm.register_patch('megatron.core.optimizer.get_megatron_optimizer', get_megatron_optimizer)
-
         # fix count_zeros in ChainedOptimizer for core_r0.12.1.
         from mindspeed.core.megatron_basic.count_zero_fix import step
         pm.register_patch('megatron.core.optimizer.optimizer.ChainedOptimizer.step', step)

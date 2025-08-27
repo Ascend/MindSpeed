@@ -103,12 +103,12 @@ def get_parameter_state(disable_gloo_group, optimizer=None):
     if disable_gloo_group:
         if optimizer is None:
             _, optimizer = setup_model_and_optimizer(disable_gloo_group, 2)
-        optim_param_state_hccl = optimizer.get_parameter_state_dp_zero()
+        optim_param_state_hccl = optimizer.chained_optimizers[0].get_parameter_state_dp_zero()
         return optim_param_state_hccl, optimizer
     else:
         if optimizer is None:
             _, optimizer = setup_model_and_optimizer(disable_gloo_group, 2)
-        optim_param_state_gloo = optimizer.get_parameter_state_dp_zero()
+        optim_param_state_gloo = optimizer.chained_optimizers[0].get_parameter_state_dp_zero()
         return optim_param_state_gloo, optimizer
 
 
@@ -256,20 +256,20 @@ class TestDistributedOptimizer(DistributedTest):
         args.disable_gloo_group = True
         replace_megatron_function()
         if args.reuse_fp32_param:
-            optimizer.get_parameter_state_dp_zero_func = types.MethodType(get_parameter_state_dp_zero_hccl, optimizer)
-            optimizer.load_parameter_state_from_dp_zero_func = types.MethodType(load_parameter_state_from_dp_zero_hccl,
-                                                                                optimizer)
+            optimizer.chained_optimizers[0].get_parameter_state_dp_zero_func = types.MethodType(get_parameter_state_dp_zero_hccl, optimizer.chained_optimizers[0])
+            optimizer.chained_optimizers[0].load_parameter_state_from_dp_zero_func = types.MethodType(load_parameter_state_from_dp_zero_hccl,
+                                                                                optimizer.chained_optimizers[0])
         else:
-            optimizer.get_parameter_state_dp_zero = types.MethodType(get_parameter_state_dp_zero_hccl, optimizer)
-            optimizer.load_parameter_state_from_dp_zero = types.MethodType(load_parameter_state_from_dp_zero_hccl,
-                                                                           optimizer)
+            optimizer.chained_optimizers[0].get_parameter_state_dp_zero = types.MethodType(get_parameter_state_dp_zero_hccl, optimizer.chained_optimizers[0])
+            optimizer.chained_optimizers[0].load_parameter_state_from_dp_zero = types.MethodType(load_parameter_state_from_dp_zero_hccl,
+                                                                           optimizer.chained_optimizers[0])
         initialize_model_parallel_comm(*tp_pp)
         optim_param_state_new, _ = get_parameter_state(args.disable_gloo_group, optimizer)
         diffs = diff(optim_param_state_new, optim_param_state_old)
         assert not any(map(bool, diffs)), diffs
 
         # test load_parameter_state_from_dp_zero()
-        optimizer.load_parameter_state_from_dp_zero(optim_param_state_new, update_legacy_format=False)
+        optimizer.chained_optimizers[0].load_parameter_state_from_dp_zero(optim_param_state_new, update_legacy_format=False)
         optim_param_state_new_copy, _ = get_parameter_state(args.disable_gloo_group, optimizer)
         diffs = diff(optim_param_state_new, optim_param_state_new_copy)
         assert not any(map(bool, diffs)), diffs

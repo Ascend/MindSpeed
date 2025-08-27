@@ -92,21 +92,21 @@ class TestDistributedOptimizer(DistributedTest):
         initialize_model_parallel(*tp_pp)
         _, optimizer = setup_model_and_optimizer(seed=2)
         for _ in range(10):
-            for float16_group in optimizer.float16_groups:
+            for float16_group in optimizer.chained_optimizers[0].float16_groups:
                 for p in float16_group:
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
-        truth_params = copy.deepcopy(list(itertools.chain(*optimizer.float16_groups)))
+        truth_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].float16_groups)))
 
         # reuse
         init_mock_args(args, reuse_fp32_param=True)
         _, optimizer = setup_model_and_optimizer(seed=2)
         for _ in range(10):
-            for float16_group in optimizer.float16_groups:
+            for float16_group in optimizer.chained_optimizers[0].float16_groups:
                 for p in float16_group:
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
-        reuse_params = copy.deepcopy(list(itertools.chain(*optimizer.float16_groups)))
+        reuse_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].float16_groups)))
 
         for p, reuse_p in zip(truth_params, reuse_params):
             if is_deterministic:
@@ -114,7 +114,7 @@ class TestDistributedOptimizer(DistributedTest):
             else:
                 assert torch.allclose(p.data, reuse_p.data, rtol=0.005, atol=0.005)
 
-   
+
     @pytest.mark.parametrize("is_deterministic", [False])
     @pytest.mark.parametrize("overlap_grad_reduce", [True, False])
     @pytest.mark.parametrize("overlap_param_gather", [True, False])
@@ -131,7 +131,7 @@ class TestDistributedOptimizer(DistributedTest):
         initialize_model_parallel(*tp_pp)
         _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
         for _ in range(10):
-            for float16_group in optimizer.model_float16_groups:
+            for float16_group in optimizer.chained_optimizers[0].model_float16_groups:
                 for p in float16_group:
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
@@ -139,14 +139,14 @@ class TestDistributedOptimizer(DistributedTest):
                 for model_chunk in optimizer.model_chunks:
                     model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
-        truth_params = copy.deepcopy(list(itertools.chain(*optimizer.model_float16_groups)))
-       
+        truth_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups)))
+
         # reuse
         init_mock_args(args, use_distributed_optimizer=True, reuse_fp32_param=True)
         initialize_model_parallel(*tp_pp)
         _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
         for _ in range(10):
-            for float16_group in optimizer.model_float16_groups:
+            for float16_group in optimizer.chained_optimizers[0].model_float16_groups:
                 for p in float16_group:
                     p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
             optimizer.step()
@@ -154,8 +154,8 @@ class TestDistributedOptimizer(DistributedTest):
                 for model_chunk in optimizer.model_chunks:
                     model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
-        reuse_params = copy.deepcopy(list(itertools.chain(*optimizer.model_float16_groups)))
-       
+        reuse_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups)))
+
         for p, reuse_p in zip(truth_params, reuse_params):
             if is_deterministic:
                 assert torch.allclose(p.data, reuse_p.data, rtol=0, atol=0)
