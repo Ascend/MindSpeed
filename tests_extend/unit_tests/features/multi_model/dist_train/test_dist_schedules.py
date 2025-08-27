@@ -88,7 +88,9 @@ class TestDistSchedules(unittest.TestCase):
                 tensor_recv_prev=recv_prev,
                 tensor_send_next=send_next,
                 tensor_recv_next=recv_next,
-                group=None
+                group=None,
+                prev_pipeline_rank=mock_prev_rank.return_value,
+                next_pipeline_rank=mock_next_rank.return_value
             )
 
             mock_isend.assert_has_calls([

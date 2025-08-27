@@ -160,3 +160,5 @@ class DistTrainFeature(MindSpeedFeature):
             # checkpoint
             patch_manager.register_patch('megatron.training.checkpointing.get_checkpoint_name',
                                          dist_train.dist_schedules.get_checkpoint_name_wrapper)
+            patch_manager.register_patch('megatron.training.checkpointing._get_checkpoint_format',
+                                        dist_train.dist_schedules.get_checkpoint_format)

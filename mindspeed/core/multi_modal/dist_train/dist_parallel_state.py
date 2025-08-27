@@ -844,6 +844,8 @@ def _initialize_model_parallel(
         if rank in embedding_ranks:
             subworld.embedding_group = group
             subworld.embedding_global_ranks = embedding_ranks
+        if rank in ranks:
+            subworld.embedding_global_ranks = embedding_ranks
 
         position_embedding_ranks = get_position_embedding_ranks(ranks)
         group = torch.distributed.new_group(
@@ -1392,7 +1394,7 @@ def is_rank_in_position_embedding_group():
     """Return true if current rank is in position embedding group, False otherwise."""
     rank = torch.distributed.get_rank()
     global _POSITION_EMBEDDING_GLOBAL_RANKS
-    return rank in _POSITION_EMBEDDING_GLOBAL_RANKS
+    return _POSITION_EMBEDDING_GLOBAL_RANKS is not None and rank in _POSITION_EMBEDDING_GLOBAL_RANKS
 
 
 @subwrold_decorator
