@@ -18,9 +18,8 @@ Token路由：确定每个token应该由哪个专家处理。这可以通过专�
 
 ## 使用限制
 1.支持的调度器类型：当前仅支持 `--moe-token-dispatcher-type alltoall` 和 `--moe-token-dispatcher-type alltoall_seq`。暂不支持 `--moe-token-dispatcher-type allgather`。
-2.融合算子与通信重叠的兼容性：启用 `--moe-token-dispatcher-type alltoall` 时兼容融合算子。但若同时启用 `--moe-token-dispatcher-type alltoall` 与 `--moe-alltoall-overlap-comm`，则暂不兼容该融合算子。
-3.融合算子与专家容量参数的兼容性：若要启用 `--moe-expert-capacity-factor`，必须同时开启 `--moe-pad-expert-input-to-capacity` 方可兼容融合算子。仅开启 `--moe-expert-capacity-factor` 而未开启 `--moe-pad-expert-input-to-capacity` 时，暂不兼容该融合算子。
-4.系统环境要求：仅限于版本标识为 `CANN 8.3.RC1` / `PTA 7.2.RC1 `及其后续所有迭代版本的系统环境。
+2.融合算子与专家容量参数的兼容性：若要启用 `--moe-expert-capacity-factor`，必须同时开启 `--moe-pad-expert-input-to-capacity` 方可兼容融合算子。仅开启 `--moe-expert-capacity-factor` 而未开启 `--moe-pad-expert-input-to-capacity` 时，暂不兼容该融合算子。
+3.系统环境要求：仅限于版本标识为 `CANN 8.3.RC1` / `PTA 7.2.RC1 `及其后续所有迭代版本的系统环境。
 
 ## 使用效果 
 启用融合算子后，不仅能够有效节省内存资源，还能提升模型训练性能。

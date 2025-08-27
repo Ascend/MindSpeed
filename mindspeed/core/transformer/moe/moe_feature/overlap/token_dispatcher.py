@@ -93,6 +93,7 @@ class MoEAlltoAllSeqOverLapDispatcher:
         self.num_out_tokens = self.disaptor.num_out_tokens
         self.num_global_tokens_per_local_expert_cpu = self.disaptor.num_global_tokens_per_local_expert_cpu
         self.comm_stream = self.disaptor.comm_stream if self.config.moe_tp_extend_ep else None
+        self.cuda_sync_point = self.disaptor.cuda_sync_point
         return num_tokens_per_local_expert
 
     def token_permutation(

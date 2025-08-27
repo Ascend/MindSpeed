@@ -162,7 +162,9 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
                 input_splits,
                 ep_group
             )
-        routing_map.untyped_storage().resize_(0)
+        if not config.moe_permute_fusion:
+            # Because the moe_permute_fusion fusion operator needs to save routing_map for backward
+            routing_map.untyped_storage().resize_(0)
         if ctx.use_gmm:
             weights1 = rearrange(weights1, 'n h f -> n f h')
             mm1_inputs_grad = gmm_op(act_inputs.grad, weights1, [], group_list, 0)[0]

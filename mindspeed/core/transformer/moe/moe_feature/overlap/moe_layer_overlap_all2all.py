@@ -363,8 +363,8 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
                 backward_func(cached_fc1_input_graph, cached_fc1_input_detach.grad) 
                 #Avoid cached_fc1_input memory blast when TP=1.
                 if parallel_state.get_expert_tensor_parallel_world_size() > 1:
-                    cached_fc1_input_graph.untyped_storage().resize_(0) 
-                    cached_fc1_input_detach.grad.untyped_storage().resize_(0) 
+                    cached_fc1_input_graph.untyped_storage().resize_(0)
+                    cached_fc1_input_detach.grad.untyped_storage().resize_(0)
 
         if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             if n_shared_experts:
@@ -375,10 +375,11 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         permute2_input_detach.grad.untyped_storage().resize_(0)
 
         bw_permute1_prob_all2all_handle.wait()
-        backward_func(permuted_probs_graph, permute1_prob_backward_input)
-        permute1_prob_backward_input.untyped_storage().resize_(0)
-        backward_func(permute1_graph, permute1_backward_input)
+        # permute1_graph and permuted_probs_graph are in the same graph, do not execute the backward_func twice
+        torch.autograd.backward([permute1_graph, permuted_probs_graph],
+                                grad_tensors=[permute1_backward_input, permute1_prob_backward_input])
         permute1_backward_input.untyped_storage().resize_(0)
+        permute1_prob_backward_input.untyped_storage().resize_(0)
 
         if l_aux_graph is not None:
             l_aux_graph.backward(l_aux_detach.grad, retain_graph=True)
