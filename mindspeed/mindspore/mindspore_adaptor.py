@@ -70,15 +70,9 @@ def mindspore_adaptation(aspm, mindspeed_args):
     from mindspeed.mindspore.core.optimizer.adamw import step_func
     aspm.register_patch('apex.optimizers.FusedAdam.step', step_func)
 
-    from mindspeed.mindspore.third_party.safetensors.torch import storage_ptr, storage_size, save_file, load_file
-    aspm.register_patch('safetensors.torch.storage_ptr', storage_ptr)
-    aspm.register_patch('safetensors.torch.storage_size', storage_size)
+    from mindspeed.mindspore.third_party.safetensors.torch import save_file, load_file
     aspm.register_patch('safetensors.torch.save_file', save_file)
     aspm.register_patch('safetensors.torch.load_file', load_file)
-    
-    from mindspeed.mindspore.third_party.huggingface_hub._torch import get_torch_storage_size, storage_ptr
-    aspm.register_patch('huggingface_hub.serialization._torch.get_torch_storage_size', get_torch_storage_size)
-    aspm.register_patch('huggingface_hub.serialization._torch.storage_ptr', storage_ptr)
 
     from mindspeed.mindspore.core.models.common.language_module.language_module import setup_embeddings_and_output_layer
     aspm.register_patch(
