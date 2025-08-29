@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
-from mindspeed.mindspore.ops.npu_apply_fused_adamw_v2 import npu_apply_fused_adamw_v2
+from torch import npu_apply_fused_adamw_v2
 
 
 def adamw(params: List[Tensor],
