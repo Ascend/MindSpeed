@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import torch
+
 
 def make_viewless_tensor(inp, requires_grad, keep_graph):
     '''
@@ -33,3 +35,18 @@ def make_viewless_tensor(inp, requires_grad, keep_graph):
                 return _kernel_make_viewless_tensor(inp, requires_grad)
     except AttributeError as e:
         return inp
+
+
+def _kernel_make_viewless_tensor(inp, requires_grad):
+    """Make a viewless tensor.
+
+    View tensors have the undesirable side-affect of retaining a reference
+    to the originally-viewed tensor, even after manually setting the '.data'
+    field. This method creates a new tensor that links to the old tensor's
+    data, without linking the viewed tensor, referenced via the '._base'
+    field.
+    """
+    out = torch.empty((1,), dtype=inp.dtype, device=inp.device, requires_grad=False)
+    out.data = inp.data
+    out.requires_grad_(requires_grad)
+    return out
