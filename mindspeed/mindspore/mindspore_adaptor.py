@@ -58,11 +58,6 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('safetensors.torch.save_file', save_file)
     aspm.register_patch('safetensors.torch.load_file', load_file)
 
-    from mindspeed.mindspore.core.models.common.language_module.language_module import setup_embeddings_and_output_layer
-    aspm.register_patch(
-        'megatron.core.models.common.language_module.language_module.LanguageModule.setup_embeddings_and_output_layer',
-        setup_embeddings_and_output_layer)
-
     # accelerate
     from mindspeed.mindspore.third_party.accelerate.extract import extract_model_from_parallel
     aspm.register_patch('accelerate.utils.extract_model_from_parallel', extract_model_from_parallel)
