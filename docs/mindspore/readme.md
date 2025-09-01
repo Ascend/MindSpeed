@@ -58,28 +58,17 @@ pip install -r requirements.txt
 
 ```shell
 # 获取指定版本的MindSpeed源码：
-git clone https://gitee.com/ascend/MindSpeed.git -b core_r0.8.0
+git clone https://gitee.com/ascend/MindSpeed.git -b master
 
 # 获取指定版本的Megatron-LM源码：
-git clone https://gitee.com/mirrors/Megatron-LM.git -b core_r0.8.0
+git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
 
 # 获取指定版本的MSAdapter源码：
 git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
 ```
 具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitee.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert_llm.sh](https://gitee.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert_llm.sh)。
 
-（2）使用MindSpore-Core-MS的代码转换工具：
-
-```shell
-# 在MindSpeed-Core-MS目录下执行
-MindSpeed_Core_MS_PATH=$(pwd)
-echo ${MindSpeed_Core_MS_PATH}
-python3 tools/transfer.py \
---megatron_path ${MindSpeed_Core_MS_PATH}/Megatron-LM/megatron/ \
---mindspeed_path ${MindSpeed_Core_MS_PATH}/MindSpeed/mindspeed
-```
-
-（3）设置环境变量：
+（2）设置环境变量：
 
 ```shell
 # 在MindSpeed-Core-MS目录下执行
@@ -89,7 +78,7 @@ export PYTHONPATH=${MindSpeed_Core_MS_PATH}/MSAdapter/mindtorch:${MindSpeed_Core
 echo $PYTHONPATH
 ```
 
-（4）如需使用Ascend Transformer Boost（ATB）加速库算子，请先安装 CANN-NNAL 并初始化添加环境，例如：
+（3）如需使用Ascend Transformer Boost（ATB）加速库算子，请先安装 CANN-NNAL 并初始化添加环境，例如：
 
 ```shell
 # CANN-NNAL默认安装路径为：/usr/local/Ascend/nnal
@@ -336,7 +325,7 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   <tbody>
     <tr>
     <td rowspan="5">  SWAP优化器</td>
-    <td><a href="../features/hccl-group-buffer-set.md">link</a></td>
+    <td><a href="../features/swap-optimizer.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -722,6 +711,12 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   </tr>
 <tbody>
   <tr>
+    <td rowspan="5"> npu_apply_fused_ema_adamw  </td>
+    <td><a href="../ops/npu_apply_fused_ema_adamw.md">link</a></td>
+    <td style="text-align: center; vertical-align: middle">✅</td>
+  </tr>
+<tbody>
+  <tr>
     <td rowspan="5"> ffn  </td>
     <td><a href="../ops/ffn.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
@@ -772,12 +767,6 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   <tr>
     <td rowspan="5"> quant_gmm  </td>
     <td><a href="../ops/quant_gmm.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_apply_fused_ema_adamw  </td>
-    <td><a href="../ops/npu_apply_fused_ema_adamw.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 </table>
