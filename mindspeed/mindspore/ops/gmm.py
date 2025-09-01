@@ -167,3 +167,15 @@ def _npu_gmm_v2(original_weight, x, weight, *, bias=None, group_list=None, group
 
 def npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=False, original_weight=None):
     return _npu_gmm_common(original_weight, x, weight, bias=bias, group_list=group_list, group_type=group_type, group_list_type=1, gemm_fusion=gemm_fusion)
+
+
+class _GmmProxy:
+    def npu_gmm(self, *args, **kwargs):
+        return ops.function.math_func.gmm(*args, **kwargs)
+
+
+_GMM_PROXY = _GmmProxy()
+
+
+def _GMM_patched_load(*_args, **_kwargs):
+    return _GMM_PROXY

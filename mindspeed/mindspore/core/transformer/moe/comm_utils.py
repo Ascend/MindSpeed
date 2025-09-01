@@ -3,10 +3,11 @@ import einops
 import torch
 import torch_npu
 import torch.distributed as dist
+import mindspore
 COMM_STREAM = None
 
 
-def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event=None):
+def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event=None, stream=None):
     world_size = dist.get_world_size(group)
     if world_size == 1:
         return input_, input_, None
@@ -24,9 +25,11 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
         # multi stream wait event
         global COMM_STREAM
         if COMM_STREAM is None:
-            COMM_STREAM = mindspore.runtime.communitation_stream()
+            COMM_STREAM = mindspore.runtime.communication_stream()
         with mindspore.runtime.StreamCtx(COMM_STREAM):
             event.wait()
+            if stream:
+                COMM_STREAM.wait_stream(stream)
             handle = dist.all_to_all_single(
                 a2a_out,
                 input_.contiguous(),
