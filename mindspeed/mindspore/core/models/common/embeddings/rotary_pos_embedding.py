@@ -33,52 +33,6 @@ def get_rotation_matrix(x):
     return _ROTATION_MATRIX
 
 
-def get_rotary_seq_len(
-    self,
-    inference_context: BaseInferenceContext,
-    transformer: TransformerBlock,
-    transformer_input: Tensor,
-    transformer_config: TransformerConfig,
-    packed_seq_params: PackedSeqParams,
-    *,
-    inference_params: Optional[BaseInferenceContext] = None,
-) -> float:
-    """Function to get the rotary sequence length.
-
-    Args:
-        inference_context : Used during Inference time
-        transformer (TransformerBlock): The transformer block (decoder/encoder) used
-            by the model
-        transformer_input (Tensor): Input tensor to the transformer
-        transformer_config (TransformerConfig): Transformer config used by the model
-        packed_seq_params (PackedSeqParams): Packed sequence params
-
-    Returns:
-        float: The rotary sequence length
-    """
-
-    inference_context = deprecate_inference_params(inference_context, inference_params)
-
-    if packed_seq_params is not None:
-        # max_seqlen are the max sequence length in the packed sequence before being divived
-        # by the tp and cp size.
-        return max(packed_seq_params.max_seqlen_q, packed_seq_params.max_seqlen_kv)
-    elif inference_context is not None:
-        rotary_seq_len = inference_context.max_sequence_length
-    else:
-        if transformer is not None and transformer.input_tensor is not None and len(transformer.input_tensor.shape) > 1:
-            rotary_seq_len = transformer.input_tensor.size(0)
-        else:
-            rotary_seq_len = transformer_input.size(0)
-
-        if transformer_config.sequence_parallel:
-            rotary_seq_len *= transformer_config.tensor_model_parallel_size
-
-    rotary_seq_len *= transformer_config.context_parallel_size
-
-    return rotary_seq_len
-
-
 def local_rotate_half(x: Tensor, rotary_interleaved: bool) -> Tensor:
     """Change sign so the last dimension becomes [-odd, +even]
 

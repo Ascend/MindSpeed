@@ -16,17 +16,10 @@ def mindspore_adaptation(aspm, mindspeed_args):
         get_rotary_seq_len)  # name overlap
     aspm.register_patch('megatron.core.models.common.embeddings._rotate_half', local_rotate_half)
 
-    from .core.optimizer.optimizer import megatron_optimizer_init
-    aspm.register_patch('megatron.core.optimizer.optimizer.MegatronOptimizer.__init__', megatron_optimizer_init)
-
     from .core.pipeline_parallel.schedules import deallocate_output_tensor_
         
     aspm.register_patch('megatron.core.pipeline_parallel.schedules.deallocate_output_tensor',
                         deallocate_output_tensor_)
-
-    from .core.tensor_parallel.data import local_build_key_size_numel_dictionaries  # resolve error
-    aspm.register_patch('megatron.core.tensor_parallel.data._build_key_size_numel_dictionaries',
-                        local_build_key_size_numel_dictionaries)
 
     from .core.tensor_parallel.random import local_set_cuda_rng_state
     aspm.register_patch('megatron.core.tensor_parallel.random._set_cuda_rng_state', local_set_cuda_rng_state,
