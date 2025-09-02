@@ -15,7 +15,8 @@ class MoESharedExpertsFeature(MindSpeedFeature):
 
     def validate_args(self, args):
         # Check if use double type MoE shared_experts(MindSpeed & Megatron).
-        if args.n_shared_experts and args.moe_shared_expert_intermediate_size:
+        if args.n_shared_experts and args.moe_shared_expert_intermediate_size and (args.moe_shared_expert_intermediate_size != args.n_shared_experts * (
+                args.moe_ffn_hidden_size if args.moe_ffn_hidden_size is not None else args.ffn_hidden_size)):
             raise AssertionError('`n_shared_experts` cannot be used with `moe_shared_expert_intermediate_size` together. Please use one of them.')
         # Convert args to megatron shared_experts for init.
         if args.n_shared_experts and args.moe_shared_expert_intermediate_size is None:

@@ -37,6 +37,8 @@ class VariableSequenceLengthFeature(MindSpeedFeature):
 
     def pre_validate_args(self, args: Namespace):
         self._var_seq_lengths = args.variable_seq_lengths
+        if getattr(args, 'num_moe_experts', None) is None:
+            args.variable_seq_lengths = False
 
     def post_validate_args(self, args: Namespace):
         args.variable_seq_lengths = self._var_seq_lengths
