@@ -6,6 +6,7 @@ Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 from argparse import Namespace
 from typing import Optional, List, Union
+from torch import Tensor
 
 from megatron.core import InferenceParams
 from megatron.core.inference.contexts import BaseInferenceContext
@@ -16,10 +17,12 @@ from megatron.core.transformer.moe.moe_utils import (
     clear_aux_losses_tracker, reduce_aux_losses_tracker_across_ranks)
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlock
-from megatron.training import get_args
-from megatron.training.training import \
-    num_floating_point_operations as origin_flop_calculator
-from torch import Tensor
+try:
+    from megatron.training.training import \
+        num_floating_point_operations as origin_flop_calculator
+except ImportError:
+    origin_flop_calculator = None
+from mindspeed.args_utils import get_full_args as get_args
 
 from .calc_flop import calc_flop
 from .moe_metrics_tracker import track_moe_metrics_impl

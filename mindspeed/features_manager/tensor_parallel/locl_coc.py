@@ -23,7 +23,7 @@ class CoCFeature(MindSpeedFeature):
 
     def validate_args(self, args):
         self.incompatible_check(args, 'unaligned_linear')
-        if args.num_experts:
+        if getattr(args, 'num_experts', None):
             if args.use_ascend_coc:
                 raise AssertionError('coc is not compatible with moe models')
         if hasattr(args, 'use_ascend_mc2') and args.use_ascend_mc2:

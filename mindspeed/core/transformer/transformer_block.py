@@ -8,8 +8,8 @@ from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
-from megatron.training import get_args
 from megatron.core.extensions.transformer_engine import TENorm
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.comm_autograd_function import auto_grad_sync_gather_along_last_dim, \
     auto_grad_sync_gather_along_first_dim
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPYCollectiveComm

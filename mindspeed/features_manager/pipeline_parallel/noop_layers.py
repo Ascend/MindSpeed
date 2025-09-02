@@ -8,7 +8,7 @@ from argparse import ArgumentParser, Namespace
 from logging import getLogger
 
 from mindspeed.features_manager.feature import MindSpeedFeature
-from mindspeed.patch_utils import MindSpeedPatchesManager
+from mindspeed.patch_utils import is_megatron_training_available, MindSpeedPatchesManager
 
 LOG = getLogger(__name__)
 
@@ -68,10 +68,14 @@ class NoopLayersFeature(MindSpeedFeature):
                 "megatron.core.transformer.transformer_block.TransformerBlock._build_layers",  # noqa
                 mindspeed_build_layers,
             )
-            patch_manager.register_patch(
-                "megatron.training.training.num_floating_point_operations",
-                mindspeed_calc_flop,
-            )
+
+            megatron_training_available = is_megatron_training_available()
+            if megatron_training_available:
+                patch_manager.register_patch(
+                    "megatron.training.training.num_floating_point_operations",
+                    mindspeed_calc_flop,
+                )
+
             patch_manager.register_patch(
                 "megatron.core.transformer.moe.moe_utils.track_moe_metrics",
                 mindspeed_track_moe_metrics,

@@ -3,6 +3,7 @@
 from argparse import ArgumentParser
 
 from mindspeed.features_manager.feature import MindSpeedFeature
+from mindspeed.patch_utils import is_megatron_training_available
 
 
 class ContextParallelFeature(MindSpeedFeature):
@@ -31,9 +32,9 @@ class ContextParallelFeature(MindSpeedFeature):
     def validate_args(self, args):
         # ring context parallel
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'megatron_cp_algo':
-            if args.seq_length % (2 * args.context_parallel_size) != 0:
+            if hasattr(args, 'seq_length') and args.seq_length % (2 * args.context_parallel_size) != 0:
                 raise AssertionError("sequence length must be divisible by 2 * context_parallel_size")
-            if args.position_embedding_type == 'alibi':
+            if getattr(args, 'position_embedding_type', None) == 'alibi':
                 if not ((args.alibi_fusion_attn_type == 2) and (args.attention_mask_type == 'causal')):
                     raise AssertionError("megatron_cp_algo only support alibi type 2 and attention_mask_type causal")
 
@@ -44,12 +45,12 @@ class ContextParallelFeature(MindSpeedFeature):
                 raise AssertionError('context parallel size must be divisible by cp_window_size when using double ring attention.')
             args.use_flash_attn = True
 
-        if args.context_parallel_size > 1 and args.position_embedding_type == 'alibi':
+        if args.context_parallel_size > 1 and getattr(args, 'position_embedding_type', None) == 'alibi':
             if args.context_parallel_algo != 'megatron_cp_algo':
                 raise AssertionError("alibi only support megatron_cp_algo")
 
-        if args.context_parallel_size > 1 and args.reset_attention_mask and args.attention_mask_type == 'causal':
-            if args.context_parallel_algo != 'megatron_cp_algo':
+        if args.context_parallel_size > 1 and hasattr(args, 'reset_attention_mask') and args.reset_attention_mask:
+            if args.attention_mask_type == 'causal' and args.context_parallel_algo != 'megatron_cp_algo':
                 raise AssertionError('accelerated eod reset mode only support ring attention')
 
         # hybrid context parallel
@@ -67,7 +68,7 @@ class ContextParallelFeature(MindSpeedFeature):
             if not (head >= 1 and remainder == 0):
                 raise AssertionError("num_attention_heads must be divisible by ulysse-degree-in-cp * tensor_model_parallel_size in hybrid cp")
 
-            if args.seq_length % (2 * args.context_parallel_size) != 0:
+            if hasattr(args, 'seq_length') and args.seq_length % (2 * args.context_parallel_size) != 0:
                 raise AssertionError("sequence length must be divisible by 2 * context_parallel_size in hybrid cp")
 
             if not (args.cp_window_size >= 1 and args.cp_window_size < ring_degree):
@@ -95,13 +96,9 @@ class ContextParallelFeature(MindSpeedFeature):
                                          destroy_model_parallel_cp_wrapper)
             patch_manager.register_patch('megatron.core.parallel_state.get_context_parallel_group_for_send_recv_overlap',
                                          get_context_parallel_group_for_send_recv_overlap)
-            
-            try:
-                import megatron.training
-                only_mcore = False
-            except ModuleNotFoundError:
-                only_mcore = True
-            if not only_mcore:
+
+            megatron_training_available = is_megatron_training_available()
+            if megatron_training_available:
                 from mindspeed.core.context_parallel.get_batch_utils import get_batch_on_this_cp_rank
                 patch_manager.register_patch('megatron.training.utils.get_batch_on_this_cp_rank', get_batch_on_this_cp_rank)
 

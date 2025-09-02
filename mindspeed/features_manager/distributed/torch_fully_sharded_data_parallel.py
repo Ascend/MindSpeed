@@ -24,7 +24,7 @@ class TorchFullyShardedDataParallelFeature(MindSpeedFeature):
                            type=str)
 
     def validate_args(self, args):
-        if not args.use_torch_fsdp2 and args.fsdp2_config_path:
+        if not getattr(args, 'use_torch_fsdp2', False) and getattr(args, 'fsdp2_config_path', None):
             raise AssertionError('--fsdp2-config-path only used when --use-torch-fsdp2')
 
     def register_patches(self, patch_manager, args):

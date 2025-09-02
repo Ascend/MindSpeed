@@ -7,7 +7,6 @@ from typing import Iterator, List, Union, Optional
 import torch
 
 from megatron.core import mpu, dist_checkpointing
-from megatron.training import get_args
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.core.enums import ModelType
 import megatron.core.pipeline_parallel.schedules as schedules
@@ -19,6 +18,7 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_next_rank,
     get_pipeline_model_parallel_prev_rank
 )
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.multi_modal.dist_train.dist_ranks_match import get_dst_ranks
 from mindspeed.core.multi_modal.dist_train.dist_communication import generate_send_recv_mask, send_recv_tensor_list, send_recv
 from mindspeed.core.multi_modal.dist_train.dist_train_config import (

@@ -52,7 +52,7 @@ class FusionAttentionFeature(MindSpeedFeature):
         )
 
     def validate_args(self, args):
-        if args.use_flash_attn and not (args.sparse_mode == 0 or args.sparse_mode == 2):
+        if getattr(args, 'use_flash_attn', False) and not (args.sparse_mode == 0 or args.sparse_mode == 2):
             raise AssertionError("When use_flash_attn, only supports sparse modes 0 and 2")
 
     def register_patches(self, patch_manager, args):

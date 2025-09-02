@@ -4,7 +4,7 @@
 from argparse import ArgumentParser, Namespace
 
 from mindspeed.features_manager.feature import MindSpeedFeature
-from mindspeed.patch_utils import MindSpeedPatchesManager
+from mindspeed.patch_utils import is_megatron_training_available, MindSpeedPatchesManager
 
 
 class OptimizeP2PCommFeature(MindSpeedFeature):
@@ -33,8 +33,10 @@ class OptimizeP2PCommFeature(MindSpeedFeature):
                 getattr(args, "num_layers_per_virtual_pipeline_stage", None)
                 is None  # noqa
             ):
-                patch_manager.register_patch(
-                    "megatron.training.arguments.core_transformer_config_from_args",  # noqa
-                    core_transformer_config_from_args_wrapper,
-                )
+                megatron_training_available = is_megatron_training_available()
+                if megatron_training_available:
+                    patch_manager.register_patch(
+                        "megatron.training.arguments.core_transformer_config_from_args",  # noqa
+                        core_transformer_config_from_args_wrapper,
+                    )
 

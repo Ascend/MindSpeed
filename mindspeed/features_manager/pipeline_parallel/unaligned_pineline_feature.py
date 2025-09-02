@@ -44,7 +44,7 @@ class UnalignedPipelineFeature(MindSpeedFeature):
         if args.pipeline_num_transformer_layers is None:
             return
 
-        pipe_layers = parse_string_to_array(args.pipeline_num_transformer_layers)
+        pipe_layers = args.pipeline_num_transformer_layers if isinstance(args.pipeline_num_transformer_layers, list) else parse_string_to_array(args.pipeline_num_transformer_layers)
         if len(pipe_layers) == 0 or len(pipe_layers) != args.pipeline_model_parallel_size:
             raise AssertionError(f"pipeline_num_transformer_layers' length{len(pipe_layers)} "
                                  f"should equal to pipeline_model_parallel_size{args.pipeline_model_parallel_size}.")

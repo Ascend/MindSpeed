@@ -73,12 +73,14 @@ def print_args_wrapper(fn):
 def transformer_config_post_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self):
-        if self.num_moe_experts is None:
-            _ori_var_seq = getattr(self, 'variable_seq_lengths', False)
-            self.variable_seq_lengths = False
+        # make prev validation and copy some args.
+        MindSpeedFeaturesManager.pre_validate_features_args(self)
+
         fn(self)
-        if self.num_moe_experts is None:
-            self.variable_seq_lengths = _ori_var_seq
+
+        MindSpeedFeaturesManager.post_validate_features_args(args=self)
+
+        MindSpeedFeaturesManager.validate_features_args(args=self)
 
     return wrapper
 

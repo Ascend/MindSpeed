@@ -11,10 +11,10 @@ from typing import Callable, List, Optional, Sequence
 import torch
 from torch._C._distributed_c10d import ProcessGroup
 from megatron.core import mpu
-from megatron.training import get_args
 from megatron.core.utils import GlobalMemoryBuffer, is_torch_min_version
 from megatron.core.parallel_state import RankGenerator, create_hierarchical_parallel_groups, default_embedding_ranks, \
     default_position_embedding_ranks
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.multi_modal.dist_train.dist_train_config import get_dist_model_config, get_all_config_size, \
     get_all_config
 
