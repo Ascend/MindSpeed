@@ -59,7 +59,7 @@ def all_to_all_forward_a2avc(ctx, group, input, send_count_matrix):  # staticmet
 
     #  build & verify send_count_matrix
     if send_count_matrix is None:
-        if in0 % world_size == 0:
+        if in0 % world_size != 0:
             raise ValueError(f"Uniform distribution of experts requires that input.size(0) should be exactly divided by world_size={world_size} , but the current input.size(0)={in0}")
 
         chunk = in0 // world_size
