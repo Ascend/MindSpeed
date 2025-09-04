@@ -50,19 +50,28 @@ class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
         super().validate_args(args)
         self.incompatible_check(args, "adaptive_memory_optimization")
         if args.recompute_in_bubble:
-            if args.recompute_num_layers:
+            # Check if recompute_num_layers is set to the value we expect
+            expected_recompute_num_layers = None
+            if getattr(args, "enable_recompute_layers_per_pp_rank", False):
+                expected_recompute_num_layers = args.num_layers // args.pipeline_model_parallel_size
+            else:
+                expected_recompute_num_layers = args.num_layers_per_virtual_pipeline_stage
+            
+            # Only raise error when recompute_num_layers is set and not equal to our expected value
+            if args.recompute_num_layers and args.recompute_num_layers != expected_recompute_num_layers:
                 raise AssertionError('recompute_num_layers must be None or 0 when using recompute_in_bubble')
             if args.pipeline_model_parallel_size <= 1 or args.num_layers_per_virtual_pipeline_stage is None:
                 raise AssertionError('recompute_in_bubble only support pipelining with interleaving')
             if not getattr(args, "swap_attention", False):
                 # Following is a trick to realize bubble recomputation. We first enable all recomputation,
                 # and then disable recomputation for all layers except the ones chosen for bubble recomputation.
-                args.recompute_granularity = "full"
-                args.recompute_method = "block"
-            if getattr(args, "enable_recompute_layers_per_pp_rank", False):
-                args.recompute_num_layers = args.num_layers // args.pipeline_model_parallel_size
-            else:
-                args.recompute_num_layers = args.num_layers_per_virtual_pipeline_stage
+                # Only set these values if they haven't been set already to ensure idempotency
+                if getattr(args, 'recompute_granularity', None) != "full":
+                    args.recompute_granularity = "full"
+                if getattr(args, 'recompute_method', None) != "block":
+                    args.recompute_method = "block"
+            if expected_recompute_num_layers is not None and args.recompute_num_layers != expected_recompute_num_layers:
+                args.recompute_num_layers = expected_recompute_num_layers
 
 
 class RiPipeSchedulesAdvanceFeature(RiPipeSchedulesFeature):
