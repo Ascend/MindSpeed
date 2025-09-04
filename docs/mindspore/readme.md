@@ -38,7 +38,7 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
 </table>
 
 
-### 2. 获取 MindSpore-Core-MS 代码仓
+### 2. 获取 [MindSpore-Core-MS](https://gitee.com/ascend/MindSpeed-Core-MS/) 代码仓
 
 执行以下命令拉取MindSpeed-Core-MS代码仓，并安装Python三方依赖库，如下所示：
 
