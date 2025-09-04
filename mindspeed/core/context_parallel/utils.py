@@ -137,7 +137,31 @@ class RingP2P:
 
         self.send_recv_ops = []
 
-    def async_send_recv(self, send_tensor, recv_tensor, shapes=None):
+    def async_send_recv(self, orig_send_tensor, orig_recv_tensor, shapes=None):
+        send_tensor, recv_tensor = orig_send_tensor, orig_recv_tensor
+
+        enable_mla = isinstance(orig_send_tensor, (list, tuple))
+        if enable_mla:
+            if shapes is not None:
+                raise ValueError("MLA context parallel does not support uneven shapes yet.")
+            if len(orig_send_tensor) != 2 or len(orig_recv_tensor) != 2:
+                raise ValueError(
+                    f"Expected tensors of length 2 (k,v), got lengths: "
+                    f"send={len(orig_send_tensor)}, recv={len(orig_recv_tensor)}"
+                )
+            k_send, v_send = orig_send_tensor
+            k_recv, v_recv = orig_recv_tensor
+            if k_send.shape != k_recv.shape or v_send.shape != v_recv.shape:
+                raise ValueError(
+                    "Shape mismatch in KV tensors:\n"
+                    f"  k_send: {k_send.shape} vs k_recv: {k_recv.shape}\n"
+                    f"  v_send: {v_send.shape} vs v_recv: {v_recv.shape}"
+                )
+            k_shape, v_shape = k_send.shape, v_send.shape
+            k_numel = k_send.numel()
+            send_tensor = torch.cat((k_send.view(-1), v_send.view(-1)), dim=-1)
+            recv_tensor = torch.cat((k_recv.view(-1), v_recv.view(-1)), dim=-1)
+
         if self.ring_rank % 2 == 0:
             if shapes is not None:
                 send_tensor_shape_list = list(send_tensor.shape)
@@ -164,6 +188,13 @@ class RingP2P:
             send_op = dist.isend(send_tensor, self.next, self.group_for_send_recv_overlap)
             self.send_recv_ops.append(recv_op)
             self.send_recv_ops.append(send_op)
+
+        if enable_mla:
+            # Important: The original k/v tensors are views into recv_tensor's memory.
+            # Must synchronize async P2P operations before using these views
+            # to prevent data races or corrupted memory.
+            orig_recv_tensor[0] = recv_tensor[:k_numel].view(*k_shape)  # [k_numel] -> k_shape
+            orig_recv_tensor[1] = recv_tensor[k_numel:].view(*v_shape)  # [v_numel] -> v_shape
     
     def wait(self):
         if len(self.send_recv_ops) > 0:

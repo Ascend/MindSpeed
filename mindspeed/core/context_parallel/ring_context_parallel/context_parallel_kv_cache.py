@@ -25,10 +25,16 @@ class ContextParallelKVCache:
         self.cp_size = self.outer_size * self.inner_size
         self.outer_index = 0
 
-        send_data = torch.zeros((2, *self.k[-1].shape), dtype=self.k[-1].dtype, device=self.k[-1].device)
-        send_data.copy_(torch.cat((self.k[-1].unsqueeze(0), self.v[-1].unsqueeze(0)), dim=0))
-        outer_recv_data = send_data.clone()
-        inner_recv_data = send_data.clone()
+        enable_mla = k[-1].shape[-1] != v[-1].shape[-1]
+        if not enable_mla:
+            send_data = torch.zeros((2, *self.k[-1].shape), dtype=self.k[-1].dtype, device=self.k[-1].device)
+            send_data.copy_(torch.cat((self.k[-1].unsqueeze(0), self.v[-1].unsqueeze(0)), dim=0))
+            outer_recv_data = send_data.clone()
+            inner_recv_data = send_data.clone()
+        else:
+            send_data = [self.k[-1].clone(), self.v[-1].clone()]
+            outer_recv_data = [self.k[-1].clone(), self.v[-1].clone()]
+            inner_recv_data = [self.k[-1].clone(), self.v[-1].clone()]
         self.cur_kv, self.outer_next_kv, self.inner_next_kv = send_data, outer_recv_data, inner_recv_data
 
         self.k_out, self.v_out = None, None
@@ -68,7 +74,11 @@ class ContextParallelKVCache:
         first_step_with_full_cache = self.cache_policy == "full" and index > 0
 
         if not first_step_with_full_cache and not is_last_step:
-            self.outer_ring_p2p.async_send_recv(send_tensor=self.cur_kv.clone(), recv_tensor=self.outer_next_kv, shapes=shapes)
+            if isinstance(self.cur_kv, (list, tuple)):
+                send_tensor = [x.clone() for x in self.cur_kv]
+            else:
+                send_tensor = self.cur_kv.clone()
+            self.outer_ring_p2p.async_send_recv(send_tensor, self.outer_next_kv, shapes=shapes)
 
     def communicate_inner_ring_kv(self, index, shapes=None):
         """
@@ -103,7 +113,7 @@ class ContextParallelKVCache:
         first_step_with_full_cache = self.cache_policy == "full" and total_index > 0
 
         if not first_step_with_full_cache and not is_last_step:
-            self.inner_ring_p2p.async_send_recv(send_tensor=self.cur_kv, recv_tensor=self.inner_next_kv, shapes=shapes)
+            self.inner_ring_p2p.async_send_recv(self.cur_kv, self.inner_next_kv, shapes=shapes)
 
         cache_index = self.cp_size - total_index - 1
         if self.cache_policy is None:

@@ -922,6 +922,9 @@ class AttentionWithCp(torch.autograd.Function):
     def forward(ctx, q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
                 packed_seq_params=None, shapes=None):
 
+        enable_mla = k.shape[-1] != v.shape[-1]
+        ctx.enable_mla = enable_mla
+
         cp_config = AttentionWithCpConfig.init_from_para(cp_para)
         cp_config.cp_outer_ranks = cp_para.get("cp_outer_ranks", cp_config.cp_global_ranks)
         cp_config.inner_size = len(cp_config.cp_inner_ranks)
@@ -970,9 +973,16 @@ class AttentionWithCp(torch.autograd.Function):
             else:
                 # split chunk[i]~chunk[cp_size-i-1] into chunk[i] and chunk[cp_size-i-1],, [2s, b, h] -> [2, s, b, h]
                 q, k, v = [x.view(2, x.shape[0] // 2, *x.shape[1:]) for x in [q, k, v]]
-        cur_kv = torch.cat((k.unsqueeze(0), v.unsqueeze(0)), dim=0)  # [2, 2, s, b, h]
-        next_kv = torch.empty_like(cur_kv)
-        next_round_kv = torch.empty_like(cur_kv)
+
+        if enable_mla:
+            cur_kv = [k, v]
+            next_kv = [torch.empty_like(k), torch.empty_like(v)]
+            next_round_kv = [torch.empty_like(k), torch.empty_like(v)]
+        else:
+            cur_kv = torch.cat((k.unsqueeze(0), v.unsqueeze(0)), dim=0)  # [2, 2, s, b, h]
+            next_kv = torch.empty_like(cur_kv)
+            next_round_kv = torch.empty_like(cur_kv)
+
         attn_out, softmax_max, softmax_sum = None, None, None
         # (seed, offset, numels) for dropout mask
         cp_config.rng_states = [[0, 0, 0] for _ in range(cp_config.cp_size)]
@@ -990,12 +1000,12 @@ class AttentionWithCp(torch.autograd.Function):
             kv_block_offset = (cp_config.kv_block_id // cp_config.inner_size) * cp_config.inner_size
             if j < cp_config.outer_size - 1:
                 next_kv_block_id_outer = (kv_block_id_outer + cp_config.cp_size - cp_config.inner_size) % cp_config.cp_size
-                outer_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_round_kv, shapes=get_unaligned_cp_shapes(shapes, kv_block_id_outer, next_kv_block_id_outer))
+                outer_ring.async_send_recv(cur_kv, next_round_kv, shapes=get_unaligned_cp_shapes(shapes, kv_block_id_outer, next_kv_block_id_outer))
             for i in range(cp_config.inner_size):
                 # wait until KV is received from recv_src
                 if i < cp_config.inner_size - 1:
                     next_kv_block_id = (cp_config.kv_block_id + cp_config.inner_size - 1) % cp_config.inner_size + kv_block_offset
-                    inner_ring.async_send_recv(send_tensor=cur_kv, recv_tensor=next_kv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id))
+                    inner_ring.async_send_recv(cur_kv, next_kv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id))
 
                 cp_config.cur_k, cp_config.cur_v = cur_kv[0], cur_kv[1]  # [2, s, b, h]
 
@@ -1095,10 +1105,17 @@ class AttentionWithCp(torch.autograd.Function):
             cur_shapes_list = list(k_stack[-1].shape)
             cur_shapes_list[-3] = shapes[cp_config.kv_block_id]
             cur_dkv = torch.zeros((2, *cur_shapes_list), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
-        else:
+            next_dkv = cur_dkv.clone()
+            next_round_dkv = cur_dkv.clone()
+        elif not ctx.enable_mla:
             cur_dkv = torch.zeros((2, *k_stack[-1].shape), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
-        next_dkv = cur_dkv.clone()
-        next_round_dkv = cur_dkv.clone()
+            next_dkv = cur_dkv.clone()
+            next_round_dkv = cur_dkv.clone()
+        else:
+            k_tmp, v_tmp = k_stack[-1], v_stack[-1]
+            cur_dkv = [torch.zeros_like(k_tmp), torch.zeros_like(v_tmp)]
+            next_dkv = [torch.zeros_like(k_tmp), torch.zeros_like(v_tmp)]
+            next_round_dkv = [torch.zeros_like(k_tmp), torch.zeros_like(v_tmp)]
 
         if getattr(get_args(), "prof_file", False):
             activation_func_1 = torch.nn.Hardshrink()
@@ -1144,7 +1161,7 @@ class AttentionWithCp(torch.autograd.Function):
 
                 next_kv_block_id = (cp_config.kv_block_id + 1) % inner_size + kv_block_offset
                 if i + 1 != inner_size:
-                    intra_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_dkv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id))
+                    intra_dkv_comm.async_send_recv(cur_dkv, next_dkv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id))
 
                 cp_config.kv_block_id = next_kv_block_id
 
@@ -1153,7 +1170,7 @@ class AttentionWithCp(torch.autograd.Function):
 
             next_kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_config.cp_size
             if j + 1 != outer_size:
-                inter_dkv_comm.async_send_recv(send_tensor=cur_dkv, recv_tensor=next_round_dkv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id_outer))
+                inter_dkv_comm.async_send_recv(cur_dkv, next_round_dkv, shapes=get_unaligned_cp_shapes(shapes, cp_config.kv_block_id, next_kv_block_id_outer))
 
             kv_block_id_outer = next_kv_block_id_outer
 

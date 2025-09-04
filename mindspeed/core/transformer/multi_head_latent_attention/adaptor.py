@@ -29,11 +29,6 @@ def multi_latent_attention_init_impl(
     attention_type: str,
     cp_comm_type: str = None,
 ) -> None:
-    world_size = parallel_state.get_tensor_model_parallel_world_size()
-    assert (
-        world_size == 1
-    ), "MLA is not supported with Tensor Parallelism yet, \
-    use Expert Parallelism and Pipeline Parallelism for better performance."
 
     Attention.__init__(
         self,
