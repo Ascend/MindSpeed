@@ -18,8 +18,6 @@ class MC2Feature(MindSpeedFeature):
     def validate_args(self, args):
         self.incompatible_check(args, 'unaligned_linear')
         if args.use_ascend_mc2:
-            if args.num_experts:
-                raise AssertionError('mc2 is not compatible with moe models')
             if getattr(args, 'use_ascend_coc', None):
                 raise AssertionError('mc2 and coc can not be used together')
             if not args.sequence_parallel or args.tensor_model_parallel_size == 1:
@@ -39,6 +37,11 @@ class MC2Feature(MindSpeedFeature):
         from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2ColumnParallelLinear
         from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2RowParallelLinear
         patch_manager.register_patch('megatron.core.tensor_parallel.layers.ColumnParallelLinear',
-                                     MindSpeedMC2ColumnParallelLinear)
+                                    MindSpeedMC2ColumnParallelLinear)
         patch_manager.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear',
-                                     MindSpeedMC2RowParallelLinear)
+                                    MindSpeedMC2RowParallelLinear)
+        # TE linear mc2 patch.
+        patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
+                                    MindSpeedMC2ColumnParallelLinear)
+        patch_manager.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear',
+                                    MindSpeedMC2RowParallelLinear)

@@ -32,3 +32,10 @@ class MoEGmmFeature(MindSpeedFeature):
             TransformerBlock._build_layers = build_layers_wrapper(TransformerBlock._build_layers,
                                                                   ColumnParallelLinear.forward,
                                                                   RowParallelLinear.forward)
+
+        # TEGroupedMLP performance.
+        from mindspeed.te.pytorch.module.grouped_linear import mindspeed_groupedmlp_weighted_bias_swiglu_impl
+        patch_manager.register_patch(
+            'megatron.core.fusions.fused_bias_swiglu.weighted_bias_swiglu_impl',
+            mindspeed_groupedmlp_weighted_bias_swiglu_impl
+        )

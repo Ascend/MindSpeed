@@ -1,12 +1,12 @@
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple
 
 import torch
+import torch_npu
 from torch.nn import Parameter
 
-from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu, \
-    linear_with_grad_accumulation_and_async_allreduce
+from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu
 from megatron.core.transformer.moe.experts import expert_dist_ckpt_decorator
 from megatron.core.transformer.utils import sharded_state_dict_default
 from megatron.core import parallel_state
@@ -24,6 +24,43 @@ from megatron.core.parallel_state import (
 )
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from mindspeed.core.transformer.moe.grouped_gemm_util import Ops
+
+
+class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_tensor: torch.Tensor,
+                m_split=None,
+                group_list_type=None,
+                ori_weight=None,
+                *weight_input_T) -> torch.Tensor:
+        
+        # Due to ascend gmm kernal k split limitations, we need a tensor m_split, not a tensor List.
+        # Also can be solved in token_dispatcher.
+        if m_split is not torch.Tensor:
+            ctx.group_list = torch.tensor(m_split, device='npu', dtype=torch.int64)
+        else:
+            ctx.group_list = m_split
+        weight_T = weight_input_T
+        ctx.group_list_type = group_list_type
+        fwd_output = torch_npu.npu_grouped_matmul([input_tensor], weight_T, bias=None, group_list=ctx.group_list,
+                                                  split_item=2, group_type=0, group_list_type=ctx.group_list_type)[0]
+        ctx.save_for_backward(input_tensor, *ori_weight)
+        return fwd_output
+
+    @staticmethod  
+    def backward(ctx, grad_output):
+
+        group_list = ctx.group_list
+        inp = ctx.saved_tensors[0]
+        weight = ctx.saved_tensors[1:]
+        group_list_type = ctx.group_list_type
+        grad = torch_npu.npu_grouped_matmul([grad_output], weight, bias=None, group_list=group_list,
+                                            split_item=2, group_type=0, group_list_type=group_list_type)[0]
+        # K spilt gmm.
+        grad_weight = torch_npu.npu_grouped_matmul([inp.T], [grad_output], bias=None, group_list=group_list,
+                                    split_item=3, group_type=2, group_list_type=group_list_type)[0]
+        
+        return grad, None, None, None, *grad_weight
 
 
 class MindSpeedTEGroupedLinear(torch.nn.Module):
@@ -89,12 +126,15 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
 
     def forward(self, x, m_splits):
-        original_weight = torch.cat([w.t() for w in self.total_weight], dim=0)
-        if self.parallel_mode == "column":
-            w = original_weight.view(self.num_gemms, self.config.hidden_size, -1)
-        else:
-            w = original_weight.view(self.num_gemms, -1, self.config.hidden_size)
-        return Ops.gmm(x, w, torch.Tensor(m_splits).long(), trans_b=False, gemm_fusion=False, original_weight=original_weight), None
+        group_list_type = 1
+        for w in self.total_weight:
+            if self.parallel_mode == 'column':
+                w = w.view(self.config.hidden_size, -1)
+            else:
+                w = w.view(-1, self.config.hidden_size)
+        self.total_weight_T = [w.T for w in self.total_weight]
+        output = MindSpeedTEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight, *self.total_weight_T)
+        return output, None
 
     def _sharded_state_dict_grouped(
             self, tp_axis_map, prefix='', sharded_offsets=(), metadata=None
@@ -259,3 +299,15 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
         return super()._sharded_state_dict_grouped(
             tp_axis_map, prefix, sharded_offsets, metadata
         )
+    
+
+def mindspeed_groupedmlp_weighted_bias_swiglu_impl(x, bias, probs, fp8_input_store=False):
+    """Patch of TEGroupedMLP with MindSpeed.
+    Use ascend fused_swiglu instead weighted_bias_swiglu_impl for better performance.
+    """
+    from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
+    if bias is not None:
+        raise NotImplementedError("Bias is not support for weighted swiglu fusion.")
+    dtype = x.dtype
+    res = fused_swiglu(x) * probs
+    return res.to(dtype)
