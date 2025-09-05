@@ -10,10 +10,7 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',
                         reuse_fp32_param_distrib_optimizer_init_wrapper, force_patch=True)
 
-    from .core.models.common.embeddings.rotary_pos_embedding import get_rotary_seq_len, local_rotate_half  # resolve warning
-    aspm.register_patch(
-        'megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len',
-        get_rotary_seq_len)  # name overlap
+    from .core.models.common.embeddings.rotary_pos_embedding import local_rotate_half  # resolve warning
     aspm.register_patch('megatron.core.models.common.embeddings._rotate_half', local_rotate_half)
 
     from .core.pipeline_parallel.schedules import deallocate_output_tensor_
