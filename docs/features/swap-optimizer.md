@@ -33,6 +33,12 @@
 
 `--swap-optimizer-times`： 默认值为16，用于设置 step 更新阶段进行 swap 的次数，越大并行的越多，可减少性能劣化，但会提高显存峰值。
 
+推荐配置
+```bash
+export CPU_AFFINITY_CONF=1,lazy_bind:0
+```
+此配置启用粗粒度绑核模式，将任务绑定至NPU对应的NUMA CPU核心，可有效避免跨NUMA内存访问，减少调度开销，从而提升计算稳定性与性能。
+
 ## 注意事项
 
 1. 本特性仅适用于开启分布式优化器`--use-distributed-optimizer`且`--optimizer-selection`为`fused_adamw`的模型训练场景

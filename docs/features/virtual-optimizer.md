@@ -44,6 +44,11 @@ state['exp_avg_sq'] = torch_npu.empty_with_swapped_memory(p.size(), device=p.dev
 2. 希望每一个PP Stage Swap同样大小的显存（如我希望每个Stage swap掉2GB的显存），则可以采用`--virtual-optimizer 2.0`指定。
 3. 希望每一个PP Stage Swap不同的显存（假设有四个PP Stage，我分别希望Swap掉 6 5 4 3GB的显存），则可以采用`--virtual-optimizer 6 5 4 3`指定。
 
+推荐配置
+```bash
+export CPU_AFFINITY_CONF=1,lazy_bind:0
+```
+此配置启用粗粒度绑核模式，将任务绑定至NPU对应的NUMA CPU核心，可有效避免跨NUMA内存访问，减少调度开销，从而提升计算稳定性与性能。
 
 ## 注意事项
 
