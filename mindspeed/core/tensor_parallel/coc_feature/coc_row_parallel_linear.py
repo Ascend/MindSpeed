@@ -170,7 +170,8 @@ class CoCRowParallelLinearImpl(torch.nn.Module):
         min_comm_config.register_function()
 
     def forward(self, input_: torch.Tensor, **kwargs):
-        if min_comm_config.coc_mode == 0 and not min_comm_config.coc_fused_kernel:
+        if (min_comm_config.coc_mode == 0 and not min_comm_config.coc_fused_kernel) or \
+            (getattr(self.config, 'coc_row_nocomm', False)):
             return super().forward(input_)
 
         input_parallel = input_

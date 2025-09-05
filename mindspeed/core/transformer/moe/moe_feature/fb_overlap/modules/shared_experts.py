@@ -17,8 +17,6 @@ from mindspeed.core.transformer.moe.moe_feature import MLPSubmodules
 from .utils import run_graph_backward, detach_tensor
 
 
-
-
 class NoTPCommContext(AbstractContextManager):
     def __init__(self, ag_out=None, cached_rs_input=None):
         super().__init__()
@@ -86,6 +84,7 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         config = deepcopy(config)
         config.moe_shared_expert_overlap = True
         super().__init__(config=config, submodules=submodules, gate=False)
+        self.config.coc_row_nocomm = self.config.coc_fused_kernel
         assert not self.use_shared_expert_gate
         self.cached_fc1_ag_input = None
         self.cached_fc1_input_grad = None
@@ -102,7 +101,6 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
 
         if self.tp_size > 1:
             assert self.config.sequence_parallel
-
 
     def pre_forward_comm(self, input_, wait_event=None):
         """
@@ -122,8 +120,6 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
             self.cached_fc1_ag_input, self.fc1_input_comm_handle = input_, None
 
         self.cached_fc1_input = input_
-
-
 
     def linear_fc1_forward_and_act(self, overlapped_comm_output=None):
         """
@@ -211,7 +207,6 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         else:
             self.cached_output, self.fc2_output_comm_handle = self.cached_fc2_output, None
 
-
     def get_output(self):
         """
         Gets the module forward output.
@@ -235,7 +230,6 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         self.cached_output = None
 
         return output, output_before_rs
-
 
     def pre_backward_comm(self, grad, wait_event=None):
         assert self.config.moe_shared_expert_overlap
@@ -268,7 +262,6 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
             run_graph_backward(shared_experts_graph, self.cached_backward_grad, keep_grad=keep_grad)
         self.cached_backward_grad = None
 
-
     def post_backward_comm(self, wait_event=None):
         assert self.cached_input_grad is None
         assert self.pre_backward_handle is None
@@ -283,16 +276,16 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         else:
             self.cached_input_grad, self.post_backward_handle = None, None
 
-
     def get_backward_grad(self):
         if self.post_backward_handle:
             self.post_backward_handle.wait()
             self.post_backward_handle = None
         self.cached_fc1_input_grad = None
 
-
         out_grad = self.cached_input_grad
         self.cached_input_grad = None
+        if self.config.coc_row_nocomm:
+            out_grad = out_grad.unsqueeze(1)
 
         return out_grad
 
