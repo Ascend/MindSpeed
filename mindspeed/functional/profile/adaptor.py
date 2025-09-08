@@ -7,6 +7,8 @@ import torch_npu
 
 from mindspeed.args_utils import get_full_args
 
+PROFILE_RECORD = None
+
 
 def train_wrapper(train):
     @wraps(train)
@@ -21,6 +23,7 @@ def train_wrapper(train):
         is_profile = hasattr(args_, 'profile_npu') and args_.profile_npu \
                 and ((torch.distributed.get_rank() in args_.profile_ranks) or (-1 in args_.profile_ranks))
         if is_profile:
+            global PROFILE_RECORD
             active = args_.profile_step_end - args_.profile_step_start
             skip_first = args_.profile_step_start
 
@@ -51,7 +54,7 @@ def train_wrapper(train):
                 schedule=torch_npu.profiler.schedule(wait=0, warmup=0, active=active, repeat=1, skip_first=skip_first),
                 on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(args_.profile_save_path)
             ) as prof:
-                args_.prof = prof
+                PROFILE_RECORD = prof
                 return train(*args, **kwargs)
         return train(*args, **kwargs)
 
@@ -68,7 +71,8 @@ def train_step_wrapper(train_step):
                 or (-1 in args_.profile_ranks)
         )
         if is_profile:
-            args_.prof.step()
+            global PROFILE_RECORD
+            PROFILE_RECORD.step()
         return ret
 
     return wrapper
