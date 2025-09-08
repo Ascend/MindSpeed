@@ -61,6 +61,8 @@ class Fsdp2Config:
     reduce_dtype: Optional[torch.dtype] = None
     output_dtype: Optional[torch.dtype] = None
     cast_forward_inputs: bool = True
+    # prefetch setting 
+    num_to_forward_prefetch: Optional[int] = 0
 
     ignored_modules: Optional[Iterable[torch.nn.Module]] = None
 
@@ -259,6 +261,7 @@ def torch_fully_sharded_data_parallel_init(
         yield module
 
     prev_module = None
+    wrapped_modules_in_order: list[torch.nn.Module] = []
     for sub_module in _post_order_traverse(self.module):
         # Wrap individual submodules to fetch parameters just-in-time rather than
         # conservatively fetching all parameters at the start of each iteration.
@@ -275,6 +278,15 @@ def torch_fully_sharded_data_parallel_init(
                     [prev_module] if prev_module else []
                 )
             prev_module = sub_module
+            wrapped_modules_in_order.append(sub_module)
+
+    num_to_forward_prefetch = getattr(fsdp2_config, "num_to_forward_prefetch", 0)
+    if num_to_forward_prefetch > 0 and num_to_forward_prefetch < config.num_layers:
+        for i, layer in enumerate(wrapped_modules_in_order):
+            j_end = min(len(wrapped_modules_in_order), i + 1 + num_to_forward_prefetch)
+            layers_to_prefetch = wrapped_modules_in_order[i + 1:j_end]
+            if layers_to_prefetch:
+                layer.set_modules_to_forward_prefetch(layers_to_prefetch)
 
     # Wrap the root module as required by the FSDP API.
     fully_shard(self.module, **fsdp2_kwargs)

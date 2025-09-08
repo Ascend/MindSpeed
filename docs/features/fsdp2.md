@@ -28,6 +28,7 @@ param_dtype: bf16	# 参数存储精度
 reduce_dtype: fp32	# 梯度通信精度
 cast_forward_inputs: bool = True	# 自动转换前向输入到计算精度
 ignored_modules	AEModel, TextEncoder: Optional[Iterable[torch.nn.Module]] = None # 排除FSDP管理的模块列表, 需要通过绝对路径引入：例如：mindspeed_mm.models.ae.base.AEModel
+num_to_forward_prefetch: int  # 指定前向计算预取（forward prefetch）的层数，默认值为0
 ```
 
 ## 使用效果
