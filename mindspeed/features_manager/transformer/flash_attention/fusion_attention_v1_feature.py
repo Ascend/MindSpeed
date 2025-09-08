@@ -56,7 +56,9 @@ class FusionAttentionFeature(MindSpeedFeature):
             raise AssertionError("When use_flash_attn, only supports sparse modes 0 and 2")
 
     def register_patches(self, patch_manager, args):
-        if int(getattr(args, 'context_parallel_size', 1)) < 2:
+        _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
+        _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
+        if int(getattr(args, 'context_parallel_size', 1)) < 2 and not (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.transformer.flash_attention.flash_attention.adaptor import \
                 dot_product_attention_forward_impl
 

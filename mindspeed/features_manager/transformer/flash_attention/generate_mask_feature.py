@@ -28,7 +28,9 @@ class GenerateMaskFeature(MindSpeedFeature):
             ) or self.default_patches
 
     def register_patches(self, patch_manager, args):
-        if int(getattr(args, 'context_parallel_size', 1)) < 2:
+        _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
+        _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
+        if int(getattr(args, 'context_parallel_size', 1)) < 2 and not (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.transformer.flash_attention.generate_mask.adaptor import dot_product_attention_forward_wrapper
             patch_manager.register_patch(
                 'megatron.core.transformer.dot_product_attention.DotProductAttention.forward',

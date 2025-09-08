@@ -9,6 +9,11 @@ class ContextParallelFeature(MindSpeedFeature):
 
     def __init__(self):
         super().__init__('context-parallel-size')
+        
+    def is_need_apply(self, args):
+        """Check the feature is need to apply."""
+        return (self.optimization_level <= args.optimization_level and getattr(args, self.feature_name, 1)) \
+            or self.default_patches
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
@@ -79,7 +84,9 @@ class ContextParallelFeature(MindSpeedFeature):
 
 
     def register_patches(self, patch_manager, args):
-        if int(getattr(args, 'context_parallel_size', 1)) > 1:
+        _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
+        _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
+        if int(getattr(args, 'context_parallel_size', 1)) > 1 or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
             patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention', MindSpeedCPDotProductAttention)
 
