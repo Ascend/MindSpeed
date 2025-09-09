@@ -1,10 +1,8 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
-from typing import Optional, Dict, List
-
 import torch
-from torch.autograd.variable import Variable
 from megatron.core.pipeline_parallel import p2p_communication
+from torch.autograd.variable import Variable
 
 
 def detach_tensor(tensor, checkpoint_forward=False):
@@ -71,7 +69,8 @@ class NoopLayerGraph:
 
 
 class LayerGraph:
-    def __init__(self, saved_graph_and_graph_inputs, recompute_needed_tensors, layer, checkpointed=False):
+    def __init__(self, saved_graph_and_graph_inputs, recompute_needed_tensors, layer,
+                 checkpointed=False, hot_experts_list=None, hot_expert_inter_ep_grad_reduce_handles=None, params=None):
         if not checkpointed:
             self.attn_graph = saved_graph_and_graph_inputs[0]
             self.pre_mlp_layernorm_graph = saved_graph_and_graph_inputs[1]
@@ -91,7 +90,11 @@ class LayerGraph:
         self.recompute_needed_tensors = recompute_needed_tensors
         self.checkpointed = checkpointed
         self.layer = layer
-        self.is_moe_layer = hasattr(layer, 'mlp') and hasattr(layer.mlp, 'experts')
+        self.is_moe_layer = hasattr(layer, 'mlp') and (
+                hasattr(layer.mlp, 'experts') or hasattr(layer.mlp, 'hot_experts'))
+        self.hot_experts_list = hot_experts_list
+        self.hot_expert_inter_ep_grad_reduce_handles = hot_expert_inter_ep_grad_reduce_handles
+        self.params = params
         self.input_splits, self.output_splits, self.output_splits_tp = None, None, None
         if self.is_moe_layer:
             self.input_splits = layer.mlp.token_dispatcher.input_splits
@@ -102,6 +105,7 @@ class LayerGraph:
         self.unperm2_swap_manager = None
         # For selective recompute
         self.act_ckpt_manager = None
+        self.remote_hot_act_ckpt_manager = None
 
     def record_layer_inputs(self, *args):
         self.layer_inputs = args

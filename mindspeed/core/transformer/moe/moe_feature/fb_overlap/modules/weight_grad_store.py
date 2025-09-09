@@ -83,13 +83,16 @@ class WeightGradStore:
         args = get_args()
         if hasattr(weight, 'gmm_weight'):
             inputs, group_list, group_list_data_type = total_input
-            if get_args().gemm_gradient_accumulation_fusion:
+            if get_args().gemm_gradient_accumulation_fusion and not getattr(weight, 'is_hot_experts', False):
                 npu_groupmatmul_add_fp32(inputs, grad_output, group_list, weight.main_grad)
             else:
                 grad_weight = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_output], [], group_list, 2, 0)[0]
-                weight.main_grad.data.add_(grad_weight.view(-1, weight.shape[-1]))
+                if not getattr(weight, 'is_hot_experts', False):
+                    weight.main_grad.data.add_(grad_weight.view(-1, weight.shape[-1]))
             inputs.untyped_storage().resize_(0)
             grad_output.untyped_storage().resize_(0)
+            if getattr(weight, 'is_hot_experts', False):
+                weight.grad = grad_weight.view(-1, weight.shape[-1])
         else:
             if len(grad_output.shape) > 2:
                 grad_output = grad_output.contiguous()

@@ -1,15 +1,16 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
-from einops import rearrange
 import torch
 import torch.nn.functional as F
+from einops import rearrange
 from megatron.training import get_args
+
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
-from mindspeed.ops.gmm import GMMFunction
-from mindspeed.model.transformer import should_recompute_activation
-from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.moe_feature import GroupedMLP as MegatronGroupedMLP
+from mindspeed.model.transformer import should_recompute_activation
+from mindspeed.ops.gmm import GMMFunction
+from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from .weight_grad_store import WeightGradStore
 
 
@@ -33,7 +34,7 @@ def get_gmm_weight_grad(inputs, grad_out, group_list, group_list_data_type, weig
 
         grad_weights = None
     else:
-        if get_args().gemm_gradient_accumulation_fusion:
+        if get_args().gemm_gradient_accumulation_fusion and not getattr(weight_param, 'is_hot_experts', False):
             npu_groupmatmul_add_fp32(inputs, grad_out, group_list, weight_param.main_grad)
             if hasattr(weight_param, 'grad_added_to_main_grad'):
                 shape = list(weight_tensor.shape)
@@ -110,11 +111,12 @@ class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
             fc2_input = self.activation_func(fc1_output)
             if permuted_probs is not None:
                 fc2_input = (fc2_input * permuted_probs.unsqueeze(-1)) \
-                            .type(fc2_input.dtype)
+                    .type(fc2_input.dtype)
             return fc2_input
 
         if permuted_local_hidden_states.nelement() != 0:
             group_list = torch.cumsum(tokens_per_expert, dim=0)
+
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
             w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 

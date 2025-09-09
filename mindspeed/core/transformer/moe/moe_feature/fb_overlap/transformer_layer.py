@@ -50,6 +50,10 @@ def transformer_layer_forward(*args, **kwargs):
         layer_forward_func = None
         if isinstance(self, NoopTransformerLayer):
             layer_forward_func = transformer_layer_forward_noop
+        elif hasattr(self.mlp, 'hot_experts'):
+            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwd import \
+                transformer_layer_forward_balanced_moe
+            layer_forward_func = transformer_layer_forward_balanced_moe
         elif hasattr(self.mlp, 'experts'):
             layer_forward_func = transformer_layer_forward_moe
         else:
@@ -72,7 +76,12 @@ def transformer_layer_backward(
     if isinstance(layer_graph, NoopLayerGraph):
         return transformer_layer_backward_noop(layer_output_grad, layer_graph)
     elif layer_graph.is_moe_layer:
-        return transformer_layer_backward_moe(layer_output_grad, layer_graph)
+        from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.bwd import \
+            transformer_layer_backward_balanced_moe
+        if hasattr(layer_graph.layer.mlp, 'hot_experts'):
+            return transformer_layer_backward_balanced_moe(layer_output_grad, layer_graph)
+        else:
+            return transformer_layer_backward_moe(layer_output_grad, layer_graph)
     else:
         return transformer_layer_backward_dense(layer_output_grad, layer_graph)
 
@@ -147,11 +156,16 @@ def transformer_layer_forward_backward_overlaping(
 
     else:
         fb_overlap_func = None
-        if hasattr(fwd_layer.mlp, 'experts') and bwd_layer_graph.is_moe_layer:
-            fb_overlap_func = transformer_layer_forward_moe_backward_moe_overlaping
+        if (hasattr(fwd_layer.mlp, 'experts') or hasattr(fwd_layer.mlp,
+                                                         'hot_experts')) and bwd_layer_graph.is_moe_layer:
+            if hasattr(fwd_layer.mlp, 'hot_experts'):
+                from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \
+                    transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
+                fb_overlap_func = transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
+            else:
+                fb_overlap_func = transformer_layer_forward_moe_backward_moe_overlaping
         else:
             raise AssertionError('Check Layer Spec, f&b overlap func is not supported!')
-
 
         if bwd_layer_graph.checkpointed:
             _, _, bwd_layer_graph = transformer_layer_forward(
@@ -254,7 +268,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     else:
         fp8_context = nullcontext()
 
-    # MTP-layer only has one transformer layer. 
+    # MTP-layer only has one transformer layer.
     # With fb overlap, the transformer layer is MTPTransformerLayer.
     with rng_context, fp8_context:
 
