@@ -24,6 +24,19 @@ class FusedMoEPermuteFeature(MindSpeedFeature):
                  or getattr(args, "use_fused_moe_token_permute_and_unpermute"), None))
 
     def validate_args(self, args: Namespace):
+        hasattr_npu_permute = hasattr(torch_npu, "npu_moe_token_permute_with_routing_map")
+        hasattr_npu_unpermute = hasattr(torch_npu, "npu_moe_token_unpermute_with_routing_map")
+        npu_attributes_missing = not hasattr_npu_permute or not hasattr_npu_unpermute
+        moe_permute_fusion_enabled = args.use_fused_moe_token_permute_and_unpermute or args.moe_permute_fusion
+        if npu_attributes_missing and moe_permute_fusion_enabled:
+            warnings.warn("torch_npu should have attribute npu_moe_token_permute_with_routing_map and "
+                          "npu_moe_token_unpermute_with_routing_map, but at least one of these attributes is missing. "
+                          "Please upgrade CANN to 8.3.RC1 and higher, and PTA to 7.2.RC1 and higher to enable --moe-permute-fusion. "
+                          "This run will set --moe-permute-fusion to False.")
+            args.moe_permute_fusion = False
+            args.use_fused_moe_token_permute_and_unpermute = False
+            return
+
         if args.use_fused_moe_token_permute_and_unpermute and not args.moe_permute_fusion:
             args.moe_permute_fusion = True
         if not args.use_fused_moe_token_permute_and_unpermute and args.moe_permute_fusion:
@@ -57,17 +70,6 @@ class FusedMoEPermuteFeature(MindSpeedFeature):
             warnings.warn(
                 "Parameters --moe-permute-fusion and --use-fused-moe-token-permute-and-unpermute are equivalent. "
                 "Use only one; prefer --moe-permute-fusion.")
-            hasattr_npu_permute = hasattr(torch_npu, "npu_moe_token_permute_with_routing_map")
-            hasattr_npu_unpermute = hasattr(torch_npu, "npu_moe_token_unpermute_with_routing_map")
-            if not hasattr_npu_permute:
-                raise AttributeError(
-                    "torch_npu should have attribute npu_moe_token_permute_with_routing_map, but "
-                    "does not have it. Please upgrade CANN to 8.3.RC1 and later, and PTA to 7.2.RC1 and later")
-            if not hasattr_npu_unpermute:
-                raise AttributeError(
-                    "torch_npu should have attribute npu_moe_token_unpermute_with_routing_map, but "
-                    "does not have it. Please upgrade CANN to 8.3.RC1 and later, and PTA to 7.2.RC1 and later")
-
             from mindspeed.core.fusions.fused_moe_permute import permute, unpermute, sort_chunks_by_idxs_wrapper
             # Since te permute interface lacks the input parameter drop_and_pad required by
             # npu_moe_token_permute_with_routing_map, the te interface cannot be directly replaced. Instead, the
