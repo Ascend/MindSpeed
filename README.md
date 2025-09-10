@@ -34,7 +34,7 @@ MindSpeed Core 是针对华为[昇腾设备](https://www.hiascend.com/)的大模
 # 📣 Latest News
 - [May 21, 2025]: 🚀 MindSpeed Core 支持Mcore 0.12.1版本。
 
-> 注： 当前版本仅支持local后端的transformer实现，需要用户配置参数`--transformer-impl local`。te后端实现正在筹备中，敬请期待。
+> 注： 当前版本初步支持两种版本的transformer实现。如需回溯老版本transformer实现，需要用户配置参数`--transformer-impl local`。
 
 ---
 
@@ -186,6 +186,16 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
     <tr>
       <td> Megatron 全分片并行</td>
       <td><a href="docs/features/custom_fsdp.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td> Megatron Transformer Engine</td>
+      <td><a href="docs/features/transformer_engine.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
+    <tr>
+      <td> Megatron Multi-head Latent Attention</td>
+      <td><a href="docs/features/multi-head-latent-attention.md">link</a></td>
       <td style="text-align: center; vertical-align: middle">❌</td>
     </tr>
 <tbody>

@@ -109,7 +109,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.output_size_per_partition = divide(output_size, tp_size)
 
         self.allreduce_dgrad = (
-            tp_size > 1 and not self.sequence_parallel and not self.disable_grad_reduce
+            tp_size > 1 and not self.sequence_parallel
         )
         if self.allreduce_dgrad and self.sequence_parallel:
             raise RuntimeError(
@@ -241,7 +241,6 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         if (
             self.allreduce_dgrad
             or self.sequence_parallel
-            or self.disable_grad_reduce
         ):
             input_parallel = norm_output
         else:
