@@ -65,6 +65,15 @@ _TENSOR_MODEL_PARALLEL_GROUP_FOR_ND1_DIM2_WORLD_SIZE = None
 _TENSOR_AND_CONTEXT_PARALLEL_GROUP = None
 _TENSOR_AND_CONTEXT_PARALLEL_GLOBAL_RANKS = None
 
+_VIRTUAL_DATA_PARALLEL_GROUP = None
+_VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP = None
+_VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP = None
+_VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP = None
+_VIRTUAL_DATA_PARALLEL_WORLD_SIZE = None
+_VIRTUAL_DATA_PARALLEL_RANK = None
+_EMBEDDING_GROUP = None
+_EMBEDDING_RANKS = None
+
 _HCCL_GROUP_BUFFER = None
 
 
@@ -896,6 +905,11 @@ def destroy_model_parallel_wrapper(destroy_model_parallel):
         global _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM2
         global _TENSOR_AND_CONTEXT_PARALLEL_GROUP
         global _TENSOR_AND_CONTEXT_PARALLEL_GLOBAL_RANKS
+        global _VIRTUAL_DATA_PARALLEL_GROUP
+        global _VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP
+        global _EMBEDDING_GROUP
+        global _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP
+        global _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP
         _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP = None
         _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = None
         _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_RING = None
@@ -920,6 +934,11 @@ def destroy_model_parallel_wrapper(destroy_model_parallel):
         _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND1_DIM2 = None
         _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM1 = None
         _TENSOR_MODEL_PARALLEL_WORLD_SIZE_FOR_ND2_DIM2 = None
+        _VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP = None
+        _VIRTUAL_DATA_PARALLEL_GROUP = None
+        _EMBEDDING_GROUP = None
+        _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP = None
+        _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP = None
 
     return wrapper
 
@@ -1232,3 +1251,80 @@ def new_group_wrapper(fn):
                 return None
         return fn(*args, **kwargs)
     return wrapper
+
+
+def get_virtual_data_parallel_group(with_context_parallel=False):
+    global _VIRTUAL_DATA_PARALLEL_GROUP
+    global _VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP
+    if with_context_parallel:
+        assert _VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP is not None, 'virtual data parallel group with context parallel combined is not initialized'
+        return _VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP
+    else:
+        return _VIRTUAL_DATA_PARALLEL_GROUP
+
+
+def set_virtual_data_parallel_group(virtual_data_parallel_group, with_context_parallel=False):
+    global _VIRTUAL_DATA_PARALLEL_GROUP
+    global _VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP
+    if with_context_parallel:
+        _VIRTUAL_DATA_PARALLEL_GROUP_WITH_CP = virtual_data_parallel_group
+    else:
+        _VIRTUAL_DATA_PARALLEL_GROUP = virtual_data_parallel_group
+
+
+def set_virtual_data_modulo_expert_parallel_group(group, with_context_parallel=False):
+    global _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP
+    global _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP
+    if with_context_parallel:
+        _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP = group
+    else:
+        _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP = group
+
+
+def get_virtual_data_modulo_expert_parallel_group(with_context_parallel=False):
+    global _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP
+    global _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP
+    if with_context_parallel:
+        return _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP_WITH_CP
+    else:
+        return _VIRTUAL_DATA_MODULO_EXPERT_PARALLEL_GROUP
+
+
+def get_virtual_data_parallel_rank():
+    global _VIRTUAL_DATA_PARALLEL_RANK
+    return _VIRTUAL_DATA_PARALLEL_RANK
+
+
+def set_virtual_data_parallel_rank(rank: int):
+    global _VIRTUAL_DATA_PARALLEL_RANK
+    _VIRTUAL_DATA_PARALLEL_RANK = rank
+
+
+def get_virtual_data_parallel_world_size():
+    global _VIRTUAL_DATA_PARALLEL_WORLD_SIZE
+    return _VIRTUAL_DATA_PARALLEL_WORLD_SIZE
+
+
+def set_virtual_data_parallel_world_size(virtual_data_parallel_world_size: int):
+    global _VIRTUAL_DATA_PARALLEL_WORLD_SIZE
+    _VIRTUAL_DATA_PARALLEL_WORLD_SIZE = virtual_data_parallel_world_size
+
+
+def get_embedding_group():
+    global _EMBEDDING_GROUP
+    return _EMBEDDING_GROUP
+
+
+def set_embedding_group(group):
+    global _EMBEDDING_GROUP
+    _EMBEDDING_GROUP = group
+
+
+def set_embedding_ranks(ranks):
+    global _EMBEDDING_RANKS
+    _EMBEDDING_RANKS = ranks
+
+
+def get_embedding_ranks():
+    global _EMBEDDING_RANKS
+    return _EMBEDDING_RANKS

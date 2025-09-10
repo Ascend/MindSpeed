@@ -18,6 +18,7 @@ from megatron.core.distributed.param_and_grad_buffer import ParamAndGradBuffer
 from megatron.core import parallel_state
 from megatron.core.utils import log_single_rank
 import torch
+from mindspeed.core.parallel_state import get_virtual_data_modulo_expert_parallel_group, get_virtual_data_parallel_group, get_virtual_data_parallel_world_size
 
 
 @torch.no_grad()
@@ -366,9 +367,12 @@ def distributed_data_parallel_init_with_cp(
             param_and_grad_dtype_to_params[(param_dtype, grad_dtype)] = params
 
         if not config.calculate_per_token_loss:
+            virtual_data_parallel_world_size = get_virtual_data_parallel_world_size()
             target_gradient_scaling_factor = 1.0 / parallel_state.get_data_parallel_world_size(
                 with_context_parallel=True
             )
+            if virtual_data_parallel_world_size is not None:
+                target_gradient_scaling_factor = target_gradient_scaling_factor / virtual_data_parallel_world_size
             if self.ddp_config.average_in_collective:
                 # Collective is averaging gradients in collective with data_parallel_group.
                 assert (
@@ -403,29 +407,41 @@ def distributed_data_parallel_init_with_cp(
         gradient_scaling_factor = 1.0
         expert_gradient_scaling_factor = 1.0
     else:
+        virtual_data_parallel_world_size = get_virtual_data_parallel_world_size()
         if self.ddp_config.average_in_collective:
             gradient_scaling_factor = 1.0
             expert_gradient_scaling_factor = (
                 1.0 / parallel_state.get_expert_model_parallel_world_size()
             )
+            if virtual_data_parallel_world_size is not None:
+                expert_gradient_scaling_factor = expert_gradient_scaling_factor / virtual_data_parallel_world_size
         else:
             data_parallel_world_size = parallel_state.get_data_parallel_world_size(
                 with_context_parallel=True
             )
             gradient_scaling_factor = 1.0 / data_parallel_world_size
             expert_gradient_scaling_factor = 1.0 / data_parallel_world_size
+            if virtual_data_parallel_world_size is not None:
+                gradient_scaling_factor = gradient_scaling_factor / virtual_data_parallel_world_size
+                expert_gradient_scaling_factor = expert_gradient_scaling_factor / virtual_data_parallel_world_size
 
     # Allocate the param+grad buffers for dense params' grads.
+    if get_virtual_data_parallel_world_size() is None:
+        dp_cp_group = parallel_state.get_data_parallel_group(with_context_parallel=True)
+        dp_modulo_ep_cp_group = parallel_state.get_data_modulo_expert_parallel_group(with_context_parallel=True)
+    else:
+        dp_cp_group = get_virtual_data_parallel_group(with_context_parallel=True)
+        dp_modulo_ep_cp_group = get_virtual_data_modulo_expert_parallel_group(with_context_parallel=True)
     self.buffers = allocate_buffers_for_parameters(
         dense_params,
-        parallel_state.get_data_parallel_group(with_context_parallel=True),
+        dp_modulo_ep_cp_group,
         gradient_scaling_factor=gradient_scaling_factor,
     )
 
     # Allocate separate param+grad buffers for expert parallel params' grads.
     self.expert_parallel_buffers = allocate_buffers_for_parameters(
         expert_parallel_params,
-        parallel_state.get_data_modulo_expert_parallel_group(with_context_parallel=True),
+        dp_modulo_ep_cp_group,
         gradient_scaling_factor=expert_gradient_scaling_factor,
     )
 

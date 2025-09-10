@@ -28,6 +28,7 @@ from mindspeed.core.pipeline_parallel import flexible_schedules
 from mindspeed.core.pipeline_parallel.ripipe_schedules import forward_backward_ripipe_pipelining
 from mindspeed.core.pipeline_parallel import multiparameter_schedules
 from mindspeed.core.auto_parallel.mm_search.help import PROFILE_CONTENT
+from mindspeed.core.pipeline_parallel.chimera import get_chimera_forward_backward_func
 
 LOSS_BACKWARD_SCALE = torch.tensor(1.0)
 
@@ -56,6 +57,9 @@ def get_forward_backward_func_wrapper(get_forward_backward_func):
             and parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
                 return multiparameter_schedules.forward_backward_pipelining_with_interleaving
 
+        if arguments.schedules_method == "chimera":
+            return get_chimera_forward_backward_func()
+            
         return get_forward_backward_func(*args, **kwargs)
     return wrapper
 

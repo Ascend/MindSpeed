@@ -733,9 +733,11 @@ def set_shared_embedding_from_dual_chunk(model1, model2):
     model1 = _unwrap_megatron_model(model1)
     model2 = _unwrap_megatron_model(model2)
     if model1.pre_process:
-        shared_embedding = model1.embedding.word_embeddings.weight
+        gpt_model = model1.module.module
+        shared_embedding = gpt_model.embedding.word_embeddings.weight
     elif model2.pre_process:
-        shared_embedding = model2.embedding.word_embeddings.weight
+        gpt_model = model2.module.module
+        shared_embedding = gpt_model.embedding.word_embeddings.weight
 
 
 def forward_backward_pipelining_with_cutinhalf(
