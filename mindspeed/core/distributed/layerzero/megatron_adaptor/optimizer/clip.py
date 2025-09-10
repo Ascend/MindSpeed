@@ -72,8 +72,20 @@ def clip_grad_norm(params, max_norm, norm_type=2, process_group=dist.group.WORLD
         params = [params]
     norm_type = float(norm_type)
     device = params[0].device
-    sharded_params = set(p for p in params if _is_zero3_flattened(p))
-    non_sharded_params = set(p for p in params if p not in sharded_params)
+
+    sharded_params_set = set()
+    non_sharded_params_set = set()
+    sharded_params = []
+    non_sharded_params = []
+
+    for p in params:
+        if _is_zero3_flattened(p) and (p not in sharded_params_set):
+            sharded_params_set.add(p)
+            sharded_params.append(p)
+    for p in params:
+        if (p not in sharded_params_set) and (p not in non_sharded_params_set):
+            non_sharded_params_set.add(p)
+            non_sharded_params.append(p)
 
     local_sharded_norm = _get_grad_norm(sharded_params, norm_type).to(device)
     local_nonsharded_norm = _get_grad_norm(
