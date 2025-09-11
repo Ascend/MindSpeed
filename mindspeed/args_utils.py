@@ -61,4 +61,9 @@ def get_full_args():
     except ImportError:
         log_warning_once(LOG, 'Failed from megatron.training import get_args, use mindspeed arguments.')
         full_args = get_mindspeed_args()
+    except AssertionError as e:
+        if 'args is not initialized.' in str(e):
+            full_args = get_mindspeed_args()
+        else:
+            raise e
     return full_args

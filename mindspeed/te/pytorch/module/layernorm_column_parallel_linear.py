@@ -277,13 +277,6 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         # with TE, gather_output is not supported. Return output_parallel and _linear_bias.
         return output_parallel, bias
 
-    def state_dict(self, *args, **kwargs):
-        state = super().state_dict(*args, **kwargs)
-        private_key = [name for name in state.keys() if '_layernorm' in name or '_linear' in name]
-        for name in private_key:
-            state.pop(name)
-        return state
-
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
         """Sharding along axis 0, bias sharded"""
         from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
