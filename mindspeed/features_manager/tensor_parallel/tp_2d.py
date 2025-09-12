@@ -31,7 +31,7 @@ class TP2dFeature(MindSpeedFeature):
         self.incompatible_check(args, 'use_nanopipe')
         self.incompatible_check(args, 'use_ascend_coc')
         if getattr(args, self.feature_name, None):
-            _cp_algo = getattr(args, 'context_parallel_algo', 'ulysses_cp_algo')
+            _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
             if _cp_algo not in ['megatron_cp_algo', 'ulysses_cp_algo']:
                 raise AssertionError('tp-2d now only support megatron_cp_algo or ulysses_cp_algo')
             if not getattr(args, 'use_flash_attn', False) and _cp_algo == 'megatron_cp_algo':
