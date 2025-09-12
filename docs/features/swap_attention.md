@@ -47,5 +47,5 @@
 ## 注意事项：
 
 1. `--recompute-num-layers [int]`中的[int]层数指的是每一个pp stage的层数。[int]的取值应该小于等于num-layers/pipeline-model-parallel-size.
-2. 若出现性能波动，可能是跨NUMA内存访问引起，可尝试通过进程绑核缓解 `export CPU_AFFINITY_CONF=1`
+2. 若出现性能波动，可能是跨NUMA内存访问引起，可尝试通过进程绑核缓解 `export CPU_AFFINITY_CONF=1,lazy_bind:0`
 3. `--swap-attention`暂不兼容LoRA微调。
