@@ -14,6 +14,8 @@
     </a>
 </p>
 
+# 通知: 本项目已经正式迁移至 [Gitcode](https://gitcode.com/Ascend) 平台
+
 # 简介
 
 MindSpeed Core 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型加速库。
