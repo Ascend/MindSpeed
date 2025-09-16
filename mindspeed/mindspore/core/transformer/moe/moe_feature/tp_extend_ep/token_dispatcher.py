@@ -216,11 +216,13 @@ class All2AllSeqTp2epDispatcherImpl:
             parallel_state.get_expert_tensor_and_model_parallel_group(),
             permutated_local_input_tokens,
             self.send_count_matrix,
+            mode=self.config.enable_a2avc,
         )
         global_probs = all_to_all(
             parallel_state.get_expert_tensor_and_model_parallel_group(),
             permuted_probs,
             self.send_count_matrix,
+            mode=self.config.enable_a2avc,
         )
 
         # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
@@ -265,6 +267,7 @@ class All2AllSeqTp2epDispatcherImpl:
             parallel_state.get_expert_tensor_and_model_parallel_group(),
             hidden_states,
             self.send_count_matrix_T,
+            mode=self.config.enable_a2avc,
         )
 
         # Unpermutation 1: AlltoAll output to output
