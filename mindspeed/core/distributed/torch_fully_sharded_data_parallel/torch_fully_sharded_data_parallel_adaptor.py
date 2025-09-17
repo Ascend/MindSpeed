@@ -6,20 +6,30 @@ Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 from typing import Optional, Set, Iterable, Union
 import dataclasses
 import importlib
+import functools
 
 import torch
 import yaml
 
 try:
     from torch.distributed import DeviceMesh
-    from torch.distributed.fsdp import fully_shard
-
+    from torch.distributed.fsdp import (
+        fully_shard,
+        CPUOffloadPolicy,
+        OffloadPolicy,
+    )
+    from torch.distributed.fsdp._fully_shard._fsdp_init import _get_device_from_mesh
     HAVE_FSDP = True
 except ImportError:
     HAVE_FSDP = False
 
 from torch.distributed import ProcessGroup, get_process_group_ranks
 from torch.distributed.fsdp import MixedPrecisionPolicy
+from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+    checkpoint_wrapper, 
+    CheckpointImpl,
+    apply_activation_checkpointing
+)
 
 from megatron.core.fp8_utils import is_float8tensor
 
@@ -30,6 +40,7 @@ from megatron.core.transformer.transformer_layer import TransformerLayer
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.distributed import TorchFullyShardedDataParallel
+from megatron.training import get_args
 
 from mindspeed.utils import convert_str_dict_to_real_types, _get_dtype
 
@@ -61,17 +72,30 @@ class Fsdp2Config:
     reduce_dtype: Optional[torch.dtype] = None
     output_dtype: Optional[torch.dtype] = None
     cast_forward_inputs: bool = True
+
+    # offload
+    offload_to_cpu: bool = False
+    pin_memory: bool = True # pin_memory is effective exclusively when offload_to_cpu is True
+
     # prefetch setting 
     num_to_forward_prefetch: Optional[int] = 0
 
     ignored_modules: Optional[Iterable[torch.nn.Module]] = None
 
+    recompute_modules: Optional[Iterable[torch.nn.Module]] = None
+
     def to_dict(self):
         mp_policy = self._mp_policy()
-        
+        offload_policy = None
+        if self.offload_to_cpu:
+            offload_policy = CPUOffloadPolicy(pin_memory=self.pin_memory)
+        else:
+            offload_policy = OffloadPolicy() # means no offloading
+
         kwargs = {
             "mp_policy": mp_policy,
-            "reshard_after_forward": self.reshard_after_forward
+            "reshard_after_forward": self.reshard_after_forward,
+            "offload_policy": offload_policy,
         }
         return kwargs
 
@@ -111,6 +135,8 @@ class Fsdp2Config:
             self.sub_modules_to_wrap = self._str_to_module(self.sub_modules_to_wrap)
         if self.ignored_modules:
             self.ignored_modules = self._str_to_module(self.ignored_modules)
+        if self.recompute_modules:
+            self.recompute_modules = self._str_to_module(self.recompute_modules)
 
 
 def get_fsdp2_mixed_precision_policy(fsdp2_config: dict):
@@ -143,7 +169,8 @@ def _create_device_mesh(sharding_size: Optional[int], process_group: ProcessGrou
     
     # Get global ranks of all processes in this group
     group_global_ranks = torch.tensor(
-        get_process_group_ranks(process_group), 
+        get_process_group_ranks(process_group),
+        device="cpu",
         dtype=torch.int
     )
     
@@ -161,9 +188,9 @@ def _create_device_mesh(sharding_size: Optional[int], process_group: ProcessGrou
     if replicating_size == 1:
         # Pure FSDP case - single dimension mesh
         mesh = group_global_ranks
-        device_mesh = DeviceMesh(
-            "npu",  # NPU device type (change to "cuda" for GPUs)
-            mesh, 
+        device_mesh = DeviceMesh.from_group(
+            process_group,
+            "npu", # NPU device type (change to "cuda" for GPUs)
             mesh_dim_names=["Shard"]
         )
     else:
@@ -188,7 +215,6 @@ def torch_fully_sharded_data_parallel_init(
             TransformerLayer,
             LanguageModelEmbedding,
             RotaryEmbedding,
-            tensor_parallel.ColumnParallelLinear,
         },
         process_group: Optional[ProcessGroup] = None,
 ):
@@ -244,25 +270,32 @@ def torch_fully_sharded_data_parallel_init(
                 sub_modules_to_wrap.add(f)
     
     # collect ignored params
+    args = get_args()
     ignored_params = set()
     if fsdp2_config.ignored_modules:
         for sub_module in self.module.modules():
             if isinstance(sub_module, tuple(fsdp2_config.ignored_modules)):
+                if args.use_cpu_initialization:
+                    sub_module.to(_get_device_from_mesh(self.device_mesh))
+                
                 ignored_params.update(sub_module.parameters())
     fsdp2_kwargs["ignored_params"] = ignored_params
 
-    def _post_order_traverse(module: torch.nn.Module):
-        """Post-order traversal of model submodules (recursive implementation).
-        
-        Yields child modules before their parents.
-        """
-        for child in module.children():
-            yield from _post_order_traverse(child)
-        yield module
-
     prev_module = None
     wrapped_modules_in_order: list[torch.nn.Module] = []
-    for sub_module in _post_order_traverse(self.module):
+    for sub_module in self.module.modules():
+        # When using meta device, weight initialization is required.
+        if args.init_model_with_meta_device:
+            if fsdp2_config.ignored_modules and isinstance(sub_module, tuple(fsdp2_config.ignored_modules)):
+                continue
+            with torch.no_grad():
+                try:
+                    if next(sub_module.parameters()).is_meta:
+                        sub_module.to_empty(device=_get_device_from_mesh(self.device_mesh), recurse=False)
+                        sub_module.reset_parameters()
+                except Exception as e:
+                    continue
+
         # Wrap individual submodules to fetch parameters just-in-time rather than
         # conservatively fetching all parameters at the start of each iteration.
         if any(
@@ -273,7 +306,7 @@ def torch_fully_sharded_data_parallel_init(
 
             # Explicitly set the FSDP backward prefetch schedule to prevent activation
             # recomputation from disrupting the automatically generated default schedule.
-            if config.recompute_granularity is not None:
+            if fsdp2_config.recompute_modules is not None:
                 sub_module.set_modules_to_backward_prefetch(
                     [prev_module] if prev_module else []
                 )
@@ -290,5 +323,15 @@ def torch_fully_sharded_data_parallel_init(
 
     # Wrap the root module as required by the FSDP API.
     fully_shard(self.module, **fsdp2_kwargs)
+
+    # recompute modules to wrap
+    if fsdp2_config.recompute_modules:
+        apply_activation_checkpointing(
+            self.module, 
+            checkpoint_wrapper_fn=functools.partial(
+                checkpoint_wrapper, checkpoint_impl=CheckpointImpl.NO_REENTRANT
+            ), 
+            check_fn=lambda module: isinstance(module, tuple(fsdp2_config.recompute_modules))
+        )
 
     restore_custom_attrs(self.module, attrs)
