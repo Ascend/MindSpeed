@@ -155,12 +155,6 @@ class CPDotProductAttentionImpl:
         sparse_mode = self.config.sparse_mode
         is_ulysses_algo = (getattr(self.config, 'context_parallel_algo', None) == 'ulysses_cp_algo')
 
-        if packed_seq_params is not None and self.config.attention_mask_type == 'causal':
-            attention_mask = torch.triu(
-                            torch.ones((2048, 2048), 
-                            device='npu', dtype=torch.bool), diagonal=1)
-            sparse_mode = 2
-
         assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
 
         if packed_seq_params is not None and not is_ulysses_algo:
