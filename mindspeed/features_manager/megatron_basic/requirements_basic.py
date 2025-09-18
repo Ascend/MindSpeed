@@ -29,8 +29,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
     def te_adaptation(self, pm, args):
         from mindspeed.core.megatron_basic.requirements_basic import version_wrapper, dummy_compile
         from mindspeed.te.pytorch.module.layernorm import MindSpeedTELayernorm
-        if torch.__version__ < "2.6":
-            pm.register_patch('torch.compile', dummy_compile)
+        pm.register_patch('torch.compile', dummy_compile)
         pm.register_patch('torch.jit.script', dummy_compile)
         # Need replace modules before import megatron
         pm.register_patch('importlib.metadata.version', version_wrapper)
