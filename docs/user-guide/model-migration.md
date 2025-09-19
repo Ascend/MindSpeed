@@ -4,7 +4,7 @@
 
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)是NVIDIA提出的一种分布式训练加速库，
 支持数据并行和模型并行，在大模型训练中得到广泛应用。
-经过[MindSpeed](https://gitee.com/ascend/MindSpeed)昇腾平台的兼容性适配，
+经过[MindSpeed](https://gitcode.com/ascend/MindSpeed)昇腾平台的兼容性适配，
 现已支持在昇腾平台上高效运行。
 
 本手册的主要目标是指导具有一定`Megatron-LM`模型训练基础的用户将原本在其他硬件平台（例如GPU）上训练的模型迁移到昇腾平台（NPU）。
@@ -272,7 +272,7 @@ hierarchical_context_parallel_sizes: Optional[list[int]] = None
 参考[模型保存与加载](#模型保存与加载)章节完成模型的二次训练。
 
 - 若训练过程中提示部分CUDA接口报错，可能是部分API（算子API或者框架API）不支持引起，
-用户可进入[昇腾MindSpeed开源社区](https://gitee.com/ascend/MindSpeed)提出ISSUE求助。
+用户可进入[昇腾MindSpeed开源社区](https://gitcode.com/ascend/MindSpeed)提出ISSUE求助。
 
 #### 多机多卡训练
 
@@ -450,7 +450,7 @@ hierarchical_context_parallel_sizes: Optional[list[int]] = None
 参考[模型保存与加载](#模型保存与加载)章节完成模型的二次训练。
 
 - 若训练过程中提示部分CUDA接口报错，可能是部分API（算子API或者框架API）不支持引起，
-用户可进入[昇腾MindSpeed开源社区](https://gitee.com/ascend/MindSpeed)提出ISSUE求助。
+用户可进入[昇腾MindSpeed开源社区](https://gitcode.com/ascend/MindSpeed)提出ISSUE求助。
 
 ## 模型保存与加载
 

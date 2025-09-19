@@ -4,7 +4,7 @@
 
 ### 1. MindSpeed 安装
 按照 MindSpeed 文档，安装对应依赖。
-> https://gitee.com/ascend/MindSpeed#%E5%AE%89%E8%A3%85
+> https://gitcode.com/ascend/MindSpeed#%E5%AE%89%E8%A3%85
 
 ### 2. Verl 安装
 按照 Verl 文档，安装对应依赖。
