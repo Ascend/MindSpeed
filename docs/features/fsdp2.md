@@ -41,7 +41,9 @@ recompute_modules: Optional[Iterable[torch.nn.Module]] = None # 需要进行重�
 1、当开启fsdp2训练时，需关闭分布式优化器及其相关配置
 
 2、当开启fsdp2训练时，模型权重的保存格式`ckpt-format`仅支持`torch_dist`或`torch_dcp`
-    - 配置为`torch_dist`，模型需通过继承`MegatronModule`或自定义来实现`sharded_state_dict()`方法；同时需保证模型中所有权重的0维size均大于或等于sharding_size
-    - 配置为`torch_dcp`，模型需通过继承`MegatronModule`或自定义来实现`state_dict_for_save_checkpoint()`方法，并且其返回的权重字典需要与`model.state_dict()`的返回值一致
+
+- 配置为`torch_dist`，模型需通过继承`MegatronModule`或自定义来实现`sharded_state_dict()`方法；同时需保证模型中所有权重的0维size均大于或等于sharding_size
+
+- 配置为`torch_dcp`，模型需通过继承`MegatronModule`或自定义来实现`state_dict_for_save_checkpoint()`方法，并且其返回的权重字典需要与`model.state_dict()`的返回值一致
 
 3、当开启fsdp2训练时，需关闭重计算的相关配置，包括：`--recompute-granularity`、`--recompute-method`以及`--recompute-num-layers`等

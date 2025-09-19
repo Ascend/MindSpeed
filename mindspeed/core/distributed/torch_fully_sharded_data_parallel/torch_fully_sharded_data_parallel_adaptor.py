@@ -275,26 +275,44 @@ def torch_fully_sharded_data_parallel_init(
     if fsdp2_config.ignored_modules:
         for sub_module in self.module.modules():
             if isinstance(sub_module, tuple(fsdp2_config.ignored_modules)):
-                if args.use_cpu_initialization:
-                    sub_module.to(_get_device_from_mesh(self.device_mesh))
+                sub_module.to(_get_device_from_mesh(self.device_mesh))
                 
                 ignored_params.update(sub_module.parameters())
     fsdp2_kwargs["ignored_params"] = ignored_params
 
+    def _post_order_traverse(module: torch.nn.Module):
+        """Post-order traversal of model submodules (recursive implementation).
+        
+        Yields child modules before their parents.
+        """
+        for child in module.children():
+            yield from _post_order_traverse(child)
+        yield module
+
     prev_module = None
     wrapped_modules_in_order: list[torch.nn.Module] = []
-    for sub_module in self.module.modules():
+    for sub_module in _post_order_traverse(self.module):
+
+        if fsdp2_config.ignored_modules and isinstance(sub_module, tuple(fsdp2_config.ignored_modules)):
+            continue
+        
         # When using meta device, weight initialization is required.
         if args.init_model_with_meta_device:
-            if fsdp2_config.ignored_modules and isinstance(sub_module, tuple(fsdp2_config.ignored_modules)):
-                continue
-            with torch.no_grad():
-                try:
-                    if next(sub_module.parameters()).is_meta:
-                        sub_module.to_empty(device=_get_device_from_mesh(self.device_mesh), recurse=False)
-                        sub_module.reset_parameters()
-                except Exception as e:
-                    continue
+            if torch.distributed.get_rank() == 0:
+                sub_module = sub_module.to(device=_get_device_from_mesh(self.device_mesh))
+            else:
+                sub_module.to_empty(device=_get_device_from_mesh(self.device_mesh))
+
+            module_states = []
+            for buffer in sub_module.buffers():
+                if not isinstance(buffer.detach(), torch.distributed.tensor.DTensor):
+                    module_states.append(buffer.detach())
+            for param in sub_module.parameters():
+                if not isinstance(param.detach(), torch.distributed.tensor.DTensor):
+                    module_states.append(param.detach())
+
+            if len(module_states) > 0:
+                torch.distributed._broadcast_coalesced(self.device_mesh.get_group(), module_states, 250 * 1024 * 1024, 0)
 
         # Wrap individual submodules to fetch parameters just-in-time rather than
         # conservatively fetching all parameters at the start of each iteration.
