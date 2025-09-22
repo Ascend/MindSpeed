@@ -15,8 +15,10 @@
 </p>
 
 # 简介
+---
 
-MindSpeed Core 是针对华为[昇腾设备](https://www.hiascend.com/)的大模型加速库。
+
+MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模型加速库。
 
 大模型训练是一种非常复杂的过程，涉及到许多技术和挑战，其中大模型训练需要大量的显存资源是一个难题，对计算卡提出了不小的挑战。
 为了在单个计算卡显存资源不足时，可以通过多张计算卡进行计算，业界出现了类似 Megatron、DeepSpeed 等第三方大模型加速库，对模型、输入数据等进行切分并分配到不同的计算卡上，最后再通过集合通信对结果进行汇总。
@@ -25,29 +27,21 @@ MindSpeed Core 是针对华为[昇腾设备](https://www.hiascend.com/)的大模
 
 此外在 MindSpeed Core 加速库的基础之上也提供了大语言模型、多模态模型以及强化学习模型套件加速库:
 
-- 📝 大语言模型库: [MindSpeed LLM](https://gitee.com/ascend/MindSpeed-LLM)
-- 🖼️ 多模态模型库: [MindSpeed MM](https://gitee.com/ascend/MindSpeed-MM)
-- 🖥️ 强化学习加速库: [MindSpeed RL](https://gitee.com/ascend/MindSpeed-RL)
+- 📝 大语言模型库: [MindSpeed LLM](https://gitcode.com/ascend/MindSpeed-LLM)
+- 🖼️ 多模态模型库: [MindSpeed MM](https://gitcode.com/Ascend/MindSpeed-MM)
+- 🖥️ 强化学习加速库: [MindSpeed RL](https://gitcode.com/Ascend/MindSpeed-RL)
 
+
+
+# 最新消息
 ---
 
-# 📣 Latest News
 - [May 21, 2025]: 🚀 MindSpeed Core 支持Mcore 0.12.1版本。
 
 > 注： 当前版本初步支持两种版本的transformer实现。如需回溯老版本transformer实现，需要用户配置参数`--transformer-impl local`。
 
+# 版本说明
 ---
-
-# 安装
-
-MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`，具体请参考 [部署文档](./docs/user-guide/installation.md) 安装 MindSpeed Core 指定分支及其依赖软件。
-
-获取并切换 Megatron-LM 版本至 core_v0.12.1 版本，可参考：
- ```shell
- git clone https://github.com/NVIDIA/Megatron-LM.git
- cd Megatron-LM
- git checkout core_v0.12.1
- ```
 
 当前版本配套表如下：
 
@@ -60,10 +54,29 @@ MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`�
 | torch_npu版本      | 7.1.RC1                  |
 | Python版本         | Python3.9.x、Python3.10.x |
 
+更多具体说明请参考：[版本配套表](./docs/user-guide/installation.md#版本配套表)。
+
+# 安装
+---
+
+MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`，具体请参考 [部署文档](./docs/user-guide/installation.md) 安装 MindSpeed Core 指定分支及其依赖软件。
+
+获取并切换 Megatron-LM 版本至 core_v0.12.1 版本，可参考：
+ ```shell
+ git clone https://github.com/NVIDIA/Megatron-LM.git
+ cd Megatron-LM
+ git checkout core_v0.12.1
+ ```
+
+
 
 # 快速上手
+---
+## 概述
 
 使用MindSpeed Core仅须增加一行代码，即可在昇腾训练设备上运行Megatron-LM，并进一步参考[特性介绍](#特性介绍) 使能MindSpeed的各项加速特性。
+
+## 操作方法
 
 以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
 
@@ -78,8 +91,8 @@ MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`�
 
 具体操作可以参考[快速上手指导](./docs/user-guide/getting_started.md)。
 
----
 # 加速特性分级说明
+---
 
 MindSpeed Core 加速特性分为三个层级，用户可根据实际需求选择通过设置启动脚本中的 `--optimization-level {层级}` 参数来自定义开启的优化层级。该参数支持以下配置：
 
@@ -112,6 +125,8 @@ MindSpeed Core 加速特性分为三个层级，用户可根据实际需求选�
 
 
 # 特性介绍
+---
+
 MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性、关键场景特性以及多模态特性。其中【Released】表示是否商用发布，原型特性为非商用发布。
 
 -  特性的介绍中说明了对应特性的应用场景及使用说明。一般而言，在脚本中加入相关参数即可轻松使用对应特性。🛰️
@@ -656,10 +671,10 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
   </tbody>
 </table>
 
----
 
 
 # 分支维护策略
+---
 
 🛠️ MindSpeed 版本分支的维护阶段如下：
 
@@ -685,9 +700,10 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 | 1.0.RC2             | 常规版本     | 停止维护     | 2024/06/30 | 2024/12/30起无维护	   |           |
 | 1.0.RC1             | 常规版本     | 停止维护     | 2024/03/30 | 2024/9/30起无维护     |           |
 
----
+
 
 # 常见问题
+---
 
 | 现象                                 | 介绍                                    |
 |------------------------------------|---------------------------------------|
@@ -697,19 +713,24 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 | Gloo建链失败Gloo connectFullMesh failed with ... ❗| [link](docs/features/hccl-replace-gloo.md)  |
 
 # 技术文章
+---
+
 - [MindSpeed 加速百万级超长序列大模型训练](https://mp.weixin.qq.com/s/8q4MxCkosLn0yoneuxzynw)  🚀🚀
 - [MindSpeed 加速万亿MoE大模型训练](https://mp.weixin.qq.com/s/HQRzYzSUNNMonv5d1AP0OQ)  🚀🚀
 - [大模型训练内存优化难？MindSpeed 帮你来支招](https://mp.weixin.qq.com/s/lwjVgM67hwsgtOKp06zYPg) 🚀🚀
 
----
+
 
 # 安全声明
 
-⚠️ [MindSpeed 安全声明](SECURITYNOTE.md)
-
 ---
 
+⚠️ [MindSpeed 安全声明](SECURITYNOTE.md)
+
+
 # 免责声明
+
+---
 
 ## 致MindSpeed使用者
 1. MindSpeed提供的所有内容仅供您用于非商业目的。
@@ -723,9 +744,11 @@ MindSpeed 特性由七大模块组成，分别为：megetron特性支持、并�
 ## License声明
 Ascend MindSpeed中涉及的模型，如模型目录下存在License的，以该License为准。如模型目录下不存在License的，以Apache 2.0许可证许可，对应许可证文本可查阅Ascend MindSpeed根目录。
 
----
 
 # 致谢
+
+---
+
 
 🔎 MindSpeed-Core 由华为公司的下列部门联合贡献 ：
 
