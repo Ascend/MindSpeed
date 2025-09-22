@@ -49,6 +49,23 @@ class All2AllSeqTp2epDispatcherImpl:
         self.num_global_tokens_per_local_expert_cpu = None
         self.hidden_shape = None
         self.probs = None
+        self.expert_ids_per_ep_rank = torch.tensor(
+            [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
+            dtype=torch.int32,
+            device=torch.cuda.current_device(),
+        )
+        tp_size = parallel_state.get_tensor_model_parallel_world_size()
+        self.tp_extended_ep_size = self.config.expert_model_parallel_size * tp_size
+        if self.config.fix_router:
+            val = (self.config.seq_length * self.config.moe_router_topk) // self.config.num_experts
+            self.num_global_tokens_per_local_expert = torch.full(
+                (self.tp_extended_ep_size, self.num_local_experts),
+                fill_value=val,
+                dtype=torch.long
+                )
+            self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+                self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
+            )
         super().__init__(num_local_experts, local_expert_indices, config)
 
     def preprocess(self, routing_map):
@@ -103,40 +120,32 @@ class All2AllSeqTp2epDispatcherImpl:
                 # Token dropless and no ep. A synchronization is needed to get the
                 # `tokens_per_expert` CPU value.
                 self.cuda_sync_point = "before_finish"
-        tp_size = parallel_state.get_tensor_model_parallel_world_size()
-        tp_extended_ep_size = ep_size * tp_size
-        if tp_extended_ep_size > 1:
+        if self.tp_extended_ep_size > 1:
             # ===================================================
             # Calculate input_splits, output_splits for alltoall-v.
             # ===================================================
-            self.input_splits = (
-                num_local_tokens_per_expert.reshape(tp_extended_ep_size, self.num_local_experts)
-                .sum(axis=1)
-                .to(torch.device("cpu"), non_blocking=True)
-                .numpy()
-            )
             num_global_tokens_per_expert = tensor_parallel.gather_from_sequence_parallel_region(
                 num_local_tokens_per_expert, group=parallel_state.get_expert_tensor_and_model_parallel_group()
-            ).reshape(tp_extended_ep_size, self.num_experts)
-            self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
-                                                      :, self.local_expert_indices
-                                                      ]
+            ).reshape(self.tp_extended_ep_size, self.num_experts)
+            if not self.config.fix_router:
+                self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
+                                                        :, self.local_expert_indices
+                                                        ]
             
-            group_size = tp_extended_ep_size  # = ep_size * tp_size
-            experts_per_rank = self.num_experts // group_size  # uniformly distributed experts for each rank
-
-            rank2rank = num_global_tokens_per_expert \
-                .reshape(group_size, group_size, experts_per_rank) \
-                .sum(dim=-1)  # [group_size, group_size]
-
-            self.send_count_matrix = rank2rank.reshape(-1).tolist()       # row-major order
-            self.send_count_matrix_T = rank2rank.T.reshape(-1).tolist()     # Transposited send_count_matrix
-  
-            del rank2rank, experts_per_rank, group_size
-            
-            self.output_splits = (
-                self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu"), non_blocking=True).numpy()
-            )
+            if self.config.fix_router:
+                val_scm = (self.config.seq_length * self.config.moe_router_topk) // self.tp_extended_ep_size
+                self.send_count_matrix = [val_scm] * (group_size * group_size)
+                self.send_count_matrix_T = self.send_count_matrix
+            else:
+                group_size = self.tp_extended_ep_size  # = ep_size * tp_size
+                experts_per_rank = self.num_experts // group_size  # uniformly distributed experts for each rank
+                rank2rank = num_global_tokens_per_expert \
+                    .reshape(group_size, group_size, experts_per_rank) \
+                    .sum(dim=-1)  # [group_size, group_size]s
+                scm_tmp = rank2rank.numpy()
+                self.send_count_matrix = scm_tmp.reshape(-1).tolist()       # row-major order
+                self.send_count_matrix_T = scm_tmp.T.reshape(-1).tolist()     # Transposited send_count_matrix
+                            
             num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0)
             # ===================================================
             # num_global_tokens_per_expert: [ep_size, num_experts]
@@ -158,19 +167,10 @@ class All2AllSeqTp2epDispatcherImpl:
                 )
             )
 
-            if not hasattr(self, 'comm_stream'):
-                self.comm_stream = torch.cuda.Stream()
-            self.comm_stream.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(self.comm_stream):
-                expert_ids_per_ep_rank = torch.tensor(
-                    [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
-                    dtype=torch.int32,
-                    device=torch.cuda.current_device(),
-                )
+            if not self.config.fix_router:
                 self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
-                    expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
+                    self.expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
                 )
-
         return num_tokens_per_local_expert
 
     def token_permutation(
