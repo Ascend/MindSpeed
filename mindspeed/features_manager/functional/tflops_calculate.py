@@ -13,6 +13,10 @@ class TflopsCalculateFeature(MindSpeedFeature):
         group.add_argument('--op-cal-tflops', action='store_true', default=False,
                            help='use for cal mfu and hfu')
 
+    def validate_args(self, args):
+        if args.op_cal_tflops and args.multi_latent_attention:
+            raise AssertionError("Multi-head latent attention currently does not support op-cal-tflops")
+
     def register_patches(self, patch_manager, args):
         from mindspeed.functional.tflops_calculate.adaptor import training_log
         from mindspeed.functional.tflops_calculate.tflops_utils import checkpoint_function_backward_wrapper
