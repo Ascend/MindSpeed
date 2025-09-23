@@ -14,9 +14,9 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
     """
     logits = logits.view(-1, self.config.num_moe_experts)
 
-    logits = gather_from_sequence_parallel_region(logits)
     # Apply Z-Loss
     logits = self.apply_z_loss(logits)
+    logits = gather_from_sequence_parallel_region(logits)
 
     if self.routing_type == "sinkhorn":
         scores, routing_map = self.sinkhorn_load_balancing(logits)

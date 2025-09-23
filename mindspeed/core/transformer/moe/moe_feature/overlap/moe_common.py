@@ -2,6 +2,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 from functools import wraps
+from typing import Optional
 import torch
 import torch_npu
 import torch.nn.functional as F
@@ -372,3 +373,26 @@ def backward_func(func_tensor, gradinputs):
     elif isinstance(gradinputs, tuple):
         func_tensor.backward(*gradinputs)
 
+
+def async_comm_sort_chunks_by_idxs(
+    input: torch.Tensor,
+    split_sizes: torch.Tensor,
+    sorted_idxs: torch.Tensor,
+    probs: Optional[torch.Tensor] = None,
+    fused: bool = False,
+    prob_handle = None
+):
+    """Split and sort the input tensor based on the split_sizes and sorted indices."""
+    if fused:
+        raise AssertionError('async sort_chunks_by_idxs not support fused now.')
+
+    input = torch.split(input, split_sizes.tolist(), dim=0)
+    output = torch.cat([input[i] for i in sorted_idxs.tolist()], dim=0)
+    if probs is not None:
+        if prob_handle:
+            prob_handle.wait()
+        probs = torch.split(probs, split_sizes.tolist(), dim=0)
+        permuted_probs = torch.cat([probs[i] for i in sorted_idxs.tolist()], dim=0)
+    else:
+        permuted_probs = None
+    return output, permuted_probs

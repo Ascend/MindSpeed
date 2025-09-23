@@ -107,12 +107,18 @@ class AlltoAllSeqOverlapMoeLayer(BaseMoELayer):
 
         # Initialize shared experts
         if self.use_shared_expert:
+            # Use async comm linear for shared_experts.
+            from mindspeed.core.transformer.moe.moe_feature.overlap.mlp_layers import ShareExpertColumnParallelLinear,\
+                                                                                      ShareExperRowParallelLinear
+            # After 0.10.0, the definition of shared_experts has conflict. Rename the MindSpeed mark to 'with_shared_expert'.
+            self.config.with_shared_expert = True
+            self.submodules.shared_experts.submodules.linear_fc1 = ShareExpertColumnParallelLinear
+            self.submodules.shared_experts.submodules.linear_fc2 = ShareExperRowParallelLinear
             self.shared_experts = build_module(self.submodules.shared_experts, config=self.config)
             if self.shared_expert_overlap:
                 raise ValueError(
                     f"use tp_extend_ep not support shared_expert_overlap."
                 )
-            # In 0.10.0, the definition of shared_experts has conflict. Rename the MindSpeed version to 'with_shared_expert'.
             self.shared_experts.with_shared_expert = True
 
     def forward(self, hidden_states):
@@ -152,6 +158,12 @@ class AllGatherOverlapMoeLayer(BaseMoELayer):
 
         # Initialize shared experts
         if self.use_shared_expert:
+            from mindspeed.core.transformer.moe.moe_feature.overlap.mlp_layers import ShareExpertColumnParallelLinear,\
+                                                                                      ShareExperRowParallelLinear
+            # After 0.10.0, the definition of shared_experts has conflict. Rename the MindSpeed mark to 'with_shared_expert'.
+            self.config.with_shared_expert = True
+            self.submodules.shared_experts.submodules.linear_fc1 = ShareExpertColumnParallelLinear
+            self.submodules.shared_experts.submodules.linear_fc2 = ShareExperRowParallelLinear
             self.shared_experts = build_module(self.submodules.shared_experts, config=self.config)
             if self.shared_expert_overlap:
                 raise ValueError(

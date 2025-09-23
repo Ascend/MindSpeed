@@ -88,7 +88,14 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
                 moe_layer.shared_experts, hidden_states
             )
 
-            rs_share_experts_output = share_experts_output
+            if parallel_state.get_tensor_model_parallel_world_size() > 1:
+                # reduce scatter
+                _, rs_share_experts_output, shared_experts_rs_handle = async_reduce_scatter(
+                    share_experts_output, parallel_state.get_tensor_model_parallel_group()
+                )
+            else:
+                rs_share_experts_output = share_experts_output
+                shared_experts_rs_handle = None
 
         token_permutation_input = (
             global_routing_map_tuple,
@@ -132,6 +139,9 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
 
         ctx.token_unpermutation_output_shape = output.shape
         token_unpermutation_rs_handle.wait()
+        output.untyped_storage().resize_(0)
+        output_rs = output_rs.view(ctx.input_shape)
+
         save_tensors.append(dispatched_input)
         save_tensors.append(hidden_states)
         save_tensors.append(output)
@@ -141,13 +151,12 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         if config.n_shared_experts or config.moe_shared_expert_intermediate_size:
             if shared_experts_rs_handle is not None:
                 shared_experts_rs_handle.wait()
-            output_rs = output + rs_share_experts_output
+            output_rs = output_rs + rs_share_experts_output
             rs_share_experts_output.untyped_storage().resize_(0)
             share_experts_output.untyped_storage().resize_(0)
-        else:
-            output_rs = output.detach()
+            return output_rs, mlp_bias
         
-        return output_rs, mlp_bias
+        return output_rs.detach(), mlp_bias
 
     @staticmethod
     def backward(ctx, *args):
@@ -158,8 +167,25 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
 
         token_unpermutation_output_shape = ctx.token_unpermutation_output_shape
 
-        ag_share_experts_grad_input = args[0]
-        ag_share_experts_handle = None
+        if share_experts_graph is not None and parallel_state.get_tensor_model_parallel_world_size() > 1:
+            _, ag_share_experts_grad_input, ag_share_experts_handle = async_all_gather(
+                args[0], parallel_state.get_tensor_model_parallel_group()
+            )
+        else:
+            ag_share_experts_grad_input = args[0]
+            ag_share_experts_handle = None
+
+        if share_experts_graph is not None:
+            _, ag_experts_grad_input, ag_experts_handle = async_all_gather(
+                ag_share_experts_grad_input,
+                parallel_state.get_expert_model_parallel_group(),
+                ag_share_experts_handle
+            )
+        else:
+            _, ag_experts_grad_input, ag_experts_handle = async_all_gather(
+                args[0],
+                parallel_state.get_expert_tensor_and_model_parallel_group(),
+            )
 
         args = None
         if ag_share_experts_handle is not None:
@@ -172,7 +198,8 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import set_ag_tp_hidden_status
             set_ag_tp_hidden_status(input_)
 
-        ag_experts_grad_input = ag_share_experts_grad_input.view(token_unpermutation_output_shape)
+        ag_experts_handle.wait()
+        ag_experts_grad_input = ag_experts_grad_input.view(token_unpermutation_output_shape)
         ag_share_experts_grad_input = None
         # permute backward prepare.
         set_gemm_backward_need_tensors((dispatched_input, global_hidden_states_detach, local_map, reversed_local_input_permutation_mapping))

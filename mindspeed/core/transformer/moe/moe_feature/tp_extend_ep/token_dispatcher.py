@@ -126,11 +126,9 @@ class All2AllSeqTp2epDispatcherImpl:
             # num_tokens_per_local_expert: [num_local_experts]
             # ===================================================
         else:
+            #With Ascend GMM, wo no more need num_tokens_per_local_expert move to host.
             self.num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
                 -1, self.num_experts
-            )
-            num_tokens_per_local_expert = num_local_tokens_per_expert.to(
-                torch.device("cpu"), non_blocking=True
             )
 
         if self.num_local_experts > 1:
@@ -209,6 +207,7 @@ class All2AllSeqTp2epDispatcherImpl:
 
         # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
         if self.num_local_experts > 1:
+            torch.cuda.current_stream().wait_stream(self.comm_stream)
             global_input_tokens, global_probs = sort_chunks_by_idxs(
                 global_input_tokens,
                 self.num_global_tokens_per_local_expert_cpu.ravel(),

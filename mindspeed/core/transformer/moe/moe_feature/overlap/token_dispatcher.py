@@ -20,13 +20,18 @@ from mindspeed.core.transformer.moe.moe_feature import (
     reduce_from_tensor_model_parallel_region,
     set_tensor_grad_fn_sequence_sr,
     get_capacity,
-    MoEAlltoAllSEQTokenDispatcher
+    MoEAlltoAllSEQTokenDispatcher,
     )
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import (
-    forward_func
-)
+    forward_func, 
+    async_comm_sort_chunks_by_idxs,
+    )
 from mindspeed.core.transformer.moe.moe_feature.overlap.unpermute_without_activation import UnpermuteWithoutActivation
-from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import async_all_to_all, async_alltoall_with_backward
+from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import (
+    async_all_to_all, 
+    async_alltoall_with_backward,
+    async_reduce_scatter
+    )
 
 """ We use the following notation throughout this file:
      H: hidden size
@@ -135,8 +140,9 @@ class MoEAlltoAllSeqOverLapDispatcher:
             tokens_per_expert = self.preprocess_overlap(routing_map)
             if not self.config.moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
                 hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
-            self.hidden_shape_before_permute = hidden_states.shape   
-            tokens_per_expert = tokens_per_expert.to('npu', non_blocking=True)
+            self.hidden_shape_before_permute = hidden_states.shape
+            if not moe_ctx.config.moe_tp_extend_ep:
+                tokens_per_expert = tokens_per_expert.to('npu', non_blocking=True)
             if self.cuda_sync_point == "before_permutation_1":
                 torch.cuda.current_stream().synchronize()
             (
@@ -181,22 +187,26 @@ class MoEAlltoAllSeqOverLapDispatcher:
                 (share_experts_output), *_ = forward_func(shared_experts, (hidden_states, moe_ctx))
             else:
                 (share_experts_output), *_ = forward_func(shared_experts, (hidden_states))
+            if parallel_state.get_tensor_model_parallel_world_size() > 1:
+                share_experts_graph, share_experts_output, rs_shared_experts_handle = async_reduce_scatter(share_experts_output, parallel_state.get_tensor_model_parallel_group(),
+                                                                                                        event=permute1_ep_all_to_all_handle, stream=torch.npu.default_stream())
+                share_experts_output = (share_experts_graph, share_experts_output, rs_shared_experts_handle)
         else:
             share_experts_output = None
 
-        permute1_probs_handle.wait()
         permute1_ep_all_to_all_handle.wait()
         permuted_probs.untyped_storage().resize_(0)
         permutated_local_input_tokens.untyped_storage().resize_(0)
 
-        def alltoall_token_permutation2(global_input_tokens, global_probs):
+        def alltoall_token_permutation2(global_input_tokens, global_probs, permute1_probs_handle=None):
             # Permutation 2: Sort tokens by local expert.
             if self.num_local_experts > 1:
-                global_input_tokens, global_probs = sort_chunks_by_idxs(
+                global_input_tokens, global_probs = async_comm_sort_chunks_by_idxs(
                     global_input_tokens,
                     self.num_global_tokens_per_local_expert_cpu.ravel(),
                     self.sort_input_by_local_experts,
                     probs=global_probs,
+                    prob_handle=permute1_probs_handle
                 )
 
             # Perform tensor parallel AllGather on the hidden dimension to obtain the input tokens.
@@ -216,8 +226,8 @@ class MoEAlltoAllSeqOverLapDispatcher:
         moe_ctx.sort_input_by_local_experts = self.sort_input_by_local_experts
 
         # token premute2 input
-        (global_input_tokens, global_probs), global_input_tokens_detach, global_probs_detach = forward_func(alltoall_token_permutation2,
-                                                                        (global_input_tokens, global_probs))
+        (global_input_tokens, global_probs), global_input_tokens_detach, global_probs_detach, _ = forward_func(alltoall_token_permutation2,
+                                                                        (global_input_tokens, global_probs, permute1_probs_handle))
 
         save_tensors.append(global_input_tokens_detach)
         save_tensors.append(global_input_tokens)
@@ -231,7 +241,8 @@ class MoEAlltoAllSeqOverLapDispatcher:
     def token_unpermutation(
         self, 
         hidden_states: torch.Tensor, 
-        bias: torch.Tensor = None, 
+        bias: torch.Tensor = None,
+        save_tensors = None
     ):
         """
         Reverse the token permutation to restore the original order.
@@ -247,20 +258,24 @@ class MoEAlltoAllSeqOverLapDispatcher:
 
         #def alltoall_token_unpermutation1(hidden_states):
         assert bias is None, "Bias is not supported in MoEAlltoAllSeqTokenDispatcher"
+        def alltoall_token_unpermutation1(hidden_states):
         # Perform tensor parallel Reduce-Scatter
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
-        if not self.config.moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
-            hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(hidden_states)
+            if not self.config.moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
+                hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(hidden_states)
 
-        # Unpermutation 2: expert output to AlltoAll input.
-        if self.num_local_experts > 1:
-            hidden_states, _ = sort_chunks_by_idxs(
-                hidden_states,
-                self.num_global_tokens_per_local_expert_cpu.T.ravel(),
-                self.restore_output_by_local_experts,
-            )
-
-
+            # Unpermutation 2: expert output to AlltoAll input.
+            if self.num_local_experts > 1:
+                hidden_states, _ = sort_chunks_by_idxs(
+                    hidden_states,
+                    self.num_global_tokens_per_local_expert_cpu.T.ravel(),
+                    self.restore_output_by_local_experts,
+                )
+            return hidden_states
+        hidden_states, hidden_states_detach = forward_func(alltoall_token_unpermutation1, hidden_states)
+        save_tensors.append(hidden_states_detach)
+        #unpermute1_graph
+        save_tensors.append(hidden_states)
         ep_group = parallel_state.get_expert_model_parallel_group()
         if self.config.moe_tp_extend_ep:
             ep_group = parallel_state.get_expert_tensor_and_model_parallel_group()
@@ -274,21 +289,26 @@ class MoEAlltoAllSeqOverLapDispatcher:
             self.output_splits,
         )
 
-        output = unpermute(
-            permutated_local_input_tokens,
-            self.reversed_local_input_permutation_mapping,
-            restore_shape=self.hidden_shape_before_permute,
-            routing_map=self.routing_map,
-            fused=self.config.moe_permute_fusion
-        )
+        def alltoall_token_unpermutation2(permutated_local_input_tokens):
+            output = unpermute(
+                permutated_local_input_tokens,
+                self.reversed_local_input_permutation_mapping,
+                restore_shape=self.hidden_shape_before_permute,
+                routing_map=self.routing_map,
+                fused=self.config.moe_permute_fusion
+            )
 
-        # Perform tensor parallel AlltoAll communication.
-        # output: [S*B, H/TP] -> [S*B/TP, H]
-        if not self.config.moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
-            output = tensor_parallel.all_to_all_hp2sp(output)
+            # Perform tensor parallel AlltoAll communication.
+            # output: [S*B, H/TP] -> [S*B/TP, H]
+            if not self.config.moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
+                output = tensor_parallel.all_to_all_hp2sp(output)
 
-        # Reshape the output tensor.
-        output = output.view(self.hidden_shape)
+            # Reshape the output tensor.
+            output = output.view(self.hidden_shape)
+            return output
+        
+        output, unpermute2_input_detach = forward_func(alltoall_token_unpermutation2, permutated_local_input_tokens)
+        save_tensors.append(unpermute2_input_detach)
 
         return output
 
@@ -425,18 +445,15 @@ class MoEAllGatherOverLapDispatcher:
         if (self.tp_size > 1) or (
                 self.ep_size > 1
         ):
-            output_total = reduce_scatter_to_sequence_parallel_region(
-                    output_total, group=self.tp_ep_group
-                )
             if self.add_bias:
                 output_bias_total = tensor_parallel.reduce_scatter_to_sequence_parallel_region(
-                    output_bias_total, group=self.tp_ep_group
+                    output_bias_total, group=parallel_state.get_expert_tensor_and_model_parallel_group()
                 )
                 output_bias_total = (output_bias_total / self.tp_size)
 
-        output_total = output_total.view(self.hidden_shape)
+        output_total = output_total.view(self.hidden_shape_before_permute)
         if self.add_bias:
-            output_bias_total = output_bias_total.view(self.hidden_shape)
+            output_bias_total = output_bias_total.view(self.hidden_shape_before_permute)
 
         return output_total, output_bias_total
 
