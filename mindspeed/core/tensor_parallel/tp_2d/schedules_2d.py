@@ -77,6 +77,13 @@ def forward_backward_pipelining_with_interleaving_tp2d(
     if config.param_sync_func is not None and not isinstance(config.param_sync_func, list):
         config.param_sync_func = [config.param_sync_func for _ in model]
 
+    # Disable config.grad_sync_func and config.param_sync_func if only running forward passes.
+    # They will be re-enabled at the end of this function.
+    grad_sync_func, param_sync_func = None, None
+    if forward_only:
+        grad_sync_func, param_sync_func = config.grad_sync_func, config.param_sync_func
+        config.grad_sync_func, config.param_sync_func = None, None
+
     def disable_grad_sync():
         """Disable asynchronous grad reductions"""
         nonlocal no_sync_context
@@ -637,5 +644,9 @@ def forward_backward_pipelining_with_interleaving_tp2d(
 
     if config.timers is not None:
         config.timers('forward-backward').stop()
+
+    # Restore config.grad_sync_func and config.param_sync_func.
+    if forward_only:
+        config.grad_sync_func, config.param_sync_func = grad_sync_func, param_sync_func
 
     return forward_data_store
