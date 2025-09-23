@@ -134,7 +134,7 @@ class All2AllSeqTp2epDispatcherImpl:
             
             if self.config.fix_router:
                 val_scm = (self.config.seq_length * self.config.moe_router_topk) // self.tp_extended_ep_size
-                self.send_count_matrix = [val_scm] * (group_size * group_size)
+                self.send_count_matrix = [val_scm] * (self.tp_extended_ep_size * self.tp_extended_ep_size)
                 self.send_count_matrix_T = self.send_count_matrix
             else:
                 group_size = self.tp_extended_ep_size  # = ep_size * tp_size
