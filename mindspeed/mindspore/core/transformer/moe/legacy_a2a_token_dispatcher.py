@@ -3,11 +3,14 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import torch
+import numpy as np
 import mindspore
 from torch_npu.utils.collect_env import get_cann_version
 from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel, mpu
 from megatron.core.transformer.moe.moe_utils import permute, unpermute, sort_chunks_by_idxs, get_capacity
+from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.transformer.moe.legacy_a2a_token_dispatcher import MoEAlltoAllSEQTokenDispatcher
 from megatron.core.tensor_parallel.mappings import reduce_scatter_to_sequence_parallel_region
 from mindspeed.core.transformer.moe.router import gather_from_sequence_parallel_region_to_moe_async
 from mindspeed.core.transformer.moe.comm_utils import (async_reduce_scatter,
@@ -174,3 +177,62 @@ def alltoall_token_permutation(
 
     return global_input_tokens, tokens_per_expert
 
+
+def moealltoallseqtokendispatcher_init(
+    self, num_local_experts: int, local_expert_indices: list[int], config: TransformerConfig
+) -> None:
+    """
+    Initialize the AlltoAll token dispatcher.
+
+    Args:
+        num_local_experts (int): Number of local experts on the current device.
+        local_expert_indices (list[int]): Indices of local experts on the current device.
+        config (TransformerConfig): Configuration for the transformer model.
+    """
+    super(MoEAlltoAllSEQTokenDispatcher, self).__init__(config=config)
+    self.hidden_shape = None
+    self.num_input_tokens = None
+    self.num_local_experts = num_local_experts
+    self.num_experts = config.num_moe_experts
+    assert self.num_local_experts > 0, "Expected at least one expert"
+    self.local_expert_indices = local_expert_indices
+    assert (
+        len(self.local_expert_indices) == self.num_local_experts
+    ), "Invalid local expert indices"
+    for i in range(len(self.local_expert_indices) - 1):
+        assert (
+            self.local_expert_indices[i] == self.local_expert_indices[i + 1] - 1
+        ), "local_expert_indices must be continous"
+    self.ep_size = config.expert_model_parallel_size
+    self.tp_size = config.tensor_model_parallel_size
+    self.input_splits = None
+    self.output_splits = None
+    # [tp_size * ep_size, num_local_experts]. Represents the number of tokens sent
+    # to each local expert by all ranks.
+    self.num_global_tokens_per_local_expert_cpu = None
+    input_chunk_idxs = np.arange(self.num_experts)
+    # [num_local_experts, ep_size]. Sort the input chunks by local experts.
+    self.sort_input_by_local_experts = input_chunk_idxs.reshape(
+        -1, self.num_local_experts
+    ).T.ravel()
+    # [ep_size, num_local_experts]. Restore the output chunks by local experts.
+    self.restore_output_by_local_experts = input_chunk_idxs.reshape(
+        self.num_local_experts, -1
+    ).T.ravel()
+
+    # Token drop and padding.
+    # We need to keep track of the token num if we drop tokens without padding them.
+    self.num_out_tokens = None
+    # Drop and pad the input to capacity.
+    self.drop_and_pad = self.config.moe_pad_expert_input_to_capacity
+    if self.drop_and_pad:
+        assert self.config.moe_expert_capacity_factor is not None
+    self.capacity = None
+
+    # A cuda stream synchronization is needed in self.token_permutation()
+    # in some cases, because there are several non-blocking DtoH data
+    # transfers called in self.preprocess(). The synchronization happens
+    # at different points based on MoE settings as late as possible.
+    # Valid sync points are "before_permutation_1", "before_ep_alltoall",
+    # "before_finish", and "no_sync".
+    self.cuda_sync_point = "no_sync"

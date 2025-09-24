@@ -294,3 +294,91 @@ class _PatchedMOEAlltoAllSEQTptoEpTokenDispatcher(All2AllSeqTp2epDispatcherImpl,
         # 保险起见：两边都显式调一遍，避免对方不是 cooperative super
         MegatronMoEAlltoAllSEQTokenDispatcher.__init__(self, *args, **kwargs)
         All2AllSeqTp2epDispatcherImpl.__init__(self, *args, **kwargs)
+
+
+def preprocess(self, routing_map):
+
+    num_local_tokens_per_expert = routing_map.sum(dim=0).long()
+
+    ep_size = self.config.expert_model_parallel_size
+    if self.drop_and_pad:
+        num_tokens = routing_map.size(0) * self.config.moe_router_topk
+        self.capacity = get_capacity(
+            num_tokens=num_tokens,
+            num_experts=self.num_experts,
+            capacity_factor=self.config.moe_expert_capacity_factor,
+        )
+        self.num_out_tokens = self.capacity * self.num_experts
+        num_tokens_per_local_expert = torch.full(
+            (self.num_local_experts,), self.capacity * self.ep_size, dtype=torch.long
+        )
+        self.num_global_tokens_per_local_expert_cpu = torch.full(
+            (self.num_experts * self.tp_size,), self.capacity, dtype=torch.long
+        )
+        return num_tokens_per_local_expert
+    elif self.config.moe_expert_capacity_factor is not None:
+        # Token drop but no pad.
+        self.num_out_tokens = num_local_tokens_per_expert.sum().to(
+            torch.device("cpu"), non_blocking=True
+        )
+        self.cuda_sync_point = "before_permutation_1"
+    else:
+        # Dropless
+        self.num_out_tokens = routing_map.size(0) * self.config.moe_router_topk
+        if self.ep_size > 1 or self.num_local_experts > 1:
+            # Token dropless and enable ep. A synchronization is needed before expert parallel
+            # AlltoAll communication to get the `input_splits` and `output_splits` CPU values.
+            self.cuda_sync_point = "before_ep_alltoall"
+        else:
+            # Token dropless and no ep. A synchronization is needed to get the
+            # `tokens_per_expert` CPU value.
+            self.cuda_sync_point = "before_finish"
+    tp_size = parallel_state.get_tensor_model_parallel_world_size()
+    tp_extended_ep_size = ep_size * tp_size
+    if tp_extended_ep_size > 1:
+        # ===================================================
+        # Calculate input_splits, output_splits for alltoall-v.
+        # ===================================================
+        self.input_splits = (
+            num_local_tokens_per_expert.reshape(tp_extended_ep_size, self.num_local_experts)
+            .sum(axis=1)
+            .to(torch.device("cpu"), non_blocking=True)
+            .numpy()
+        )
+        num_global_tokens_per_expert = tensor_parallel.gather_from_sequence_parallel_region(
+            num_local_tokens_per_expert, group=parallel_state.get_expert_tensor_and_model_parallel_group()
+        ).reshape(tp_extended_ep_size, self.num_experts)
+        self.num_global_tokens_per_local_expert = num_global_tokens_per_expert[
+                                                    :, self.local_expert_indices
+                                                    ]
+        self.output_splits = (
+            self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu"), non_blocking=True).numpy()
+        )
+        num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0)
+    else:
+        #With Ascend GMM, wo no more need num_tokens_per_local_expert move to host.
+        self.num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
+            -1, self.num_experts
+        )
+
+    if self.num_local_experts > 1:
+        self.num_global_tokens_per_local_expert_cpu = (
+            self.num_global_tokens_per_local_expert.view(-1, self.num_local_experts).to(
+                torch.device("cpu"), non_blocking=True
+            )._numpy_non_blocking()
+        )
+
+        if not hasattr(self, 'comm_stream'):
+            self.comm_stream = torch.cuda.Stream()
+        self.comm_stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(self.comm_stream):
+            expert_ids_per_ep_rank = torch.tensor(
+                [i % self.num_local_experts for i in range(self.config.num_moe_experts)],
+                dtype=torch.int32,
+                device=torch.cuda.current_device(),
+            )
+            self.global_input_tokens_local_experts_indices = torch.repeat_interleave(
+                expert_ids_per_ep_rank, self.num_global_tokens_per_local_expert.ravel()
+            )
+
+    return num_tokens_per_local_expert
