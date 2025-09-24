@@ -108,6 +108,7 @@ GPT_ARGS="
     --no-load-rng \
     --load ${CKPT_LOAD_DIR} \
     --save ${CKPT_SAVE_DIR} \
+    --transformer-impl local \
     --bf16
 "
 

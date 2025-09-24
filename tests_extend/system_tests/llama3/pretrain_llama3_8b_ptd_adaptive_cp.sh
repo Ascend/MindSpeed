@@ -77,6 +77,7 @@ GPT_ARGS="
     --no-gradient-accumulation-fusion \
     --no-load-optim \
     --no-load-rng \
+    --transformer-impl local \
     --bf16
 "
 

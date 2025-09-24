@@ -73,6 +73,7 @@ GPT_ARGS="
     --group-query-attention \
     --num-query-groups 8 \
     --lr-warmup-fraction 0.01 \
+    --transformer-impl local \
     --mock-data
 "
 

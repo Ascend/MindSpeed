@@ -87,6 +87,7 @@ GPT_ARGS="
     --no-bias-dropout-fusion \
     --attention-dropout 0.0 \
     --hidden-dropout 0.0 \
+    --transformer-impl local \
     --bf16
 "
 
