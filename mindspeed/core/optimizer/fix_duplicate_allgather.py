@@ -59,7 +59,7 @@ def get_megatron_optimizer_wrapper(func):
 
         chained_optimizer = func(*args, **kwargs)
 
-        if len(args) > 1:
+        if len(args) > 1 and hasattr(chained_optimizer, 'chained_optimizers'):
             model_chunks = args[1]
         
             for optimizer in chained_optimizer.chained_optimizers:
