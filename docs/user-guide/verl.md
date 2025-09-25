@@ -3,14 +3,21 @@
 ## 环境准备
 
 ### 1. MindSpeed 安装
-按照 MindSpeed 文档，安装对应依赖。
-> https://gitcode.com/ascend/MindSpeed#%E5%AE%89%E8%A3%85
+按照 MindSpeed 文档，安装对应依赖。[MindSpeed安装](https://gitcode.com/ascend/MindSpeed#%E5%AE%89%E8%A3%85)
 
 ### 2. Verl 安装
-按照 Verl 文档，安装对应依赖：
-> https://github.com/volcengine/verl/blob/main/docs/ascend_tutorial/ascend_quick_start.rst
+#### 版本说明
+verl固定如下commit id：
+```shell
+git clone https://github.com/volcengine/verl.git
+cd verl
+git checkout 3cc7695f4c70620ad871437037856f32182de096
+```
 
-> 注：若使用的CANN版本高于8.3.RC1，vllm和vllm-ascend安装版本须大于等于0.9.1，0.9.1版本vllm安装可参考：https://vllm-ascend.readthedocs.io/en/v0.9.1/installation.html
+若使用的CANN版本高于8.3.RC1，vllm和vllm-ascend安装版本须大于等于0.9.1，0.9.1版本vllm安装可参考：https://vllm-ascend.readthedocs.io/en/v0.9.1/installation.html
+
+#### 安装
+参考 Verl 文档，安装对应依赖：[verl_ascend_quick_start](https://github.com/volcengine/verl/blob/3cc7695f4c70620ad871437037856f32182de096/docs/ascend_tutorial/ascend_quick_start.rst)
 
 ## 使能 MindSpeed 后端
 
