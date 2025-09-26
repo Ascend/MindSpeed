@@ -59,8 +59,13 @@ def get_megatron_optimizer_wrapper(func):
 
         chained_optimizer = func(*args, **kwargs)
 
-        if len(args) > 1 and hasattr(chained_optimizer, 'chained_optimizers'):
-            model_chunks = args[1]
+        if hasattr(chained_optimizer, 'chained_optimizers'):
+            if 'model_chunks' in kwargs:
+                model_chunks = kwargs['model_chunks']
+            elif len(args) > 1:
+                model_chunks = args[1]
+            else:
+                return chained_optimizer
         
             for optimizer in chained_optimizer.chained_optimizers:
                 optimizer.is_moe_param = 'dense'
@@ -87,6 +92,8 @@ def get_megatron_optimizer_wrapper(func):
                     is_expert_parallel = not getattr(param, 'allreduce', True)
                     if is_expert_parallel:
                         break
+                if is_expert_parallel:
+                    break
 
             if is_expert_parallel:
                 chained_optimizer.chained_optimizers[-1].is_moe_param = 'moe'
