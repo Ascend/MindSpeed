@@ -16,14 +16,14 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
 
   <tr>
     <td>昇腾NPU驱动</td>
-    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/canncommercial/80RC3/softwareinst/instg/instg_0003.html?Mode=PmIns&OS=Ubuntu&Software=cannToolKit">驱动固件安装指南</a> 》</td>
+    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha002/softwareinst/instg/instg_0003.html?Mode=PmIns&OS=Debian&Software=cannToolKit">驱动固件安装指南</a> 》</td>
   </tr>
   <tr>
     <td>昇腾NPU固件</td>
   </tr>
   <tr>
     <td>Toolkit（开发套件）</td>
-    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/canncommercial/80RC3/softwareinst/instg/instg_0000.html">CANN 软件安装指南</a> 》</td>
+    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha002/softwareinst/instg/instg_0005.html?Mode=PmIns&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a> 》</td>
   </tr>
   <tr>
     <td>Kernel（算子包）</td>
@@ -50,7 +50,7 @@ pip install -r requirements.txt
 
 可以参考MindSpeed-Core-MS目录下提供的[一键适配命令脚本](https://gitee.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)， 拉取并适配相应版本的MindSpeed、Megatron-LM和MSAdapter。
 
-**若使用MindSpeed-Core-MS目录下的一键适配命令脚本（如[auto_convert_llm.sh](https://gitee.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert_llm.sh)）可忽略后面步骤。**
+**若使用MindSpeed-Core-MS目录下的一键适配命令脚本（如[auto_convert.sh](https://gitee.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)）可忽略后面步骤。**
 
 ### 3. 获取并适配相应版本的 MindSpeed、Megatron-LM 和 MSAdapter
 
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 
 ```shell
 # 获取指定版本的MindSpeed源码：
-git clone https://gitee.com/ascend/MindSpeed.git -b master
+git clone https://gitcode.com/ascend/MindSpeed.git -b master
 
 # 获取指定版本的Megatron-LM源码：
 git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
@@ -66,7 +66,7 @@ git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
 # 获取指定版本的MSAdapter源码：
 git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
 ```
-具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitee.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert_llm.sh](https://gitee.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert_llm.sh)。
+具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitee.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert.sh](https://gitee.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)。
 
 （2）设置环境变量：
 
@@ -252,12 +252,6 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   </tr></thead>
 <tbody>
   <tr>
-    <td rowspan="5"> Ascend 自适应选择重计算 </td>
-    <td><a href="../features/adaptive-recompute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
     <td rowspan="5"> Ascend 激活函数重计算 </td>
     <td><a href="../features/activation-function-recompute.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
@@ -306,32 +300,8 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   </tr>
   <tbody>
     <tr>
-    <td rowspan="5">  共享KV cache</td>
-    <td><a href="../features/hccl-group-buffer-set.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-  <tbody>
-    <tr>
-    <td rowspan="5">  MTP 重计算</td>
-    <td><a href="../features/hccl-group-buffer-set.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-    <tr>
-    <td rowspan="5">  MTP 显存优化</td>
-    <td><a href="../features/hccl-group-buffer-set.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-    <tr>
     <td rowspan="5">  SWAP优化器</td>
     <td><a href="../features/swap-optimizer.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-    <tr>
-    <td rowspan="5">  zero 显存优化</td>
-    <td><a href="../features/hccl-group-buffer-set.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 </table>
@@ -366,7 +336,7 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   <tbody>
   <tr>
     <td rowspan="5"> Ascend ring attention update</td>
-    <td><a href="../features/flash-attention.md">link</a></td>
+    <td><a href="../features/ring-attention-context-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
   <tbody>
@@ -380,12 +350,6 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
     <td rowspan="5"> Ascend npu_matmul_add_fp32 梯度累加融合算子</td>
     <td><a href="../features/npu_matmul_add.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
-  </tr>
-  <tbody>
-   <tr>
-    <td rowspan="5">  Ascend Moe BMM通算融合算子</td>
-    <td><a href="../features/megatron_moe/megatron-moe-bmm-fused.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
     <tbody>
     <tr>
@@ -418,12 +382,6 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   </tr></thead>
 <tbody>
   <tr>
-    <td rowspan="5"> Ascend nano-pipe流水线并行 </td>
-    <td><a href="../features/nanopipe-pipeline-parallel.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-  <tbody>
-  <tr>
     <td rowspan="5"> Ascend Gloo 存档落盘优化 </td>
     <td><a href="../features/hccl-replace-gloo.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
@@ -435,6 +393,7 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   </table>
+
 
 ## Mcore MoE特性
 
@@ -476,70 +435,12 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   </tr>
   <tbody>
   <tr>
-    <td rowspan="5"> Ascend Megatron MoE 负载感知内存均衡算 </td>
-    <td><a href="../features/megatron_moe/megatron-moe-adaptive-recompute-activation.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend Megatron MoE 分层通信 </td>
-    <td><a href="../features/hierarchical-alltoallv.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-  <tbody>
-  <tr>
     <td rowspan="5"> Ascend Megatron MoE alltoall 通信掩盖 </td>
-    <td><a href="../features/hierarchical-alltoallv.md">link</a></td>
+    <td><a href="../features/ring-attention-context-parallel.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend Megatron MoE 大专家流水 </td>
-    <td><a href="../features/moe-experts-pipeline-degree.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
 </table>
 
-
-## DeepSpeed MoE特性
-
-<table><thead>
-  <tr>
-    <th width='450'>特性名称</th>
-    <th>介绍</th>
-    <th>支持情况</th>   
-  </tr></thead>
-<tbody>
-  <tr>
-    <td rowspan="5"> DeepSpeed MoE   </td>
-    <td><a href="../features/deepspeed_moe/deepspeed-moe.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend DeepSpeed MoE token 重排性能优化  </td>
-    <td><a href="../features/deepspeed_moe/deepspeed-moe-token-rearrange.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-  <tbody>
-  <tr>
-    <td rowspan="5"> Ascend DeepSpeed MoE dropless 性能优化 </td>
-    <td><a href="../features/deepspeed_moe/deepspeed-moe-efficient-moe.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend MLP 通信隐藏 </td>
-    <td><a href="../features/pipeline-experts.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> Ascend Ampipe流水通信隐藏  </td>
-    <td><a href="../features/ampipe.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-</table>
 
 ## 关键场景特性
 
@@ -625,8 +526,8 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   </tr>
 <tbody>
   <tr>
-    <td rowspan="5"> Ascend Auto Tuning 并行策略自动搜索系统 </td>
-    <td><a href="../features/auto_tuning.md">link</a></td>
+    <td rowspan="5"> Ascend Auto Settings 并行策略自动搜索系统 </td>
+    <td><a href="../features/auto_settings.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
 <tbody>
@@ -719,18 +620,6 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   <tr>
     <td rowspan="5"> ffn  </td>
     <td><a href="../ops/ffn.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_fused_moe_token_permute  </td>
-    <td><a href="../ops/npu_fused_moe_token_permute.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">❌</td>
-  </tr>
-<tbody>
-  <tr>
-    <td rowspan="5"> npu_fused_moe_token_unpermute  </td>
-    <td><a href="../ops/npu_fused_moe_token_unpermute.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">❌</td>
   </tr>
   <tbody>
