@@ -26,6 +26,7 @@ from megatron.core.parallel_state import get_context_parallel_world_size, get_nc
 
 from mindspeed.core.simple_parallel_cfg import SimpleParallelCfg
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
+from mindspeed.core.tensor_parallel_y_union_cp_for_router import TensorParallelYUnionCPForRouter
 
 _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP = None
 _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_ULYSSES = None
@@ -487,11 +488,27 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             nd2_dim1_size=nd2_dim1_sz,
             distributed_timeout_minutes=distributed_timeout_minutes
         )
-
+        ulysses_degree = get_args().ulysses_degree_in_cp
         if args.tp_2d:
             from mindspeed.core.tensor_parallel_x_union_cp import TensorParallelXUnionCP
 
             tp_y_cp_group = TensorParallelYUnionCP(
+                parallel_cfg=SimpleParallelCfg(
+                    dp=data_parallel_size,
+                    pp=pipeline_model_parallel_size,
+                    tp=tensor_model_parallel_size,
+                    cp=ulysses_degree if args.context_parallel_algo == 'hybrid_cp_algo' else context_parallel_size,
+                    ep=expert_model_parallel_size,
+                    tp_x=get_args().tp_x,
+                    tp_y=get_args().tp_y,
+                ),
+                pg_name="tp-y-cp",
+                overlap_gp_name="tp-y-cp-overlap",
+                nccl_comm_cfgs=nccl_comm_cfgs
+            )
+            print(f'tp_y_cp_group.global_ranks={tp_y_cp_group.global_ranks} for rank {rank}')
+
+            tp_y_cp_group_for_router = TensorParallelYUnionCPForRouter(
                 parallel_cfg=SimpleParallelCfg(
                     dp=data_parallel_size,
                     pp=pipeline_model_parallel_size,
@@ -505,9 +522,9 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 overlap_gp_name="tp-y-cp-overlap",
                 nccl_comm_cfgs=nccl_comm_cfgs
             )
-            print(f'tp_y_cp_group.global_ranks={tp_y_cp_group.global_ranks} for rank {rank}')
+            print(f'tp_y_cp_group_for_router.global_ranks={tp_y_cp_group_for_router.global_ranks} for rank {rank}')
 
-            tp_x_cp_group = TensorParallelXUnionCP(
+            tp_x_cp_group_for_router = TensorParallelXUnionCP(
                 parallel_cfg=SimpleParallelCfg(
                     dp=data_parallel_size,
                     pp=pipeline_model_parallel_size,
@@ -521,7 +538,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                 overlap_gp_name=None,
                 nccl_comm_cfgs=nccl_comm_cfgs
             )
-            print(f'tp_x_cp_group.global_ranks={tp_x_cp_group.global_ranks} for rank {rank}')
+            print(f'tp_x_cp_group_for_router.global_ranks={tp_x_cp_group_for_router.global_ranks} for rank {rank}')
 
             if expert_model_parallel_size > 1:
                 all_tp_x_ep_groups = set()
@@ -594,11 +611,13 @@ def initialize_context_parallel_group_for_send_recv_overlap(
 ):
     timeout = timedelta(minutes=distributed_timeout_minutes)
     from megatron.training import get_args
-    if not get_args().use_cp_send_recv_overlap:
+    args = get_args()
+    if not args.use_cp_send_recv_overlap:
         return
-    # when tp_y > 1, use TensorParallelYUnionCP
-    if get_args().tp_2d and get_args().tp_y > 1:
-        return
+    if args.context_parallel_algo == 'hybrid_cp_algo':
+        ulysses_and_tensor_model_parallel_size = tensor_model_parallel_size * args.ulysses_degree_in_cp
+    else:
+        ulysses_and_tensor_model_parallel_size = tensor_model_parallel_size
     rank = torch.distributed.get_rank()
     world_size: int = torch.distributed.get_world_size()
     num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
@@ -616,8 +635,8 @@ def initialize_context_parallel_group_for_send_recv_overlap(
                     i * num_pipeline_model_parallel_groups
                     + (j + 1) * tensor_model_parallel_size * context_parallel_size
             )
-            for k in range(tensor_model_parallel_size):
-                ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
+            for k in range(ulysses_and_tensor_model_parallel_size):
+                ranks = range(start_rank + k, end_rank, ulysses_and_tensor_model_parallel_size)
                 group_send_recv_overlap = torch.distributed.new_group(
                     ranks, timeout=timeout, pg_options=megatron.core.parallel_state.get_nccl_options('cp2', nccl_comm_cfgs)
                 )

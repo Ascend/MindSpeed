@@ -358,32 +358,34 @@ class AttentionStrategy:
         ):
             in_hybrid_mode = True
         cp_group_for_send_recv_overlap = None
-        if not in_hybrid_mode:
-            if self._cp_expanded_by_2d_tp:
-                tp_y_cp = TensorParallelYUnionCP()
-                cp_group = tp_y_cp.group
-                cp_size = tp_y_cp.get_parallel_group_world_size()
-                rank = tp_y_cp.get_parallel_rank()
-                cp_global_ranks = tp_y_cp.global_ranks
-                if self._args.use_cp_send_recv_overlap:
-                    cp_group_for_send_recv_overlap = tp_y_cp.overlap_group
-            else:
-                cp_group = mpu.get_context_parallel_group()
-                cp_size = mpu.get_context_parallel_world_size()
-                rank = mpu.get_context_parallel_rank()
-                cp_global_ranks = mpu.get_context_parallel_global_ranks()
-                if self._args.use_cp_send_recv_overlap:
-                    cp_group_for_send_recv_overlap = (
-                        mpu.get_context_parallel_group_for_send_recv_overlap()
-                    )
-
-        else:
+        if in_hybrid_mode:
             cp_group = get_context_parallel_group_for_hybrid_ring()
             cp_size = get_context_parallel_for_hybrid_ring_world_size()
             rank = get_context_parallel_for_hybrid_ring_rank()
             cp_global_ranks = (
                 get_context_parallel_for_hybrid_ring_global_ranks()
             )  # noqa
+            if self._args.use_cp_send_recv_overlap:
+                cp_group_for_send_recv_overlap = (
+                    mpu.get_context_parallel_group_for_send_recv_overlap()
+                )
+        elif self._cp_expanded_by_2d_tp:
+            tp_y_cp = TensorParallelYUnionCP()
+            cp_group = tp_y_cp.group
+            cp_size = tp_y_cp.get_parallel_group_world_size()
+            rank = tp_y_cp.get_parallel_rank()
+            cp_global_ranks = tp_y_cp.global_ranks
+            if self._args.use_cp_send_recv_overlap:
+                cp_group_for_send_recv_overlap = tp_y_cp.overlap_group
+        else:
+            cp_group = mpu.get_context_parallel_group()
+            cp_size = mpu.get_context_parallel_world_size()
+            rank = mpu.get_context_parallel_rank()
+            cp_global_ranks = mpu.get_context_parallel_global_ranks()
+            if self._args.use_cp_send_recv_overlap:
+                cp_group_for_send_recv_overlap = (
+                    mpu.get_context_parallel_group_for_send_recv_overlap()
+                )
         cp_para = dict()
         cp_para["megatron_cp_in_bnsd"] = (
             self._attention.config.megatron_cp_in_bnsd

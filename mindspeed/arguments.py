@@ -1073,8 +1073,8 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError('tp-2d does not support nano-pipe')
             if args.ampipe_degree > 1:
                 raise AssertionError('tp-2d does not support ampipe')
-            if args.context_parallel_algo not in ['megatron_cp_algo', 'ulysses_cp_algo']:
-                raise AssertionError('tp-2d now only support megatron_cp_algo or ulysses_cp_algo')
+            if args.context_parallel_algo not in ['megatron_cp_algo', 'ulysses_cp_algo', 'hybrid_cp_algo']:
+                raise AssertionError('tp-2d now only support megatron_cp_algo, ulysses_cp_algo and hybrid_cp_algo')
             if args.use_ascend_coc:
                 raise AssertionError('tp-2d does not support ascend coc')
             if args.tensor_model_parallel_size // args.tp_x != args.tp_y:

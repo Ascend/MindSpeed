@@ -196,6 +196,8 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
     elif args.context_parallel_algo == 'hybrid_cp_algo':
         if args.attention_mask_type == 'general':
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp_general(pos_emb, seq_dim)
+        elif cp_expanded_by_2d_tp:
+            pos_emb = _get_pos_emb_on_this_tp_y_cp_rank_in_hybrid_cp(pos_emb, seq_dim)
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp(pos_emb, seq_dim)
     elif args.context_parallel_algo == 'adaptive_cp_algo':
@@ -372,6 +374,27 @@ def _get_pos_emb_on_this_tp_y_cp_rank_in_ulysses_cp(pos_emb, seq_dim):
  
     cp_rank = tp_y_cp_group.get_parallel_rank()
     pos_emb = pos_emb.chunk(tp_y_cp_size, dim=seq_dim)[cp_rank]
+    return pos_emb
+
+
+def _get_pos_emb_on_this_tp_y_cp_rank_in_hybrid_cp(pos_emb, seq_dim):
+    tp_y_cp_group = TensorParallelYUnionCP()
+    u_size = tp_y_cp_group.get_parallel_group_world_size()
+    u_rank = tp_y_cp_group.get_parallel_rank()
+    r_size = get_context_parallel_for_hybrid_ring_world_size()
+    r_rank = get_context_parallel_for_hybrid_ring_rank()
+
+    cp_idx = torch.tensor(
+        [r_rank, (2 * r_size - r_rank - 1)], device="cpu", pin_memory=True
+    ).cuda(non_blocking=True)
+    pos_emb = pos_emb.view(
+        *pos_emb.shape[:seq_dim], 2 * r_size, -1, *pos_emb.shape[(seq_dim + 1):]
+    )
+    pos_emb = pos_emb.index_select(seq_dim, cp_idx)
+    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2):])
+
+    pos_emb = pos_emb.chunk(u_size, dim=seq_dim)[u_rank]
+
     return pos_emb
 
 

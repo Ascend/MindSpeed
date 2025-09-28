@@ -99,10 +99,11 @@ def attention_init(
         if args.tp_2d:
             tp_y_cp = TensorParallelYUnionCP()
             ulysses_group = tp_y_cp.group
+        elif args.context_parallel_algo in ['hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
+            ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
         else:
             ulysses_group = mpu.get_context_parallel_group()
-        if args.context_parallel_algo in ['hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
-            ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
+
         self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
 
 

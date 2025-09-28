@@ -8,7 +8,7 @@ from megatron.core.transformer.moe.moe_utils import switch_load_balancing_loss_f
 from megatron.core.transformer.moe.moe_utils import z_loss_func
 from megatron.core.transformer.moe.router import TopKRouter
 from mindspeed.core.tensor_parallel_x_union_cp import TensorParallelXUnionCP
-from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
+from mindspeed.core.tensor_parallel_y_union_cp_for_router import TensorParallelYUnionCPForRouter
 from mindspeed.moe.utils import MoEAuxLossAutoScaler
 
 
@@ -43,7 +43,7 @@ class TopKRouter2D(TopKRouter):
             tp_x_cp_group = TensorParallelXUnionCP()
             sequence_partition_group = tp_x_cp_group.group
         elif self.config.moe_token_dispatcher_type == "alltoall":
-            tp_y_cp_group = TensorParallelYUnionCP()
+            tp_y_cp_group = TensorParallelYUnionCPForRouter()
             sequence_partition_group = tp_y_cp_group.group
             moe_aux_loss_coeff /= tp_y_cp_group.get_parallel_group_world_size()
 
