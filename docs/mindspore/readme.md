@@ -38,19 +38,19 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
 </table>
 
 
-### 2. 获取 [MindSpore-Core-MS](https://gitee.com/ascend/MindSpeed-Core-MS/) 代码仓
+### 2. 获取 [MindSpore-Core-MS](https://gitcode.com/ascend/MindSpeed-Core-MS/) 代码仓
 
 执行以下命令拉取MindSpeed-Core-MS代码仓，并安装Python三方依赖库，如下所示：
 
 ```shell
-git clone https://gitee.com/ascend/MindSpeed-Core-MS.git -b master
+git clone https://gitcode.com/ascend/MindSpeed-Core-MS.git -b master
 cd MindSpeed-Core-MS
 pip install -r requirements.txt
 ```
 
-可以参考MindSpeed-Core-MS目录下提供的[一键适配命令脚本](https://gitee.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)， 拉取并适配相应版本的MindSpeed、Megatron-LM和MSAdapter。
+可以参考MindSpeed-Core-MS目录下提供的[一键适配命令脚本](https://gitcode.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)， 拉取并适配相应版本的MindSpeed、Megatron-LM和MSAdapter。
 
-**若使用MindSpeed-Core-MS目录下的一键适配命令脚本（如[auto_convert.sh](https://gitee.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)）可忽略后面步骤。**
+**若使用MindSpeed-Core-MS目录下的一键适配命令脚本（如[auto_convert.sh](https://gitcode.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)）可忽略后面步骤。**
 
 ### 3. 获取并适配相应版本的 MindSpeed、Megatron-LM 和 MSAdapter
 
@@ -66,7 +66,7 @@ git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
 # 获取指定版本的MSAdapter源码：
 git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
 ```
-具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitee.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert.sh](https://gitee.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)。
+具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitcode.com/ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert.sh](https://gitcode.com/ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)。
 
 （2）设置环境变量：
 
