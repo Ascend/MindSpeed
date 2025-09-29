@@ -37,5 +37,6 @@ class DisableGlooGroupFeature(MindSpeedFeature):
             patch_manager.register_patch('torch.distributed.new_group', new_group_wrapper)
     
     def validate_args(self, args):
-        args.enable_gloo_process_groups = False
+        if getattr(args, self.feature_name, None):
+            args.enable_gloo_process_groups = False
         return
