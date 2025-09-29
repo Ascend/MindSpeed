@@ -196,22 +196,22 @@ MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并�
     <tr>
       <td> Megatron 分布式权重</td>
       <td><a href="docs/features/dist_ckpt.md">link</a></td>
-      <td style="text-align: center; vertical-align: middle">❌</td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
     </tr>
     <tr>
       <td> Megatron 全分片并行</td>
       <td><a href="docs/features/custom_fsdp.md">link</a></td>
-      <td style="text-align: center; vertical-align: middle">❌</td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
     </tr>
     <tr>
       <td> Megatron Transformer Engine</td>
       <td><a href="docs/features/transformer_engine.md">link</a></td>
-      <td style="text-align: center; vertical-align: middle">❌</td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
     </tr>
     <tr>
       <td> Megatron Multi-head Latent Attention</td>
       <td><a href="docs/features/multi-head-latent-attention.md">link</a></td>
-      <td style="text-align: center; vertical-align: middle">❌</td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
     </tr>
 <tbody>
 </table>
