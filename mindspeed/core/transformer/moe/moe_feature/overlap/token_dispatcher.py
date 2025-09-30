@@ -274,6 +274,7 @@ class MoEAlltoAllSeqOverLapDispatcher:
             return hidden_states
         hidden_states, hidden_states_detach = forward_func(alltoall_token_unpermutation1, hidden_states)
         save_tensors.append(hidden_states_detach)
+        hidden_states_detach.untyped_storage().resize_(0)
         #unpermute1_graph
         save_tensors.append(hidden_states)
         ep_group = parallel_state.get_expert_model_parallel_group()
@@ -288,7 +289,8 @@ class MoEAlltoAllSeqOverLapDispatcher:
             self.input_splits,
             self.output_splits,
         )
-
+        hidden_states.untyped_storage().resize_(0)
+        
         def alltoall_token_unpermutation2(permutated_local_input_tokens):
             output = unpermute(
                 permutated_local_input_tokens,
@@ -309,7 +311,8 @@ class MoEAlltoAllSeqOverLapDispatcher:
         
         output, unpermute2_input_detach = forward_func(alltoall_token_unpermutation2, permutated_local_input_tokens)
         save_tensors.append(unpermute2_input_detach)
-
+        unpermute2_input_detach.untyped_storage().resize_(0)
+        permutated_local_input_tokens.untyped_storage().resize_(0)
         return output
 
 

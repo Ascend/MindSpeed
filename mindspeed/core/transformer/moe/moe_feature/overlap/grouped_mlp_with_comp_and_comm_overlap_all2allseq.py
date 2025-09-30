@@ -59,7 +59,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
                     moe_zero_memory == "level1" and is_only_recompute_activation)
         if is_recompute_activation:
             act_out.untyped_storage().resize_(0)
-            ctx.activation_func = activation_func_with_probs
+            ctx.activation_func_with_probs = activation_func_with_probs
         if moe_zero_memory != "level0" and not (moe_zero_memory == "level1" and is_only_recompute_activation):
             ctx.save_for_backward(inputs, permuted_probs_inputs_detach, detached_act_inputs, act_out, weights1, weights2, original_weight1,
                                   original_weight2, group_list)
@@ -149,8 +149,6 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
 
             permutated_local_input_tokens, permuted_probs_ = alltoall_token_permutation1(detach_input, routing_map, probs)
 
-            probs.untyped_storage().resize_(0)
-
             _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
                 permutated_local_input_tokens,
                 output_splits,
@@ -170,8 +168,9 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
             weights1 = rearrange(weights1, 'n h f -> n f h')
             mm1_inputs_grad = gmm_op(act_inputs.grad, weights1, [], group_list, 0)[0]
         else:
-            mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t()) 
+            mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
+        probs.untyped_storage().resize_(0)
         # backward for probs. 
         backward_func(permute2_prob_graph, permuted_probs_inputs_detach.grad) 
 
@@ -204,14 +203,13 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
             permuted_probs_inputs_handle.wait()
             permuted_probs_.untyped_storage().resize_(0)
-            mm1_inputs, permuted_probs_inputs_detach = sort_chunks_by_idxs(
+            mm1_inputs, _ = sort_chunks_by_idxs(
                 global_input_tokens,
                 num_global_tokens_per_local_expert_cpu.ravel(),
                 sort_input_by_local_experts,
                 probs=global_probs
             )
             global_probs.untyped_storage().resize_(0)
-            permuted_probs_inputs_detach.untyped_storage().resize_(0)
             global_input_tokens.untyped_storage().resize_(0)
 
         if ctx.use_gmm:

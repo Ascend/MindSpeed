@@ -212,6 +212,7 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
                 permutated_local_input_tokens, permuted_probs, _ = permute(
                     detach_input.view(-1, detach_input.shape[-1]), routing_map, num_out_tokens=num_tokens, probs=detach_scores
                 )
+                detach_scores.untyped_storage().resize_(0)
 
                 # Recompute expert parallel and global_probs AlltoAll communication
                 _, global_input_tokens, permute1_ep_all_to_all_handle = async_all_to_all(
@@ -251,8 +252,10 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
                     ctx.shared_fc1_out.untyped_storage().resize_(shared_fc1_out_size)
                     ctx.shared_fc1_out.untyped_storage().copy_(shared_fc1_out.untyped_storage())
                     shared_fc1_out.untyped_storage().resize_(0)
+                if backward_ag_shared_handle is not None:
+                    backward_ag_shared_handle.wait()
                 share_experts_graph.backward(backward_ag_shared)
-                share_experts_graph.untyped_storage().resize_(0)
+                share_experts_graph = None
                 if backward_ag_shared_handle is not None:
                     backward_ag_shared.untyped_storage().resize_(0)
                 ctx.shared_act_out.untyped_storage().resize_(0)
@@ -279,7 +282,7 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
                             global_input_tokens
                         )
                 # Recompute mm1 and act_with_probs.
-                input_, mm1_out, permuted_probs, act_out = ctx.recompute_tensors
+                input_, mm1_out, expert_permuted_probs, act_out = ctx.recompute_tensors
                 ctx.recompute_tensors = None
                 if global_input_tokens.nelement() != 0:
                     group_list = torch.cumsum(ctx.tokens_per_expert, dim=0)
@@ -302,9 +305,9 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
                 mm1_out = None
                 mm1_out_.untyped_storage().resize_(0)
                 permuted_probs_size = permuted_probs_.untyped_storage().size()
-                permuted_probs.untyped_storage().resize_(permuted_probs_size)
-                permuted_probs.untyped_storage().copy_(permuted_probs_.untyped_storage())
-                permuted_probs = None
+                expert_permuted_probs.untyped_storage().resize_(permuted_probs_size)
+                expert_permuted_probs.untyped_storage().copy_(permuted_probs_.untyped_storage())
+                expert_permuted_probs = None
                 permuted_probs_.untyped_storage().resize_(0)
                 input_size = global_input_tokens.untyped_storage().size()
                 input_.untyped_storage().resize_(input_size)
@@ -333,6 +336,7 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
             unpermute2_input_detach.grad.untyped_storage().resize_(0)
 
         backward_func(unpermute1_graph, unpermute1_backward_input)
+        unpermute1_backward_input.untyped_storage().resize_(0)
 
         backward_func(experts_graph, unpermute1_input_detach.grad)
         unpermute1_input_detach.grad.untyped_storage().resize_(0)
