@@ -37,9 +37,12 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')
 
-        if args.moe_fb_overlap and (getattr(args, 'schedules_method', None) != 'dualpipev' and \
-            getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is None):
-            raise AssertionError('The fb overlap needs virtual pipeline or dualpipeV schedules.')
+
+        incorrect_schedule = (getattr(args, 'schedules_method', None) != 'dualpipev'
+                            and getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is None
+                            and int(getattr(args, 'pipeline_model_parallel_size', 1)) != 1)
+        if args.moe_fb_overlap and incorrect_schedule:
+            raise AssertionError('The fb overlap needs no pipeline, virtual pipeline or dualpipeV schedules.')
 
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):
@@ -61,7 +64,8 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
                                          linear_backward_wgrad_detach)
             patch_manager.register_patch('megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_backward_post_hook',
                                          _make_backward_post_hook)
-            if getattr(args, 'num_layers_per_virtual_pipeline_stage', None):
+
+            if getattr(args, 'num_layers_per_virtual_pipeline_stage', None) or int(getattr(args, 'pipeline_model_parallel_size', 1)) == 1:
                 patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
                                               get_forward_backward_func_vpp_overlap_wrapper)
 

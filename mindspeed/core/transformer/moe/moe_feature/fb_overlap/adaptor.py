@@ -9,11 +9,14 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
 from megatron.core.transformer.moe.moe_layer import MoESubmodules
 from megatron.core.transformer.mlp import MLPSubmodules
 from megatron.core.transformer.cuda_graphs import is_graph_capturing
+from megatron.core import parallel_state
 from megatron.training.utils import get_args
+
 from .modules.experts import MindSpeedFbOverlapGmmExperts
 from .modules.shared_experts import SharedExpertMLPFbOverlap
 from .modules.moe_layer import MindSpeedFbOverlapMoELayer
 from .vpp_schedules import forward_backward_pipelining_with_interleaving
+from .no_pipelining_schedules import forward_backward_no_pipelining
 
 
 def _make_backward_post_hook(self, param: torch.nn.Parameter):
@@ -54,7 +57,11 @@ def get_forward_backward_func_vpp_overlap_wrapper(fn):
         global_args = get_args()
         # use moe-fb-overlap customized vpp schedules for fwd&bwd overlaping if training is enabled.
         if torch.is_grad_enabled() and global_args.moe_fb_overlap:
-            return forward_backward_pipelining_with_interleaving
+            pipeline_model_parallel_size = parallel_state.get_pipeline_model_parallel_world_size()
+            if pipeline_model_parallel_size > 1:
+                return forward_backward_pipelining_with_interleaving
+            else:
+                return forward_backward_no_pipelining
         
         return fn(*args, **kwargs)
     
