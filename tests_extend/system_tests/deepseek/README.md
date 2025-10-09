@@ -14,9 +14,9 @@ DeepSeek-V3 训练的硬件配置:
 
    ```shell
     # 安装MindSpeed加速库
-    git clone https://gitee.com/ascend/MindSpeed.git
+    git clone https://gitcode.com/Ascend/MindSpeed.git
     # 准备MindSpeed-LLM及Megatron-LM源码
-    git clone -b master https://gitee.com/ascend/MindSpeed-LLM.git 
+    git clone -b master https://gitcode.com/Ascend/MindSpeed-LLM.git 
     git clone -b core_v0.12.1 https://github.com/NVIDIA/Megatron-LM.git  # megatron从github下载，请确保网络能访问 
     mkdir model_from_hf
     mkdir dataset

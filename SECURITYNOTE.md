@@ -85,10 +85,10 @@
 |  开源引入  |                           https://github.com/InternLM/InternEvo                            | mindspeed/docs/features/ring-attention-context-parallel.md |                           https://arxiv.org/pdf/2406.18485                   |    ring-attention-context-parallel说明文档    |
 |  开源引入  |                           https://github.com/sail-sg/zero-bubble-pipeline-parallelism                            |   mindspeed/docs/features/nanopipe-pipeline-parallel.md    |                           https://arxiv.org/abs/2401.10241                   |      nanopipe-pipeline-parallel说明文档       |
 |  开源引入  |                           https://github.com/iclr24-3434/AMPipe.git                            |             mindspeed/docs/features/ampipe.md              |                           https://openreview.net/pdf?id=yLgr02IsXY                   |                ampipe说明文档                 |
-|  开源引入  |                           https://gitee.com/ascend/pytorch                            |       mindspeed/docs/features/adaptive-recompute.md        |                           https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha001/apiref/envref/envref_07_0053.html                   |     环境变量`PYTORCH_NPU_ALLOC_CONF`说明文档      |
+|  开源引入  |                           https://gitcode.com/Ascend/pytorch                            |       mindspeed/docs/features/adaptive-recompute.md        |                           https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC2alpha001/apiref/envref/envref_07_0053.html                   |     环境变量`PYTORCH_NPU_ALLOC_CONF`说明文档      |
 |  开源引入  |                           https://github.com/deepseek-ai/DeepSeek-MoE                            |         mindspeed/docs/features/shared-experts.md          |                           https://arxiv.org/pdf/2401.06066                   |                 共享专家说明文档                  |
-|  开源引入  |                           https://gitee.com/ascend/MindSpeed                            |                     mindspeed/setup.py                     |                           https://gitee.com/ascend/MindSpeed                   |               MindSpeed源码地址               |
-|  开源引入  |                           https://gitee.com/ascend/MindSpeed/release                            |                     mindspeed/setup.py                     |                           https://gitee.com/ascend/MindSpeed/release                   |               MindSpeed源码地址               |
+|  开源引入  |                           https://gitcode.com/Ascend/MindSpeed                            |                     mindspeed/setup.py                     |                           https://gitcode.com/Ascend/MindSpeed                   |               MindSpeed源码地址               |
+|  开源引入  |                           https://gitcode.com/Ascend/MindSpeed/release                            |                     mindspeed/setup.py                     |                           https://gitcode.com/Ascend/MindSpeed/release                   |               MindSpeed源码地址               |
 |  开源引入  |                           https://packaging.python.org/en/latest/single_source_version.html                            |                     mindspeed/setup.py                     |                           https://packaging.python.org/en/latest/single_source_version.html                   |               MindSpeed版本管理               |
 |  开源引入  |                           https://github.com/NVIDIA/TransformerEngine/pull/719                            |                     mindspeed/core/data_parallel/distributed_data_parallel.py                     |                           https://github.com/NVIDIA/TransformerEngine/pull/719                   |       use_distributed_optimizer实现源码       |
 |  开源引入  |                           https://github.com/NVIDIA/TransformerEngine/pull/719                            |                     mindspeed/mindspore/core/distributed/distributed_data_parallel.py                     |                           https://github.com/NVIDIA/TransformerEngine/pull/719                   |       use_distributed_optimizer实现源码       |
@@ -101,11 +101,11 @@
 
 ## 通信安全加固
 
-[通信安全加固说明](https://gitee.com/ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA
+[通信安全加固说明](https://gitcode.com/Ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA
 )
 
 ## 通信矩阵
-[通信矩阵说明](https://gitee.com/ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E7%9F%A9%E9%98%B5%E4%BF%A1%E6%81%AF)
+[通信矩阵说明](https://gitcode.com/Ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E7%9F%A9%E9%98%B5%E4%BF%A1%E6%81%AF)
 
 ### 特殊场景
 | 场景                                  | 使用方法                                         | 端口 | 可能的风险       |

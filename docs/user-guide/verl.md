@@ -3,7 +3,7 @@
 ## 环境准备
 
 ### 1. MindSpeed 安装
-按照 MindSpeed 文档，安装对应依赖。[MindSpeed安装](https://gitcode.com/ascend/MindSpeed#%E5%AE%89%E8%A3%85)
+按照 MindSpeed 文档，安装对应依赖。[MindSpeed安装](https://gitcode.com/Ascend/MindSpeed#%E5%AE%89%E8%A3%85)
 
 ### 2. Verl 安装
 #### 版本说明

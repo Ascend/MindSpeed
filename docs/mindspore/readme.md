@@ -43,7 +43,7 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
 执行以下命令拉取MindSpeed-Core-MS代码仓，并安装Python三方依赖库，如下所示：
 
 ```shell
-git clone https://gitcode.com/ascend/MindSpeed-Core-MS.git -b r0.4.0
+git clone https://gitcode.com/Ascend/MindSpeed-Core-MS.git -b r0.4.0
 cd MindSpeed-Core-MS
 pip install -r requirements.txt
 ```
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 
 ```shell
 # 获取指定版本的MindSpeed源码：
-git clone https://gitcode.com/ascend/MindSpeed.git -b 2.2.0_core_r0.12.1
+git clone https://gitcode.com/Ascend/MindSpeed.git -b 2.2.0_core_r0.12.1
 
 # 获取指定版本的Megatron-LM源码：
 git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1

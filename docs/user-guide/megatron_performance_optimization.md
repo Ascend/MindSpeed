@@ -2,7 +2,7 @@
 
 ## 概述
 
-[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)是NVIDIA提出的一种分布式训练加速库，支持数据并行、模型并行和序列并行等特性，在大模型训练中得到广泛应用。经过[MindSpeed](https://gitcode.com/ascend/MindSpeed)昇腾平台的兼容性适配，现已在昇腾平台上支持原生并行策略。
+[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)是NVIDIA提出的一种分布式训练加速库，支持数据并行、模型并行和序列并行等特性，在大模型训练中得到广泛应用。经过[MindSpeed](https://gitcode.com/Ascend/MindSpeed)昇腾平台的兼容性适配，现已在昇腾平台上支持原生并行策略。
 虽然适配了众多并行策略，但是模型在长文本场景依旧存在空间和时间复杂度较高的问题。MindSpeed 从序列维度出发，实现了众多序列并行方法，解决了序列维度扩展问题。
 本手册从序列并行的角度进行介绍，指导用户使用 MindSpeed 进行 Megatron 性能优化。本手册主要介绍以下四种序列并行算法及使用方法：
 - Ulysses长序列并行
