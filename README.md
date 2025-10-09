@@ -3,7 +3,7 @@
 <p align="center">
     <a> <img src="https://img.shields.io/badge/python-3.8%7C3.9%7C3.10-green"> </a>
     <a> <img src="https://img.shields.io/badge/build-passing-green"> </a>
-    <a href="https://gitee.com/ascend/MindSpeed/blob/master/LICENSE">
+    <a href="https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE">
         <img alt="Badge" src="https://img.shields.io/badge/License-MIT-blue.svg">
     </a>
     <a href="https://www.hiascend.com/software/mindspeed">
@@ -27,7 +27,7 @@ MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模�
 
 此外在 MindSpeed Core 加速库的基础之上也提供了大语言模型、多模态模型以及强化学习模型套件加速库:
 
-- 📝 大语言模型库: [MindSpeed LLM](https://gitcode.com/ascend/MindSpeed-LLM)
+- 📝 大语言模型库: [MindSpeed LLM](https://gitcode.com/Ascend/MindSpeed-LLM)
 - 🖼️ 多模态模型库: [MindSpeed MM](https://gitcode.com/Ascend/MindSpeed-MM)
 - 🖥️ 强化学习加速库: [MindSpeed RL](https://gitcode.com/Ascend/MindSpeed-RL)
 
@@ -690,6 +690,7 @@ MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并�
 
 | **MindSpeed版本**     | **维护策略** | **当前状态** | **发布时间**   | **后续状态**          | **EOL日期** |
 |---------------------|----------|----------|------------|-------------------|-----------|
+| 2.2.0_core_r0.12.1  | 常规版本     | 维护       | 2025/09/30 | 预计2026/3/30起无维护	 |           |
 | 2.1.0_core_r0.12.1  | 常规版本     | 维护       | 2025/06/30 | 预计2025/12/30起无维护	 |           |
 | 2.1.0_core_r0.8.0   | 常规版本     | 维护       | 2025/06/30 | 预计2025/12/30起无维护	 |           |
 | 2.0.0_core_r0.8.0   | 常规版本     | 维护       | 2025/03/30 | 预计2025/9/30起无维护	  |           |

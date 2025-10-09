@@ -13,7 +13,7 @@ Llama3-8B 训练的硬件配置:
 1. 按照readme安装MindSpeed和Megatron-LM
 
    ```shell
-   git clone https://gitee.com/ascend/MindSpeed.git
+   git clone https://gitcode.com/Ascend/MindSpeed.git
    pip install -e MindSpeed
    git clone https://github.com/NVIDIA/Megatron-LM.git
    cd Megatron-LM

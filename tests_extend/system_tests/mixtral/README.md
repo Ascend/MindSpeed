@@ -91,7 +91,7 @@ EP=2
 
 另外，在pretrain_gpt.py中添加代码
 ```
-# ptdbg_ascend 参见 https://gitee.com/ascend/tools/blob/master/ptdbg_ascend/README.md
+# ptdbg_ascend 参见 https://gitcode.com/Ascend/tools/blob/master/ptdbg_ascend/README.md
 from ptdbg_ascend import seed_all
 seed_all(mode=True)
 ```

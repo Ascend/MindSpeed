@@ -2,7 +2,7 @@
 本文档介绍pretrain_gpt.py相关代码的覆盖用例执行和构造
 
 ## 环境搭建
-需要安装MindSpeed+Megatron, 见MindSpeed首页[安装](https://gitee.com/ascend/MindSpeed)
+需要安装MindSpeed+Megatron, 见MindSpeed首页[安装](https://gitcode.com/Ascend/MindSpeed)
 
 **注意**：
 - 将MindSpeed放在Megatron-LM目录下（方便代码覆盖统计）
