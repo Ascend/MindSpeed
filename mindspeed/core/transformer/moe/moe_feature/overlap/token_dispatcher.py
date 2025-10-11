@@ -145,8 +145,6 @@ class MoEAlltoAllSeqOverLapDispatcher:
             if not self.config.moe_tp_extend_ep and parallel_state.get_tensor_model_parallel_world_size() > 1:
                 hidden_states = tensor_parallel.all_to_all_sp2hp(hidden_states)
             self.hidden_shape_before_permute = hidden_states.shape
-            if not moe_ctx.config.moe_tp_extend_ep:
-                tokens_per_expert = tokens_per_expert.to('npu', non_blocking=True)
             if self.cuda_sync_point == "before_permutation_1":
                 torch.cuda.current_stream().synchronize()
             (
