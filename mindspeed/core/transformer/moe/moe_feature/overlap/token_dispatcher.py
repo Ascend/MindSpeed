@@ -97,7 +97,11 @@ class MoEAlltoAllSeqOverLapDispatcher:
         self.output_splits = self.disaptor.output_splits
         self.num_out_tokens = self.disaptor.num_out_tokens
         self.num_global_tokens_per_local_expert_cpu = self.disaptor.num_global_tokens_per_local_expert_cpu
-        self.comm_stream = self.disaptor.comm_stream if self.config.moe_tp_extend_ep else None
+        self.comm_stream = (
+            self.disaptor.comm_stream
+            if (self.config.moe_tp_extend_ep and hasattr(self.disaptor, 'comm_stream'))
+            else None
+        )
         self.cuda_sync_point = self.disaptor.cuda_sync_point
         return num_tokens_per_local_expert
 
@@ -208,6 +212,9 @@ class MoEAlltoAllSeqOverLapDispatcher:
                     probs=global_probs,
                     prob_handle=permute1_probs_handle
                 )
+            else:
+                # Avoid memory released before used.
+                global_input_tokens, global_probs = global_input_tokens.clone(), global_probs.clone()
 
             # Perform tensor parallel AllGather on the hidden dimension to obtain the input tokens.
             # global_input_tokens: [SEQL, H/TP] -> [SEQL, H]
@@ -271,6 +278,9 @@ class MoEAlltoAllSeqOverLapDispatcher:
                     self.num_global_tokens_per_local_expert_cpu.T.ravel(),
                     self.restore_output_by_local_experts,
                 )
+            else:
+                # Avoid memory released before used.
+                hidden_states = hidden_states.clone()
             return hidden_states
         hidden_states, hidden_states_detach = forward_func(alltoall_token_unpermutation1, hidden_states)
         save_tensors.append(hidden_states_detach)
