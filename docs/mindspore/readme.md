@@ -436,7 +436,7 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   <tbody>
   <tr>
     <td rowspan="5"> Ascend Megatron MoE alltoall 通信掩盖 </td>
-    <td><a href="../features/ring-attention-context-parallel.md">link</a></td>
+    <td><a href="../features/megatron_moe/megatron-moe-alltoall-overlap-comm.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 </table>
