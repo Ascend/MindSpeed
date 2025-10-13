@@ -9,14 +9,14 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
 | master（主线）             | Core 0.12.1 | 2.1.0, 2.6.0 | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
 | core_r0.10.0（主线）       | Core 0.10.0 | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
 | core_r0.9.0（主线）        | Core 0.9.0  | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
-| 2.2.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.1.0     | 8.2.RC1 | Python3.9.x, Python3.10.x               |
-| 2.1.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.1.0     | 8.2.RC1 | Python3.9.x, Python3.10.x              |
-| 2.1.0_core_r0.8.0（商用）  | Core 0.8.0  | 2.1.0        | 7.1.0     | 8.2.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
+| 2.2.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.2.0       | 8.2.RC1 | Python3.9.x, Python3.10.x               |
+| 2.1.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.1.0       | 8.2.RC1 | Python3.9.x, Python3.10.x              |
+| 2.1.0_core_r0.8.0（商用）  | Core 0.8.0  | 2.1.0        | 7.1.0       | 8.2.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
 | 2.0.0_core_r0.8.0（商用）  | Core 0.8.0  | 2.1.0        | 7.0.0       | 8.1.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
 | 1.0.0_core_r0.7.0（商用）  | Core 0.7.0  | 2.1.0        | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x |
 | 1.0.0_core_r0.6.0（商用）  | Core 0.6.0  | 2.1.0        | 6.0.0       | 8.0.0   | Python3.8.x, Python3.9.x, Python3.10.x |
 
-注： Transformers V4.56.x版本开始依赖Pytorch 2.2+版本，[Transformers文档参考](https://huggingface.co/docs/transformers/installation)。
+注： Transformers V4.56.x版本开始依赖PyTorch 2.2+版本，[Transformers文档参考](https://huggingface.co/docs/transformers/installation)。
 
 [昇腾辅助软件](https://gitcode.com/Ascend/pytorch#%E6%98%87%E8%85%BE%E8%BE%85%E5%8A%A9%E8%BD%AF%E4%BB%B6)中有更多关于PyTorch和CANN的版本信息。
 

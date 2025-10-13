@@ -47,11 +47,11 @@ MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模�
 
 | 软件               | 版本                       |
 |------------------|--------------------------|
-| MindSpeed Core分支 | 2.2.0_core_r0.12.1                   |
+| MindSpeed Core分支 | 2.2.0_core_r0.12.1       |
 | Mcore版本          | 0.12.1                   |
 | CANN版本           | 8.2.RC1                  |
 | PyTorch          | 2.1.0、2.6.0              |
-| torch_npu版本      | 7.1.RC1                  |
+| torch_npu版本      | 7.2.0                    |
 | Python版本         | Python3.9.x、Python3.10.x |
 
 更多具体说明请参考：[版本配套表](./docs/user-guide/installation.md#版本配套表)。
@@ -78,7 +78,7 @@ MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`�
 
 ## 操作方法
 
-以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
+以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改。
 
   ```Python
     import torch
@@ -127,7 +127,7 @@ MindSpeed Core 加速特性分为三个层级，用户可根据实际需求选�
 # 特性介绍
 ---
 
-MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性、关键场景特性以及多模态特性。其中【Released】表示是否商用发布，原型特性为非商用发布。
+MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并行策略特性、内存优化特性、亲和计算特性、通信优化特性、关键场景特性以及多模态特性。除此之外还包括Mcore MoE特性、自定义算子和其他特性，其中【Released】表示是否商用发布，原型特性为非商用发布。
 
 -  特性的介绍中说明了对应特性的应用场景及使用说明。一般而言，在脚本中加入相关参数即可轻松使用对应特性。🛰️
 

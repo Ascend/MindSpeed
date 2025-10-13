@@ -4,7 +4,7 @@
 
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)是NVIDIA提出的一种分布式训练加速库，
 支持数据并行和模型并行，在大模型训练中得到广泛应用。
-经过[MindSpeed](https://gitcode.com/Ascend/MindSpeed)昇腾平台的兼容性适配，
+经过[MindSpeed](https://gitcode.com/Ascend/MindSpeed)的兼容性适配，
 现已支持在昇腾平台上高效运行。
 
 本手册的主要目标是指导具有一定`Megatron-LM`模型训练基础的用户将原本在其他硬件平台（例如GPU）上训练的模型迁移到昇腾平台（NPU）。
@@ -17,7 +17,7 @@
 
 - 了解深度学习的基本概念和技术，能够使用Python编程语言、Megatron-LM框架进行深度学习模型开发和调试；
 
-- 对深度学习模型的训练和优化有一定的了解，包括训练任务执行与评估，分布式训练，性能数据采集及分析等；
+- 对深度学习模型的训练和优化有一定的了解，包括训练任务执行与评估、分布式训练、性能数据采集及分析等；
 
 - 对常见的系统性能优化手段有基本认知，例如并行化、编译优化等。
 
@@ -32,16 +32,13 @@
 由于硬件架构和库的不同，涉及到一系列底层到上层的适配操作。
 以GPU为例，模型迁移至NPU需要适配的原因可分为三方面：
 
-- 硬件特性和性能特点差异
-由于NPU和GPU的硬件特性和性能特点不同，
+- 硬件特性和性能特点差异：NPU和GPU的硬件特性和性能特点不同，
 模型在NPU上可能需要进一步的性能调试和优化，以充分发挥NPU的潜力。
 
-- 计算架构差异
-NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架构，
+- 计算架构差异：NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架构，
 而华为NPU采用CANN（Compute Architecture for Neural Networks）的异构计算架构。
 
-- 深度学习框架差异
-为了支持NPU硬件，需要通过`MindSpeed`对`Megatron-LM`框架进行适配：包括适配张量运算、自动微分等功能，以便在NPU上高效执行。
+- 深度学习框架差异：`MindSpeed`通过对`Megatron-LM`框架进行适配以支持NPU硬件：包括适配张量运算、自动微分等功能，以便在NPU上高效执行。
 
 **如何进行模型迁移**
 
@@ -55,7 +52,7 @@ NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架�
 
 ![precedure](../../sources/images/model-migration-precedure.png)
 
-## 模型选取
+## 模型获取
 
 - 选择[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)仓库core_v0.12.1，
 使用仓库根目录下的pretrain_gpt.py中内置的GPT模型作为迁移的模型。
@@ -90,7 +87,7 @@ from typing import Union
 ### 环境变量配置
 
 在终端上执行下述命令进行`Ascend`环境变量的配置，
-其中`CANN_INSTALL_PATH`是属于`CANN软件包的安装位置，
+其中`CANN_INSTALL_PATH`是属于CANN软件包的安装位置，
 需要根据机器上具体情况进行调整。
 
 ```shell
@@ -101,7 +98,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
 **步骤1**
 
-下载`vocab.json`和`merges.txt`(https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main)放到`Megatron-LM`仓库根目录下新建的`gpt-tokenizer`目录内，并且分别重命名为`gpt2-vocab.json`和`gpt2-merges.txt`
+下载`vocab.json`和`merges.txt`(https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main)放到`Megatron-LM`仓库根目录下新建的`gpt-tokenizer`目录内，并且分别重命名为`gpt2-vocab.json`和`gpt2-merges.txt`。
 
 如果出现下载速度太慢或者无法访问下载的情况，
 请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
@@ -147,7 +144,7 @@ with open("alpaca_json.json", encoding='utf-8', mode='w') as f:
 **步骤4**
 
 在`Megatron-LM`仓库根目录下执行如下命令进行数据预处理，
-将步骤3生成的json格式的数据集转换成`Megatron-LM`识别的数据集格式。
+将步骤3生成的JSON格式的数据集转换成`Megatron-LM`识别的数据集格式。
 
 ```shell
 python tools/preprocess_data.py \
