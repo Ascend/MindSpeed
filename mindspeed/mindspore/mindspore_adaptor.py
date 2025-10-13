@@ -29,6 +29,12 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from mindspeed.mindspore.core.optimizer.adamw import step_func
     aspm.register_patch('apex.optimizers.FusedAdam.step', step_func)
+
+    from mindspeed.mindspore.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
+    aspm.register_patch("mindspeed.ops.npu_rotary_position_embedding.npu_rotary_position_embedding", npu_rotary_position_embedding)
+
+    from mindspeed.mindspore.ops.npu_ring_attention_update import _RING_PROXY
+    aspm.register_patch("mindspeed.ops.npu_ring_attention_update.npu_ring_attention_update", _RING_PROXY.npu_ring_attention_update)
     
     # After using `deallocate_output_tensor_`, `custom_backward` cannot use the assertion `assert output.numel() == 1`
     from mindspeed.mindspore.core.pipeline_parallel.schedules import custom_backward
