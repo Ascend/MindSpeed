@@ -35,3 +35,8 @@ class DisableGlooGroupFeature(MindSpeedFeature):
             patch_manager.register_patch('megatron.core.parallel_state.get_data_modulo_expert_parallel_group_gloo',
                                          get_data_modulo_expert_parallel_group_gloo_replace)
             patch_manager.register_patch('torch.distributed.new_group', new_group_wrapper)
+
+    def validate_args(self, args):
+        if getattr(args, self.feature_name, None):
+            args.enable_gloo_process_groups = False
+        return
