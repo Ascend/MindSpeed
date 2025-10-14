@@ -131,33 +131,29 @@ def get_batch_on_this_cp_rank(batch):
 
 
 def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len):
-    def get_index(batched_actual_seq_len, cp_size, cp_rank):
-        full_indices = list(range(len(batched_actual_seq_len) * batched_actual_seq_len[0][-1]))
-        batched_index = []
-        start = 0
-        offset = 0
-        for actual_seq_len in batched_actual_seq_len:
-            for end in actual_seq_len:
-                end = end + offset
-                chunk_size = (end - start) // (2 * cp_size)
-                batched_index.extend(full_indices[start + cp_rank * chunk_size: start + (cp_rank + 1) * chunk_size])
-                batched_index.extend(full_indices[end - (cp_rank + 1) * chunk_size: end - cp_rank * chunk_size])
-                start = end
-            offset += actual_seq_len[-1]
+    def get_index(actual_seq_len_cpu, cp_rank, cp_size):
+        starts = torch.cat([torch.tensor([0]), actual_seq_len_cpu[:-1]])
+        ends = actual_seq_len_cpu
+        chunk_sizes = (ends - starts) // (2 * cp_size)
 
-        return torch.tensor(batched_index, device='npu')
+        first_starts = starts + cp_rank * chunk_sizes
+        first_ends = first_starts + chunk_sizes
+        second_starts = ends - (cp_rank + 1) * chunk_sizes
+        second_ends = ends - cp_rank * chunk_sizes
+
+        all_indices = []
+        for i in range(actual_seq_len_cpu.shape[0]):
+            all_indices.append(torch.arange(first_starts[i], first_ends[i]))
+            all_indices.append(torch.arange(second_starts[i], second_ends[i]))
+        index = torch.cat(all_indices)
+
+        return index.to('npu')
 
     cp_rank = mpu.get_context_parallel_rank()
     cp_size = mpu.get_context_parallel_world_size()
-    args = get_args()
-
-    actual_seq_len_lst = list(actual_seq_len * get_ring_degree())
-    if args.micro_batch_size == 1:
-        batched_index = [actual_seq_len_lst]
-    else:
-        # when no pad, the batch dim is kept
-        batched_index = batch_index(actual_seq_len_lst, args.seq_length)
-    index = get_index(batched_index, cp_size, cp_rank)
+    actual_seq_len_tensor = actual_seq_len * get_ring_degree()
+    actual_seq_len_cpu = actual_seq_len_tensor.cpu()
+    index = get_index(actual_seq_len_cpu, cp_rank, cp_size)
 
     for key, val in batch.items():
         if key == 'attention_mask':

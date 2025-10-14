@@ -720,6 +720,7 @@ def divisible(tensor, divisor):
 def pad_data(actual_seq_len, batch, cp_size, tp_size):
     from math import lcm
     pad_to = lcm(2, tp_size) * cp_size
+
     if divisible(actual_seq_len, pad_to):
         return actual_seq_len
 
@@ -728,27 +729,33 @@ def pad_data(actual_seq_len, batch, cp_size, tp_size):
     per_seq_lens_padded = round_up(per_seq_lens, pad_to)
     total_len = torch.sum(per_seq_lens_padded)
     actual_seq_len_padded = torch.cumsum(per_seq_lens_padded, dim=0)
-    original_seqs = actual_seq_len.tolist()
-    n_seq = len(actual_seq_len)
-    
+
+    per_seq_lens_cpu = per_seq_lens.cpu()
+    starts = torch.cat([torch.tensor([0], device='npu'), actual_seq_len_padded[:-1]])
+    starts_cpu = starts.cpu()
+
+    index_ranges = []
+    for i in range(len(per_seq_lens_cpu)):
+        start_val = starts_cpu[i].item()
+        seq_len_val = per_seq_lens_cpu[i].item()
+        index_ranges.append((start_val, start_val + seq_len_val))
+
+    all_indices = []
+    for start_val, end_val in index_ranges:
+        all_indices.append(torch.arange(start_val, end_val, device='npu'))
+
+    indices = torch.cat(all_indices)
+
     def pad(data):
         if data is None:
             return data
-        buffer = torch.zeros(total_len, device='npu', dtype=data.dtype)
+
         data = data.view(-1)
-
-        buffer[0:original_seqs[0]] = data[0:original_seqs[0]]
-        for i in range(n_seq - 1):
-            buffer_start = actual_seq_len_padded[i]
-            data_start, data_end = original_seqs[i], original_seqs[i + 1]
-            buffer_end = buffer_start + data_end - data_start
-            buffer[buffer_start: buffer_end] = data[data_start: data_end]
-
+        buffer = torch.zeros(total_len, device='npu', dtype=data.dtype)
+        buffer[indices] = data[:len(indices)]
         return buffer.view((1, -1))
 
-    batch['tokens'] = pad(batch['tokens'])
-    batch['labels'] = pad(batch['labels'])
-    batch['loss_mask'] = pad(batch['loss_mask'])
-    batch['position_ids'] = pad(batch['position_ids'])
+    for key in ['tokens', 'labels', 'loss_mask', 'position_ids']:
+        batch[key] = pad(batch[key])
 
-    return torch.tensor(actual_seq_len_padded, device='npu')        
+    return actual_seq_len_padded
