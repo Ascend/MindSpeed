@@ -42,7 +42,7 @@ def transformer_layer_forward_moe(
     recomp_norm = getattr(args, 'recompute_norm', False)
     self.mlp.experts.layer_number = self.layer_number
 
-    detached_layer_input = detach_tensor(hidden_states, checkpoint_forward=checkpoint)
+    detached_layer_input = hidden_states
 
     # Residual connection.
     residual1 = detached_layer_input
@@ -226,7 +226,7 @@ def transformer_layer_forward_dense(
     args = get_args()
     recomp_norm = getattr(args, 'recompute_norm', False)
 
-    detached_layer_input = detach_tensor(hidden_states, checkpoint_forward=checkpoint)
+    detached_layer_input = hidden_states
 
     # Residual connection.
     residual1 = detached_layer_input
@@ -328,7 +328,7 @@ def transformer_layer_forward_noop(
     packed_seq_params=None,
     checkpoint=False
 ):
-    detached_layer_input = detach_tensor(hidden_states, checkpoint_forward=checkpoint)
+    detached_layer_input = hidden_states
     output = IdentityOPFunc.apply(detached_layer_input)
 
     return output, context, NoopLayerGraph(detached_layer_input, output, self, checkpointed=checkpoint)

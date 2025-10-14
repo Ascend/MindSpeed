@@ -59,3 +59,5 @@ MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具�
 9. 与下列特性冲突，不能同时使用：
    1. `moe-alltoall-overlap-comm`
    2. `moe-hierarchical-alltoallv`
+   3. `recompute-in-advance`
+   4. `recompute-in-bubble`

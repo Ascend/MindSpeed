@@ -13,6 +13,7 @@ from mindspeed.core.transformer.moe.moe_feature import (
     all_gather_last_dim_from_tensor_parallel_region,
     scatter_to_sequence_parallel_region
 )
+from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.utils import detach_tensor
 from .modules.utils import (
     NoopLayerGraph, LayerGraph, is_p2p_comm_needed,
     p2p_comm_helper, P2PCommOutput, P2PCommParams
@@ -68,6 +69,8 @@ def transformer_layer_backward(
 ):
     if layer_graph.checkpointed:
         with torch.enable_grad():
+            if layer_graph.layer.layer_number > 1:
+                layer_graph.layer_input = detach_tensor(layer_graph.layer_input)
             _, _, restored_layer_graph = transformer_layer_forward(
                 layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
             )
@@ -168,6 +171,8 @@ def transformer_layer_forward_backward_overlaping(
             raise AssertionError('Check Layer Spec, f&b overlap func is not supported!')
 
         if bwd_layer_graph.checkpointed:
+            if bwd_layer_graph.layer.layer_number > 1:
+                bwd_layer_graph.layer_input = detach_tensor(bwd_layer_graph.layer_input)
             _, _, bwd_layer_graph = transformer_layer_forward(
                 bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
             )

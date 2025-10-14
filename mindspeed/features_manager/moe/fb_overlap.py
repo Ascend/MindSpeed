@@ -1,5 +1,6 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
+import warnings
 from argparse import ArgumentParser
 from mindspeed.features_manager.feature import MindSpeedFeature
 
@@ -41,6 +42,14 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is None):
             raise AssertionError('The fb overlap needs virtual pipeline or dualpipeV schedules.')
 
+        if args.gradient_accumulation_fusion:
+            warnings.warn("gradient_accumulation_fusion not support moe-fb-overlap yet, set to False.")
+            args.gradient_accumulation_fusion = False
+
+        if args.gemm_gradient_accumulation_fusion:
+            warnings.warn("gemm_gradient_accumulation_fusion not support moe-fb-overlap yet, set to False.")
+            args.gemm_gradient_accumulation_fusion = False
+
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):
             from mindspeed.core.transformer.moe.moe_feature.fb_overlap import (
@@ -70,5 +79,4 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
                                              mtp_block_fb_overlap_forward_wrapper)
                 patch_manager.register_patch('megatron.core.transformer.multi_token_prediction.MultiTokenPredictionLayer.forward', 
                                              dualpipev_fb_overlap_mtp_layer_forward)
-
 
