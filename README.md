@@ -61,7 +61,7 @@ MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模�
 
 MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`，具体请参考 [部署文档](./docs/user-guide/installation.md) 安装 MindSpeed Core 指定分支及其依赖软件。
 
-获取并切换 Megatron-LM 版本至 core_v0.12.1 版本，可参考：
+获取并切换Megatron-LM版本至 core_v0.12.1 版本，可参考：
  ```shell
  git clone https://github.com/NVIDIA/Megatron-LM.git
  cd Megatron-LM

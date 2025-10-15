@@ -19,4 +19,4 @@ Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 
 ## 解决方案
 
-删除 `~/.cache/torch_extensions/py38_cpu` 文件夹，再重新启动程序。
+删除 `~/.cache/torch_extensions/py38_cpu` 文件夹后重新启动程序。
