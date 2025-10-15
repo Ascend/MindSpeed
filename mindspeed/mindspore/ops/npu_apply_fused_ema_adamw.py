@@ -2,31 +2,13 @@
 import torch_npu
 
 
-def npu_apply_fused_ema_adamw(grad,
-                              var,
-                              m,
-                              v,
-                              s,
-                              step,
-                              lr: float = 1e-3,
-                              ema_decay: float = 0.9999,
-                              beta1: float = 0.9,
-                              beta2: float = 0.999,
-                              eps: float = 1e-8,
-                              mode: int = 1,
-                              bias_correction: bool = True,
-                              weight_decay: float = 0.0):
-    return torch_npu.npu_apply_fused_ema_adamw(grad,
-                                                var,
-                                                m,
-                                                v,
-                                                s,
-                                                step,
-                                                lr,
-                                                ema_decay,
-                                                beta1,
-                                                beta2,
-                                                eps,
-                                                mode,
-                                                bias_correction,
-                                                weight_decay)
+class _FusedEmaAdamwProxy:
+    def npu_apply_fused_ema_adamw(self, *args, **kwargs):
+        return torch_npu.npu_apply_fused_ema_adam(*args, **kwargs)
+
+
+_Fused_PROXY = _FusedEmaAdamwProxy()
+
+
+def _fused_ema_adamw_patched_load(*_args, **_kwargs):
+    return _Fused_PROXY
