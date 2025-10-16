@@ -42,11 +42,11 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is None):
             raise AssertionError('The fb overlap needs virtual pipeline or dualpipeV schedules.')
 
-        if args.gradient_accumulation_fusion:
+        if args.moe_fb_overlap and args.gradient_accumulation_fusion:
             warnings.warn("gradient_accumulation_fusion not support moe-fb-overlap yet, set to False.")
             args.gradient_accumulation_fusion = False
 
-        if args.gemm_gradient_accumulation_fusion:
+        if args.moe_fb_overlap and args.gemm_gradient_accumulation_fusion:
             warnings.warn("gemm_gradient_accumulation_fusion not support moe-fb-overlap yet, set to False.")
             args.gemm_gradient_accumulation_fusion = False
 
