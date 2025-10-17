@@ -12,7 +12,7 @@ class _GmmProxy:
         return ops.function.math_func.gmm_backward(*args, **kwargs)
     
     def npu_gmm_backward_fusion(self, grad_outputs, weight, group_list, group_list_type):
-        return ops.function.math_func.gmm_backward(grad_outputs, [torch.ones_like(g) for g in grad_outputs], weight, group_list, group_list_type)
+        return ops.function.math_func.gmm_backward_fusion(grad_outputs, weight, group_list, group_list_type)
 
 
 class _GmmProxy2:
@@ -20,10 +20,10 @@ class _GmmProxy2:
         return ops.function.math_func.gmm(*args, **kwargs)
     
     def npu_gmm_backward(self, *args, **kwargs):
-        return ops.function.math_func.gmm_v2_backward(*args, **kwargs)
+        return ops.function.math_func.gmm_backward(*args, **kwargs)
     
     def npu_gmm_backward_fusion(self, grad_outputs, weight, group_list, group_list_type):
-        return ops.function.math_func.gmm_v2_backward(grad_outputs, [torch.ones_like(g) for g in grad_outputs], weight, group_list, group_list_type)
+        return ops.function.math_func.gmm_backward_fusion(grad_outputs, weight, group_list, group_list_type)
     
 
 _GMM_PROXY = _GmmProxy()
