@@ -228,6 +228,17 @@ def torch_fully_sharded_data_parallel_init(
         self.process_group = parallel_state.get_data_parallel_group(with_context_parallel=True)
     else:
         self.process_group = process_group
+        
+    self.ddp_config = ddp_config
+    
+    # If the module has its own 'fully_shard' method, use it directly
+    if hasattr(self.module, 'fully_shard') and callable(getattr(self.module, 'fully_shard')):
+        execute_result = self.module.fully_shard(
+            process_group=self.process_group,
+            fsdp2_config_path=ddp_config.fsdp2_config_path,
+        )
+        if execute_result:
+            return 
 
     fsdp2_kwargs = {}
     if hasattr(ddp_config, 'fsdp2_config_path'):
@@ -236,8 +247,6 @@ def torch_fully_sharded_data_parallel_init(
     
     self.device_mesh = _create_device_mesh(fsdp2_config.sharding_size, self.process_group)
     fsdp2_kwargs["mesh"] = self.device_mesh
-
-    self.ddp_config = ddp_config
 
     def save_custom_attrs(module):
         custom_attrs = {}
