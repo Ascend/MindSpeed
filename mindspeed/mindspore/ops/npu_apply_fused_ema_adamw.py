@@ -4,7 +4,7 @@ import torch_npu
 
 class _FusedEmaAdamwProxy:
     def npu_apply_fused_ema_adamw(self, *args, **kwargs):
-        return torch_npu.npu_apply_fused_ema_adam(*args, **kwargs)
+        return torch_npu.npu_apply_fused_ema_adamw(*args, **kwargs)
 
 
 _Fused_PROXY = _FusedEmaAdamwProxy()
