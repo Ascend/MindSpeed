@@ -16,6 +16,7 @@
 
 import os
 import re
+import logging
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 from zipfile import is_zipfile
@@ -304,3 +305,26 @@ def get_parameter_dtype(parameter: Union[nn.Module, "ModuleUtilsMixin"]):
         if t.is_floating_point():
             return wrap(t.dtype)
     return wrap(last_dtype)
+
+
+def get_parameter_or_buffer(self, target: str):
+    """
+    Return the parameter or buffer given by `target` if it exists, otherwise throw an error. This combines
+    `get_parameter()` and `get_buffer()` in a single handy function. Note that it only work if `target` is a
+    leaf of the model.
+    """
+    try:
+        return self.get_parameter(target)
+    except AttributeError:
+        pass
+    try:
+        return self.get_buffer(target)
+    except AttributeError:
+        pass
+    try:
+        res = self._get_tensor(target)
+        logging.warning("loading tensor!")
+        return res
+    except AttributeError:
+        pass
+    raise AttributeError(f"`{target}` is neither a parameter nor a buffer.")
