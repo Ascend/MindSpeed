@@ -57,14 +57,14 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
             result=loss[0],
             rejection_func=torch.isnan,
             message="found NaN in local forward loss calculation",
-            tolerance=0.0,        # forward pass calculations are determinisic
+            tolerance=0.0,        # forward pass calculations are deterministic
             fatal=True,
         )
         rerun_state_machine.validate_result(
             result=loss[0],
             rejection_func=torch.isinf,
             message="found Inf in local forward loss calculation",
-            tolerance=0.0,        # forward pass calculations are determinisic
+            tolerance=0.0,        # forward pass calculations are deterministic
             fatal=True,
         )
     # Check for spiky loss
@@ -77,7 +77,7 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
                 context="loss",
             ),
             message="Spiky loss",
-            tolerance=0.0,        # forward pass calculations are determinisic
+            tolerance=0.0,        # forward pass calculations are deterministic
             fatal=False,
         )
     # Reduce loss for logging.

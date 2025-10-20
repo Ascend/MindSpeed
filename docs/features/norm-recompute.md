@@ -18,7 +18,7 @@
 需在训练脚本中加入以下参数配置。
 
 `--recompute-norm  # 开启Norm重计算`
-`--recompute-norm-num-layers ${num}   # N表示Norm重计算的层数`
+`--recompute-norm-num-layers ${num}   # num表示Norm重计算的层数`
 
 #### 说明
 * Norm重计算特性仅支持mcore分支，不支持legacy分支，即仅支持在开启`--use-mcore-models`时，通过`--recompute-norm`使能。
