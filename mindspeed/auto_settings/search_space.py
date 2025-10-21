@@ -291,6 +291,8 @@ class SearchSpace(metaclass=Singleton):
                                     if mcfg.is_moe():
                                         cfg.expert_model_parallel_size = ep or 1
                                     cfg.normalize()
+                                    # post init vps pps
+                                    cfg.post_init()
 
                                     valid_configs.append(cfg)
 

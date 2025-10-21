@@ -134,6 +134,10 @@ class SearchConfigArgv(object):
                 update_flag(argv, "--moe-alltoall-overlap-comm", False)
             if cfg.moe_token_dispatcher_type == "allgather" and "--moe-allgather-overlap-comm":
                 update_flag(argv, "--moe-allgather-overlap-comm", False)
+        if cfg.use_ascend_mc2:
+            # adaptor for te support v2
+            # The 'mc2' feature requires sequence parallelism to be enabled
+            update_flag(argv, "--sequence-parallel", True)
 
         update_flag(argv, "--enable-token-rearrange-opt", cfg.enable_token_rearrange_opt)
 

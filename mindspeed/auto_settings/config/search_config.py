@@ -14,6 +14,10 @@ class ExecutorFlag(IntEnum):
     PROFILE = 3
     PROFILE_BLACK = 4
 
+    def __reduce_ex__(self, protocol):
+        # Preventing PKL deserialization failure
+        return ExecutorFlag, (self.value,)
+
 
 @dataclass
 class SearchConfig(ModelConfig):

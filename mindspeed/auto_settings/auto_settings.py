@@ -7,7 +7,7 @@ import torch
 import logging
 
 from mindspeed.auto_settings.config.post_info import PostInfo
-from mindspeed.auto_settings.config.model_config import set_model_config, ModelConfig, get_model_config, \
+from mindspeed.auto_settings.config.model_config import set_model_config, get_model_config, \
     update_model_config
 from mindspeed.auto_settings.config.search_config import ExecutorFlag
 from mindspeed.auto_settings.config.system_config import set_system_config, get_system_config
@@ -89,10 +89,17 @@ class AutoSettings(object):
         """
         入口函数
         """
+        self.logger.info('Auto settings start')
+        self.logger.info('Auto settings start init')
         self.init(args)
+        if hasattr(args, "dist_train") and args.dist_train and args.auto_settings_type == "white":
+            self.logger.info('Auto settings for disttrain of white')
+            return
         if get_system_config().node_rank != 0:
+            self.logger.info('Auto settings run on slaves')
             self.profiler.run_on_slaves(args)
             return
+        self.logger.info('<==========Auto settings search config start==========>')
         final_configs = self.search(args)
         self.logger.info("<==========Final config generated==========>")
         self.logger.info("The recommended configurations are:")
@@ -103,5 +110,5 @@ class AutoSettings(object):
                     self.logger.debug("\n%s", str(final_cfg))
                 else:
                     self.logger.info("\n%s", str(final_cfg))
-        self.logger.info("<==========Start training==========>")
+        self.logger.info("<==========Auto settings search completed==========>")
         return final_configs
