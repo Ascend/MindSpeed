@@ -31,4 +31,4 @@ MoE中,存在大量的EP通信没有做通信隐藏，端到端时间占比大�
 
 适用megatron-moe，dropless方案分支时候，需要提高训练性能的场景。相较基准dispatcher场景，性能可提升10%+。
 在开启`--moe-shared-expert-overlap`后，仍可提高4%以上的性能。
-启动该特性会导致占用显存发生提高，属正常现象。此时，可搭配ZeroMemory特性调整显存使用状况。ZeroMemory介绍及设置可参考[此处](megatron-moe-zero-memory.md)。
+启动该特性会导致显存占用增加，属正常现象。此时，可搭配ZeroMemory特性调整显存使用状况。ZeroMemory介绍及设置可参考[此处](megatron-moe-zero-memory.md)。

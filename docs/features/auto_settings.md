@@ -65,7 +65,7 @@ Auto settings特性完全依赖由profiling得出的数据建模，与网络结�
 --auto-settings \                                 # 开启 Auto settings 特性
 --auto-settings-type "mixed" \                    # 搜索方案，支持【"black", "white", "mixed"】三种
 --auto-settings-work-dir ./auto_settings_dir \    # 工作目录，在此会保存profiling等文件
---auto-settings-ranks 16 \                        # 需求搜索的卡数，最低16卡
+--auto-settings-ranks 16 \                        # 需要搜索的卡数，最低16卡
 --auto-settings-log-level debug \                 # Auto settings log记录等级，可选warning, info, debug
 --target-nnodes $NNODES \                         # Profiling拉起的节点数，与基线训练脚本保持一致
 --nproc-per-node $GPUS_PER_NODE \               # 每个节点上运行的进程数，一般与单节点卡数相同，与基线训练脚本保持一致

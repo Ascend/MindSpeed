@@ -79,7 +79,7 @@ gelu激活函数会产生大量的数据，但本身计算量很小。此时进�
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 
 
-class Custom_module(torch.nn.Module):
+class CustomModule(torch.nn.Module):
     def __init__(self):
         ......
 

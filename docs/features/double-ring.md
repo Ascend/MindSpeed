@@ -26,7 +26,7 @@ Ring Attention使能方式参考[此处](ring-attention-context-parallel.md)
 
 | 重要参数                   | 参数说明                                                                                                                                        |
 |------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| --cp-window-size [int] | 默认为`1`，即使用原始的Ring Attention算法,将`--cp-window-size`设置为大于1的整数，即可使能Double Ring Attention算法,该参数为Double Ring Attention算法中双层Ring Attention的内层窗口大小； |
+| --cp-window-size [int] | 默认为`1`，即使用原始的Ring Attention算法，将`--cp-window-size`设置为大于1的整数，即可使能Double Ring Attention算法，该参数为Double Ring Attention算法中双层Ring Attention的内层窗口大小； |
 
 ## 使用效果
 

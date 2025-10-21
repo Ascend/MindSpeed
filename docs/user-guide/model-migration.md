@@ -318,7 +318,7 @@ DISTRIBUTED_ARGS="
 # GPT模型参数
 GPT_ARGS="
     --num-layers 24 \
-    --hidden-size 1024 \ 
+    --hidden-size 1024 \
     --num-attention-heads 16 \
     --seq-length 1024 \
     --max-position-embeddings 1024 \
@@ -514,7 +514,7 @@ DISTRIBUTED_ARGS="
 # GPT模型参数
 GPT_ARGS="
     --num-layers 24 \
-    --hidden-size 1024 \ 
+    --hidden-size 1024 \
     --num-attention-heads 16 \
     --seq-length 1024 \
     --max-position-embeddings 1024 \

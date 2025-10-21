@@ -20,7 +20,7 @@
     * 对于ep相关的通信组（例如exp、tp_exp、tp），用户可自行根据当前模型MoE负载不均衡的程度指定系数--hccl-ep-group-buffer-adaptive-factor，从而得到合适的通信域 Buffer，该系数代表当前负载不均衡的程度。 例如，设置--hccl-ep-group-buffer-adaptive-factor大小为1，代表的是负载均衡情况下需要开启的buffer大小；设置为n，代表当前缓冲区大小是负载均衡情况下的n倍，n配置过大有可能会导致OOM。
 
     * 自动配置目前支持的通信组如下:
-[ "cp", "mp", "mp-exp", "tp", "pp", "tp_cp", "tp_exp", "exp", "pp_new_stream", "cp2", "cp_ulysses", "cp_ring", "cp_ring_intra","cp_ring_intra_overlap"]
+[ "cp", "mp", "mp_exp", "tp", "pp", "tp_cp", "tp_exp", "exp", "pp_new_stream", "cp2", "cp_ulysses", "cp_ring", "cp_ring_intra","cp_ring_intra_overlap"]
 
 * 手动配置
 `--hccl-group-buffer`
