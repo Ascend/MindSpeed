@@ -202,6 +202,10 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             pre_mlp_layernorm_output = fwd_layer.pre_mlp_layernorm(detached_attention_out)
         # MLP.
         detached_mlp_input = detach_tensor(pre_mlp_layernorm_output)
+        if hasattr(fwd_layer.mlp.token_dispatcher, "num_tokens_per_expert") and (getattr(get_args(), "enable_expert_placement", 
+                                                            False) or getattr(get_args(), "print_expert_load", False)):
+            fwd_layer.mlp.predict_expert_load(fwd_layer.mlp.token_dispatcher.num_tokens_per_expert)
+        
         probs, routing_map = router_forward(fwd_layer, detached_mlp_input)
         if use_shared_experts:
             fwd_shared_experts.pre_forward_comm(detached_mlp_input, wait_event=bwd_unperm_a2a_handle)

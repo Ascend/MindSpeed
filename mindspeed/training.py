@@ -45,7 +45,9 @@ from megatron.training.global_vars import (
     get_wandb_writer,
     get_one_logger)
 from megatron.training.async_utils import maybe_finalize_async_save
-
+from mindspeed.core.transformer.moe.expert_placement.executor import build_param_params_module_mlp_map
+from mindspeed.core.transformer.moe.expert_placement.executor import expert_weight_and_optimizer_state_placement
+from mindspeed.core.transformer.moe.expert_placement.planner import print_expert_load
 
 
 _BASE_TIME = 1742613446  # one moment of 2025.3.22
@@ -74,7 +76,7 @@ def update_ema(
 
 
 def train_step(forward_step_func, data_iterator,
-               model, optimizer, opt_param_scheduler, config):
+            model, optimizer, opt_param_scheduler, config):
     """Single training step."""
     args = get_args()
     timers = get_timers()
@@ -216,7 +218,7 @@ def pretrain(
         start_time_tensor.item(),
     )
     torch.distributed.all_reduce(start_time_tensor,
-                                 op=torch.distributed.ReduceOp.MIN)
+                                op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item() + _BASE_TIME
     LOG.info("adjusted _TRAIN_START_TIME is (seconds) %s", _TRAIN_START_TIME)
 
@@ -254,10 +256,17 @@ def pretrain(
     app_metrics['app_build_optimizer_start_time'] = one_logger_utils.get_timestamp_in_ms()
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(
         model_provider, model_type, checkpointing_context=checkpointing_context)
-
+    # Param mapping to mlp object
+    if getattr(args, "enable_expert_placement", False):
+        params_module_mlp_map = build_param_params_module_mlp_map(model)
+        if hasattr(optimizer, "chained_optimizers"):
+            for optimizer_sub in optimizer.chained_optimizers:
+                optimizer_sub.params_module_mlp_map = params_module_mlp_map
+        else:
+            optimizer.params_module_mlp_map = params_module_mlp_map
     timers('model-and-optimizer-setup').stop()
     print_datetime('after model, optimizer, and learning rate '
-                   'scheduler are built')
+                'scheduler are built')
     app_metrics['app_build_optimizer_finish_time'] = one_logger_utils.get_timestamp_in_ms()
     config = get_model_config(model[0])
 
@@ -318,6 +327,11 @@ def pretrain(
 
         iteration = 0
         if args.do_train and args.train_iters > 0:
+            if getattr(args, "enable_expert_placement", False):
+                expert_weight_and_optimizer_state_placement(args, model, optimizer)
+
+            if getattr(args, "print_expert_load", False):
+                print_expert_load(args, model, iteration)
             iteration, num_floating_point_operations_so_far = train(
                 forward_step_func,
                 model, optimizer, opt_param_scheduler,

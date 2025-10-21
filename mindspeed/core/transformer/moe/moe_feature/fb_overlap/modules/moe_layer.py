@@ -2,7 +2,8 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 import types
 from copy import deepcopy
-
+from megatron.training import get_args
+from megatron.core import parallel_state
 from mindspeed.core.transformer.moe.moe_feature import TopKRouter, BaseMoELayer, build_module
 
 
@@ -45,6 +46,14 @@ class MindSpeedFbOverlapMoELayer(BaseMoELayer):
             self.shared_experts = build_module(self.submodules.shared_experts, config=self.config)
             # fb overlap set shared expert overlap by default
             self.shared_expert_overlap = True
+                
+        if getattr(get_args(), "print_expert_load", False) or getattr(get_args(), "enable_expert_placement", False):
+            if get_args().moe_tp_extend_ep:
+                self.ep_world_size = parallel_state.get_tensor_and_expert_parallel_world_size()
+            else:
+                self.ep_world_size = parallel_state.get_expert_model_parallel_world_size()
+                
+            self.expert_placement_init(self.ep_world_size) 
 
     def forward(self, hidden_states):
         # FB overlap will not call forward for entire MoE Layer

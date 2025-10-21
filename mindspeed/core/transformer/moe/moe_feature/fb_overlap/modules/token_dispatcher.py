@@ -122,10 +122,12 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             )
             # [tp_size, ep_size, num_experts] -> [tp_size, ep_size, num_local_experts]
             num_global_tokens_per_local_expert = num_global_tokens_per_expert[
-                                                 :, :, self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
-                                                 ].contiguous()
+                                                :, :, self.local_expert_indices[0]: self.local_expert_indices[-1] + 1
+                                                ].contiguous()
             # [tp_size, ep_size, num_local_experts] -> [tp_size, ep_size]
             num_global_tokens_per_rank = num_global_tokens_per_local_expert.sum(axis=2)
+            self.num_tokens_per_expert = num_global_tokens_per_expert.reshape(-1, self.num_experts).sum(axis=0).clone()
+            
             # [tp_size, ep_size] -> [ep_size]
             # self.output_splits represents the number of tokens received by the current rank
             # from other EP rank.

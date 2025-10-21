@@ -81,6 +81,9 @@ def transformer_layer_forward_moe(
         shared_fc1_input = None
 
     # Router forward.
+    if hasattr(self.mlp.token_dispatcher, "num_tokens_per_expert") \
+            and (getattr(get_args(), "enable_expert_placement", False) or getattr(get_args(), "print_expert_load", False)):
+        self.mlp.predict_expert_load(self.mlp.token_dispatcher.num_tokens_per_expert)
     probs, routing_map = router_forward(self, detached_mlp_input)
     shared_expert_output = None
 
