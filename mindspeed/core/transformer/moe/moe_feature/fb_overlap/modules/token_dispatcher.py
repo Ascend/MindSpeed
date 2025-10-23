@@ -13,6 +13,9 @@ from mindspeed.core.transformer.moe.moe_feature import (
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather, async_reduce_scatter
 
 
+PREMUTE_FINISH_EVENT = None
+
+
 class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
     OVERLAP_STREAM = None
 
@@ -195,18 +198,21 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             torch.cuda.current_stream().synchronize()
 
         event = torch.npu.current_stream().record_event()
-        if self.config.moe_permute_fusion:
-            permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
-                hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
-                fused=self.config.moe_permute_fusion, drop_and_pad=self.drop_and_pad,
-            )
-        else:
-            with torch.npu.stream(self.overlap_stream):
-                self.overlap_stream.wait_event(event)
+
+        with torch.npu.stream(self.overlap_stream):
+            global PREMUTE_FINISH_EVENT
+            self.overlap_stream.wait_event(event)
+            if self.config.moe_permute_fusion:
+                permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
+                    hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
+                    fused=self.config.moe_permute_fusion, drop_and_pad=self.drop_and_pad,
+                )
+            else:
                 permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
                     hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
                     drop_and_pad=self.drop_and_pad,
-                )
+                )             
+            PREMUTE_FINISH_EVENT = self.overlap_stream.record_event()
 
         return permutated_local_input_tokens, permuted_probs, tokens_per_expert
 

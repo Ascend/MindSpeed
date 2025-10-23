@@ -42,13 +42,21 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is None):
             raise AssertionError('The fb overlap needs virtual pipeline or dualpipeV schedules.')
 
-        if args.moe_fb_overlap and args.gradient_accumulation_fusion:
-            warnings.warn("gradient_accumulation_fusion not support moe-fb-overlap yet, set to False.")
-            args.gradient_accumulation_fusion = False
+        if getattr(args, 'virtual_pipeline_model_parallel_size', None) is not None:
+            # In VPP schedule, do a GBS check.
+            if not args.global_batch_size // (args.micro_batch_size * args.pipeline_model_parallel_size * args.data_parallel_size) > 1:
+                raise ValueError(f"""In VPP schedule, 
+                        fb_overlap needs global_batch_size // (micro_batch_size * pipeline_model_parallel_size * data_parallel_size) > 1.
+                        The global_batch_size is {args.global_batch_size},
+                        but the micro_batch_size is {args.micro_batch_size}, PP size is {args.pipeline_model_parallel_size},DP size is {args.data_parallel_size}.
+                        """)
 
-        if args.moe_fb_overlap and args.gemm_gradient_accumulation_fusion:
-            warnings.warn("gemm_gradient_accumulation_fusion not support moe-fb-overlap yet, set to False.")
-            args.gemm_gradient_accumulation_fusion = False
+    def post_validate_args(self, args):
+        # Noop check.
+        if args.noop_layers is not None and args.moe_fb_overlap and getattr(args, 'schedules_method', None) != 'dualpipev':
+            noop_layers_list = list(args.noop_layers)
+            if noop_layers_list[0] < (args.num_layers - args.num_layers_per_virtual_pipeline_stage):
+                raise AssertionError('In VPP schedule with fb_overlap, the noop-layers must in last VPP stage.')
 
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):

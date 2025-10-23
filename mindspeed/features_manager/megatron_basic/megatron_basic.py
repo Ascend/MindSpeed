@@ -10,6 +10,13 @@ class MegatronBasicFeature(MindSpeedFeature):
         group.add_argument("--use-fused-rmsnorm", action='store_true', help="Use fused rmsnorm.")
         group.add_argument("--use-fused-swiglu", action='store_true', help="Use fused swiglu.")
 
+    def validate_args(self, args):
+        # Fix VPP when VPP_size=1 from megatron core_r0.14.0 (!3640).
+        if getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is not None or getattr(args, 'num_virtual_stages_per_pipeline_rank', None) is not None:
+            if args.virtual_pipeline_model_parallel_size == 1 and not getattr(args, 'moe_fb_overlap', False):
+                args.virtual_pipeline_model_parallel_size = None
+                args.overlap_p2p_comm = False
+
     def register_patches(self, patch_manager, args):
         try:
             import megatron.training
