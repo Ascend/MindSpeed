@@ -16,26 +16,28 @@ from mindspeed.core.transformer.moe.moe_feature.balanced_moe.modules.token_dispa
 
 
 class SharedParamsForHotExperts:
-    def __init__(self, hot_experts_module, grad_w1_hot_shape, grad_w2_hot_shape):
+    def __init__(self, weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype=torch.float32,
+                 device="cuda"):
         self.shared_weight1 = Parameter(
-            torch.empty_like(hot_experts_module.weight1.data)
+            torch.empty(weight1_shape, dtype=dtype, device=device)
         )
         self.shared_weight1.is_hot_experts = True
         self.shared_weight1.requires_grad = True
         self.shared_weight1.gmm_weight = True
 
         self.shared_weight2 = Parameter(
-            torch.empty_like(hot_experts_module.weight2.data)
+            torch.empty(weight2_shape, dtype=dtype, device=device)
         )
         self.shared_weight2.is_hot_experts = True
         self.shared_weight2.requires_grad = True
         self.shared_weight2.gmm_weight = True
-        self.grad_w1_buffer = torch.empty_like(
-            hot_experts_module.weight1.data, dtype=torch.float32, device="cuda", memory_format=torch.contiguous_format
-        ).view(grad_w1_hot_shape)
-        self.grad_w2_buffer = torch.empty_like(
-            hot_experts_module.weight2.data, dtype=torch.float32, device="cuda", memory_format=torch.contiguous_format
-        ).view(grad_w2_hot_shape)
+
+        self.grad_w1_buffer = torch.empty(
+            weight1_shape, dtype=torch.float32, device=device, memory_format=torch.contiguous_format
+        ).view(grad1_shape)
+        self.grad_w2_buffer = torch.empty(
+            weight2_shape, dtype=torch.float32, device=device, memory_format=torch.contiguous_format
+        ).view(grad2_shape)
 
     def register_shared_weight(self, hot_experts_module):
         hot_experts_module.weight1 = self.shared_weight1
@@ -45,10 +47,12 @@ class SharedParamsForHotExperts:
 _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS = None
 
 
-def init_global_shared_params_for_hot_experts(hot_experts_module, grad_w1_hot_shape, grad_w2_hot_shape):
+def init_global_shared_params_for_hot_experts(
+        weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype=torch.float32, device="cuda"):
     global _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS
     if _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS is None:
-        _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS = SharedParamsForHotExperts(hot_experts_module, grad_w1_hot_shape, grad_w2_hot_shape)
+        _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS = SharedParamsForHotExperts(
+            weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype, device)
 
 
 def get_shared_params_for_hot_experts():
@@ -60,7 +64,7 @@ def get_shared_params_for_hot_experts():
 def get_shared_grad_for_hot_experts():
     global _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS
     assert _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS is not None
-    return (_GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS.grad_w1_buffer, _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS.grad_w2_buffer)
+    return _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS.grad_w1_buffer, _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS.grad_w2_buffer
 
 
 class BalancedMoELayer(BaseMoELayer):
@@ -146,12 +150,45 @@ class BalancedMoELayer(BaseMoELayer):
         self.hot_experts.weight1.untyped_storage_size = self.hot_experts.weight1.untyped_storage().size()
         self.hot_experts.weight2.untyped_storage_size = self.hot_experts.weight2.untyped_storage().size()
 
-        init_global_shared_params_for_hot_experts(self.hot_experts, grad_w1_hot_shape, grad_w2_hot_shape)
+        init_global_shared_params_for_hot_experts(
+            self.hot_experts.weight1.data.shape, self.hot_experts.weight2.data.shape,
+            grad_w1_hot_shape, grad_w2_hot_shape,
+            self.hot_experts.weight1.data.dtype, self.hot_experts.weight1.data.device)
         self.hot_experts.weight1 = None
         self.hot_experts.weight2 = None
 
         # Should be set to False to avoid M-Core allocating ParamGradBuffer and DP gradient accumulator hook.
         self.hot_experts.requires_grad_(False)
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        state_dict = super().state_dict(destination, prefix, keep_vars)
+        # Remove parameters related to hot_experts
+        hot_expert_keys = [key for key in state_dict.keys() if 'hot_experts.weight' in key]
+        for key in hot_expert_keys:
+            if key in state_dict:
+                del state_dict[key]
+
+        return state_dict
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Ignore missing hot_experts parameter during loading"""
+        if strict:
+            # Create a copy and remove keys related to hot_experts
+            state_dict_filtered = {k: v for k, v in state_dict.items() if 'hot_experts.weight' not in k}
+            missing_keys, unexpected_keys = super().load_state_dict(state_dict_filtered, strict=False)
+
+            # Manually check if there are any other truly missing keys
+            true_missing_keys = [k for k in missing_keys if 'hot_experts.weight' not in k]
+            if true_missing_keys:
+                error_msg = (
+                    f"Missing key(s) in state_dict: {true_missing_keys}. "
+                    f"Expected keys (excluding 'hot_experts.weight' patterns) are missing. "
+                    f"This might be due to architecture mismatch or incorrect checkpoint."
+                )
+                raise RuntimeError(error_msg)
+            return missing_keys, unexpected_keys
+        else:
+            return super().load_state_dict(state_dict, strict=False)
 
     def forward(self, hidden_states):
         # FB overlap will not call forward for entire MoE Layer
