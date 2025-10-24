@@ -1,4 +1,4 @@
-# need new version CANN(>8.3) & triton_npu(>3.2.0.dev20250929)
+# need new version CANN(>8.3) & triton_npu(test with 3.2.0.dev20250929)
 import os
 import logging
 import math
@@ -60,7 +60,7 @@ def _triton_flash_attention_forward(
     # Current M-dimension block index
     start_r = tl.program_id(0)
 
-    # Loop through all (Z * H) attention groups
+    # Loop through all (B * N) attention groups
     for off_BN in range(0, B * N):
         # Compute batch and head index
         off_B = off_BN // N
@@ -117,7 +117,7 @@ def _triton_flash_attention_forward(
         # m_i and l_i for online softmax 
         m_i = tl.zeros([Br], dtype=tl.float32) - float("inf")
         l_i = tl.zeros([Br], dtype=tl.float32) + 1.0
-        # acc for block output
+        # accumulate for block output
         acc = tl.zeros([Br, D], dtype=tl.float32)
 
         # Apply softmax scale and convert to log2 base
@@ -224,13 +224,13 @@ def _triton_flash_attention_forward_inner(
 
     if causal:
         if not causal_diagonal_block:
-            lo, hi = 0, start_r * Br  
-        if causal and causal_diagonal_block:
-            lo, hi = start_r * Br, (start_r + 1) * Br 
+            lo, hi = 0, start_r * Br
+        if causal_diagonal_block:
+            lo, hi = start_r * Br, (start_r + 1) * Br
             lo = tl.multiple_of(lo, Br)  # Align starting position
     else:
         if not causal_diagonal_block:
-            lo, hi = 0, S 
+            lo, hi = 0, S
         else:
             raise RuntimeError("Should not enter here.")
 
@@ -240,8 +240,8 @@ def _triton_flash_attention_forward_inner(
 
     # row fixed as [start_r, start_r + Br), 
     # loop for column [lo, hi] step by Bc
-    for start_c in range(lo, hi, Bc): 
-        start_c = tl.multiple_of(start_c, Bc)  # Align column start position
+    for start_c in range(lo, hi, Bc):
+        start_c = tl.multiple_of(start_c, Bc) # Align column start position
         # -- Compute qk ----
         k = tl.load(key_block_ptr)
         # Modify K
@@ -251,7 +251,7 @@ def _triton_flash_attention_forward_inner(
         # Apply causal mask for causal_diagonal_block
         if causal and causal_diagonal_block:
             mask = offs_r[:, None] >= (start_c + offs_c[None, :]) # Construct upper triangular mask
-            qk = qk + tl.where(mask, 0, -1.0e6)  # Set invalid positions to -∞
+            qk = tl.where(mask, qk, -1.0e6) # Set invalid positions to -∞
         m_ij = tl.maximum(m_i, tl.max(qk, 1))
         qk = qk - m_ij[:, None]  # Stabilize
         # Softmax weights middle value: p = exp2(qk - m_ij), div m_i in the end
@@ -429,7 +429,6 @@ def _backward_for_dq(
     step_c = BLOCK_C2
     for _ in range(num_steps):
         k = tl.load(k_ptrs)
-        v = tl.load(v_ptrs)
         qk = tl.dot(q, tl.trans(k))
         p = tl.math.exp2(qk - m)
         # Autoregressive masking.
@@ -438,6 +437,7 @@ def _backward_for_dq(
             mask = (offs_r[:, None] >= offs_c[None, :])
             p = tl.where(mask, p, 0.0)
         # Compute dP and dS.
+        v = tl.load(v_ptrs)
         dp = tl.dot(do, tl.trans(v)).to(tl.float32)
         ds = p * (dp - Di[:, None])
         ds = ds.to(tl.float16)
@@ -649,6 +649,69 @@ def _triton_flash_attention_backward(
     tl.store(dq_ptrs, dq)
 
 
+def forward_ub_memory_used_simulation(Br, Bc, B, N, S, D, causal):
+    '''
+    calculate best of Br and Bc, 
+    for A2, UB 192KB, L2 192MB
+    
+    HBM memory:
+        M       [B, N, S]
+        L       [B, N, S]
+        output  [B, N, S, D]
+    '''
+    ub_men = (
+        # for row
+        + Br * D * 4 # acc
+        + Br * D * 4 # q block
+            # for block
+            + Br * Bc * 4 # qk block
+            + max(
+                Bc * D * 4, # k block
+                Bc * D * 4, # v block
+                ((Br * Bc * 4 * 2) if causal else 0) # qk mask
+            )
+        )
+    return ub_men
+
+
+def backward_ub_memory_used_simulation(R1, C1, R2, C2, B, N, S, D, causal):
+    ub_men_base = (
+        # for row
+        + C1 * D * 4 # k
+        + C1 * D * 4 # v
+    )
+    ub_mem_dvdv = (
+        + C1 * D * 4 # dk
+        + C1 * D * 4 # dv
+            # dk*dv
+            + R1 * 4 # m
+            + R1 * 4 # Di
+            + R1 * D * 4 # q
+            + R1 * C1 * 4 # p_T
+            + max(
+                R1 * D * 4, # do
+                ((R1 * C1 * 4 * 1) if causal else 0) # p_T mask
+            )
+    )
+    
+    ub_mem_dq = (
+        + R2 * D * 4 # q
+        + R2 * D * 4 # dq
+        + R2 * D * 4 # do
+        + R2 * 4 # m
+            # dq
+            + R2 * 4 # Di
+            + R2 * C2 * 4 # q
+            + max(
+                C2 * D * 4, # k
+                C2 * D * 4, # v
+                ((R2 * C2 * 4 * 1) if causal else 0) # p_T mask
+            )
+    )
+    ub_men = ub_men_base + max(ub_mem_dvdv, ub_mem_dq)
+    return ub_men
+
+
 class TritonFlashAttentionFunction(torch.autograd.Function):
 
     @staticmethod
@@ -684,23 +747,45 @@ class TritonFlashAttentionFunction(torch.autograd.Function):
             if query.stride(i) != key.stride(i) or key.stride(i) != value.stride(i):
                 raise ValueError(f"The stride at dimension {i} of query, key, and value tensors must be the same")
         
-        # block of r （for query and output） Br in paper
+        # block of r (for query and output) Br in paper
         Br = 64
         # block of c (for key and value) Bc in paper
         Bc = 32
-        # calculate best of BM and BN, 
-        # for A2, UB 192KB, L2 192MB
-        # forward memory used:
-        #   acc [Br, D] fp32
-        #   block:
-        #       q\o [Br, D] fp32
-        #       k\v [Bc, D] fp32
-        #       qk  [Br, Bc] fp32
-        Br = min(Br, S)
-        Bc = min(Br, S, Bc)
+        if S % Br != 0:
+            raise ValueError(f"S ({S}) must be divisible by Br ({Br})")
+        if S % Bc != 0:
+            raise ValueError(f"S ({S}) must be divisible by Bc ({Bc})")
+        
+        Brs = [16, 32, 64, 128]
+        Bcs = [16, 32, 64, 128]
+        MAX_UB_MEM = 192 * 1024
+        UB_MEM_WATERMARK_RATIO = 0.3
+        UB_MEM_LIMIT = MAX_UB_MEM * UB_MEM_WATERMARK_RATIO
+        max_Br_mul_Bc = Br * Bc
+        min_Br_minus_Bc = abs(Br - Bc)
+        best_perf_ub_mem = forward_ub_memory_used_simulation(Br, Bc, B, N, S, D, causal)
+        for one_Br in Brs:
+            if one_Br < S and S % one_Br == 0:
+                for one_Bc in Bcs:
+                    if (one_Bc < S and S % one_Bc == 0 
+                        and (one_Br * one_Bc >= max_Br_mul_Bc # bigger block
+                            or 
+                                # more square block
+                                (one_Br * one_Bc == max_Br_mul_Bc 
+                                    and min_Br_minus_Bc > abs(one_Br - one_Bc))
+                            )
+                        and (one_Br % one_Bc == 0)
+                        ):
+                        ub_men_simulated = forward_ub_memory_used_simulation(Br, Bc, B, N, S, D, causal)
+                        if ub_men_simulated <= UB_MEM_LIMIT:
+                            max_Br_mul_Bc = one_Br * one_Bc
+                            min_Br_minus_Bc = abs(one_Br - one_Bc)
+                            best_perf_ub_mem = ub_men_simulated
+                            Br = one_Br
+                            Bc = one_Bc
 
         grid = (triton.cdiv(S, Br), 1, 1)
-        logger.info(f"triton FA forward B:{B}, N:{N}, S:{S}, D:{D}, Br:{Br}, Bc:{Bc}, grid:{grid}")
+        logger.info(f"triton FA forward B:{B}, N:{N}, S:{S}, D:{D}, Br:{Br}, Bc:{Bc}, grid:{grid}, ub_mem_simulated: {best_perf_ub_mem}<{UB_MEM_LIMIT:.1f}")
 
         # M, L in FlashAttentionV2 paper.
         # in each block compute, m_i save max of m_ij
@@ -732,7 +817,16 @@ class TritonFlashAttentionFunction(torch.autograd.Function):
             Br=Br, # autotune
             Bc=Bc, # autotune
             causal=causal, 
+        )
+        '''
+            multibuffer=True, 
+            unit_flag=True, 
+            limit_auto_multi_buffer_only_for_local_buffer=False, 
+            tile_mix_vector_loop=4, 
+            tile_mix_cube_loop=4, 
+            set_workspace_multibuffer=4, 
             )
+        '''
 
         ctx.save_for_backward(query, key, value, output, M)
         ctx.sm_scale = sm_scale
@@ -762,40 +856,12 @@ class TritonFlashAttentionFunction(torch.autograd.Function):
         d_key = torch.empty_like(key)
         d_value = torch.empty_like(value)
 
-        '''
-        k: [BLOCK_C1, D]
-        v: [BLOCK_C1, D]
-        dk: [BLOCK_C1, D]
-        dv: [BLOCK_C1, D]
-        dk&dv:
-            q:  [BLOCK_R1, D]
-            m:  [BLOCK_R1]
-            do: [BLOCK_R1, D]
-            Di: [BLOCK_R1]
-        q:  [BLOCK_R2, D]
-        dq: [BLOCK_R2, D]
-        do: [BLOCK_R2, D]
-        m: [BLOCK_R2]
-        dq:
-            Di: [BLOCK_R2]
-            k:  [BLOCK_C2, D]
-            v:  [BLOCK_C2, D]
-        '''
         BLOCK_1 = 64
         BLOCK_2 = 64
         BLOCK_R1 = min(BLOCK_1, S) # block size of row for d_value、d_key
         BLOCK_C1 = min(BLOCK_1, S) # block size of column for d_value、d_key
         BLOCK_R2 = min(BLOCK_2, S) # block size of row for d_query
         BLOCK_C2 = min(BLOCK_2, S) # block size of column for d_query
-        BLOCK_SLICE_FACTOR = 1
-        RCP_LN2 = 1.44269504
-        scaled_key = key
-        qk_scale = sm_scale * RCP_LN2
-        scaled_key = scaled_key * qk_scale
-        PRE_BLOCK = 128
-        PRE_BLOCK = min(S, PRE_BLOCK)
-        if S % PRE_BLOCK != 0:
-            raise ValueError(f"S ({S}) must be divisible by PRE_BLOCK ({PRE_BLOCK})")
         if S % BLOCK_R1 != 0:
             raise ValueError(f"S ({S}) must be divisible by BLOCK_R1 ({BLOCK_R1})")
         if S % BLOCK_C1 != 0:
@@ -806,6 +872,61 @@ class TritonFlashAttentionFunction(torch.autograd.Function):
             raise ValueError(f"S ({S}) must be divisible by BLOCK_C2 ({BLOCK_C2})")
         if BLOCK_C1 % BLOCK_R1 != 0:
             raise ValueError(f"BLOCK_C1 ({BLOCK_C1}) must be divisible by BLOCK_R1 ({BLOCK_R1})")
+        
+        R1s = [16, 32, 64, 128]
+        C1s = [16, 32, 64, 128]
+        R2s = [16, 32, 64, 128]
+        C2s = [16, 32, 64, 128]
+        MAX_UB_MEM = 192 * 1024
+        UB_MEM_WATERMARK_RATIO = 0.7
+        UB_MEM_LIMIT = MAX_UB_MEM * UB_MEM_WATERMARK_RATIO
+        max_R1_mul_C1 = BLOCK_R1 * BLOCK_C1
+        min_R1_minus_C1 = abs(BLOCK_R1 - BLOCK_C1)
+        max_R2_mul_C2 = BLOCK_R2 * BLOCK_C2
+        min_R2_minus_C2 = abs(BLOCK_R2 - BLOCK_C2)
+        best_perf_ub_mem = backward_ub_memory_used_simulation(BLOCK_R1, BLOCK_C1, BLOCK_R2, BLOCK_C2, B, N, S, D, causal)
+        for one_R1 in R1s:
+            if one_R1 < S and S % one_R1 == 0:
+                for one_C1 in C1s:
+                    if (one_C1 < S and S % one_C1 == 0 
+                    and (one_R1 * one_C1 >= max_R1_mul_C1 # bigger block
+                        or 
+                            # more square block
+                            (one_R1 * one_C1 == max_R1_mul_C1 
+                                and min_R1_minus_C1 > abs(one_R1 - one_C1))
+                        )
+                    and (one_R1 % one_C1 == 0)):
+                        for one_R2 in R2s:
+                            if one_R2 < S and S % one_R2 == 0:
+                                for one_C2 in C2s:
+                                    if (one_C2 < S and S % one_C2 == 0 
+                                    and (one_R2 * one_C2 >= max_R2_mul_C2 # bigger block
+                                        or 
+                                            # more square block
+                                            (one_R2 * one_C2 == max_R2_mul_C2
+                                                and min_R1_minus_C2 > abs(one_R2 - one_C2))
+                                        )
+                                    and (one_R2 % one_C2 == 0)):
+                                        ub_men_simulated = backward_ub_memory_used_simulation(BLOCK_R1, BLOCK_C1, BLOCK_R2, BLOCK_C2, B, N, S, D, causal)
+                                        if ub_men_simulated <= UB_MEM_LIMIT:
+                                            max_R2_mul_C2 = one_R2 * one_C2
+                                            min_R1_minus_C2 = abs(one_R2 - one_C2)
+                                            max_R1_mul_C1 = one_R1 * one_C1
+                                            min_R1_minus_C1 = abs(one_R1 - one_C1)
+                                            best_perf_ub_mem = ub_men_simulated
+                                            BLOCK_R1 = one_R1
+                                            BLOCK_C1 = one_C1
+                                            BLOCK_R2 = one_R2
+                                            BLOCK_C2 = one_C2
+        BLOCK_SLICE_FACTOR = 1
+        RCP_LN2 = 1.44269504
+        scaled_key = key
+        qk_scale = sm_scale * RCP_LN2
+        scaled_key = scaled_key * qk_scale
+        PRE_BLOCK = 128
+        PRE_BLOCK = min(S, PRE_BLOCK)
+        if S % PRE_BLOCK != 0:
+            raise ValueError(f"S ({S}) must be divisible by PRE_BLOCK ({PRE_BLOCK})")
         pre_grid = (S // PRE_BLOCK, B * N)
         grid = (S // BLOCK_C1, 1, B * N)
         delta = torch.empty_like(M)
@@ -814,6 +935,7 @@ class TritonFlashAttentionFunction(torch.autograd.Function):
             f"BLOCK_R1:{BLOCK_R1}, BLOCK_C1:{BLOCK_C1}, BLOCK_R2:{BLOCK_R2}, BLOCK_C2:{BLOCK_C2}, "
             f"pre_grid:{pre_grid},grid:{grid},BLOCK_SLICE_FACTOR:{BLOCK_SLICE_FACTOR}, "
             f"stride: {(query.stride(0), query.stride(1), query.stride(2), query.stride(3))}, "
+            f"ub_mem_simulated: {best_perf_ub_mem}<{UB_MEM_LIMIT:.1f}"
             )
         _triton_flash_attention_backward_preprocess[pre_grid](
             output=output, 
@@ -846,14 +968,18 @@ class TritonFlashAttentionFunction(torch.autograd.Function):
             BLOCK_R2=BLOCK_R2, # autotune
             BLOCK_C2=BLOCK_C2, # autotune
             BLOCK_SLICE_FACTOR=BLOCK_SLICE_FACTOR, 
-            causal=causal, 
+            causal=causal
+        )
+        '''
             multibuffer=True, 
             unit_flag=True, 
+            limit_auto_multi_buffer_only_for_local_buffer=False, 
             tile_mix_vector_loop=4, 
             tile_mix_cube_loop=4, 
-            limit_auto_multi_buffer_only_for_local_buffer=False, 
-            set_workspace_multibuffer=2, 
+            set_workspace_multibuffer=4, 
+            
         )
+        '''
 
         return d_query, d_key, d_value, None, None, None, None
 
@@ -904,10 +1030,10 @@ def test_op(B, N, S, D, causal, dtype):
     end = time.perf_counter()
     triton_backward_time_cost = (end - forward_time) / 1
     triton_time_cost = (end - start) / 1
+    tri_out = tri_out.cpu()
     tri_dv, v.grad = v.grad.clone().cpu(), None
     tri_dk, k.grad = k.grad.clone().cpu(), None
     tri_dq, q.grad = q.grad.clone().cpu(), None
-    tri_out = tri_out.cpu()
 
     Mask = torch.tril(torch.ones((S, S), dtype=torch.uint8, device=DEVICE))
     torch.npu.synchronize()
@@ -921,15 +1047,93 @@ def test_op(B, N, S, D, causal, dtype):
     torch_out.backward(dout)
     end = time.perf_counter()
     torch_time_cost = (end - start) / 1
+    torch_out = torch_out.cpu()
     torch_dv, v.grad = v.grad.clone().cpu(), None
     torch_dk, k.grad = k.grad.clone().cpu(), None
     torch_dq, q.grad = q.grad.clone().cpu(), None
+    
+    def block_attention(Q, K, V, block_size=2 * 1024, causal=False, Mask=None):
+        batch_size, num_heads, seq_len, d_k = Q.shape
+        block_size = min(block_size, seq_len)
+        output = torch.zeros_like(V, dtype=torch.float32)  # 最终输出
+        if seq_len % block_size != 0:
+            raise RuntimeError("序列长度必须能被块大小整除")
+        
+        # 遍历Q的每个块（按查询位置分块）
+        for i in range(0, seq_len, block_size):
+            q_tile = Q[:, :, i:i + block_size, :] # (B, H, BQ, d_k)，BQ为当前Q块长度
+            bq_len = q_tile.shape[2]
+            
+            # 初始化累加器：存储当前Q块的输出结果
+            out_tile = torch.zeros(batch_size, num_heads, bq_len, d_k, device=Q.device, dtype=torch.float32)
+            # 初始化softmax的中间变量（用于数值稳定）
+            max_score = torch.full((batch_size, num_heads, bq_len, 1), -torch.inf, device=Q.device, dtype=torch.float32)
+            sum_exp = torch.zeros(batch_size, num_heads, bq_len, 1, device=Q.device, dtype=torch.float32)
+            
+            # 遍历K、V的每个块（按键值位置分块）
+            for j in range(0, seq_len, block_size):
+                k_tile = K[:, :, j:j + block_size, :]# (B, H, BK, d_k)
+                v_tile = V[:, :, j:j + block_size, :] # (B, H, BK, d_k)
+                bk_len = k_tile.shape[2]
+                    
+                # 1. 计算当前Q块与K块的注意力分数 (B, H, BQ, BK)
+                scores = torch.matmul(q_tile, k_tile.transpose(-2, -1)).to(torch.float32)
+                
+                # 2. 更新全局max（用于softmax数值稳定）
+                current_max = scores.max(dim=-1, keepdim=True).values  # (B, H, BQ, 1)
+                new_max = torch.max(max_score, current_max)
+                
+                # 3. 修正历史sum_exp（因max更新，需重新缩放）
+                # 公式：exp(x - new_max) = exp(x - old_max) * exp(old_max - new_max)
+                exp_diff = torch.exp(max_score - new_max)
+                sum_exp = sum_exp * exp_diff + torch.exp(scores - new_max).sum(dim=-1, keepdim=True)
+                
+                # 4. 更新max_score为新的全局max
+                max_score = new_max
+                
+                # 5. 计算当前块的注意力权重，并累加至输出
+                # 权重 = exp(scores - max_score) / sum_exp（包含历史块的累积sum_exp）
+                attn_weights = torch.exp(scores - max_score) / sum_exp
+                out_tile += torch.matmul(attn_weights, v_tile)  # 累加V的贡献
+            
+            # 将当前Q块的结果写入输出
+            output[:, :, i:i + block_size, :] = out_tile
+        
+        return output
+    torch.npu.synchronize()
+    start = time.perf_counter()
+    torch_ba_out = block_attention(q, k, v).half()
+    torch_ba_out.backward(dout)
+    end = time.perf_counter()
+    torch_ba_time_cost = (end - start) / 1
+    torch_ba_out = torch_ba_out.cpu()
+    torch_ba_dv, v.grad = v.grad.clone().cpu(), None
+    torch_ba_dk, k.grad = k.grad.clone().cpu(), None
+    torch_ba_dq, q.grad = q.grad.clone().cpu(), None
     
     atten_mask = 1 - Mask
     if not causal:
         atten_mask = torch.zeros_like(atten_mask)
     atten2_masks = torch.from_numpy(np.triu(np.ones([2048, 2048]), k=1))
     atten2_mask = atten2_masks.to(torch.float16).bool().npu()
+    # first run avoid overhead time
+    npu_op_out = torch_npu.npu_fusion_attention(
+        query=q, 
+        key=k, 
+        value=v, 
+        head_num=N, 
+        input_layout="BNSD", 
+        scale=sm_scale, 
+        sparse_mode=2 if causal else 0, 
+        next_tockens=0, 
+        pre_tockens=S, 
+        atten_mask=atten2_mask if causal else None 
+    )[0].half()
+    npu_op_out.backward(dout)
+    npu_op_dv, v.grad = v.grad.clone().cpu(), None
+    npu_op_dk, k.grad = k.grad.clone().cpu(), None
+    npu_op_dq, q.grad = q.grad.clone().cpu(), None
+    # real time cost run
     torch.npu.synchronize()
     start = time.perf_counter()
     npu_op_out = torch_npu.npu_fusion_attention(
@@ -948,15 +1152,16 @@ def test_op(B, N, S, D, causal, dtype):
     torch.npu.synchronize()
     end = time.perf_counter()
     npu_op_time_cost = (end - start) / 1
+    npu_op_out = npu_op_out.cpu()
     npu_op_dv, v.grad = v.grad.clone().cpu(), None
     npu_op_dk, k.grad = k.grad.clone().cpu(), None
     npu_op_dq, q.grad = q.grad.clone().cpu(), None
 
     logger.info(f"Performance Test Triton-Attention with ({B},{N},{S},{D}), causal = {causal}, dtype = {dtype}, "
-                f"ref: {torch_time_cost:.6f}s, triton: {triton_time_cost:.6f}s, npu_op: {npu_op_time_cost:.6f}s, "
+                f"torch_ref: {torch_time_cost:.6f}s, torch_ba_ref: {torch_ba_time_cost:.6f}s, triton: {triton_time_cost:.6f}s, npu_op: {npu_op_time_cost:.6f}s, "
                 f"triton_first_more_time: {(triton_first_run_time_cost - triton_time_cost):.3f}s, "
                 f"triton_forward_time_cost:triton_backward_time_cost : {triton_forward_time_cost:.6f}s:{triton_backward_time_cost:.6f}s, ({triton_forward_time_cost/triton_time_cost:.3f}:{triton_backward_time_cost/triton_time_cost:.3f}) "
-                f"pytorch: triton: npu_op speed: {npu_op_time_cost/torch_time_cost:.3f}:{npu_op_time_cost/triton_time_cost:.3f}:1, "
+                f"pytorch: pytorch_ba: triton: npu_op speed: {npu_op_time_cost/torch_time_cost:.3f}:{npu_op_time_cost/torch_ba_time_cost:.3f}:{npu_op_time_cost/triton_time_cost:.3f}:1, "
                 )
     
     atol = 1e-2 if S * D < 1e5 else 1e-2
@@ -966,10 +1171,16 @@ def test_op(B, N, S, D, causal, dtype):
     torch.testing.assert_close(torch_dv, npu_op_dv, atol=atol, rtol=rtol)
     torch.testing.assert_close(torch_dk, npu_op_dk, atol=atol, rtol=rtol)
     torch.testing.assert_close(torch_dq, npu_op_dq, atol=atol, rtol=rtol)
-    torch_out = None
-    npu_op_out = npu_op_out.cpu()
-    torch_npu.npu.empty_cache()
 
+    if not causal:
+        atol = 1e-1 if S * D < 1e5 else 1e-1
+        rtol = 0 if S * D < 1e5 else 0
+        torch.testing.assert_close(torch_out, torch_ba_out, atol=atol, rtol=rtol)
+        rtol = 1e-0 if S * D < 1e5 else 1e-0
+        torch.testing.assert_close(torch_dv, torch_ba_dv, atol=atol, rtol=rtol)
+        torch.testing.assert_close(torch_dk, torch_ba_dk, atol=atol, rtol=rtol)
+        torch.testing.assert_close(torch_dq, torch_ba_dq, atol=atol, rtol=rtol)
+    
     atol = 1e-2 if S * D < 1e5 else 1e-2
     rtol = 0 if S * D < 1e5 else 0
     torch.testing.assert_close(npu_op_out, tri_out, atol=atol, rtol=rtol)
