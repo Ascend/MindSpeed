@@ -23,11 +23,11 @@
 `--recompute-method uniform/block    #确认具体重计算方式` 
 
 `--recompute-method`可配置参数uniform或block，任选其一：
-* `--recompute-method uniform`：将Transformer层均匀划分组（每组大小--recompute-num-layers），按组存储输入和激活值。
-+ `--recompute-method block`：将前--recompute-num-layers个Transformer层重计算，剩余层不进行重计算。
+* `--recompute-method uniform`：将Transformer层均匀划分组（每组大小`--recompute-num-layers`），按组存储输入和激活值。
++ `--recompute-method block`：将前`--recompute-num-layers`个Transformer层重计算，剩余层不进行重计算。
 
 #### 说明：
-* 同时配置`--recompute-activations` 、`--recompute-granularity full`生效选择性重计算。
+* 同时配置`--recompute-activations` 、`--recompute-granularity full`时，生效选择性重计算。
 
 + 当脚本配置了`--recompute-method block`、`--recompute-granularity full`、`--num-layers-per-virtual-pipeline-stage N`参数时，用户可以通过`--recompute-num-layers N`参数来配置每个vpp stage做多少层重计算，参数`--enable-recompute-layers-per-pp-rank`可用于修改此情况下`--recompute-num-layers N`参数的语义，新的语义表示无视vpp，按每个pp stage来配置重计算层数。
 * 注意：在legacy分支下，开启`--use-flash-attn`将无法使用选择性重计算。
