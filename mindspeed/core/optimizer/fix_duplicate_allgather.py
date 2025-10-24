@@ -44,11 +44,18 @@ def step_with_ready_grads_distrib_opti_wrapper(func):
         is_moe_param = getattr(self, 'is_moe_param', None)
 
         # determine group type
+        needrecover = False
         for model_chunk in self.model_chunks:
             if 'dense_or_moe_group' in inspect.signature(model_chunk.start_param_sync).parameters:
+                needrecover = True
                 model_chunk.start_param_sync = partial(model_chunk.start_param_sync, dense_or_moe_group=is_moe_param)
 
         update_successful = func(*args, **kwargs)
+
+        if needrecover:
+            for model_chunk in self.model_chunks:
+                model_chunk.start_param_sync = model_chunk.start_param_sync.func
+
         return update_successful
     return wrapper
 
