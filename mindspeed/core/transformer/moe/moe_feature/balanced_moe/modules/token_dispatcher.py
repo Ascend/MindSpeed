@@ -20,6 +20,7 @@ from mindspeed.core.transformer.moe.moe_feature.balanced_moe.utils import Custom
 from mindspeed.core.transformer.moe.moe_feature.overlap.token_dispatcher import is_less_or_equal_rc2_cann_version
 
 cann_version_check = is_less_or_equal_rc2_cann_version()
+PREMUTE_FINISH_EVENT = None
 
 
 def move_sorted_columns_to_end(routing_map: torch.Tensor,
@@ -227,17 +228,11 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         sorted_probs = move_sorted_columns_to_end(probs, self.remote_hot_experts)
 
         event = torch.npu.current_stream().record_event()
-        if self.config.moe_permute_fusion:
-            permuted_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
-                hidden_states,
-                self.sorted_routing_map,
-                probs=sorted_probs,
-                num_out_tokens=self.num_out_tokens,
-                fused=self.config.moe_permute_fusion,
-            )
-        else:
-            with torch.npu.stream(self.overlap_stream):
-                self.overlap_stream.wait_event(event)
+
+        with torch.npu.stream(self.overlap_stream):
+            global PREMUTE_FINISH_EVENT
+            self.overlap_stream.wait_event(event)
+            if self.config.moe_permute_fusion:
                 permuted_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
                     hidden_states,
                     self.sorted_routing_map,
@@ -245,6 +240,15 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
                     num_out_tokens=self.num_out_tokens,
                     fused=self.config.moe_permute_fusion,
                 )
+            else:
+                permuted_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
+                    hidden_states,
+                    self.sorted_routing_map,
+                    probs=sorted_probs,
+                    num_out_tokens=self.num_out_tokens,
+                    fused=self.config.moe_permute_fusion,
+                )
+            PREMUTE_FINISH_EVENT = self.overlap_stream.record_event()
 
         permuted_local_tokens, permuted_remote_hot_tokens = CustomSliceFunction.apply(
             permuted_input_tokens, self.sumnum_cold_local_hot_tokens)

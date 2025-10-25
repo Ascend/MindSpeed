@@ -103,10 +103,13 @@ def transformer_layer_forward_balanced_moe(
         pre_mlp_layernorm_output = self.pre_mlp_layernorm(detached_attention_out)
 
     # MLP.
+    dispatcher = self.mlp.token_dispatcher
     detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
     if use_shared_experts:
-        self.mlp.shared_experts.pre_forward_comm(detached_mlp_input)
-        shared_fc1_input = self.mlp.shared_experts.cached_fc1_input
+        with torch.npu.stream(dispatcher.overlap_stream):
+            # Shared Experts PreComm.
+            self.mlp.shared_experts.pre_forward_comm(detached_mlp_input)
+            shared_fc1_input = self.mlp.shared_experts.cached_fc1_input
     else:
         shared_fc1_input = None
 
@@ -132,6 +135,11 @@ def transformer_layer_forward_balanced_moe(
         torch.npu.current_stream().synchronize()
 
     # Async Perm A2A.
+    from mindspeed.core.transformer.moe.moe_feature.balanced_moe.modules.token_dispatcher import PREMUTE_FINISH_EVENT
+    if PREMUTE_FINISH_EVENT is not None:
+        # Wait for permute1 finish.
+        torch.npu.current_stream().wait_event(PREMUTE_FINISH_EVENT)
+
     (perm_a2a_out, perm_a2a_handle), (perm_prob_a2a_out, perm_prob_a2a_handle) = dispatcher.async_dispatch_comm(
         perm1_local_out, perm1_local_probs)
 
@@ -141,8 +149,8 @@ def transformer_layer_forward_balanced_moe(
     perm_a2a_handle.wait()
 
     if use_shared_experts:
-        torch.npu.current_stream().wait_stream(dispatcher.overlap_stream)
-        self.mlp.shared_experts.post_forward_comm(wait_event=perm_prob_a2a_handle)
+        with torch.npu.stream(dispatcher.overlap_stream):
+            self.mlp.shared_experts.post_forward_comm(wait_event=perm_prob_a2a_handle)
 
     detached_perm_a2a_out = detach_tensor(perm_a2a_out, checkpoint_forward=checkpoint)
     detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
@@ -212,8 +220,10 @@ def transformer_layer_forward_balanced_moe(
     unperm_a2a_out.untyped_storage().resize_(0)
 
     if use_shared_experts:
-        shared_expert_output, share_experts_graph = self.mlp.shared_experts.get_output()
+        with torch.npu.stream(dispatcher.overlap_stream):
+            shared_expert_output, share_experts_graph = self.mlp.shared_experts.get_output()
         detached_shared_expert_output = detach_tensor(shared_expert_output, checkpoint_forward=checkpoint)
+        torch.npu.current_stream().wait_stream(dispatcher.overlap_stream)
         mlp_output = route_expert_output + detached_shared_expert_output
         shared_expert_output.untyped_storage().resize_(0)
     else:

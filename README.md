@@ -456,6 +456,11 @@ MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并�
       <td><a href="docs/features/megatron_moe/megatron-moe-fb-overlap.md">link</a></td>
       <td style="text-align: center; vertical-align: middle">✅</td>
     </tr>
+    <tr>
+      <td>专家并行动态负载均衡(数参互寻)</td>
+      <td><a href="docs/features/balanced_moe.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">✅</td>
+    </tr>
   </tbody>
 </table>
 

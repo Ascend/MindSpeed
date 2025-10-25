@@ -66,9 +66,11 @@ def transformer_layer_backward_balanced_moe(
             manager.async_swap_in(wait_stream=torch.npu.current_stream())
 
     if use_shared_experts:
-        shared_experts = self.layer.mlp.shared_experts
-        shared_expert_grad = layer_output_grad if layer_output_grad is not None else self.unperm2_graph[1].grad
-        shared_experts.pre_backward_comm(shared_expert_grad)
+        dispatcher.overlap_stream.wait_stream(torch.npu.current_stream())
+        with torch.npu.stream(dispatcher.overlap_stream):
+            shared_experts = self.layer.mlp.shared_experts
+            shared_expert_grad = layer_output_grad if layer_output_grad is not None else self.unperm2_graph[1].grad
+            shared_experts.pre_backward_comm(shared_expert_grad)
 
     run_graph_backward(self.unperm2_graph, layer_output_grad, keep_grad=True)
 
@@ -76,6 +78,8 @@ def transformer_layer_backward_balanced_moe(
         layer_output_grad.untyped_storage().resize_(0)
 
     a2a_wait_event = shared_experts.pre_backward_handle if use_shared_experts else None
+    # Do a synchronize for bwd a2a comm.
+    torch.npu.current_stream().synchronize()
     unperm1_out_grad, handle = dispatcher.backward_async_combine_comm(
         self.unperm_a2a_graph[1].grad,
         input_splits=self.input_splits,
@@ -85,7 +89,8 @@ def transformer_layer_backward_balanced_moe(
     )
     # overlap alltoall by shared experts backward
     if use_shared_experts:
-        shared_experts.linear_fc2_act_fc1_backward(self.shared_experts_graph)
+        with torch.npu.stream(dispatcher.overlap_stream):
+            shared_experts.linear_fc2_act_fc1_backward(self.shared_experts_graph)
 
     if self.act_ckpt_manager is not None:
         self.act_ckpt_manager.recompute(True)
@@ -110,7 +115,8 @@ def transformer_layer_backward_balanced_moe(
             )
 
     if use_shared_experts:
-        shared_experts.post_backward_comm(wait_event=perm_a2a_handle)
+        with torch.npu.stream(dispatcher.overlap_stream):
+            shared_experts.post_backward_comm(wait_event=perm_a2a_handle)
 
     run_graph_backward(self.unperm1_graph, unperm1_out_grad)
     WeightGradStore.start_decouple()
@@ -125,9 +131,10 @@ def transformer_layer_backward_balanced_moe(
         perm_a2a_handle = None
 
     if use_shared_experts:
-        shared_experts_grad = shared_experts.get_backward_grad()
-        if shared_experts_grad is not None:
-            self.pre_mlp_layernorm_graph[1].grad = shared_experts_grad
+        with torch.npu.stream(dispatcher.overlap_stream):
+            shared_experts_grad = shared_experts.get_backward_grad()
+            if shared_experts_grad is not None:
+                self.pre_mlp_layernorm_graph[1].grad = shared_experts_grad
 
     (perm1_out_grad, handle), (perm1_prob_out_grad, prob_handle) = dispatcher.backward_async_dispatch_comm(
         self.perm_a2a_graph[1][0].grad,
@@ -189,7 +196,7 @@ def transformer_layer_backward_balanced_moe(
         layer_output_grad.untyped_storage().resize_(0)
         self.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
     run_graph_backward(self.router_graph, probs_grad)
-
+    torch.npu.current_stream().wait_stream(dispatcher.overlap_stream)
     run_graph_backward(self.pre_mlp_layernorm_graph)
     if self.attn_swap_managers:
         for manager in self.attn_swap_managers:
