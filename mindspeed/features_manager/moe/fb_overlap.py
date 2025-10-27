@@ -42,7 +42,7 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is None):
             raise AssertionError('The fb overlap needs virtual pipeline or dualpipeV schedules.')
 
-        if getattr(args, 'virtual_pipeline_model_parallel_size', None) is not None:
+        if getattr(args, 'virtual_pipeline_model_parallel_size', None) is not None and args.moe_fb_overlap:
             # In VPP schedule, do a GBS check.
             if not args.global_batch_size // (args.micro_batch_size * args.pipeline_model_parallel_size * args.data_parallel_size) > 1:
                 raise ValueError(f"""In VPP schedule, 
