@@ -31,14 +31,24 @@ class ReuseFP32Param(MindSpeedFeature):
             from mindspeed.core.memory.reuse_param.adaptor import reuse_fp32_param_param_and_grad_buffer_init_wrapper
 
             # optim relative.
-            patch_manager.register_patch('megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.prepare_grads',
-                                         prepare_grads)
-            patch_manager.register_patch('megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step_with_ready_grads',
-                                          step_with_ready_grads)
-            patch_manager.register_patch('megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__',
-                                         reuse_fp32_param_init_wrapper)
-            patch_manager.register_patch('megatron.core.optimizer.optimizer_config.OptimizerConfig.__init__',
-                                         optimizer_config_init_wrapper)
+            quant_or_precision_enabled = bool(getattr(args, 'use_quant_optimizer', False) or getattr(args, 'use_precision_aware_optimizer', False))
+            if not quant_or_precision_enabled:
+                patch_manager.register_patch(
+                    'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.prepare_grads',
+                    prepare_grads,
+                )
+                patch_manager.register_patch(
+                    'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step_with_ready_grads',
+                    step_with_ready_grads,
+                )
+                patch_manager.register_patch(
+                    'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__',
+                    reuse_fp32_param_init_wrapper,
+                )
+                patch_manager.register_patch(
+                    'megatron.core.optimizer.optimizer_config.OptimizerConfig.__init__',
+                    optimizer_config_init_wrapper,
+                )
 
             if not getattr(args, 'enable_zero3', False) and args.optimizer_selection != 'fused_ema_adamw':
                 patch_manager.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.__init__',

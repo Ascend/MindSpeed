@@ -279,6 +279,15 @@ def param_and_grad_buffer_init_pad(
         gradient_scaling_factor: float,
         param_indices: List[int],
 ):
+    quant_args = get_full_args()
+    if getattr(quant_args, 'quant_grads', False):
+        requested_dtype = getattr(quant_args, 'quant_grads_dtype', None)
+        if isinstance(requested_dtype, str):
+            requested_dtype = requested_dtype.lower()
+        if requested_dtype == 'bf16':
+            grad_dtype = torch.bfloat16
+        else:
+            grad_dtype = torch.float16
     self.ddp_config = ddp_config
     self.params = params
     self.param_indices = param_indices
