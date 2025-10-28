@@ -46,35 +46,6 @@ def adamw(params: List[Tensor],
         )
 
 
-class FusedTorchAdamW(TorchAdamW):
-    def __init__(
-        self,
-        params,
-        lr: Union[float, Tensor] = 1e-3,
-        betas: Tuple[float, float] = (0.9, 0.999),
-        eps: float = 1e-8,
-        weight_decay: float = 1e-2,
-        amsgrad: bool = False,
-        *,
-        maximize: bool = False,
-        foreach: Optional[bool] = None,
-        capturable: bool = False,
-        differentiable: bool = False,
-        fused: Optional[bool] = None,
-    ):
-        super().__init__(params,
-                lr=lr,
-                betas=betas,
-                eps=eps,
-                weight_decay=weight_decay,
-                amsgrad=amsgrad,
-                foreach=False,
-                maximize=maximize,
-                capturable=False,
-                differentiable=False,
-                fused=True,)
-
-
 class AdamW(Optimizer):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
                  weight_decay=1e-2, amsgrad=False, *, maximize: bool = False):
