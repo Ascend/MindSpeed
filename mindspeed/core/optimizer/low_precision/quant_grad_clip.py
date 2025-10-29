@@ -60,14 +60,6 @@ def get_grad_norm_fp32(
         data_parallel_group = get_data_parallel_group_if_dtensor(grad, data_parallel_group)
         local_grad = to_local_if_dtensor(grad)
         if hasattr(local_grad, 'meta') and getattr(local_grad, 'meta', None) is not None:
-            meta = local_grad.meta
-            scale_inv = getattr(meta, 'scale_inv', None)
-            if scale_inv is None or not torch.is_tensor(scale_inv):
-                print("Skipping quant grad with missing scale metadata during norm computation.")
-                continue
-            if not torch.isfinite(scale_inv).all():
-                print("Detected non-finite quant scale_inv; excluding from grad norm.")
-                continue
             quant_grads.append(local_grad)
         else:
             float_grads.append(local_grad)
@@ -117,9 +109,6 @@ def get_grad_norm_fp32(
 
     for local_grad in quant_grads:
         dequant = local_grad.meta.dequantization(local_grad.data)
-        if not torch.isfinite(dequant).all():
-            print("Detected non-finite values in dequantized gradient; clipping to finite range for norm.")
-            dequant = torch.where(torch.isfinite(dequant), dequant, torch.zeros_like(dequant))
         grad_norm = torch.norm(dequant, norm_type)
         total_norm += float(grad_norm**norm_type)
 
@@ -157,13 +146,7 @@ def clip_grad_by_total_norm_fp32_wrapper(func):
                 if quant_grad is None:
                     continue
                 if hasattr(quant_grad, 'meta') and getattr(quant_grad, 'meta', None) is not None:
-                    scale_inv = getattr(quant_grad.meta, 'scale_inv', None)
-                    if scale_inv is None or not torch.is_tensor(scale_inv):
-                        continue
-                    if not torch.isfinite(scale_inv).all():
-                        print("Skipping quant scale_inv with non-finite entries during clipping.")
-                        continue
-                    quant_scale_invs.append(scale_inv)
+                    quant_scale_invs.append(quant_grad.meta.scale_inv)
 
         if use_decoupled_grad:
             grads = []

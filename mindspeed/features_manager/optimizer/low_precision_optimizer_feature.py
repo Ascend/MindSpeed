@@ -192,6 +192,7 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
         if not (precision_enabled or quant_enabled):
             return
 
+        patch_specs = []
         if quant_enabled:
             import mindspeed.core.optimizer.low_precision.quant_optimizer_hooks as optimizer_hooks
             import mindspeed.core.optimizer.low_precision.quant_distributed_hooks as distributed_hooks
@@ -199,10 +200,23 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
             from mindspeed.core.optimizer.low_precision import finalize_model_grads
             from mindspeed.core.optimizer.low_precision import distributed_data_parallel
             from mindspeed.core.optimizer.low_precision import param_and_grad_buffer
+            patch_specs.extend(
+                [
+                    (
+                        'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._collect_main_grad_data_for_unscaling',
+                        distributed_hooks.collect_main_grad_data_for_unscaling_quant,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._copy_model_grads_to_main_grads',
+                        distributed_hooks.copy_model_grads_to_main_grads_quant,
+                        True,
+                    ),
+                ]
+            )
         else:
             from mindspeed.core.optimizer.low_precision import optimizer_hooks, distributed_hooks
             from mindspeed.core.optimizer.low_precision import grad_clip
-        patch_specs = []
 
         patch_specs.extend(
             [
@@ -219,11 +233,6 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                 (
                     'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step',
                     optimizer_hooks.mixed_precision_optimizer_step_impl,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params.__init__',
-                    optimizer_hooks.reuse_fp32_param_init_wrapper,
                     True,
                 ),
                 (
@@ -341,26 +350,6 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                     (
                         'megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_backward_post_hook',
                         distributed_hooks.ddp_make_backward_post_hook_wrapper,
-                        False,
-                    ),
-                    (
-                        'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._collect_main_grad_data_for_unscaling',
-                        distributed_hooks.collect_main_grad_data_for_unscaling_quant,
-                        True,
-                    ),
-                    (
-                        'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._copy_model_grads_to_main_grads',
-                        distributed_hooks.copy_model_grads_to_main_grads_quant,
-                        True,
-                    ),
-                    (
-                        'megatron.core.distributed.finalize_model_grads._allreduce_conditional_embedding_grads',
-                        quant_finalize._allreduce_conditional_embedding_grads,
-                        False,
-                    ),
-                    (
-                        'megatron.core.distributed.finalize_model_grads._update_router_expert_bias',
-                        quant_finalize._update_router_expert_bias,
                         False,
                     ),
                     (
