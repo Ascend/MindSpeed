@@ -236,10 +236,6 @@ def dualpipev_fb_overlap_mtp_layer_forward(
         [s, b, h], and optionally the updated context tensor if cross-attention is used.
     """
     assert context is None, f"multi token prediction + cross attention is not yet supported."
-    assert (
-        packed_seq_params is None
-    ), f"multi token prediction + sequence packing is not yet supported."
-
     hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
 
     if self.config.sequence_parallel:
