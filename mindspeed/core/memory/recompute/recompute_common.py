@@ -117,10 +117,11 @@ def should_recompute(config, layer_number, num_recompute):
     else:
         layer_per_chunk = config.num_layers
 
-    if vpp_rank is None:
+    if vpp_rank is None or not getattr(config, 'enable_recompute_layers_per_pp_rank', False):
         vpp_rank = 0
-    if vpp_size is None:
+    if vpp_size is None or not getattr(config, 'enable_recompute_layers_per_pp_rank', False):
         vpp_size = 1
+
     recompute_priority = ((layer_number - 1) % layer_per_chunk) * vpp_size + vpp_rank
     full_recompute_layers = config.recompute_num_layers
 

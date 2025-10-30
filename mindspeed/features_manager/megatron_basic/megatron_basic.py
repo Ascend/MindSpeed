@@ -16,6 +16,14 @@ class MegatronBasicFeature(MindSpeedFeature):
             if args.virtual_pipeline_model_parallel_size == 1 and not getattr(args, 'moe_fb_overlap', False):
                 args.virtual_pipeline_model_parallel_size = None
                 args.overlap_p2p_comm = False
+        
+        if (getattr(args, 'num_layers_per_virtual_pipeline_stage', None) is not None and 
+            getattr(args, 'pipeline_model_parallel_size', None) is not None and 
+            args.num_layers_per_virtual_pipeline_stage * args.pipeline_model_parallel_size == args.num_layers):
+            raise ValueError(
+                'num_layers_per_virtual_pipeline_stage * pipeline_model_parallel_size == num_layers, '
+                'please close --num-layers-per-virtual-pipeline-stage'
+            )
 
     def register_patches(self, patch_manager, args):
         try:
