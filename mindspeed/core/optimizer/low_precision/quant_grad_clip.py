@@ -35,13 +35,6 @@ except ImportError:
 from megatron.core.utils import get_data_parallel_group_if_dtensor, to_local_if_dtensor
 
 
-def _ensure_group(group: Optional[torch.distributed.ProcessGroup]) -> Optional[torch.distributed.ProcessGroup]:
-    if group is not None:
-        return group
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        return torch.distributed.group.WORLD
-    return None
-
 
 def get_grad_norm_fp32(
     grads_for_norm: Union[List[torch.Tensor], torch.Tensor],
@@ -52,20 +45,36 @@ def get_grad_norm_fp32(
         grads_for_norm = [grads_for_norm]
 
     data_parallel_group = None
+    needs_data_parallel_all_reduce = False
     float_grads: List[torch.Tensor] = []
     quant_grads: List[torch.Tensor] = []
     for grad in grads_for_norm:
         if grad is None:
             continue
-        data_parallel_group = get_data_parallel_group_if_dtensor(grad, data_parallel_group)
+        dp_group_candidate = get_data_parallel_group_if_dtensor(grad)
+        if dp_group_candidate is not None:
+            if data_parallel_group is None:
+                data_parallel_group = dp_group_candidate
+            else:
+                assert (
+                    data_parallel_group == dp_group_candidate
+                ), "Inconsistent data-parallel groups detected while computing gradient norm."
+            needs_data_parallel_all_reduce = True
         local_grad = to_local_if_dtensor(grad)
         if hasattr(local_grad, 'meta') and getattr(local_grad, 'meta', None) is not None:
+            meta = local_grad.meta
+            scale_inv = getattr(meta, 'scale_inv', None)
+            if scale_inv is None or not torch.is_tensor(scale_inv):
+                print("Skipping quant grad with missing scale metadata during norm computation.")
+                continue
+            if not torch.isfinite(scale_inv).all():
+                print("Detected non-finite quant scale_inv; excluding from grad norm.")
+                continue
             quant_grads.append(local_grad)
         else:
             float_grads.append(local_grad)
 
     norm_type = float(norm_type)
-    grad_stats_parallel_group = _ensure_group(grad_stats_parallel_group)
 
     if norm_type == inf:
         total_norm = 0.0
@@ -78,7 +87,7 @@ def get_grad_norm_fp32(
             )
             total_norm = max(total_norm, quant_norm)
         total_norm_tensor = torch.tensor([total_norm], dtype=torch.float, device='cuda')
-        if data_parallel_group is not None:
+        if needs_data_parallel_all_reduce and data_parallel_group is not None:
             torch.distributed.all_reduce(
                 total_norm_tensor,
                 op=torch.distributed.ReduceOp.MAX,
@@ -109,11 +118,14 @@ def get_grad_norm_fp32(
 
     for local_grad in quant_grads:
         dequant = local_grad.meta.dequantization(local_grad.data)
+        if not torch.isfinite(dequant).all():
+            print("Detected non-finite values in dequantized gradient; clipping to finite range for norm.")
+            dequant = torch.where(torch.isfinite(dequant), dequant, torch.zeros_like(dequant))
         grad_norm = torch.norm(dequant, norm_type)
         total_norm += float(grad_norm**norm_type)
 
     total_norm_tensor = torch.tensor([total_norm], dtype=torch.float, device='cuda')
-    if data_parallel_group is not None:
+    if needs_data_parallel_all_reduce and data_parallel_group is not None:
         torch.distributed.all_reduce(
             total_norm_tensor,
             op=torch.distributed.ReduceOp.SUM,
@@ -146,7 +158,13 @@ def clip_grad_by_total_norm_fp32_wrapper(func):
                 if quant_grad is None:
                     continue
                 if hasattr(quant_grad, 'meta') and getattr(quant_grad, 'meta', None) is not None:
-                    quant_scale_invs.append(quant_grad.meta.scale_inv)
+                    scale_inv = getattr(quant_grad.meta, 'scale_inv', None)
+                    if scale_inv is None or not torch.is_tensor(scale_inv):
+                        continue
+                    if not torch.isfinite(scale_inv).all():
+                        print("Skipping quant scale_inv with non-finite entries during clipping.")
+                        continue
+                    quant_scale_invs.append(scale_inv)
 
         if use_decoupled_grad:
             grads = []
