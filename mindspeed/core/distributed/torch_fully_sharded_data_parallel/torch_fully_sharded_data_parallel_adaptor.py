@@ -41,6 +41,7 @@ from megatron.core.models.common.embeddings.language_model_embedding import Lang
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.distributed import TorchFullyShardedDataParallel
 from megatron.training import get_args
+from megatron.training.utils import unwrap_model
 
 from mindspeed.utils import convert_str_dict_to_real_types, _get_dtype
 
@@ -232,8 +233,9 @@ def torch_fully_sharded_data_parallel_init(
     self.ddp_config = ddp_config
     
     # If the module has its own 'fully_shard' method, use it directly
-    if hasattr(self.module, 'fully_shard') and callable(getattr(self.module, 'fully_shard')):
-        execute_result = self.module.fully_shard(
+    unwrapped_model = unwrap_model(self.module)
+    if hasattr(unwrapped_model, 'fully_shard') and callable(getattr(unwrapped_model, 'fully_shard')):
+        execute_result = unwrapped_model.fully_shard(
             process_group=self.process_group,
             fsdp2_config_path=ddp_config.fsdp2_config_path,
         )

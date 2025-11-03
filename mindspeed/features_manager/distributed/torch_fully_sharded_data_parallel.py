@@ -39,3 +39,15 @@ class TorchFullyShardedDataParallelFeature(MindSpeedFeature):
         # PATCH: Fix Megatron checkpoint loading compatibility for torch_dcp format
         from mindspeed.checkpointing import load_checkpoint
         patch_manager.register_patch('megatron.training.checkpointing.load_checkpoint', load_checkpoint)
+
+        # BUGFIX: Fix Megatron Meta Initialization
+        from mindspeed.core.distributed.torch_fully_sharded_data_parallel.training import get_model
+        patch_manager.register_patch('megatron.training.training.get_model', get_model)
+
+        # BUGFIX: Correct get_data_parallel_group_if_dtensor for 2D device mesh in Megatron
+        from mindspeed.core.distributed.torch_fully_sharded_data_parallel.utils import get_data_parallel_group_if_dtensor
+        patch_manager.register_patch('megatron.core.utils.get_data_parallel_group_if_dtensor', get_data_parallel_group_if_dtensor)
+
+        # Patch distributed backend to support multiple backends.
+        from mindspeed.core.distributed.torch_fully_sharded_data_parallel.arguments import _add_distributed_args_wrapper
+        patch_manager.register_patch('megatron.training.arguments._add_distributed_args', _add_distributed_args_wrapper)
