@@ -122,3 +122,54 @@ def reuse_fp32_param_distrib_optimizer_init_wrapper(init_func):
             self.fp16_tensor_convert_to_fp32_tensor = types.MethodType(fp16_tensor_convert_to_fp32_tensor, self)
             self.fp32_tensor_convert_to_fp16_tensor = types.MethodType(fp32_tensor_convert_to_fp16_tensor, self)    
     return reuse_fp32_param_distrib_optimizer_init
+
+
+def get_parameter_state_dp_zero(self):
+    state = self.get_parameter_state_dp_zero_func()
+    if get_args().disable_gloo_group:
+        data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group)
+    else:
+        data_parallel_world_size = torch.distributed.get_world_size(self.data_parallel_group)
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
+    if data_parallel_world_size == 1 or not hasattr(self, "shard_main_param_res_buffers"):
+        return state
+   
+    # gather buffer res
+    buffer_res_full_shard = []
+    for shard_main_param_res_buffer in self.shard_main_param_res_buffers:
+        if get_args().disable_gloo_group:
+            recv_tensors = [torch.empty(shard_main_param_res_buffer.numel(), dtype=torch.bfloat16, device="cpu") for _
+                            in range(data_parallel_world_size)]
+        else:
+            if data_parallel_rank == 0:
+                recv_tensors = [torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.bfloat16, device="cpu") for _ in range(data_parallel_world_size)]
+            else:
+                recv_tensors = None
+       
+        send_tensor = torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.bfloat16, device="cpu")
+        send_tensor.copy_(shard_main_param_res_buffer.detach().cpu())
+
+        if get_args().disable_gloo_group:
+            from mindspeed.utils import _gather_hccl
+            _gather_hccl(
+                send_tensor,
+                recv_tensors,
+                self.data_parallel_group,
+            )
+        else:
+            torch.distributed.gather(
+                send_tensor,
+                recv_tensors,
+                data_parallel_global_ranks[0],
+                data_parallel_group_gloo,
+            )
+        if data_parallel_rank == 0:
+            buffer_res_full_shard.append(torch.cat(recv_tensors))
+   
+    state['shard_main_param_res'] = buffer_res_full_shard
+    return state
