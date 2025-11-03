@@ -16,3 +16,4 @@ class PostInfo:
     memory_cap: float = None  # type: ignore
     driver_version: str = None  # type: ignore
     cann_version: str = None  # type: ignore
+    mm_model: str = None # type: ignore

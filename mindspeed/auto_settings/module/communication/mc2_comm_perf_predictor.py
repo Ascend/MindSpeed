@@ -1,6 +1,8 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from mindspeed.auto_settings.config.search_config import SearchConfig
 from mindspeed.auto_settings.module.communication.comm_perf_predictor import CommPerfPredictor, SimpleParallelCfg
 from mindspeed.auto_settings.module.communication.communication_profile import Mc2ProfileTimeInfo
+from mindspeed.auto_settings.module.parse.profiling_parse.profiling_constant import NumberConstant
 
 
 class DebugMc2Comm:
@@ -14,6 +16,7 @@ class DebugMc2Comm:
 class Mc2CommPerfPredictor(CommPerfPredictor):
     def __init__(self, hard_info):
         super(Mc2CommPerfPredictor, self).__init__(hard_info)
+        self.is_mc2_modeling = False
         self.xs = []
         self.ys = []
         self.cfgs = []
@@ -31,11 +34,13 @@ class Mc2CommPerfPredictor(CommPerfPredictor):
     def receive_samples_from_profiling(
         self, config_no, model_config: SearchConfig, mc2_profile_time_info: Mc2ProfileTimeInfo
     ):
+        if not self.is_mc2_modeling:
+            return
         config = model_config
         tp = config.tp
         cp = config.cp
         pp = config.pp
-        s = config.seq_length / 1000
+        s = config.seq_length / NumberConstant.CONVERSION_TIME
         hccs_x = s / (tp * cp) * pp
         hccs_time = (
             mc2_profile_time_info.total_comm_time - mc2_profile_time_info.matmul_compute_time
@@ -53,6 +58,8 @@ class Mc2CommPerfPredictor(CommPerfPredictor):
         self.debug_info_list.append(debug_info)
 
     def fit(self):
+        if not self.is_mc2_modeling:
+            return
         sum_x = 0
         sum_time = 0
         for index, x in enumerate(self.xs):
@@ -62,7 +69,9 @@ class Mc2CommPerfPredictor(CommPerfPredictor):
         self.w = sum_time / sum_x
 
     def debug(self, config_list):
-        print("===============================================================================")
+        if not self.is_mc2_modeling:
+            return
+        self.logger.debug("===============================================================================")
         mc2lt = "{0:<9}\t{1:<9}\t{2:<1}\t{3:<1}\t{4:<1}\t{5:<1}\t{6:<1}"
         self.logger.debug(f"******************   MC2 modeling   ***********************")
         self.logger.debug(mc2lt.format("MC2_x", "MC2_time", "No", "tp", "dp", "pp", "cp", "ep", chr(12288)))
@@ -80,13 +89,15 @@ class Mc2CommPerfPredictor(CommPerfPredictor):
         mc2lt = "{0:<9}\t{1:<9}"
         self.logger.debug(mc2lt.format("mc2_w", "mc2_b", chr(12288)))
         self.logger.debug(mc2lt.format(round(self.w, 3), round(self.b, 3), chr(12288)))
-        print("===============================================================================")
+        self.logger.debug("===============================================================================")
 
     def predict(self, search_cfg: SearchConfig):
+        if not self.is_mc2_modeling:
+            return
         tp = search_cfg.tensor_model_parallel_size
         cp = search_cfg.context_parallel_size
         pp = search_cfg.pipeline_model_parallel_size
-        s = search_cfg.seq_length / 1000
+        s = search_cfg.seq_length / NumberConstant.CONVERSION_TIME
         mc2_time = 0
         if tp > 1:
             mc2_time = self.w * (s / (tp * cp) * pp) + self.b

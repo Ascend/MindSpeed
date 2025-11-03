@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 from typing import no_type_check, Any, DefaultDict, Iterable, List, Set, Tuple
 from collections import defaultdict
 from copy import deepcopy
@@ -18,10 +19,13 @@ _Param = DefaultDict[str, List[int]]
 
 
 class StaticMemModeling:
+    PP4_FILENAME = "auto_settings_static_model_pp4.json"
+    EXPERT2_FILENAME = "auto_settings_static_model_expert2.json"
+    TP2_FILENAME = "auto_settings_static_model_tp2.json"
 
     @no_type_check
     def __init__(self, model_cfg: ModelConfig) -> None:
-        self.model_cfg = model_cfg
+        self.model_config = model_cfg
         self._logger = get_logger("static_mem")
         self._baseline_tp = get_tp_for_profiling()
         self.params_inputs: _Param = None
@@ -64,6 +68,55 @@ class StaticMemModeling:
                 result[k].extend(v)
         return result
 
+    def generate_static_mem_profiling_list(self) -> List[Tuple[SearchConfig, str]]:
+        result: List[Tuple[SearchConfig, str]] = list()
+
+        pp4_cfg = SearchConfig()
+        pp4_cfg.copy_from_config(self.model_config)
+        pp4_cfg.tensor_model_parallel_size = self._baseline_tp
+        pp4_cfg.context_parallel_size = 1
+        pp4_cfg.pipeline_model_parallel_size = 4
+        pp4_cfg.num_layers = 4
+        pp4_cfg.untie_embeddings_and_output_weights = True
+        pp4_cfg.seq_length = 4096
+        if self.model_config.is_moe():
+            pp4_cfg.num_experts = 1
+            pp4_cfg.expert_model_parallel_size = 1
+            pp4_cfg.moe_tp_extend_ep = False
+        result.append((pp4_cfg, self.PP4_FILENAME))
+
+        if self.model_config.is_moe():
+            expert2_cfg = replace(
+                pp4_cfg,
+                pipeline_model_parallel_size=1,
+                num_layers=1,
+                num_experts=2,
+                expert_model_parallel_size=1
+            )
+            result.append((expert2_cfg, self.EXPERT2_FILENAME))
+
+        tp2 = self._baseline_tp * 2
+        pp = 1
+        if self.model_config.dist_train:
+            tp2 = 1
+            pp = 4
+        tp2_cfg = replace(
+            pp4_cfg,
+            tensor_model_parallel_size=tp2,
+            pipeline_model_parallel_size=pp,
+            num_layers=1,
+            untie_embeddings_and_output_weights=False
+        )
+        result.append((tp2_cfg, self.TP2_FILENAME))
+
+        for cfg, _ in result:
+            self._logger.debug(f"cfg.tp:{cfg.tensor_model_parallel_size}\
+                                 cfg.cp:{cfg.context_parallel_size}\
+                                 cfg.pp:{cfg.pipeline_model_parallel_size}")
+            cfg.prepare_for_profiling()
+
+        return result
+
     def model_static_mem(self, working_dir: str) -> None:
         def _decode(filename: str) -> Any:
             filepath = os.path.join(working_dir, filename)
@@ -78,7 +131,7 @@ class StaticMemModeling:
                         result[pp_rank][p_name].append(p_size)
             return result
 
-        total_pp4_params = _get_pp4_params_list(SearchSpace.PP4_FILENAME)
+        total_pp4_params = _get_pp4_params_list(self.PP4_FILENAME)
         per_layer_w_experts_params = total_pp4_params[1]
         self.params_inputs = self._diff_params(
             total_pp4_params[0],
@@ -89,9 +142,9 @@ class StaticMemModeling:
             per_layer_w_experts_params
         )
 
-        if self.model_cfg.is_moe():
+        if self.model_config.is_moe():
             self.params_per_experts = self._diff_params(
-                _get_pp4_params_list(SearchSpace.EXPERT2_FILENAME)[0],
+                _get_pp4_params_list(self.EXPERT2_FILENAME)[0],
                 self._merge_params((
                     self.params_inputs,
                     per_layer_w_experts_params,
@@ -111,7 +164,7 @@ class StaticMemModeling:
             self.params_per_experts,
             self.params_outputs
         ))
-        tp2_params = _get_pp4_params_list(SearchSpace.TP2_FILENAME)[0]
+        tp2_params = _get_pp4_params_list(self.TP2_FILENAME)[0]
         last_embedding_name = set(tp1_params.keys()).difference(tp2_params.keys())
         last_embedding_params: Set[int] = set()
         for k in last_embedding_name:
@@ -164,7 +217,7 @@ class StaticMemModeling:
             self._logger.debug(name)
 
     def cal_static_mem(self, cfg: SearchConfig) -> List[float]:
-        dtype = self.model_cfg.dtype
+        dtype = self.model_config.dtype
         non_expert_zero1 = cfg.dp * cfg.cp
         expert_zero1 = cfg.dp * cfg.cp / (cfg.ep if cfg.ep else 1)
 
@@ -226,7 +279,7 @@ class StaticMemModeling:
             else:
                 return sum(p_size) // ep // cfg.tp
 
-        num_layers = self.model_cfg.num_layers
+        num_layers = self.model_config.num_layers
 
         non_expert_params = 0
         for p_name, p_size in self.params_per_layer_wo_experts.items():
@@ -243,21 +296,21 @@ class StaticMemModeling:
             for p_name, p_size in self.params_inputs.items():
                 non_expert_params += _cal_num_params(p_name, p_size)
             non_expert_params += self._cal_embedding_size(
-                self.model_cfg.vocab_size,
-                self.model_cfg.make_vocab_size_divisible_by,
+                self.model_config.vocab_size,
+                self.model_config.make_vocab_size_divisible_by,
                 cfg.tp,
-                self.model_cfg.hidden_size
+                self.model_config.hidden_size
             ) // cfg.tp
 
         if stage_id == cfg.pp - 1:
             for p_name, p_size in self.params_outputs.items():
                 non_expert_params += _cal_num_params(p_name, p_size)
-            if cfg.pp != 1 or self.model_cfg.untie_embeddings_and_output_weights:
+            if cfg.pp != 1 or self.model_config.untie_embeddings_and_output_weights:
                 non_expert_params += self._cal_embedding_size(
-                    self.model_cfg.vocab_size,
-                    self.model_cfg.make_vocab_size_divisible_by,
+                    self.model_config.vocab_size,
+                    self.model_config.make_vocab_size_divisible_by,
                     cfg.tp,
-                    self.model_cfg.hidden_size
+                    self.model_config.hidden_size
                 ) // cfg.tp
 
         return non_expert_params, expert_params

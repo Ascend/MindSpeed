@@ -12,11 +12,12 @@ class MemoryCost(object):
 
     def __init__(self):
         self.logger = get_logger("Memory")
+        self.memory_model: MemoryModeling = None
 
     def train_models(self):
         work_dir = get_system_config().work_dir
-        MemoryModeling.set_model_cfg(get_model_config())
-        MemoryModeling.modeling(work_dir)
+        self.memory_model = MemoryModeling(get_model_config())
+        self.memory_model.modeling(working_dir=work_dir)
 
     def get_memory_cost(self, config):
         """
@@ -28,7 +29,7 @@ class MemoryCost(object):
             layers_per_vpp = get_model_config().num_layers // config.pp
         num_layers = get_model_config().num_layers // config.pp
         device_mem_cap = get_system_config().memory_cap
-        recompute_mem, peak_stage_mem, optimizer_peak = MemoryModeling.estimate(config)
+        recompute_mem, peak_stage_mem, optimizer_peak = self.memory_model.estimate(config)
         peak_mem = max(peak_stage_mem, optimizer_peak)
 
         self.logger.debug(f"before recompute, memory = {peak_stage_mem}")

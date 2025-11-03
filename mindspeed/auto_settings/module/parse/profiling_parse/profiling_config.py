@@ -44,12 +44,10 @@ class ProfilingConfig:
         for micro in range(self.micro_num):
             i = micro // (self.vpp * self.search_cfg.pp)
             fw_layer_start.append([fw_norm_index[fw_idx]])
-            print(fw_idx)
-            print(bw_idx)
             fw_idx = self._calculate_fw_idx(fw_idx, i, micro)
             bw_idx = self._calculate_bw_idx(bw_idx, i, micro)
             bw_layer_end.append([bw_norm_index[bw_idx - 1]])
-            if self.search_cfg.is_full_recompute():
+            if not self.search_cfg.dist_train and self.search_cfg.is_full_recompute():
                 if warm_micro_num <= micro + 1:
                     recompute_fw.append([fw_norm_index[fw_idx]])
                     fw_idx += NumberConstant.FW_NORM_OP_NUM_ENABLE_PP_OTHER_STAGE
@@ -82,7 +80,7 @@ class ProfilingConfig:
                     recompute_fw.extend(
                         [[index[0]] for index in fw_norm_index[len(fw_norm_index) - warm_micro_num:]])
             bw_layer_end.append([bw_norm_index[micro][-1]])
-        if self.search_cfg.is_full_recompute():
+        if not self.search_cfg.dist_train and self.search_cfg.is_full_recompute():
             if len(recompute_fw) != self.micro_num:
                 for i in range(len(recompute_fw), self.micro_num):
                     recompute_fw.append([fw_norm_index[i + self.micro_num][0]])
@@ -102,7 +100,7 @@ class ProfilingConfig:
         fw_layer_start = []
         bw_layer_end = []
         recompute_fw = []
-        if self.search_cfg.is_full_recompute():
+        if not self.search_cfg.dist_train and self.search_cfg.is_full_recompute():
             fw_micro_rms_num = len(fw_norm_index) // self.micro_num
 
             fw_norm_index = [fw_norm_index[fw_micro_rms_num * i:fw_micro_rms_num * (i + 1)]
@@ -117,7 +115,8 @@ class ProfilingConfig:
             for micro in range(self.micro_num):
                 fw_layer_start.append([fw_norm_index[micro][0]])
                 bw_layer_end.append([bw_norm_index[micro][-1]])
-                recompute_fw.append([fw_norm_index[micro][3]])
+                if len(fw_norm_index[micro]) > 3:
+                    recompute_fw.append([fw_norm_index[micro][3]])
         else:
             fw_per_micro_opt_num = fw_norm_index[2] - fw_norm_index[0]
             bw_per_micro_opt_num = bw_norm_index[2] - bw_norm_index[0]

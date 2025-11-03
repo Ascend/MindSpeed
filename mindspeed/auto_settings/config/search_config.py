@@ -2,10 +2,7 @@ from enum import IntEnum
 from typing import Optional
 from dataclasses import dataclass
 
-from mindspeed.auto_settings.config.system_config import get_system_config
 from mindspeed.auto_settings.config.model_config import ModelConfig
-
-DISABLE_CP = False
 
 
 class ExecutorFlag(IntEnum):
@@ -47,6 +44,7 @@ class SearchConfig(ModelConfig):
             setattr(self, k, v)
 
     def prepare_for_profiling(self) -> None:
+        from mindspeed.auto_settings.config.system_config import get_system_config
         system_config = get_system_config()
         self.micro_batch_size = 1
         self.world_size = system_config.world_size

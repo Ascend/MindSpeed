@@ -5,6 +5,7 @@ from mindspeed.auto_settings.config.system_config import get_system_config
 from mindspeed.auto_settings.utils.logger import get_logger
 from mindspeed.auto_settings.config.model_config import ModelConfig
 from mindspeed.auto_settings.config.search_config import SearchConfig
+from mindspeed.auto_settings.config.post_info import PostInfo
 from mindspeed.auto_settings.module.operator.operator_profile_get import OriginalProfileDataList
 from mindspeed.auto_settings.module.operator.operator_note_cal import OperatorNoteList
 from mindspeed.auto_settings.module.operator.operator_base_block import BaseBlock
@@ -29,8 +30,13 @@ class OperatorPerformance(object):
         4. 返回推荐配置
     """
 
-    def __init__(self, model_config: ModelConfig, working_dir: str):
+    def __init__(self, model_config: ModelConfig, working_dir: str, model_settings: PostInfo = None):
+        self.working_dir = working_dir
         self.db = DataBase(working_dir=working_dir)
+        if not model_settings:
+            self.model_settings = get_system_config()
+        else:
+            self.model_settings = model_settings
         self.waas = None
         self.origin_profile_data_list = OriginalProfileDataList()
         self.model_config = model_config
@@ -95,15 +101,15 @@ class OperatorPerformance(object):
                                                    input_shape=operator.input_shape,
                                                    output_shape=operator.output_shape,
                                                    duration=operator.duration,
-                                                   device=get_system_config().device_type,
+                                                   device=self.model_settings.device_type,
                                                    jit=operator.jit,
-                                                   cann=get_system_config().cann_version,
-                                                   driver=get_system_config().driver_version,
+                                                   cann=self.model_settings.cann_version,
+                                                   driver=self.model_settings.driver_version,
                                                    dtype=self.model_config.dtype.value[0])
                 operator_waas_list.append(operator_history)
                 operator_history_list.append(operator_history.convert_to_dict())
             # 历史数据
-            if get_system_config().waas_enabled and get_system_config().node_rank == 0 and self.waas and self.waas.connection:
+            if self.model_settings.waas_enabled and self.model_settings.node_rank == 0 and self.waas.connection:
                 self.waas.attribute_separator(operator_waas_list[0])
                 waas_data = self.waas.convert_level_db_format(operator_waas_list)
                 insert_key = waas_data['key']
@@ -184,7 +190,7 @@ class OperatorPerformance(object):
             tp_model_w, tp_model_b = model_operator_with_tp(results)
 
             # duration 基于shape计算的Flops 之间的建模i，对于所有算子，F(duration) = shape_model_w * Flops + shape_model_b
-            if get_system_config().waas_enabled and get_system_config().node_rank == 0 and self.waas and self.waas.connection:
+            if self.model_settings.waas_enabled and self.model_settings.node_rank == 0 and self.waas.connection:
                 history_results = self.waas.restore_all_data(operator)
             else:
                 history_results = self.db.operator_history_dao.get_by_types_and_accelerator_core(
@@ -231,7 +237,7 @@ class OperatorPerformance(object):
             input_shape = cal_new_shape_tce(operator_base.input_cal, search_cfg, seq_ratio)
             output_shape = cal_new_shape_tce(operator_base.output_cal, search_cfg, seq_ratio)
             # 情况二， 根据 input_shape 和 types 在 operator_history 搜索 duration， 并且可以获得搜索结果，直接返回
-            if get_system_config().waas_enabled and get_system_config().node_rank == 0 and self.waas and self.waas.connection:
+            if self.model_settings.waas_enabled and self.model_settings.node_rank == 0 and self.waas.connection:
                 key = self.waas.merge_operator_cal(operator_base, input_shape)
                 value = self.waas.get_data(key)
                 if value:
@@ -261,10 +267,10 @@ class OperatorPerformance(object):
                                                            input_shape=input_shape,
                                                            output_shape=output_shape,
                                                            duration=0,
-                                                           device=get_system_config().device_type,
+                                                           device=self.model_settings.device_type,
                                                            jit=int(self.model_config.jit_compile),
-                                                           cann=get_system_config().cann_version,
-                                                           driver=get_system_config().driver_version,
+                                                           cann=self.model_settings.cann_version,
+                                                           driver=self.model_settings.driver_version,
                                                            dtype=self.model_config.dtype.value[0]),
                                            operator_base.index_name])
                 operator_model = self.getmodel_by_accelerator_core_and_index_name(
@@ -434,3 +440,14 @@ class OperatorPerformance(object):
         self.db.insert_not_found_list(operator_not_found)
         return (operator_list, cp_exist_list, cp_diff_list, ep_exist_list, ep_diff_list, operator_not_found,
                 operator_layer_time)
+
+    def refresh_db_connection(self):
+        self.db = DataBase(working_dir=self.working_dir)
+        if self.model_settings.waas_enabled and self.model_settings.node_rank == 0:            
+            from mindspeed.auto_tuning.module.operator.operator_waas import WaasDataBase
+            self.waas = WaasDataBase(self.model_settings.waas_ip_addr, self.model_settings.waas_ip_port)
+    
+    def del_db_connection(self):
+        self.db = None
+        if self.model_settings.waas_enabled and self.model_settings.node_rank == 0:
+            self.waas = None

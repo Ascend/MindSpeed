@@ -63,26 +63,6 @@
         "ep": 1
     },
     {
-        "name": "2dp 2tp mc2",
-        "tp": "mul_t_by=2",
-        "cp": 1,
-        "pp": 1,
-        "seq": "default",
-        "experts": "default",
-        "ep": 2,
-        "mc2": true
-    },
-    {
-        "name": "4dp mc2",
-        "tp": "default",
-        "cp": 1,
-        "pp": 1,
-        "seq": "default",
-        "experts": "default",
-        "ep": 4,
-        "mc2": true
-    },
-    {
         "name": "1ep 2pp",
         "tp": "default",
         "cp": 1,

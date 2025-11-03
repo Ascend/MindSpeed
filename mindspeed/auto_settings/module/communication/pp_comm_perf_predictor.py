@@ -101,7 +101,7 @@ class PpCommPerfPredictor(CommPerfPredictor):
         )
         cp = search_cfg.context_parallel_size
 
-        pp_time = 0.0  # TODO
+        pp_time = 0.0 
         comm_x = 1 / (vp * tp * cp)
         # pp does not need to consider cross modeling.
         max_domain = pp * dp * cp * tp

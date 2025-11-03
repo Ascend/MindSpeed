@@ -1,6 +1,7 @@
 import abc
 
 import numpy as np
+from sklearn.linear_model import LinearRegression
 
 from mindspeed.auto_settings.utils.logger import get_logger
 
@@ -8,7 +9,6 @@ from mindspeed.auto_settings.utils.logger import get_logger
 class LinearModel(metaclass=abc.ABCMeta):
     def __init__(self):
         super().__init__()
-        from sklearn.linear_model import LinearRegression
         self.linear_model = LinearRegression()
         self.xs = []
         self.ys = []
@@ -67,7 +67,7 @@ class CommProtocolModel(LinearModel):
         self.cfgs.append(cfg)
 
     def debug(self, model_name=""):
-        print("===============================================================================")
+        self.logger.debug("===============================================================================")
         tplt = "{0:<5}\t\t{1:<5}\t{2:<3}\t{3:<3}\t{4:<3}\t{5:<3}\t{6:<3}\t{7:<3}\t{8:<3}"
         self.logger.debug(f"-------samples of model {model_name} of {self.__class__.__name__}---")
         header = tplt.format("x", "y", "cfg_no", "tp", "cp", "dp", "ep", "pp", "vp", chr(12288))
@@ -84,7 +84,7 @@ class CommProtocolModel(LinearModel):
             f"W: {getattr(self.linear_model, 'coef_', None)},  "
             f"b: {getattr(self.linear_model, 'intercept_', None)}"
         )
-        print("===============================================================================")
+        self.logger.debug("===============================================================================")
 
     def fit(self):
         x_cal_list, y_cal_list = self._handle_abnormal_samples()

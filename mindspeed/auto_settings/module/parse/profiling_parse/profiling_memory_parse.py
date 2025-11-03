@@ -1,9 +1,14 @@
+import json
 from typing import List
 
 from mindspeed.auto_settings.module.parse.profiling_parse.profiling_meta_parse import StructureAnalyseTool
 from mindspeed.auto_settings.module.parse.profiling_parse.profiling_constant import SpecialOperatorName
 from mindspeed.auto_settings.module.parse.profiling_parse.profiling_config import ProfilingConfig
 from mindspeed.auto_settings.module.parse.profiling_parse.profiling_constant import SpecialKeyName
+from mindspeed.auto_settings.module.parse.profiling_parse.profiling_constant import SpecialKeyName
+from mindspeed.auto_settings.utils.file_utils import check_file_size
+from mindspeed.auto_settings.utils.logger import get_logger
+from pathlib import Path
 
 
 class AnalyseMemoryMsg(ProfilingConfig):
@@ -20,6 +25,8 @@ class AnalyseMemoryMsg(ProfilingConfig):
         self.fw_memory_per_micro_opt_num: int
         self.bw_memory_per_micro_opt_num: int
         self.stage_id = stage_id
+        self.norm_for_embedding_idx: int = 0
+        self.logger = get_logger("AnalyseMemoryMsg")
 
     @staticmethod
     def compare_memory(row, start_memory, peak_memory):
@@ -44,6 +51,14 @@ class AnalyseMemoryMsg(ProfilingConfig):
 
     def update_norm_indices(self):
         fw_memory_indices, bw_memory_indices = self._analyse_norm_op()
+        if fw_memory_indices == []:
+            self.norm_op = SpecialOperatorName.LAYER_NORM
+            fw_memory_indices, bw_memory_indices = self._analyse_norm_op()
+            if len(3 * fw_memory_indices) > len(5 * bw_memory_indices):
+                while len(fw_memory_indices) > 0 and fw_memory_indices[3] < bw_memory_indices[0]:
+                    fw_memory_indices.pop(0)
+                    self.norm_for_embedding_idx = fw_memory_indices[0]
+
         if self.search_cfg.pp > 1:
             self.fw_memory_indices, \
             self.bw_memory_indices, \
@@ -66,7 +81,9 @@ class AnalyseMemoryMsg(ProfilingConfig):
         embedding_start_idx = 0
         for idx, msg in enumerate(self._memory_details[1:], start=1):
             op_name = msg[SpecialKeyName.NAME]
-            if self.norm_op in op_name:
+            if self.norm_for_embedding_idx > 0 and idx > self.norm_for_embedding_idx:
+                break
+            if self.norm_for_embedding_idx == 0 and self.norm_op in op_name:
                 break
             if SpecialOperatorName.EMBEDDING in op_name:
                 embedding_start_idx = idx
@@ -124,8 +141,9 @@ class AnalyseMemoryMsg(ProfilingConfig):
 
     def analyse_recompute(self):
         recompute_memory = 0
-        if self.recompute_fw:
-            recompute_memory = float(self._memory_details[self.recompute_fw[0][0] + self.fw_memory_per_micro_opt_num][SpecialKeyName.ALLOCATED_MEMORY]) - \
+        if len(self.recompute_fw) > 0:
+            recompute_memory = float(self._memory_details[self.recompute_fw[0][0] + \
+                               self.fw_memory_per_micro_opt_num - 1][SpecialKeyName.ALLOCATED_MEMORY]) - \
                                float(self._memory_details[self.recompute_fw[0][0]][SpecialKeyName.ALLOCATED_MEMORY])
         return [recompute_memory]
 
@@ -140,8 +158,29 @@ class AnalyseMemoryMsg(ProfilingConfig):
             elif self.norm_op in row[SpecialKeyName.NAME] \
                     and SpecialOperatorName.BACKWARD in row[SpecialKeyName.NAME]:
                 bw_memory_indices.append(index)
-
+        if len(bw_memory_indices) == 0 and len(fw_memory_indices) > 0:
+            bw_memory_indices = self._analyse_norm_backword_op_by_trace_view()
+        if len(bw_memory_indices) == 0 and len(fw_memory_indices) > 0:
+            self.logger.info(f"warning: The model only exists in the forward direction and does not have a reverse direction.")
+            fw_memory_indices.append(fw_memory_indices[-1])
+            bw_memory_indices = [fw_memory_indices[-1], fw_memory_indices[-1], fw_memory_indices[-1]]
         return fw_memory_indices, bw_memory_indices
+
+    def _analyse_norm_backword_op_by_trace_view(self):
+        bw_memory_indices = []
+        with Path(__file__).parent.joinpath(self._rank_file_path + '/trace_view.json').open(encoding="utf-8") as f:
+            check_file_size(f)
+            trace_view = json.load(f)
+        layer_norm_back_time = []
+        for item in trace_view:
+            if item["name"] == "aclnnLayerNormBackward":
+                layer_norm_back_time.append(float(item["ts"]) + float(item["dur"]))
+        for layer_norm_back in layer_norm_back_time:
+            for index, row in enumerate(self._memory_details[1:], start=1):
+                if layer_norm_back <= float(row[SpecialKeyName.ALLOCATION_TIME_MS]):
+                    bw_memory_indices.append(index)
+                    break
+        return bw_memory_indices 
 
     def _update_norm_op(self):
         structure_cls = StructureAnalyseTool(self._rank_file_path, self._memory_details)

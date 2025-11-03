@@ -23,7 +23,7 @@ class DebugEpComm:
 class EpCommPerfPredictor(CommPerfPredictor):
     def __init__(self, hard_info):
         super(EpCommPerfPredictor, self).__init__(hard_info)
-        self.is_moe = False
+        self.is_ep_modeling = False
 
     def get_communication_info_from_profile(self, ep_profile_time_info, hcom_info_tage_id):
         ep_profile_time_info.total_comm_time += hcom_info_tage_id.total_time_ms
@@ -40,7 +40,7 @@ class EpCommPerfPredictor(CommPerfPredictor):
             return
 
         if model_config.num_experts:
-            self.is_moe = True
+            self.is_ep_modeling = True
 
         tp = model_config.tp
         cp = model_config.cp
@@ -83,7 +83,7 @@ class EpCommPerfPredictor(CommPerfPredictor):
         self.debug_info_list.append(debug_info)
 
     def fit(self):
-        if self.is_moe:
+        if self.is_ep_modeling:
             for model in CommPerfLinearModelFactory.get_models_by_module_name("ep"):
                 if model:
                     model.fit()
@@ -95,7 +95,7 @@ class EpCommPerfPredictor(CommPerfPredictor):
             # Check whether ROCE is missing but cross exists.
 
     def debug(self, config_list: List[SearchConfig]):
-        if not self.is_moe:
+        if not self.is_ep_modeling:
             return
         self.logger.debug(f"******************   EP modeling  ***********************")
         if "hccs" in CommPerfLinearModelFactory._instance_table["ep"].keys():

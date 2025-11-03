@@ -1,0 +1,29 @@
+[
+    {
+        "name": "pp1",
+        "tp": "default",
+        "cp": 1,
+        "pp": 1,
+        "seq": "default",
+        "experts": "default",
+        "ep": 4
+    },
+    {
+        "name": "pp2",
+        "tp": "default",
+        "cp": 1,
+        "pp": 2,
+        "seq": "default",
+        "experts": "default",
+        "ep": 4
+    },
+    {
+        "name": "half seq length (skip)",
+        "tp": "default",
+        "cp": 1,
+        "pp": 1,
+        "seq": "slice_seq_by=2",
+        "experts": "default",
+        "ep": 1
+    }
+]

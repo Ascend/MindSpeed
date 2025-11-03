@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from typing import List
 
 from mindspeed.auto_settings.config.search_config import SearchConfig
@@ -14,6 +15,8 @@ class DebugDpComm:
         self.hccs_x = 0
         self.roce_x = 0
         self.total_time = 0
+        self.ag_time = None
+        self.rs_time = None
         self.cfg = SearchConfig()
         self.model_type = None
         self.cfg_no = 0

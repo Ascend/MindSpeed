@@ -3,18 +3,15 @@ import os
 import re
 from typing import Optional
 
-from mindspeed.auto_settings.config.model_config import ModelConfig
-from mindspeed.auto_settings.config.search_config import SearchConfig, DISABLE_CP
 from mindspeed.auto_settings.config.system_config import get_system_config
+from mindspeed.auto_settings.config.model_config import ModelConfig
+from mindspeed.auto_settings.config.search_config import SearchConfig
+from mindspeed.auto_settings.utils.logger import get_logger
+from mindspeed.auto_settings.config.search_config import SearchConfig
 
 
 def check_file_exists(filename: str) -> bool:
     return os.path.exists(os.path.join(get_system_config().work_dir, filename))
-
-
-def get_tp_for_profiling() -> int:
-    tp = get_system_config().world_size // 4
-    return min(tp, 4)
 
 
 def get_num_warmup_micro_batches(config: SearchConfig, model_cfg: ModelConfig):
@@ -47,7 +44,7 @@ def get_num_warmup_micro_batches(config: SearchConfig, model_cfg: ModelConfig):
 
 
 def get_seq_length_for_profiling(model_cfg: ModelConfig) -> int:
-    if not DISABLE_CP:
+    if not get_system_config().DISABLE_CP:
         return max(model_cfg.seq_length, 8 * 1024)
     return min(model_cfg.seq_length, 32 * 1024)
 
@@ -84,6 +81,35 @@ def get_black_prof_file(config: SearchConfig, re_profile=False) -> str:
     node_rank = get_system_config().node_rank
     file_name = f"PP{config.pp}_TP{config.tp}_DP{config.dp}_CP{config.cp}_UP{config.ulysses_size}_MBS{config.mbs}_VP{config.vpp}_EP{config.ep}_node{node_rank}_MODULE.json"
     return os.path.join(work_dir, prof_dir, file_name)
+
+
+def get_tp_for_profiling() -> int:
+    tp = get_system_config().world_size // 4
+    return min(tp, 4)
+
+
+def get_num_experts_for_profiling(model_cfg: ModelConfig) -> Optional[int]:
+    if model_cfg.num_experts and model_cfg.num_experts > 128:
+        return 128
+    return model_cfg.num_experts
+
+
+def get_prof_dir(cfg: SearchConfig, re_profile=False) -> str:
+    prof_dir = "auto_settings_profiling"
+    prof_dir += f"_{cfg.tp}tp"
+    prof_dir += f"_{cfg.dp}dp"
+    prof_dir += f"_{cfg.pp}pp"
+    prof_dir += f"_{cfg.cp}cp"
+    prof_dir += f"_{cfg.mbs}mbs"
+    if cfg.is_moe():
+        prof_dir += f"_{cfg.ep}ep"
+        prof_dir += f"_{cfg.num_experts}experts"
+    if cfg.use_ascend_mc2:
+        prof_dir += f"_mc2"
+    prof_dir += f"_{cfg.seq_length}seq"
+    if re_profile:
+        prof_dir += f"_re_profile"
+    return prof_dir
 
 
 def get_module_info(file_path, key, sub_key=None):
@@ -148,3 +174,12 @@ def standardize_path(
         raise RuntimeError(f"Invalid input path: {path}")
 
     return path
+
+
+class TimeRecorder:
+    def __init__(self):
+        self.search_cfg_end_time = 0
+        self.generate_profiling_config_end_time = 0
+        self.model_parser_end_time = 0
+        self.profiling_and_parser_end_time = 0
+        self.start_time = 0

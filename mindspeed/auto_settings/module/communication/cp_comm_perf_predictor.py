@@ -30,6 +30,7 @@ class DebugCpComm:
 class CpCommPerfPredictor(CommPerfPredictor):
     def __init__(self, hard_info):
         super(CpCommPerfPredictor, self).__init__(hard_info)
+        self.is_cp_modeling = False
 
     def get_communication_info_from_profile(
         self, cp_profile_time_info, hcom_info_tage_id, model, cp
@@ -40,11 +41,14 @@ class CpCommPerfPredictor(CommPerfPredictor):
             cp_profile_time_info.attn_cp_time,
             cp_profile_time_info.attn_cpbw_time,
         ) = self.get_vectortime_from_profiling(model, cp)
+        cp_profile_time_info.overlap_comm_time += hcom_info_tage_id.overlap_time_ms
         cp_profile_time_info.vector_cp_time += hcom_info_tage_id.vector_time_ms
 
     def receive_samples_from_profiling(
         self, config_no, model_config: SearchConfig, cp_profile_time_info: CpProfileTimeInfo
     ):
+        if not self.is_cp_modeling:
+            return
         config = model_config
         tp = config.tp
         cp = config.cp
@@ -69,14 +73,28 @@ class CpCommPerfPredictor(CommPerfPredictor):
             max_hccs_dev_num=self.max_hccs_rank_num,
         )
 
+        hccs_x = cp_total_comm_factor * s / (tp * cp) * pp
+        roce_x = (cp_total_comm_factor - 1) * s / (tp * cp) * pp
+        cfg = SimpleParallelCfg(config_no, tp, cp, '', '', pp, '')
+
         # Here we consider only the attention of communication hiding, with forward CP-1 and backward CP.
         traffic = s * (cp - 1) / (tp * cp) * pp
         bandwidth_910b = (cp - 1)
         bandwidth = self.hard_info.calbandwidth(bandwidth_910b, min_domain)
-        attn_x = traffic / bandwidth
-        attn_y = cp_profile_time_info.total_comm_time
-        total_time_mdl_args = [attn_x, hccs_x, roce_x, attn_y, cfg]
+        cp_x = traffic / bandwidth
+        total_time = cp_profile_time_info.total_comm_time
+        total_time_mdl_args = [cp_x, hccs_x, roce_x, total_time, cfg]
         total_comm_time_model.add_sample(*total_time_mdl_args)
+
+        overlap_time_model = CommPerfLinearModelFactory.get_or_create_model(
+            "cp_overlap",
+            max_rank_num=max_domain,
+            min_rank_num=min_domain,
+            max_hccs_dev_num=self.max_hccs_rank_num,
+        )
+        vector_time = cp_profile_time_info.overlap_comm_time
+        total_time_mdl_args = [cp_x, hccs_x, roce_x, vector_time, cfg]
+        overlap_time_model.add_sample(*total_time_mdl_args)
 
         vector_overlap_time_model = CommPerfLinearModelFactory.get_or_create_model(
             "cp_vector",
@@ -84,6 +102,7 @@ class CpCommPerfPredictor(CommPerfPredictor):
             min_rank_num=min_domain,
             max_hccs_dev_num=self.max_hccs_rank_num,
         )
+
         cp_vector_x = 0 if cp < 2 else cp - 2
         cp_vector_y = cp_profile_time_info.vector_cp_time
         vector_args = [cp_vector_x, hccs_x, roce_x, cp_vector_y, cfg]
@@ -96,8 +115,8 @@ class CpCommPerfPredictor(CommPerfPredictor):
             max_hccs_dev_num=self.max_hccs_rank_num,
         )
         attn_fwd_x = s / tp / cp * (cp - 1) / cp
-        attn_y = cp_profile_time_info.attn_cp_time
-        attn_fwd_args = [attn_fwd_x, hccs_x, roce_x, attn_y, cfg]
+        attn_fw_time = cp_profile_time_info.attn_cp_time
+        attn_fwd_args = [attn_fwd_x, hccs_x, roce_x, attn_fw_time, cfg]
         attn_fwd_overlap_time_model.add_sample(*attn_fwd_args)
 
         attn_bwd_overlap_time_model = CommPerfLinearModelFactory.get_or_create_model(
@@ -107,15 +126,18 @@ class CpCommPerfPredictor(CommPerfPredictor):
             max_hccs_dev_num=self.max_hccs_rank_num,
         )
         cp_attn_bwd_x = s / tp / cp
-        cp_attn_bwd_y = cp_profile_time_info.attn_cpbw_time
-        att_bwd_mdl_args = [cp_attn_bwd_x, hccs_x, roce_x, cp_attn_bwd_y, cfg]
+        attn_bw_time = cp_profile_time_info.attn_cpbw_time
+        att_bwd_mdl_args = [cp_attn_bwd_x, hccs_x, roce_x, attn_bw_time, cfg]
         attn_bwd_overlap_time_model.add_sample(*att_bwd_mdl_args)
 
         debug_info = DebugCpComm()
-        debug_info.comm_x = attn_x
+        debug_info.comm_x = cp_x
         debug_info.hccs_x = hccs_x
         debug_info.roce_x = roce_x
-        debug_info.total_time = attn_y
+        debug_info.total_time = total_time
+        debug_info.vector_time = vector_time
+        debug_info.attn_fw_time = attn_fw_time
+        debug_info.attn_bw_time = attn_bw_time
 
         debug_info.cfg = model_config
         debug_info.cfg_no = config_no
@@ -123,12 +145,17 @@ class CpCommPerfPredictor(CommPerfPredictor):
         self.debug_info_list.append(debug_info)
 
     def fit(self):
-        for module_name in ["cp_time", "cp_attn_fwd", "cp_attn_bwd", "cp_vector"]:
-            for model in CommPerfLinearModelFactory.get_models_by_module_name(module_name):
-                if model:
-                    model.fit()
+        if not self.is_cp_modeling:
+            return
+        if self.is_cp_modeling:
+            for module_name in ["cp_time", "cp_overlap", "cp_attn_fwd", "cp_attn_bwd", "cp_vector"]:
+                for model in CommPerfLinearModelFactory.get_models_by_module_name(module_name):
+                    if model:
+                        model.fit()
 
     def debug(self, config_list):
+        if not self.is_cp_modeling:
+            return
         self.logger.debug(f"******************   CP modeling  ***********************")
         if "hccs" in CommPerfLinearModelFactory._instance_table["cp_time"].keys():
             self.logger.debug(f"HCCS")
@@ -251,6 +278,8 @@ class CpCommPerfPredictor(CommPerfPredictor):
         return attention, attn_bw
 
     def predict(self, search_cfg: SearchConfig):
+        if not self.is_cp_modeling:
+            return 0
         tp = search_cfg.tensor_model_parallel_size
         pp = search_cfg.pipeline_model_parallel_size
         cp = search_cfg.context_parallel_size
@@ -270,6 +299,13 @@ class CpCommPerfPredictor(CommPerfPredictor):
             max_domain = cp * tp
             total_comm_time_model = CommPerfLinearModelFactory.get_or_create_model(
                 "cp_time",
+                max_rank_num=max_domain,
+                min_rank_num=min_domain,
+                max_hccs_dev_num=self.max_hccs_rank_num,
+            )
+
+            overlap_time_model = CommPerfLinearModelFactory.get_or_create_model(
+                "cp_overlap",
                 max_rank_num=max_domain,
                 min_rank_num=min_domain,
                 max_hccs_dev_num=self.max_hccs_rank_num,
@@ -297,6 +333,11 @@ class CpCommPerfPredictor(CommPerfPredictor):
             )
 
             comm_time = total_comm_time_model.predict(*iv_list)
+            overlap_time = overlap_time_model.predict(*iv_list)
+            if comm_time - overlap_time > 0:
+                cp_time = comm_time - overlap_time
+                return cp_time
+
 
             attn_fwd_x = s / tp / cp * (cp - 1) / cp
             attn_time = attn_fwd_overlap_time_model.predict(*(attn_fwd_x,))

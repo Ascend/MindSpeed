@@ -2,6 +2,7 @@ from enum import Enum
 import os
 from mindspeed.auto_settings.config.search_config import SearchConfig
 from mindspeed.auto_settings.module.communication import communication_profile
+from mindspeed.auto_settings.config.system_config import get_system_config
 from mindspeed.auto_settings.module.communication.cp_comm_perf_predictor import CpCommPerfPredictor
 from mindspeed.auto_settings.module.communication.dp_comm_perf_predictor import DpCommPerfPredictor
 from mindspeed.auto_settings.module.communication.ep_comm_perf_predictor import EpCommPerfPredictor
@@ -16,7 +17,7 @@ class CommPerfPredictorManager(object):
 
     def __init__(self, hardware=None, model_cfg=None):
         self.hardware = hardware
-        self.model_cfg = model_cfg
+        self.model_config = model_cfg
 
         hard_info = CommHardInfo(self.hardware.device_type)
 
@@ -26,6 +27,20 @@ class CommPerfPredictorManager(object):
         self.pp_predictor = PpCommPerfPredictor(hard_info)
         self.ep_predictor = EpCommPerfPredictor(hard_info)
         self.mc2_predictor = Mc2CommPerfPredictor(hard_info)
+
+        if "tp" in model_cfg.parallel_switch:
+            self.tp_predictor.is_tp_modeling = True
+        
+        if "cp" in model_cfg.parallel_switch and \
+            get_system_config().model_config.seq_length >= 8 * 1024:
+            self.cp_predictor.is_cp_modeling = True
+
+        if "ep" in model_cfg.parallel_switch and \
+            get_system_config().model_config.num_experts:
+            self.ep_predictor.is_ep_modeling = True
+        
+        if "mc2" in model_cfg.parallel_switch:
+            self.ep_predictor.is_mc2_modeling = True
 
         self.config_list = []
 
@@ -52,7 +67,7 @@ class CommPerfPredictorManager(object):
 
             self.get_profile_info(model, total_profile_time_info, config, profiling_results, index)
             # Force to run only one floor
-
+            config.use_ascend_mc2 = 0
             if config.use_ascend_mc2:
                 self.mc2_predictor.receive_samples_from_profiling(
                     index, config, total_profile_time_info.mc2_profile_time_info
@@ -103,16 +118,19 @@ class CommPerfPredictorManager(object):
         pipeline_hcom_info = model.pipeline_parallel_comm
         context_hcom_info = model.context_parallel_comm
         expert_hcom_info = model.expert_parallel_comm
+
+        config.use_ascend_mc2 = 0
         if config.use_ascend_mc2:
             self.mc2_predictor.get_communication_info_from_profile(
                 total_profile_time_info.mc2_profile_time_info, profiling_results, index
             )
         for stage_id, _ in enumerate(tensor_hcom_info):
             # ["tp_x"] regression
-            if stage_id == 0 and len(tensor_hcom_info) > stage_id:
-                self.tp_predictor.get_communication_info_from_profile(
-                    total_profile_time_info.tp_profile_time_info, tensor_hcom_info[stage_id]
-                )
+            if config.tp > 1:
+                if stage_id == 0 and len(tensor_hcom_info) > stage_id:
+                    self.tp_predictor.get_communication_info_from_profile(
+                        total_profile_time_info.tp_profile_time_info, tensor_hcom_info[stage_id]
+                    )
             # para_list.cp_x regression
             if stage_id == 0 and len(context_hcom_info) > stage_id:
                 self.cp_predictor.get_communication_info_from_profile(

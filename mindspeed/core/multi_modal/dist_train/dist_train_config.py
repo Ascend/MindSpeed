@@ -33,6 +33,7 @@ class ContextKey:
     CONTEXT_PARALLEL_SIZE = 'context_parallel_size'
     MAIN_DP = 'main_dp'
     FORWARD_ONLY = 'forward_only'
+    AUTO_TUNING_FLAG = "auto_tuning_flag"
 
 
 CK = ContextKey()
@@ -41,7 +42,7 @@ CK = ContextKey()
 class ModelConfig:
     def __init__(self, config_dict: dict, start_rank):
         self._keys = {CK.NAME, CK.MODEL_INDEX, CK.WORLD_SIZE, CK.TENSOR_MODEL_PARALLEL_SIZE,
-                      CK.PIPELINE_MODEL_PARALLEL_SIZE, CK.CONTEXT_PARALLEL_SIZE, CK.FORWARD_ONLY, CK.MAIN_DP}
+                      CK.PIPELINE_MODEL_PARALLEL_SIZE, CK.CONTEXT_PARALLEL_SIZE, CK.FORWARD_ONLY, CK.MAIN_DP, CK.AUTO_TUNING_FLAG}
         self._base_validate(config_dict)
 
         setattr(self, CK.NAME, None)
@@ -52,6 +53,7 @@ class ModelConfig:
         setattr(self, CK.CONTEXT_PARALLEL_SIZE, 1)
         setattr(self, CK.FORWARD_ONLY, False)
         setattr(self, CK.MAIN_DP, False)
+        setattr(self, CK.AUTO_TUNING_FLAG, False)
         self._set_single_model_config(config_dict)
 
         # Additional generated attributes.
@@ -109,6 +111,8 @@ class ModelConfig:
                               f'({pp_size}), and `{CK.CONTEXT_PARALLEL_SIZE}` ({cp_size})'))
         if CK.FORWARD_ONLY in ori_cfg and not isinstance(ori_cfg.get(CK.FORWARD_ONLY), bool):
             raise TypeError(f"The `{CK.FORWARD_ONLY}` value type must be bool.")
+        if CK.AUTO_TUNING_FLAG in ori_cfg and not isinstance(ori_cfg.get(CK.AUTO_TUNING_FLAG), bool):
+            raise TypeError(f"The `{CK.AUTO_TUNING_FLAG}` value type must be bool.")
 
 
 def validate_configs_world_size(args):
@@ -236,6 +240,7 @@ def _check_config(config_dict):
     _ALL_DIST_MODEL_INDEX = [config.get(CK.MODEL_INDEX) for config in config_dict[CK.MODEL_CONFIG]]
     _ALL_DIST_MODEL_NAME = [config.get(CK.NAME) for config in config_dict[CK.MODEL_CONFIG]]
     _ALL_DIST_MODEL_CONFIG = config_dict[CK.MODEL_CONFIG]
+    _AUTO_TUNING_FLAG = config_dict[CK.MODEL_CONFIG][0].get(CK.AUTO_TUNING_FLAG)
     if not all(key in config.keys() for config in _ALL_DIST_MODEL_CONFIG for key in [CK.NAME, CK.WORLD_SIZE, CK.MODEL_INDEX]):
         raise ValueError(f"At least three items must be configured: `{CK.NAME}`, `{CK.WORLD_SIZE}`, and `{CK.MODEL_INDEX}`.")
     if not all(isinstance(name, str) for name in _ALL_DIST_MODEL_NAME):
@@ -245,7 +250,7 @@ def _check_config(config_dict):
     if not all(name.isidentifier() for name in _ALL_DIST_MODEL_NAME):
         raise ValueError(f"`{CK.NAME}` is not a valid string.")
     valid_names = _SUPPORT_MODEL_NAME.get(config_dict[CK.MODEL_NAME])
-    if len(_ALL_DIST_MODEL_NAME) != len(valid_names):
+    if len(_ALL_DIST_MODEL_NAME) != len(valid_names) and not _AUTO_TUNING_FLAG:
         raise ValueError(f"`{config_dict[CK.MODEL_NAME]}` model current only support {valid_names}.")
     if not all(isinstance(index, int) for index in _ALL_DIST_MODEL_INDEX):
         raise TypeError(f"The `{CK.MODEL_INDEX}` value type must be int.")
@@ -259,7 +264,7 @@ def _check_config(config_dict):
     _, _ALL_DIST_MODEL_CONFIG = list(zip(*combined))
     if _ALL_DIST_MODEL_CONFIG[0][CK.MODEL_INDEX] < 0:
         raise ValueError(f"`{CK.MODEL_INDEX}` must start from 0.")
-    if not all(name == valid for name, valid in zip(_ALL_DIST_MODEL_NAME, valid_names)):
+    if not all(name == valid for name, valid in zip(_ALL_DIST_MODEL_NAME, valid_names)) and not _AUTO_TUNING_FLAG:
         raise ValueError(f"`{CK.NAME}` sequence is incorrect, {config_dict[CK.MODEL_NAME]} "
                          f"model name list strictly follow the sequence [{valid_names}].")
     if not all(

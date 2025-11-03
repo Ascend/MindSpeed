@@ -23,6 +23,9 @@ class CommPerfLinearModelFactory:
     "cp_vector":common_protocol_instance,
     
     "cp_time":{'roce': roce_instance, 'hccs': hccs_instance,'cross': cross_instance}, # total comm
+
+    # no  domain diff
+    "cp_overlap":{'roce': roce_instance, 'hccs': hccs_instance,'cross': cross_instance}, # total comm
     
     # no  domain diff
     "cp_attn_fwd":common_protocol_instance,# overlap
@@ -46,6 +49,14 @@ class CommPerfLinearModelFactory:
                 return module_model
             else:
                 return module_model
+        
+        # PP_hccs same as PP_Roce
+        if module_name in ["pp"]:
+            pp_module_model = CommPerfLinearModelFactory._instance_table.get(module_name)
+            if not pp_module_model:
+                pp_module_model = CommProtocolModel(module_name)
+                CommPerfLinearModelFactory._instance_table[module_name] = pp_module_model
+            return pp_module_model
 
         # HCCS domain model
         if max_rank_num <= max_hccs_dev_num:
@@ -102,7 +113,7 @@ class CommPerfLinearModelFactory:
 
     @staticmethod
     def get_models_by_module_name(module_name: str) -> Iterable[CommProtocolModel]:
-        if module_name not in ["cp_vector", "cp_attn_fwd", "cp_attn_bwd"]:
+        if module_name not in ["cp_vector", "cp_attn_fwd", "cp_attn_bwd", "pp"]:
             hccs_model = CommPerfLinearModelFactory._instance_table.get(module_name).get('hccs')
             roce_model = CommPerfLinearModelFactory._instance_table.get(module_name).get('roce')
             cross_model = CommPerfLinearModelFactory._instance_table.get(module_name).get('cross')

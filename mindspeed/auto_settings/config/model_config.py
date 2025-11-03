@@ -71,6 +71,18 @@ class ModelConfig:
     ring_attention_size: int = None
     ulysses_size: int = None
 
+    # Multi-Model config
+    hetero_parallel: bool = None # type: ignore
+    dist_train: bool = None # type: ignore
+    mm_model: str = None  # type: ignore
+    mm_data: str = None  # type: ignore
+    mm_tool: str = None  # type: ignore
+
+    gloo_group: str = None # type: ignore
+    sub_work_dir: str = None  # type: ignore
+    mm_model_name: str = None # type: ignore 
+    parallel_switch = ["tp", "cp", "dp", "pp", "ep", "mc2"]
+
     def post_init(self):
         if self.num_layers_per_virtual_pipeline_stage:
             self.virtual_pipeline_model_parallel_size = self.num_layers // (
@@ -99,7 +111,9 @@ class ModelConfig:
 
     @property
     def vpp(self) -> Optional[int]:
-        return self.virtual_pipeline_model_parallel_size
+        if self.num_layers_per_virtual_pipeline_stage:
+            return self.num_layers // (self.pp * self.num_layers_per_virtual_pipeline_stage)
+        return None
 
     @property
     def dp(self) -> int:

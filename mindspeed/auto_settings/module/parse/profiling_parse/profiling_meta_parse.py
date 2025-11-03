@@ -80,7 +80,45 @@ class StructureAnalyseTool:
                 fw_norm_op_idx_list.append(idx)
             elif row["Type"] == self.bw_norm_op:
                 bw_norm_op_idx_list.append(idx)
+        if fw_norm_op_idx_list == [] and bw_norm_op_idx_list == []:
+            #通过layernorm找算子
+            fw_norm_op_idx_list, bw_norm_op_idx_list = self.analyse_layer_norm_op()
+        if bw_norm_op_idx_list == []:
+            bw_norm_op_idx_list = [fw_norm_op_idx_list[-1], fw_norm_op_idx_list[-1], fw_norm_op_idx_list[-1]]
+
         return fw_norm_op_idx_list, bw_norm_op_idx_list, matmul_total_time, mc2_total_time
+
+    def analyse_layer_norm_op(self):
+        """ Analyse the norm op details in kernel_details.csv. """
+        op_idx_list = []
+        op_type_list = []
+        for idx, row in enumerate(self._memory_details):
+            if "Name" not in row or "Type" not in row:
+                continue
+            if "LayerNorm" in row["Type"] or "FlashAttentionScore" in row["Type"]:
+                op_idx_list.append(idx)
+                op_type_list.append(row["Type"])
+        fw_norm_op_idx_list = []
+        bw_norm_op_idx_list = []
+        write_flag = False
+        for idx, op_type in enumerate(op_type_list):
+            if idx + 2 < len(op_type_list):
+                if op_type == "LayerNormV3" and op_type_list[idx + 1] == "FlashAttentionScore" \
+                    and op_type_list[idx + 2] == "FlashAttentionScore" or \
+                len(op_type_list) <= 4:
+                    write_flag = True
+            if idx > 2:
+                if op_type == "LayerNormGradV3" and op_type_list[idx - 1] == "FlashAttentionScoreGrad" \
+                    and op_type_list[idx - 2] == "FlashAttentionScoreGrad":
+                    bw_norm_op_idx_list.append(op_idx_list[idx])
+                    write_flag = False
+            if not write_flag:
+                continue
+            if "LayerNormV" in op_type:
+                fw_norm_op_idx_list.append(op_idx_list[idx])
+            if "LayerNormGradV" in op_type:
+                bw_norm_op_idx_list.append(op_idx_list[idx])
+        return fw_norm_op_idx_list, bw_norm_op_idx_list
 
     def get_fw_norm_op(self):
         return self.fw_norm_op

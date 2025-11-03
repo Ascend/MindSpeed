@@ -65,8 +65,8 @@ def get_settings(args: Namespace, filename: str) -> PostInfo:
         driver_version = re.findall(r"package_version=(\S+)", content)
         pkl.driver_version = driver_version[0] if driver_version else "N/A"
 
-    cann_path = os.getenv("ASCEND_HOME_PATH",
-                          os.path.join(os.sep, "usr", "local", "Ascend", "ascend-toolkit", "latest"))
+    cann_path = os.getenv("ASCEND_HOME_PATH", os.path.join( \
+        os.sep, "usr", "local", "Ascend", "ascend-toolkit", "latest"))
     cann_version_path = os.path.join(cann_path, "version.cfg")
     with os.fdopen(os.open(cann_version_path, open_flags, mode=file_mode), mode=open_mode) as file:
         check_file_size(file)
@@ -79,6 +79,7 @@ def get_settings(args: Namespace, filename: str) -> PostInfo:
         restricted_write(filename, pkl)
 
     return pkl
+
 
 
 def get_model_params(

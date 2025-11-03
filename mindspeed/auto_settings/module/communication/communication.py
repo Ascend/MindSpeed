@@ -31,9 +31,9 @@ class Communication(object):
         cp = search_cfg.context_parallel_size
         ep = search_cfg.expert_model_parallel_size if search_cfg.expert_model_parallel_size else 1
         search_micro_batch_size = search_cfg.micro_batch_size
-        num_layers = self.predictor_mgr.model_cfg.num_layers
+        num_layers = self.predictor_mgr.model_config.num_layers
 
-        global_batch_size = self.predictor_mgr.model_cfg.global_batch_size
+        global_batch_size = self.predictor_mgr.model_config.global_batch_size
         cp_time = self.predictor_mgr.cp_predictor.predict(search_cfg) / pp
         dp_time = self.predictor_mgr.dp_predictor.predict(search_cfg)
         pp_time = self.predictor_mgr.pp_predictor.predict(search_cfg)
@@ -46,8 +46,12 @@ class Communication(object):
         tp_time = self.predictor_mgr.tp_predictor.predict(search_cfg)
 
         self.logger.debug(f"mc2_time:{mc2_time} tp_time:{tp_time}")
-        use_mc2 = mc2_time < tp_time
-        tp_time = min(mc2_time, tp_time) / pp
+        use_mc2 = False
+        if self.predictor_mgr.tp_predictor.is_tp_modeling and \
+            self.predictor_mgr.mc2_predictor.is_mc2_modeling:
+            use_mc2 = mc2_time < tp_time
+            tp_time = min(mc2_time, tp_time)
+        tp_time = tp_time / pp
 
         micro_batch_num = global_batch_size / (dp * search_micro_batch_size)
         # total layer number，total global_batch_size
@@ -56,7 +60,6 @@ class Communication(object):
         communication_time = (tp_time + cp_time + ep_time) * search_model_mbs_ratio * layer_num
         fw_communication_time = (tp_time + cp_time + ep_time) / 3
 
-        # TODO pp的实际是还需要考虑mbs的影响
         print('communication:', communication_time, 'pp:', pp_time, 'mbs:', search_model_mbs_ratio, 'dp:', dp_time)
         return {
             "use_mc2": use_mc2,

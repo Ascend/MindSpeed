@@ -1,3 +1,4 @@
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import math
 import os
 import re

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import List, Tuple
 from dataclasses import replace
 
-from mindspeed.auto_settings.config.model_config import get_model_config
-from mindspeed.auto_settings.config.search_config import ExecutorFlag, DISABLE_CP
+from mindspeed.auto_settings.config.model_config import get_model_config, ModelConfig
+from mindspeed.auto_settings.config.search_config import ExecutorFlag
 from mindspeed.auto_settings.config.system_config import get_system_config
 from mindspeed.auto_settings.utils.singleton import Singleton
 from mindspeed.auto_settings.utils.utils import get_prof_dir
@@ -26,8 +26,13 @@ class SearchSpace(metaclass=Singleton):
     GEN_CFGS_FILENAME = "profile/profiling_configs.json"
     BASELINE_SEQLEN = 4096
 
-    def __init__(self):
+    def __init__(self, model_cfg: ModelConfig = None) -> None:
+        self.model_config = model_cfg
         self.logger = get_logger("search_spaces")
+        if model_cfg:
+            self._baseline_tp = get_tp_for_profiling()
+        else:
+            self._baseline_tp = 4
 
     def generate_dynamic_mem_profiling_list(self) -> List[Tuple[SearchConfig, str]]:
         result: List[Tuple[SearchConfig, str]] = list()
@@ -101,13 +106,12 @@ class SearchSpace(metaclass=Singleton):
 
         return result
 
-    def generate_profiling_configs(self) -> List[Tuple[SearchConfig, str]]:
+    def generate_profiling_configs1(self) -> List[Tuple[SearchConfig, str]]:
         profile_cfgs: List[Tuple[SearchConfig, str]] = list()
 
-        model_config = get_model_config()
-        base_tp = get_tp_for_profiling()
-        base_seq_len = get_seq_length_for_profiling(model_config)
-        base_num_experts = get_num_experts_for_profiling(model_config)
+        self.model_config = get_model_config()
+        base_seq_len = get_seq_length_for_profiling(self.model_config)
+        base_num_experts = get_num_experts_for_profiling(self.model_config)
 
         with Path(__file__).parent.joinpath(self.GEN_CFGS_FILENAME).open(encoding="utf-8") as f:
             check_file_size(f)
@@ -118,18 +122,18 @@ class SearchSpace(metaclass=Singleton):
                 self.logger.debug(f"{cfg} asked to skip.")
                 continue
 
-            if DISABLE_CP and cfg.get("cp", 1) > 1:
+            if get_system_config().DISABLE_CP and cfg.get("cp", 1) > 1:
                 self.logger.debug(f"Not searching cp, dropped {cfg}.")
                 continue
 
             gen_cfg = SearchConfig()
-            gen_cfg.copy_from_config(model_config)
+            gen_cfg.copy_from_config(self.model_config)
 
             tp = cfg.get("tp", "default")
             if tp == "default":
-                gen_cfg.tensor_model_parallel_size = base_tp
+                gen_cfg.tensor_model_parallel_size = self._baseline_tp
             elif tp.startswith("mul_t_by="):
-                gen_cfg.tensor_model_parallel_size = base_tp * int(tp.strip().split("=")[1])
+                gen_cfg.tensor_model_parallel_size = self._baseline_tp * int(tp.strip().split("=")[1])
             else:
                 raise ValueError(f"Not supporting value on tp field: {tp} of {cfg}.")
 
@@ -137,6 +141,12 @@ class SearchSpace(metaclass=Singleton):
             gen_cfg.pipeline_model_parallel_size = cfg.get("pp", 1)
             gen_cfg.num_layers = cfg.get("pp", 1)
             gen_cfg.use_ascend_mc2 = cfg.get("mc2", False)
+
+            if "tp" not in self.model_config.parallel_switch:
+                gen_cfg.tensor_model_parallel_size = 1
+        
+            if "cp" not in self.model_config.parallel_switch:
+                gen_cfg.context_parallel_size = 1
 
             seq = cfg.get("seq", "default")
             if seq == "default":
@@ -150,7 +160,7 @@ class SearchSpace(metaclass=Singleton):
             else:
                 raise ValueError(f"Not supporting value on seq field: {seq} of {cfg}.")
 
-            if model_config.is_moe():
+            if self.model_config.is_moe():
                 num_experts = cfg.get("experts", "default")
                 if num_experts == "default":
                     gen_cfg.num_experts = base_num_experts
@@ -176,7 +186,8 @@ class SearchSpace(metaclass=Singleton):
         """
         static_list = self.generate_static_mem_profiling_list()
         dynamic_list = self.generate_dynamic_mem_profiling_list()
-        common_list = self.generate_profiling_configs()
+        from mindspeed.auto_settings.config.generate_profiling_configs import generate_profiling_configs
+        common_list = generate_profiling_configs(get_system_config(), get_model_config())
         result = static_list + dynamic_list + common_list
         self.logger.info("profile_cfgs (tp, pp, dp, cp, ep, #layers, seq_len):")
         self.logger.info(",".join(

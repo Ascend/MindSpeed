@@ -20,6 +20,7 @@ class DebugTpComm:
 class TpCommPerfPredictor(CommPerfPredictor):
     def __init__(self, hard_info):
         super(TpCommPerfPredictor, self).__init__(hard_info)
+        self.is_tp_modeling = False
         self.tp_total_model = HCCSDomainModel()
         self.tp_overlap_model = HCCSDomainModel()
 
@@ -31,10 +32,14 @@ class TpCommPerfPredictor(CommPerfPredictor):
     def receive_samples_from_profiling(
         self, config_no, model_config: SearchConfig, tp_profile_time_info: TpProfileTimeInfo
     ):
+        if not self.is_tp_modeling:
+            return
         config = model_config
         tp = config.tp
         cp = config.cp
         pp = config.pp
+        if tp == 1:
+            return
         s = config.seq_length / 1000
         total_time = tp_profile_time_info.total_comm_time
         wait_time = tp_profile_time_info.wait_comm_time
@@ -62,10 +67,14 @@ class TpCommPerfPredictor(CommPerfPredictor):
         self.debug_info_list.append(debug_info)
 
     def fit(self):
+        if not self.is_tp_modeling:
+            return
         self.tp_total_model.fit()
         self.tp_overlap_model.fit()
 
     def debug(self):
+        if not self.is_tp_modeling:
+            return
         self.logger.debug(f"******************profile info list***********************")
         tplt = "{0:<8}\t{1:<8}\t{2:<8}\t{3:<8}\t{4:<8}\t{5:<1}\t{6:<1}\t{7:<1}\t{8:<1}\t{9:<1}\t{10:<1}\t{11:<1}"
         self.logger.debug(f"******************   tp(ms)   ***********************")
@@ -93,6 +102,8 @@ class TpCommPerfPredictor(CommPerfPredictor):
         return
 
     def predict(self, search_cfg: SearchConfig):
+        if not self.is_tp_modeling:
+            return 0
         tp = search_cfg.tensor_model_parallel_size
         cp = search_cfg.context_parallel_size
         pp = search_cfg.pipeline_model_parallel_size

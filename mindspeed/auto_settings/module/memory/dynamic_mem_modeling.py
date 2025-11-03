@@ -3,7 +3,7 @@ from collections import namedtuple
 from dataclasses import replace
 import os.path
 
-from mindspeed.auto_settings.utils.logger import get_logger
+from mindspeed.auto_settings.utils.logger import get_logger, change_stream_handler
 from mindspeed.auto_settings.config.model_config import ModelConfig
 from mindspeed.auto_settings.config.search_config import SearchConfig
 from mindspeed.auto_settings.module.parse.profiling_parse.profiling_config import ProfilingModelInfo
@@ -32,7 +32,7 @@ class DynamicMemModeling:
 
     @no_type_check
     def __init__(self, model_cfg: ModelConfig) -> None:
-        self.model_cfg = model_cfg
+        self.model_config = model_cfg
         self._logger = get_logger("dynamic_mem")
         self.ckpt_act_layer: float = None
         self.ckpt_act_embedding: float = None
@@ -108,19 +108,26 @@ class DynamicMemModeling:
         result: List[SearchConfig] = list()
 
         baseline_cfg = SearchConfig()
-        baseline_cfg.copy_from_config(self.model_cfg)
-        baseline_cfg.tensor_model_parallel_size = 4
+        baseline_cfg.copy_from_config(self.model_config)
+        if self.model_config.dist_train:
+            baseline_cfg.tensor_model_parallel_size = 1
+        else:
+            baseline_cfg.tensor_model_parallel_size = 4
         baseline_cfg.context_parallel_size = 1
         baseline_cfg.pipeline_model_parallel_size = 1
         baseline_cfg.num_layers = 1
         baseline_cfg.seq_length = self.BASELINE_SEQLEN
-        if self.model_cfg.is_moe():
+        if self.model_config.is_moe():
             baseline_cfg.num_experts = 16
             baseline_cfg.expert_model_parallel_size = 1
         result.append(baseline_cfg)
 
+        if self.model_config.dist_train:
+            tp8 = 1
+        else:
+            tp8 = 8
         tp8_cfg = replace(baseline_cfg,
-                          tensor_model_parallel_size=8)
+                          tensor_model_parallel_size=tp8)
         result.append(tp8_cfg)
 
         seq8k_cfg = replace(baseline_cfg,
@@ -192,19 +199,20 @@ class DynamicMemModeling:
         self._logger.debug(f"{self.optimizer_peak}, {self.tp_b_optimizer_peak}, {self.seq_b_optimizer_peak}")
 
     def cal_dynamic_mem(self,
-                        cfg: SearchConfig
+                        cfg: SearchConfig,
+                        output
                         ) -> Tuple[List[float], float, float]:
-        mem_module = self._cal_mem_module(cfg)
+        mem_module = self._cal_mem_module(cfg, output)
         _, \
             _, \
             _, \
             ckpt_act_recompute, \
             _, \
-            _, \
+            loss_peak, \
             _, \
             optimizer_peak = mem_module
 
-        nlayer = self.model_cfg.num_layers // cfg.pp
+        nlayer = self.model_config.num_layers // cfg.pp
         if cfg.layers_per_vpp:
             nlayer = cfg.layers_per_vpp
 
@@ -341,9 +349,12 @@ class DynamicMemModeling:
         self.optimizer_peak = base_optimizer_peak * base_cfg.tp - \
             self.tp_b_optimizer_peak * (base_cfg.tp - 1)
 
-    def _cal_mem_module(self, cfg: SearchConfig) -> MemModule:
-        seq_length = self.model_cfg.seq_length
+    def _cal_mem_module(self, cfg: SearchConfig, output) -> MemModule:
+        change_stream_handler(self._logger, output)
+        seq_length = self.model_config.seq_length
         nseq = seq_length // cfg.cp // self.BASELINE_SEQLEN
+        nseq = max(1, nseq)
+        self._logger.debug(f"seq_length:{seq_length}   cfg.cp:{cfg.cp} self.BASELINE_SEQLEN:{self.BASELINE_SEQLEN}")
         tp = cfg.tp
         tp_w = cfg.tp - 1
 
@@ -363,11 +374,10 @@ class DynamicMemModeling:
         forward_peak = \
             (self.forward_peak +
              tp_w * self.tp_b_forward_peak) * nseq / tp
-
         loss_peak = \
             (self.loss_peak +
-             tp_w * self.tp_b_loss_peak) * nseq / tp
-
+                tp_w * self.tp_b_loss_peak) * nseq / tp 
+        loss_peak = 0
         backward_peak = \
             (self.backward_peak +
              tp_w * self.tp_b_backward_peak) * nseq / tp

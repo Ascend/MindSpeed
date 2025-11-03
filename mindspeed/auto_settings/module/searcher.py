@@ -52,11 +52,11 @@ class BaseSearcher(Searcher):
         """
         space_begin_time = time.time()
         pre_configs = self.search_spaces.build_pre_search_spaces()
-        self.get_logger().info(">>>>>> Generate profiling config cost time: %sms",
+        self.get_logger().info(">>>>>> Generate profiling config cost time: %s ms",
                          str((time.time() - space_begin_time) * 1000))
         profiling_and_parser_begin_time = time.time()
         profile_results = self.profiler.profile(pre_configs)
-        self.get_logger().info(">>>>>> Profiling and parser cost time: %sms",
+        self.get_logger().info(">>>>>> Profiling and parser cost time: %s ms",
                          str((time.time() - profiling_and_parser_begin_time) * 1000))
         self.train_models(profile_results)
 
@@ -149,9 +149,9 @@ class WhiteSearcher(BaseSearcher):
                 self.logger.warning(f"Search: ERROR during perf_modeling_calculation: {type(err).__name__}")
                 traceback.print_exc()
         final_cfgs = [cfg for _, cfg in best_perf_cfg_map]
-        self.logger.info(">>>>>> Search configuration cost time: %sms",
+        self.logger.info(">>>>>> Search configuration cost time: %s ms",
                          str((time.time() - search_config_begin_time) * 1000))
-        self.logger.info(">>>>>> Total execution cost time: %sms",
+        self.logger.info(">>>>>> Total execution cost time: %s ms",
                          str((time.time() - white_begin_time) * 1000))
         return final_cfgs
 
