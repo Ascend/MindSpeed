@@ -30,8 +30,8 @@ class MoEZeroMemoryFeature(MindSpeedFeature):
                 raise AssertionError('`--moe-zero-memory-num-layers` must be between 0 and num layers per pipeline stage')
             if args.moe_zero_memory == "disable":
                 raise AssertionError('`--moe-zero-memory` must be enabled when using `--moe-zero-memory-num-layers`')
-        if args.moe_zero_memory != "disable" and not (args.moe_alltoall_overlap_comm or args.schedules_method == 'dualpipev'):
-            raise AssertionError('`--moe-zero-memory` only support `--moe-alltoall-overlap-comm` or `dualpipev` for now.')
+        if args.moe_zero_memory != "disable" and not (args.moe_alltoall_overlap_comm or args.moe_fb_overlap):
+            raise AssertionError('`--moe-zero-memory` only support `--moe-alltoall-overlap-comm` or `--moe-fb-overlap` for now.')
 
     def register_patches(self, patch_manager, args):
         if args.moe_zero_memory != 'disable' and args.moe_alltoall_overlap_comm:

@@ -18,6 +18,7 @@
 
 #include "swap_log.h"
 #include "NPUSwapManager.h"
+const static double EPSILON = 0.00000000001;
 
 void local_raw_delete(void *ptr)
 {
@@ -113,7 +114,7 @@ void PluggableAllocator::setMemoryFraction(double fraction, int device)
 {
     TORCH_INTERNAL_ASSERT(0 <= device && device < device_allocator.size(), "Allocator not initialized for device ",
         device, ": did you call init?");
-    TORCH_INTERNAL_ASSERT(0 <= fraction && fraction <= 1, "invalid fraction:", fraction, ". Please set within (0, 1).");
+    TORCH_INTERNAL_ASSERT(std::abs(fraction) >= 0 - EPSILON && std::abs(fraction) <= 1 + EPSILON, "invalid fraction:", fraction, ". Please set within (0, 1).");
 
     c10_npu::SetDevice(device);
 

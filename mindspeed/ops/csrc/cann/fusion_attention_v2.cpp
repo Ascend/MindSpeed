@@ -25,6 +25,7 @@
 const static int FLASH_THRESHOLD = 512;
 const static int N = 32;
 const static int64_t SOFTMAXMAX_LAST_DIMSHAPE = 8;
+const static double EPSILON = 0.00000000001;
 using namespace at_npu::native;
 
 constexpr static int SIZE_8 = 8;
@@ -48,10 +49,10 @@ enum class SparseMode {
 };
 DropOutStatus get_dropout_status(double keep_prob)
 {
-    if (keep_prob == 0) {
+    if (std::abs(keep_prob) < EPSILON) {
         return DropOutStatus::DROPOUT_ALL;
     }
-    if (keep_prob == 1.) {
+    if (std::abs(keep_prob) < 1 + EPSILON) {
         return DropOutStatus::DROPOUT_NONE;
     }
     return DropOutStatus::DROPOUT_NORMAL;

@@ -17,6 +17,7 @@
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 
 #include "inc/aclnn_common.h"
+const static double EPSILON = 0.00000000001;
 
 inline void npu_dropout_add_layer_norm_check(
     const at::Tensor &x0, // BxSxhidden_size
@@ -139,7 +140,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_dropout_add_layer_norm(
     bool train = p == 0.0 ? false : true;
     if (train) {
         double p1m = 1. - p;
-        double scale = p1m == 0 ? 0. : 1. / p1m;
+        double scale = std::abs(p1m) < (0 + EPSILON) ? 0. : 1. / p1m;
         mask = at::empty_like(scaled_x0, scaled_x0.options().dtype(c10::CppTypeToScalarType<bool>::value));
         mask.bernoulli_(p1m);
         dropout_result = scaled_x0.mul(mask).mul_(scale);
