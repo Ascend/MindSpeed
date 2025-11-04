@@ -44,11 +44,7 @@ def dot_product_attention_forward_impl(
     if attn_mask_type == AttnMaskType.no_mask:
         sparse_mode = 0  # default mask
 
-    scale = (
-        1.0 / math.sqrt(self.hidden_size_per_attention_head)
-        if self.scale_mask_softmax.scale is None
-        else self.softmax_scale
-    )
+    scale = self.softmax_scale
 
     if packed_seq_params is not None: # TND
         if isinstance(packed_seq_params.cu_seqlens_q, list):
