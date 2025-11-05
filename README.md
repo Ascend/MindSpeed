@@ -43,16 +43,16 @@ MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模�
 # 版本说明
 ---
 
-当前版本配套表如下：
+当前版本推荐配套表如下：
 
 | 软件               | 版本                       |
 |------------------|--------------------------|
 | MindSpeed Core分支 | master                   |
 | Mcore版本          | 0.12.1                   |
-| CANN版本           | 8.2.RC1                  |
+| CANN版本           | 8.3.RC1                  |
 | PyTorch          | 2.1.0、2.6.0、2.7.0             |
-| torch_npu版本      | 7.2.RC1                  |
-| Python版本         | Python3.9.x、Python3.10.x |
+| torch_npu版本      | 7.3.RC1                  |
+| Python版本         | Python3.10.x |
 
 更多具体说明请参考：[版本配套表](./docs/user-guide/installation.md#版本配套表)。
 
