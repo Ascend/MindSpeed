@@ -49,7 +49,7 @@ MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`�
  git checkout core_v0.12.1
  ```
 
-当前版本配套表如下：
+当前版本推荐配套表如下：
 
 | 软件               | 版本                       |
 |------------------|--------------------------|
@@ -58,7 +58,7 @@ MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`�
 | CANN版本           | 8.2.RC1                  |
 | PyTorch          | 2.1.0、2.6.0              |
 | torch_npu版本      | 7.1.RC1                  |
-| Python版本         | Python3.9.x、Python3.10.x |
+| Python版本         | Python3.10.x |
 
 
 # 快速上手

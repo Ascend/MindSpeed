@@ -395,11 +395,13 @@ def forward_step_no_model_graph(
                 output_tensor, num_tokens, loss_reduced = outputs
                 if not config.calculate_per_token_loss:
                     output_tensor /= num_tokens
+                    output_tensor *= parallel_state.get_context_parallel_world_size()
                     output_tensor /= num_microbatches
             else:
                 # preserve legacy loss averaging behavior (ie, over the number of microbatches)
                 assert len(outputs) == 2
                 output_tensor, loss_reduced = outputs
+                output_tensor *= parallel_state.get_context_parallel_world_size()
                 output_tensor /= num_microbatches
             forward_data_store.append(loss_reduced)
         else:
@@ -619,11 +621,13 @@ def forward_step_with_model_graph(
                 output_tensor, num_tokens, loss_reduced = outputs
                 if not config.calculate_per_token_loss:
                     output_tensor /= num_tokens
+                    output_tensor *= parallel_state.get_context_parallel_world_size()
                     output_tensor /= num_microbatches
             else:
                 # preserve legacy loss averaging behavior (ie, over the number of microbatches)
                 assert len(outputs) == 2
                 output_tensor, loss_reduced = outputs
+                output_tensor *= parallel_state.get_context_parallel_world_size()
                 output_tensor /= num_microbatches
             forward_data_store.append(loss_reduced)
         else:
