@@ -168,8 +168,7 @@ def transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping(
 
         # Residual connection.
         detached_layer_input = hidden_states
-        if getattr(args, 'schedules_method', None) == 'dualpipev':
-            detached_layer_input = detach_tensor(hidden_states)
+
         residual1 = detached_layer_input
 
         # input_layernorm + AttentionForward
