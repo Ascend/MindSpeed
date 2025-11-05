@@ -30,14 +30,6 @@ except ImportError:
 _GLOBAL_ATTN_MASK = None
 
 
-def _get_inverted_mask(attention_mask, alibi):
-    inverted_mask = attention_mask.to(alibi.dtype)
-    inverted_mask = inverted_mask.masked_fill(
-        inverted_mask.to(torch.bool), float("-inf")
-    )
-    return inverted_mask.to(alibi.device) + alibi.unsqueeze(0)
-
-
 class NoopTransformerLayer(MegatronModule):
     def __init__(self, layer_number):
         super().__init__(None)

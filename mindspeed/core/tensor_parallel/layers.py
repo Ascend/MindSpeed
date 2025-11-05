@@ -83,7 +83,6 @@ from mindspeed.core.parallel_state import (
     get_tensor_model_parallel_world_size_for_nd2_dim2
 )
 from mindspeed.core.weight_grad_store import WeightGradStore
-from mindspeed.moe.async_comm_utils import get_fw_ag_output
 from mindspeed.moe.utils import get_slice_indices_from_disorder_to_order
 from .ascend_turbo.mc2_linears_seq_parallel import RowSeqParallelLinear
 
