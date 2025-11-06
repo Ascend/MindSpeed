@@ -23,8 +23,8 @@ Llama3-8B 训练的硬件配置:
    mkdir model_from_hf
    mkdir dataset
    mkdir ckpt
-   mv ../MindSpeed/tests_extend/tools/preprocess_data.py .
-   mv ../MindSpeed/tests_extend/tools/data_handler.py .
+   mv ../MindSpeed/tools/preprocess_data.py .
+   mv ../MindSpeed/tools/data_handler.py .
    mv ../MindSpeed/tests_extend/system_tests/llama3/pretrain_llama3_8b_ptd.sh ./examples/
    ```
 2. 搭建环境

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+__all__ = ["get_dataset_handler", "build_dataset"]
+
 import os
 import sys
 import time
@@ -29,8 +31,6 @@ from megatron.core.datasets import indexed_dataset
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-__all__ = ["get_dataset_handler", "build_dataset"]
 
 DEFAULT_CACHE_DIR = "~/tmp"
 
@@ -155,6 +155,7 @@ class GeneralPretrainHandler(BaseDatasetHandler):
     """
     a general pretrain dataset handler
     """
+
     def __init__(self, args, raw_datasets, tokenizer, splitter):
         super().__init__(args, raw_datasets, tokenizer, splitter)
         if self._text_keys:
@@ -176,6 +177,15 @@ class GeneralPretrainHandler(BaseDatasetHandler):
                 if len(sentence) > 0:
                     sentence_ids = self._tokenize(sentence)
                     doc_ids.append(sentence_ids)
+            if len(doc_ids) > 0 and self.args.pad_to_multiple_of > 1:
+                # padding each of the input data in the case of context parallel
+                local_length = len(doc_ids[-1]['input_ids'])
+                num_tokens_to_pad = (((local_length // self.args.pad_to_multiple_of) + 1) * self.args.pad_to_multiple_of) - local_length
+                if self.args.append_eod:
+                    num_tokens_to_pad = num_tokens_to_pad - 1
+                doc_ids[-1]['input_ids'].extend([self.tokenizer.vocab_size] * num_tokens_to_pad)
+                doc_ids[-1]['attention_mask'].extend([1] * num_tokens_to_pad)
+                doc_ids[-1]['labels'].extend([self.tokenizer.vocab_size] * num_tokens_to_pad)
             if len(doc_ids) > 0 and self.args.append_eod:
                 doc_ids[-1]['input_ids'].append(self.tokenizer.eod)
                 doc_ids[-1]['attention_mask'].append(1)
@@ -356,9 +366,9 @@ class MOSSMultiTurnHandler(GeneralInstructionHandler):
         attention_mask = [1 for _ in range(len(input_ids))]
 
         return {
-            "input_ids" : [input_ids],
-            "attention_mask" : [attention_mask],
-            "labels" : [labels]
+            "input_ids": [input_ids],
+            "attention_mask": [attention_mask],
+            "labels": [labels]
         }
 
 

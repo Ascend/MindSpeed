@@ -17,14 +17,15 @@
 
 import argparse
 import json
+import logging
 import multiprocessing
 import os
 import sys
 import time
-import logging
 from typing import List
 
 import torch
+
 import mindspeed.megatron_adaptor
 from megatron.training.tokenizer.tokenizer import build_tokenizer
 from data_handler import build_dataset, get_dataset_handler
@@ -99,6 +100,8 @@ def add_data_args(parser):
                        help='Split documents into sentences.')
     group.add_argument('--keep-newlines', action='store_true',
                        help='Keep newlines between sentences when splitting.')
+    group.add_argument("--pad-to-multiple-of", type=int, default=1,
+                       help="Pad each of the data to the multiple of...")
 
 
 def add_tokenizer_args(parser):

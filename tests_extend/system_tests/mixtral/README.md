@@ -44,7 +44,7 @@ wget https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00
 cd ..
 # 处理数据   
 mkdir ./dataset/Mixtral-8x7B/
-python ./tests_extend/tools/preprocess_data.py \
+python ./tools/preprocess_data.py \
     --input ./dataset/train-00000-of-00001-a09b74b3ef9c3b56.parquet \
     --tokenizer-name-or-path ./model_from_hf/Mixtral-8x7B/ \
     --output-prefix ./dataset/Mixtral-8x7B/alpaca \

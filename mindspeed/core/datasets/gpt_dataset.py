@@ -6,12 +6,12 @@ import torch
 
 
 def _get_ltor_masks_and_position_ids(
-    data: torch.Tensor,
-    eod_token: int,
-    reset_position_ids: bool,
-    reset_attention_mask: bool,
-    eod_mask_loss: bool,
-    create_attention_mask: bool,
+        data: torch.Tensor,
+        eod_token: int,
+        reset_position_ids: bool,
+        reset_attention_mask: bool,
+        eod_mask_loss: bool,
+        create_attention_mask: bool,
 ):
     """Build masks and position id for left to right model.
 
@@ -68,16 +68,16 @@ def _get_ltor_masks_and_position_ids(
             i = eod_index[j]
             # Mask attention loss.
             if reset_attention_mask and attention_mask is not None:
-                attention_mask[0, (i + 1) :, : (i + 1)] = 0
+                attention_mask[0, (i + 1):, : (i + 1)] = 0
             # Reset positions.
             if reset_position_ids:
-                position_ids[(i + 1) :] -= i + 1 - prev_index
+                position_ids[(i + 1):] -= i + 1 - prev_index
                 prev_index = i + 1
 
     if attention_mask is not None:
         # Convert attention mask to binary:
         attention_mask = attention_mask < 0.5
-    
+
     seq_length_tensor = torch.tensor([seq_length])
     actual_seq_len = torch.cat([eod_index + 1, seq_length_tensor])
 

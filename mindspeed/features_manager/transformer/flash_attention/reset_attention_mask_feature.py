@@ -12,12 +12,15 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):
             from mindspeed.core.transformer.flash_attention.reset_attention_mask.utils import (
-                _get_ltor_masks_and_position_ids, collate_wrapper, get_batch_on_this_cp_rank_wrapper)
+                _get_ltor_masks_and_position_ids, collate_wrapper, get_batch_on_this_cp_rank_wrapper,
+                GPTDataset_getitem_wrapper)
             from mindspeed.core.transformer.flash_attention.reset_attention_mask.adaptor import (
                 _p2p_ops_eod, gpt_forward_wrapper, attention_forward, MindSpeedMLASelfAttention,
                 apply_rotary_pos_emb_thd, rotary_forward, Eod_get_rotary_seq_len)
             from mindspeed.core.context_parallel.get_batch_utils import get_batch_on_this_tp_rank
 
+            patch_manager.register_patch('megatron.core.datasets.gpt_dataset.GPTDataset.__getitem__',
+                                         GPTDataset_getitem_wrapper)
             patch_manager.register_patch('megatron.core.datasets.gpt_dataset._get_ltor_masks_and_position_ids',
                                          _get_ltor_masks_and_position_ids)
             patch_manager.register_patch('torch.utils.data._utils.collate.default_collate', collate_wrapper)
