@@ -179,8 +179,7 @@ class CPDotProductAttentionImpl:
         if attn_mask_type == AttnMaskType.no_mask:
             sparse_mode = 0  # default mask
 
-        scale = 1.0 / math.sqrt(
-            self.hidden_size_per_attention_head) if self.scale_mask_softmax.scale is None else self.softmax_scale
+        scale = self.softmax_scale
 
         cp_expanded_by_2d_tp = getattr(self.config, 'tp_2d', False) and getattr(self.config, 'tp_y', 1) > 1
         if cp_expanded_by_2d_tp:

@@ -189,8 +189,7 @@ def dot_product_attention_forward(
     if attn_mask_type == AttnMaskType.no_mask:
         sparse_mode = 0  # default mask
 
-    scale = 1.0 / math.sqrt(
-        self.hidden_size_per_attention_head) if self.scale_mask_softmax.scale is None else self.softmax_scale
+    scale = self.softmax_scale
 
     cp_expanded_by_2d_tp = args.tp_2d and args.tp_y > 1
     if cp_expanded_by_2d_tp:
