@@ -154,10 +154,7 @@ def reuse_buffer_single(self):
 def reuse_buffer_dis(self, data_parallel_world_size):
     from mindspeed.op_builder import AlgorithmOpBuilder
     reuse_data_ptr = AlgorithmOpBuilder().load().reuse_data_ptr
-    if not self.disable_gloo_group:
-        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-    else:
-        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+    data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
     for buffer in self.buffers:
         self.bucket_num_group = []
         bucket_res_numel = 0
