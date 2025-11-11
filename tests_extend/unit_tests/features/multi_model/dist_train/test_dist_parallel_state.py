@@ -2,6 +2,7 @@
 from unittest.mock import patch, MagicMock
 import pytest
 import torch
+from mindspeed import megatron_adaptor
 import mindspeed.core.multi_modal.dist_train.dist_parallel_state as dps
 
 
