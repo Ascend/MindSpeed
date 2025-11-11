@@ -188,13 +188,6 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         # Forward impl settings without ascend-mc2.
         self._linear_forward_impl = linear_with_grad_accumulation_and_async_allreduce
 
-        # Hook adding a default empty _extra_state for state dict
-        self._register_load_state_dict_pre_hook(
-            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(
-                f'{prefix}_extra_state'
-            )
-        )
-
         # Norm init spec.
         if self.config.normalization not in ['LayerNorm', 'RMSNorm']:
             raise AssertionError('Unsupported normalization type {}!'.format(self.config.normalization))
