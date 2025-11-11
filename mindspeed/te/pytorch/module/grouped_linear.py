@@ -36,7 +36,7 @@ class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
         
         # Due to ascend gmm kernal k split limitations, we need a tensor m_split, not a tensor List.
         # Also can be solved in token_dispatcher.
-        if m_split is not torch.Tensor:
+        if not isinstance(m_split, torch.Tensor):
             ctx.group_list = torch.tensor(m_split, device='npu', dtype=torch.int64)
         else:
             ctx.group_list = m_split
