@@ -361,7 +361,7 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
             )
             from mindspeed.core.models.gpt.gpt_model import gptmodel_init_wrapper
             from mindspeed.core.tensor_parallel.layers import copy_tensor_model_parallel_attributes_wrapper
-            from mindspeed.model.language_model import transformer_language_model_init_wrapper
+            from mindspeed.core.optimizer.low_precision.language_model import transformer_language_model_init_wrapper
             patch_specs.extend(
                 [
                     (
