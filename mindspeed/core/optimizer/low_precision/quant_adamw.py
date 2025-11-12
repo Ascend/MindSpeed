@@ -120,8 +120,10 @@ class ScaleMeta:
                 scale_code_round, scale_inv_code_round = self._decode_mxfp8_codes(rounded_codes)
                 _try_candidate(scale_code_round, scale_inv_code_round, codes_tensor=rounded_codes, mark_code=True)
 
-                scale_code_float, scale_inv_code_float = self._decode_mxfp8_codes(torch.clamp(safe_sf, min=0.0, max=254.0))
-                _try_candidate(scale_code_float, scale_inv_code_float, codes_tensor=torch.clamp(safe_sf, min=0.0, max=254.0), mark_code=True)
+                scale_code_float, scale_inv_code_float = self._decode_mxfp8_codes(
+                    torch.clamp(safe_sf, min=0.0, max=254.0))
+                _try_candidate(scale_code_float, scale_inv_code_float,
+                               codes_tensor=torch.clamp(safe_sf, min=0.0, max=254.0), mark_code=True)
 
                 safe_scale = torch.where(
                     torch.isfinite(safe_sf) & (safe_sf > 0),
@@ -153,7 +155,8 @@ class ScaleMeta:
                     best_codes = None
                     best_is_code = False
                 else:
-                    best_err, best_scale, best_scale_inv, best_codes, best_is_code = min(candidates, key=lambda item: item[0])
+                    best_err, best_scale, best_scale_inv, best_codes, best_is_code = min(candidates,
+                                                                                         key=lambda item: item[0])
                     scale = best_scale
                     scale_inv = best_scale_inv
                     if best_codes is not None and best_is_code:
@@ -179,6 +182,18 @@ class ScaleMeta:
             if self.block_size is None:
                 self.block_size = 32
         else:
+            if self.qtype in (5, 6):
+                # BF16 has wide dynamic range; skip per-block scaling to avoid blowing up the scale.
+                if isinstance(self.scale, torch.Tensor):
+                    self.scale.fill_(1.0)
+                else:
+                    self.scale = 1.0
+                if isinstance(self.scale_inv, torch.Tensor):
+                    self.scale_inv.fill_(1.0)
+                else:
+                    self.scale_inv = 1.0
+                target_dtype = torch.float16 if self.qtype == 5 else torch.bfloat16
+                return fp32_tensor.to(target_dtype)
             amax_value = self.compute_amax(fp32_tensor)
             self.update_scale(amax=amax_value)
             if self.qtype == 3:
@@ -327,20 +342,20 @@ def _requantize_tensor(storage_tensor: torch.Tensor, tensor_fp32: torch.Tensor):
 
 
 def adamw(
-    params: List[Tensor],
-    grads: List[Tensor],
-    exp_avgs: List[Tensor],
-    exp_avg_sqs: List[Tensor],
-    max_exp_avg_sqs: List[Tensor],
-    step_tensor: Tensor,
-    *,
-    amsgrad: bool,
-    beta1: float,
-    beta2: float,
-    lr: float,
-    weight_decay: float,
-    eps: float,
-    maximize: bool,
+        params: List[Tensor],
+        grads: List[Tensor],
+        exp_avgs: List[Tensor],
+        exp_avg_sqs: List[Tensor],
+        max_exp_avg_sqs: List[Tensor],
+        step_tensor: Tensor,
+        *,
+        amsgrad: bool,
+        beta1: float,
+        beta2: float,
+        lr: float,
+        weight_decay: float,
+        eps: float,
+        maximize: bool,
 ):
     for i, param in enumerate(params):
         grad_tensor = grads[i]
@@ -379,20 +394,20 @@ def adamw(
 
 class FusedTorchAdamW(TorchAdamW):
     def __init__(
-        self,
-        params,
-        lr: Union[float, Tensor] = 1e-3,
-        betas: Tuple[float, float] = (0.9, 0.999),
-        eps: float = 1e-8,
-        weight_decay: float = 1e-2,
-        amsgrad: bool = False,
-        *,
-        maximize: bool = False,
-        foreach: Optional[bool] = None,
-        capturable: bool = False,
-        differentiable: bool = False,
-        fused: Optional[bool] = None,
-        **kwargs,
+            self,
+            params,
+            lr: Union[float, Tensor] = 1e-3,
+            betas: Tuple[float, float] = (0.9, 0.999),
+            eps: float = 1e-8,
+            weight_decay: float = 1e-2,
+            amsgrad: bool = False,
+            *,
+            maximize: bool = False,
+            foreach: Optional[bool] = None,
+            capturable: bool = False,
+            differentiable: bool = False,
+            fused: Optional[bool] = None,
+            **kwargs,
     ):
         super().__init__(
             params,
@@ -417,16 +432,16 @@ class AdamW(Optimizer):
     }
 
     def __init__(
-        self,
-        params,
-        lr: Union[float, Tensor] = 1e-3,
-        betas: Tuple[float, float] = (0.9, 0.999),
-        eps: float = 1e-8,
-        weight_decay: float = 1e-2,
-        amsgrad: bool = False,
-        *,
-        maximize: bool = False,
-        **kwargs,
+            self,
+            params,
+            lr: Union[float, Tensor] = 1e-3,
+            betas: Tuple[float, float] = (0.9, 0.999),
+            eps: float = 1e-8,
+            weight_decay: float = 1e-2,
+            amsgrad: bool = False,
+            *,
+            maximize: bool = False,
+            **kwargs,
     ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -504,7 +519,8 @@ class AdamW(Optimizer):
             raise ValueError("loaded state dict contains a parameter group that doesn't match optimizer")
 
         id_map = dict(
-            zip(chain.from_iterable(g['params'] for g in saved_groups), chain.from_iterable(g['params'] for g in groups))
+            zip(chain.from_iterable(g['params'] for g in saved_groups),
+                chain.from_iterable(g['params'] for g in groups))
         )
 
         def _cast(param, value, param_id=None, param_groups=None, key=None):
@@ -603,7 +619,7 @@ class AdamW(Optimizer):
                 grads.append(grad_tensor)
 
                 state = self.state[p]
-                
+
                 # State initialization
                 if len(state) == 0:
                     exp_avg_qtype, exp_avg_sq_qtype = self._get_state_qtype(p)
@@ -641,4 +657,3 @@ class AdamW(Optimizer):
             )
 
         return loss
-

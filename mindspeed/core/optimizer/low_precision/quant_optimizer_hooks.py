@@ -1,5 +1,3 @@
-
-
 import os
 from functools import wraps
 from typing import List
@@ -25,36 +23,6 @@ def _global_world_size() -> int:
 
 logger = logging.getLogger(__name__)
 _PATCHED_ADAM_CACHE = {}
-
-_GRAD_DTYPE_ALIAS = {
-    'bf16': torch.bfloat16,
-    'fp16': torch.float16,
-}
-
-
-def _cast_quant_grad_if_needed(grad_tensor, dtype_token):
-    if dtype_token is None:
-        return grad_tensor
-    target_dtype = _GRAD_DTYPE_ALIAS.get(dtype_token)
-    if target_dtype is None:
-        return grad_tensor
-
-    meta = getattr(grad_tensor, "meta", None)
-    if grad_tensor.dtype == target_dtype and meta is None:
-        return grad_tensor
-
-    grad_fp32 = grad_tensor.to(torch.float32)
-    try:
-        finfo = torch.finfo(target_dtype)
-        grad_fp32 = torch.clamp(grad_fp32, min=-finfo.max, max=finfo.max)
-    except (TypeError, ValueError):
-        pass
-
-    quant_grad = grad_fp32.to(dtype=target_dtype, non_blocking=True)
-    if meta is not None:
-        quant_grad.meta = meta
-    return quant_grad
-
 
 @torch.no_grad()
 def prepare_grads_impl(self) -> bool:
@@ -498,32 +466,34 @@ def collect_main_grad_data_for_unscaling_wrapper(func):
         base_main_grads = list(base[0] if isinstance(base, tuple) else base)
         meta_grads_scale_inv = []
         args_namespace = get_args()
-        dp_world_size = _global_world_size()
-        if (
-            getattr(args_namespace, 'quant_grads', False)
-            and not getattr(self, 'is_stub_optimizer', False)
-            and dp_world_size > 1
-        ):
-            main_groups = list(getattr(self, 'fp32_from_float16_groups', []))
-            fallback_groups = list(getattr(self, 'float16_groups', []))
-            seen_ids = {id(tensor) for tensor in base_main_grads}
-            for group_idx, main_group in enumerate(main_groups):
-                fallback_group = fallback_groups[group_idx] if group_idx < len(fallback_groups) else None
-                for param_idx, main_param in enumerate(main_group):
-                    target_param = main_param
-                    if target_param is None and fallback_group is not None and param_idx < len(fallback_group):
-                        target_param = fallback_group[param_idx]
-                    if target_param is None:
-                        continue
-                    quant_grad = getattr(target_param, 'quant_grad', None)
-                    if quant_grad is None:
-                        continue
-                    if id(quant_grad) not in seen_ids:
-                        base_main_grads.append(quant_grad)
-                        seen_ids.add(id(quant_grad))
-                    meta = getattr(quant_grad, 'meta', None)
-                    if meta is not None and getattr(meta, 'scale_inv', None) is not None:
-                        meta_grads_scale_inv.append(meta.scale_inv)
+        if getattr(args_namespace, 'quant_grads', False) and not getattr(self, 'is_stub_optimizer', False):
+            seen_scale_ids = set()
+
+            def _register_scale_inv(tensor):
+                if tensor is None:
+                    return
+                meta = getattr(tensor, 'meta', None)
+                if meta is None:
+                    return
+                scale_inv = getattr(meta, 'scale_inv', None)
+                if scale_inv is None:
+                    return
+                if id(scale_inv) in seen_scale_ids:
+                    return
+                meta_grads_scale_inv.append(scale_inv)
+                seen_scale_ids.add(id(scale_inv))
+
+            for group in getattr(self, 'fp32_from_float16_groups', []):
+                for main_param in group:
+                    _register_scale_inv(getattr(main_param, 'quant_grad', None))
+
+            for group in getattr(self, 'float16_groups', []):
+                for model_param in group:
+                    _register_scale_inv(getattr(model_param, 'quant_grad', None))
+
+            for group in getattr(self, 'fp32_from_fp32_groups', []):
+                for model_param in group:
+                    _register_scale_inv(getattr(model_param, 'quant_grad', None))
         return base_main_grads, meta_grads_scale_inv
     return _collect_main_grad_data_for_unscaling
 
@@ -533,17 +503,17 @@ def copy_model_grads_to_main_grads_wrapper(func):
         args_namespace = get_args()
         if getattr(self, 'is_stub_optimizer', False):
             return func(self)
-        dp_world_size = _global_world_size()
-        if getattr(args_namespace, 'quant_grads', False) and dp_world_size > 1:
-            quant_dtype_token = getattr(args_namespace, 'quant_grads_dtype', None)
+        # Use quant grad path whenever enabled, regardless of DP world size.
+        if getattr(args_namespace, 'quant_grads', False):
             for model_group, main_group in zip(self.float16_groups, self.fp32_from_float16_groups):
                 for model_param, main_param in zip(model_group, main_group):
                     grad_source = getattr(model_param, 'main_grad', None) or model_param.grad
                     if grad_source is None:
                         continue
-                    quant_grad = _cast_quant_grad_if_needed(grad_source, quant_dtype_token)
+                    quant_grad = grad_source
                     target_param = main_param if main_param is not None else model_param
                     target_param.quant_grad = quant_grad
+                    model_param.quant_grad = quant_grad
                     target_param.grad = None
                     model_param.grad = None
             for model_group in self.fp32_from_fp32_groups:
@@ -551,7 +521,9 @@ def copy_model_grads_to_main_grads_wrapper(func):
                     main_grad = getattr(model_param, 'main_grad', None)
                     if main_grad is None:
                         continue
-                    model_param.quant_grad = _cast_quant_grad_if_needed(main_grad, quant_dtype_token)
+                    # Avoid creating an additional casted copy for FP32 params.
+                    # Reuse the existing main_grad buffer to prevent duplication.
+                    model_param.quant_grad = main_grad
                     model_param.grad = None
         else:
             func(self)
@@ -598,12 +570,10 @@ def get_main_grads_for_grad_norm(self):
         if grad is None:
             continue
         if param_is_not_shared(param) and tensor_parallel.param_is_not_tensor_parallel_duplicate(param):
-            meta = getattr(grad, 'meta', None)
-            if meta is not None:
-                dequant = meta.dequantization(grad.data)
-                grads_for_norm.append(dequant)
-            else:
-                grads_for_norm.append(grad.to(torch.float32))
+            # Do not dequantize here to avoid materializing FP32 copies of
+            # all grads at once. Return underlying tensors and let
+            # get_grad_norm_fp32 handle dequantization per-tensor.
+            grads_for_norm.append(grad)
     return grads_for_norm
 
 
@@ -624,5 +594,3 @@ def zero_grad_group_helper_wrapper(func):
                         param.quant_grad.requires_grad_(False)
                     param.quant_grad.zero_()
     return _zero_grad_group_helper
-
-
