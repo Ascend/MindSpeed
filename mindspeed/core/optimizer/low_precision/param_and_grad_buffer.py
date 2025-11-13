@@ -80,7 +80,7 @@ def quant_grad_start_grad_sync_wrapper(start_grad_sync):
     @wraps(start_grad_sync)
     def quant_start_grad_sync(self):
         quant_args = get_full_args()
-        quant_grads_enabled = bool(getattr(quant_args, 'quant_grads', False))
+        quant_grads_enabled = getattr(quant_args, 'quant_grads', False)
         dp_world_size = 1
         if hasattr(self, 'data_parallel_group') and self.data_parallel_group is not None:
             try:
@@ -163,7 +163,7 @@ def quant_grad_finish_grad_sync_wrapper(finish_grad_sync):
     @wraps(finish_grad_sync)
     def quant_finish_grad_sync(self):
         quant_args = get_full_args()
-        quant_grads_enabled = bool(getattr(quant_args, 'quant_grads', False))
+        quant_grads_enabled = getattr(quant_args, 'quant_grads', False)
         dp_world_size = 1
         if hasattr(self, 'data_parallel_group') and self.data_parallel_group is not None:
             try:

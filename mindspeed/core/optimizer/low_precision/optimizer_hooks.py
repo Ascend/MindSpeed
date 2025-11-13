@@ -436,7 +436,6 @@ def zero_grad_group_helper_wrapper(func):
 
 
 def prepare_grads_impl(self) -> bool:
-    #print('prepare_grads_impl'+'S0'*300)
     timers = self.config.timers
     if timers is not None:
         timers('optimizer-copy-to-main-grad', log_level=1).start(
@@ -465,7 +464,6 @@ def prepare_grads_impl(self) -> bool:
 
 
 def step_with_ready_grads_impl(self) -> bool:
-    print('step_with_ready_grads_impl'+'S1'*300)
     timers = self.config.timers
     if timers is not None:
         timers('optimizer-inner-step', log_level=1).start(
@@ -491,7 +489,6 @@ def step_with_ready_grads_impl(self) -> bool:
 
 
 def mixed_precision_optimizer_step_impl(self):
-    print('mixed_precision_optimizer_step_impl'+'S2'*300)
     timers = self.config.timers
     timers('optimizer-copy-to-main-grad', log_level=1).start(
         barrier=self.config.barrier_with_L1_time)

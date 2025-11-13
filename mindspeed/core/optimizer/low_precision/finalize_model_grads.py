@@ -52,12 +52,10 @@ def _maybe_adjust_quant_scale(
 
 
 def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: TransformerConfig):
-    # print(f'_allreduce_word_embedding_grads '+'a0'*300)
     if (
         parallel_state.is_rank_in_embedding_group(ignore_virtual=True)
         and torch.distributed.get_world_size(parallel_state.get_embedding_group()) > 1
     ):
-        # print(f'_allreduce_word_embedding_grads '+'a1'*300)
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
         elif parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -79,13 +77,11 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
 
 
 def _allreduce_position_embedding_grads(model: List[torch.nn.Module], config: TransformerConfig):
-    # print(f'_allreduce_position_embedding_grads '+'a2'*300)
     if (
         parallel_state.is_rank_in_position_embedding_group()
         and torch.distributed.get_world_size(parallel_state.get_position_embedding_group()) > 1
         and config.pipeline_model_parallel_split_rank is not None
     ):
-        # print(f'_allreduce_position_embedding_grads '+'a3'*300)
         if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
             model_module = model[0]
         elif parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -136,11 +132,9 @@ def _accumulate_quant_grad(target: torch.Tensor, source: torch.Tensor) -> None:
 
 
 def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: TransformerConfig):
-    # print(f'_allreduce_layernorm_grads '+'a4'*300)
     if parallel_state.get_tensor_model_parallel_world_size() > 1 and (
         config.sequence_parallel or config.qk_layernorm
     ):
-        # print(f'_allreduce_layernorm_grads '+'a5'*300)
         params = []
         grads = []
         grad_attrs = []
