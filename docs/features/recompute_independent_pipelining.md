@@ -34,8 +34,8 @@
 
 #### 说明：
 
-*  --recompute-in-bubble 特性暂不兼容完全重计算uniform、完全重计算block、选择重计算、自适应选择重计算特性，不兼容moe场景下的--moe-adaptive-recompute-activation、--moe-layer-recompute特性。
-+  --recompute-in-advance 特性暂不兼容完全重计算uniform、选择重计算、自适应选择重计算特性。
+*  --recompute-in-bubble 特性暂不兼容完全重计算uniform、完全重计算block、选择重计算、自适应选择重计算、swap-attention、no-align-grad-reduce和no-overlap-p2p-communication特性，不兼容moe场景下的--moe-adaptive-recompute-activation、--moe-layer-recompute特性。
++  --recompute-in-advance 特性暂不兼容完全重计算uniform、选择重计算、自适应选择重计算、no-align-grad-reduce和no-overlap-p2p-communication特性。
 *  --recompute-in-bubble和--recompute-in-advance两者不可同时开启。
 
 ## 使用效果

@@ -24,6 +24,11 @@ class MegatronBasicFeature(MindSpeedFeature):
                 'num_layers_per_virtual_pipeline_stage * pipeline_model_parallel_size == num_layers, '
                 'please close --num-layers-per-virtual-pipeline-stage'
             )
+        
+        if getattr(args, 'defer_embedding_wgrad_compute', False):
+            raise AssertionError(
+                '--defer_embedding_wgrad_compute, although exclusive to TE scenarios, is not yet supported.'
+            )
 
     def register_patches(self, patch_manager, args):
         try:
