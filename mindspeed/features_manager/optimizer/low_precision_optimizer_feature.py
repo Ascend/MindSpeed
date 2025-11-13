@@ -27,7 +27,7 @@ _TOKEN_TO_DTYPE = {
 }
 _LOW_PRECISION_STATES = set(_PAIRING_RULES.keys()) | set(_PAIRING_RULES.values())
 _REVERSE_PAIRINGS = {value: key for key, value in _PAIRING_RULES.items()}
-_QUANT_STATE_CHOICES = ('fp8', 'hif8', 'mxfp8', 'fp16')
+_QUANT_STATE_CHOICES = ('fp8', 'hif8', 'mxfp8')
 
 
 def _dtype_to_token(value, default='fp32'):
@@ -70,8 +70,8 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                 f"Low precision optimizer only supports quant_states {_QUANT_STATE_CHOICES}, got '{quant_states}'."
             )
 
-        use_quant = bool(quant_states) or bool(getattr(args, 'quant_grads', False))
-        requested_precision = bool(getattr(args, 'use_precision_aware_optimizer', False))
+        use_quant = bool(quant_states) or getattr(args, 'quant_grads', False)
+        requested_precision = getattr(args, 'use_precision_aware_optimizer', False)
         requires_precision = any(token != 'fp32' for token in tokens.values())
 
         if use_quant and (requested_precision or requires_precision):
@@ -86,7 +86,7 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
             args.use_quant_optimizer = True
 
             main_grads_token = tokens['main_grads_dtype']
-            quant_grads_requested = bool(getattr(args, 'quant_grads', False))
+            quant_grads_requested = getattr(args, 'quant_grads', False)
             if main_grads_token in {'fp16', 'bf16'}:
                 args.quant_grads = True
                 args.quant_grads_dtype = main_grads_token

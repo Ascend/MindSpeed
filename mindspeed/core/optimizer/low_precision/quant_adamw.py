@@ -282,6 +282,9 @@ class ScaleMeta:
         if scale is None:
             return inputs
         if self.block_size is not None:
+            scale_flat = scale.reshape(-1)
+            if scale_flat.numel() == 0:
+                return inputs
             if inputs.numel() % self.block_size != 0:
                 num_blocks = inputs.numel() // self.block_size
                 large_num = num_blocks * self.block_size
@@ -289,11 +292,11 @@ class ScaleMeta:
                 l_tensor, s_tensor = torch.split(
                     inputs_flatten, [large_num, inputs_flatten.numel() - large_num], dim=0
                 )
-                l_tensor = (l_tensor.view(-1, self.block_size) * scale[:-1].unsqueeze(1)).view(-1)
-                s_tensor = s_tensor * scale[-1]
+                l_tensor = (l_tensor.view(-1, self.block_size) * scale_flat[:-1].unsqueeze(1)).view(-1)
+                s_tensor = s_tensor * scale_flat[-1]
                 inputs_flatten = torch.cat([l_tensor, s_tensor])
             else:
-                inputs_flatten = inputs.view(-1, self.block_size) * scale.unsqueeze(1)
+                inputs_flatten = inputs.view(-1, self.block_size) * scale_flat.unsqueeze(1)
             inputs = inputs_flatten.view(inputs.shape)
         else:
             inputs = inputs * scale

@@ -331,7 +331,6 @@ def reuse_fp32_param_init_wrapper(init_func):
         self = args[0]
         args_namespace = get_args()
         self.reuse_fp32_param = getattr(args_namespace, 'reuse_fp32_param', False)
-        self.use_quant_optimizer = quant_enabled
         if not self.reuse_fp32_param:
             return
         self.res_float16_groups = []
@@ -507,7 +506,9 @@ def copy_model_grads_to_main_grads_wrapper(func):
         if getattr(args_namespace, 'quant_grads', False):
             for model_group, main_group in zip(self.float16_groups, self.fp32_from_float16_groups):
                 for model_param, main_param in zip(model_group, main_group):
-                    grad_source = getattr(model_param, 'main_grad', None) or model_param.grad
+                    grad_source = getattr(model_param, 'main_grad', None)
+                    if grad_source is None:
+                        grad_source = model_param.grad
                     if grad_source is None:
                         continue
                     quant_grad = grad_source

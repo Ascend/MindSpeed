@@ -20,7 +20,7 @@ def quant_grad_param_and_grad_buffer_init_wrapper(init_func):
     @wraps(init_func)
     def quant_grad_param_and_grad_buffer_init(self, ddp_config, param_dtype, grad_dtype, *args, **kwargs):
         quant_args = get_full_args()
-        quant_grads_enabled = bool(getattr(quant_args, 'quant_grads', False))
+        quant_grads_enabled = getattr(quant_args, 'quant_grads', False)
         qdtype = None
         if quant_grads_enabled:
             qdtype = getattr(quant_args, 'quant_grads_dtype', None)
@@ -89,8 +89,6 @@ def quant_grad_start_grad_sync_wrapper(start_grad_sync):
                 dp_world_size = 1
         if (
             not quant_grads_enabled
-            or self.ddp_config.use_distributed_optimizer
-            or self.ddp_config.num_distributed_optimizer_instances > 1
             or dp_world_size <= 1
         ):
             return start_grad_sync(self)
