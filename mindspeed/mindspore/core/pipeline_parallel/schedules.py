@@ -7,7 +7,6 @@
 import contextlib
 from typing import Iterator, List, Union
 from functools import lru_cache
-from torch.autograd.variable import Variable
 from mindspore.ops import composite as C
 from mindspore.common.api import _pynative_executor
 
@@ -54,34 +53,4 @@ def deallocate_output_tensor_(out, deallocate_pipeline_outputs=False):
         return
     assert isinstance(out, torch.Tensor), "expected Tensor, found %s." % type(out).__name__
     assert out._base is None, "counter-productive to free a view of another tensor."
-    out.untyped_storage().resize_(0)
-
-
-def custom_backward(output, grad_output):
-    '''Directly call C++ autograd engine.
-
-    To make the 'deallocate_output_tensor' (above) optimization work, the C++
-    autograd engine must be called directly, bypassing Pytorch's
-    torch.autograd.backward. Pytorch's 'backward' checks that the output and
-    grad have the same shape, while C++'s 'backward' does not.
-    '''
-
-    assert isinstance(output, torch.Tensor), "output == '%s'." % type(output).__name__
-    assert isinstance(grad_output, (torch.Tensor, type(None))), (
-        "grad_output == '%s'." % type(grad_output).__name__
-    )
-
-    # Handle scalar output
-    if grad_output is None:
-        grad_output = torch.ones_like(output, memory_format=torch.preserve_format)
-
-    # Call c++ engine [ see torch/csrc/autograd/python_engine.cpp ]
-    Variable._execution_engine.run_backward(
-        tensors=(output,),
-        grad_tensors=(grad_output,),
-        keep_graph=False,
-        create_graph=False,
-        inputs=tuple(),
-        allow_unreachable=True,
-        accumulate_grad=True,
-    )
+    out.data = torch.empty([], device=out.device, dtype=out.dtype)

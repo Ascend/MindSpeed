@@ -73,8 +73,3 @@ def step(self, closure=None):
             maximize=group['maximize'])
 
     return loss
-
-
-def scale_loss(self, loss: torch.Tensor) -> torch.Tensor:
-    """Simple scaling."""
-    return loss

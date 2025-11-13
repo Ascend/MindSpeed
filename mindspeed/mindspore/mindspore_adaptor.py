@@ -35,18 +35,10 @@ def mindspore_adaptation(aspm, mindspeed_args):
 
     from mindspeed.mindspore.ops.npu_ring_attention_update import _RING_PROXY
     aspm.register_patch("mindspeed.ops.npu_ring_attention_update.npu_ring_attention_update", _RING_PROXY.npu_ring_attention_update)
-    
-    # After using `deallocate_output_tensor_`, `custom_backward` cannot use the assertion `assert output.numel() == 1`
-    from mindspeed.mindspore.core.pipeline_parallel.schedules import custom_backward
-    aspm.register_patch('megatron.core.pipeline_parallel.schedules.custom_backward', custom_backward)
 
     # Resolve the issue of being unable to assign values to `tensor.data` when `tensor.requires_grad` is set to `True`.
     from mindspeed.mindspore.core.utils import _kernel_make_viewless_tensor
     aspm.register_patch('megatron.core.utils._kernel_make_viewless_tensor', _kernel_make_viewless_tensor)
-
-    # To avoid inconsistent `tensor.data` behavior between MS and PT, the pathch can be removed after upgrading the MS dynamic graph framework
-    from mindspeed.mindspore.core.optimizer.optimizer import scale_loss
-    aspm.register_patch('megatron.core.optimizer.optimizer.MegatronOptimizer.scale_loss', scale_loss)
 
     from mindspeed.mindspore.third_party.safetensors.torch import save_file, load_file
     aspm.register_patch('safetensors.torch.save_file', save_file)
