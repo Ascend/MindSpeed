@@ -11,24 +11,6 @@ from torch.optim.optimizer import Optimizer
 from torch.optim.adamw import AdamW as TorchAdamW
 
 
-def _infer_block_size(state: torch.Tensor, qtype: str) -> Optional[int]:
-    if qtype == "mxfp8":
-        return 32
-    if state.ndim == 0:
-        return None
-    min_block = 32
-    trailing = state.shape[-1]
-    if trailing >= min_block:
-        for candidate in (128, 96, 64, 48, 32):
-            if trailing % candidate == 0:
-                return candidate
-        return trailing
-    total = state.numel()
-    if total >= min_block:
-        return min_block
-    return None
-
-
 class ScaleMeta:
     def __init__(self, qtype, state, block_size=None):
         if qtype == "e4m3":
@@ -92,7 +74,7 @@ class ScaleMeta:
 
     def quantization(self, fp32_tensor: torch.Tensor):
         if self.qtype == 4:
-            # (scale_inv = 2 ** (code - 127)). Avoid heuristic candidates.
+            # (scale_inv = 2 ** (code - 127))
             quant_tensor, sf = torch_npu.npu_dynamic_mx_quant(
                 fp32_tensor.to(torch.bfloat16),
                 block_size=self.block_size if self.block_size is not None else 32,
@@ -410,7 +392,10 @@ class AdamW(Optimizer):
 
     def _get_state_tensor(self, state: torch.Tensor, qtype: str):
         if qtype != "fp32":
-            block_size = _infer_block_size(state, qtype)
+            if qtype == "mxfp8":
+                block_size = 32
+            else:
+                block_size = cal_hcf(state.numel(), 128)
             scale_meta = ScaleMeta(qtype, state, block_size)
             quant_state = scale_meta.quantization(state.data)
             quant_state.meta = scale_meta
