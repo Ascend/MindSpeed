@@ -20,7 +20,7 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                 f"Low precision optimizer only supports quant_states {_QUANT_STATE_CHOICES}, got '{quant_states}'."
             )
         quant_states_enabled = bool(quant_states)
-        quant_grads_requested = bool(getattr(args, 'quant_grads', False))
+        quant_grads_requested = getattr(args, 'quant_grads', False)
         use_quant = quant_states_enabled or quant_grads_requested
 
 
