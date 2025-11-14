@@ -9,7 +9,6 @@ import torch_npu
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 from torch.optim.adamw import AdamW as TorchAdamW
-from mindspeed.core.optimizer.low_precision.fp8_simulator import set_hifloat8_emulation_max
 
 
 def _infer_block_size(state: torch.Tensor, qtype: str) -> Optional[int]:
@@ -93,92 +92,23 @@ class ScaleMeta:
 
     def quantization(self, fp32_tensor: torch.Tensor):
         if self.qtype == 4:
+            # (scale_inv = 2 ** (code - 127)). Avoid heuristic candidates.
             quant_tensor, sf = torch_npu.npu_dynamic_mx_quant(
-                fp32_tensor.to(torch.bfloat16), block_size=self.block_size, dst_type=torch.float8_e4m3fn
+                fp32_tensor.to(torch.bfloat16),
+                block_size=self.block_size if self.block_size is not None else 32,
+                dst_type=torch.float8_e4m3fn,
             )
-            sf_fp32 = sf.to(torch.float32)
-            valid_mask = torch.isfinite(sf_fp32) & (sf_fp32 > 0)
-            safe_sf = torch.where(valid_mask, sf_fp32, torch.ones_like(sf_fp32))
             device = fp32_tensor.device
-            with torch.no_grad():
-                quant_fp32 = quant_tensor.float()
-                ref_fp32 = fp32_tensor.to(torch.float32)
-
-                candidates = []
-
-                def _try_candidate(scale_candidate, scale_inv_candidate, *, codes_tensor=None, mark_code=False):
-                    if scale_candidate is None or scale_inv_candidate is None:
-                        return
-                    try:
-                        recon = self.block_scaling(quant_fp32, scale_inv_candidate)
-                        err = (recon - ref_fp32).abs().max().item()
-                        candidates.append((err, scale_candidate, scale_inv_candidate, codes_tensor, mark_code))
-                    except Exception:
-                        return
-
-                rounded_codes = torch.clamp(torch.round(safe_sf), min=0.0, max=254.0)
-                scale_code_round, scale_inv_code_round = self._decode_mxfp8_codes(rounded_codes)
-                _try_candidate(scale_code_round, scale_inv_code_round, codes_tensor=rounded_codes, mark_code=True)
-
-                scale_code_float, scale_inv_code_float = self._decode_mxfp8_codes(
-                    torch.clamp(safe_sf, min=0.0, max=254.0))
-                _try_candidate(scale_code_float, scale_inv_code_float,
-                               codes_tensor=torch.clamp(safe_sf, min=0.0, max=254.0), mark_code=True)
-
-                safe_scale = torch.where(
-                    torch.isfinite(safe_sf) & (safe_sf > 0),
-                    safe_sf,
-                    torch.ones_like(safe_sf),
-                )
-                scale_inv_from_scale = torch.where(
-                    safe_scale > 0,
-                    1.0 / safe_scale,
-                    torch.ones_like(safe_scale),
-                )
-                _try_candidate(safe_scale, scale_inv_from_scale, mark_code=False)
-
-                safe_scale_inv = torch.where(
-                    torch.isfinite(safe_sf) & (safe_sf > 0),
-                    safe_sf,
-                    torch.ones_like(safe_sf),
-                )
-                scale_from_inv = torch.where(
-                    safe_scale_inv > 0,
-                    1.0 / safe_scale_inv,
-                    torch.ones_like(safe_scale_inv),
-                )
-                _try_candidate(scale_from_inv, safe_scale_inv, mark_code=False)
-
-                if not candidates:
-                    scale = safe_scale
-                    scale_inv = scale_inv_from_scale
-                    best_codes = None
-                    best_is_code = False
-                else:
-                    best_err, best_scale, best_scale_inv, best_codes, best_is_code = min(candidates,
-                                                                                         key=lambda item: item[0])
-                    scale = best_scale
-                    scale_inv = best_scale_inv
-                    if best_codes is not None and best_is_code:
-                        best_codes = torch.clamp(torch.round(best_codes), min=0.0, max=254.0)
-                    else:
-                        best_codes = None
-                if best_codes is not None:
-                    self.scale_codes = best_codes.to(device=device, dtype=torch.float32)
-                else:
-                    self.scale_codes = None
-                self._scale_is_code = best_codes is not None
-                finfo = torch.finfo(scale_inv.dtype)
-                max_safe_scale_inv = finfo.max / 512.0
-                scale_inv = torch.clamp(scale_inv, max=max_safe_scale_inv)
-                scale = torch.where(
-                    scale_inv > 0,
-                    1.0 / scale_inv,
-                    torch.ones_like(scale_inv),
-                )
+            codes = sf.to(torch.float32)
+            codes = torch.clamp(torch.round(codes), min=0.0, max=254.0)
+            self.scale_codes = codes.to(device=device, dtype=torch.float32)
+            self._scale_is_code = True
+            scale, scale_inv = self._decode_mxfp8_codes(self.scale_codes)
+            finfo = torch.finfo(scale_inv.dtype)
+            max_safe_scale_inv = finfo.max / 512.0
+            scale_inv = torch.clamp(scale_inv, max=max_safe_scale_inv)
             self.scale = scale.to(device=device, dtype=torch.float32)
             self.scale_inv = scale_inv.to(device=device, dtype=torch.float32)
-            self._refresh_scale_inverse()
             if self.block_size is None:
                 self.block_size = 32
         else:
@@ -212,11 +142,7 @@ class ScaleMeta:
             elif self.qtype == 2:
                 quant_tensor = scaled_tensor.to(torch.float8_e5m2)
             elif self.qtype == 3:
-                set_hifloat8_emulation_max(1.0)
-                try:
-                    quant_tensor = torch_npu.HiFloat8Tensor.to_hifloat8(scaled_tensor.contiguous())
-                finally:
-                    set_hifloat8_emulation_max(None)
+                quant_tensor = torch_npu.HiFloat8Tensor.to_hifloat8(scaled_tensor.contiguous())
             elif self.qtype == 5:
                 quant_tensor = scaled_tensor.to(torch.float16)
             elif self.qtype == 6:

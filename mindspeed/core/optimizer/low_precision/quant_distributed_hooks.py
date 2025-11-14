@@ -56,7 +56,7 @@ def collect_main_grad_data_for_unscaling_wrapper(func):
                     main_grads.append(tensor)
                     seen_ids.add(id(tensor))
                 meta = getattr(tensor, "meta", None)
-                if meta is not None and getattr(meta, "qtype", None) == "mxfp8":
+                if meta is not None and getattr(meta, "qtype", None) == 4:
                     meta.mxfp8_scale_convert()
                 scale_inv = getattr(meta, "scale_inv", None) if meta is not None else None
                 if scale_inv is not None and id(scale_inv) not in seen_scale_ids:
@@ -141,7 +141,7 @@ def collect_main_grad_data_for_unscaling_quant(self):
                 seen_quant_ids.add(id(tensor))
                 main_grads.append(tensor)
             meta = getattr(tensor, "meta", None)
-            if meta is not None and getattr(meta, "qtype", None) == "mxfp8":
+            if meta is not None and getattr(meta, "qtype", None) == 4:
                 meta.mxfp8_scale_convert()
             scale_inv = getattr(meta, "scale_inv", None) if meta is not None else None
             if scale_inv is not None and id(scale_inv) not in seen_scale_ids:

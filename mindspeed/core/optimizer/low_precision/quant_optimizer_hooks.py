@@ -136,35 +136,10 @@ def optimizer_config_init_wrapper(init_func):
         self = args[0]
         args_namespace = get_args()
         quant_enabled = getattr(args_namespace, 'use_quant_optimizer', False)
-        if quant_enabled:
-            _sync_precision_aware_config(self, args_namespace)
         self.reuse_fp32_param = getattr(args_namespace, 'reuse_fp32_param', False)
         self.use_quant_optimizer = quant_enabled
     return optimizer_config_init
 
-
-def _sync_precision_aware_config(config, args_namespace):
-    dtype_alias = {
-        'fp8': torch.uint8,
-        'fp16': torch.float16,
-        'bf16': torch.bfloat16,
-        'fp32': torch.float32,
-    }
-
-    def _resolve(dtype_value):
-        if isinstance(dtype_value, str):
-            return dtype_alias.get(dtype_value, dtype_value)
-        return dtype_value
-
-    config.main_grads_dtype = _resolve(getattr(args_namespace, 'main_grads_dtype', torch.float32))
-    config.main_params_dtype = _resolve(getattr(args_namespace, 'main_params_dtype', torch.float32))
-    config.exp_avg_dtype = _resolve(getattr(args_namespace, 'exp_avg_dtype', torch.float32))
-    config.exp_avg_sq_dtype = _resolve(getattr(args_namespace, 'exp_avg_sq_dtype', torch.float32))
-
-    args_namespace.main_grads_dtype = config.main_grads_dtype
-    args_namespace.main_params_dtype = config.main_params_dtype
-    args_namespace.exp_avg_dtype = config.exp_avg_dtype
-    args_namespace.exp_avg_sq_dtype = config.exp_avg_sq_dtype
 
 def get_megatron_optimizer_func_wrapper(func):
     @wraps(func)

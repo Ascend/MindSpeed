@@ -43,7 +43,7 @@ def _maybe_adjust_quant_scale(
     requires_division = (
         divide_world
         and world_size > 1
-        and getattr(meta, "qtype", None) not in ("mxfp8",)
+        and getattr(meta, "qtype", None) not in (4,)
     )
     if requires_division:
         new_scale = new_scale / world_size

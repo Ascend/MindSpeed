@@ -31,7 +31,7 @@ class ReuseFP32Param(MindSpeedFeature):
             from mindspeed.core.memory.reuse_param.adaptor import reuse_fp32_param_param_and_grad_buffer_init_wrapper
 
             # optim relative.
-            quant_or_precision_enabled = bool(getattr(args, 'use_quant_optimizer', False) or getattr(args, 'use_precision_aware_optimizer', False))
+            quant_or_precision_enabled = getattr(args, 'use_quant_optimizer', False)
             if not quant_or_precision_enabled:
                 patch_manager.register_patch(
                     'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.prepare_grads',
