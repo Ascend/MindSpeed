@@ -72,7 +72,6 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
         import mindspeed.core.optimizer.low_precision.quant_optimizer_hooks as optimizer_hooks
         import mindspeed.core.optimizer.low_precision.quant_distributed_hooks as distributed_hooks
         from mindspeed.core.optimizer.low_precision import quant_grad_clip as grad_clip
-        from mindspeed.core.optimizer.low_precision import distributed_data_parallel
         from mindspeed.core.optimizer.low_precision import param_and_grad_buffer
         from mindspeed.core.optimizer.low_precision import finalize_model_grads as quant_finalize
         from mindspeed.core.models.gpt.gpt_model import gptmodel_init_wrapper
