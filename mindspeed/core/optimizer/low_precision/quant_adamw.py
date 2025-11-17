@@ -304,6 +304,12 @@ class ScaleMeta:
             self.scale_codes = self.scale_codes.to(device)
 
 
+def cal_hcf(x: int, y: int) -> int:
+    while y:
+        x, y = y, x % y
+    return x
+
+
 def _dequantize_tensor(tensor: torch.Tensor) -> torch.Tensor:
     if hasattr(tensor, "meta") and tensor.meta is not None:
         return tensor.meta.dequantization(tensor.data)
