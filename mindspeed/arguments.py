@@ -692,10 +692,6 @@ def validate_args_wrapper(validate_args):
         # Mandatory modification to SBH, subsequent abandonment of other formats such as BSH,BSND
         if args.shape_order != 'SBH':
             args.shape_order = 'SBH'
-        if args.transformer_impl == 'transformer_engine':
-            args.transformer_impl = 'local'
-        if args.fp8:
-            raise AssertionError('NPU not supported FP8.')
         if args.tp_comm_overlap:
             args.tp_comm_overlap = False
         if args.recompute_method == "uniform":

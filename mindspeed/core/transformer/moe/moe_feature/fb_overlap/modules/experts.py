@@ -7,6 +7,7 @@ from megatron.training import get_args
 
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
+from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
 from mindspeed.core.transformer.moe.moe_feature import GroupedMLP as MegatronGroupedMLP
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.ops.gmm import GMMFunction
@@ -88,6 +89,9 @@ class GroupedMatmulWithWeightGradDetach(torch.autograd.Function):
 
 
 def npu_gmm_with_detach(inputs, weight_tensor, weight_param, bias=None, group_list=None):
+    quant_gmm_func = get_gmm_quant_func()
+    if quant_gmm_func is not None:
+        return quant_gmm_func.apply(inputs, weight_tensor, bias, group_list, weight_param)
     return GroupedMatmulWithWeightGradDetach.apply(inputs, weight_tensor, weight_param, group_list)
 
 

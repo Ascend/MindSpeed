@@ -20,8 +20,7 @@ def npu_matmul_add_fp32(total_input, grad_output, grad):
         if dim == 0:
             return
 
-    matmul_add_ops = matmul_add_op_builder.load()
-    matmul_add_ops.npu_matmul_add_fp32(grad_output, total_input, grad)
+    grad.addmm_(grad_output.t(), total_input)
 
 
 def npu_matmul_add_fp16(total_input, grad_output, grad):

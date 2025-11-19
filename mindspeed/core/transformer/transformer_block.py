@@ -31,24 +31,24 @@ def transformer_block_checkpointed_forward_wrapper(forward_func):
 
 
 def transformer_block_checkpointed_forward(
-        self,
-        hidden_states: Tensor,
-        attention_mask: Tensor,
-        context: Tensor,
-        context_mask: Tensor,
-        rotary_pos_emb: Tensor,
-        attention_bias: Tensor,
-        packed_seq_params: PackedSeqParams,
+    self,
+    hidden_states: Tensor,
+    attention_mask: Tensor,
+    context: Tensor,
+    context_mask: Tensor,
+    rotary_pos_emb: Tensor,
+    attention_bias: Tensor,
+    packed_seq_params: PackedSeqParams,
 ):
     """Forward method with activation checkpointing."""
 
     def custom(start: int, end: int):
         def custom_forward(
-                hidden_states,
-                attention_mask,
-                context,
-                context_mask,
-                rotary_pos_emb,
+            hidden_states,
+            attention_mask,
+            context,
+            context_mask,
+            rotary_pos_emb,
         ):
             for index in range(start, end):
                 layer = self._get_layer(index)
@@ -160,7 +160,9 @@ class NoopTransformerLayer(MegatronModule):
         super().__init__(None)
         self.layer_number = layer_number
 
-    def forward(self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos=None, rotary_pos_sin=None, inference_params=None, attention_bias=None, inference_context=None, packed_seq_params=None, sequence_len_offset=None):
+    def forward(self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos=None,
+                rotary_pos_sin=None, inference_params=None, attention_bias=None, inference_context=None,
+                packed_seq_params=None, sequence_len_offset=None):
         return hidden_states.clone(), context
 
 
@@ -210,9 +212,9 @@ def _build_layers(self):
     def build_layer(layer_spec, layer_number):
         global_layer_number = _get_layer_offset(args) + layer_number
         if (hasattr(args, 'noop_layers') and isinstance(args.noop_layers, set)
-                and global_layer_number - 1 in args.noop_layers):
+            and global_layer_number - 1 in args.noop_layers):
             return NoopTransformerLayer(global_layer_number)
-        return build_module(layer_spec, config=self.config, layer_number=layer_number,)
+        return build_module(layer_spec, config=self.config, layer_number=layer_number, )
 
     self.layers = torch.nn.ModuleList(
         [
@@ -240,4 +242,5 @@ def transformer_block_forward_wrapper(fn):
             hidden_states = auto_grad_sync_gather_along_first_dim(hidden_states, TPXCollectiveComm)
             hidden_states = auto_grad_sync_gather_along_last_dim(hidden_states, TPYCollectiveComm)
         return hidden_states
+
     return wrapper

@@ -40,8 +40,3 @@ class MC2Feature(MindSpeedFeature):
                                     MindSpeedMC2ColumnParallelLinear)
         patch_manager.register_patch('megatron.core.tensor_parallel.layers.RowParallelLinear',
                                     MindSpeedMC2RowParallelLinear)
-        # TE linear mc2 patch.
-        patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
-                                    MindSpeedMC2ColumnParallelLinear)
-        patch_manager.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear',
-                                    MindSpeedMC2RowParallelLinear)

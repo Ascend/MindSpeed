@@ -23,6 +23,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size
 )
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.grouped_gemm_util import Ops
 
 
@@ -126,14 +127,23 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
 
     def forward(self, x, m_splits):
-        group_list_type = 1
-        for w in self.total_weight:
+        if not get_args().fp8:
+            group_list_type = 1
+            for w in self.total_weight:
+                if self.parallel_mode == 'column':
+                    w = w.view(self.config.hidden_size, -1)
+                else:
+                    w = w.view(-1, self.config.hidden_size)
+            self.total_weight_T = [w.T for w in self.total_weight]
+            output = MindSpeedTEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight,
+                                                       *self.total_weight_T)
+        else:
             if self.parallel_mode == 'column':
-                w = w.view(self.config.hidden_size, -1)
+                weight = [w.view(self.config.hidden_size, -1) for w in self.total_weight]
             else:
-                w = w.view(-1, self.config.hidden_size)
-        self.total_weight_T = [w.T for w in self.total_weight]
-        output = MindSpeedTEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight, *self.total_weight_T)
+                weight = [w.view(-1, self.config.hidden_size) for w in self.total_weight]
+            from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
+            output = get_gmm_op_cls().gmm_apply(x, torch.stack(weight, dim=0), None, m_splits)
         return output, None
 
     def _sharded_state_dict_grouped(

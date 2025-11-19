@@ -82,11 +82,15 @@ class WeightGradStore:
         total_input, grad_output, weight, sequence_parallel, in_row = grad_store_cache
         args = get_args()
         if hasattr(weight, 'gmm_weight'):
-            inputs, group_list, group_list_data_type = total_input
+            inputs, group_list, group_list_type = total_input
             if get_args().gemm_gradient_accumulation_fusion and not getattr(weight, 'is_hot_experts', False):
                 npu_groupmatmul_add_fp32(inputs, grad_output, group_list, weight.main_grad)
             else:
-                grad_weight = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_output], [], group_list, 2, 0)[0]
+                if args.fp8 and args.use_gmm_fp8:
+                    from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
+                    grad_weight = get_gmm_op_cls().op_dw(inputs, grad_output, group_list, group_list_type)[0]
+                else:
+                    grad_weight = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_output], [], group_list, 2, 0)[0]
                 if not getattr(weight, 'is_hot_experts', False):
                     weight.main_grad.data.add_(grad_weight.view(-1, weight.shape[-1]))
             inputs.untyped_storage().resize_(0)
@@ -126,7 +130,7 @@ class WeightGradStore:
     def pop(cls, experts_only=False):
         if len(cls.cache) == 0:
             return
-        
+
         if experts_only:
             cache_mm, cache_gmm = [], []
             for cache in cls.cache:

@@ -14,6 +14,7 @@ class GmmExpertsImpl:
     Executes multiple experts in parallel to maximize computational efficiency.
     support gemm_fusion and activation recompute.
     """
+
     def __init__(self, num_local_experts, config=None):
         """adjust the logic for generate expert weight to avoid splitting by tp_size
 
@@ -51,22 +52,30 @@ class GmmExpertsImpl:
         gemm_fusion = self.config.gemm_gradient_accumulation_fusion
 
         if permuted_local_hidden_states.nelement() != 0:
+            from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
             w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
-
-            fc1_output = gg.ops.gmm(
-                permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
-                original_weight=self.weight1
-            )
+            quant_gmm_func = get_gmm_quant_func()
+            if quant_gmm_func:
+                fc1_output = quant_gmm_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert)
+            else:
+                fc1_output = gg.ops.gmm(
+                    permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
+                    original_weight=self.weight1
+                )
             if not is_recompute_activation:
                 intermediate_parallel = self.activation_func_with_probs(fc1_output, permuted_probs.unsqueeze(-1))
             else:
                 self.activation_checkpoint_manager = CheckpointWithoutOutput()
                 intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func_with_probs,
                                                                                       False,
-                                                                                      fc1_output, permuted_probs.unsqueeze(-1))
-            fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
-                                    gemm_fusion=gemm_fusion, original_weight=self.weight2)
+                                                                                      fc1_output,
+                                                                                      permuted_probs.unsqueeze(-1))
+            if quant_gmm_func:
+                fc2_output = quant_gmm_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert)
+            else:
+                fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
+                                        gemm_fusion=gemm_fusion, original_weight=self.weight2)
         else:
             assert torch.count_nonzero(tokens_per_expert) == 0
             w1 = self.weight1.view(self.config.hidden_size, -1)

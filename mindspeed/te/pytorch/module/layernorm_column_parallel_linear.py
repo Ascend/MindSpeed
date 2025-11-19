@@ -25,6 +25,7 @@ from megatron.core.tensor_parallel.mappings import (
     copy_to_tensor_model_parallel_region,
 )
 from megatron.core.utils import divide
+from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
 
 
 class AttributesBypass:
@@ -81,7 +82,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.is_expert = is_expert
         self.sequence_parallel = self.config.sequence_parallel
         self.gradient_accumulation_fusion = self.config.gradient_accumulation_fusion
-
+        self.fp8_meta = FP8Metadata(['inputs', 'weight', 'grads'])
         # MindSpeedTELayerNormColumnParallelLinear check.
         if gather_output:
             raise ValueError('Transformer Engine linear layers do not support gather_output = True')
@@ -218,10 +219,8 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                 * self.layer_norm_weight
 
     def forward(self, inp: torch.Tensor, is_first_microbatch: Optional[bool] = None, fp8_output=False):
-        if is_first_microbatch is not None or fp8_output is not False:
-            raise RuntimeError('{} is not support fp8.'.format(self.__class__.__name__))
         if self.config.normalization == 'LayerNorm':
-            norm_output = F.layer_norm(inp, 
+            norm_output = F.layer_norm(inp, [self.layer_norm_weight.numel()],
                                        weight=self.layer_norm_weight,
                                        bias=self.layer_norm_bias,
                                        eps=self.config.layernorm_epsilon
@@ -239,7 +238,24 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         else:
             input_parallel = copy_to_tensor_model_parallel_region(norm_output)
 
-        if not self.config.use_ascend_mc2:
+        if self.config.fp8:
+            from mindspeed.te.pytorch.module.linear import ColumnParallelSeq, ColumnParallelNoSeq
+            if self.sequence_parallel:
+                output_parallel = ColumnParallelSeq.apply(input_parallel, self.weight, bias, self.fp8_meta)
+            else:
+                output_parallel = ColumnParallelNoSeq.apply(input_parallel, self.weight, bias, self.fp8_meta)
+        elif self.config.use_ascend_mc2:
+            from mindspeed.core.tensor_parallel.mc2_feature.linear_function import ColumnSeqParallelLinearFunction \
+                as MC2ColumnSeqParallelLinearFunction
+            output_parallel = MC2ColumnSeqParallelLinearFunction.apply(
+                input_parallel,
+                self.weight,
+                bias,
+                self.parallel_group,
+                True,
+                self.gradient_accumulation_fusion
+            )
+        else:
             output_parallel = self._linear_forward_impl(
                 input=input_parallel,
                 weight=self.weight,
@@ -256,18 +272,6 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                     else None
                 )
             )
-        else:
-            from mindspeed.core.tensor_parallel.mc2_feature.linear_function import ColumnSeqParallelLinearFunction \
-                as MC2ColumnSeqParallelLinearFunction
-            output_parallel = MC2ColumnSeqParallelLinearFunction.apply(
-                input_parallel,
-                self.weight,
-                bias,
-                self.parallel_group,
-                True,
-                self.gradient_accumulation_fusion
-            )
-        # with TE, gather_output is not supported. Return output_parallel and _linear_bias.
         return output_parallel, bias
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):

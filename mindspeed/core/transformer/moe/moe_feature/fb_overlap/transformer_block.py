@@ -6,6 +6,8 @@ from typing import List, Union, Optional
 from contextlib import nullcontext
 import torch
 from torch import Tensor
+
+from mindspeed.core.fp8_utils import get_fp8_context
 from mindspeed.core.transformer.moe.moe_feature import (
     get_args, InferenceParams,
     PackedSeqParams,
@@ -164,7 +166,7 @@ def transformer_block_forward(
     )
 
     rng_context = nullcontext()
-    fp8_context = nullcontext()
+    fp8_context = get_fp8_context(self.config) if self.config.fp8 else nullcontext()
 
     assert not self.config.enable_cuda_graph
     layer_graphs = []
@@ -263,7 +265,7 @@ def transformer_block_forward_backward_overlaping(
     )
 
     rng_context = nullcontext()
-    fp8_context = nullcontext()
+    fp8_context = get_fp8_context(self.config) if self.config.fp8 else nullcontext()
 
     assert not fwd_block.config.enable_cuda_graph
     fwd_layer_graphs = []
@@ -350,4 +352,3 @@ def transformer_block_backward(
         layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
 
     return layer_output_grad
-

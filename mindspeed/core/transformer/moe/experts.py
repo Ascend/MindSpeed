@@ -1,26 +1,32 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 from functools import wraps
+
 import torch
 import torch.nn.functional as F
+
 from megatron.core import parallel_state, tensor_parallel
-from megatron.training import get_args
 from megatron.core.transformer.moe import grouped_gemm_util as gg
-from mindspeed.model.transformer import should_recompute_activation
+from megatron.training import get_args
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.grouped_gemm_util import fused_alltoall_gather_bmm, fused_bmm_reducescatter_alltoall
-from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_all2all import grouped_mlp_with_comp_and_comm_overlap_all2all
-from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_allgather import grouped_mlp_with_comp_and_comm_overlap_allgather
-
+from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
+from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_all2all import \
+    grouped_mlp_with_comp_and_comm_overlap_all2all
+from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_allgather import \
+    grouped_mlp_with_comp_and_comm_overlap_allgather
+from mindspeed.model.transformer import should_recompute_activation
 
 COMM_STREAM = None
 
 
 def get_zeros_with_tp(input_):
     world_size = parallel_state.get_tensor_model_parallel_world_size()
-    zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size, )
+    zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size,)
     return torch.zeros(zeros_shape, dtype=input_.dtype, layout=input_.layout, device=input_.device)
+
+
 
 
 def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
@@ -78,11 +84,13 @@ def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx
     group_list = torch.cumsum(tokens_per_expert, dim=0)
     if get_args().moe_alltoall_overlap_comm:
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                              (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number),
+                                                              (self.weight1, self.weight2, self.activation_func,
+                                                               group_list, self.layer_number),
                                                               ctx=ctx)
-    else: 
+    else:
         return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number))
+                                                                (self.weight1, self.weight2, self.activation_func,
+                                                                 group_list, self.layer_number))
 
 
 def groupedmlp_init_wrapper(fn):
@@ -98,7 +106,7 @@ def groupedmlp_init_wrapper(fn):
             parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = tp_size
         if self.config.gated_linear_unit:
             assert (self.config.activation_func == F.silu
-                ), 'Activation function must be silu when using fused_swiglu.'
+                    ), 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
         self.layer_number = None
         self.set_recompute_activation_func = False
@@ -110,10 +118,11 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
     args = get_args()
     is_recompute_activation = should_recompute_activation(
         self.layer_number) and not args.moe_alltoall_overlap_comm and not args.moe_allgather_overlap_comm
-    
+
     gemm_fusion = args.gemm_gradient_accumulation_fusion
     tp_group = parallel_state.get_tensor_model_parallel_group()
     ep_group = parallel_state.get_expert_model_parallel_group()
+    gmm_quant_func = get_gmm_quant_func()
 
     if not is_recompute_activation:
         if permuted_local_hidden_states.nelement() != 0:
@@ -134,6 +143,10 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
                 fc2_output = fused_bmm_reducescatter_alltoall(intermediate_parallel, w2, None, bmm_param)
                 # revert the output shape: [E, C, H/TP] -> [E*C, H/TP]
                 fc2_output = fc2_output.view(-1, fc2_output.shape[2])
+            elif gmm_quant_func:
+                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert)
+                intermediate_parallel = self.activation_func(fc1_output)
+                fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert)
             else:
                 fc1_output = gg.ops.gmm(permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight1)
@@ -167,6 +180,8 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
                                                                                  -1)
 
                 fc1_output = fused_alltoall_gather_bmm(permuted_local_hidden_states, w1, None, bmm_param)
+            elif gmm_quant_func:
+                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert)
             else:
                 fc1_output = gg.ops.gmm(
                     permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
@@ -181,6 +196,8 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
                 fc2_output = fused_bmm_reducescatter_alltoall(intermediate_parallel, w2, None, bmm_param)
                 # revert the output shape: [E, C, H/TP] -> [E*C, H/TP]
                 fc2_output = fc2_output.view(-1, fc2_output.shape[2])
+            elif gmm_quant_func:
+                fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert)
             else:
                 fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight2)
