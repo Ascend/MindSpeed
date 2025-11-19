@@ -91,12 +91,9 @@ class ScaleMeta:
                 def _try_candidate(scale_candidate, scale_inv_candidate, *, codes_tensor=None, mark_code=False):
                     if scale_candidate is None or scale_inv_candidate is None:
                         return
-                    try:
-                        recon = self.block_scaling(quant_fp32, scale_inv_candidate)
-                        err = (recon - ref_fp32).abs().max().item()
-                        candidates.append((err, scale_candidate, scale_inv_candidate, codes_tensor, mark_code))
-                    except Exception:
-                        return
+                    recon = self.block_scaling(quant_fp32, scale_inv_candidate)
+                    err = (recon - ref_fp32).abs().max().item()
+                    candidates.append((err, scale_candidate, scale_inv_candidate, codes_tensor, mark_code))
 
                 rounded_codes = torch.clamp(torch.round(safe_sf), min=0.0, max=254.0)
                 scale_code_round, scale_inv_code_round = self._decode_mxfp8_codes(rounded_codes)

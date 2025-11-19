@@ -177,7 +177,7 @@ def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: Transformer
                 offset = 0
                 for grad, meta, old_scale in quant_entries:
                     length = meta.scale.numel()
-                    new_scale = concat_scales[offset : offset + length].view_as(meta.scale)
+                    new_scale = concat_scales[offset: offset + length].view_as(meta.scale)
                     _requantize_grad(grad, meta, new_scale, old_scale)
                     offset += length
 

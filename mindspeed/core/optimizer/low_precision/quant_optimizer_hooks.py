@@ -24,6 +24,7 @@ def _global_world_size() -> int:
 logger = logging.getLogger(__name__)
 _PATCHED_ADAM_CACHE = {}
 
+
 @torch.no_grad()
 def prepare_grads_impl(self) -> bool:
     timers = self.config.timers
@@ -171,8 +172,9 @@ def optimizer_config_post_init_wrapper(post_init_func):
                 raise AssertionError('MindSpeed quant optimizer requires distributed optimizer.')
             if self.optimizer_cpu_offload:
                 raise AssertionError('MindSpeed quant optimizer does not support optimizer CPU offload.')
-            return
-        return post_init_func(*args, **kwargs)
+        else:
+            post_init_func(*args, **kwargs)
+        return None
     return optimizer_config_post_init
 
 
@@ -263,8 +265,8 @@ def _get_patched_adam(original_adam, quant_class):
     adam_meta = type(original_adam)
 
     class _MindSpeedAdamMeta(adam_meta):
-        def __instancecheck__(cls, instance):  # type: ignore[override]
-            if adam_meta.__instancecheck__(cls, instance):  # type: ignore[misc]
+        def __instancecheck__(self, instance):  # type: ignore[override]
+            if adam_meta.__instancecheck__(self, instance):  # type: ignore[misc]
                 return True
             return isinstance(instance, quant_class)
 
@@ -298,6 +300,7 @@ def distributed_optimizer_init_wrapper(init_func):
                 init_func.__globals__['Adam'] = original_adam
 
     return _wrapper
+
 
 def reuse_fp32_param_init_wrapper(init_func):
     @wraps(init_func)
@@ -471,39 +474,50 @@ def collect_main_grad_data_for_unscaling_wrapper(func):
         return base_main_grads, meta_grads_scale_inv
     return _collect_main_grad_data_for_unscaling
 
+
 def copy_model_grads_to_main_grads_wrapper(func):
     @wraps(func)
     def _copy_model_grads_to_main_grads(self):
         args_namespace = get_args()
-        if getattr(self, 'is_stub_optimizer', False):
-            return func(self)
-        # Use quant grad path whenever enabled, regardless of DP world size.
-        if getattr(args_namespace, 'quant_grads', False):
-            for model_group, main_group in zip(self.float16_groups, self.fp32_from_float16_groups):
-                for model_param, main_param in zip(model_group, main_group):
-                    grad_source = getattr(model_param, 'main_grad', None)
-                    if grad_source is None:
-                        grad_source = model_param.grad
-                    if grad_source is None:
-                        continue
-                    quant_grad = grad_source
-                    target_param = main_param if main_param is not None else model_param
-                    target_param.quant_grad = quant_grad
-                    model_param.quant_grad = quant_grad
-                    target_param.grad = None
-                    model_param.grad = None
-            for model_group in self.fp32_from_fp32_groups:
-                for model_param in model_group:
-                    main_grad = getattr(model_param, 'main_grad', None)
-                    if main_grad is None:
-                        continue
-                    # Avoid creating an additional casted copy for FP32 params.
-                    # Reuse the existing main_grad buffer to prevent duplication.
-                    model_param.quant_grad = main_grad
-                    model_param.grad = None
+        ret = None
+
+        if getattr(self, "is_stub_optimizer", False):
+            ret = func(self)
         else:
-            func(self)
+            if getattr(args_namespace, "quant_grads", False):
+                # Use quant grad path whenever enabled, regardless of DP world size.
+                for model_group, main_group in zip(
+                    self.float16_groups, self.fp32_from_float16_groups
+                ):
+                    for model_param, main_param in zip(model_group, main_group):
+                        grad_source = getattr(model_param, "main_grad", None)
+                        if grad_source is None:
+                            grad_source = model_param.grad
+                        if grad_source is None:
+                            continue
+
+                        quant_grad = grad_source
+                        target_param = main_param if main_param is not None else model_param
+
+                        target_param.quant_grad = quant_grad
+                        model_param.quant_grad = quant_grad
+
+                        target_param.grad = None
+                        model_param.grad = None
+
+                for model_group in self.fp32_from_fp32_groups:
+                    for model_param in model_group:
+                        main_grad = getattr(model_param, "main_grad", None)
+                        if main_grad is None:
+                            continue
+                        model_param.quant_grad = main_grad
+                        model_param.grad = None
+            else:
+                ret = func(self)
+
+        return ret
     return _copy_model_grads_to_main_grads
+
 
 def unscale_main_grads_and_check_for_nan(self):
     if getattr(self, 'is_stub_optimizer', False):

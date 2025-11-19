@@ -4,6 +4,7 @@ import torch
 from megatron.training import get_args
 from megatron.core.transformer.cuda_graphs import is_graph_capturing
 
+
 def _iter_group_triplets(model_groups, primary_groups, fallback_groups):
     model_groups = list(model_groups or [])
     primary_groups = list(primary_groups or [])
@@ -36,6 +37,7 @@ def _iter_optimizer_param_triplets(optimizer):
         getattr(optimizer, "shard_fp32_groups", []),
         getattr(optimizer, "shard_fp32_groups", []),
     )
+
 
 def collect_main_grad_data_for_unscaling_wrapper(func):
     @wraps(func)
@@ -85,27 +87,29 @@ def copy_model_grads_to_main_grads_wrapper(func):
     @wraps(func)
     def _copy_model_grads_to_main_grads(self):
         args = get_args()
-        if not getattr(args, "quant_grads", False):
-            return func(self)
+        ret = None
 
-        for model_param, shard_main_param, shard_model_param in _iter_optimizer_param_triplets(self):
-            param_range_map = self._get_model_param_range_map(model_param)
-            param_range = param_range_map["param"]
-            model_grad = getattr(model_param, "main_grad", None)
-            if model_grad is None:
-                continue
-            shard_model_grad = model_grad.view(-1)[param_range.start : param_range.end]
-            meta = getattr(model_grad, "meta", None)
-            if meta is not None:
-                shard_model_grad.meta = meta
-            for target_param in (shard_main_param, shard_model_param):
-                if target_param is None:
+        if getattr(args, "quant_grads", False):
+            for model_param, shard_main_param, shard_model_param in _iter_optimizer_param_triplets(self):
+                param_range_map = self._get_model_param_range_map(model_param)
+                param_range = param_range_map["param"]
+                model_grad = getattr(model_param, "main_grad", None)
+                if model_grad is None:
                     continue
-                target_param.quant_grad = shard_model_grad
-                target_param.grad = None
-            model_param.quant_grad = model_grad
-            model_param.grad = None
-
+                shard_model_grad = model_grad.view(-1)[param_range.start:param_range.end]
+                meta = getattr(model_grad, "meta", None)
+                if meta is not None:
+                    shard_model_grad.meta = meta
+                for target_param in (shard_main_param, shard_model_param):
+                    if target_param is None:
+                        continue
+                    target_param.quant_grad = shard_model_grad
+                    target_param.grad = None
+                model_param.quant_grad = model_grad
+                model_param.grad = None
+        else:
+            ret = func(self)
+        return ret
     return _copy_model_grads_to_main_grads
 
 
@@ -159,7 +163,7 @@ def copy_model_grads_to_main_grads_quant(self):
         model_grad = getattr(model_param, "main_grad", None)
         if model_grad is None:
             continue
-        shard_model_grad = model_grad.view(-1)[param_range.start : param_range.end]
+        shard_model_grad = model_grad.view(-1)[param_range.start: param_range.end]
         meta = getattr(model_grad, "meta", None)
         if meta is not None:
             shard_model_grad.meta = meta
@@ -230,10 +234,8 @@ def ddp_make_backward_post_hook_wrapper(make_hook_func):
                     main_grad = getattr(param, "main_grad", None)
                     if main_grad is not None and getattr(main_grad, "meta", None) is not None:
                         _add_to_quant_grad(main_grad, grad_tensor)
-                        # param.grad_added_to_main_grad = True
                     elif main_grad is not None:
                         main_grad.add_(grad_tensor.data)
-                        # param.grad_added_to_main_grad = True
                 param.grad = None
 
                 if self.ddp_config.overlap_grad_reduce:

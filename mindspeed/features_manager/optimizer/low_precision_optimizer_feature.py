@@ -51,7 +51,11 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        option_strings = {opt for action in parser._actions for opt in action.option_strings}
+        option_strings = {
+            opt
+            for action in parser._actions
+            for opt in action.option_strings
+        }
         if '--quant-states' not in option_strings:
             group.add_argument('--quant-states', choices=_QUANT_STATE_CHOICES, default=None,
                                help='Select quantization format for optimizer states (default: disabled).')

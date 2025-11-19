@@ -89,8 +89,6 @@ def quant_grad_start_grad_sync_wrapper(start_grad_sync):
                 dp_world_size = 1
         if (
             not quant_grads_enabled
-            or self.ddp_config.use_distributed_optimizer
-            or self.ddp_config.num_distributed_optimizer_instances > 1
             or dp_world_size <= 1
         ):
             return start_grad_sync(self)
