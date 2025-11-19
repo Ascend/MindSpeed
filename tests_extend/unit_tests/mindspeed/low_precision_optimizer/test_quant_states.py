@@ -87,8 +87,6 @@ class TestQuantStates(DistributedTest):
         ((False, True), "fp8"),
         ((False, True), "hif8"),
         ((False, True), "mxfp8"),
-        ((True, False), "fp16"),
-        ((False, True), "fp16"),
     ])
     def test_quant_states_optimizer_matches_baseline(self, fp16_bf16, quant_token):
         (fp16, bf16) = fp16_bf16

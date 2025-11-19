@@ -136,7 +136,6 @@ class TestQuantGrads(DistributedTest):
             fp16=fp16,
             bf16=bf16,
             barrier_with_L1_time=False,
-            overlap_param_gather=False,
         )
         timers = Timers()
         optimizer_config.timers = timers
