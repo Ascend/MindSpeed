@@ -60,3 +60,12 @@ def mindspore_adaptation(aspm, mindspeed_args):
                         _load_state_dict_into_meta_model)
     aspm.register_patch('transformers.modeling_utils.safe_open', safe_open)
     aspm.register_patch('transformers.modeling_utils.get_parameter_dtype', get_parameter_dtype)
+
+    # swap attention
+    from mindspeed.mindspore.core.memory.swap_attention.prefetch import sawp_attention_init, no_swap_tensor, pack_hook, \
+        prefetch_register_post_backward_hook
+    aspm.register_patch('mindspeed.core.memory.swap_attention.prefetch.SwapTensor.__init__', sawp_attention_init)
+    aspm.register_patch('mindspeed.core.memory.swap_attention.prefetch.SwapPrefetch.no_swap_tensor', no_swap_tensor)
+    aspm.register_patch('mindspeed.core.memory.swap_attention.prefetch.SwapPrefetch.pack_hook', pack_hook)
+    aspm.register_patch('mindspeed.core.memory.swap_attention.prefetch.prefetch_register_post_backward_hook',
+                        prefetch_register_post_backward_hook)
