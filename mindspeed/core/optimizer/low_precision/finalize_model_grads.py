@@ -1,3 +1,7 @@
+# Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024; NVIDIA CORPORATION.
+# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+
 import os
 from typing import List
 
