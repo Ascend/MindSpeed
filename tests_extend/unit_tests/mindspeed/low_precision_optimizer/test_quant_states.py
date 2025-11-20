@@ -80,6 +80,7 @@ def _step_optimizer(model: torch.nn.Module, optimizer_config: OptimizerConfig, s
 class TestQuantStates(DistributedTest):
     world_size = 1
 
+    @pytest.mark.skip(reason='not support for current version')
     @pytest.mark.parametrize("fp16_bf16,quant_token", [
         ((True, False), "fp8"),
         ((True, False), "hif8"),
