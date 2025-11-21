@@ -65,7 +65,7 @@ def get_grad_norm_fp32(
             total_norm = max(float(grad.abs().max()) for grad in float_grads)
         if quant_grads:
             quant_norm = max(
-                (grad.float() * grad.meta.scale_inv[0]).abs().max())
+                (grad.float() * grad.meta.scale_inv[0]).abs().max()
                 for grad in quant_grads
             )
             total_norm = max(total_norm, quant_norm)
