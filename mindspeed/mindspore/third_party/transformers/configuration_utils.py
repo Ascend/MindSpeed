@@ -31,3 +31,21 @@ def dict_torch_dtype_to_str(pretrained_config, d: dict[str, Any]) -> None:
     for value in d.values():
         if isinstance(value, dict):
             pretrained_config.dict_torch_dtype_to_str(value)
+
+
+def dict_dtype_to_str(self, d: dict[str, Any]) -> None:
+    """
+    Checks whether the passed dictionary and its nested dicts have a *dtype* key and if it's not None,
+    converts torch.dtype to a string of just the type. For example, `torch.float32` get converted into *"float32"*
+    string, which can then be stored in the json format.
+    """
+    if d.get("dtype") is not None:
+        if isinstance(d["dtype"], dict):
+            d["dtype"] = {k: str(v).split(".")[-1] for k, v in d["dtype"].items()}
+        # models like Emu3 can have "dtype" as token in config's vocabulary map,
+        # so we also exclude int type here to avoid error in this special case.
+        elif not isinstance(d["dtype"], (str, int)):
+            d["dtype"] = str(d["dtype"]).lower()
+    for value in d.values():
+        if isinstance(value, dict):
+            self.dict_dtype_to_str(value)
