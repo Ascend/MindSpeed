@@ -440,83 +440,58 @@ def collect_main_grad_data_for_unscaling_wrapper(func):
     @wraps(func)
     def _collect_main_grad_data_for_unscaling(self):
         base = func(self)
-        base_main_grads = list(base[0] if isinstance(base, tuple) else base)
         meta_grads_scale_inv = []
-        args_namespace = get_args()
-        if getattr(args_namespace, 'quant_grads', False) and not getattr(self, 'is_stub_optimizer', False):
-            seen_scale_ids = set()
 
-            def _register_scale_inv(tensor):
-                if tensor is None:
-                    return
-                meta = getattr(tensor, 'meta', None)
-                if meta is None:
-                    return
-                scale_inv = getattr(meta, 'scale_inv', None)
-                if scale_inv is None:
-                    return
-                if id(scale_inv) in seen_scale_ids:
-                    return
-                meta_grads_scale_inv.append(scale_inv)
-                seen_scale_ids.add(id(scale_inv))
+        def _register_scale_inv(tensor):
+            if tensor is None:
+                return
+            meta = getattr(tensor, 'meta', None)
+            if meta is None:
+                return
+            scale_inv = getattr(meta, 'scale_inv', None)
+            if scale_inv is None:
+                return
+            meta_grads_scale_inv.append(scale_inv)
 
-            for group in getattr(self, 'fp32_from_float16_groups', []):
-                for main_param in group:
-                    _register_scale_inv(getattr(main_param, 'quant_grad', None))
+        for group in getattr(self, 'fp32_from_float16_groups', []):
+            for main_param in group:
+                _register_scale_inv(getattr(main_param, 'quant_grad', None))
 
-            for group in getattr(self, 'float16_groups', []):
-                for model_param in group:
-                    _register_scale_inv(getattr(model_param, 'quant_grad', None))
-
-            for group in getattr(self, 'fp32_from_fp32_groups', []):
-                for model_param in group:
-                    _register_scale_inv(getattr(model_param, 'quant_grad', None))
-        return base_main_grads, meta_grads_scale_inv
+        return base, meta_grads_scale_inv
     return _collect_main_grad_data_for_unscaling
 
 
-def copy_model_grads_to_main_grads_wrapper(func):
-    @wraps(func)
-    def _copy_model_grads_to_main_grads(self):
-        args_namespace = get_args()
-        ret = None
+def copy_model_grads_to_main_grads(func):
+    args_namespace = get_args()
 
-        if getattr(self, "is_stub_optimizer", False):
-            ret = func(self)
-        else:
-            if getattr(args_namespace, "quant_grads", False):
-                # Use quant grad path whenever enabled, regardless of DP world size.
-                for model_group, main_group in zip(
-                    self.float16_groups, self.fp32_from_float16_groups
-                ):
-                    for model_param, main_param in zip(model_group, main_group):
-                        grad_source = getattr(model_param, "main_grad", None)
-                        if grad_source is None:
-                            grad_source = model_param.grad
-                        if grad_source is None:
-                            continue
-
-                        quant_grad = grad_source
-                        target_param = main_param if main_param is not None else model_param
-
-                        target_param.quant_grad = quant_grad
-                        model_param.quant_grad = quant_grad
-
-                        target_param.grad = None
-                        model_param.grad = None
-
-                for model_group in self.fp32_from_fp32_groups:
-                    for model_param in model_group:
-                        main_grad = getattr(model_param, "main_grad", None)
-                        if main_grad is None:
-                            continue
-                        model_param.quant_grad = main_grad
-                        model_param.grad = None
+    for model_group, main_group in zip(
+        self.float16_groups, self.fp32_from_float16_groups
+    ):
+        for model_param, main_param in zip(model_group, main_group):
+            if hasattr(model_param, 'main_grad'):
+                if args_namespace.quant_grads:
+                    main_param.quant_grad = model_param.main_grad
+                else:
+                    main_param.grad = model_param.main_grad.float()
             else:
-                ret = func(self)
+                if model_param.grad is not None:
+                    if args_namespace.quant_grads:
+                        main_param.quant_grad = model_param.grad
+                    else:
+                        main_param.grad = model_param.grad.float()
 
-        return ret
-    return _copy_model_grads_to_main_grads
+            # Safe to deallocate model's grad/main_grad after copying.
+            # (If using contiguous buffers, main_grad's memory should
+            # persist and therefore should not be deallocated.)
+            model_param.grad = None
+
+    # For fp32 grads, we need to reset the grads to main grad.
+    for model_group in self.fp32_from_fp32_groups:
+        for model_param in model_group:
+            if args.quant_grads:
+                model_param.quant_grad = model_param.main_grad
+            else:
+                model_param.grad = model_param.main_grad
 
 
 def unscale_main_grads_and_check_for_nan(self):

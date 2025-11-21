@@ -72,7 +72,9 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
         if not quant_enabled:
             return
 
+        quant_grads_enabled = bool(getattr(args, 'quant_grads', False))
         patch_specs = []
+        
         import mindspeed.core.optimizer.low_precision.quant_optimizer_hooks as optimizer_hooks
         import mindspeed.core.optimizer.low_precision.quant_distributed_hooks as distributed_hooks
         from mindspeed.core.optimizer.low_precision import quant_grad_clip as grad_clip
@@ -81,18 +83,9 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
         from mindspeed.core.models.gpt.gpt_model import gptmodel_init_wrapper
         from mindspeed.core.tensor_parallel.layers import copy_tensor_model_parallel_attributes_wrapper
         from mindspeed.core.optimizer.low_precision.language_model import transformer_language_model_init_wrapper
+
         patch_specs.extend(
             [
-                (
-                    'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._collect_main_grad_data_for_unscaling',
-                    distributed_hooks.collect_main_grad_data_for_unscaling_quant,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._copy_model_grads_to_main_grads',
-                    distributed_hooks.copy_model_grads_to_main_grads_quant,
-                    True,
-                ),
                 (
                     'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.prepare_grads',
                     optimizer_hooks.prepare_grads_impl,
@@ -128,59 +121,10 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                     optimizer_hooks.get_optimizer_builder_wrapper,
                     True,
                 ),
-                (
-                    'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._collect_main_grad_data_for_unscaling',
-                    optimizer_hooks.collect_main_grad_data_for_unscaling_wrapper,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._copy_model_grads_to_main_grads',
-                    optimizer_hooks.copy_model_grads_to_main_grads_wrapper,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer._unscale_main_grads_and_check_for_nan',
-                    optimizer_hooks.unscale_main_grads_and_check_for_nan,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.optimizer.MegatronOptimizer.get_main_grads_for_grad_norm',
-                    optimizer_hooks.get_main_grads_for_grad_norm,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.optimizer._zero_grad_group_helper',
-                    optimizer_hooks.zero_grad_group_helper_wrapper,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._collect_main_grad_data_for_unscaling',
-                    distributed_hooks.collect_main_grad_data_for_unscaling_wrapper,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._copy_model_grads_to_main_grads',
-                    distributed_hooks.copy_model_grads_to_main_grads_wrapper,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.clip_grads.get_grad_norm_fp32',
-                    grad_clip.get_grad_norm_fp32,
-                    True,
-                ),
-                (
-                    'megatron.core.optimizer.clip_grads.clip_grad_by_total_norm_fp32',
-                    grad_clip.clip_grad_by_total_norm_fp32_wrapper,
-                    True,
-                ),
+
                 (
                     'megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_grad_sync',
                     param_and_grad_buffer.quant_grad_start_grad_sync_wrapper,
-                    False,
-                ),
-                (
-                    'megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_grad_sync',
-                    param_and_grad_buffer.quant_grad_finish_grad_sync_wrapper,
                     False,
                 ),
                 (
@@ -240,5 +184,55 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                 ),
             ]
         )
+        if quant_grads_enabled:
+            patch_specs.extend(
+                [
+                    (
+                        'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._collect_main_grad_data_for_unscaling',
+                        distributed_hooks.collect_main_grad_data_for_unscaling_quant,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer._copy_model_grads_to_main_grads',
+                        distributed_hooks.copy_model_grads_to_main_grads_quant,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._collect_main_grad_data_for_unscaling',
+                        optimizer_hooks.collect_main_grad_data_for_unscaling_wrapper,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._copy_model_grads_to_main_grads',
+                        optimizer_hooks.copy_model_grads_to_main_grads_wrapper,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.optimizer.MixedPrecisionOptimizer._unscale_main_grads_and_check_for_nan',
+                        optimizer_hooks.unscale_main_grads_and_check_for_nan,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.optimizer.MegatronOptimizer.get_main_grads_for_grad_norm',
+                        optimizer_hooks.get_main_grads_for_grad_norm,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.optimizer._zero_grad_group_helper',
+                        optimizer_hooks.zero_grad_group_helper_wrapper,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.clip_grads.get_grad_norm_fp32',
+                        grad_clip.get_grad_norm_fp32,
+                        True,
+                    ),
+                    (
+                        'megatron.core.optimizer.clip_grads.clip_grad_by_total_norm_fp32',
+                        grad_clip.clip_grad_by_total_norm_fp32_wrapper,
+                        True,
+                    ),
+                ]
+            )
         for target, func, force in patch_specs:
             patch_manager.register_patch(target, func, force_patch=force)

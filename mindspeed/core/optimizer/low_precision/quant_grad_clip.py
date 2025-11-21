@@ -36,8 +36,7 @@ except ImportError:
         l2_norm_impl = local_multi_tensor_l2_norm
         multi_tensor_scale_impl = local_multi_tensor_scale
 
-from megatron.core.utils import get_data_parallel_group_if_dtensor, to_local_if_dtensor
-
+from megatron.core.utils import to_local_if_dtensor
 
 
 def get_grad_norm_fp32(
@@ -48,72 +47,49 @@ def get_grad_norm_fp32(
     if isinstance(grads_for_norm, torch.Tensor):
         grads_for_norm = [grads_for_norm]
 
-    data_parallel_group = None
-    needs_data_parallel_all_reduce = False
     float_grads: List[torch.Tensor] = []
     quant_grads: List[torch.Tensor] = []
     for grad in grads_for_norm:
         if grad is None:
             continue
-        dp_group_candidate = get_data_parallel_group_if_dtensor(grad)
-        if dp_group_candidate is not None:
-            if data_parallel_group is None:
-                data_parallel_group = dp_group_candidate
-            else:
-                assert (
-                    data_parallel_group == dp_group_candidate
-                ), "Inconsistent data-parallel groups detected while computing gradient norm."
-            needs_data_parallel_all_reduce = True
-        local_grad = to_local_if_dtensor(grad)
-        if hasattr(local_grad, 'meta') and getattr(local_grad, 'meta', None) is not None:
-            meta = local_grad.meta
-            scale_inv = getattr(meta, 'scale_inv', None)
-            if scale_inv is None or not torch.is_tensor(scale_inv):
-                print("Skipping quant grad with missing scale metadata during norm computation.")
-                continue
-            if not torch.isfinite(scale_inv).all():
-                print("Detected non-finite quant scale_inv; excluding from grad norm.")
-                continue
-            quant_grads.append(local_grad)
+        if hasattr(grad, 'meta') and getattr(grad, 'meta', None) is not None:
+            quant_grads.append(grad)
         else:
-            float_grads.append(local_grad)
+            float_grads.append(grad)
 
     norm_type = float(norm_type)
+    total_norm = 0.0
 
     if norm_type == inf:
-        total_norm = 0.0
         if float_grads:
             total_norm = max(float(grad.abs().max()) for grad in float_grads)
         if quant_grads:
             quant_norm = max(
-                float(local_grad.meta.dequantization(local_grad.data).abs().max())
-                for local_grad in quant_grads
+                (grad.float() * grad.meta.scale_inv[0]).abs().max())
+                for grad in quant_grads
             )
             total_norm = max(total_norm, quant_norm)
-        total_norm_tensor = torch.tensor([total_norm], dtype=torch.float, device='cuda')
-        if needs_data_parallel_all_reduce and data_parallel_group is not None:
-            torch.distributed.all_reduce(
-                total_norm_tensor,
-                op=torch.distributed.ReduceOp.MAX,
-                group=data_parallel_group,
-            )
-        if grad_stats_parallel_group is not None:
-            torch.distributed.all_reduce(
-                total_norm_tensor,
-                op=torch.distributed.ReduceOp.MAX,
-                group=grad_stats_parallel_group,
-            )
-        return total_norm_tensor.item()
-
-    total_norm = 0.0
-    if norm_type == 2.0 and float_grads:
-        dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
-        grad_norm, _ = multi_tensor_applier(
-            l2_norm_impl,
-            dummy_overflow_buf,
-            [float_grads],
-            False,
+        total_norm_tensor = torch.tensor([float(total_norm)], dtype=torch.float, device='cuda')
+        # Take max across all model-parallel GPUs.
+        torch.distributed.all_reduce(
+            total_norm_tensor,
+            op=torch.distributed.ReduceOp.MAX,
+            group=grad_stats_parallel_group,
         )
+        total_norm = total_norm_tensor[0].item()
+        return total_norm
+
+    if norm_type == 2.0:
+        dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
+        if float_grads:
+            grad_norm, _ = multi_tensor_applier(
+                l2_norm_impl,
+                dummy_overflow_buf,
+                [float_grads],
+                False,
+            )
+        else:
+            grad_norm = torch.tensor([0], dtype=torch.float, device='cuda')
         total_norm += float(grad_norm**norm_type)
     else:
         for grad in float_grads:
@@ -121,27 +97,19 @@ def get_grad_norm_fp32(
             total_norm += float(grad_norm**norm_type)
 
     for local_grad in quant_grads:
-        dequant = local_grad.meta.dequantization(local_grad.data)
-        if not torch.isfinite(dequant).all():
-            print("Detected non-finite values in dequantized gradient; clipping to finite range for norm.")
-            dequant = torch.where(torch.isfinite(dequant), dequant, torch.zeros_like(dequant))
-        grad_norm = torch.norm(dequant, norm_type)
+        grad_norm = torch.norm(local_grad.float() * local_grad.meta.scale_inv[0], norm_type)
         total_norm += float(grad_norm**norm_type)
 
     total_norm_tensor = torch.tensor([total_norm], dtype=torch.float, device='cuda')
-    if needs_data_parallel_all_reduce and data_parallel_group is not None:
-        torch.distributed.all_reduce(
-            total_norm_tensor,
-            op=torch.distributed.ReduceOp.SUM,
-            group=data_parallel_group,
-        )
-    if grad_stats_parallel_group is not None:
-        torch.distributed.all_reduce(
-            total_norm_tensor,
-            op=torch.distributed.ReduceOp.SUM,
-            group=grad_stats_parallel_group,
-        )
-    return total_norm_tensor.item() ** (1.0 / norm_type)
+    # Sum across all model-parallel GPUs.
+    torch.distributed.all_reduce(
+        total_norm_tensor,
+        op=torch.distributed.ReduceOp.SUM,
+        group=grad_stats_parallel_group,
+    )
+    total_norm = total_norm_tensor.item() ** (1.0 / norm_type)
+
+    return total_norm
 
 
 def clip_grad_by_total_norm_fp32_wrapper(func):

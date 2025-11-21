@@ -81,100 +81,86 @@ def quant_grad_start_grad_sync_wrapper(start_grad_sync):
     def quant_start_grad_sync(self):
         quant_args = get_full_args()
         quant_grads_enabled = getattr(quant_args, 'quant_grads', False)
-        dp_world_size = 1
-        if hasattr(self, 'data_parallel_group') and self.data_parallel_group is not None:
-            try:
-                dp_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-            except RuntimeError:
-                dp_world_size = 1
-        if (
-            not quant_grads_enabled
-            or dp_world_size <= 1
-        ):
+
+        if not quant_grads_enabled:
             return start_grad_sync(self)
 
-        original_check_nan = self.ddp_config.check_for_nan_in_grad
-        original_check_large = self.ddp_config.check_for_large_grads
-        self.ddp_config.check_for_nan_in_grad = False
-        self.ddp_config.check_for_large_grads = False
+        assert (
+            self.grad_reduce_handle is None
+        ), 'Should not have multiple communication calls outstanding at once'
 
-        try:
-            assert (
-                self.grad_reduce_handle is None
-            ), 'Should not have multiple communication calls outstanding at once'
-
-            communication_group = self.data_parallel_group
+        # Make sure norm of grads in bucket are not NaN
+        # prior to data-parallel all-reduce / reduce-scatter.
+        if self.ddp_config.check_for_nan_in_grad:
+            global_rank = torch.distributed.get_rank()
             for bucket in self.buckets:
-                scaling_grads = getattr(bucket, 'scaling_grads', None)
-                if not scaling_grads:
-                    continue
-
-                old_scales = bucket.scales.clone()
-                torch.distributed.all_reduce(
-                    bucket.scales,
-                    op=torch.distributed.ReduceOp.MIN,
-                    group=communication_group,
-                    async_op=False,
+                norm = bucket.grad_data.norm(p=2)
+                assert not norm.isnan(), (
+                    f'Rank {global_rank}: found NaN in local grad norm in '
+                    f'backward pass before data-parallel communication collective. '
+                    f'Device: {torch.cuda.current_device()}, node: {os.uname()[1]}'
                 )
-                need_requant = torch.ne(old_scales, bucket.scales)
-                if not torch.any(need_requant).item():
+        # Match the same communication group that the underlying bucket group
+        # will use for gradient reduction, falling back safely when running
+        # with distributed optimizer which may not populate data_parallel_group.
+        communication_group = getattr(self, "data_parallel_group", None)
+        if getattr(self.ddp_config, "use_distributed_optimizer", False):
+            communication_group = getattr(
+                self, "intra_distributed_optimizer_instance_group", communication_group
+            )
+        if communication_group is None and self.buckets:
+            communication_group = getattr(self.buckets[0], "data_parallel_group", None)
+        if communication_group is None:
+            raise AttributeError(
+                "No communication group found for quantized grad scale synchronization"
+            )
+        for bucket in self.buckets:
+            scaling_grads = getattr(bucket, 'scaling_grads', None)
+            if not scaling_grads:
+                continue
+
+            old_scales = bucket.scales.clone()
+            torch.distributed.all_reduce(
+                bucket.scales,
+                op=torch.distributed.ReduceOp.MIN,
+                group=communication_group,
+                async_op=False,
+            )
+            need_requant = torch.ne(old_scales, bucket.scales)
+            if not torch.any(need_requant).item():
+                continue
+
+            for idx, grad_tensor in enumerate(scaling_grads):
+                if idx >= need_requant.numel() or not need_requant[idx].item():
                     continue
 
-                for idx, grad_tensor in enumerate(scaling_grads):
-                    if idx >= need_requant.numel() or not need_requant[idx].item():
-                        continue
+                grad_meta = getattr(grad_tensor, 'meta', None)
+                if grad_meta is None:
+                    continue
 
-                    grad_meta = getattr(grad_tensor, 'meta', None)
-                    if grad_meta is None:
-                        continue
+                new_scale = bucket.scales[idx:idx + 1]
+                old_scale = old_scales[idx:idx + 1]
 
-                    new_scale = bucket.scales[idx:idx + 1]
-                    old_scale = old_scales[idx:idx + 1]
+                grad_meta.scale.copy_(new_scale)
+                if getattr(grad_meta, 'scale_inv', None) is None or grad_meta.scale_inv.shape != grad_meta.scale.shape:
+                    grad_meta.scale_inv = torch.ones_like(grad_meta.scale)
 
-                    grad_meta.scale.copy_(new_scale)
-                    if getattr(grad_meta, 'scale_inv', None) is None or grad_meta.scale_inv.shape != grad_meta.scale.shape:
-                        grad_meta.scale_inv = torch.ones_like(grad_meta.scale)
+                if torch.all(old_scale != 0).item():
+                    updated = grad_tensor.data.float()
+                    ratio = (grad_meta.scale / old_scale).to(updated.dtype)
+                    updated.mul_(ratio)
+                    grad_tensor.data.copy_(updated.to(dtype=grad_tensor.dtype))
+                else:
+                    grad_tensor.data.zero_()
 
-                    if torch.all(old_scale != 0).item():
-                        updated = grad_tensor.data.float()
-                        ratio = (grad_meta.scale / old_scale).to(updated.dtype)
-                        updated.mul_(ratio)
-                        grad_tensor.data.copy_(updated.to(dtype=grad_tensor.dtype))
-                    else:
-                        grad_tensor.data.zero_()
+                safe_scale = grad_meta.scale.clone()
+                scale_inv = torch.zeros_like(safe_scale)
+                non_zero_mask = safe_scale != 0
+                scale_inv[non_zero_mask] = (1.0 / safe_scale[non_zero_mask])
+                grad_meta.scale_inv.copy_(scale_inv)
 
-                    safe_scale = grad_meta.scale.clone()
-                    scale_inv = torch.zeros_like(safe_scale)
-                    non_zero_mask = safe_scale != 0
-                    scale_inv[non_zero_mask] = (1.0 / safe_scale[non_zero_mask])
-                    grad_meta.scale_inv.copy_(scale_inv)
-
-            # Delegate the actual gradient communication to the original implementation so
-            # overlap and distributed-optimizer semantics remain unchanged.
-            return start_grad_sync(self)
-        finally:
-            self.ddp_config.check_for_nan_in_grad = original_check_nan
-            self.ddp_config.check_for_large_grads = original_check_large
+        # Delegate the actual gradient communication to the original implementation so
+        # overlap and distributed-optimizer semantics remain unchanged.
+        return start_grad_sync(self)
 
     return quant_start_grad_sync
-
-
-def quant_grad_finish_grad_sync_wrapper(finish_grad_sync):
-    @wraps(finish_grad_sync)
-    def quant_finish_grad_sync(self):
-        quant_args = get_full_args()
-        quant_grads_enabled = getattr(quant_args, 'quant_grads', False)
-        dp_world_size = 1
-        if hasattr(self, 'data_parallel_group') and self.data_parallel_group is not None:
-            try:
-                dp_world_size = torch.distributed.get_world_size(self.data_parallel_group)
-            except RuntimeError:
-                dp_world_size = 1
-        if (
-            not quant_grads_enabled
-            or dp_world_size <= 1
-        ):
-            return finish_grad_sync(self)
-        return finish_grad_sync(self)
-
-    return quant_finish_grad_sync

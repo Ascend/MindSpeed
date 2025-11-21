@@ -36,143 +36,69 @@ class ScaleMeta:
             self.qtype = 6
         else:
             raise ValueError(f"Unsupported quantization type: {qtype}")
-        if block_size is not None and block_size < 16:
-            block_size = None
-        self.block_size = block_size
-        self.scale_codes = None
-        self._scale_is_code = False
-        if self.qtype == 4 and self.block_size is None:
-            self.block_size = 32
-        if self.block_size is not None:
-            scale_len = math.ceil(state.numel() / self.block_size)
+        if block_size is not None:
+            if block_size < 16:
+                block_size = None
+                scale_len = 1
+            else:
+                scale_len = math.ceil(state.numel() / block_size)
         else:
             scale_len = 1
-        self.scale = torch.ones(scale_len, device=state.device, dtype=torch.float32)
-        self.scale_inv = torch.empty_like(self.scale)
-        self._refresh_scale_inverse()
-
-    @staticmethod
-    def _decode_mxfp8_codes(code_tensor: torch.Tensor):
-        codes = torch.clamp(code_tensor.to(torch.float32).view(-1), min=0.0, max=254.0)
-        scale_inv = torch.pow(2.0, codes - 127.0)
-        scale_inv = torch.where(
-            torch.isfinite(scale_inv) & (scale_inv > 0),
-            scale_inv,
-            torch.ones_like(scale_inv),
-        )
-        finfo = torch.finfo(scale_inv.dtype)
-        max_safe_scale_inv = finfo.max / 512.0
-        scale_inv = torch.clamp(scale_inv, max=max_safe_scale_inv)
-        scale = torch.where(
-            scale_inv > 0,
-            1.0 / scale_inv,
-            torch.ones_like(scale_inv),
-        )
-        scale = scale.view_as(code_tensor)
-        scale_inv = scale_inv.view_as(code_tensor)
-        return scale, scale_inv
+        if self.qtype != 4:
+            self.scale = torch.ones(scale_len, device=state.device)
+            self.scale_inv = 1 / self.scale
+        else:
+            self.scale = None
+            self.scale_inv = None
+        self.block_size = 32 if qtype == "mxfp8" and block_size is None else block_size
+        self._mxfp8_converted = False
 
     def quantization(self, fp32_tensor: torch.Tensor):
         if self.qtype == 4:
-            # (scale_inv = 2 ** (code - 127))
             quant_tensor, sf = torch_npu.npu_dynamic_mx_quant(
                 fp32_tensor.to(torch.bfloat16), block_size=self.block_size, dst_type=torch.float8_e4m3fn
             )
             sf_fp32 = sf.to(torch.float32)
-            valid_mask = torch.isfinite(sf_fp32) & (sf_fp32 > 0)
-            safe_sf = torch.where(valid_mask, sf_fp32, torch.ones_like(sf_fp32))
-            device = fp32_tensor.device
-            with torch.no_grad():
-                quant_fp32 = quant_tensor.float()
-                ref_fp32 = fp32_tensor.to(torch.float32)
+            quant_fp32 = quant_tensor.float()
+            ref_fp32 = fp32_tensor.to(torch.float32)
 
-                candidates = []
+            candidates = []
 
-                def _try_candidate(scale_candidate, scale_inv_candidate, *, codes_tensor=None, mark_code=False):
-                    if scale_candidate is None or scale_inv_candidate is None:
-                        return
-                    recon = self.block_scaling(quant_fp32, scale_inv_candidate)
-                    err = (recon - ref_fp32).abs().max().item()
-                    candidates.append((err, scale_candidate, scale_inv_candidate, codes_tensor, mark_code))
+            def _try(scale_candidate, scale_inv_candidate):
+                if scale_candidate is None or scale_inv_candidate is None:
+                    return
+                recon = self.block_scaling(quant_fp32, scale_inv_candidate)
+                err = (recon - ref_fp32).abs().max().item()
+                candidates.append((err, scale_candidate, scale_inv_candidate))
 
-                rounded_codes = torch.clamp(torch.round(safe_sf), min=0.0, max=254.0)
-                scale_code_round, scale_inv_code_round = self._decode_mxfp8_codes(rounded_codes)
-                _try_candidate(scale_code_round, scale_inv_code_round, codes_tensor=rounded_codes, mark_code=True)
+            rounded_codes = torch.clamp(torch.round(sf_fp32), min=0.0, max=254.0)
+            scale_from_codes = torch.pow(2.0, rounded_codes - 127.0)
+            scale_from_codes = torch.clamp(scale_from_codes, min=1e-8)
+            _try(1.0 / scale_from_codes, scale_from_codes)
 
-                scale_code_float, scale_inv_code_float = self._decode_mxfp8_codes(
-                    torch.clamp(safe_sf, min=0.0, max=254.0))
-                _try_candidate(scale_code_float, scale_inv_code_float,
-                               codes_tensor=torch.clamp(safe_sf, min=0.0, max=254.0), mark_code=True)
+            float_codes = torch.clamp(sf_fp32, min=0.0, max=254.0)
+            scale_from_float_codes = torch.pow(2.0, float_codes - 127.0)
+            scale_from_float_codes = torch.clamp(scale_from_float_codes, min=1e-8)
+            _try(1.0 / scale_from_float_codes, scale_from_float_codes)
 
-                safe_scale = torch.where(
-                    torch.isfinite(safe_sf) & (safe_sf > 0),
-                    safe_sf,
-                    torch.ones_like(safe_sf),
-                )
-                scale_inv_from_scale = torch.where(
-                    safe_scale > 0,
-                    1.0 / safe_scale,
-                    torch.ones_like(safe_scale),
-                )
-                _try_candidate(safe_scale, scale_inv_from_scale, mark_code=False)
+            safe_scale = torch.where(torch.isfinite(sf_fp32) & (sf_fp32 > 0), sf_fp32, torch.ones_like(sf_fp32))
+            scale_inv_from_scale = torch.clamp(1.0 / safe_scale, min=1e-8)
+            _try(safe_scale, scale_inv_from_scale)
 
-                safe_scale_inv = torch.where(
-                    torch.isfinite(safe_sf) & (safe_sf > 0),
-                    safe_sf,
-                    torch.ones_like(safe_sf),
-                )
-                scale_from_inv = torch.where(
-                    safe_scale_inv > 0,
-                    1.0 / safe_scale_inv,
-                    torch.ones_like(safe_scale_inv),
-                )
-                _try_candidate(scale_from_inv, safe_scale_inv, mark_code=False)
+            safe_scale_inv = torch.where(torch.isfinite(sf_fp32) & (sf_fp32 > 0), sf_fp32, torch.ones_like(sf_fp32))
+            scale_from_inv = torch.clamp(1.0 / safe_scale_inv, min=1e-8)
+            _try(scale_from_inv, safe_scale_inv)
 
-                if not candidates:
-                    scale = safe_scale
-                    scale_inv = scale_inv_from_scale
-                    best_codes = None
-                    best_is_code = False
-                else:
-                    best_err, best_scale, best_scale_inv, best_codes, best_is_code = min(candidates,
-                                                                                         key=lambda item: item[0])
-                    scale = best_scale
-                    scale_inv = best_scale_inv
-                    if best_codes is not None and best_is_code:
-                        best_codes = torch.clamp(torch.round(best_codes), min=0.0, max=254.0)
-                    else:
-                        best_codes = None
-                if best_codes is not None:
-                    self.scale_codes = best_codes.to(device=device, dtype=torch.float32)
-                else:
-                    self.scale_codes = None
-                self._scale_is_code = best_codes is not None
-                finfo = torch.finfo(scale_inv.dtype)
-                max_safe_scale_inv = finfo.max / 512.0
-                scale_inv = torch.clamp(scale_inv, max=max_safe_scale_inv)
-                scale = torch.where(
-                    scale_inv > 0,
-                    1.0 / scale_inv,
-                    torch.ones_like(scale_inv),
-                )
-            self.scale = scale.to(device=device, dtype=torch.float32)
-            self.scale_inv = scale_inv.to(device=device, dtype=torch.float32)
-            self._refresh_scale_inverse()
-            if self.block_size is None:
-                self.block_size = 32
+            if not candidates:
+                best_scale = torch.ones(1, device=fp32_tensor.device, dtype=torch.float32)
+                best_scale_inv = best_scale
+            else:
+                _, best_scale, best_scale_inv = min(candidates, key=lambda x: x[0])
+
+            self.scale = best_scale.view(-1).to(torch.float32)
+            self.scale_inv = best_scale_inv.view(-1).to(torch.float32)
+            self._mxfp8_converted = True  # already decoded/selected
         else:
-            if self.qtype in (5, 6):
-                # BF16 has wide dynamic range; skip per-block scaling to avoid blowing up the scale.
-                if isinstance(self.scale, torch.Tensor):
-                    self.scale.fill_(1.0)
-                else:
-                    self.scale = 1.0
-                if isinstance(self.scale_inv, torch.Tensor):
-                    self.scale_inv.fill_(1.0)
-                else:
-                    self.scale_inv = 1.0
-                target_dtype = torch.float16 if self.qtype == 5 else torch.bfloat16
-                return fp32_tensor.to(target_dtype)
             amax_value = self.compute_amax(fp32_tensor)
             self.update_scale(amax=amax_value)
             if self.qtype == 3:
@@ -201,89 +127,49 @@ class ScaleMeta:
         return quant_tensor
 
     def dequantization(self, quant_tensor: torch.Tensor):
+        if self.qtype == 4:
+            self.mxfp8_scale_convert()
         dequant_tensor = quant_tensor.float()
-        if self.scale_inv is None:
-            return dequant_tensor
-        return self.block_scaling(dequant_tensor, self.scale_inv)
+        dequant_tensor = self.block_scaling(dequant_tensor, self.scale_inv)
+        return dequant_tensor
 
     def mxfp8_scale_convert(self):
-        if not self._scale_is_code or self.scale_codes is None:
+        if self.qtype != 4 or self.scale_inv is None:
             return
-        device = self.scale.device if self.scale is not None else (
-            self.scale_inv.device if self.scale_inv is not None else self.scale_codes.device
-        )
-        scale, scale_inv = self._decode_mxfp8_codes(self.scale_codes.to(device=device))
-        self.scale = scale.to(device=device, dtype=torch.float32)
-        self.scale_inv = scale_inv.to(device=device, dtype=torch.float32)
-
-    def _refresh_scale_inverse(self):
-        if self.qtype == 4:
-            if self._scale_is_code:
-                if self.scale_codes is None:
-                    return
-                device = self.scale.device if self.scale is not None else (
-                    self.scale_inv.device if self.scale_inv is not None else self.scale_codes.device
-                )
-                scale, scale_inv = self._decode_mxfp8_codes(self.scale_codes.to(device=device))
-                self.scale = scale.to(device=device, dtype=torch.float32)
-                self.scale_inv = scale_inv.to(device=device, dtype=torch.float32)
-            else:
-                target_device = None
-                if self.scale_inv is not None:
-                    target_device = self.scale_inv.device
-                elif self.scale is not None:
-                    target_device = self.scale.device
-                if self.scale is not None:
-                    self.scale = self.scale.to(
-                        device=target_device if target_device is not None else self.scale.device,
-                        dtype=torch.float32,
-                    )
-                if self.scale_inv is not None:
-                    self.scale_inv = self.scale_inv.to(
-                        device=target_device if target_device is not None else self.scale_inv.device,
-                        dtype=torch.float32,
-                    )
+        if getattr(self, "_mxfp8_converted", False):
             return
-        if self.scale is None:
-            self.scale_inv = None
-            return
-        if self.scale_inv is None or self.scale_inv.shape != self.scale.shape or self.scale_inv.device != self.scale.device:
-            self.scale_inv = torch.empty_like(self.scale)
-        safe_scale = torch.where(self.scale == 0, torch.ones_like(self.scale), self.scale)
-        torch.reciprocal(safe_scale, out=self.scale_inv)
-        self.scale_inv = torch.where(self.scale == 0, torch.zeros_like(self.scale), self.scale_inv)
+        self._mxfp8_converted = True  # scale already finalized
 
     def block_scaling(self, inputs: torch.Tensor, scale: torch.Tensor):
-        if scale is None:
-            return inputs
         if self.block_size is not None:
-            scale_flat = scale.reshape(-1)
-            if scale_flat.numel() == 0:
-                return inputs
             if inputs.numel() % self.block_size != 0:
                 num_blocks = inputs.numel() // self.block_size
                 large_num = num_blocks * self.block_size
                 inputs_flatten = inputs.view(-1)
-                l_tensor, s_tensor = torch.split(
-                    inputs_flatten, [large_num, inputs_flatten.numel() - large_num], dim=0
-                )
-                l_tensor = (l_tensor.view(-1, self.block_size) * scale_flat[:-1].unsqueeze(1)).view(-1)
-                s_tensor = s_tensor * scale_flat[-1]
+                l_tensor, s_tensor = torch.split(inputs_flatten, [large_num, inputs_flatten.numel() - large_num], dim=0)
+                l_tensor = (l_tensor.view(-1, self.block_size) * scale[:-1].unsqueeze(1)).view(-1)
+                s_tensor = s_tensor * scale[-1]
                 inputs_flatten = torch.cat([l_tensor, s_tensor])
             else:
-                inputs_flatten = inputs.view(-1, self.block_size) * scale_flat.unsqueeze(1)
+                inputs_flatten = inputs.view(-1, self.block_size) * scale.unsqueeze(1)
             inputs = inputs_flatten.view(inputs.shape)
         else:
             inputs = inputs * scale
         return inputs
 
-    def update_scale(self, amax: torch.Tensor):
+    def update_scale(self, amax=None):
         sf = self.fp8_max / amax
         sf = torch.where(amax > 0.0, sf, self.scale)
         sf = torch.where(torch.isfinite(amax), sf, self.scale)
         sf = torch.where(torch.isinf(sf), torch.full_like(sf, torch.finfo(amax.dtype).max), sf)
         self.scale.copy_(sf)
         self._refresh_scale_inverse()
+
+    def _refresh_scale_inverse(self):
+        if self.scale is None:
+            return
+        safe = torch.where(self.scale == 0, torch.ones_like(self.scale), self.scale)
+        self.scale_inv = 1.0 / safe
 
     def compute_amax(self, fp32_tensor: torch.Tensor):
         if self.block_size is not None:
@@ -297,14 +183,18 @@ class ScaleMeta:
             self.scale = self.scale.to(device)
         if self.scale_inv is not None:
             self.scale_inv = self.scale_inv.to(device)
-        if self.scale_codes is not None:
-            self.scale_codes = self.scale_codes.to(device)
 
 
-def cal_hcf(x: int, y: int) -> int:
-    while y:
-        x, y = y, x % y
-    return x
+def cal_hcf(x, y):
+    """calculate the highest common factor"""
+    if x > y:
+        smaller = y
+    else:
+        smaller = x
+    for i in range(1, smaller + 1):
+        if ((x % i == 0) and (y % i == 0)):
+            res = i
+    return res
 
 
 def _dequantize_tensor(tensor: torch.Tensor) -> torch.Tensor:
@@ -470,9 +360,8 @@ class AdamW(Optimizer):
             else:
                 block_size = cal_hcf(state.numel(), 128)
             scale_meta = ScaleMeta(qtype, state, block_size)
-            quant_state = scale_meta.quantization(state.data)
-            quant_state.meta = scale_meta
-            return quant_state
+            state = scale_meta.quantization(state.data)
+            state.meta = scale_meta
         return state
 
     def _get_state_qtype(self, param: torch.nn.Parameter):
@@ -521,10 +410,6 @@ class AdamW(Optimizer):
                         value_device.meta.to_device(param.device)
                 else:
                     value_device = value.to(device=param.device)
-                    if key == "master_param":
-                        master_dtype = self._resolve_dtype(getattr(self.args, "main_params_dtype", torch.float32))
-                        if value_device.dtype != master_dtype:
-                            value_device = value_device.to(master_dtype)
                     exp_avg_qtype, exp_avg_sq_qtype = self._get_state_qtype(param)
                     if key == "exp_avg":
                         value_device = self._get_state_tensor(value_device, exp_avg_qtype)
@@ -626,7 +511,6 @@ class AdamW(Optimizer):
                 if amsgrad:
                     max_exp_avg_sqs.append(state['max_exp_avg_sq'])
 
-            # if master_params:
             adamw(
                 model_params,
                 grads,
