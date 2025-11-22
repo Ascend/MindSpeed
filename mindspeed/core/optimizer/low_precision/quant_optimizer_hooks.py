@@ -461,7 +461,7 @@ def collect_main_grad_data_for_unscaling_wrapper(func):
     return _collect_main_grad_data_for_unscaling
 
 
-def copy_model_grads_to_main_grads(func):
+def copy_model_grads_to_main_grads(self):
     args_namespace = get_args()
 
     for model_group, main_group in zip(

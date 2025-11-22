@@ -204,7 +204,7 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                     ),
                     (
                         'megatron.core.optimizer.optimizer.Float16OptimizerWithFloat16Params._copy_model_grads_to_main_grads',
-                        optimizer_hooks.copy_model_grads_to_main_grads_wrapper,
+                        optimizer_hooks.copy_model_grads_to_main_grads,
                         True,
                     ),
                     (
