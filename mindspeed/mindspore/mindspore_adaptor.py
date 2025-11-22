@@ -1,4 +1,8 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+from packaging import version
+import transformers
+_TS_VERSION = version.parse(transformers.__version__)
+T456 = _TS_VERSION >= version.parse("4.56")
 
 def mindspore_adaptation(aspm, mindspeed_args):
     if not hasattr(mindspeed_args, "ai_framework") or mindspeed_args.ai_framework != "mindspore" or mindspeed_args.optimization_level < 0:
@@ -49,9 +53,14 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('accelerate.utils.extract_model_from_parallel', extract_model_from_parallel)
 
     # transformers
-    from mindspeed.mindspore.third_party.transformers.configuration_utils import dict_torch_dtype_to_str
-    aspm.register_patch('transformers.configuration_utils.PretrainedConfig.dict_torch_dtype_to_str',
-                        dict_torch_dtype_to_str)
+    if T456:
+        from mindspeed.mindspore.third_party.transformers.configuration_utils import dict_dtype_to_str
+        aspm.register_patch('transformers.configuration_utils.PretrainedConfig.dict_dtype_to_str',
+                            dict_dtype_to_str)
+    else:
+        from mindspeed.mindspore.third_party.transformers.configuration_utils import dict_torch_dtype_to_str
+        aspm.register_patch('transformers.configuration_utils.PretrainedConfig.dict_torch_dtype_to_str',
+                            dict_torch_dtype_to_str)
 
     from mindspeed.mindspore.third_party.transformers.modeling_utils import load_state_dict, \
         _load_state_dict_into_meta_model, safe_open, get_parameter_dtype
