@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
-_QUANT_STATE_CHOICES = ('fp8', 'hif8', 'mxfp8', 'fp16')
+_QUANT_STATE_CHOICES = ('fp8', 'hif8', 'mxfp8')
 
 
 class LowPrecisionOptimizerFeature(MindSpeedFeature):

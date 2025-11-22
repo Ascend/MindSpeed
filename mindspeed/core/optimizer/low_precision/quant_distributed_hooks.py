@@ -1,10 +1,4 @@
 # Copyright (c) Microsoft Corporation.
-#
-# This source code is licensed under the Apache license found in the
-# LICENSE file in the root directory of this source tree.
-
-# copied from https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/moe/layer.py
-# reworked/refactored some parts to make it run.
 
 from functools import wraps
 import torch
