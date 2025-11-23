@@ -312,14 +312,39 @@ def bf16_tensors_to_fp32_tensors_deterministic(int32_tensors, bf16_fp32_tensors,
 
 
 def optimizer_exp_avg_save_sign(optimizer, fp32_param, int32_tensor, odd_even_tensor):
-    if "exp_avg_sq" in optimizer.state[fp32_param]:
-        int32_tensor.sub_(odd_even_tensor)
-        sign_tensor = torch.sign(odd_even_tensor - 0.5).reshape(optimizer.state[fp32_param]["exp_avg_sq"].shape)
-        optimizer.state[fp32_param]["exp_avg_sq"].mul_(sign_tensor)
+    if "exp_avg_sq" not in optimizer.state[fp32_param]:
+        return
+
+    exp_avg_sq_state = optimizer.state[fp32_param]["exp_avg_sq"]
+    int32_tensor.sub_(odd_even_tensor)
+
+    target_shape = exp_avg_sq_state.shape
+    sign_tensor = odd_even_tensor.to(device=exp_avg_sq_state.device, dtype=torch.float32)
+    sign_tensor = sign_tensor.view(target_shape).mul(2.0).sub(1.0)
+
+    meta = getattr(exp_avg_sq_state, "meta", None)
+    if meta is not None:
+        exp_avg_sq_fp32 = meta.dequantization(exp_avg_sq_state.data)
+        exp_avg_sq_fp32.mul_(sign_tensor.to(dtype=exp_avg_sq_fp32.dtype))
+        exp_avg_sq_state.data.copy_(meta.quantization(exp_avg_sq_fp32))
+    else:
+        exp_avg_sq_state.mul_(sign_tensor.to(dtype=exp_avg_sq_state.dtype))
 
 
 def optimizer_exp_avg_load_sign(optimizer, fp32_param, int32_tensor):
-    if "exp_avg_sq" in optimizer.state[fp32_param]:
-        odd_even_tensor = (torch.sign(optimizer.state[fp32_param]["exp_avg_sq"]) > 0).reshape(-1)
-        optimizer.state[fp32_param]["exp_avg_sq"].abs_()
-        int32_tensor.add_(odd_even_tensor)
+    if "exp_avg_sq" not in optimizer.state[fp32_param]:
+        return
+
+    exp_avg_sq_state = optimizer.state[fp32_param]["exp_avg_sq"]
+    meta = getattr(exp_avg_sq_state, "meta", None)
+    if meta is not None:
+        exp_avg_sq_fp32 = meta.dequantization(exp_avg_sq_state.data)
+        odd_even_tensor = (torch.sign(exp_avg_sq_fp32) > 0).reshape(-1)
+        exp_avg_sq_fp32.abs_()
+        exp_avg_sq_state.data.copy_(meta.quantization(exp_avg_sq_fp32))
+    else:
+        odd_even_tensor = (torch.sign(exp_avg_sq_state) > 0).reshape(-1)
+        exp_avg_sq_state.abs_()
+
+    int32_tensor.add_(odd_even_tensor.to(dtype=int32_tensor.dtype))
+

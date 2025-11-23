@@ -90,6 +90,7 @@ from mindspeed.features_manager.transformer.multi_head_latent_attention.mla_feat
 from mindspeed.features_manager.tensor_parallel.vocab_parallel import ReplaceIndexPutFeature
 from mindspeed.features_manager.distributed.layerzero import LayerZeroFeature
 from mindspeed.features_manager.optimizer.swap_optimizer_feature import SwapOptimizerFeature
+from mindspeed.features_manager.optimizer.low_precision_optimizer_feature import LowPrecisionOptimizerFeature
 
 from mindspeed.features_manager.ai_framework.ms_patch_feature import MindSporePatchFeature
 
@@ -101,6 +102,7 @@ FEATURES_LIST = [
     ProfilerDefaultFeature(),
     # Virtaul Optimizer
     VirtualOptimizerFeature(),
+    LowPrecisionOptimizerFeature(),
     # Tensor parallel features
     UnalignedLinearFeature(),
     # llava-multimodal
@@ -229,6 +231,7 @@ def add_optimizer_features(features_list: List[MindSpeedFeature]):
         # Optimizer features: fused-ema-adamw
         FusedEmaAdamwFeature(),
         VirtualOptimizerFeature(),
+        LowPrecisionOptimizerFeature(),
     ])
 
 

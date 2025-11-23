@@ -361,15 +361,29 @@ def fp16_tensor_convert_to_fp32_tensor_deterministic(shard_fp32_from_float16_gro
             assert shard_int32_tensor.numel() == shard_fp32_param.numel()
             loops = shard_int32_tensor.numel() // TRANSPOSE_BF16_BLOCK_SIZE
             remain = shard_int32_tensor.numel() % TRANSPOSE_BF16_BLOCK_SIZE
-            exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
+            exp_avg_sq_state = optimizer.state[shard_fp32_param]["exp_avg_sq"]
+            meta = getattr(exp_avg_sq_state, "meta", None)
+            if meta is not None:
+                exp_avg_sq_fp32 = meta.dequantization(exp_avg_sq_state.data)
+            else:
+                exp_avg_sq_fp32 = exp_avg_sq_state
+            exp_avg_sq_flatten = exp_avg_sq_fp32.reshape(-1)
             for loop in range(loops):
-                odd_even_tensor = torch.sign(exp_avg_sq_flatten[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE] > 0)
-                shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE].add_(odd_even_tensor)
+                start = loop * TRANSPOSE_BF16_BLOCK_SIZE
+                end = (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE
+                segment = exp_avg_sq_flatten[start:end]
+                odd_even_tensor = (segment > 0).to(dtype=shard_int32_tensor.dtype)
+                shard_int32_tensor[start:end].add_(odd_even_tensor)
             if remain > 0:
-                odd_even_tensor = torch.sign(exp_avg_sq_flatten[-remain:] > 0)
+                segment = exp_avg_sq_flatten[-remain:]
+                odd_even_tensor = (segment > 0).to(dtype=shard_int32_tensor.dtype)
                 shard_int32_tensor[-remain:].add_(odd_even_tensor)
             shard_int32_tensor.sub_(32768)
-            optimizer.state[shard_fp32_param]["exp_avg_sq"].abs_()
+            if meta is not None:
+                exp_avg_sq_fp32.abs_()
+                exp_avg_sq_state.data.copy_(meta.quantization(exp_avg_sq_fp32))
+            else:
+                exp_avg_sq_state.abs_()
 
 
 def fp32_tensor_convert_to_fp16_tensor_deterministic(shard_fp32_from_float16_groups, optimizer):
@@ -382,18 +396,32 @@ def fp32_tensor_convert_to_fp16_tensor_deterministic(shard_fp32_from_float16_gro
             assert shard_int32_tensor.numel() == shard_fp32_param.numel()
             loops = shard_int32_tensor.numel() // TRANSPOSE_BF16_BLOCK_SIZE
             remain = shard_int32_tensor.numel() % TRANSPOSE_BF16_BLOCK_SIZE
-            exp_avg_sq_flatten = optimizer.state[shard_fp32_param]["exp_avg_sq"].reshape(-1)
+            exp_avg_sq_state = optimizer.state[shard_fp32_param]["exp_avg_sq"]
+            meta = getattr(exp_avg_sq_state, "meta", None)
+            if meta is not None:
+                exp_avg_sq_fp32 = meta.dequantization(exp_avg_sq_state.data)
+            else:
+                exp_avg_sq_fp32 = exp_avg_sq_state
+            exp_avg_sq_flatten = exp_avg_sq_fp32.reshape(-1)
             shard_int32_tensor.add_(32768)
             for loop in range(loops):
-                odd_even_tensor = ((shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE] & 131071) == 65536).int()
-                shard_int32_tensor[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE].sub_(odd_even_tensor)
-                sign_tensor = torch.sign(odd_even_tensor - 0.5)
-                exp_avg_sq_flatten[loop * TRANSPOSE_BF16_BLOCK_SIZE: (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE].mul_(sign_tensor)
+                start = loop * TRANSPOSE_BF16_BLOCK_SIZE
+                end = (loop + 1) * TRANSPOSE_BF16_BLOCK_SIZE
+                odd_even_tensor = (
+                    (shard_int32_tensor[start:end] & 131071) == 65536
+                ).to(dtype=shard_int32_tensor.dtype)
+                shard_int32_tensor[start:end].sub_(odd_even_tensor)
+                sign_tensor = odd_even_tensor.to(dtype=exp_avg_sq_flatten.dtype).mul(2.0).sub(1.0)
+                exp_avg_sq_flatten[start:end].mul_(sign_tensor)
             if remain > 0:
-                odd_even_tensor = ((shard_int32_tensor[-remain:] & 131071) == 65536).int()
+                odd_even_tensor = (
+                    (shard_int32_tensor[-remain:] & 131071) == 65536
+                ).to(dtype=shard_int32_tensor.dtype)
                 shard_int32_tensor[-remain:].sub_(odd_even_tensor)
-                sign_tensor = torch.sign(odd_even_tensor - 0.5)
+                sign_tensor = odd_even_tensor.to(dtype=exp_avg_sq_flatten.dtype).mul(2.0).sub(1.0)
                 exp_avg_sq_flatten[-remain:].mul_(sign_tensor)
+            if meta is not None:
+                exp_avg_sq_state.data.copy_(meta.quantization(exp_avg_sq_fp32))
 
 
 def get_parameter_state_dp_zero_hccl(self):
