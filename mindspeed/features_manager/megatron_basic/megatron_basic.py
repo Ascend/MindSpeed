@@ -16,6 +16,11 @@ class MegatronBasicFeature(MindSpeedFeature):
             if args.virtual_pipeline_model_parallel_size == 1 and not getattr(args, 'moe_fb_overlap', False):
                 args.virtual_pipeline_model_parallel_size = None
                 args.overlap_p2p_comm = False
+        
+        if getattr(args, 'defer_embedding_wgrad_compute', False):
+            raise AssertionError(
+                '--defer_embedding_wgrad_compute, although exclusive to TE scenarios, is not yet supported.'
+            )
 
     def register_patches(self, patch_manager, args):
         try:

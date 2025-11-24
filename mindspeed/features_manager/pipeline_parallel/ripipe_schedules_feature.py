@@ -73,6 +73,21 @@ class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
             if expected_recompute_num_layers is not None and args.recompute_num_layers != expected_recompute_num_layers:
                 args.recompute_num_layers = expected_recompute_num_layers
 
+            if getattr(args, "swap_attention", False):
+                raise AssertionError('recompute-in-bubble dont support swap-attention')
+
+            if not getattr(args, "overlap_p2p_comm", True):
+                raise AssertionError(
+                    'recompute_in_bubble does not yet support scenarios where '
+                    'overlap_p2p_comm is False, as it has not been made compatible.'
+                )
+            
+            if not getattr(args, "align_grad_reduce", True):
+                raise AssertionError(
+                    'Due to compatibility limitations between nanopipe and ripipe, '
+                    'recompute-in-bubble can only be used in scenarios where align_grad_reduce is True.'
+                )
+
 
 class RiPipeSchedulesAdvanceFeature(RiPipeSchedulesFeature):
 
@@ -97,3 +112,9 @@ class RiPipeSchedulesAdvanceFeature(RiPipeSchedulesFeature):
                 raise AssertionError('recompute_in_advance only support pipelining with interleaving')
             if args.num_layers_per_virtual_pipeline_stage != 1:
                 args.recompute_in_advance = False
+
+            if not getattr(args, "align_grad_reduce", True):
+                raise AssertionError(
+                    'Due to compatibility limitations between nanopipe and ripipe, '
+                    'recompute-in-advance can only be used in scenarios where align_grad_reduce is True.'
+                )
