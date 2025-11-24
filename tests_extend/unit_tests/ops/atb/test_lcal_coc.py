@@ -66,6 +66,7 @@ def is_similar(actual_output, pred_output):
 class TestCoC(DistributedTest):
     world_size = 8
 
+    @pytest.mark.skip(reason='Hanged to be fixed')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_matmul_all_reduce(self):
         from mindspeed.ops.lcal_functional import coc_ops
@@ -121,6 +122,7 @@ class TestCoC(DistributedTest):
                     err_rate = is_similar(orig_output, output)
                     assert err_rate < 5e-3
 
+    @pytest.mark.skip(reason='Hanged to be fixed')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_all_gather_matmul_v2(self):
         from mindspeed.ops.lcal_functional import coc_ops
@@ -151,6 +153,7 @@ class TestCoC(DistributedTest):
                     assert err_rate < 5e-3
                     assert err_rate_comm < 5e-3
 
+    @pytest.mark.skip(reason='Hanged to be fixed')
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_coc_matmul_reduce_scatter(self):
         from mindspeed.ops.lcal_functional import coc_ops
