@@ -87,13 +87,16 @@ class FusedMoEPermuteFeature(MindSpeedFeature):
 
             if getattr(args, "moe_token_dispatcher_type", None) == "alltoall":
                 from mindspeed.core.fusions.fused_moe_permute import (
-                    moe_alltoall_token_dispatcher_init_wrapper, maybe_dtoh_and_synchronize)
+                    moe_alltoall_token_dispatcher_init_wrapper, maybe_dtoh_and_synchronize, preprocess_sync_wrapper)
 
                 # Since fused_sort_chunks_by_index is not currently supported, when self.num_local_experts > 1,
                 # move self.num_global_tokens_per_local_expert to cpu
                 patch_manager.register_patch(
                     'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher._maybe_dtoh_and_synchronize',
                     maybe_dtoh_and_synchronize)
+                patch_manager.register_patch(
+                    'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess',
+                    preprocess_sync_wrapper)
 
                 # Since fused_sort_chunks_by_index is not currently supported, set self.permute_idx_device to None
                 patch_manager.register_patch(

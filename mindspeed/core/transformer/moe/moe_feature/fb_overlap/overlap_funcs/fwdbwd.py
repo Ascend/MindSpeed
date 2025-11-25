@@ -217,10 +217,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         perm1_out, perm1_probs, tokens_per_expert = fwd_dispatcher.token_permute1(detached_mlp_input, probs_detached, routing_map)
 
         if use_shared_experts:
-            with torch.npu.stream(fwd_dispatcher.overlap_stream):
-                # Shared Experts Forward.
-                fwd_shared_experts.linear_fc1_forward_and_act()
-                fwd_shared_experts.linear_fc2_forward()
+            # Shared Experts Forward.
+            fwd_shared_experts.linear_fc1_forward_and_act()
+            fwd_shared_experts.linear_fc2_forward()
 
         if args.moe_zero_memory != 'disable':
             (bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle), _ = bwd_dispatcher.async_dispatch_comm(
@@ -247,11 +246,17 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     # Shared Experts Backward
     if use_shared_experts:
-        WeightGradStore.start_decouple()
-        bwd_shared_experts.linear_fc2_act_fc1_backward(bwd_layer_graph.shared_experts_graph, keep_grad=True)
-        WeightGradStore.end_decouple()
+        with torch.npu.stream(bwd_dispatcher.overlap_stream):
+            WeightGradStore.start_decouple()
+            bwd_shared_experts.linear_fc2_act_fc1_backward(bwd_layer_graph.shared_experts_graph, keep_grad=True)
+            WeightGradStore.end_decouple()
 
     with checkpoint_context:
+        # Async Perm A2A.
+        from ..modules.token_dispatcher import PREMUTE_FINISH_EVENT
+        if PREMUTE_FINISH_EVENT is not None:
+            #Wait for permute1 finish.
+            torch.npu.current_stream().wait_event(PREMUTE_FINISH_EVENT)
         (perm_a2a_out, perm_a2a_handle), (perm_prob_a2a_out, perm_prob_a2a_handle) = fwd_dispatcher.async_dispatch_comm(
             perm1_out, perm1_probs, wait_event=last_comm_handle
         )
@@ -263,8 +268,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     with checkpoint_context:
         if use_shared_experts:
-            fwd_shared_experts.post_forward_comm(wait_event=last_comm_handle)
-            last_comm_handle = fwd_shared_experts.fc2_output_comm_handle
+            with torch.npu.stream(fwd_dispatcher.overlap_stream):
+                fwd_shared_experts.post_forward_comm(wait_event=last_comm_handle)
+                last_comm_handle = fwd_shared_experts.fc2_output_comm_handle
 
     if recomp_norm:
         fwd_layer.norm_ckpt2.discard_output()
@@ -283,7 +289,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     # launch shared experts post backward comm
     if use_shared_experts:
-        bwd_shared_experts.post_backward_comm(wait_event=last_comm_handle)
+        with torch.npu.stream(bwd_dispatcher.overlap_stream):
+            bwd_shared_experts.post_backward_comm(wait_event=last_comm_handle)
 
     # Grouped MLP dw computation
     if args.moe_zero_memory == 'level0':
@@ -327,7 +334,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         unperm1_out = fwd_dispatcher.token_unpermute1(detached_expert_output, None)
         expert_output.untyped_storage().resize_(0)
         if use_shared_experts:
-            shared_expert_output, share_experts_graph = fwd_shared_experts.get_output()
+            with torch.npu.stream(fwd_dispatcher.overlap_stream):
+                shared_expert_output, share_experts_graph = fwd_shared_experts.get_output()
 
         bwd_perm_a2a_handle.wait()
         bwd_perm_a2a_handle = None
@@ -342,10 +350,12 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     if bwd_prob_handle:
         bwd_prob_handle.wait()
     if use_shared_experts:
-        shared_experts_grad = bwd_shared_experts.get_backward_grad()
-        if shared_experts_grad is not None:
-            bwd_layer_graph.pre_mlp_layernorm_graph[1].grad = shared_experts_grad
+        with torch.npu.stream(bwd_dispatcher.overlap_stream):
+            shared_experts_grad = bwd_shared_experts.get_backward_grad()
+            if shared_experts_grad is not None:
+                bwd_layer_graph.pre_mlp_layernorm_graph[1].grad = shared_experts_grad
 
+    torch.npu.current_stream().wait_stream(bwd_dispatcher.overlap_stream)
     run_graph_backward(bwd_layer_graph.perm1_graph, [perm1_out_grad, perm1_prob_out_grad])
     perm1_out_grad.untyped_storage().resize_(0)
 
@@ -399,6 +409,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         unperm_a2a_out.untyped_storage().resize_(0)
 
         if use_shared_experts:
+            torch.npu.current_stream().wait_stream(fwd_dispatcher.overlap_stream)
             detached_shared_expert_output = detach_tensor(shared_expert_output)
             mlp_output = route_expert_output + detached_shared_expert_output
             shared_expert_output.untyped_storage().resize_(0)

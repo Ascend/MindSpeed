@@ -82,7 +82,9 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.is_expert = is_expert
         self.sequence_parallel = self.config.sequence_parallel
         self.gradient_accumulation_fusion = self.config.gradient_accumulation_fusion
+        self.parallel_mode = 'column'
         self.fp8_meta = FP8Metadata(['inputs', 'weight', 'grads'])
+
         # MindSpeedTELayerNormColumnParallelLinear check.
         if gather_output:
             raise ValueError('Transformer Engine linear layers do not support gather_output = True')

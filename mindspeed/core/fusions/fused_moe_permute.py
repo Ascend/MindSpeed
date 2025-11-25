@@ -315,3 +315,13 @@ def alltoall_seq_token_unpermutation(
     # Reshape the output tensor
     output = output.view(self.hidden_shape)
     return output, None
+
+
+def preprocess_sync_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self, routing_map):
+        fn(self, routing_map)
+        if self.num_local_experts > 1:
+            if self.config.moe_permute_fusion:
+                self._maybe_update_cuda_sync_point("before_permutation_2")
+    return wrapper
