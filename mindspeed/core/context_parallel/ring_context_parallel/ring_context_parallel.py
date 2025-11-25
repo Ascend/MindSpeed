@@ -1237,3 +1237,351 @@ def ringattn_context_parallel(q, k, v, n, cp_para, softmax_scale=None, attn_mask
         packed_seq_params, shapes
     )
     return out
+
+
+class TNDGeneralAttentionStrategy(AttentionStrategy):
+    """General attention strategy implementation using TND layout."""
+    def compute_fused_attention(self, attn_mask, n, q, softmax_scale, cp_config):
+
+        layout = "TND"
+
+        cur_q = q
+        attn_outs = torch_npu.npu_fusion_attention(
+            cur_q, cp_config.cur_k, cp_config.cur_v, n, layout,
+            pse=None,
+            padding_mask=None,
+            scale=softmax_scale,
+            keep_prob=cp_config.keep_prob,
+            actual_seq_qlen=cp_config.actual_seq_qlen,
+            actual_seq_kvlen=cp_config.actual_seq_kvlen,
+            sparse_mode=0
+        )
+
+        return attn_outs, cp_config.cur_sub_out_seq_len
+
+    def update_out(self, cp_config):
+        """General attention strategy implementation using TND layout.
+    
+        This strategy utilizes NPU fused attention operations for optimized performance
+        with TND (Time, Number of heads, Dimension) tensor layout.
+        """
+        q_block_id, kv_block_id, cur_attn_outs, global_attn_outs, cur_sub_out_seq_len = \
+            cp_config.q_block_id, cp_config.kv_block_id, cp_config.attn_outs, cp_config.global_attn_outs, cp_config.cur_sub_out_seq_len
+
+        # Unpack current attention outputs
+        cur_attn_out, cur_softmax_max, cur_softmax_sum = cur_attn_outs[0], cur_attn_outs[1], cur_attn_outs[2]
+        attn_out, softmax_max, softmax_sum, rng_states = global_attn_outs
+        layout = 'TND'
+
+        # Update RNG states for dropout if present
+        if len(cur_attn_outs) > 3:
+            rng_states[kv_block_id] = (cur_attn_outs[4], cur_attn_outs[5], cur_attn_outs[6])
+
+        if q_block_id == kv_block_id:
+            # 对角线
+            attn_out = cur_attn_out
+            softmax_max = cur_softmax_max
+            softmax_sum = cur_softmax_sum
+        else:
+            # 非对角线，由于full mask，所以不需要考虑q_block_id是否大于kv_block_id
+            attn_out_updated, softmax_max_updated, softmax_sum_updated = forward_update(
+                attn_out, softmax_max, softmax_sum,
+                cur_attn_out, cur_softmax_max, cur_softmax_sum, actual_seq_qlen=cur_sub_out_seq_len, layout=layout
+            )
+            attn_out, softmax_max, softmax_sum = attn_out_updated, softmax_max_updated, softmax_sum_updated
+
+        return [attn_out, softmax_max, softmax_sum, rng_states]
+
+    def compute_fused_attention_grad(self, attn_mask, n, q, softmax_scale, attn_out, dout, cp_config):
+
+        layout = "TND"
+        cur_q = q
+        cur_dout = dout
+        cur_attn_out = attn_out
+
+        attn_grad_outs = torch_npu.npu_fusion_attention_grad(
+            cur_q, cp_config.cur_k, cp_config.cur_v, cur_dout, n,
+            layout,
+            pse=None,
+            padding_mask=None,
+            softmax_max=cp_config.softmax_max,
+            softmax_sum=cp_config.softmax_sum,
+            attention_in=cur_attn_out,
+            scale_value=softmax_scale,
+            sparse_mode=0,
+            actual_seq_qlen=cp_config.actual_seq_qlen,
+            actual_seq_kvlen=cp_config.actual_seq_kvlen,
+            keep_prob=cp_config.keep_prob,
+            seed=cp_config.rng_states[cp_config.kv_block_id][0],
+            offset=cp_config.rng_states[cp_config.kv_block_id][1],
+            numels=cp_config.rng_states[cp_config.kv_block_id][2],
+        )
+        
+        return attn_grad_outs
+
+
+class AttentionWithCpTNDGeneral(torch.autograd.Function):
+    """General Attention implementation with context parallelism using TND layout."""
+    @staticmethod
+    def forward(ctx, q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
+                packed_seq_params=None, split_seq_lens_per_cp_rank=None):
+        '''split_seq_lens_perrank表示各个序列划分到所有rank上的长度，例如：
+           cp_rank1: s1_1, s2_1, s3_1
+           cp_rank2: s1_2, s2_2, s3_2
+        '''
+
+        enable_mla = k.shape[-1] != v.shape[-1]
+        ctx.enable_mla = enable_mla
+
+        # Initialize context parallelism configuration
+        cp_config = AttentionWithCpConfig.init_from_para(cp_para)
+        cp_config.cp_outer_ranks = cp_para.get("cp_outer_ranks", cp_config.cp_global_ranks)
+        cp_config.inner_size = len(cp_config.cp_inner_ranks)
+        cp_config.outer_size = cp_config.cp_size // cp_config.inner_size
+        cp_config.keep_prob = 1. - dropout_p
+
+        inner_ring = RingP2P(cp_config.cp_inner_ranks, cp_config.cp_group_for_intra_window,
+                             cp_config.cp_group_for_intra_window_send_recv_overlap)
+        outer_ring = RingP2P(cp_config.cp_outer_ranks, cp_config.cp_group, cp_config.cp_group_for_send_recv_overlap)
+
+        # 计算每个rank上的所有子序列的和 以及 累加序列
+        total_len_per_cp_rank = None 
+        if split_seq_lens_per_cp_rank is not None:
+            total_len_per_cp_rank = split_seq_lens_per_cp_rank.sum(1).tolist()
+            cu_seq_len_per_cp_rank = split_seq_lens_per_cp_rank.cumsum(1)
+            cu_seq_len_per_cp_rank = torch.nn.functional.pad(cu_seq_len_per_cp_rank, (1, 0), value=0).tolist()
+
+        # 为当前rank计算ascual seq len
+        cp_config.actual_seq_kvlen = cu_seq_len_per_cp_rank[cp_config.rank] if split_seq_lens_per_cp_rank is not None else None
+        cp_config.actual_seq_qlen = cu_seq_len_per_cp_rank[cp_config.rank] if split_seq_lens_per_cp_rank is not None else None
+        cp_config.is_eod_reset = (cp_config.actual_seq_kvlen is not None) and (cp_config.actual_seq_qlen is not None)
+        cp_config.cur_sub_out_seq_len = (torch.tensor(cp_config.actual_seq_qlen)[1:] - \
+            torch.tensor(cp_config.actual_seq_qlen)[:-1]).tolist() if split_seq_lens_per_cp_rank is not None else None
+
+        if softmax_scale is None:
+            head_dim = q.shape[-1]
+            softmax_scale = head_dim ** (-0.5)
+        if attn_mask is None:
+            # 使用压缩矩阵
+            attn_mask = torch.ones((2048, 2048), dtype=torch.bool, device=q.device)
+            attn_mask = torch.triu(attn_mask, diagonal=1)
+        
+        # kv拼接用于通信
+        cur_kv = torch.cat((k.unsqueeze(0), v.unsqueeze(0)), dim=0)  # [2, t, n, d]
+        next_kv = torch.empty_like(cur_kv)
+        next_round_kv = torch.empty_like(cur_kv)
+
+        attn_out, softmax_max, softmax_sum = None, None, None
+        # (seed, offset, numels) for dropout mask
+        cp_config.rng_states = [[0, 0, 0] for _ in range(cp_config.cp_size)]
+        cp_config.global_attn_outs = [attn_out, softmax_max, softmax_sum, cp_config.rng_states]
+        cp_config.q_block_id, cp_config.kv_block_id, kv_block_id_outer = cp_config.rank, cp_config.rank, cp_config.rank
+
+        cache_manager = KVCacheManager(cp_config.cache_policy)
+        attention_strategy = TNDGeneralAttentionStrategy()
+
+        # Outer loop: process outer context parallelism windows
+        for j in range(cp_config.outer_size):
+            if getattr(get_args(), "prof_file", False):
+                activation_func_1 = torch.nn.Hardshrink()
+                v = activation_func_1(v)
+
+            cp_config.kv_block_id = kv_block_id_outer
+            kv_block_offset = (cp_config.kv_block_id // cp_config.inner_size) * cp_config.inner_size
+
+            # Prepare next outer ring communication (if not last window)
+            if j < cp_config.outer_size - 1:
+                next_kv_block_id_outer = (kv_block_id_outer + cp_config.cp_size - cp_config.inner_size) % cp_config.cp_size
+                outer_ring.async_send_recv(cur_kv, next_round_kv, shapes=get_unaligned_cp_shapes(total_len_per_cp_rank, kv_block_id_outer, next_kv_block_id_outer))# shapes是各个rank上的序列长度
+
+            # Inner loop: process inner context parallelism windows 
+            for i in range(cp_config.inner_size):
+                # wait until KV is received from recv_src
+                if i < cp_config.inner_size - 1:
+                    next_kv_block_id = (cp_config.kv_block_id + cp_config.inner_size - 1) % cp_config.inner_size + kv_block_offset
+                    inner_ring.async_send_recv(cur_kv, next_kv, shapes=get_unaligned_cp_shapes(total_len_per_cp_rank, cp_config.kv_block_id, next_kv_block_id))
+
+                cp_config.cur_k, cp_config.cur_v = cur_kv[0], cur_kv[1]  # [t, n, d]
+
+                # cache kv or k
+                if j * cp_config.inner_size + i + 2 != cp_config.cp_size:
+                    cache_manager.update_cache(cur_kv)
+                if cp_config.causal:
+                    cp_config.attn_outs = None
+                    cp_config.cur_sub_out_seq_len = None
+                cp_config.attn_outs, cp_config.cur_sub_out_seq_len = attention_strategy.compute_fused_attention(
+                    attn_mask, n, q, softmax_scale, cp_config)
+                cp_config.global_attn_outs = attention_strategy.update_out(cp_config)
+
+                if inner_ring.wait():
+                    cur_kv, next_kv = next_kv, cur_kv  # double buffer
+                    cp_config.kv_block_id = (cp_config.kv_block_id + cp_config.inner_size - 1) % cp_config.inner_size + kv_block_offset
+                    # 更新cu_seq_kvlen
+                    cp_config.actual_seq_kvlen = cu_seq_len_per_cp_rank[cp_config.kv_block_id] if split_seq_lens_per_cp_rank is not None else cp_config.actual_seq_kvlen
+
+            if outer_ring.wait():
+                cur_kv, next_round_kv = next_round_kv, cur_kv  # double buffer
+                kv_block_id_outer = (kv_block_id_outer + cp_config.cp_size - cp_config.inner_size) % cp_config.cp_size
+                # 更新cu_seq_kvlen
+                cp_config.actual_seq_kvlen = cu_seq_len_per_cp_rank[kv_block_id_outer] if split_seq_lens_per_cp_rank is not None else cp_config.actual_seq_kvlen
+            
+            if getattr(get_args(), "prof_file", False):
+                v = activation_func_1(v)
+
+        attn_mask = attn_mask if isinstance(attn_mask, list) else [attn_mask]
+        # Extract final attention outputs
+        attn_out, softmax_max, softmax_sum, cp_config.rng_states = cp_config.global_attn_outs
+        
+        k_stack, v_stack = cache_manager.get_cache(cur_kv)
+
+        # Save tensors for backward pass
+        ctx.save_for_backward(q, k_stack, v_stack, *attn_mask, attn_out, softmax_max, softmax_sum)
+        ctx.n = n
+        ctx.softmax_scale = softmax_scale
+        ctx.cp_dkv_outer_ranks = cp_para.get('cp_dkv_outer_ranks', cp_config.cp_global_ranks)
+        ctx.split_seq_lens_per_cp_rank = split_seq_lens_per_cp_rank
+        ctx.cp_config = cp_config.get_backward_config()
+
+        return attn_out
+
+    @staticmethod
+    def backward(ctx, dout):
+        cp_config = ctx.cp_config
+        # Restore saved tensors from forward pass
+        q, k_stack, v_stack, *attn_mask, attn_out, cp_config.softmax_max, cp_config.softmax_sum = ctx.saved_tensors
+        attn_mask = attn_mask[0] if len(attn_mask) == 1 else attn_mask
+
+        n = ctx.n
+        split_seq_lens_per_cp_rank = ctx.split_seq_lens_per_cp_rank
+        softmax_scale = ctx.softmax_scale
+
+        # Reversed order of forward
+        inner_size = len(cp_config.cp_inner_ranks)
+        outer_size = len(cp_config.cp_outer_ranks)
+
+        # Communication rings for KV and gradient exchange
+        intra_kv_comm = RingP2P(cp_config.cp_inner_ranks, cp_config.cp_group_for_intra_window,
+                                cp_config.cp_group_for_intra_window_send_recv_overlap, is_backward=True)
+        intra_dkv_comm = RingP2P(cp_config.cp_inner_ranks, cp_config.cp_group_for_intra_window,
+                                 cp_config.cp_group_for_intra_window_send_recv_overlap, is_backward=True)
+        inter_kv_comm = RingP2P(cp_config.cp_outer_ranks, cp_config.cp_group, cp_config.cp_group_for_send_recv_overlap,
+                                is_backward=True)
+        inter_dkv_comm = RingP2P(ctx.cp_dkv_outer_ranks, cp_config.cp_group, cp_config.cp_group_for_send_recv_overlap,
+                                 is_backward=True)
+
+        # 计算每个rank上的所有子序列的和 以及 累加序列
+        total_len_per_cp_rank = None
+        if split_seq_lens_per_cp_rank is not None:
+            total_len_per_cp_rank = split_seq_lens_per_cp_rank.sum(1).tolist()
+            cu_seq_len_per_cp_rank = split_seq_lens_per_cp_rank.cumsum(1)
+            cu_seq_len_per_cp_rank = torch.nn.functional.pad(cu_seq_len_per_cp_rank, (1, 0), value=0).tolist()
+
+        # Initialize block IDs and sequence lengths
+        cp_config.q_block_id, cp_config.kv_block_id, kv_block_id_outer = cp_config.rank, cp_config.kv_block_id, cp_config.kv_block_id
+        cp_config.actual_seq_kvlen = cu_seq_len_per_cp_rank[cp_config.kv_block_id] if split_seq_lens_per_cp_rank is not None else None
+        cp_config.actual_seq_qlen = cu_seq_len_per_cp_rank[cp_config.q_block_id] if split_seq_lens_per_cp_rank is not None else None
+
+        if total_len_per_cp_rank:
+            cur_shapes_list = list(k_stack[-1].shape)
+            cur_shapes_list[-3] = total_len_per_cp_rank[cp_config.kv_block_id]
+            cur_dkv = torch.zeros((2, *cur_shapes_list), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
+            next_dkv = cur_dkv.clone()
+            next_round_dkv = cur_dkv.clone()
+        elif not ctx.enable_mla:
+            cur_dkv = torch.zeros((2, *k_stack[-1].shape), dtype=k_stack[-1].dtype, device=k_stack[-1].device)
+            next_dkv = cur_dkv.clone()
+            next_round_dkv = cur_dkv.clone()
+        else:
+            k_tmp, v_tmp = k_stack[-1], v_stack[-1]
+            cur_dkv = [torch.zeros_like(k_tmp), torch.zeros_like(v_tmp)]
+            next_dkv = [torch.zeros_like(k_tmp), torch.zeros_like(v_tmp)]
+            next_round_dkv = [torch.zeros_like(k_tmp), torch.zeros_like(v_tmp)]
+
+        if getattr(get_args(), "prof_file", False):
+            activation_func_1 = torch.nn.Hardshrink()
+            q = activation_func_1(q)
+
+        outer_data = (outer_size, inter_kv_comm)
+        inner_data = (inner_size, intra_kv_comm)
+        cp_kv_cache = ContextParallelKVCache(cp_config.cache_policy, outer_data, inner_data, k_stack, v_stack)
+
+        dq = torch.zeros_like(q) # [2, t, n, d]
+        # Outer loop: process outer windows in reverse order
+        for j in range(outer_size):
+            cp_config.kv_block_id = kv_block_id_outer
+            kv_block_offset = (cp_config.kv_block_id // inner_size) * inner_size
+
+            next_kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_config.cp_size
+            cp_kv_cache.communicate_outer_ring_kv(j, shapes=get_unaligned_cp_shapes(total_len_per_cp_rank, cp_config.kv_block_id, next_kv_block_id_outer))
+
+            # Inner loop: process inner windows in reverse order
+            for i in range(inner_size):
+                next_kv_block_id = (cp_config.kv_block_id + 1) % inner_size + kv_block_offset
+                cp_config.cur_k, cp_config.cur_v = cp_kv_cache.communicate_inner_ring_kv(i, get_unaligned_cp_shapes(total_len_per_cp_rank, cp_config.kv_block_id, next_kv_block_id))
+
+                # Compute gradients for current window
+                dq_step, dk_step, dv_step = AttentionWithCpTNDGeneral.backward_step_helper(attn_mask, n, q, softmax_scale,
+                                                                                 attn_out, dout, cp_config)
+
+                if i == 0 and j > 0: # receive dk dv from last window
+                    inter_dkv_comm.wait()
+                    cur_dkv, next_round_dkv = next_round_dkv, cur_dkv
+                elif i > 0: # receive dk dv from last step
+                    intra_dkv_comm.wait()
+                    cur_dkv, next_dkv = next_dkv, cur_dkv
+                
+                dk, dv = cur_dkv[0], cur_dkv[1]
+                
+                # update qkv grades
+                dq.add_(dq_step)
+                dk.add_(dk_step)
+                dv.add_(dv_step)
+
+                next_kv_block_id = (cp_config.kv_block_id + 1) % inner_size + kv_block_offset
+                if i + 1 != inner_size:
+                    intra_dkv_comm.async_send_recv(cur_dkv, next_dkv, shapes=get_unaligned_cp_shapes(total_len_per_cp_rank, cp_config.kv_block_id, next_kv_block_id))
+
+                cp_config.kv_block_id = next_kv_block_id
+                # 更新cu_seq_kvlen
+                cp_config.actual_seq_kvlen = cu_seq_len_per_cp_rank[cp_config.kv_block_id] if split_seq_lens_per_cp_rank is not None else cp_config.actual_seq_kvlen
+            
+            if intra_dkv_comm.wait():
+                cur_dkv, next_dkv = next_dkv, cur_dkv
+
+
+            next_kv_block_id_outer = (kv_block_id_outer + inner_size) % cp_config.cp_size
+            if j + 1 != outer_size:
+                inter_dkv_comm.async_send_recv(cur_dkv, next_round_dkv, shapes=get_unaligned_cp_shapes(total_len_per_cp_rank, cp_config.kv_block_id, next_kv_block_id_outer))
+
+            kv_block_id_outer = next_kv_block_id_outer
+            # 更新cu_seq_kvlen
+            cp_config.actual_seq_kvlen = cu_seq_len_per_cp_rank[kv_block_id_outer] if split_seq_lens_per_cp_rank is not None else cp_config.actual_seq_kvlen
+
+        if inter_dkv_comm.wait():
+            cur_dkv, next_round_dkv = next_round_dkv, cur_dkv
+
+        dk, dv = cur_dkv[0], cur_dkv[1]
+
+        if getattr(get_args(), "prof_file", False):
+            dq = activation_func_1(dq)
+
+        # [2, s, b, h] -> [2s, b, h]
+        if cp_config.causal and not cp_config.is_eod_reset:
+            dq, dk, dv = [x.view(-1, *x.shape[2:]) for x in [dq, dk, dv]]
+        return dq, dk, dv, None, None, None, None, None, None, None
+
+    @classmethod
+    def backward_step_helper(cls, attn_mask, n, q, softmax_scale, attn_out, dout, cp_config):
+        attention_strategy = TNDGeneralAttentionStrategy()
+        attn_grad_outs = attention_strategy.compute_fused_attention_grad(attn_mask, n, q, softmax_scale, attn_out, dout,
+                                                                         cp_config)
+        return attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]
+
+
+def ringattn_context_parallel_tnd_general(q, k, v, n, cp_para, softmax_scale=None, attn_mask=None, dropout_p=0.,
+                              packed_seq_params=None, shapes=None):
+    out = AttentionWithCpTNDGeneral.apply(
+        q, k, v, n, cp_para, softmax_scale, attn_mask, dropout_p,
+        packed_seq_params, shapes
+    )
+    return out
