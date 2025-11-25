@@ -80,9 +80,9 @@ def chunk_local_cumsum_scalar(
         B, H, T = g.shape
     else:
         B, T, H = g.shape
-    if chunksize != 2 ** (chunk_size.bit_length() - 1):
+    if chunk_size != 2 ** (chunk_size.bit_length() - 1):
         raise ValueError(
-            f"chunk_size must be a power of 2, chunksize is{chunk_size}"
+            f"chunk_size must be a power of 2, chunk_size is{chunk_size}"
         )
     BT = chunk_size
     if chunk_indices is None and cu_seqlens is not None:
