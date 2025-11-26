@@ -5,10 +5,7 @@ from mindspeed.op_builder import MatmulAddOpBuilder
 
 __all__ = ["npu_matmul_add_fp32"]
 
-try:
-    IS_A5 = "Ascend910_95" in torch_npu.npu.get_device_name()
-except Exception:
-    IS_A5 = False
+IS_A5 = None
 
 matmul_add_op_builder = MatmulAddOpBuilder()
 
@@ -23,6 +20,12 @@ def npu_matmul_add_fp32(total_input, grad_output, grad):
     for dim in grad_output.shape:
         if dim == 0:
             return
+    global IS_A5
+    if IS_A5 is None:
+        if "Ascend910_95" in torch_npu.npu.get_device_name():
+            IS_A5 = True
+        else:
+            IS_A5 = False
     if IS_A5:
         grad.addmm_(grad_output.t(), total_input)
     else:
