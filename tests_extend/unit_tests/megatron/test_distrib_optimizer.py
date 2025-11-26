@@ -1,24 +1,21 @@
+import dataclasses
 import copy
 import pytest
 import torch
-import torch_npu  # noqa
-import mindspeed.megatron_adaptor  # noqa
+import torch_npu
+import mindspeed.megatron_adaptor
 from apex.optimizers import FusedAdam as Adam
 
-from megatron.core import DistributedDataParallel as DDP
-from megatron.core.transformer import TransformerConfig, MegatronModule
-from megatron.core.parallel_state import get_data_parallel_group
-from megatron.training.global_vars import set_args
-from megatron.training.arguments import parse_args
-from megatron.core.timers import DummyTimer
-from megatron.core.optimizer import (
-    DistributedOptimizer,
-    Float16OptimizerWithFloat16Params,
-    ConstantGradScaler,
-)
-from megatron.core import mpu
 from tests_extend.commons import set_random_seed, initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
+from megatron.core.distributed import DistributedDataParallelConfig
+from megatron.core.distributed import DistributedDataParallel as DDP
+from megatron.core.transformer import TransformerConfig, MegatronModule
+from megatron.core.parallel_state import get_data_parallel_group
+from megatron.training.global_vars import set_args, get_args, get_timers, _set_timers
+from megatron.training.arguments import parse_args
+from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
+from megatron.core.utils import get_model_config
 
 
 class Model(MegatronModule):
@@ -30,30 +27,27 @@ class Model(MegatronModule):
         return self.linear(x)
 
 
-class Timers:
-    def __init__(self, *args, **kwargs):
-        self._dummy_timer = DummyTimer()
-
-    def __call__(self, *args, **kwargs):
-        return self._dummy_timer
-
-
-def step_optimizer(model, use_distributed: bool, seed: int = None):
+def step_optimizer(model, use_distributed: bool, seed: int = None, 
+                              no_wd_decay_cond=None,
+                              scale_lr_cond=None,
+                              lr_mult=1.0):
     set_random_seed(seed)
-
-    model = torch.nn.ModuleList(
-        [
-            DDP(
-                model_chunk.config,
-                model_chunk,
-                data_parallel_group=get_data_parallel_group(with_context_parallel=True),
-                accumulate_allreduce_grads_in_fp32=True,
-                overlap_grad_reduce=False,
-                use_distributed_optimizer=use_distributed,
-            )
-            for model_chunk in model
-        ]
-    )
+    args = get_args()
+    config = get_model_config(model[0])
+    ddp_config = DistributedDataParallelConfig(
+            grad_reduce_in_fp32=args.accumulate_allreduce_grads_in_fp32,
+            overlap_grad_reduce=args.overlap_grad_reduce,
+            use_distributed_optimizer=args.use_distributed_optimizer,
+            check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
+            bucket_size=args.ddp_bucket_size,
+            average_in_collective=args.ddp_average_in_collective)
+    model = torch.nn.ModuleList([DDP(config,
+                 ddp_config,
+                 model_chunk,
+                 # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                 # model chunks is overlapped with compute anyway.
+                 disable_bucketing=(model_chunk_idx > 0))
+             for (model_chunk_idx, model_chunk) in enumerate(model)])
 
     # Params initialization
     for p in model.parameters():
@@ -61,28 +55,25 @@ def step_optimizer(model, use_distributed: bool, seed: int = None):
 
     model = model.cuda()
 
-    opt_ty = (
-        DistributedOptimizer if use_distributed else Float16OptimizerWithFloat16Params
-    )
-    optim = opt_ty(
-        Adam(model.parameters()),
-        clip_grad=1,
-        log_num_zeros_in_grad=False,
-        check_for_nan_in_grad=False,
-        params_have_main_grad=True,
-        fp16=args.fp16,
-        bf16=False,
-        params_dtype=torch.float16,
-        grad_scaler=ConstantGradScaler(1.0),
-        models=model,
-    )
+    kwargs = {}
+    for f in dataclasses.fields(OptimizerConfig):
+        if hasattr(args, f.name):
+            kwargs[f.name] = getattr(args, f.name)
+    kwargs['main_grads_dtype'] = torch.float32
+    kwargs['main_params_dtype'] = torch.float32
+    kwargs['exp_avg_dtype'] = torch.float32
+    kwargs['exp_avg_sq_dtype'] = torch.float32
+    onfig = OptimizerConfig(**kwargs)
+    config.timers = get_timers()
+    optimizer = get_megatron_optimizer(config, model, no_wd_decay_cond,
+                                       scale_lr_cond, lr_mult)
 
     for _ in range(500):
         # Force optimizer state initialization
         for p in model.parameters():
             p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
         # Update params
-        optim.step(args, Timers())
+        optimizer.step()
 
     return copy.deepcopy(list(model.parameters()))
 
@@ -96,9 +87,10 @@ class TestDistributedOptimizer(DistributedTest):
     args.barrier_with_L1_time = False
     args.fp16 = True
     args.reuse_fp32_param = False
+    args.lr = 1e-6
     set_args(args)
+    _set_timers(args)
 
-    @pytest.mark.skip(reason='this UT need update for new megatron version')
     def test_distributed_optimizer(self):
         initialize_model_parallel(1, 1)
 
@@ -116,3 +108,4 @@ class TestDistributedOptimizer(DistributedTest):
 
         for p, dist_p in zip(params, dist_params):
             assert torch.allclose(p.data, dist_p.data)
+

@@ -1,0 +1,128 @@
+# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+import pytest
+import torch
+import torch_npu
+import mindspeed.megatron_adaptor
+
+from megatron.core import parallel_state
+import megatron.core.parallel_state as Utils
+from tests_extend.unit_tests.common import DistributedTest
+from megatron.training.global_vars import set_args
+from megatron.training.arguments import parse_args
+from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
+from megatron.core.distributed.torch_fully_sharded_data_parallel import (
+    TorchFullyShardedDataParallel,
+)
+from megatron.core.num_microbatches_calculator import (
+    init_num_microbatches_calculator,
+    unset_num_microbatches_calculator,
+)
+from megatron.core.tensor_parallel import ColumnParallelLinear
+from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
+from megatron.core.transformer import MegatronModule
+from megatron.core.transformer.module import Float16Module
+from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.utils import init_method_normal, is_torch_min_version
+
+
+class DummyModel(MegatronModule):
+    """Setup a few modules to test the FSDP2 constructor."""
+
+    _fsdp_modules = [torch.nn.Linear]
+
+    def __init__(self, config: TransformerConfig):
+        """Initialize a dummy model with a few modules."""
+        super().__init__(config)
+        self.linear = torch.nn.Linear(2, 2)
+        self.column_parallel_linear = ColumnParallelLinear(
+            input_size=2, output_size=2, config=config, init_method=init_method_normal(0.02)
+        )
+        self.conv = torch.nn.Conv2d(2, 2, 1)
+
+
+@pytest.fixture
+def init_model_parallel(self):
+    """Init torch distributed."""
+    Utils.initialize_model_parallel(1, 1)
+    init_num_microbatches_calculator(0, None, 1, 1, 1)
+    model_parallel_cuda_manual_seed(123)
+    yield  # Run the actual test.
+    Utils.destroy_model_parallel()
+    unset_num_microbatches_calculator()
+
+
+class TestTorchFullySharededParallel(DistributedTest):
+    world_size = 8
+    args = parse_args(None, True)
+    args.num_attention_heads = 8
+    args.hidden_size = 4096
+    set_args(args)
+    
+    def test_fsdp2_constructor(self):
+        """Test the FSDP2 constructor."""
+        if not is_torch_min_version("2.6.0"):
+            pytest.skip("FSDP2 is not supported on this version of PyTorch.")
+        
+        Utils.initialize_model_parallel(1, 1)
+        init_num_microbatches_calculator(0, None, 1, 1, 1)
+        model_parallel_cuda_manual_seed(123)
+        # Create a dummy model and configs.
+        config = TransformerConfig(num_layers=1, kv_channels=1, bf16=True)
+        ddp_config = DistributedDataParallelConfig()
+        model = DummyModel(config)
+        model = Float16Module(config, model)
+        ddp_config = DistributedDataParallelConfig()
+    
+        # Create the sharded model.
+        fsdp_model = TorchFullyShardedDataParallel(config, ddp_config, model)
+    
+        def _is_fsdp_wrapped_module(instance):
+            # FSDP adds a prefix to the class name.
+            return instance.__class__.__name__.startswith("FSDP")
+    
+        assert isinstance(fsdp_model, TorchFullyShardedDataParallel)
+        # We manually added Linear to the list of submodules to wrap.
+        assert _is_fsdp_wrapped_module(fsdp_model.module.module.linear)
+        # ColumnParallelLinear is in the default list of submodules to wrap.
+        assert _is_fsdp_wrapped_module(fsdp_model.module.module.column_parallel_linear)
+        # Conv2d is not in the list of submodules to wrap.
+        assert not _is_fsdp_wrapped_module(fsdp_model.module.module.conv)
+        Utils.destroy_model_parallel()
+        unset_num_microbatches_calculator()
+    
+    def test_fsdp2_constructor_with_process_group(self):
+        """Test the FSDP2 constructor with explicit process group parameter."""
+        if not is_torch_min_version("2.6.0"):
+            pytest.skip("FSDP2 is not supported on this version of PyTorch.")
+        
+        Utils.initialize_model_parallel(1, 1)
+        init_num_microbatches_calculator(0, None, 1, 1, 1)
+        model_parallel_cuda_manual_seed(123)
+        # Create a dummy model and configs.
+        config = TransformerConfig(num_layers=1, kv_channels=1, bf16=True)
+        ddp_config = DistributedDataParallelConfig()
+        model = DummyModel(config)
+        model = Float16Module(config, model)
+    
+        # Create a custom process group (using the default world for testing)
+        custom_process_group = parallel_state.get_data_parallel_group(with_context_parallel=True)
+    
+        # Create the sharded model with explicit process group
+        fsdp_model = TorchFullyShardedDataParallel(
+            config, ddp_config, model, process_group=custom_process_group
+        )
+    
+        # Verify the process group was set correctly
+        assert fsdp_model.process_group is custom_process_group
+    
+        # Check that module wrapping still works correctly
+        def _is_fsdp_wrapped_module(instance):
+            return instance.__class__.__name__.startswith("FSDP")
+    
+        assert isinstance(fsdp_model, TorchFullyShardedDataParallel)
+        assert _is_fsdp_wrapped_module(fsdp_model.module.module.linear)
+        assert _is_fsdp_wrapped_module(fsdp_model.module.module.column_parallel_linear)
+        assert not _is_fsdp_wrapped_module(fsdp_model.module.module.conv)
+        Utils.destroy_model_parallel()
+        unset_num_microbatches_calculator()
+
