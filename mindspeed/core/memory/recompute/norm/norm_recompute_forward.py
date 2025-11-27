@@ -34,7 +34,11 @@ def norm_recompute_forward_impl(
     if is_recompute_norm:
         # Optional Input Layer norm
         self.norm_ckpt1 = CheckpointWithoutOutput(get_cuda_rng_tracker)
-        input_layernorm_output = self.norm_ckpt1.checkpoint(self.input_layernorm, False, hidden_states)
+        if self.config.transformer_impl != "transformer_engine":
+            input_layernorm_output = self.norm_ckpt1.checkpoint(self.input_layernorm, False, hidden_states)
+        else:
+            self.self_attention.linear_qkv.enable_recompute_norm(self.norm_ckpt1)
+            input_layernorm_output = self.input_layernorm(hidden_states)
     else:
         input_layernorm_output = self.input_layernorm(hidden_states)
 

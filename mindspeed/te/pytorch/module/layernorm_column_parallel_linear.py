@@ -84,6 +84,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.gradient_accumulation_fusion = self.config.gradient_accumulation_fusion
         self.parallel_mode = 'column'
         self.fp8_meta = FP8Metadata(['inputs', 'weight', 'grads'])
+        self.is_recompute_norm = False
 
         # MindSpeedTELayerNormColumnParallelLinear check.
         if gather_output:
@@ -213,6 +214,13 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             setattr(self.layer_norm_bias, 'sequence_parallel', self.sequence_parallel) 
         else:
             self.layer_norm_bias = None
+            
+    def _layernorm(self, inp):
+        return F.layer_norm(inp, [self.layer_norm_weight.numel()],
+                            weight=self.layer_norm_weight,
+                            bias=self.layer_norm_bias,
+                            eps=self.config.layernorm_epsilon
+                            )
         
     def _rmsnorm(self, inp):
         if self.config.use_fused_rmsnorm:
@@ -220,15 +228,25 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         return (inp * torch.rsqrt(inp.pow(2).mean(-1, keepdim=True) + self.config.layernorm_epsilon)) \
                 * self.layer_norm_weight
 
+    def enable_recompute_norm(self, norm_ckpt):
+        self.is_recompute_norm = True
+        self.norm_ckpt = norm_ckpt
+
+    def disable_recompute_norm(self):
+        self.is_recompute_norm = False
+        self.norm_ckpt = None
+
     def forward(self, inp: torch.Tensor, is_first_microbatch: Optional[bool] = None, fp8_output=False):
         if self.config.normalization == 'LayerNorm':
-            norm_output = F.layer_norm(inp, [self.layer_norm_weight.numel()],
-                                       weight=self.layer_norm_weight,
-                                       bias=self.layer_norm_bias,
-                                       eps=self.config.layernorm_epsilon
-                                       )
+            if self.is_recompute_norm:
+                norm_output = self.norm_ckpt.checkpoint(self._layernorm, False, inp)
+            else:
+                norm_output = self._layernorm(inp)
         else:
-            norm_output = self._rmsnorm(inp)
+            if self.is_recompute_norm:
+                norm_output = self.norm_ckpt.checkpoint(self._rmsnorm, False, inp)
+            else:
+                norm_output = self._rmsnorm(inp)
 
         bias = self.bias if not self.skip_bias_add else None
 
