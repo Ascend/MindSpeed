@@ -127,7 +127,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
 
     def forward(self, x, m_splits):
-        if not get_args().fp8:
+        if not getattr(get_args(), "fp8", False):
             group_list_type = 1
             for w in self.total_weight:
                 if self.parallel_mode == 'column':
