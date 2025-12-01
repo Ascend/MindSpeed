@@ -81,6 +81,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.is_expert = is_expert
         self.sequence_parallel = self.config.sequence_parallel
         self.gradient_accumulation_fusion = self.config.gradient_accumulation_fusion
+        self.parallel_mode = 'column'
 
         # MindSpeedTELayerNormColumnParallelLinear check.
         if gather_output:

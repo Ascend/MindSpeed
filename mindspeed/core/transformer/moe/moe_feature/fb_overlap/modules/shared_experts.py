@@ -284,7 +284,7 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
 
         out_grad = self.cached_input_grad
         self.cached_input_grad = None
-        if self.config.coc_row_nocomm:
+        if self.config.coc_row_nocomm and out_grad is not None:
             out_grad = out_grad.unsqueeze(1)
 
         return out_grad

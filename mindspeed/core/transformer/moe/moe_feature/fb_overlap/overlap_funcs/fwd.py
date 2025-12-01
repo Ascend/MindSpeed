@@ -95,10 +95,9 @@ def transformer_layer_forward_moe(
     perm1_out, perm1_probs, tokens_per_expert = dispatcher.token_permute1(detached_mlp_input, probs_detached, routing_map)
 
     if use_shared_experts:
-        with torch.npu.stream(dispatcher.overlap_stream):
-            # Shared Experts Forward.
-            self.mlp.shared_experts.linear_fc1_forward_and_act()
-            self.mlp.shared_experts.linear_fc2_forward()
+        # Shared Experts Forward.
+        self.mlp.shared_experts.linear_fc1_forward_and_act()
+        self.mlp.shared_experts.linear_fc2_forward()
     if dispatcher.num_local_experts > 1:
         # launch synchronization here to wait for non-blocking mem copy in preprocess func.
         dispatcher.cuda_sync_point = "no_sync"

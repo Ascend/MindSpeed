@@ -41,10 +41,6 @@ def patch_features():
     # apply megatron patches
     MindSpeedFeaturesManager.apply_features_patches(mindspeed_args)
 
-    # accelerate package will check TE on sys.modules, so we need remove this patch
-    if 'transformer_engine' in sys.modules:
-        del sys.modules["transformer_engine"]
-
 
 def delete_lock_file():
     """Delete lock file in multiprocess for JIT build.."""
