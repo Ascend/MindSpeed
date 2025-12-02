@@ -9,6 +9,7 @@ from functools import wraps
 import torch
 import torch_npu
 import torch.distributed
+import numpy as np
 
 from megatron.training import get_args
 from megatron.core.distributed.param_and_grad_buffer import BufferType
@@ -169,7 +170,7 @@ def get_parameter_state_dp_zero(self):
                 data_parallel_group_gloo,
             )
         if data_parallel_rank == 0:
-            buffer_res_full_shard.append(torch.cat(recv_tensors))
+            buffer_res_full_shard.append([np.concatenate([recv_tensor.numpy() for recv_tensor in recv_tensors])])
    
-    state['shard_main_param_res'] = buffer_res_full_shard
+    state['shard_main_param_res'] = [torch.Tensor(t) for t in buffer_res_full_shard]
     return state
