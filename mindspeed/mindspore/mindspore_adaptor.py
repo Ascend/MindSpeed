@@ -78,3 +78,9 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('mindspeed.core.memory.swap_attention.prefetch.SwapPrefetch.pack_hook', pack_hook)
     aspm.register_patch('mindspeed.core.memory.swap_attention.prefetch.prefetch_register_post_backward_hook',
                         prefetch_register_post_backward_hook)
+
+    # Optimizer: load and save parameter
+    from mindspeed.mindspore.core.optimizer.distrib_optimizer import get_parameter_state_dp_zero
+    aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.get_parameter_state_dp_zero', get_parameter_state_dp_zero)
+    from mindspeed.mindspore.core.optimizer.distrib_optimizer import load_parameter_state_from_dp_zero
+    aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.load_parameter_state_from_dp_zero', load_parameter_state_from_dp_zero)
