@@ -40,8 +40,8 @@ def get_value_from_cfg(attr_name):
     return coc_cfgs[attr_name]
 
 
-def print_on_device0(msg):
-    if torch.npu.current_device() == 0:
+def print_on_device0(msg, isprint):
+    if torch.npu.current_device() == 0 and isprint:
         print(msg)
 
 
@@ -89,7 +89,7 @@ def initialize_coc_from_cfg(cfg):
     }
 
     if min_comm_config.coc_fused_kernel:
-        print_on_device0("COC REPLACE WITH COC FUSED KERNEL SCRIPT!")
+        print_on_device0("COC REPLACE WITH COC FUSED KERNEL SCRIPT!", min_comm_config.coc_print_enabled)
         if min_comm_config.sequence_parallel_enabled:
             min_comm_config.replace_forward_functions_by_autograd_class(FusedCOCColumnSeqParallelFunction,
                                                                         FusedCOCRowSeqParallelFunction)
@@ -98,13 +98,14 @@ def initialize_coc_from_cfg(cfg):
                                                                         FusedCOCRowAllReduceFunction)
     elif "ORIGINAL" not in min_comm_config.module_type.name:
         if "REWRITE" in min_comm_config.module_type.name:
-            print_on_device0("COC REPLACE WITH REWRITE SCRIPT!")
+            print_on_device0("COC REPLACE WITH REWRITE SCRIPT!", min_comm_config.coc_print_enabled)
         else:
-            print_on_device0("COC REPLACE WITH COC SCRIPT!")
+            print_on_device0("COC REPLACE WITH COC SCRIPT!", min_comm_config.coc_print_enabled)
         parallel_linear_autograd_class = map_type2autograd_class.get(min_comm_config.module_type)
         if parallel_linear_autograd_class is None:
             raise RuntimeError("Module type is not matched.")
         min_comm_config.replace_forward_functions_by_autograd_class(parallel_linear_autograd_class[0],
                                                                     parallel_linear_autograd_class[1])
     else:
-        print_on_device0("COC REPLACE NONE!")
+        print_on_device0("COC REPLACE NONE!", min_comm_config.coc_print_enabled)
+    min_comm_config.coc_print_enabled = False
