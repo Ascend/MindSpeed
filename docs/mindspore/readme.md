@@ -16,14 +16,14 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
 
   <tr>
     <td>昇腾NPU驱动</td>
-    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0003.html?Mode=PmIns&OS=Debian&Software=cannToolKit">驱动固件安装指南</a> 》</td>
+    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0005.html?Mode=PmIns&OS=Debian&Software=cannToolKit">驱动固件安装指南</a> 》</td>
   </tr>
   <tr>
     <td>昇腾NPU固件</td>
   </tr>
   <tr>
     <td>Toolkit（开发套件）</td>
-    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0005.html?Mode=PmIns&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a> 》</td>
+    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0008.html?Mode=PmIns&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a> 》</td>
   </tr>
   <tr>
     <td>Kernel（算子包）</td>
@@ -74,7 +74,7 @@ git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
 # 在MindSpeed-Core-MS目录下执行
 # 若在环境中PYTHONPATH等环境变量失效（例如退出容器后再进入等），需要重新设置环境变量
 MindSpeed_Core_MS_PATH=$(pwd)
-export PYTHONPATH=${MindSpeed_Core_MS_PATH}/MSAdapter/mindtorch:${MindSpeed_Core_MS_PATH}/MindSpeed:$PYTHONPATH
+export PYTHONPATH=${MindSpeed_Core_MS_PATH}/MSAdapter:${MindSpeed_Core_MS_PATH}/MSAdapter/msa_thirdparty:${MindSpeed_Core_MS_PATH}/MindSpeed:$PYTHONPATH
 echo $PYTHONPATH
 ```
 
@@ -197,7 +197,7 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
   <tr>
     <td rowspan="5"> Megatron 全分片并行</td>
     <td><a href="../features/custom_fsdp.md">link</a></td>
-    <td style="text-align: center; vertical-align: middle">✅</td>
+    <td style="text-align: center; vertical-align: middle">暂不支持开启pp及--reuse-fp32-param参数配置</td>
   </tr>
 
 </table>
