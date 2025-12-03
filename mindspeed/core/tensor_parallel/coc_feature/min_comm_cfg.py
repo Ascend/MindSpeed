@@ -3,8 +3,8 @@ from enum import Enum
 import torch
 
 
-def print_on_device0(msg):
-    if torch.npu.current_device() == 0:
+def print_on_device0(msg, isprint):
+    if torch.npu.current_device() == 0 and isprint:
         print(msg)
 
 
@@ -55,6 +55,8 @@ class MinCommConfig:
 
         self.column_parallel_function = None
         self.row_parallel_function = None
+
+        self.coc_print_enabled = True
 
     def print_settings(self):
         """Print current configuration settings."""
@@ -190,7 +192,8 @@ class MinCommConfig:
         else:
             self.prefix = f"module_{self.module_type.name}"
 
-        self.print_settings()
+        if self.coc_print_enabled:
+            self.print_settings()
 
     def register_function(self):
         from .coc_parallel_linears_all_reduce_fused import FusedCOCRowAllReduceFunction
@@ -217,21 +220,23 @@ class MinCommConfig:
             True: [FusedCOCColumnSeqParallelFunction, FusedCOCRowSeqParallelFunction],
             False: [COCColumnAllReduceFunction, FusedCOCRowAllReduceFunction]
         }
+
         if self.coc_fused_kernel:
-            print_on_device0("COC REPLACE WITH COC FUSED KERNEL SCRIPT!")
+            print_on_device0("COC REPLACE WITH COC FUSED KERNEL SCRIPT!", self.coc_print_enabled)
             self.column_parallel_function, self.row_parallel_function = map_fused_class[self.sequence_parallel_enabled]
         elif "ORIGINAL" not in self.module_type.name:
             if "REWRITE" in self.module_type.name:
-                print_on_device0("COC REPLACE WITH REWRITE SCRIPT!")
+                print_on_device0("COC REPLACE WITH REWRITE SCRIPT!", self.coc_print_enabled)
             else:
-                print_on_device0("COC REPLACE WITH COC SCRIPT!")
+                print_on_device0("COC REPLACE WITH COC SCRIPT!", self.coc_print_enabled)
             parallel_linear_autograd_class = map_type2autograd_class.get(self.module_type)
             if parallel_linear_autograd_class is None:
                 raise RuntimeError("Module type is not matched.")
             self.column_parallel_function = parallel_linear_autograd_class[0]
             self.row_parallel_function = parallel_linear_autograd_class[1]
         else:
-            print_on_device0("COC REPLACE NONE!")
+            print_on_device0("COC REPLACE NONE!", self.coc_print_enabled)
+        self.coc_print_enabled = False
 
 
 min_comm_config = MinCommConfig()

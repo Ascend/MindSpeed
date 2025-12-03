@@ -93,6 +93,8 @@ class MinCommConfig:
         self.customized_coc_dict = {}
         self.enable_coc_in_column_backward = True
 
+        self.coc_print_enabled = True
+
     def print_settings(self):
         if self.coc_fused_kernel:
             enable_coc_in_column_backward = True if self.enable_coc_in_column_backward else False
@@ -223,7 +225,8 @@ class MinCommConfig:
         else:
             self.prefix = f"module_{self.module_type.name}"
 
-        self.print_settings()
+        if self.coc_print_enabled:
+            self.print_settings()
 
 
 min_comm_config = MinCommConfig()
