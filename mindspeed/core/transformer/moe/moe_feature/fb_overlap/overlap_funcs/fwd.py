@@ -76,6 +76,7 @@ def transformer_layer_forward_moe(
     dispatcher = self.mlp.token_dispatcher
     detached_mlp_input = detach_tensor(pre_mlp_layernorm_output, checkpoint_forward=checkpoint)
     if use_shared_experts:
+        dispatcher.overlap_stream.wait_stream(torch.npu.current_stream())
         with torch.npu.stream(dispatcher.overlap_stream):
             # Shared Experts PreComm.
             self.mlp.shared_experts.pre_forward_comm(detached_mlp_input)

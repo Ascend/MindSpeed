@@ -101,7 +101,7 @@ def _p2p_ops_eod(
 
     reqs = {}
 
-    if get_pipeline_model_parallel_rank() % 2 == 0:
+    if rank % 2 == 0:
         if tensor_send_next is not None:
             req = torch.distributed.isend(
                 tensor=prev_actual_seq_len, dst=next_pipeline_rank, group=even_send_odd_recv_group,

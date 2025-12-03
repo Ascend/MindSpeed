@@ -160,7 +160,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             def recomp_token_permutation1(hidden_states, routing_map):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
                 permutated_local_input_tokens, _, _ = permute(
-                    hidden_states, routing_map
+                    hidden_states, routing_map, num_out_tokens=bwd_dispatcher.num_out_tokens, fused=args.moe_permute_fusion
                 )
                 return permutated_local_input_tokens
 
@@ -201,8 +201,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             pre_mlp_layernorm_output = fwd_layer.pre_mlp_layernorm(detached_attention_out)
         # MLP.
         detached_mlp_input = detach_tensor(pre_mlp_layernorm_output)
-        if hasattr(fwd_layer.mlp.token_dispatcher, "num_tokens_per_expert") and (getattr(get_args(), "enable_expert_placement", 
-                                                            False) or getattr(get_args(), "print_expert_load", False)):
+        if hasattr(fwd_layer.mlp.token_dispatcher, "num_tokens_per_expert") and (getattr(args, "enable_expert_placement", 
+                                                            False) or getattr(args, "print_expert_load", False)):
             fwd_layer.mlp.predict_expert_load(fwd_layer.mlp.token_dispatcher.num_tokens_per_expert)
         
         probs, routing_map = router_forward(fwd_layer, detached_mlp_input)
@@ -336,7 +336,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         if use_shared_experts:
             with torch.npu.stream(fwd_dispatcher.overlap_stream):
                 shared_expert_output, share_experts_graph = fwd_shared_experts.get_output()
-
+            torch.npu.current_stream().wait_stream(fwd_dispatcher.overlap_stream)
         bwd_perm_a2a_handle.wait()
         bwd_perm_a2a_handle = None
 
@@ -409,7 +409,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         unperm_a2a_out.untyped_storage().resize_(0)
 
         if use_shared_experts:
-            torch.npu.current_stream().wait_stream(fwd_dispatcher.overlap_stream)
             detached_shared_expert_output = detach_tensor(shared_expert_output)
             mlp_output = route_expert_output + detached_shared_expert_output
             shared_expert_output.untyped_storage().resize_(0)
