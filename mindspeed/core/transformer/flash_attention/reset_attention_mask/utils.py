@@ -19,86 +19,86 @@ def get_batch_on_this_cp_rank_wrapper(fn):
     return wrapper
 
 
-def gptdataset_getitem_wrapper(fn):
-    @wraps(fn)
-    def wrapper(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
-        """Abstract method implementation
+def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
+        
+    """Abstract method implementation
 
-        Args:
-            idx (Optioal[int]): The index into the dataset
+    Args:
+        idx (Optioal[int]): The index into the dataset
 
-        Returns:
-            Dict[str, torch.Tensor]: The sample information wrapped in a dictionary
-        """
-        if idx is None:
-            # Batch padding sequence so the index does not matter
-            text, _ = self._query_document_sample_shuffle_indices(0)
-        else:
-            text, _ = self._query_document_sample_shuffle_indices(idx)
+    Returns:
+        Dict[str, torch.Tensor]: The sample information wrapped in a dictionary
+    """
+    if idx is None:
+        # Batch padding sequence so the index does not matter
+        text, _ = self._query_document_sample_shuffle_indices(0)
+    else:
+        text, _ = self._query_document_sample_shuffle_indices(idx)
 
-        text = torch.from_numpy(text).long()
-        if self.config.add_extra_token_to_sequence:
-            tokens = text[:-1].contiguous()
-            labels = text[1:].contiguous()
-        else:
-            tokens = text
-            labels = torch.roll(text, shifts=-1, dims=0)
-            labels[-1] = self._pad_token_id
+    text = torch.from_numpy(text).long()
+    if self.config.add_extra_token_to_sequence:
+        tokens = text[:-1].contiguous()
+        labels = text[1:].contiguous()
+    else:
+        tokens = text
+        labels = torch.roll(text, shifts=-1, dims=0)
+        labels[-1] = self._pad_token_id
 
-        if (
-            not self.masks_and_position_ids_are_cacheable
-            or not self.masks_and_position_ids_are_cached
-        ):
-            attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
-                tokens,
-                self.config.tokenizer.eod,
-                self.config.reset_position_ids,
-                self.config.reset_attention_mask,
-                self.config.eod_mask_loss,
-                self.config.create_attention_mask,
-                self.config.tokenizer.vocab_size,
-            )
-            if self.masks_and_position_ids_are_cacheable:
-                self.cached_attention_mask = attention_mask
-                self.cached_loss_mask = loss_mask
-                self.cached_position_ids = position_ids
-                self.masks_and_position_ids_are_cached = True
-        else:
-            attention_mask = self.cached_attention_mask
-            loss_mask = self.cached_loss_mask.clone()
-            position_ids = self.cached_position_ids
+    if (
+        not self.masks_and_position_ids_are_cacheable
+        or not self.masks_and_position_ids_are_cached
+    ):
+        attention_mask, loss_mask, position_ids, actual_seq_len = _get_ltor_masks_and_position_ids(
+            tokens,
+            self.config.tokenizer.eod,
+            self.config.reset_position_ids,
+            self.config.reset_attention_mask,
+            self.config.eod_mask_loss,
+            self.config.create_attention_mask,
+            self.config.tokenizer.vocab_size,
+        )
+        if self.masks_and_position_ids_are_cacheable:
+            self.cached_attention_mask = attention_mask
+            self.cached_loss_mask = loss_mask
+            self.cached_position_ids = position_ids
+            self.masks_and_position_ids_are_cached = True
+    else:
+        attention_mask = self.cached_attention_mask
+        loss_mask = self.cached_loss_mask.clone()
+        position_ids = self.cached_position_ids
 
-        # For padded sequences, mask the loss
-        loss_mask[labels == self._pad_token_id] = 0.0
+    # For padded sequences, mask the loss
+    loss_mask[labels == self._pad_token_id] = 0.0
 
-        # For padded sequences, ensure the embedding layer can map the token ID
-        if self.config.tokenizer.vocab_size is not None:
-            tokens[tokens == self.config.tokenizer.vocab_size] = 0
-            labels[labels == self.config.tokenizer.vocab_size] = 0
+    # For padded sequences, ensure the embedding layer can map the token ID
+    if self.config.tokenizer.vocab_size is not None:
+        tokens[tokens == self.config.tokenizer.vocab_size] = 0
+        labels[labels == self.config.tokenizer.vocab_size] = 0
 
-        tokens[tokens == self._pad_token_id] = 0
-        labels[labels == self._pad_token_id] = 0
+    tokens[tokens == self._pad_token_id] = 0
+    labels[labels == self._pad_token_id] = 0
 
-        # Batch padding sequence so we mask the loss
-        if idx is None:
-            loss_mask = torch.zeros_like(loss_mask)
+    # Batch padding sequence so we mask the loss
+    if idx is None:
+        loss_mask = torch.zeros_like(loss_mask)
 
-        if self.config.create_attention_mask:
-            return {
-                "tokens": tokens,
-                "labels": labels,
-                "attention_mask": attention_mask,
-                "loss_mask": loss_mask,
-                "position_ids": position_ids,
-            }
-        else:
-            return {
-                "tokens": tokens,
-                "labels": labels,
-                "loss_mask": loss_mask,
-                "position_ids": position_ids,
-            }
-    return wrapper
+    if self.config.create_attention_mask:
+        return {
+            "tokens": tokens,
+            "labels": labels,
+            "attention_mask": attention_mask,
+            "loss_mask": loss_mask,
+            "position_ids": position_ids,
+            "actual_seq_len": actual_seq_len,
+        }
+    else:
+        return {
+            "tokens": tokens,
+            "labels": labels,
+            "loss_mask": loss_mask,
+            "position_ids": position_ids,
+            "actual_seq_len": actual_seq_len,
+        }
 
 
 def _get_ltor_masks_and_position_ids(
@@ -195,18 +195,14 @@ def _get_ltor_masks_and_position_ids(
     else:
         actual_seq_len = torch.cat([eod_index + 1, seq_length_tensor]) if eod_index.numel() > 0 else seq_length_tensor
 
-    return attention_mask, loss_mask, (position_ids, actual_seq_len)
+    return attention_mask, loss_mask, position_ids, actual_seq_len
 
 
 def collate_wrapper(fn):
     @wraps(fn)
     def wrapper(samples):
-        actual_seq_len = [elem['position_ids'][1] for elem in samples]
-        samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
         batch = fn(samples)
-        seq_len = actual_seq_len[0][-1]
-        actual_seq_len = [elem + i * seq_len for i, elem in enumerate(actual_seq_len)]
-        batch['actual_seq_len'] = torch.cat(actual_seq_len)
+        batch['actual_seq_len'] = samples[0]['actual_seq_len']
         return batch
 
     return wrapper

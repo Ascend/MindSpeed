@@ -54,10 +54,6 @@ class ContextParallelFeature(MindSpeedFeature):
             if args.context_parallel_algo != 'megatron_cp_algo':
                 raise AssertionError("alibi only support megatron_cp_algo")
 
-        if args.context_parallel_size > 1 and hasattr(args, 'reset_attention_mask') and args.reset_attention_mask:
-            if args.attention_mask_type == 'causal' and args.context_parallel_algo != 'megatron_cp_algo':
-                raise AssertionError('accelerated eod reset mode only support ring attention')
-
         # hybrid context parallel
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'hybrid_cp_algo':
             if args.ulysses_degree_in_cp is None:

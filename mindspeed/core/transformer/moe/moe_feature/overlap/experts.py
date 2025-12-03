@@ -44,12 +44,6 @@ class OverLapGmmExpertsImpl:
         self.set_recompute_activation_func = False
         self.activation_checkpoint_manager = CheckpointWithoutOutput()
 
-        def activation_func_with_probs(x, probs):
-            dtype = x.dtype
-            res = self.activation_func(x) * probs
-            return res.to(dtype)
-        self.activation_func_with_probs = activation_func_with_probs
-
     def forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs, ctx=None):
         """Forward step of the GroupedMLP with MoE overlap."""
 
@@ -74,7 +68,7 @@ class OverLapGmmExpertsImpl:
         group_list = torch.cumsum(tokens_per_expert, dim=0)
         if self.config.moe_alltoall_overlap_comm:
             return grouped_mlp_with_comp_and_comm_overlap_all2allseq(permuted_local_hidden_states, w1, w2,
-                                                                (self.weight1, self.weight2, self.activation_func_with_probs,
+                                                                (self.weight1, self.weight2, self.activation_func,
                                                                 permuted_probs, group_list, self.layer_number, self.config),
                                                                 ctx=ctx)
         else:
@@ -124,7 +118,7 @@ class AlltoAllOverLapGmmExpertsImpl(GroupedMLP):
         group_list = torch.cumsum(tokens_per_expert, dim=0)
 
         return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                            (self.weight1, self.weight2, self.activation_func_with_probs, 
+                                                            (self.weight1, self.weight2, self.activation_func, 
                                                             permuted_probs, group_list, self.layer_number, self.config),
                                                             ctx=ctx)
 

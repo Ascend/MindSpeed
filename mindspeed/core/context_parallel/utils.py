@@ -727,8 +727,8 @@ def pad_data(actual_seq_len, batch, cp_size, tp_size):
     first_seq_len = actual_seq_len[0:1]
     per_seq_lens = torch.cat((first_seq_len, torch.diff(actual_seq_len)))
     per_seq_lens_padded = round_up(per_seq_lens, pad_to)
-    total_len = torch.sum(per_seq_lens_padded)
     actual_seq_len_padded = torch.cumsum(per_seq_lens_padded, dim=0)
+    paded_total_len = actual_seq_len_padded[-1]
 
     per_seq_lens_cpu = per_seq_lens.cpu()
     starts = torch.cat([torch.tensor([0], device='npu'), actual_seq_len_padded[:-1]])
@@ -736,8 +736,8 @@ def pad_data(actual_seq_len, batch, cp_size, tp_size):
 
     index_ranges = []
     for i in range(len(per_seq_lens_cpu)):
-        start_val = starts_cpu[i].item()
-        seq_len_val = per_seq_lens_cpu[i].item()
+        start_val = starts_cpu[i]
+        seq_len_val = per_seq_lens_cpu[i]
         index_ranges.append((start_val, start_val + seq_len_val))
 
     all_indices = []
@@ -751,7 +751,7 @@ def pad_data(actual_seq_len, batch, cp_size, tp_size):
             return data
 
         data = data.view(-1)
-        buffer = torch.zeros(total_len, device='npu', dtype=data.dtype)
+        buffer = torch.zeros(paded_total_len, device='npu', dtype=data.dtype)
         buffer[indices] = data[:len(indices)]
         return buffer.view((1, -1))
 

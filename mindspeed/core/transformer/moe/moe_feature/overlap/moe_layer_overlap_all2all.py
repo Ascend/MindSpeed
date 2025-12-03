@@ -60,7 +60,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
             ctx.share_experts_graph_list = None
 
         if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
-            ctx.activation_func_with_probs = moe_layer.experts.activation_func_with_probs
+            ctx.activation_func = moe_layer.experts.activation_func
             ctx.hidden_size = moe_layer.experts.config.hidden_size
             ctx.num_local_experts = moe_layer.experts.num_local_experts
             ctx.weight1 = moe_layer.experts.weight1
@@ -136,6 +136,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         ctx.num_global_tokens_per_local_expert_cpu = moe_layer.token_dispatcher.num_global_tokens_per_local_expert_cpu
         ctx.sort_input_by_local_experts = moe_layer.token_dispatcher.sort_input_by_local_experts
         ctx.output_splits_tp = moe_layer.token_dispatcher.output_splits_tp
+        ctx.num_out_tokens = moe_layer.token_dispatcher.num_out_tokens
 
         #save shared_experts overlap backwards tensor.
         if moe_layer.shared_expert_overlap:
@@ -164,6 +165,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
 
         output_splits = ctx.output_splits
         input_splits = ctx.input_splits
+        num_out_tokens = ctx.num_out_tokens
 
         num_global_tokens_per_local_expert_cpu = ctx.num_global_tokens_per_local_expert_cpu
         sort_input_by_local_experts = ctx.sort_input_by_local_experts
@@ -180,16 +182,17 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
              sort_input_by_local_experts),
              permute2_input_detach, permute2_graph,
              permute2_prob_detach, permute2_prob_graph,
-             output_splits, input_splits, output_splits_tp))
+             output_splits, input_splits, output_splits_tp, num_out_tokens))
 
         if moe_zero_memory == "level1" and not ctx.is_only_recompute_activation:
             with torch.no_grad():
                 # Recompute token rearrange in permutation1
                 permutated_local_input_tokens, permuted_probs, _ = permute(
-                    detach_input.view(-1, detach_input.shape[-1]), routing_map, probs=detach_scores,
+                    detach_input.view(-1, detach_input.shape[-1]), routing_map, num_out_tokens=num_out_tokens,
+                    probs=detach_scores, fused=ctx.config.moe_permute_fusion
                 )
 
-                if parallel_state.get_expert_tensor_parallel_world_size() > 1:
+                if ctx.config.sequence_parallel:
                     cached_fc1_input_ = gather_from_sequence_parallel_region(
                         detach_input, tensor_parallel_output_grad=True
                     )
@@ -211,7 +214,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
                     ctx.cached_fc1_input.untyped_storage().copy_(cached_fc1_input_.untyped_storage())
                     shared_fc1_out, bias_parallel = ctx.moe_layer.token_dispatcher.shared_experts.linear_fc1(cached_fc1_input_)
                     #Avoid cached_fc1_input memory blast when TP=1.
-                    if parallel_state.get_expert_tensor_parallel_world_size() > 1:
+                    if ctx.config.sequence_parallel:
                         cached_fc1_input_.untyped_storage().resize_(0)
 
                 permute1_ep_all_to_all_handle.wait()
@@ -306,7 +309,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
                     )
                 global_probs.untyped_storage().resize_(0)
                 # Recompute mm1 and act.
-                input_, mm1_out, permuted_probs, act_out = ctx.recompute_tensors
+                input_, mm1_out, expert_permuted_probs, act_out, act_without_probs = ctx.recompute_tensors
                 ctx.recompute_tensors = None
                 if global_input_tokens.nelement() != 0:
                     group_list = torch.cumsum(ctx.tokens_per_expert, dim=0)
@@ -317,7 +320,14 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
                     w1 = ctx.weight1.view(ctx.hidden_size, -1)
                     mm1_out_ = torch.matmul(global_input_tokens, w1)
 
-                act_out_ = ctx.activation_func_with_probs(mm1_out_, permuted_probs_.unsqueeze(-1))
+                act_without_probs_ = ctx.activation_func(mm1_out_)
+                act_out_ = act_without_probs_ * permuted_probs_.unsqueeze(-1)
+
+                act_without_probs_size = act_without_probs_.untyped_storage().size()
+                act_without_probs.untyped_storage().resize_(act_without_probs_size)
+                act_without_probs.untyped_storage().copy_(act_without_probs_.untyped_storage())
+                act_without_probs = None
+                act_without_probs_.untyped_storage().resize_(0)
                 act_out_size = act_out_.untyped_storage().size()
                 act_out.untyped_storage().resize_(act_out_size)
                 act_out.untyped_storage().copy_(act_out_.untyped_storage())
@@ -329,9 +339,9 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
                 mm1_out = None
                 mm1_out_.untyped_storage().resize_(0)
                 permuted_probs_size = permuted_probs_.untyped_storage().size()
-                permuted_probs.untyped_storage().resize_(permuted_probs_size)
-                permuted_probs.untyped_storage().copy_(permuted_probs_.untyped_storage())
-                permuted_probs = None
+                expert_permuted_probs.untyped_storage().resize_(permuted_probs_size)
+                expert_permuted_probs.untyped_storage().copy_(permuted_probs_.untyped_storage())
+                expert_permuted_probs = None
                 permuted_probs_.untyped_storage().resize_(0)
                 input_size = global_input_tokens.untyped_storage().size()
                 input_.untyped_storage().resize_(input_size)

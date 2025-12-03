@@ -64,14 +64,14 @@ def transformer_layer_backward_moe(
 
     # recomp permute1 and overlap all2all
     perm_a2a_handle = None
-    if get_args().moe_zero_memory == 'level0':
+    if args.moe_zero_memory == 'level0':
         with torch.no_grad():
             input_before_perm1 = self.pre_mlp_layernorm_graph[0]
 
             def recomp_token_permutation1(hidden_states, routing_map):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
                 permutated_local_input_tokens, _, _ = permute(
-                    hidden_states, routing_map
+                    hidden_states, routing_map, num_out_tokens=dispatcher.num_out_tokens, fused=args.moe_permute_fusion
                 )
                 return permutated_local_input_tokens
 
@@ -93,7 +93,7 @@ def transformer_layer_backward_moe(
     if not in_detach_stage:
         WeightGradStore.end_decouple()
     run_graph_backward(self.perm2_graph, keep_graph=True)  # keep for dw commutation
-    if get_args().moe_zero_memory == 'level0':
+    if args.moe_zero_memory == 'level0':
         perm_a2a_handle.wait()
         perm_a2a_handle = None
 
@@ -111,7 +111,7 @@ def transformer_layer_backward_moe(
         input_splits_tp=self.output_splits_tp
     )
 
-    if get_args().moe_zero_memory == 'level0':
+    if args.moe_zero_memory == 'level0':
         with torch.no_grad():
             recompute_fc1_input, _ = dispatcher.token_permute2(perm_a2a_out, None, bwd_num_global_tokens_per_local_expert_cpu)
             perm_a2a_out.untyped_storage().resize_(0)

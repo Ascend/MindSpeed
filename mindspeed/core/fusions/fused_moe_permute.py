@@ -133,9 +133,8 @@ def maybe_dtoh_and_synchronize(
             if on_side_stream:
                 self.cuda_dtoh_stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(self.cuda_dtoh_stream):
-                tokens_per_expert = maybe_move_tensor_to_cpu(
-                    tokens_per_expert, record_stream=on_side_stream
-                )
+                #With Ascend GMM， tokens_per_expert dtoh op could be cancel.
+
                 self.input_splits = maybe_move_tensor_to_cpu(
                     self.input_splits, as_numpy=True, record_stream=on_side_stream
                 )
@@ -320,8 +319,9 @@ def alltoall_seq_token_unpermutation(
 def preprocess_sync_wrapper(fn):
     @wraps(fn)
     def wrapper(self, routing_map):
-        fn(self, routing_map)
+        num_tokens_per_local_expert = fn(self, routing_map)
         if self.num_local_experts > 1:
             if self.config.moe_permute_fusion:
                 self._maybe_update_cuda_sync_point("before_permutation_2")
+        return num_tokens_per_local_expert
     return wrapper
