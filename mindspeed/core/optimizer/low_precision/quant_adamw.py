@@ -141,6 +141,11 @@ class ScaleMeta:
         self._mxfp8_converted = True  # scale already finalized
 
     def block_scaling(self, inputs: torch.Tensor, scale: torch.Tensor):
+        # Ensure scale is 1D even if upstream ops (e.g., dynamic mx quant)
+        # produced a multi-dimensional tensor of per-block scales.
+        if isinstance(scale, torch.Tensor) and scale.dim() > 1:
+            scale = scale.view(-1)
+
         if self.block_size is not None:
             if inputs.numel() % self.block_size != 0:
                 num_blocks = inputs.numel() // self.block_size

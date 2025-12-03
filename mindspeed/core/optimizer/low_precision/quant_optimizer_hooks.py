@@ -168,8 +168,6 @@ def optimizer_config_post_init_wrapper(post_init_func):
         if getattr(args_namespace, 'use_quant_optimizer', False):
             if self.optimizer != 'adam':
                 raise AssertionError('MindSpeed quant optimizer only supports Adam.')
-            if not self.use_distributed_optimizer:
-                raise AssertionError('MindSpeed quant optimizer requires distributed optimizer.')
             if self.optimizer_cpu_offload:
                 raise AssertionError('MindSpeed quant optimizer does not support optimizer CPU offload.')
         else:
@@ -283,7 +281,18 @@ def distributed_optimizer_init_wrapper(init_func):
     @wraps(init_func)
     def _wrapper(self, optimizer, config, grad_scaler, init_state_fn, *args, **kwargs):
         patched = False
-        original_adam = init_func.__globals__.get('Adam')
+        original_adam = None
+        adam_module = None
+
+        if optimizer is not None:
+            try:
+                import megatron.core.optimizer.distrib_optimizer as _dist_opt_mod
+            except Exception:
+                _dist_opt_mod = None
+            if _dist_opt_mod is not None:
+                adam_module = _dist_opt_mod
+                original_adam = getattr(adam_module, "Adam", None)
+
         if optimizer is not None and original_adam is not None:
             try:
                 from mindspeed.core.optimizer.low_precision import quant_adamw
@@ -291,13 +300,14 @@ def distributed_optimizer_init_wrapper(init_func):
                 quant_adamw = None
             if quant_adamw is not None and isinstance(optimizer, quant_adamw.AdamW):
                 patched_adam = _get_patched_adam(original_adam, quant_adamw.AdamW)
-                init_func.__globals__['Adam'] = patched_adam
-                patched = True
+                if adam_module is not None:
+                    setattr(adam_module, "Adam", patched_adam)
+                    patched = True
         try:
             return init_func(self, optimizer, config, grad_scaler, init_state_fn, *args, **kwargs)
         finally:
-            if patched:
-                init_func.__globals__['Adam'] = original_adam
+            if patched and adam_module is not None:
+                setattr(adam_module, "Adam", original_adam)
 
     return _wrapper
 
@@ -423,17 +433,41 @@ def bf16_tensors_to_fp32_tensors_deterministic(int32_tensors, bf16_fp32_tensors,
 
 
 def optimizer_exp_avg_save_sign(optimizer, fp32_param, int32_tensor, odd_even_tensor):
-    if "exp_avg_sq" in optimizer.state[fp32_param]:
-        int32_tensor.sub_(odd_even_tensor)
-        sign_tensor = torch.sign(odd_even_tensor - 0.5).reshape(optimizer.state[fp32_param]["exp_avg_sq"].shape)
-        optimizer.state[fp32_param]["exp_avg_sq"].mul_(sign_tensor)
+    if "exp_avg_sq" not in optimizer.state[fp32_param]:
+        return
+
+    exp_avg_sq_state = optimizer.state[fp32_param]["exp_avg_sq"]
+    int32_tensor.sub_(odd_even_tensor)
+
+    target_shape = exp_avg_sq_state.shape
+    sign_tensor = odd_even_tensor.to(device=exp_avg_sq_state.device, dtype=torch.float32)
+    sign_tensor = sign_tensor.view(target_shape).mul(2.0).sub(1.0)
+
+    meta = getattr(exp_avg_sq_state, "meta", None)
+    if meta is not None:
+        exp_avg_sq_fp32 = meta.dequantization(exp_avg_sq_state.data)
+        exp_avg_sq_fp32.mul_(sign_tensor.to(dtype=exp_avg_sq_fp32.dtype))
+        exp_avg_sq_state.data.copy_(meta.quantization(exp_avg_sq_fp32))
+    else:
+        exp_avg_sq_state.mul_(sign_tensor.to(dtype=exp_avg_sq_state.dtype))
 
 
 def optimizer_exp_avg_load_sign(optimizer, fp32_param, int32_tensor):
-    if "exp_avg_sq" in optimizer.state[fp32_param]:
-        odd_even_tensor = (torch.sign(optimizer.state[fp32_param]["exp_avg_sq"]) > 0).reshape(-1)
-        optimizer.state[fp32_param]["exp_avg_sq"].abs_()
-        int32_tensor.add_(odd_even_tensor)
+    if "exp_avg_sq" not in optimizer.state[fp32_param]:
+        return
+
+    exp_avg_sq_state = optimizer.state[fp32_param]["exp_avg_sq"]
+    meta = getattr(exp_avg_sq_state, "meta", None)
+    if meta is not None:
+        exp_avg_sq_fp32 = meta.dequantization(exp_avg_sq_state.data)
+        odd_even_tensor = (torch.sign(exp_avg_sq_fp32) > 0).reshape(-1)
+        exp_avg_sq_fp32.abs_()
+        exp_avg_sq_state.data.copy_(meta.quantization(exp_avg_sq_fp32))
+    else:
+        odd_even_tensor = (torch.sign(exp_avg_sq_state) > 0).reshape(-1)
+        exp_avg_sq_state.abs_()
+
+    int32_tensor.add_(odd_even_tensor.to(dtype=int32_tensor.dtype))
 
 
 def collect_main_grad_data_for_unscaling_wrapper(func):
