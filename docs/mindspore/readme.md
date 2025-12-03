@@ -16,14 +16,14 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
 
   <tr>
     <td>昇腾NPU驱动</td>
-    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha002/softwareinst/instg/instg_0003.html?Mode=PmIns&OS=Debian&Software=cannToolKit">驱动固件安装指南</a> 》</td>
+    <td rowspan="2">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0005.html?Mode=PmIns&OS=Debian&Software=cannToolKit">驱动固件安装指南</a> 》</td>
   </tr>
   <tr>
     <td>昇腾NPU固件</td>
   </tr>
   <tr>
     <td>Toolkit（开发套件）</td>
-    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha002/softwareinst/instg/instg_0005.html?Mode=PmIns&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a> 》</td>
+    <td rowspan="3">《 <a href="https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/softwareinst/instg/instg_0008.html?Mode=PmIns&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a> 》</td>
   </tr>
   <tr>
     <td>Kernel（算子包）</td>
@@ -43,14 +43,14 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
 执行以下命令拉取MindSpeed-Core-MS代码仓，并安装Python三方依赖库，如下所示：
 
 ```shell
-git clone https://gitcode.com/Ascend/MindSpeed-Core-MS.git -b master
+git clone https://gitcode.com/Ascend/MindSpeed-Core-MS.git -b r0.5.0
 cd MindSpeed-Core-MS
 pip install -r requirements.txt
 ```
 
 可以参考MindSpeed-Core-MS目录下提供的[一键适配命令脚本](https://gitcode.com/Ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)， 拉取并适配相应版本的MindSpeed、Megatron-LM和MSAdapter。
 
-**若使用MindSpeed-Core-MS目录下的一键适配命令脚本（如[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)）可忽略后面步骤。**
+**若使用MindSpeed-Core-MS目录下的一键适配命令脚本（如[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/r0.5.0/auto_convert.sh)）可忽略后面步骤。**
 
 ### 3. 获取并适配相应版本的 MindSpeed、Megatron-LM 和 MSAdapter
 
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 
 ```shell
 # 获取指定版本的MindSpeed源码：
-git clone https://gitcode.com/Ascend/MindSpeed.git -b master
+git clone https://gitcode.com/Ascend/MindSpeed.git -b 2.3.0_core_r0.12.1
 
 # 获取指定版本的Megatron-LM源码：
 git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
@@ -66,7 +66,7 @@ git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
 # 获取指定版本的MSAdapter源码：
 git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
 ```
-具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitcode.com/Ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)。
+具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitcode.com/Ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/r0.5.0/auto_convert.sh)。
 
 （2）设置环境变量：
 
@@ -74,7 +74,7 @@ git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
 # 在MindSpeed-Core-MS目录下执行
 # 若在环境中PYTHONPATH等环境变量失效（例如退出容器后再进入等），需要重新设置环境变量
 MindSpeed_Core_MS_PATH=$(pwd)
-export PYTHONPATH=${MindSpeed_Core_MS_PATH}/MSAdapter/mindtorch:${MindSpeed_Core_MS_PATH}/MindSpeed:$PYTHONPATH
+export PYTHONPATH=${MindSpeed_Core_MS_PATH}/MSAdapter:${MindSpeed_Core_MS_PATH}/MSAdapter/msa_thirdparty:${MindSpeed_Core_MS_PATH}/MindSpeed:$PYTHONPATH
 echo $PYTHONPATH
 ```
 
@@ -193,6 +193,12 @@ MindSpore后端对MindSpeed的重要加速特性的支持情况如下表所示�
     <td><a href="../features/recomputation.md">link</a></td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
+  <tbody>
+  <tr>
+      <td rowspan="5"> Megatron 全分片并行</td>
+      <td><a href="../features/custom_fsdp.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">暂不支持开启pp及--reuse-fp32-param参数配置</td>
+    </tr>
 
 </table>
 
