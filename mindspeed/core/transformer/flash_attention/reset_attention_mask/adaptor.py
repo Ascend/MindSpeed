@@ -596,6 +596,7 @@ def gpt_forward_wrapper(fn):
         actual_seq_len = get_actual_seq_len()
 
         packed_seq_params = PackedSeqParams(
+            qkv_format='thd',
             cu_seqlens_q=actual_seq_len,
             cu_seqlens_kv=actual_seq_len
         )

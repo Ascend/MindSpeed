@@ -46,7 +46,8 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
 
     def register_patches(self, pm: MindSpeedPatchesManager, args):
         if getattr(args, "fp8_format", False):
-            from megatron.core.transformer.dot_product_attention import DotProductAttention
+            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
+                MindSpeedTEDotProductAttention
             from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import \
                 MindSpeedTELayerNormColumnParallelLinear
             from mindspeed.te.pytorch.module.grouped_linear import MindSpeedTEGroupedLinear, \
@@ -61,7 +62,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear', TERowParallelLinear)
 
             if int(getattr(args, 'context_parallel_size', 1)) == 1:
-                pm.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', DotProductAttention)
+                pm.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedTEDotProductAttention)
 
             pm.register_patch('megatron.core.extensions.transformer_engine.TELayerNormColumnParallelLinear',
                               MindSpeedTELayerNormColumnParallelLinear)
@@ -97,8 +98,9 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                         'megatron.core.transformer.multi_token_prediction.MultiTokenPredictionLayer.forward',
                         dualpipev_fb_overlap_mtp_layer_forward_te_without_overlap)
         else:
+            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
+                MindSpeedTEDotProductAttention
             from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
-            from megatron.core.transformer.dot_product_attention import DotProductAttention
             from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import \
                 MindSpeedTELayerNormColumnParallelLinear
             from mindspeed.te.pytorch.module.grouped_linear import MindSpeedTEGroupedLinear, \
@@ -118,7 +120,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
 
             if int(getattr(args, 'context_parallel_size', 1)) == 1:
                 pm.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
-                                  DotProductAttention)
+                                  MindSpeedTEDotProductAttention)
 
             pm.register_patch('megatron.core.extensions.transformer_engine.TELayerNormColumnParallelLinear',
                               MindSpeedTELayerNormColumnParallelLinear)
