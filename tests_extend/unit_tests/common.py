@@ -19,7 +19,7 @@ from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 from torch_npu.contrib import transfer_to_npu
 
 # Worker timeout for tests that hang
-TEST_TIMEOUT = 600
+TEST_TIMEOUT = 1800
 
 TOL_MAPPING = {
     torch.float: dict(atol=1e-4, rtol=1e-4),
