@@ -23,7 +23,7 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
                 eod_gptdataset_getitem)
             from mindspeed.core.transformer.flash_attention.reset_attention_mask.adaptor import (
                 _p2p_ops_eod, gpt_forward_wrapper, attention_forward, MindSpeedMLASelfAttention,
-                apply_rotary_pos_emb_thd)
+                apply_rotary_pos_emb_thd, rotary_forward, Eod_get_rotary_seq_len)
             from mindspeed.core.context_parallel.get_batch_utils import get_batch_on_this_tp_rank
 
             patch_manager.register_patch('megatron.core.datasets.gpt_dataset.GPTDataset.__getitem__',
@@ -49,3 +49,9 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
             patch_manager.register_patch(
                 'megatron.core.models.common.embeddings.rotary_pos_embedding._apply_rotary_pos_emb_thd',
                 apply_rotary_pos_emb_thd)
+
+            patch_manager.register_patch(
+                'megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward', rotary_forward)
+            patch_manager.register_patch(
+                'megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.get_rotary_seq_len',
+                Eod_get_rotary_seq_len)
