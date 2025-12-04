@@ -430,7 +430,7 @@ def pretrain_decorator(pretrain):
                 return
             set_args(argument)
             settings = AutoSettings()
-            settings.auto_settings(argument)
+            settings.auto_setting_fun(argument)
             return
 
         if argument.automated_pipeline and not argument.num_layer_list:
