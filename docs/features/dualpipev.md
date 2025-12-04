@@ -64,3 +64,6 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 在开启DualPipeV和MoE跨microbatch前反向通信掩盖后可以对MoE的All2All通信进行掩盖，获得性能提升。但在某些场景（例如MoE中严重负载不均衡）时，开启DualPipeV可能会加剧PP负载不均，造成性能劣化，因此性能变化需要按场景具体分析。
 
 开启DualPipeV可能会造成内存峰值上升，原因是DualPipeV中output head会被分配到PP rank0，这会同时带来静态内存和动态内存的上升。但在某些场景（例如设置模型后N层为空层时）中，由于尾stage在PP rank0,DualPipeV开启后峰值内存会降低。因此开启DualPipeV之后的内存变化需要具体分析。
+
+## 使用约束
+1. 当前`use_custom_fsdp`和`dualpipev`不兼容

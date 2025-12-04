@@ -19,6 +19,9 @@ class DualpipeVFeature(MindSpeedFeature):
 
     def validate_args(self, args):
         if args.schedules_method == "dualpipev":
+            if args.use_custom_fsdp:
+                raise AssertionError(
+                    "The dualpipev and use_custom_fsdp are incompatible.")
             if args.overlap_grad_reduce:
                 raise AssertionError(
                     "The dualpipev and overlap_grad_reduce are incompatible.")
