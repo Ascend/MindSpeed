@@ -37,8 +37,12 @@ class TorchFullyShardedDataParallelFeature(MindSpeedFeature):
         patch_manager.register_patch('megatron.core.distributed.DistributedDataParallelConfig.__init__', distributed_data_parallel_init_wrapper)
 
         # PATCH: Fix Megatron checkpoint loading compatibility for torch_dcp format
-        from mindspeed.checkpointing import load_checkpoint
+        from mindspeed.core.distributed.torch_fully_sharded_data_parallel.checkpointing import load_checkpoint
         patch_manager.register_patch('megatron.training.checkpointing.load_checkpoint', load_checkpoint)
+
+        # PATCH: Fix Megatron checkpoint saving compatibility for torch_dcp format
+        from mindspeed.core.distributed.torch_fully_sharded_data_parallel.checkpointing import generate_state_dict
+        patch_manager.register_patch('megatron.training.checkpointing.generate_state_dict', generate_state_dict)
 
         # BUGFIX: Fix Megatron Meta Initialization
         from mindspeed.core.distributed.torch_fully_sharded_data_parallel.training import get_model
