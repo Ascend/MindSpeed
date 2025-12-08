@@ -26,4 +26,4 @@ unset CUDA_MAX_CONNECTIONS
 模型和权重被进一步切分，显存下降。但是因为每次前向反向都新增了通信，性能会下降。
 
 ## 注意事项
-MindSpeed适配该特性基本功能，不建议与仓上其他特性组合，使用方法[参考脚本](/MindSpeed/tests_extend/system_tests/feature_tests/custom_fsdp.sh)
+MindSpeed适配该特性基本功能，不建议与仓上其他特性组合，使用方法[参考脚本](../../tests_extend/system_tests/feature_tests/custom_fsdp.sh)
