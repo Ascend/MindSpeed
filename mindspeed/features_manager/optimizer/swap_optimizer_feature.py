@@ -16,6 +16,7 @@ class SwapOptimizerFeature(MindSpeedFeature):
 
     def validate_args(self, args):
         self.incompatible_check(args, 'reuse_fp32_param')
+        self.dependency_check(args, 'use_distributed_optimizer')
 
     def register_patches(self, patch_manager, args):
         if args.swap_optimizer:

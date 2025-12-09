@@ -21,6 +21,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
     param_to_cpu_states_map = {}
     param_to_device_states_map = {}
     main_param_to_model_param_map = {}
+    no_swap_params = set()  # no swap params, just swap optimizer states
 
     state_keys = ['exp_avg', 'exp_avg_sq', 'max_exp_avg_sq']
 
@@ -53,28 +54,40 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
     def opt_states_initialization(self):
         for group in self.shard_fp32_from_float16_groups:
             for main_param in group:
-                device_state = self.optimizer.state[main_param]
-                cpu_state = self.param_to_cpu_states_map[main_param]
-                self.param_to_device_states_map[main_param] = device_state
+                self.init_param_opt_state(main_param)
+        for group in self.shard_fp32_groups:
+            for main_param in group:
+                self.init_param_opt_state(main_param)
 
-                amsgrad = self.optimizer.param_to_group_map[main_param]['amsgrad']
+    def init_param_opt_state(self, main_param):
+        device_state = self.optimizer.state[main_param]
+        cpu_state = self.param_to_cpu_states_map[main_param]
+        self.param_to_device_states_map[main_param] = device_state
 
-                for key in self.state_keys:
-                    if key in device_state:
-                        continue
-                    if key == 'max_exp_avg_sq' and not amsgrad:
-                        device_state[key] = None
-                        cpu_state[key] = None
-                    else:
-                        device_state[key] = torch.zeros_like(main_param, memory_format=torch.contiguous_format)
-                        cpu_state[key] = torch.empty_like(main_param, pin_memory=True, device='cpu')
-                        cpu_state[key].copy_(device_state[key], non_blocking=True)
-                        device_state[key].storage().resize_(0)
+        amsgrad = self.optimizer.param_to_group_map[main_param]['amsgrad']
+
+        for key in self.state_keys:
+            if key in device_state:
+                continue
+            if key == 'max_exp_avg_sq' and not amsgrad:
+                device_state[key] = None
+                cpu_state[key] = None
+            else:
+                device_state[key] = torch.zeros_like(main_param, memory_format=torch.contiguous_format)
+                cpu_state[key] = torch.empty_like(main_param, pin_memory=True, device='cpu')
+                cpu_state[key].copy_(device_state[key], non_blocking=True)
+                device_state[key].storage().resize_(0)
 
     @classmethod
     def create_tensor_maps(cls, main_param, model_param):
         # optimizer parameter
-        cpu_state = {'param': torch.empty_like(main_param, pin_memory=True, device='cpu')}
+        if model_param.dtype == torch.float32:
+            cls.no_swap_params.add(main_param)
+            cpu_state = {}
+        elif model_param.dtype == torch.float16 or model_param.dtype == torch.bfloat16:
+            cpu_state = {'param': torch.empty_like(main_param, pin_memory=True, device='cpu')}
+        else:
+            raise RuntimeError(f'Unknown dtype: {main_param.dtype}')
         cls.param_to_cpu_states_map[main_param] = cpu_state
         cls.main_param_to_model_param_map[main_param] = model_param
         cls.swap_to_host_events_map[main_param] = None
@@ -90,7 +103,8 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
     @classmethod
     def copy_tensor_to_model_param(cls, param):
-        cls.main_param_to_model_param_map[param].data.copy_(param)
+        if param not in cls.no_swap_params:
+            cls.main_param_to_model_param_map[param].data.copy_(param)
         cls.copy_to_model_param_events_map[param] = torch.cuda.current_stream().record_event()
 
     @classmethod
@@ -102,17 +116,17 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
     @classmethod
     def swap_tensors_to_device(cls, param):
-        if param.storage().size() == 0:
+        if param in cls.param_to_cpu_states_map:
             cpu_state = cls.param_to_cpu_states_map[param]
-            param.storage().resize_(cpu_state['param'].storage().size())
-            param.copy_(cpu_state['param'], non_blocking=True)
+            if param.storage().size() == 0 and param not in cls.no_swap_params:
+                param.storage().resize_(cpu_state['param'].storage().size())
+                param.copy_(cpu_state['param'], non_blocking=True)
 
-            if param in cls.param_to_device_states_map:
-                device_state = cls.param_to_device_states_map[param]
-                for key in cls.state_keys:
-                    if device_state[key] is not None and device_state[key].storage().size() == 0:
-                        device_state[key].storage().resize_(cpu_state[key].storage().size())
-                        device_state[key].copy_(cpu_state[key], non_blocking=True)
+            device_state = cls.param_to_device_states_map[param]
+            for key in cls.state_keys:
+                if device_state[key] is not None and device_state[key].storage().size() == 0:
+                    device_state[key].storage().resize_(cpu_state[key].storage().size())
+                    device_state[key].copy_(cpu_state[key], non_blocking=True)
 
             cls.swap_to_device_events_map[param] = torch.cuda.current_stream().record_event()
 
@@ -127,8 +141,9 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
     def swap_tensors_to_host(cls, param):
         if param.storage().size() != 0:
             cpu_state = cls.param_to_cpu_states_map[param]
-            cpu_state['param'].copy_(param, non_blocking=True)
-            param.storage().resize_(0)
+            if param not in cls.no_swap_params:
+                cpu_state['param'].copy_(param, non_blocking=True)
+                param.storage().resize_(0)
 
             if param in cls.param_to_device_states_map:
                 device_state = cls.param_to_device_states_map[param]
@@ -242,6 +257,8 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                     if hasattr(model_param, 'shared'):
                         shard_model_param.shared = model_param.shared
 
+                    SwapDistributedOptimizer.create_tensor_maps(shard_model_param, shard_model_param)
+                    SwapDistributedOptimizer.swap_tensors_to_host(shard_model_param)
                 else:
                     raise TypeError(
                         'Wrapped parameters must be one of '
