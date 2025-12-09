@@ -36,7 +36,8 @@
 *  对于Float16OptimizerWithFloat16Params类型的优化器，整体可节省 sizeof(bfloat16) * 模型参数量 的静态内存空间，且在多个模型上的测试表明，性能损耗低于1%。
 *  对于启用了分布式优化器的训练任务，总体节省的静态内存空间为 sizeof(bfloat16) * 模型参数量 / DP，同样地，性能损耗在测试中也控制在1%以内。
 
-## 注意事项
+## 使用约束
 
 1. 使用legacy model训练时，`reuse_fp32_param`暂不支持和`--overlap-param-gather`一起使用。
 2. 使用fused_ema_adamw优化器时，不支持同时开启`reuse_fp32_param`。
+3. 断点续训场景下，不支持修改切分方式及卡数。
