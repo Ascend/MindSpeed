@@ -25,6 +25,8 @@ class CPPlanConfig:
 class EPPlanConfig:
     apply_modules: List[str] = None
     dispatcher: Union[Literal["eager", "fused", "mc2"], Callable] = None
+    apply_efsdp_modules: List[str] = None
+    _gradient_divide_factor: float = None
 
 
 @dataclass
@@ -41,6 +43,7 @@ class MindSpeedLiteConfig:
     ulysses_parallel_size: int = 1
 
     expert_parallel_size: int = 1
+    expert_fully_shard_parallel_size: int = 1
     expert_data_parallel_size: int = 1
     ep_plan: EPPlanConfig = None
 
@@ -99,6 +102,12 @@ class MindSpeedLiteConfig:
         )
         '''
         self.ep_plan = EPPlanConfig(apply_modules=[], dispatcher='eager') if self.ep_plan is None else self.ep_plan
+        self.ep_plan._gradient_divide_factor = self.expert_parallel_size * self.expert_fully_shard_parallel_size * self.expert_data_parallel_size
+        if self.ep_plan.apply_efsdp_modules is None:
+            self.ep_plan.apply_efsdp_modules = []
+            for ep_module in self.ep_plan.apply_modules:
+                if ep_module.endswith('.experts'):
+                    self.ep_plan.apply_efsdp_modules.append(ep_module.removesuffix('.experts'))
 
     def validate_recompute_config(self):
         self.recompute_plan = [] if self.recompute_plan is None else self.recompute_plan

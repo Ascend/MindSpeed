@@ -7,13 +7,22 @@ from mindspeed.lite.distributed.dist_ops import all_to_all, gather_along_first_d
 from mindspeed.lite.ops.grouped_matmul import eager_grouped_matmul, fused_grouped_matmul
 
 
-def ep_forward(ep_group, fused, self, hidden_states: torch.Tensor, top_k_index: torch.Tensor,
+def ep_forward(ep_group, fused, module, hidden_states: torch.Tensor, top_k_index: torch.Tensor,
                top_k_weights: torch.Tensor):
     hidden_states_shape = hidden_states.shape
-    weights = (self.gate_weights, self.up_weights, self.down_weights)
-    act_fn = self[0].act_fn
-    num_global_experts = self.num_global_experts
-    expert_ids_per_ep_rank = self.expert_ids_per_ep_rank
+
+    act_fn = module[0].act_fn
+    num_global_experts = module.num_global_experts
+    expert_ids_per_ep_rank = module.expert_ids_per_ep_rank
+
+    gate_weights = []
+    up_weights = []
+    down_weights = []
+    for mlp in module:
+        gate_weights.append(mlp.gate_proj.weight)
+        up_weights.append(mlp.up_proj.weight)
+        down_weights.append(mlp.down_proj.weight)
+    weights = (gate_weights, up_weights, down_weights)
 
     hidden_states = dispatch_mlp_combine(ep_group, fused, hidden_states, top_k_index, top_k_weights, weights, act_fn,
                                          num_global_experts, expert_ids_per_ep_rank)
@@ -54,8 +63,7 @@ def dispatch_preprocess(ep_group, top_k_index, num_global_experts, expert_ids_pe
     num_global_tokens_per_local_expert = num_global_tokens_per_expert.reshape(ep_size, num_global_experts)[:,
                                          local_experts_start_id: local_experts_end_id]
     # [EP, local_E] --> [local_E]
-    num_tokens_per_local_expert = num_global_tokens_per_local_expert.sum(axis=0).to(torch.device("cpu"),
-                                                                                    non_blocking=True)
+    num_tokens_per_local_expert = num_global_tokens_per_local_expert.sum(axis=0)
     # [E] --> [EP, local_E] --> [EP]
     input_split = num_local_tokens_per_expert.reshape(ep_size, num_local_experts).sum(axis=1).to(torch.device("cpu"),
                                                                                                  non_blocking=True)

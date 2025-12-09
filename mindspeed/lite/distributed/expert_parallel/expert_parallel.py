@@ -1,4 +1,5 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+import logging
 import types
 from functools import partial
 from typing import Callable
@@ -8,7 +9,10 @@ import torch
 from mindspeed.lite.distributed.expert_parallel.dispatcher import ep_forward
 from mindspeed.lite.distributed.expert_parallel.dispatcher_mc2 import ep_forward as mc2_ep_forward
 from mindspeed.lite.mindspeed_lite_config import EPPlanConfig
+from mindspeed.lite.utils.log import print_rank
 from mindspeed.lite.utils.str_match import module_name_match
+
+logger = logging.getLogger(__name__)
 
 
 def expert_parallelize_modules(modules: torch.nn.Module, ep_group, plan: EPPlanConfig):
@@ -39,11 +43,12 @@ def expert_parallelize_modules(modules: torch.nn.Module, ep_group, plan: EPPlanC
             module.pop(0)
         module.extend(local_experts)
 
-        prepare_total_weights(local_experts, module)
-
         # replace forward with ep forward
         forward_fn = get_dispatcher_fn(plan.dispatcher, ep_group)
         module.forward = types.MethodType(forward_fn, module)
+
+        # apply ep parameter grad division, if efsdp is enabled, the hook will be overridden
+        apply_grad_division_hook(module, ep_size)
 
     return modules
 
@@ -52,7 +57,8 @@ def get_ep_modules(modules: torch.nn.Module, plan: EPPlanConfig):
     ep_modules = []
     for plan_name in plan.apply_modules:
         for name, module in modules.named_modules():
-            if module_name_match(plan_name, name) and isinstance(module, torch.nn.ModuleList):
+            if module_name_match(plan_name, name):
+                print_rank(logger.debug, f'[Expert Parallel]: Apply efsdp to module <{name}>')
                 ep_modules.append(module)
     if len(ep_modules) == 0:
         raise RuntimeError(f'[Expert Parallel] No module named {plan} or not be ModuleList')
@@ -85,3 +91,18 @@ def get_dispatcher_fn(dispatcher, ep_group):
         raise RuntimeError(f'Unsupported dispatcher {dispatcher}.')
 
     return forward_fn
+
+
+def get_grad_division_hook(param, ep_size):
+    def hook(*unused):
+        return param.grad.mul_(1 / ep_size)
+
+    return hook
+
+
+def apply_grad_division_hook(module, ep_size):
+    for param in module.parameters():
+        if param.requires_grad:
+            param_tmp = param.expand_as(param)
+            grad_acc = param_tmp.grad_fn.next_functions[0][0]
+            grad_acc.register_hook(get_grad_division_hook(param, ep_size))

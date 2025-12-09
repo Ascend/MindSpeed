@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 import torch
 
+from mindspeed.lite.distributed.expert_parallel.expert_fully_shard_parallel import expert_fully_shard_modules
 from mindspeed.lite.distributed.fully_shard_parallel.fully_shard_parallel import \
     fully_shard_parallel_modules
 from mindspeed.lite.distributed.parallel_state import init_parallel_state
@@ -33,9 +34,10 @@ class MindSpeedLite(torch.nn.Module):
         self.model = tensor_parallel_modules(self.model, self.parallel_state.get_tp_device_mesh(), self.config.tp_plan)
 
     def apply_ep_modules(self):
-        if self.config.expert_parallel_size == 1:
-            return
-        self.model = expert_parallelize_modules(self.model, self.parallel_state.get_ep_group(), self.config.ep_plan)
+        if self.config.expert_parallel_size > 1:
+            self.model = expert_parallelize_modules(self.model, self.parallel_state.get_ep_group(), self.config.ep_plan)
+        if self.config.expert_fully_shard_parallel_size > 1:
+            self.model = expert_fully_shard_modules(self.model, self.parallel_state.get_efsdp_device_mesh(), self.config.ep_plan)
 
     def apply_recompute_modules(self):
         if not self.config.recompute:

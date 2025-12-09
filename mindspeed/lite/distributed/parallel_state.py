@@ -48,6 +48,7 @@ class ParallelState(metaclass=Singleton):
     ulysses_parallel_size: int = 1
 
     expert_parallel_size: int = 1
+    expert_fully_shard_parallel_size: int = 1
     expert_data_parallel_size: int = 1
 
     device_mesh_map: dict[str, DeviceMesh] = None
@@ -71,8 +72,8 @@ class ParallelState(metaclass=Singleton):
         self.add_device_mesh_groups(mesh_dim_names, mesh_shape)
 
         # create EP_DP/EP groups
-        mesh_dim_names = ('ep_dp', 'ep')
-        mesh_shape = (self.expert_parallel_size,)
+        mesh_dim_names = ('edp', 'efsdp', 'ep')
+        mesh_shape = (self.expert_fully_shard_parallel_size, self.expert_parallel_size,)
         self.expert_data_parallel_size = get_last_mesh_dim(mesh_shape)
         mesh_shape = (self.expert_data_parallel_size,) + mesh_shape
         self.add_device_mesh_groups(mesh_dim_names, mesh_shape)

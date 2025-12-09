@@ -48,5 +48,5 @@ def get_ignored_modules(model: torch.nn.Module, fsdp_plan: FSDPPlanConfig):
             if module_name_match(pattern, name):
                 print_rank(logger.debug, f'[FSDP2]: Ignored module to apply fsdp2 <{name}>')
                 ignored_modules.add(name)
-                ignored_params.update(list(module.parameters(recurse=False)))
+                ignored_params.update(list(module.parameters(recurse=True)))
     return ignored_modules, ignored_params
