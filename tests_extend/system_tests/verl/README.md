@@ -29,16 +29,22 @@
 
 1. 准备数据
 
-自行下载 [Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B/tree/main)
+自行下载权重 [Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B/tree/main)
 
 将huggingface格式的权重转换为Megatron Core格式：
 
 ```
+# 权重转换脚本位于verl代码仓中
+cd verl 
+
 python scripts/converter_hf_to_mcore.py \ 
     --hf_model_path /weight/Qwen3-30B-A3B \ 
     --output_path /weight/Qwen3-30B-A3B-dist \ 
     --use_cpu_initialization
 ```
+
+自行下载数据集 [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k/tree/main)
+
 
 2. 配置训练脚本
 
@@ -50,7 +56,7 @@ python scripts/converter_hf_to_mcore.py \
 
 `data.train_files` `data.val_files` : 数据集路径
 
-`trainer.default_local_dir` : 保存的checkpoints路径，当`trainer.save_freq=-1`（即不保存checkpoints）时可以不设置
+`trainer.default_local_dir` : 保存的checkpoints路径，当`trainer.save_freq=-1`（即不保存checkpoints）时可以不设置。需确保该路径下有足够的空间储存checkpoints。
 
 * 其次根据需要调整其他参数，以下是几个示例：
 
@@ -60,7 +66,7 @@ python scripts/converter_hf_to_mcore.py \
 
 * 最后，可以根据需要添加一些MindSpeed支持的高级特性，例如：
 
-使用mbridge在线转换huggingface权重
+使用mbridge在线转换huggingface权重（需安装mbridge包）
 
 ```
 actor_rollout_ref.actor.megatron.use_mbridge=True \
@@ -77,11 +83,9 @@ actor_rollout_ref.ref.megatron.use_dist_checkpointing=False \
 
 3. 启动训练
 
-```
-# 配置cann
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-source /usr/local/Ascend/nnal/atb/set_env.sh
+训练脚本为`qw3-30bmoe-grpo-2node_base.sh`，配置训练脚本中所需的所有参数，然后在**所有节点**执行训练脚本。
 
+```
 # 确保在verl目录下执行训练脚本
 cd verl
 
