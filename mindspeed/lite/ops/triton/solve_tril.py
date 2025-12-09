@@ -45,12 +45,12 @@ def solve_tril_16x16_kernel(
         T_eff = T
 
     o_i = tl.arange(0, 16)
-    m_A = o_i[:, None] > o_i[None, :]
-    m_I = o_i[:, None] == o_i[None, :]
+    o_i_fp32 = tl.arange(0, 16).to(tl.float32)
+    m_A = o_i_fp32[:, None] > o_i_fp32[None, :]
+    m_I = o_i_fp32[:, None] == o_i_fp32[None, :]
 
-    # 基址按 (bos, i_h) 偏移
-    A = A + (bos * H + i_h) * BT
-    Ai = Ai + (bos * H + i_h) * 16
+    A  = A  + (bos * H + i_h) * BT
+    Ai = Ai + (bos * H + i_h) * BT
 
     for tpp in tl.static_range(0, TPP):
         tile_t = base_t + tpp
@@ -58,32 +58,31 @@ def solve_tril_16x16_kernel(
 
         offset = (tile_t * 16) % BT
 
-        # 加载 16x16 块
         if not USE_TMA:
             p_A = tl.make_block_ptr(
                 A, (T_eff, BT), (H * BT, 1), (tile_row, offset), (16, 16), (1, 0)
             )
-            b_A = tl.load(p_A, boundary_check=(0, 1)).to(tl.float32)
+            b_A_raw = tl.load(p_A, boundary_check=(0, 1)).to(tl.float32)
         else:
             desc = make_tensor_descriptor(A, [T_eff, BT], [H * BT, 1], [16, 16])
             desc_o = make_tensor_descriptor(Ai, [T_eff, 16], [H * 16, 1], [16, 16])
-            b_A = desc.load([tile_row, offset]).to(tl.float32)
+            b_A_raw = desc.load([tile_row, offset]).to(tl.float32)
 
-        # 下三角构造（与原相同）
-        b_A = -tl.where(m_A, b_A, 0)
+        b_A_neg = -b_A_raw
+        b_A = b_A_neg * m_A
         for i in range(2, min(16, T_eff - tile_row)):
-            b_a = -tl.load(A + (tile_row + i) * H * BT + o_i + offset)
-            b_a = b_a + tl.sum(b_a[:, None] * b_A, 0)
-            b_A = tl.where((o_i == i)[:, None], b_a, b_A)
+            slice_res = tl.extract_slice(b_A_neg, [i, 0], [1, 16], [1, 1])
+            b_a_val = tl.reshape(slice_res, (16,), can_reorder=True)
+            dot_prod = tl.sum(b_a_val[:, None] * b_A, 0) 
+            b_a_update = b_a_val + dot_prod
+            b_A = tl.where((o_i_fp32 == i)[:, None], b_a_update, b_A)
         b_A += m_I
 
-        # 写回
         if not USE_TMA:
             p_Ai = tl.make_block_ptr(
                 Ai, (T_eff, 16), (H * 16, 1), (tile_row, 0), (16, 16), (1, 0)
             )
-            tl.store(p_Ai, b_A.to(p_Ai.dtype.element_ty, fp_downcast_rounding="rtne"),
-                     boundary_check=(0, 1))
+            tl.store(p_Ai, b_A.to(p_Ai.dtype.element_ty, fp_downcast_rounding="rtne"), boundary_check=(0, 1))
         else:
             desc_o.store([tile_row, 0], b_A.to(desc_o.dtype, fp_downcast_rounding="rtne"))
 
@@ -204,13 +203,12 @@ def solve_tril_64x64_kernel(
         bos, eos = i_b * T, i_b * T + T
         T_eff = T
 
-    o_i = tl.arange(0, 64)
-    m_A = o_i[:, None] > o_i[None, :]
-    m_I = o_i[:, None] == o_i[None, :]
+    o_i_fp32 = tl.arange(0, 64).to(tl.float32)
+    m_A = o_i_fp32[:, None] > o_i_fp32[None, :]  
+    m_I = o_i_fp32[:, None] == o_i_fp32[None, :] 
 
-    # 基址按 (bos, i_h) 偏移
     A = A + (bos * H + i_h) * BT
-    Ai = Ai + (bos * H + i_h) * 64
+    Ai = Ai + (bos * H + i_h) * BT
 
     for tpp in tl.static_range(0, TPP):
         tile_t = base_t + tpp
@@ -218,35 +216,37 @@ def solve_tril_64x64_kernel(
 
         offset = (tile_t * 64) % BT
 
-        # 加载 64x64 块
         if not USE_TMA:
             p_A = tl.make_block_ptr(
                 A, (T_eff, BT), (H * BT, 1), (tile_row, offset), (64, 64), (1, 0)
             )
-            b_A = tl.load(p_A, boundary_check=(0, 1)).to(tl.float32)
+            b_A_raw = tl.load(p_A, boundary_check=(0, 1)).to(tl.float32)
         else:
             desc = make_tensor_descriptor(A, [T_eff, BT], [H * BT, 1], [64, 64])
             desc_o = make_tensor_descriptor(Ai, [T_eff, 64], [H * 64, 1], [64, 64])
-            b_A = desc.load([tile_row, offset]).to(tl.float32)
+            b_A_raw = desc.load([tile_row, offset]).to(tl.float32)
 
-        # 下三角构造（与原相同）
-        b_A = -(b_A * m_A)
-        for i in range(2, min(64, T_eff - tile_row)):
-            b_a = -tl.load(A + (tile_row + i) * H * BT + o_i + offset)
-            b_a = b_a + tl.sum(b_a[:, None] * b_A, 0)
-            b_A = tl.where((o_i == i)[:, None], b_a, b_A)
+        b_A_neg = -b_A_raw
+        b_A = b_A_neg * m_A
+
+        # Fully On-Chip
+        limit = min(64, T_eff - tile_row)
+        for i in range(2, limit):     
+            slice_res = tl.extract_slice(b_A_neg, [i, 0], [1, 64], [1, 1])
+            b_a_val = tl.reshape(slice_res, (64,), can_reorder=True)
+            dot_prod = tl.sum(b_a_val[:, None] * b_A, 0) 
+            b_a_update = b_a_val + dot_prod
+            b_A = tl.where((o_i_fp32 == i)[:, None], b_a_update, b_A)
+
         b_A += m_I
 
-        # 写回
         if not USE_TMA:
             p_Ai = tl.make_block_ptr(
                 Ai, (T_eff, 64), (H * 64, 1), (tile_row, 0), (64, 64), (1, 0)
             )
-            tl.store(p_Ai, b_A.to(p_Ai.dtype.element_ty, fp_downcast_rounding="rtne"),
-                     boundary_check=(0, 1))
+            tl.store(p_Ai, b_A.to(p_Ai.dtype.element_ty, fp_downcast_rounding="rtne"), boundary_check=(0, 1))
         else:
             desc_o.store([tile_row, 0], b_A.to(desc_o.dtype, fp_downcast_rounding="rtne"))
-
 
 
 @input_guard
@@ -284,7 +284,7 @@ def solve_tril(
     Ai = torch.zeros_like(A, dtype=output_dtype)
 
     if BT == 16:
-        TPP = 4  # 或者根据 T/NT/硬件调参
+        TPP = 4
         grid0 = (NT + TPP - 1) // TPP
         merge_fn = solve_tril_16x16_kernel
     elif BT == 32:
