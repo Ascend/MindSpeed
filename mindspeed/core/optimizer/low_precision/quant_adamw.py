@@ -59,41 +59,12 @@ class ScaleMeta:
                 fp32_tensor.to(torch.bfloat16), block_size=self.block_size, dst_type=torch.float8_e4m3fn
             )
             sf_fp32 = sf.to(torch.float32)
-            quant_fp32 = quant_tensor.float()
-            ref_fp32 = fp32_tensor.to(torch.float32)
-
-            candidates = []
-
-            def _try(scale_candidate, scale_inv_candidate):
-                if scale_candidate is None or scale_inv_candidate is None:
-                    return
-                recon = self.block_scaling(quant_fp32, scale_inv_candidate)
-                err = (recon - ref_fp32).abs().max().item()
-                candidates.append((err, scale_candidate, scale_inv_candidate))
 
             rounded_codes = torch.clamp(torch.round(sf_fp32), min=0.0, max=254.0)
             scale_from_codes = torch.pow(2.0, rounded_codes - 127.0)
             scale_from_codes = torch.clamp(scale_from_codes, min=1e-8)
-            _try(1.0 / scale_from_codes, scale_from_codes)
-
-            float_codes = torch.clamp(sf_fp32, min=0.0, max=254.0)
-            scale_from_float_codes = torch.pow(2.0, float_codes - 127.0)
-            scale_from_float_codes = torch.clamp(scale_from_float_codes, min=1e-8)
-            _try(1.0 / scale_from_float_codes, scale_from_float_codes)
-
-            safe_scale = torch.where(torch.isfinite(sf_fp32) & (sf_fp32 > 0), sf_fp32, torch.ones_like(sf_fp32))
-            scale_inv_from_scale = torch.clamp(1.0 / safe_scale, min=1e-8)
-            _try(safe_scale, scale_inv_from_scale)
-
-            safe_scale_inv = torch.where(torch.isfinite(sf_fp32) & (sf_fp32 > 0), sf_fp32, torch.ones_like(sf_fp32))
-            scale_from_inv = torch.clamp(1.0 / safe_scale_inv, min=1e-8)
-            _try(scale_from_inv, safe_scale_inv)
-
-            if not candidates:
-                best_scale = torch.ones(1, device=fp32_tensor.device, dtype=torch.float32)
-                best_scale_inv = best_scale
-            else:
-                _, best_scale, best_scale_inv = min(candidates, key=lambda x: x[0])
+            best_scale = 1.0 / scale_from_codes
+            best_scale_inv = scale_from_codes
 
             self.scale = best_scale.view(-1).to(torch.float32)
             self.scale_inv = best_scale_inv.view(-1).to(torch.float32)
