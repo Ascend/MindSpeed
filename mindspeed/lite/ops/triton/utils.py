@@ -3,24 +3,56 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import contextlib
-import os
 import functools
-import warnings
 import logging
-from enum import Enum
+import os
+import warnings
 from functools import lru_cache
 from typing import Any, Callable, Dict, Optional, Tuple
-from packaging import version
+from enum import Enum
 
 import torch
-import torch.nn.functional as F
 import triton
 import triton.language as tl
 import triton.language.extra.libdevice as tldevice
+from packaging import version
 
 logger = logging.getLogger(__name__)
-
 FLA_CI_ENV = os.getenv("FLA_CI_ENV") == "1"
+
+
+def input_guard(
+    fn: Callable[..., torch.Tensor]
+) -> Callable[..., torch.Tensor]:
+    """
+    A decorator to make sure all input tensors are contiguous and set the device based on input tensors.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        contiguous_args = (i if not isinstance(i, torch.Tensor) else i.contiguous() for i in args)
+        contiguous_kwargs = {k: (v if not isinstance(v, torch.Tensor) else v.contiguous()) for k, v in kwargs.items()}
+
+        tensor = None
+        for arg in args:
+            if isinstance(arg, torch.Tensor):
+                tensor = arg
+                break
+        if tensor is None:
+            for value in kwargs.values():
+                if isinstance(value, torch.Tensor):
+                    tensor = value
+                    break
+
+        if tensor is not None:
+            ctx = custom_device_ctx(tensor.device.index)
+        else:
+            ctx = contextlib.nullcontext()
+
+        with ctx:
+            return fn(*contiguous_args, **contiguous_kwargs)
+
+    return wrapper
 
 
 def tensor_cache(
@@ -76,6 +108,44 @@ def prepare_chunk_indices(
     return torch.stack([indices.eq(0).cumsum(0) - 1, indices], 1).to(cu_seqlens)
 
 
+def _cpu_device_warning():
+    warnings.warn(('Triton is not supported on current platform, roll back to CPU.'), stacklevel=1)
+
+
+@lru_cache(maxsize=None)
+def get_available_device() -> str:
+    try:
+        return triton.runtime.driver.active.get_current_target().backend
+    except BaseException:
+        _cpu_device_warning()
+        return 'cpu'
+
+
+@lru_cache(maxsize=None)
+def check_pytorch_version(version_s: str = '2.4') -> bool:
+    return version.parse(torch.__version__) >= version.parse(version_s)
+
+device_platform = get_available_device()
+is_amd = (device_platform == 'hip')
+device = get_available_device() if get_available_device() != 'hip' else 'cuda'
+device_torch_lib = getattr(torch, device)
+
+if check_pytorch_version('2.4'):
+    device = 'cuda' if device == 'cpu' else device
+    autocast_custom_fwd = functools.partial(torch.amp.custom_fwd, device_type=device)
+    autocast_custom_bwd = functools.partial(torch.amp.custom_bwd, device_type=device)
+
+    def custom_device_ctx(index: int):
+        return device_torch_lib.device(index)
+else:
+    assert device == 'cuda', 'Only cuda device is supported for PyTorch version < 2.4.0.'
+    autocast_custom_fwd = device_torch_lib.amp.custom_fwd
+    autocast_custom_bwd = device_torch_lib.amp.custom_bwd
+
+    def custom_device_ctx(index: int):
+        return torch.cuda.device(index)
+
+
 def get_abs_err(x, y):
     return (x.detach() - y.detach()).flatten().abs().max().item()
 
@@ -99,19 +169,12 @@ def assert_close(prefix, ref, tri, ratio, warning=False, err_atol=1e-6):
     else:
         assert error_rate < ratio, msg
 
-
 if hasattr(triton.language, '_experimental_make_tensor_descriptor'):
     # For Triton 3.3.x
     make_tensor_descriptor = triton.language._experimental_make_tensor_descriptor
 elif hasattr(triton.language, 'make_tensor_descriptor'):
     # For Triton 3.4.x and later
     make_tensor_descriptor = triton.language.make_tensor_descriptor
-else:
-    """
-    Fallback implementation when TMA is not supported.
-    Returns None to indicate TMA descriptors are unavailable.
-    Just make triton compiler happy.
-    """
 
 
     @triton.jit
