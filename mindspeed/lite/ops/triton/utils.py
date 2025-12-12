@@ -2,6 +2,7 @@
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
+import itertools
 import contextlib
 import os
 import functools
@@ -17,6 +18,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 import triton.language.extra.libdevice as tldevice
+import triton.runtime.driver as driver
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ def assert_close(prefix, ref, tri, ratio, warning=False, err_atol=1e-6):
     else:
         assert error_rate < ratio, msg
 
+
 if hasattr(triton.language, '_experimental_make_tensor_descriptor'):
     # For Triton 3.3.x
     make_tensor_descriptor = triton.language._experimental_make_tensor_descriptor
@@ -111,6 +114,8 @@ else:
     Returns None to indicate TMA descriptors are unavailable.
     Just make triton compiler happy.
     """
+
+
     @triton.jit
     def make_tensor_descriptor(
         base,
@@ -135,17 +140,20 @@ def map_triton_backend_to_torch_device() -> str:
     backend = get_available_device()        # 'cuda' | 'hip' | 'xpu' | 'cpu' | ...
     return {'cuda': 'cuda', 'hip': 'cuda', 'xpu': 'xpu'}.get(backend, backend)
 
+
 device = get_available_device() if get_available_device() != 'hip' else 'cuda'
 device_torch_lib = getattr(torch, device)
 device_platform = get_available_device()
 is_amd = (device_platform == 'hip')
 is_nvidia = (device_platform == 'cuda')
-is_nvidia_hopper = (is_nvidia and ('NVIDIA H' in torch.cuda.get_device_name(0) or torch.cuda.get_device_capability()[0] >= 9))
+is_nvidia_hopper = (
+            is_nvidia and ('NVIDIA H' in torch.cuda.get_device_name(0) or torch.cuda.get_device_capability()[0] >= 9))
 
 is_tf32_supported = (is_nvidia and torch.cuda.get_device_capability(0)[0] >= 8)
 is_tma_supported = (is_nvidia and torch.cuda.get_device_capability(0)[0] >= 9) \
-    and os.environ.get('FLA_NO_USE_TMA', '0') != '1' and \
-    (hasattr(triton.language, '_experimental_make_tensor_descriptor') or hasattr(triton.language, 'make_tensor_descriptor'))
+                   and os.environ.get('FLA_NO_USE_TMA', '0') != '1' and \
+                   (hasattr(triton.language, '_experimental_make_tensor_descriptor') or hasattr(triton.language,
+                                                                                                'make_tensor_descriptor'))
 
 if is_nvidia and not is_tf32_supported:
     # Make old card happy, since triton will use tf32 by default.
@@ -242,7 +250,6 @@ def get_all_max_shared_mem():
         return [-1]
 
 
-
 class Backend(Enum):
     ADA = 101376       # RTX 4090
     AMPERE = 166912    # A100
@@ -265,7 +272,7 @@ def check_shared_mem(arch: str = "none", tensor_idx: int = 0) -> bool:
         return max_shared_memory >= Backend.get_shared_memory(arch)
     except Exception:
         return False
-    
+
 
 @tensor_cache
 def prepare_chunk_offsets(
@@ -273,3 +280,68 @@ def prepare_chunk_offsets(
     chunk_size: int
 ) -> torch.LongTensor:
     return torch.cat([cu_seqlens.new_tensor([0]), triton.cdiv(prepare_lens(cu_seqlens), chunk_size)]).cumsum(-1)
+
+
+def get_autotune_config(
+    multibuffer_list: tuple = (False,),
+    unit_flag_list: tuple = (False,),
+    limit_auto_multi_buffer_only_for_local_buffer_list: tuple = (False,),
+    limit_auto_multi_buffer_of_local_buffer_list: tuple = ("no-l0c",),
+    set_workspace_multibuffer_list: tuple = (2, 4),
+    enable_hivm_auto_cv_balance_list: tuple = (True,),
+    tile_mix_vector_loop_num_list: tuple = (2, 4),
+    tile_mix_cube_loop_num_list: tuple = (2, 4),
+):
+    configs = []
+    for (
+        multibuffer,
+        unit_flag,
+        limit_auto_multi_buffer_only_for_local_buffer,
+        limit_auto_multi_buffer_of_local_buffer,
+    ) in itertools.product(
+        list(multibuffer_list),
+        list(unit_flag_list),
+        list(limit_auto_multi_buffer_only_for_local_buffer_list),
+        list(limit_auto_multi_buffer_of_local_buffer_list),
+    ):
+
+        if limit_auto_multi_buffer_only_for_local_buffer:
+            configs.append(
+                triton.Config(
+                    {},
+                    multibuffer=multibuffer,
+                    unit_flag=unit_flag,
+                    limit_auto_multi_buffer_only_for_local_buffer=limit_auto_multi_buffer_only_for_local_buffer,
+                    limit_auto_multi_buffer_of_local_buffer=limit_auto_multi_buffer_of_local_buffer,
+                )
+            )
+        else:
+            for (
+                set_workspace_multibuffer,
+                enable_hivm_auto_cv_balance,
+                tile_mix_vector_loop,
+                tile_mix_cube_loop,
+            ) in itertools.product(
+                list(set_workspace_multibuffer_list),
+                list(enable_hivm_auto_cv_balance_list),
+                list(tile_mix_vector_loop_num_list),
+                list(tile_mix_cube_loop_num_list),
+            ):
+                configs.append(
+                    triton.Config(
+                        {},
+                        multibuffer=multibuffer,
+                        unit_flag=unit_flag,
+                        limit_auto_multi_buffer_only_for_local_buffer=limit_auto_multi_buffer_only_for_local_buffer,
+                        limit_auto_multi_buffer_of_local_buffer=limit_auto_multi_buffer_of_local_buffer,
+                        set_workspace_multibuffer=set_workspace_multibuffer,
+                        enable_hivm_auto_cv_balance=enable_hivm_auto_cv_balance,
+                        tile_mix_vector_loop=tile_mix_vector_loop,
+                        tile_mix_cube_loop=tile_mix_cube_loop,
+                    )
+                )
+    return configs
+
+
+def get_npu_properties():
+    return driver.active.utils.get_device_properties(torch.npu.current_device())

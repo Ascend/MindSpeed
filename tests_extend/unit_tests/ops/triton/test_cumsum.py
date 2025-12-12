@@ -158,7 +158,7 @@ def origin_chunk_local_cumsum(
     ]
 )
 @pytest.mark.skip(reason='Hanged to be fixed')
-def test_recompute_w_u_fwd(B, T, H, chunk_size, reverse, head_first):
+def test_cumsum(B, T, H, chunk_size, reverse, head_first):
     device = "npu:0"
     device_dtype = torch.float32
 

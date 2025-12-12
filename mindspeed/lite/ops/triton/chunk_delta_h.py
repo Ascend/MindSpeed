@@ -1,74 +1,16 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 
-import itertools
 from typing import Optional, Tuple
 
 import torch
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.utils import prepare_chunk_indices, prepare_chunk_offsets
+from mindspeed.lite.ops.triton.utils import prepare_chunk_indices, prepare_chunk_offsets, get_autotune_config, \
+    get_npu_properties
 
-
-def get_autotune_config_fwd():
-    configs = []
-    multibuffer_list = [False]  
-    unit_flag_list = [False]  
-    limit_auto_multi_buffer_only_for_local_buffer_list = [False]  
-    limit_auto_multi_buffer_of_local_buffer_list = ["no-l0c"] 
-    set_workspace_multibuffer_list = [2, 4]  
-    enable_hivm_auto_cv_balance_list = [True]  
-    tile_mix_vector_loop_num_list = [2, 4]  
-    tile_mix_cube_loop_num_list = [2, 4]  
-    for (
-        multibuffer,
-        unit_flag,
-        limit_auto_multi_buffer_only_for_local_buffer,
-        limit_auto_multi_buffer_of_local_buffer,
-    ) in itertools.product(
-        multibuffer_list,
-        unit_flag_list,
-        limit_auto_multi_buffer_only_for_local_buffer_list,
-        limit_auto_multi_buffer_of_local_buffer_list,
-    ):
-
-        if limit_auto_multi_buffer_only_for_local_buffer:
-            configs.append(
-                triton.Config(
-                    {},
-                    multibuffer=multibuffer,
-                    unit_flag=unit_flag,
-                    limit_auto_multi_buffer_only_for_local_buffer=limit_auto_multi_buffer_only_for_local_buffer,
-                    limit_auto_multi_buffer_of_local_buffer=limit_auto_multi_buffer_of_local_buffer,
-                )
-            )
-        else:
-            for (
-                set_workspace_multibuffer,
-                enable_hivm_auto_cv_balance,
-                tile_mix_vector_loop,
-                tile_mix_cube_loop,
-            ) in itertools.product(
-                set_workspace_multibuffer_list,
-                enable_hivm_auto_cv_balance_list,
-                tile_mix_vector_loop_num_list,
-                tile_mix_cube_loop_num_list,
-            ):
-                configs.append(
-                    triton.Config(
-                        {},
-                        multibuffer=multibuffer,
-                        unit_flag=unit_flag,
-                        limit_auto_multi_buffer_only_for_local_buffer=limit_auto_multi_buffer_only_for_local_buffer,
-                        limit_auto_multi_buffer_of_local_buffer=limit_auto_multi_buffer_of_local_buffer,
-                        set_workspace_multibuffer=set_workspace_multibuffer,
-                        enable_hivm_auto_cv_balance=enable_hivm_auto_cv_balance,
-                        tile_mix_vector_loop=tile_mix_vector_loop,
-                        tile_mix_cube_loop=tile_mix_cube_loop,
-                    )
-                )
-    return configs
+CUBE_CORE_NUM = get_npu_properties()['num_aicore']
 
 
 @triton.heuristics({
@@ -80,7 +22,7 @@ def get_autotune_config_fwd():
     'IS_VARLEN': lambda args: args['cu_seqlens'] is not None,
 })
 @triton.autotune(
-    configs=get_autotune_config_fwd(),
+    configs=get_autotune_config(multibuffer_list=(False,)),
     key=['H', 'K', 'V', 'BT'],
 )
 @triton.jit(do_not_specialize=['T'])
@@ -296,7 +238,7 @@ def chunk_gated_delta_rule_fwd_h(
     h = k.new_empty(B, NT, H, K, V)
     final_state = k.new_empty(N, H, K, V, dtype=torch.float32) if output_final_state else None
 
-    BV = 64
+    BV = 128
 
     v_new = torch.empty_like(u) if save_new_value else None
 
@@ -322,73 +264,6 @@ def chunk_gated_delta_rule_fwd_h(
     return h, v_new, final_state
 
 
-def get_autotune_config_bwd():
-    configs = []
-
-    multibuffer_list = [True]
-    unit_flag_list = [False]
-    limit_auto_multi_buffer_only_for_local_buffer_list = [False]
-    limit_auto_multi_buffer_of_local_buffer_list = ["no-l0c"]
-
-    # These knobs are tuned only when limit_auto_multi_buffer_only_for_local_buffer=False
-    set_workspace_multibuffer_list = [2, 4]
-    enable_hivm_auto_cv_balance_list = [True]
-    tile_mix_vector_loop_num_list = [2, 4]
-    tile_mix_cube_loop_num_list = [2, 4]
-
-    for (
-        multibuffer,
-        unit_flag,
-        limit_auto_multi_buffer_only_for_local_buffer,
-        limit_auto_multi_buffer_of_local_buffer,
-    ) in itertools.product(
-        multibuffer_list,
-        unit_flag_list,
-        limit_auto_multi_buffer_only_for_local_buffer_list,
-        limit_auto_multi_buffer_of_local_buffer_list,
-    ):
-
-        if limit_auto_multi_buffer_only_for_local_buffer:
-            # Keep defaults when tuning doesn't make sense
-            configs.append(
-                triton.Config(
-                    {},
-                    multibuffer=multibuffer,
-                    unit_flag=unit_flag,
-                    limit_auto_multi_buffer_only_for_local_buffer=limit_auto_multi_buffer_only_for_local_buffer,
-                    limit_auto_multi_buffer_of_local_buffer=limit_auto_multi_buffer_of_local_buffer,
-                )
-            )
-        else:
-            # Fully expand tuning space
-            for (
-                set_workspace_multibuffer,
-                enable_hivm_auto_cv_balance,
-                tile_mix_vector_loop,
-                tile_mix_cube_loop,
-            ) in itertools.product(
-                set_workspace_multibuffer_list,
-                enable_hivm_auto_cv_balance_list,
-                tile_mix_vector_loop_num_list,
-                tile_mix_cube_loop_num_list,
-            ):
-                configs.append(
-                    triton.Config(
-                        {},
-                        multibuffer=multibuffer,
-                        unit_flag=unit_flag,
-                        limit_auto_multi_buffer_only_for_local_buffer=limit_auto_multi_buffer_only_for_local_buffer,
-                        limit_auto_multi_buffer_of_local_buffer=limit_auto_multi_buffer_of_local_buffer,
-                        set_workspace_multibuffer=set_workspace_multibuffer,
-                        enable_hivm_auto_cv_balance=enable_hivm_auto_cv_balance,
-                        tile_mix_vector_loop=tile_mix_vector_loop,
-                        tile_mix_cube_loop=tile_mix_cube_loop,
-                    )
-                )
-
-    return configs
-
-
 @triton.heuristics({
     'USE_G': lambda args: args['g'] is not None,
     'USE_INITIAL_STATE': lambda args: args['dh0'] is not None,
@@ -396,7 +271,7 @@ def get_autotune_config_bwd():
     'IS_VARLEN': lambda args: args['cu_seqlens'] is not None,
 })
 @triton.autotune(
-    configs=get_autotune_config_bwd(),
+    configs=get_autotune_config(multibuffer_list=(True,)),
     key=['H', 'K', 'V', 'BT', 'BV', 'USE_G'],
 )
 @triton.jit(do_not_specialize=['T'])
@@ -439,14 +314,12 @@ def chunk_gated_delta_rule_bwd_kernel_dhu_blockdim64(
 
             for i_v in range(tl.cdiv(V, BV)):
                 if IS_VARLEN:
-                    bos = tl.load(cu_seqlens + i_n).to(tl.int32)
-                    eos = tl.load(cu_seqlens + i_n + 1).to(tl.int32)
-                    T_i = eos - bos
-                    NT = tl.cdiv(T_i, BT)
+                    bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
+                    T = eos - bos
+                    NT = tl.cdiv(T, BT)
                     boh = tl.load(chunk_offsets + i_n).to(tl.int32)
                 else:
-                    bos = i_n * T
-                    T_i = T
+                    bos, eos = i_n * T, i_n * T + T
                     NT = tl.cdiv(T, BT)
                     boh = i_n * NT
 
@@ -501,21 +374,22 @@ def chunk_gated_delta_rule_bwd_kernel_dhu_blockdim64(
                         tl.store(p_dh4, b_dh4.to(p_dh4.dtype.element_ty), boundary_check=(0, 1))
 
                     if USE_G:
-                        last_idx = min((i_t + 1) * BT, T) - 1
-                        base_g = g + (i_n * H + i_h) * T
-                        bg_last = tl.load(base_g + bos + last_idx)
-                        bg_last_exp = tl.exp(bg_last)
-
-                        p_g = tl.make_block_ptr(
-                            base=base_g + bos,
-                            shape=(T,),
-                            strides=(1,),
-                            offsets=(i_t * BT,),
-                            block_shape=(BT,),
-                            order=(0,)
-                        )
-                        b_g = tl.load(p_g, boundary_check=(0,))
-                        b_g_exp = tl.exp(b_g)
+                        if IS_VARLEN:
+                            last_idx = min((i_t + 1) * BT, T) - 1
+                            bg_last = tl.load(g + (bos + last_idx) * H + i_h)
+                            bg_last_exp = exp(bg_last)
+                            p_g = tl.make_block_ptr(g + bos * H + i_h, (T,), (H,), (i_t * BT,), (BT,), (0,))
+                            b_g = tl.load(p_g, boundary_check=(0,))
+                            b_g_exp = exp(b_g)
+                        else:
+                            last_idx = min((i_t + 1) * BT, T) - 1
+                            base_g = g + (i_n * H + i_h) * T
+                            bg_last = tl.load(base_g + last_idx)
+                            bg_last_exp = tl.exp(bg_last)
+                            p_g = tl.make_block_ptr(base=g + task_id * T, shape=(T,), strides=(1,), offsets=(i_t * BT,),
+                                                    block_shape=(BT,), order=(0,))
+                            b_g = tl.load(p_g, boundary_check=(0,))
+                            b_g_exp = tl.exp(b_g)
                     else:
                         bg_last = None
                         last_idx = None
@@ -642,11 +516,14 @@ def chunk_gated_delta_rule_bwd_dhu(
 
     BV = 64
     total_tasks = N * H
-    cv_kernel_num = 16
+    cv_kernel_num = CUBE_CORE_NUM if cu_seqlens is not None else 16
     num_iters = (total_tasks + cv_kernel_num - 1) // cv_kernel_num
-    g = g.permute(0, 2, 1).contiguous()
-    
-    chunk_gated_delta_rule_bwd_kernel_dhu_blockdim64[(cv_kernel_num,)](
+    g = g.permute(0, 2, 1).contiguous() if cu_seqlens is None else g
+
+    def grid(meta):
+        return (cv_kernel_num,)
+
+    chunk_gated_delta_rule_bwd_kernel_dhu_blockdim64[grid](
         q=q,
         k=k,
         w=w,

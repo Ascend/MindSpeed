@@ -275,7 +275,7 @@ def chunk_gated_delta_rule_bwd_dhu_ref(
         ]
     ]
 )
-def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
+def test_chunk_gated_delta_rule_bwd_dhu(B, T, H, D, chunk_size):
     device = "npu:0"
 
     q = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
