@@ -942,9 +942,9 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
         if self.shared_experts is not None:
             with torch.cuda.stream(self.shared_experts.stream):
                 if self.shared_experts.use_shared_expert_gate:
-                    assert self.gate_score is not None
-                    shared_expert_output = shared_expert_output * self.gate_score
-                    self.gate_score = None
+                    assert self.shared_experts.gate_score is not None
+                    shared_expert_output = shared_expert_output * self.shared_experts.gate_score
+                    self.shared_experts.gate_score = None
             torch.cuda.current_stream().wait_stream(self.shared_experts.stream)
             output += shared_expert_output
 
