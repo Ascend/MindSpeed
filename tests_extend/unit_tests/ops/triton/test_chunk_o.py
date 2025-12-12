@@ -169,7 +169,7 @@ def chunk_fwd_o_ori(
     ]
 )
 @pytest.mark.skip(reason='Hanged to be fixed')
-def test_solve_tril(B, T, H, K, HT, chunk_size):
+def test_chunk_o(B, T, H, K, HT, chunk_size):
     device = "npu:0"
     device_dtype = torch.float32
 
