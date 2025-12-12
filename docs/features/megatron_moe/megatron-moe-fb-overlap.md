@@ -46,6 +46,7 @@ MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具�
 
 2. 如果需要使用DualpipeV流水，请在启动脚本中加入`--schedules-method dualpipev`
 3. 如果使用megatron VPP，请在启动脚本中配置`--num-layers-per-virtual-pipeline-stage`
+4. 支持非PP，多microbatch场景，请在启动脚本中不配置`--pipeline-model-parallel-size`或者配置`--pipeline-model-parallel-size 1`
 
 ## 使用约束
 1. 当前仅支持`--moe-token-dispatcher-type=alltoall`, 暂不支持`allgather/alltoall_seq` Dispatcher。
@@ -60,7 +61,7 @@ MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具�
     - GBS > 1 * DP * PP * MBS
     - 若使用noop layers，则其需要添加在模型尾部的最后一个VPP stage
 10. 与下列特性冲突，不能同时使用：
-   1. `moe-alltoall-overlap-comm`
-   2. `moe-hierarchical-alltoallv`
-   3. `recompute-in-advance`
-   4. `recompute-in-bubble`
+    - `moe-alltoall-overlap-comm`
+    - `moe-hierarchical-alltoallv`
+    - `recompute-in-advance`
+    - `recompute-in-bubble`
