@@ -134,11 +134,11 @@ def transformer_layer_forward_moe(
     # Grouped MLP Forward
     detached_dispached_input = detach_tensor(dispached_input, checkpoint_forward=checkpoint)
     detached_dispached_input_probs = detach_tensor(dispached_input_probs, checkpoint_forward=checkpoint)
-    (expert_output, act_ckpt_manager), _ = self.mlp.experts(
+    (expert_output, act_ckpt_manager, fc1_swap_manager, probs_swap_manager), _ = self.mlp.experts(
         detached_dispached_input, tokens_per_expert, permuted_probs=detached_dispached_input_probs
     )
 
-    if args.moe_zero_memory == 'level0':
+    if args.moe_zero_memory != 'disable':
         dispached_input.untyped_storage().resize_(0)
         recompute_needed_tensors = [dispached_input, probs, routing_map, dispatcher.num_global_tokens_per_local_expert_cpu]
     else:
@@ -213,6 +213,9 @@ def transformer_layer_forward_moe(
     )
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
+    graph.fc1_swap_manager = fc1_swap_manager
+    graph.probs_swap_manager = probs_swap_manager
+
     if hasattr(self.self_attention, 'swap_managers'):
         graph.attn_swap_managers = self.self_attention.swap_managers
 

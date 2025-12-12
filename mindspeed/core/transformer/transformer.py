@@ -179,7 +179,7 @@ def core_mlp_forward_wrapper(fn):
             if hasattr(self, 'origin_activation_func'):
                 self.activation_func = self.origin_activation_func
             output, output_bias = fn(self, *args, **kwargs)
-        elif moe_zero_memory == "level1" and not only_recompute_activation(self.layer_number):
+        elif moe_zero_memory == "level1" and not get_args().moe_fb_overlap and not only_recompute_activation(self.layer_number):
             if self.with_shared_expert:
                 self.activation_function = activation_function
                 hidden_states = args[0]

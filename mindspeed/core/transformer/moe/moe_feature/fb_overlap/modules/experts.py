@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from megatron.training import get_args
 
+from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.utils import TensorSwapManager, make_wait_swap_in_hook
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
@@ -109,7 +110,8 @@ class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
 
     def forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs=None):
         args = get_args()
-        is_recompute_activation = args.moe_zero_memory == 'level0' or should_recompute_activation(self.layer_number)
+        is_recompute_activation = args.moe_zero_memory != 'disable' or should_recompute_activation(self.layer_number)
+        is_swap_fc1 = args.moe_zero_memory == 'level1'
 
         def act_func(fc1_output, permuted_probs):
             fc2_input = self.activation_func(fc1_output)
@@ -118,6 +120,8 @@ class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
                     .type(fc2_input.dtype)
             return fc2_input
 
+        fc1_swap_manager = None
+        probs_swap_manager = None
         if permuted_local_hidden_states.nelement() != 0:
             group_list = torch.cumsum(tokens_per_expert, dim=0)
 
@@ -132,6 +136,16 @@ class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
             else:
                 act_ckpt = None
                 fc2_input = act_func(fc1_output, permuted_probs)
+
+            if is_swap_fc1:
+                TensorSwapManager.wait_all_swap_out("fc1")
+                fc1_swap_manager = TensorSwapManager(fc1_output, "fc1")
+                fc1_swap_manager.async_swap_out(wait_stream=torch.npu.current_stream())
+
+                TensorSwapManager.wait_all_swap_out("permuted_probs")
+                probs_swap_manager = TensorSwapManager(permuted_probs, "permuted_probs")
+                probs_swap_manager.async_swap_out(wait_stream=torch.npu.current_stream())
+
             fc2_output = npu_gmm_with_detach(fc2_input, w2, self.weight2, bias=None, group_list=group_list)
         else:
             # No token is allocated for local experts.
@@ -152,4 +166,4 @@ class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
         if is_recompute_activation:
             act_ckpt.discard_output()
 
-        return (fc2_output, act_ckpt), None
+        return (fc2_output, act_ckpt, fc1_swap_manager, probs_swap_manager), None

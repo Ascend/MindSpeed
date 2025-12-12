@@ -127,6 +127,10 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         bwd_shared_experts.pre_backward_comm(shared_experts_grad)
         last_comm_handle = bwd_shared_experts.pre_backward_handle
 
+    if bwd_layer_graph.fc1_swap_manager:
+        bwd_layer_graph.fc1_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
+    if bwd_layer_graph.probs_swap_manager:
+        bwd_layer_graph.probs_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
     # Unperm2 Bwd
     # check if backward unpermutation alltoall is launched at bwd layer before
     if bwd_unperm_a2a_handle is None:
@@ -153,7 +157,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     else:
         unperm1_out_grad = bwd_layer_output_grad
 
-    if args.moe_zero_memory == 'level0':
+    if args.moe_zero_memory != 'disable':
         with torch.no_grad():
             bwd_input_before_perm1 = bwd_layer_graph.pre_mlp_layernorm_graph[0]
 
@@ -240,8 +244,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     bwd_unperm_a2a_handle.wait()
     bwd_unperm_a2a_handle = None
     run_graph_backward(bwd_layer_graph.unperm1_graph, unperm1_out_grad)
-    if bwd_layer_graph.act_ckpt_manager is not None:
-        bwd_layer_graph.act_ckpt_manager.recompute(True)
     unperm1_out_grad.untyped_storage().resize_(0)
 
     # Shared Experts Backward
@@ -261,6 +263,13 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             perm1_out, perm1_probs, wait_event=last_comm_handle
         )
         last_comm_handle = perm_prob_a2a_handle if perm_prob_a2a_handle else perm_a2a_handle
+
+    if bwd_layer_graph.fc1_swap_manager:
+        bwd_layer_graph.fc1_swap_manager.wait_swap_in()
+    if bwd_layer_graph.probs_swap_manager:
+        bwd_layer_graph.probs_swap_manager.wait_swap_in()
+    if bwd_layer_graph.act_ckpt_manager is not None:
+        bwd_layer_graph.act_ckpt_manager.recompute(True)
 
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
@@ -293,7 +302,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             bwd_shared_experts.post_backward_comm(wait_event=last_comm_handle)
 
     # Grouped MLP dw computation
-    if args.moe_zero_memory == 'level0':
+    if args.moe_zero_memory != 'disable':
         # restore fc1 input for dw computation
         with torch.no_grad():
             bwd_recomp_perm_a2a_handle.wait()
@@ -319,10 +328,10 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         # Grouped MLP Forward
         detached_dispached_input = detach_tensor(dispached_input)
         detached_dispached_input_probs = detach_tensor(dispached_input_probs, checkpoint_forward=checkpoint)
-        (expert_output, act_ckpt_manager), _ = fwd_layer.mlp.experts(
+        (expert_output, act_ckpt_manager, fc1_swap_manager, probs_swap_manager), _ = fwd_layer.mlp.experts(
             detached_dispached_input, tokens_per_expert, permuted_probs=detached_dispached_input_probs
         )
-        if args.moe_zero_memory == 'level0':
+        if args.moe_zero_memory != 'disable':
             dispached_input.untyped_storage().resize_(0)
             recompute_needed_tensors = [dispached_input, probs, routing_map,
                                         fwd_dispatcher.num_global_tokens_per_local_expert_cpu]
@@ -469,6 +478,9 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
     )
     graph.act_ckpt_manager = act_ckpt_manager
     graph.unperm2_swap_manager = unperm2_swap_manager
+    graph.fc1_swap_manager = fc1_swap_manager
+    graph.probs_swap_manager = probs_swap_manager
+
     if hasattr(fwd_layer.self_attention, 'swap_managers'):
         graph.attn_swap_managers = fwd_layer.self_attention.swap_managers
 

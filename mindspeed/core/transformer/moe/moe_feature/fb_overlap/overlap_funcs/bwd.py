@@ -25,6 +25,10 @@ def transformer_layer_backward_moe(
     dispached_input, probs, routing_map, bwd_num_global_tokens_per_local_expert_cpu = self.recompute_needed_tensors
 
     # Launch swap-in at the beginning of the backward pass.
+    if self.fc1_swap_manager:
+        self.fc1_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
+    if self.probs_swap_manager:
+        self.probs_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
     if self.unperm2_swap_manager:
         self.unperm2_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
     if self.attn_swap_managers:
@@ -58,13 +62,11 @@ def transformer_layer_backward_moe(
         with torch.npu.stream(dispatcher.overlap_stream):
             shared_experts.linear_fc2_act_fc1_backward(self.shared_experts_graph)
 
-    if self.act_ckpt_manager is not None:
-        self.act_ckpt_manager.recompute(True)
     handle.wait()
 
     # recomp permute1 and overlap all2all
     perm_a2a_handle = None
-    if args.moe_zero_memory == 'level0':
+    if args.moe_zero_memory != 'disable':
         with torch.no_grad():
             input_before_perm1 = self.pre_mlp_layernorm_graph[0]
 
@@ -88,12 +90,18 @@ def transformer_layer_backward_moe(
             shared_experts.post_backward_comm(wait_event=perm_a2a_handle)
 
     run_graph_backward(self.unperm1_graph, unperm1_out_grad)
+    if self.fc1_swap_manager:
+        self.fc1_swap_manager.wait_swap_in()
+    if self.probs_swap_manager:
+        self.probs_swap_manager.wait_swap_in()
+    if self.act_ckpt_manager is not None:
+        self.act_ckpt_manager.recompute(True)
     WeightGradStore.start_decouple()
     run_graph_backward(self.grouped_mlp_graph, keep_grad=True)  # keep for dw commputation
     if not in_detach_stage:
         WeightGradStore.end_decouple()
     run_graph_backward(self.perm2_graph, keep_graph=True)  # keep for dw commutation
-    if args.moe_zero_memory == 'level0':
+    if args.moe_zero_memory != 'disable':
         perm_a2a_handle.wait()
         perm_a2a_handle = None
 
@@ -111,7 +119,7 @@ def transformer_layer_backward_moe(
         input_splits_tp=self.output_splits_tp
     )
 
-    if args.moe_zero_memory == 'level0':
+    if args.moe_zero_memory != 'disable':
         with torch.no_grad():
             recompute_fc1_input, _ = dispatcher.token_permute2(perm_a2a_out, None, bwd_num_global_tokens_per_local_expert_cpu)
             perm_a2a_out.untyped_storage().resize_(0)

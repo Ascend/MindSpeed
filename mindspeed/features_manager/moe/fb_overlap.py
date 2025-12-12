@@ -30,8 +30,7 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         self.dependency_check(args, 'moe_grouped_gemm')
         if args.moe_fb_overlap and args.moe_token_dispatcher_type in ['allgather', 'alltoall_seq']:
             raise AssertionError('The fb overlap feature do not support allgather and alltoall_seq dispatcher.')
-        if args.moe_fb_overlap and args.moe_zero_memory == 'level1':
-            raise AssertionError('fb overlap only support moe zero memory level 0.')
+
         if args.moe_fb_overlap and (args.expert_tensor_parallel_size != 1 or args.expert_model_parallel_size == 1):
             raise AssertionError(
                 'fb overlap only support expert-tensor-parallel-size=1 and expert-model-parallel-size > 1')
