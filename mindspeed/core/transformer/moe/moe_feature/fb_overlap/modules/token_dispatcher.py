@@ -130,7 +130,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
             # [tp_size, ep_size, num_local_experts] -> [tp_size, ep_size]
             num_global_tokens_per_rank = num_global_tokens_per_local_expert.sum(axis=2)
             self.num_tokens_per_expert = num_global_tokens_per_expert.reshape(-1, self.num_experts).sum(axis=0).clone()
-            
+
             # [tp_size, ep_size] -> [ep_size]
             # self.output_splits represents the number of tokens received by the current rank
             # from other EP rank.
@@ -159,7 +159,9 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
         if self.num_local_experts > 1:
             self.num_global_tokens_per_local_expert = num_global_tokens_per_local_expert.view(
                 -1, self.num_local_experts
-            ).to(torch.device("cpu"), non_blocking=True)
+            )
+            if not self.config.moe_permute_fusion:
+                self.num_global_tokens_per_local_expert.to(torch.device("cpu"), non_blocking=True)
             self.num_global_tokens_per_local_expert_cpu = self.num_global_tokens_per_local_expert
 
         return num_tokens_per_local_expert
@@ -213,7 +215,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
                 permutated_local_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
                     hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
                     drop_and_pad=self.drop_and_pad,
-                )             
+                )
             PREMUTE_FINISH_EVENT = self.overlap_stream.record_event()
 
         return permutated_local_input_tokens, permuted_probs, tokens_per_expert
@@ -324,6 +326,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
                     num_global_tokens_per_local_expert.ravel(),
                     self.sort_input_by_local_experts,
                     probs=global_input_token_probs,
+                    fused=self.config.moe_permute_fusion,
                 )
 
         if self.cuda_sync_point == "before_finish":
@@ -369,6 +372,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
                     hidden_states,
                     self.num_global_tokens_per_local_expert.T.ravel(),
                     self.restore_output_by_local_experts,
+                    fused=self.config.moe_permute_fusion,
                 )
 
         return hidden_states
