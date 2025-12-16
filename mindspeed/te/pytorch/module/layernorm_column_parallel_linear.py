@@ -211,7 +211,8 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             setattr(self.layer_norm_bias, 'sequence_parallel', self.sequence_parallel) 
         else:
             self.layer_norm_bias = None
-        
+        self.te_return_bias = self.skip_bias_add and bias
+
     def _rmsnorm(self, inp):
         if self.config.use_fused_rmsnorm:
             return torch_npu.npu_rms_norm(inp, self.layer_norm_weight, epsilon=self.config.layernorm_epsilon)[0]
@@ -230,7 +231,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         else:
             norm_output = self._rmsnorm(inp)
 
-        bias = self.bias if not self.skip_bias_add else None
+        bias = self.bias if self.te_return_bias else None
 
         if (
             self.allreduce_dgrad

@@ -48,7 +48,7 @@ def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
         not self.masks_and_position_ids_are_cacheable
         or not self.masks_and_position_ids_are_cached
     ):
-        attention_mask, loss_mask, position_ids, actual_seq_len = _get_ltor_masks_and_position_ids(
+        attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
             tokens,
             self.config.tokenizer.eod,
             self.config.reset_position_ids,
@@ -89,7 +89,6 @@ def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
             "attention_mask": attention_mask,
             "loss_mask": loss_mask,
             "position_ids": position_ids,
-            "actual_seq_len": actual_seq_len,
         }
     else:
         return {
@@ -97,7 +96,6 @@ def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
             "labels": labels,
             "loss_mask": loss_mask,
             "position_ids": position_ids,
-            "actual_seq_len": actual_seq_len,
         }
 
 
@@ -195,14 +193,18 @@ def _get_ltor_masks_and_position_ids(
     else:
         actual_seq_len = torch.cat([eod_index + 1, seq_length_tensor]) if eod_index.numel() > 0 else seq_length_tensor
 
-    return attention_mask, loss_mask, position_ids, actual_seq_len
+    return attention_mask, loss_mask, (position_ids, actual_seq_len)
 
 
-def collate_wrapper(fn):
-    @wraps(fn)
-    def wrapper(samples):
-        batch = fn(samples)
-        batch['actual_seq_len'] = samples[0]['actual_seq_len']
+def collate_wrapper(fn):	
+    @wraps(fn)	
+    def wrapper(samples):	
+        actual_seq_len = [elem['position_ids'][1] for elem in samples]
+        samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
+        batch = fn(samples)	
+        seq_len = actual_seq_len[0][-1]	
+        actual_seq_len = [elem + i * seq_len for i, elem in enumerate(actual_seq_len)]
+        batch['actual_seq_len'] = torch.cat(actual_seq_len)
         return batch
-
+    
     return wrapper
