@@ -27,6 +27,13 @@
 
 1. 在训练脚本中添加此功能的使能参数：`--smart-swap`。
 2. （可选）修改此功能的配置文件`mindspeed/core/memory/smart_swap/swap_policy_config.py`进行调试。
+3. 新增v2版本，简化用户使用。
+```python
+self.policy_v2 = True  # True是开启，False是关闭
+self.policy_pref = SwapPolicyPref.BETTER_PERFORMANCE  # BETTER_PERFORMANCE是选择activation，BETTER_MEMORY_SAVING是选择activation和optimizer两个部分
+self.swap_bucket_size = -1  # 控制swap每层tensor的大小，单位Bytes。默认-1，小于零即视为全选。
+self.num_attn_layers_per_stage = 1  # 指定SwapStage划分粒度。默认1，即每个SwapStage包含一个attention layer。
+```
 
 ## 使用效果
 
@@ -37,3 +44,70 @@
 
 1. SmartSwap适配静态序列场景；暂未适配动态场景，例如MOE类场景。
 2. SmartSwap将占用Host内存，例如单机8卡，若每卡均换出`30 GB`到Host，则单机至少需要Host内存`8*30=240 GB`。
+3. 针对自定义编译cpp算子，提供手动添加采集Hook的方式，用户需手动修改自定义算子的cpp代码和编译代码，并修改模型训练脚本的`LD_LIBRARY_PATH`环境变量。举例如下。
+
+- 自定义算子的cpp代码
+
+```cpp
+// 举例: mindspeed/ops/csrc/cann/gmm.cpp
+#include "NPUSwapManager.h"  // NOTE: 添加头文件
+// ...
+std::vector<at::Tensor> npu_gmm(...)
+{
+    // NOTE: 添加算子调用前置位的Hook，设置算子名称和算子输入；若输出和输入相同，可在前置位设置。
+    c10_npu::swap::NPUSwapManager::GetInstance().BeginHook("gmm_forward");
+    c10_npu::swap::NPUSwapManager::GetInstance().TensorHook(x);
+    c10_npu::swap::NPUSwapManager::GetInstance().TensorHook(weight);
+
+    // ...
+
+    ACLNN_CMD(aclnnGroupedMatmulV2, x_, weight_, bias_, scale_real, offset_real, antiquant_scale_real,
+              antiquant_offset_real, group_list_real, split_item_value, group_type_value, result);
+
+    // NOTE: 添加算子调用后置位的Hook，设置算子输出和结束标志；
+    c10_npu::swap::NPUSwapManager::GetInstance().TensorHook(y);
+    c10_npu::swap::NPUSwapManager::GetInstance().PostHook();
+    c10_npu::swap::NPUSwapManager::GetInstance().EndHook();
+
+    // ...
+    return y;
+}
+```
+
+- 自定义算子的编译代码
+
+```python
+# 举例: mindspeed/op_builder/gmm_builder.py
+
+class GMMOpBuilderPublic(MindSpeedOpBuilder):
+    TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[:2])
+
+    def sources(self):
+        return ['ops/csrc/cann/gmm.cpp', 'ops/csrc/flop_counter/flop_counter.cpp']
+
+    def include_paths(self):
+        paths = super().include_paths()
+        paths += ['ops/csrc/cann/inc']
+        paths.append('ops/csrc/pluggable_allocator/smart_swap')  # NOTE: 添加smart_swap的头文件路径
+        return paths
+
+    # ...
+
+    # NOTE: 添加编译链接选项
+    def extra_ldflags(self):
+        flags = super().extra_ldflags()
+        import os
+        root_extensions_dir = os.environ.get('TORCH_EXTENSIONS_DIR')
+        flags += [
+            '-L' + f'{root_extensions_dir}/smart_swap/', '-lsmart_swap',
+        ]
+        return flags
+```
+
+- 模型训练脚本的环境变量修改
+
+```bash
+# 举例: pretrain_xxx.sh
+export TORCH_EXTENSIONS_DIR="/home/xxx/exts/"
+export LD_LIBRARY_PATH=${TORCH_EXTENSIONS_DIR}/smart_swap/:${LD_LIBRARY_PATH}
+```

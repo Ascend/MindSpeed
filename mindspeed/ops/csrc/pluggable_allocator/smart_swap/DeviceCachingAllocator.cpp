@@ -994,7 +994,8 @@ bool DeviceCachingAllocator::realloc_block(AllocParams &p, bool isRetry)
             large_blocks.blocks.insert(new_block);
 
             if (!get_fused_fragmented_blocks(p, 4)) {
-                throw GMLakeError("Call get_fused_fragmented_blocks Failed");
+                p.err = ACL_ERROR_RT_MEMORY_ALLOCATION;
+                return false;
             }
         } else {
             for (size_t i = 0; i < new_block->vmm_segment->phy_chunks.size(); i++) {
@@ -1362,8 +1363,11 @@ bool DeviceCachingAllocator::get_fused_fragmented_blocks(AllocParams &p, int tim
     int64_t net_change_inactive_split_blocks = 0;
     int64_t net_change_inactive_split_size = 0;
 
-    std::vector<std::shared_ptr<PhyBlock>> phy_chunks2glue;
     auto sblock = stitch_block(blocks2fuse, p);
+    if (sblock == nullptr) {
+        p.err = ACL_ERROR_RT_MEMORY_ALLOCATION;
+        return false;
+    }
     activate_large_block(sblock);
     p.block = sblock;
     p.err = ACL_ERROR_NONE;
@@ -1421,7 +1425,7 @@ Block *DeviceCachingAllocator::stitch_block(std::vector<Block *> &blocks2fuse, A
     } while (gc_time < 3);
 
     if (!vmm_segment || vmm_segment->status != ACL_SUCCESS || !vmm_segment->segment_ptr) {
-        throw GMLakeError("stitch pBlocks failed, something wrong happended !");
+        return nullptr;
     }
 
     void *block_ptr = vmm_segment->segment_ptr;
@@ -1663,7 +1667,7 @@ size_t DeviceCachingAllocator::garbage_collect_fused_blocks(int time, size_t req
         if (env) {
             return atoi(env);
         } else {
-            return 100;
+            return 3000;
         }
     })();
 
@@ -1693,7 +1697,7 @@ size_t DeviceCachingAllocator::garbage_collect_fused_blocks(int time, size_t req
             Block *block = *(free_fused_blocks.blocks.begin());
             garbage_size += block->size;
             release_large_block(block);
-            if (garbage_size <= gc_thresh * G) {
+            if (garbage_size >= gc_thresh * G) {
                 break;
             }
         }

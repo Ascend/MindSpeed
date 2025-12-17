@@ -58,14 +58,21 @@ public:
     SwapStageType stageType;
     uint32_t microBatchIndex;
     uint32_t layerIndex;
+    uint32_t modelIndex;
 };
 
 class HashSwapStage {
 public:
     size_t operator () (const SwapStage &s) const
     {
-        return std::hash<int>()((s.layerIndex) + ((s.microBatchIndex) << 8) + ((static_cast<int>(s.stageType) << 16)));
+        return std::hash<int>()((s.layerIndex) + ((s.microBatchIndex) << kEight)
+            + ((static_cast<int>(s.stageType) << kSixteen))
+            + ((s.modelIndex) << kTwentyFour));
     }
+
+    static constexpr int kEight = 8;
+    static constexpr int kSixteen = 16;
+    static constexpr int kTwentyFour = 24;
 };
 
 class TORCH_NPU_API SwapConfig {
@@ -91,8 +98,10 @@ public:
     uint64_t tensorSizeThresh;
     bool enableExecutor;
     bool enableCustomRecordStream;
-    std::vector<uint32_t> fwdOpLayerInfo;
-    std::vector<uint32_t> bwdOpLayerInfo;
+
+    // {modelIndex: {microbatchIndex: [OpLayerInfo]}}
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<uint32_t>>> fwdOpLayerInfo;
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<uint32_t>>> bwdOpLayerInfo;
 };
 
 class TORCH_NPU_API UniqueSwapPtr {
@@ -412,6 +421,8 @@ public:
 
     int BeginHook(const std::string &opName);
     int EndHook();
+    int TensorHook(const at::TensorList &tensor);
+    int TensorHook(const std::vector<at::Tensor> &tensor);
     int TensorHook(const at::Tensor &tensor);
     int PostHook();
 

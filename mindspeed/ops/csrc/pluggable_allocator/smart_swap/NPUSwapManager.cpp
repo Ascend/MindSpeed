@@ -29,11 +29,12 @@
 
 namespace c10_npu {
 namespace swap {
-SwapStage::SwapStage() : stageType(SwapStageType::INIT), microBatchIndex(0), layerIndex(0) {}
+SwapStage::SwapStage() : stageType(SwapStageType::INIT), microBatchIndex(0), layerIndex(0), modelIndex(0) {}
 
 bool SwapStage::operator == (const SwapStage &other) const
 {
-    return stageType == other.stageType && microBatchIndex == other.microBatchIndex && layerIndex == other.layerIndex;
+    return (stageType == other.stageType && microBatchIndex == other.microBatchIndex && layerIndex == other.layerIndex
+        && modelIndex == other.modelIndex);
 }
 
 std::ostream &operator << (std::ostream &os, const SwapStage &obj)
@@ -41,7 +42,8 @@ std::ostream &operator << (std::ostream &os, const SwapStage &obj)
     os << "SwapStage: "
        << "stageType: " << static_cast<int>(obj.stageType) << " "
        << "microBatchIndex: " << obj.microBatchIndex << " "
-       << "layerIndex: " << obj.layerIndex << std::endl;
+       << "layerIndex: " << obj.layerIndex << " "
+       << "modelIndex: " << obj.modelIndex << std::endl;
     return os;
 }
 
@@ -272,9 +274,9 @@ ExecutorTensorInfo::ExecutorTensorInfo(const SwapStage &s1, const SwapStage &s2)
 
 bool ExecutorTensorInfo::operator == (const ExecutorTensorInfo &other) const
 {
-    return opCount == other.opCount && opTag == other.opTag && dtype == other.dtype && nbytes == other.nbytes &&
-        shape == other.shape && opCallsStack == other.opCallsStack &&
-        tensorIndexCallsStack == other.tensorIndexCallsStack;
+    return (opCount == other.opCount && opTag == other.opTag && dtype == other.dtype &&
+        opCallsStack == other.opCallsStack &&
+        tensorIndexCallsStack == other.tensorIndexCallsStack);
 }
 
 std::ostream &operator << (std::ostream &os, const ExecutorTensorInfo &obj)
@@ -386,7 +388,6 @@ int SwapExecutor::SwapOut(c10::intrusive_ptr<c10::StorageImpl> storageImplPtr, b
     auto allocatorCPU = at_npu::native::getCachingHostAllocator();
     size_t size = storageImplPtr->nbytes();
     at::DataPtr dataPtrCpu = allocatorCPU->allocate(size);
-    TORCH_CHECK(dataPtrCpu, "Get dataPtrCpu failed.");
 
     NPUSwapManager::GetInstance().tensorPtrCountMap[reinterpret_cast<size_t>(dataPtrCpu.get())]++;
 
@@ -464,7 +465,6 @@ not be used anymore. swapOutStorageImplMap.find(uniqueId[%lu])->second.weak_coun
     auto allocatorNPU = c10_npu::NPUCachingAllocator::allocator.load();
     size_t size = storageImplPtr->nbytes();
     at::DataPtr dataPtrNpu = allocatorNPU->allocate(size);
-    TORCH_CHECK(dataPtrNpu, "Get dataPtrNpu failed.");
 
     if (NPUSwapManager::GetInstance().config.enableProfiler) {
         NPUSwapManager::GetInstance().ReportInfoToSwapProfiler(false, dataPtrCpu, dataPtrNpu, size);
@@ -486,7 +486,7 @@ not be used anymore. swapOutStorageImplMap.find(uniqueId[%lu])->second.weak_coun
         NPUSwapManager::GetInstance().RecordStream(dataPtrCpu, swapStream);
     } else {
         c10_npu::NPUCachingAllocator::allocator.load()->recordStream(dataPtrNpu, swapStream);
-        at_npu::native::CachingHostAllocator_recordEvent(dataPtrCpu.get(), swapStream);
+        at_npu::native::CachingHostAllocator_recordEvent(dataPtrCpu.get(), aclrtMemcpyKind::ACL_MEMCPY_HOST_TO_DEVICE, swapStream);
     }
 
     storageImplPtr->set_data_ptr_noswap(std::move(dataPtrNpu));
@@ -567,9 +567,10 @@ void SwapExecutor::initOpNameToOneHotAndIndexMap(const std::vector<std::string> 
 bool SwapExecutor::checkMatchAndSwapOut(ExecutorTensorInfo &eti, std::vector<ExecutorTensorInfo *> &candidateSwapOutVec)
 {
     int matchCount = 0;
-    for (auto it = candidateSwapOutVec.rbegin(); matchCount < 5 && it != candidateSwapOutVec.rend(); ++it) {
+    for (auto it = candidateSwapOutVec.rbegin(); matchCount < candidateSwapOutVec.size() &&
+        it != candidateSwapOutVec.rend(); ++it) {
         ++matchCount;
-        if ((*(*it)) == eti && NPUSwapManager::GetInstance().config.stage == (*it)->swapOutStage) {
+        if ((NPUSwapManager::GetInstance().config.stage == (*it)->swapOutStage) && (*(*it)) == eti) {
             eti.swapInStage = (*it)->swapInStage;
             eti.freeStage = (*it)->freeStage;
             eti.swapInFreeStage = (*it)->swapInFreeStage;
@@ -1156,6 +1157,10 @@ int NPUSwapManager::TensorHook(const at::Tensor &tensor)
         return 0;
     }
 
+    if (tensor.numel() == 0) {
+        return 1;
+    }
+
     if (!tensor.device().is_privateuseone()) {
         return 1;
     }
@@ -1181,6 +1186,25 @@ int NPUSwapManager::TensorHook(const at::Tensor &tensor)
 
     return 0;
 }
+
+int NPUSwapManager::TensorHook(const at::TensorList &tensor)
+{
+    int status = 0;
+    for (int i = 0; i < tensor.size(); ++i) {
+        status = TensorHook(tensor[i]);
+    }
+    return status;
+}
+
+int NPUSwapManager::TensorHook(const std::vector<at::Tensor> &tensor)
+{
+    int status = 0;
+    for (int i = 0; i < tensor.size(); ++i) {
+        status = TensorHook(tensor[i]);
+    }
+    return status;
+}
+
 
 int NPUSwapManager::PostHook()
 {
@@ -1402,25 +1426,29 @@ void NPUSwapManager::UpdateCurrentStagePerOp()
         return;
     }
     config.currentStageOpId++;
+    auto mbId = config.stage.microBatchIndex;
+    auto modelId = config.stage.modelIndex;
+    auto numMicroBatches = config.fwdOpLayerInfo[modelId].size();
+    if (numMicroBatches == 1) { // adapt for policy 1.0 where OpLayerInfo has only length 1, mbId == 0 and modelId == 0
+        mbId = 1;
+        modelId = 0;
+    }
+    auto opLayerInfo = config.fwdOpLayerInfo;
     if (config.stage.stageType == SwapStageType::FWD) {
-        for (int i = 0; i < config.fwdOpLayerInfo.size(); i++) {
-            if (config.currentStageOpId <= config.fwdOpLayerInfo[i]) {
-                config.stage.layerIndex = i + 1;
-                break;
-            }
-        }
-        if (config.currentStageOpId > config.fwdOpLayerInfo.back()) {
-            config.stage.layerIndex = config.fwdOpLayerInfo.size() + 1;
-        }
+        opLayerInfo = config.fwdOpLayerInfo;
     } else if (config.stage.stageType == SwapStageType::BWD) {
-        for (int i = 0; i < config.bwdOpLayerInfo.size(); i++) {
-            if (config.currentStageOpId <= config.bwdOpLayerInfo[i]) {
+        opLayerInfo = config.bwdOpLayerInfo;
+    } else {
+        return;
+    }
+    if (config.currentStageOpId > opLayerInfo[modelId][mbId].back()) {
+        config.stage.layerIndex = opLayerInfo[modelId][mbId].size() + 1;
+    } else {
+        for (int i = 0; i < opLayerInfo[modelId][mbId].size(); i++) {
+            if (config.currentStageOpId <= opLayerInfo[modelId][mbId][i]) {
                 config.stage.layerIndex = i + 1;
                 break;
             }
-        }
-        if (config.currentStageOpId > config.bwdOpLayerInfo.back()) {
-            config.stage.layerIndex = config.bwdOpLayerInfo.size() + 1;
         }
     }
 }

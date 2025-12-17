@@ -7,7 +7,7 @@ from typing import Dict
 
 import pandas
 
-from .policy_generator import PolicyGenerator
+from .policy_generator import PolicyGenerator, PolicyGeneratorV2
 from .swap_policy_config import swap_policy_config
 from .swap_utils import print_with_rank, PrintLevel, timer
 from .swap_cpp_adaptor import (
@@ -143,13 +143,47 @@ class SwapEngine:
         if is_new_op_sequence:
             self.process_profiler_data()
 
-        policy_candidates, tensor_size_thresh = self.make_policy()
+        if swap_policy_config.policy_v2:
+            policy_candidates, tensor_size_thresh = self.make_policy_v2()
+        else:
+            policy_candidates, tensor_size_thresh = self.make_policy()
         self.newest_policy_result.tensor_size_thresh = tensor_size_thresh
         self.newest_policy_result.policy_list = policy_candidates
         self.newest_policy_result.fwd_op_layer_info = self.profiler_op_step.layer_info.fwd_op_layer_info
         self.newest_policy_result.bwd_op_layer_info = self.profiler_op_step.layer_info.bwd_op_layer_info
 
         return self.newest_policy_result
+
+    @timer
+    def make_policy_v2(self):
+        self.adjust_parameters()
+        policy_generator = PolicyGeneratorV2(self.profiler_op_step)
+        policy_generator.select_candidate()
+        swap_list = policy_generator.get_sorted_swap_list()
+        tensor_size_thresh = (
+            min([candidate.tensor.info.size for candidate in swap_list])
+            if swap_list
+            else swap_policy_config.tensor_size_thresh
+        )
+
+        optim_sum = sum([i.tensor.info.size for i in swap_list if i.tensor.info.tensor_type == SwapTensorType.OPTIM])
+        model_sum = sum([i.tensor.info.size for i in swap_list if i.tensor.info.tensor_type != SwapTensorType.OPTIM])
+        GB = 1024 * 1024 * 1024
+        self.print_with_rank(
+            (
+                f"\n\tCurrent Step: {self.current_profiler_step.step}, "
+                f"Policy Step: {self.profiler_op_step.step}, "
+                f"Max Memory: {self.profiler_op_step.max_memory / GB:.2f} GB, "
+                f"\n\tCandidate Num: {len(swap_list)}, "
+                f"Optim Num: {len([i for i in swap_list if i.tensor.info.tensor_type == SwapTensorType.OPTIM])}, "
+                f"Optim Tensor Size: {optim_sum / GB:.2f} GB, "
+                f"Model Num: {len([i for i in swap_list if i.tensor.info.tensor_type != SwapTensorType.OPTIM])}, "
+                f"Model Tensor Size: {model_sum / GB:.2f} GB, "
+                f"Min Tensor Size: {tensor_size_thresh}"
+            ),
+            print_level=PrintLevel.INFO,
+        )
+        return swap_list, tensor_size_thresh
 
     @staticmethod
     def is_equal_op_sequence(
@@ -198,6 +232,41 @@ class SwapEngine:
 
         swap_policy_config.size_coverage_weight += swap_policy_config.adjust_size_coverage_weight
         self.record_parameters()
+
+    def check_policy_valid(self, candidate: SwapPolicyCandidate):
+        # swap out free stage: (swap out op, swap in stage actual)
+        # swap in stage actual: (swap out free stage, swap in op)
+        # swap in free stage: (swap in op, )
+        if not candidate.is_optimizer_or_weight:
+            free_stage_opid = self.profiler_op_step.layer_start_opid[candidate.free_stage]
+            swap_in_stage_actual_opid = self.profiler_op_step.layer_start_opid[candidate.swap_in_stage_actual]
+            swap_in_free_stage_opid = self.profiler_op_step.layer_start_opid[candidate.swap_in_free_stage]
+            swap_out_opid = (
+                candidate.swap_out_op.op_id
+                if not candidate.is_optimizer_or_weight
+                else self.profiler_op_step.layer_start_opid[candidate.swap_out_stage]
+            )
+            swap_in_opid = (
+                candidate.swap_in_op.op_id
+                if not candidate.is_optimizer_or_weight
+                else self.profiler_op_step.layer_start_opid[candidate.swap_in_stage]
+            )
+            if not (free_stage_opid > swap_out_opid and free_stage_opid < swap_in_stage_actual_opid):
+                print(
+                    f"Error! swap_out_free_stage_opid [{free_stage_opid}] should be > swap_out_opid [{swap_out_opid}] and < swap_in_stage_actual_opid [{swap_in_stage_actual_opid}]"
+                )
+                return False
+            if not (swap_in_stage_actual_opid < swap_in_opid):
+                print(
+                    f"Error! swap_in_stage_actual_opid [{swap_in_stage_actual_opid}] should be < swap_in_opid [{swap_in_opid}]"
+                )
+                return False
+            if not (swap_in_free_stage_opid > swap_in_stage_actual_opid):
+                print(
+                    f"Error! swap_in_free_stage_opid [{swap_in_free_stage_opid}] should be > swap_in_stage_actual_opid [{swap_in_stage_actual_opid}]"
+                )
+                return False
+        return True
 
     @timer
     def make_policy(self):

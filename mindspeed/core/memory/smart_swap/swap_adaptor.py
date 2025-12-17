@@ -22,6 +22,11 @@ def change_allocator():
     smart_swap_cpp = load_smart_swap_module()
     smart_swap_module_path = smart_swap_cpp.__file__
 
+    import os
+    lib_so_path = os.path.join(os.path.dirname(smart_swap_module_path), "libsmart_swap.so")
+    if not os.path.exists(lib_so_path):
+        os.system(f"ln -s {smart_swap_module_path} {lib_so_path}")
+
     new_alloc = torch_npu.npu.memory.NPUPluggableAllocator(smart_swap_module_path, "gmlake_malloc", "gmlake_free")
     torch_npu.npu.memory.change_current_allocator(new_alloc)
 

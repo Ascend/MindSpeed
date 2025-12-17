@@ -1,10 +1,11 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import os
 from typing import Dict, List
+from collections import defaultdict
 
 import numpy as np
 
-from .swap_policy_config import swap_policy_config
+from .swap_policy_config import swap_policy_config, SwapPolicyPref
 from .swap_utils import print_with_rank, PrintLevel, timer
 from .swap_cpp_adaptor import (
     ProfilerDataOneStep,
@@ -318,3 +319,270 @@ class PolicyGenerator:
         swap_list_out_opid = sorted(swap_list_out_opid, key=lambda item: (item[1], -item[0].tensor.info.size))
         swap_list = [candidate for (candidate, out_opid) in swap_list_out_opid]
         return swap_list
+
+
+class PolicyGeneratorV2(PolicyGenerator):
+    def __select_tensor_used_in_optim(self):
+        op_list = self.profiler_op_step.op_list
+        all_optim_tensors = []
+        result = {}
+        for op in op_list:
+            for tensor in op.tensor_list:
+                if tensor.tensor_type == SwapTensorType.OPTIM:
+                    all_optim_tensors.append(tensor)
+
+        for tensor in all_optim_tensors:
+            result[tensor] = []
+
+        GB = 1024 * 1024 * 1024
+        self.print_with_rank(
+            f"selected optim size accumulated: {sum([tensor.size for tensor in result]) / GB:.2f} GB",
+            print_level=PrintLevel.INFO
+        )
+
+        return result
+
+    def __select_tensor_used_in_fwd_bwd(self):
+        op_list = self.profiler_op_step.op_list
+        tensor_stages = defaultdict(set)
+        for op in op_list:
+            # Parse the 'stage' string into a dictionary
+            stage_info = op.stage
+            stage_type = stage_info.stage_type
+            # Parse each tensor in the tensor_list
+            for tensor in op.tensor_list:
+                tensor_stages[tensor].add(stage_type)
+
+        def check_valid_tensors(tensor, stages):
+            fwd_bwd_check = SwapStageType.FWD in stages and SwapStageType.BWD in stages
+            return (
+                fwd_bwd_check
+                and tensor.tensor_type != SwapTensorType.SHARED_MEMORY
+                and tensor.size > swap_policy_config.tensor_size_filter
+            )
+
+        valid_tensors = {tensor for tensor, stages in tensor_stages.items() if check_valid_tensors(tensor, stages)}
+
+        # Step 1: Map each valid tensor to the list of ops that contain it in their tensor_list
+        tensor_to_ops = defaultdict(list)
+        for op in op_list:
+            for tensor in op.tensor_list:
+                if tensor in valid_tensors:
+                    tensor_to_ops[tensor].append(op)
+
+        # Step 2: Process each ptr to filter the ops according to the rules
+        result = {}
+        for tensor in valid_tensors:
+            ops = tensor_to_ops.get(tensor, [])
+            # Group the ops by their stage (using equality)
+            stage_to_ops_pair_list = []
+            for op in ops:
+                current_stage = op.stage
+                found = False
+                # Check existing groups for a stage equal to current_stage
+                for stage, group_ops_list in stage_to_ops_pair_list:
+                    if stage == current_stage:
+                        group_ops_list.append(op)
+                        found = True
+                        break
+                if not found:
+                    stage_to_ops_pair_list.append((current_stage, [op]))
+
+            # For each group, select the appropriate op
+            selected_ops = []
+            for stage, group_ops_list in stage_to_ops_pair_list:
+                if stage.stage_type == SwapStageType.FWD:
+                    selected_op = max(group_ops_list, key=lambda x: x.op_id)
+                    selected_ops.append(selected_op)
+                elif stage.stage_type == SwapStageType.BWD:
+                    selected_op = min(group_ops_list, key=lambda x: x.op_id)
+                    selected_ops.append(selected_op)
+
+            # Only keep tensors used by just two ops to keep policy simple (one from FWD and the other from BWD)
+            if len(selected_ops) != 2:
+                self.print_with_rank(
+                    f"more than 2 ops use the same tensor {tensor}, skip...", print_level=PrintLevel.DEBUG
+                )
+                for op in selected_ops:
+                    self.print_with_rank(f"    op: {op}", print_level=PrintLevel.DEBUG)
+                continue
+
+            result[tensor] = selected_ops
+
+        return result
+
+    def __filter_tensor_within_layers(self, tensor_info):
+        tensor_info_by_fwd = defaultdict(list)
+        GB = 1024 * 1024 * 1024
+        tick_icon = "\u2705"
+        cross_icon = "\u274c"
+
+        # Pick all tensors in forward stage.
+        for tensor, used_by_ops in tensor_info.items():
+            first_op_stage = used_by_ops[0].stage
+            second_op_stage = used_by_ops[1].stage
+            stage_fwd = first_op_stage if first_op_stage.stage_type == SwapStageType.FWD else second_op_stage
+            tensor_info_by_fwd[stage_fwd].append(tensor)
+
+        for stage in tensor_info_by_fwd:
+            tensor_info_by_fwd[stage].sort(key=lambda tensor: (min(op.op_id for op in tensor_info[tensor])))
+
+        swap_bucket_size = swap_policy_config.swap_bucket_size / GB
+        filtered_tensors = {}
+        for stage, tensor_list in tensor_info_by_fwd.items():
+            mb_index = stage.micro_batch_index
+            total_size = sum([(tensor.size / GB) for tensor in tensor_list])
+            if swap_bucket_size == 0:
+                selected_size = 0
+                selection_done = True
+            else:
+                selected_size = total_size
+                selection_done = False
+            temp_size = 0
+            if mb_index == 1:
+                self.print_with_rank(f"Stage: {str(stage)}", print_level=PrintLevel.INFO)
+            for tensor in tensor_list:
+                select_status = cross_icon
+
+                if not selection_done:
+                    temp_size += tensor.size / GB
+                    if swap_bucket_size >= 0 and temp_size > swap_bucket_size:  # overlimit, do not pick and stop
+                        selection_done = True
+                        selected_size = temp_size - (tensor.size / GB)
+                    else:
+                        select_status = tick_icon
+                        filtered_tensors[tensor] = tensor_info[tensor]
+
+                if mb_index == 1:
+                    self.print_with_rank(f"    {select_status} Tensor: {str(tensor)}", print_level=PrintLevel.INFO)
+            if mb_index == 1:
+                self.print_with_rank(
+                    f"Total tensor size per stage: {total_size} GB, selected: {selected_size} GB",
+                    print_level=PrintLevel.INFO,
+                )
+
+        return filtered_tensors
+
+    def __select_swappable_tensors(self):
+        tensor_info_optim = self.__select_tensor_used_in_optim()
+        tensor_used_in_fwd_bwd = self.__select_tensor_used_in_fwd_bwd()
+        tensor_filtered = self.__filter_tensor_within_layers(tensor_used_in_fwd_bwd)
+
+        optim_tensors = []
+        activ_tensors = []
+        for key, value in tensor_info_optim.items():
+            self.print_with_rank(
+                f"tensor: {key}, used_by_ops: {[(item.op_name, item.op_id, str(item.stage)) for item in value]}",
+                print_level=PrintLevel.DEBUG,
+            )
+            optim_tensors.append((key, value))
+
+        for key, value in tensor_filtered.items():
+            self.print_with_rank(
+                f"tensor: {key}, used_by_ops: {[(item.op_name, item.op_id, str(item.stage)) for item in value]}",
+                print_level=PrintLevel.DEBUG,
+            )
+            activ_tensors.append((key, value))
+
+        return optim_tensors, activ_tensors
+
+    def __get_neighbor_stages(self, from_stage, offset):
+        result_stage = from_stage
+        for _ in range(abs(offset)):
+            if offset >= 0:
+                result_stage = self.profiler_op_step.get_next_stage(result_stage)
+                if result_stage is None:
+                    result_stage = SwapStage(stage_type=SwapStageType.OPTIM, micro_batch_index=0, layer_index=0)
+            else:
+                result_stage = self.profiler_op_step.get_prev_stage(result_stage)
+        return result_stage
+
+    def __create_activation_candidate(self, tensor, used_by_ops_list):
+        tensor_info_detail = TensorInfoDetail(tensor)
+
+        candidate = None
+        if tensor.tensor_type == SwapTensorType.OTHERS:
+            fwd_op = used_by_ops_list[0]
+            bwd_op = used_by_ops_list[1]
+            d2h_stage = self.__get_neighbor_stages(fwd_op.stage, 0)
+            h2d_stage = self.__get_neighbor_stages(bwd_op.stage, -1)
+            d2h_free_stage = self.__get_neighbor_stages(d2h_stage, 2)
+            h2d_free_stage = self.__get_neighbor_stages(h2d_stage, 2)
+            candidate = SwapPolicyCandidate(
+                tensor_info_detail,
+                is_optimizer_or_weight=False,
+                swap_out_op=fwd_op,
+                swap_in_op=bwd_op,
+                free_stage=d2h_free_stage,
+                swap_in_free_stage=h2d_free_stage,
+            )
+            candidate.set_device_to_host_stage(d2h_stage)
+            candidate.set_host_to_device_stage(h2d_stage)
+
+        return candidate
+
+    def __create_optim_candidates(self, optim_tensors):
+        candidates = []
+        if swap_policy_config.policy_pref not in [SwapPolicyPref.BETTER_MEMORY_SAVING]:
+            return candidates
+
+        optim_tensors_sorted = sorted(optim_tensors, key=lambda item: item[0].size, reverse=True)
+        for _, tensor_info in enumerate(optim_tensors_sorted):
+            tensor_info_detail = TensorInfoDetail(tensor_info[0])
+            d2h_stage = SwapStage(stage_type=SwapStageType.FWD, micro_batch_index=1, layer_index=1)
+            h2d_stage = SwapStage(stage_type=SwapStageType.OPTIM, micro_batch_index=0, layer_index=0)
+            d2h_free_stage = d2h_stage
+            h2d_free_stage = h2d_stage
+
+            candidate = SwapPolicyCandidate(
+                tensor_info_detail,
+                is_optimizer_or_weight=True,
+                swap_out_stage=d2h_stage,
+                swap_in_stage=h2d_stage,
+                free_stage=d2h_free_stage,
+                swap_in_free_stage=h2d_free_stage,
+            )
+            candidates.append(candidate)
+
+        return candidates
+
+    def __lint(self, candidates):
+        """
+        Policies under the following situations will be removed:
+        1. Swap out stage and swap in stage are adjacent.
+        """
+        result = []
+        for can in candidates:
+            in_stage = can.swap_in_stage_actual
+            out_stage = can.swap_out_stage_actual
+            if (
+                self.profiler_op_step.get_next_stage(out_stage) == in_stage
+                or self.profiler_op_step.get_prev_stage(out_stage) == in_stage
+                or out_stage == in_stage
+            ):
+                self.print_with_rank(f">>>>>>>>> FOUND CLOSE STAGES!! remove from policy", print_level=PrintLevel.DEBUG)
+            else:
+                result.append(can)
+        return result
+
+    def select_candidate(self):
+        candidates = []
+
+        optim_tensors, activ_tensors = self.__select_swappable_tensors()
+
+        # Create candidates for optimizer tensors
+        optim_candidates = self.__create_optim_candidates(optim_tensors)
+        if len(optim_candidates) != 0:
+            candidates.extend(optim_candidates)
+
+        # Create candidates for activation tensors
+        for tensor_item in activ_tensors:
+            tensor = tensor_item[0]
+            used_by_ops_list = tensor_item[1]
+
+            candidate = self.__create_activation_candidate(tensor, used_by_ops_list)
+            if candidate is not None:
+                candidates.append(candidate)
+
+        self.swap_list = self.__lint(candidates)
+        self.print_with_rank(f"num of selected candidates: {len(self.swap_list)}", print_level=PrintLevel.INFO)

@@ -38,18 +38,6 @@ struct BlockSegment {
     size_t offset;
 };
 
-class GMLakeError : public std::exception {
-public:
-    explicit GMLakeError(const std::string &message) : message(message) {}
-    const char *what() const noexcept override
-    {
-        return message.c_str();
-    }
-
-private:
-    std::string message;
-};
-
 struct PhyBlock {
     explicit PhyBlock(int device_id_in = -1, size_t block_size_in = granularitySize)
         : device_id(device_id_in),
@@ -71,18 +59,12 @@ struct PhyBlock {
         prop.location.id = device_id;
         prop.reserve = 0;
         status = aclrtMallocPhysical(&alloc_handle, block_size, &prop, 0);
-        if (status != ACL_ERROR_NONE) {
-            throw GMLakeError("PhyBlock Construct Failed");
-        }
     }
 
     void release_resources()
     {
         if (status == ACL_SUCCESS) {
             auto err = aclrtFreePhysical(alloc_handle);
-            if (err != ACL_SUCCESS) {
-                throw GMLakeError("PhyBlock Release_resources Failed");
-            }
             alloc_handle = nullptr;
         }
         released = true;
@@ -400,7 +382,6 @@ struct VmmSegment {
 
             this->segment_ptr = segment.segment_ptr;
         } else {
-            throw GMLakeError("remerge(VmmSegment& segment)");
             return false;
         }
 

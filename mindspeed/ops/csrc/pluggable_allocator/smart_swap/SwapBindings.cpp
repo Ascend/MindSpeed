@@ -189,7 +189,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def(py::init<>())
         .def_readwrite("stageType", &c10_npu::swap::SwapStage::stageType)
         .def_readwrite("microBatchIndex", &c10_npu::swap::SwapStage::microBatchIndex)
-        .def_readwrite("layerIndex", &c10_npu::swap::SwapStage::layerIndex);
+        .def_readwrite("layerIndex", &c10_npu::swap::SwapStage::layerIndex)
+        .def_readwrite("modelIndex", &c10_npu::swap::SwapStage::modelIndex);
 
     py::class_<c10_npu::swap::SwapConfig>(m, "SwapConfig")
         .def(py::init<>()) // 测试用，可删除

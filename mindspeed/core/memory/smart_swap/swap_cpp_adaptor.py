@@ -1,7 +1,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
-import hashlib
 from collections import Counter
 from enum import Enum
+from collections import defaultdict
 from typing import List, Dict
 from dataclasses import dataclass
 from bisect import bisect_right, bisect_left
@@ -37,14 +37,17 @@ def record_tensor_ptr_with_types(
     tensors: List[torch.Tensor], tensor_type: SwapTensorType, update_weak_ptr_map=0, is_update_blacklist=False
 ):
     # 调用下面的函数时，当前在c++侧会自动clear其维护的map
-    return get_smart_swap_cpp().recordTensorPtrWithTypes(tensors, tensor_type.value, update_weak_ptr_map, is_update_blacklist)
+    return get_smart_swap_cpp().recordTensorPtrWithTypes(
+        tensors, tensor_type.value, update_weak_ptr_map, is_update_blacklist
+    )
 
 
 class SwapStage:
-    def __init__(self, cpp_instance=None, stage_type=None, micro_batch_index=None, layer_index=None):
+    def __init__(self, cpp_instance=None, stage_type=None, micro_batch_index=None, layer_index=None, model_index=0):
         self.stage_type: SwapStageType = None
         self.micro_batch_index = None
         self.layer_index = None
+        self.model_index = model_index
 
         if cpp_instance:
             self.from_cpp(cpp_instance)
@@ -54,6 +57,8 @@ class SwapStage:
             self.micro_batch_index = micro_batch_index
         if layer_index is not None:
             self.layer_index = layer_index
+        if model_index != 0:
+            self.model_index = model_index
 
     def __eq__(self, other):
         if not isinstance(other, SwapStage):
@@ -62,6 +67,7 @@ class SwapStage:
             self.stage_type == other.stage_type
             and self.micro_batch_index == other.micro_batch_index
             and self.layer_index == other.layer_index
+            and self.model_index == other.model_index
         )
 
     def __ne__(self, other):
@@ -70,8 +76,7 @@ class SwapStage:
         return not self.__eq__(other)
 
     def __hash__(self):
-        content = f"({self.stage_type}, {self.micro_batch_index}, {self.layer_index})"
-        return int(hashlib.sha256(content.encode('utf-8')).hexdigest(), 16)
+        return hash((self.stage_type, self.micro_batch_index, self.layer_index, self.model_index))
 
     def copy(self):
         # return a python SwapStage copy
@@ -79,20 +84,25 @@ class SwapStage:
         instance.stage_type = self.stage_type
         instance.micro_batch_index = self.micro_batch_index
         instance.layer_index = self.layer_index
+        instance.model_index = self.model_index
         return instance
 
     def from_cpp(self, instance):
         self.stage_type = SwapStageType(instance.stageType)
         self.micro_batch_index = instance.microBatchIndex
         self.layer_index = instance.layerIndex
+        self.model_index = instance.modelIndex
 
     def to_cpp(self, instance):
         instance.stageType = self.stage_type.value
         instance.microBatchIndex = self.micro_batch_index
         instance.layerIndex = self.layer_index
+        instance.modelIndex = self.model_index
 
     def __str__(self):
-        ret = dict(stage_type=self.stage_type.name, mbi=self.micro_batch_index, li=self.layer_index)
+        ret = dict(
+            stage_type=self.stage_type.name, mbi=self.micro_batch_index, li=self.layer_index, model_id=self.model_index
+        )
         return str(ret)
 
     def calculate_layer_index(self, stage_op_idx, fwd_layer_info, bwd_layer_info):
@@ -292,8 +302,7 @@ class UniqueSwapPtr:
         return not self.__eq__(other)
 
     def __hash__(self):
-        content = f"({self.ptr_base}, {self.index})"
-        return int(hashlib.sha256(content.encode('utf-8')).hexdigest(), 16)
+        return hash((self.ptr_base, self.index))
 
 
 class ProfilerTensorInfo:
@@ -310,6 +319,19 @@ class ProfilerTensorInfo:
             ptr=str(self.ptr), size=self.size, shape=self.shape, dtype=self.dtype, tensor_type=self.tensor_type.name
         )
         return ret
+
+    def __eq__(self, other):
+        if not isinstance(other, ProfilerTensorInfo):
+            return NotImplemented
+        return self.ptr == other.ptr
+
+    def __ne__(self, other):
+        if not isinstance(other, ProfilerTensorInfo):
+            return NotImplemented
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash(self.ptr)
 
     def __str__(self):
         return str(self.get_dict())
@@ -365,8 +387,7 @@ class ProfilerOpInfo:
         return not self.__eq__(other)
 
     def __hash__(self):
-        content = f"({self.op_name}, {self.op_id}, {self.stage})"
-        return int(hashlib.sha256(content.encode('utf-8')).hexdigest(), 16)
+        return hash((self.op_name, self.op_id, self.stage))
 
     def __lt__(self, other):
         if not isinstance(other, ProfilerOpInfo):
@@ -488,8 +509,8 @@ class ProfilerLayerInfo:
         self.logical_layer_num = swap_policy_config.logical_layer_num
 
         self.stage_data = []
-        self.fwd_op_layer_info = []
-        self.bwd_op_layer_info = []
+        self.fwd_op_layer_info = defaultdict(lambda: defaultdict(list))
+        self.bwd_op_layer_info = defaultdict(lambda: defaultdict(list))
         self.layer_start_opid: Dict[SwapStage, int] = {}
         self.layer_to_index_map: Dict[SwapStage, int] = {}
         self.index_to_layer_map: Dict[int, SwapStage] = {}
@@ -509,14 +530,152 @@ class ProfilerLayerInfo:
         self.memory_peaks.clear()
         self.logical_layer_num = swap_policy_config.logical_layer_num
 
-        self.calculate_layer_info()
-        self.set_layer_info()
-        self.create_layer_mapping()
-        self.get_memory_peaks()
+        if swap_policy_config.policy_v2:
+            self.calculate_layer_info_v2()
+            self.create_layer_mapping()
+        else:
+            self.calculate_layer_info()
+            self.set_layer_info()
+            self.create_layer_mapping()
+            self.get_memory_peaks()
+
+    def __group_ops_by_micro_batch(self, ops: List) -> Dict[int, List]:
+        mb_to_op_dict_list = []
+        model_to_mb_fwd_dict = defaultdict(lambda: defaultdict(list))
+        model_to_mb_bwd_dict = defaultdict(lambda: defaultdict(list))
+
+        for op in ops:
+            stage = op.stage
+            mb_index = stage.micro_batch_index
+            model_index = stage.model_index
+            if stage.stage_type == SwapStageType.FWD:
+                mb_to_op_dict = model_to_mb_fwd_dict[model_index]
+                mb_to_op_dict[mb_index].append(op)
+            elif stage.stage_type == SwapStageType.BWD:
+                mb_to_op_dict = model_to_mb_bwd_dict[model_index]
+                mb_to_op_dict[mb_index].append(op)
+
+        for dict_value in model_to_mb_fwd_dict.values():
+            mb_to_op_dict_list.append(dict_value)
+        for dict_value in model_to_mb_bwd_dict.values():
+            mb_to_op_dict_list.append(dict_value)
+
+        return mb_to_op_dict_list
+
+    def __find_longest_repeating_pattern(self, op_names, K, target_op_name="attention"):
+        n = len(op_names)
+        if K == 0:
+            return [], []  # Handle edge case if K is 0
+
+        max_possible_length = n // K  # Maximum viable pattern length
+
+        # Check for patterns from longest to shortest
+        for length in range(max_possible_length, 0, -1):
+            pattern_indices = defaultdict(list)
+
+            # Iterate over all possible starting positions for the current pattern length
+            for start in range(n - length + 1):
+                end = start + length
+                pattern = tuple(op_names[start:end])
+                pattern_indices[pattern].append((start, end - 1))  # Store inclusive indices
+
+            # Check if any pattern of this length repeats exactly K times and contains "attention"
+            for pattern, indices in pattern_indices.items():
+                if len(indices) == K and any(target_op_name in s for s in pattern):
+                    self.print_with_rank(f"    Longest pattern: {pattern}", print_level=PrintLevel.DEBUG)
+                    return indices
+
+        # If no pattern found (including cases where no pattern has "attention")
+        self.print_with_rank(
+            f"Pattern repeats for [{K}] times is not found. Please check if flash attention is enabled. Provided op_names: {op_names}",
+            print_level=PrintLevel.INFO,
+        )
+        return []
+
+    def __count_num_ops_by_name(self, op_names, target_op_name="attention"):
+        return len(list(filter(lambda x: target_op_name in x, op_names)))
+
+    def __assign_layer_index(self, mb_to_op_dict):
+        first_op_id_offset = self.op_list[0].op_id
+        for _, op_info in mb_to_op_dict.items():
+            op_names = [op.op_name for op in op_info]
+            num_attns = self.__count_num_ops_by_name(op_names)
+            layer_repeats = num_attns // swap_policy_config.num_attn_layers_per_stage
+            self.print_with_rank(f"Num of attn layers per SwapStage: {layer_repeats}", print_level=PrintLevel.DEBUG)
+            indices = self.__find_longest_repeating_pattern(op_names, layer_repeats)
+            layer_index = 1  # first layer starts with index 1
+            for index in indices:
+                begin_op_id = op_info[index[0]].op_id - first_op_id_offset
+                end_op_id = op_info[index[1]].op_id - first_op_id_offset
+                for op in self.op_list[begin_op_id:end_op_id + 1]:
+                    op.stage.layer_index = layer_index
+                layer_index += 1
+
+    def calculate_layer_info_v2(self):
+        mb_to_op_dict_list = self.__group_ops_by_micro_batch(self.op_list)
+
+        # Reset all layer index to 1
+        for op in self.op_list:
+            stage_info = op.stage
+            stage_info.layer_index = 1
+
+        for mb_to_op_dict in mb_to_op_dict_list:
+            self.__assign_layer_index(mb_to_op_dict)
+
+        # For ops not appear in the repeated pattern, set their layer index to that from the previous
+        # The following conditions should be met
+        # 1. current micro_batch_index is the same as the previous.
+        # 2. current stage_type is the same as the previous. (if change from FWD->BWD, then different layer)
+        # 3. current layer index is 1 and previous layer index is NOT 0.
+        for idx, op in enumerate(self.op_list):
+            curr_stage_info = op.stage
+            if curr_stage_info.stage_type == SwapStageType.INIT or curr_stage_info.stage_type == SwapStageType.OPTIM:
+                curr_stage_info.layer_index = 0
+                continue
+            if idx == 0:
+                raise ValueError(
+                    "idx should not be 0. first op stage should be INIT which goes to the if branch above, please check"
+                )
+            prev_stage_info = self.op_list[idx - 1].stage
+            micro_batch_index_check = curr_stage_info.micro_batch_index == prev_stage_info.micro_batch_index
+            stage_type_check = curr_stage_info.stage_type == prev_stage_info.stage_type
+            layer_index_check = curr_stage_info.layer_index == 1 and prev_stage_info.layer_index != 0
+            if micro_batch_index_check and stage_type_check and layer_index_check:
+                curr_stage_info.layer_index = prev_stage_info.layer_index
+
+        # Build fwd_op_layer_info and bwd_op_layer_info based on layer_index for C++ policy match
+        model_to_mb_to_fwd_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        model_to_mb_to_bwd_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        for op in self.op_list:
+            stage_type = op.stage.stage_type
+            layer_index = op.stage.layer_index
+            mb_index = op.stage.micro_batch_index
+            model_index = op.stage.model_index
+            if stage_type == SwapStageType.FWD:
+                model_to_mb_to_fwd_counts[model_index][mb_index][layer_index] += 1
+            elif stage_type == SwapStageType.BWD:
+                model_to_mb_to_bwd_counts[model_index][mb_index][layer_index] += 1
+
+        def set_op_layer_infos(model_to_mb_to_counts, is_fwd=True):
+            op_layer_infos = self.fwd_op_layer_info if is_fwd else self.bwd_op_layer_info
+            for model_index, mb_to_counts in model_to_mb_to_counts.items():
+                for mb, counts in mb_to_counts.items():
+                    max_layer_index = max(counts.keys())
+                    for i in range(1, max_layer_index):
+                        if i == 1:
+                            op_layer_infos[model_index][mb].append(counts[i])
+                        else:
+                            accum = op_layer_infos[model_index][mb][-1] + counts[i]
+                            op_layer_infos[model_index][mb].append(accum)
+
+        set_op_layer_infos(model_to_mb_to_fwd_counts, is_fwd=True)
+        set_op_layer_infos(model_to_mb_to_bwd_counts, is_fwd=False)
 
     def calculate_layer_info(self):
         op_fwd_sequence = []
         op_bwd_sequence = []
+        default_model_id = 0
+        default_mb_id = 1
         for op in self.op_list:
             if op.stage.micro_batch_index == 1:
                 if op.stage.stage_type == SwapStageType.FWD:
@@ -524,16 +683,22 @@ class ProfilerLayerInfo:
                 elif op.stage.stage_type == SwapStageType.BWD:
                     op_bwd_sequence.append(op)
         if self.logical_layer_num < 0:  # use per op level layer info
-            self.fwd_op_layer_info = list(range(len(op_fwd_sequence)))
-            self.bwd_op_layer_info = list(range(len(op_bwd_sequence)))
+            self.fwd_op_layer_info[default_model_id][default_mb_id] = list(range(len(op_fwd_sequence)))
+            self.bwd_op_layer_info[default_model_id][default_mb_id] = list(range(len(op_bwd_sequence)))
         else:  # layer divided by logical layer num
             for i in range(self.logical_layer_num - 1):
-                self.fwd_op_layer_info.append(len(op_fwd_sequence) // self.logical_layer_num * (i + 1))
-                self.bwd_op_layer_info.append(len(op_bwd_sequence) // self.logical_layer_num * (i + 1))
+                self.fwd_op_layer_info[default_model_id][default_mb_id].append(
+                    len(op_fwd_sequence) // self.logical_layer_num * (i + 1)
+                )
+                self.bwd_op_layer_info[default_model_id][default_mb_id].append(
+                    len(op_bwd_sequence) // self.logical_layer_num * (i + 1)
+                )
 
     def set_layer_info(self):
         cur_stage = SwapStage()
         stage_start_idx = 0
+        default_model_id = 0
+        default_mb_id = 0
         for op in self.op_list:
             stage = op.stage
             # 将layerindex的信息更新到stage中, 同时更新model_info.model_stage_seq
@@ -542,7 +707,11 @@ class ProfilerLayerInfo:
                 cur_stage.micro_batch_index = stage.micro_batch_index
                 stage_start_idx = op.op_id
             stage_op_idx = op.op_id - stage_start_idx
-            stage.calculate_layer_index(stage_op_idx, self.fwd_op_layer_info, self.bwd_op_layer_info)
+            stage.calculate_layer_index(
+                stage_op_idx,
+                self.fwd_op_layer_info[default_model_id][default_mb_id],
+                self.bwd_op_layer_info[default_model_id][default_mb_id],
+            )
 
     def create_layer_mapping(self):
         for index, op in enumerate(self.op_list):

@@ -1,11 +1,12 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+from collections import defaultdict
 import time
 from enum import Enum
 from collections.abc import Iterable
 
 import torch
 
-from .hooks import register_swap_hooks_to_modules
+from .hooks import register_swap_hooks_to_modules, register_swap_hooks_to_optimizers
 from .swap_policy_config import swap_policy_config
 from .swap_utils import print_with_rank, PrintLevel
 from .swap_cpp_adaptor import (
@@ -62,8 +63,10 @@ class SwapManager:
         self.config = SwapConfig()
         self.num_micro_batch_fcn = num_micro_batch_fcn
         self.models = models
+        self.optimizer = optimizer
         self.get_shared_tensors_fcn = get_shared_tensors_fcn
         self.swap_hook_registers: list = []
+        self.swap_optim_hook_registers: list = []
         self.swap_engine = SwapEngine(models, optimizer, get_optimizer_tensors_fcn, self.config, custom_policy_fcn)
         self.start_time = time.time()
         self.cur_warmup_step = 0
@@ -92,9 +95,9 @@ class SwapManager:
         self.config.stage = stage
         self.config.step = 0
         self.config.micro_batch_num = self.num_micro_batch_fcn()
-        self.config.fwd_op_layer_info = []
-        self.config.bwd_op_layer_info = []
-        self.register_model_hooks(self.models)
+        self.config.fwd_op_layer_info = defaultdict(lambda: defaultdict(list))
+        self.config.bwd_op_layer_info = defaultdict(lambda: defaultdict(list))
+        self.register_model_hooks(self.models, self.optimizer)
         self.record_shared_memory(self.models)
         self.start_time = time.time()
         self.init_for_new_op_seq()
@@ -102,7 +105,10 @@ class SwapManager:
         self.config.enable_executor = False
         self.config.enable_custom_record_stream = swap_policy_config.enable_custom_record_stream
         self.__check_layer_param(self.model_num_layers)
-        swap_policy_config.logical_layer_num = (
+        if swap_policy_config.policy_v2:
+            swap_policy_config.logical_layer_num = self.model_num_layers
+        else:
+            swap_policy_config.logical_layer_num = (
             -1 if self.model_num_layers < 0 else (10 // self.model_num_layers + 1) * self.model_num_layers
         )
 
@@ -195,7 +201,7 @@ class SwapManager:
                 f"All step duration: "
                 f"{[(step, time) for step, time in self.swap_engine.all_step_duration.items()]}\n\n"
             ),
-            print_level=PrintLevel.INFO,
+            print_level=PrintLevel.DEBUG,
         )
 
         self.config.step += 1
@@ -203,33 +209,40 @@ class SwapManager:
         self.start_time = time.time()
 
     def _update_config_for_step_hook(
-        self, stage_type: SwapStageType, layer_index, micro_batch_index, current_stage_op_id
+        self, stage_type: SwapStageType, layer_index, micro_batch_index, current_stage_op_id, model_index=0
     ):
         stage = self.config.stage
         stage.stage_type = stage_type
         stage.layer_index = layer_index
         stage.micro_batch_index = micro_batch_index
+        stage.model_index = model_index
 
         self.config.stage = stage
         self.config.current_stage_op_id = current_stage_op_id
 
-    def fwd_pre_hook_custom_func(self, _, fwd_idx):
-        self._update_config_for_step_hook(SwapStageType.FWD, 1, fwd_idx, 0)
+    def fwd_pre_hook_custom_func(self, model_index, fwd_idx):
+        self._update_config_for_step_hook(SwapStageType.FWD, 1, fwd_idx, 0, model_index)
 
-    def bwd_pre_hook_custom_func(self, _, bwd_idx):
-        self._update_config_for_step_hook(SwapStageType.BWD, 1, bwd_idx, 0)
+    def bwd_pre_hook_custom_func(self, model_index, bwd_idx):
+        self._update_config_for_step_hook(SwapStageType.BWD, 1, bwd_idx, 0, model_index)
 
-    def bwd_post_hook_custom_func(self, _, bwd_idx):
-        if bwd_idx == self.num_micro_batch_fcn():
-            self._update_config_for_step_hook(SwapStageType.OPTIM, 0, 0, 0)
+    def optim_pre_hook_custom_func(self):
+        self._update_config_for_step_hook(SwapStageType.OPTIM, 0, 0, 0)
 
-    def register_model_hooks(self, models):
+    def register_model_hooks(self, models, optimizer):
         if not isinstance(models, Iterable):
             models = [models]
         for model in models:
             swap_hook_register = register_swap_hooks_to_modules(model)
             swap_hook_register.register_custom_func(
-                self.fwd_pre_hook_custom_func, None, self.bwd_pre_hook_custom_func, self.bwd_post_hook_custom_func
+                self.fwd_pre_hook_custom_func, None, self.bwd_pre_hook_custom_func, None
             )
             self.swap_hook_registers.append(swap_hook_register)
+
+        optimizers = [optimizer] if not hasattr(optimizer, "chained_optimizers") else optimizer.chained_optimizers
+        raw_optimizers = [optimizer.optimizer for optimizer in optimizers]
+        swap_optim_hook_register = register_swap_hooks_to_optimizers(
+            raw_optimizers, optimizer_pre_hook_custom_func=self.optim_pre_hook_custom_func
+        )
+        self.swap_optim_hook_registers.append(swap_optim_hook_register)
         self.print_with_rank("Register model swap hooks completed.")

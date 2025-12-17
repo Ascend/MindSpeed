@@ -70,6 +70,10 @@ bool PluggableAllocator::initialized()
 void *PluggableAllocator::malloc(int device, size_t size, aclrtStream stream)
 {
     void *devPtr = nullptr;
+    if (size == 0) {
+        return devPtr;
+    }
+
     if (c10_npu::swap::NPUSwapManager::GetInstance().swap_oom_enable) {
         bool isTryMallocExit = false;
         uint32_t tryMallocCount = 0;

@@ -240,3 +240,43 @@ def register_swap_hooks_to_modules(
     )
 
     return swap_hook_register
+
+
+class SwapOptimizerHookRegister:
+    def __init__(self):
+        self.optimizer_pre_hook_handle = None
+        self.optimizer_pre_hook_custom_func = None
+
+    def __del__(self):
+        r"""if not need swap hook to module, del it."""
+
+        if self.optimizer_pre_hook_handle:
+            self.optimizer_pre_hook_handle.remove()
+
+    def register_optimizer_custom_func(self, optimizer_pre_hook_custom_func):
+        self.optimizer_pre_hook_custom_func = optimizer_pre_hook_custom_func
+
+    def optim_pre_hook(self, optimizer, args, kwargs):
+        if self.optimizer_pre_hook_custom_func:
+            self.optimizer_pre_hook_custom_func()
+
+        return None
+
+    def register_hooks_to_optimizer(self, optimizer):
+
+        def optimizer_pre_hook(optimizer, args, kwargs):
+            return self.optim_pre_hook(optimizer, args, kwargs)
+
+        self.optimizer_pre_hook_handle = optimizer.register_step_pre_hook(optimizer_pre_hook)
+
+
+def register_swap_hooks_to_optimizers(
+    optimizers,
+    optimizer_pre_hook_custom_func=None,
+):
+    swap_optim_hook_register = SwapOptimizerHookRegister()
+    for optimizer in optimizers:
+        swap_optim_hook_register.register_hooks_to_optimizer(optimizer)
+    swap_optim_hook_register.register_optimizer_custom_func(optimizer_pre_hook_custom_func)
+
+    return swap_optim_hook_register

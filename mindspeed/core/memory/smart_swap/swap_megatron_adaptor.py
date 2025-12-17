@@ -9,19 +9,21 @@ from .swap_manager import SwapManager
 
 def megatron_get_optimizer_tensors_fcn(optimizer):
     results = []
-    for group in optimizer.optimizer.param_groups:
-        amsgrad = group["amsgrad"]
-        for p in group["params"]:
-            if p.grad is None:
-                continue
-            results.append(p.data)
+    optimizers = [optimizer] if not hasattr(optimizer, "chained_optimizers") else optimizer.chained_optimizers
+    for optimizer in optimizers:
+        for group in optimizer.optimizer.param_groups:
+            amsgrad = group["amsgrad"]
+            for p in group["params"]:
+                if p is None:
+                    continue
+                results.append(p.data)
 
-            state = optimizer.optimizer.state[p]
-            if len(state) > 0:
-                results.append(state["exp_avg"])
-                results.append(state["exp_avg_sq"])
-                if amsgrad:
-                    results.append(state["max_exp_avg_sq"])
+                state = optimizer.optimizer.state[p]
+                if len(state) > 0:
+                    results.append(state["exp_avg"])
+                    results.append(state["exp_avg_sq"])
+                    if amsgrad:
+                        results.append(state["max_exp_avg_sq"])
 
     return results
 
@@ -53,7 +55,7 @@ def MegatronSwapManager(train_step_args, cmd_args):
     return SwapManager(
         get_num_microbatches,
         model,
-        cmd_args.num_layers,
+        num_layers,
         optimizer=optimizer,
         get_optimizer_tensors_fcn=megatron_get_optimizer_tensors_fcn,
         get_shared_tensors_fcn=megatron_get_shared_tensors_fcn,
