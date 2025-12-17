@@ -14,7 +14,7 @@ import numpy as np
 from megatron.training import get_args
 from megatron.core.distributed.param_and_grad_buffer import BufferType
 
-from mindspeed.optimizer.distrib_optimizer import _copy_model_params_to_main_params, load_parameter_state_from_dp_zero, \
+from mindspeed.optimizer.distrib_optimizer import _copy_model_params_to_main_params, \
     get_parameter_state_dp_zero, fp16_tensor_convert_to_fp32_tensor, fp32_tensor_convert_to_fp16_tensor
 
 TRANSPOSE_BF16_BLOCK_SIZE = 4096 * 4096
@@ -139,21 +139,23 @@ def get_parameter_state_dp_zero(self):
         data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
     if data_parallel_world_size == 1 or not hasattr(self, "shard_main_param_res_buffers"):
         return state
-   
+
     # gather buffer res
     buffer_res_full_shard = []
     for shard_main_param_res_buffer in self.shard_main_param_res_buffers:
         if get_args().disable_gloo_group:
-            recv_tensors = [torch.empty(shard_main_param_res_buffer.numel(), dtype=torch.bfloat16, device="cpu") for _
-                            in range(data_parallel_world_size)]
+            recv_tensors = [torch.empty(shard_main_param_res_buffer.numel(), dtype=torch.float16, device="cpu")
+                            for _ in range(data_parallel_world_size)]
         else:
             if data_parallel_rank == 0:
-                recv_tensors = [torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.bfloat16, device="cpu") for _ in range(data_parallel_world_size)]
+                recv_tensors = [torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.float16, device="cpu")
+                                for _ in range(data_parallel_world_size)]
             else:
                 recv_tensors = None
-       
-        send_tensor = torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.bfloat16, device="cpu")
-        send_tensor.copy_(shard_main_param_res_buffer.detach().cpu())
+
+        # ms adaptation: Use the supported interface untyped_storage copy instead.
+        send_tensor = torch.empty((shard_main_param_res_buffer.numel(),), dtype=torch.float16, device="cpu")
+        send_tensor.untyped_storage().copy_(shard_main_param_res_buffer.untyped_storage())
 
         if get_args().disable_gloo_group:
             from mindspeed.utils import _gather_hccl
@@ -170,7 +172,61 @@ def get_parameter_state_dp_zero(self):
                 data_parallel_group_gloo,
             )
         if data_parallel_rank == 0:
-            buffer_res_full_shard.append([np.concatenate([recv_tensor.numpy() for recv_tensor in recv_tensors])])
-   
-    state['shard_main_param_res'] = [torch.Tensor(t) for t in buffer_res_full_shard]
+            # ms adaptation: Use npmpy to perform the cat operation and save memory.
+            recv_tensors_cat = np.concatenate([recv_tensor.numpy() for recv_tensor in recv_tensors])
+            recv_tensors_cat = torch.Tensor(recv_tensors_cat)
+            buffer_res_full_shard.append(recv_tensors_cat)
+
+    state['shard_main_param_res'] = buffer_res_full_shard
     return state
+
+
+def load_parameter_state_from_dp_zero(*args, **kwargs):
+    self = args[0]
+    state_dict = args[1]
+    update_legacy_format = kwargs['update_legacy_format']
+    self.load_parameter_state_from_dp_zero_func(state_dict, update_legacy_format=update_legacy_format)
+    self.first_sub_flag = False
+    if get_args().disable_gloo_group:
+        data_parallel_world_size = self.data_parallel_group.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group)
+        data_parallel_group_gloo = self.data_parallel_group
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group)
+    else:
+        data_parallel_world_size = self.data_parallel_group_gloo.size()
+        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
+        data_parallel_group_gloo = self.data_parallel_group_gloo
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
+    if data_parallel_world_size == 1 or \
+            not hasattr(self, "shard_main_param_res_buffers"):
+        return
+    for i, shard_main_param_res_buffer in enumerate(self.shard_main_param_res_buffers):
+        shard_res_numel = shard_main_param_res_buffer.numel()
+        recv_tensor = torch.empty((shard_res_numel,), dtype=torch.float16, device="cpu")
+        if data_parallel_rank == 0:
+            # ms adaptation: Use numpy() instead of cpu tensor slice to avoid issue caused by torch.distributed.scatter.
+            shard_main_param_res_np = state_dict["shard_main_param_res"][i].numpy()
+            send_tensors = [
+                shard_main_param_res_np[
+                dpr * shard_res_numel: (dpr + 1) * shard_res_numel] for dpr in range(data_parallel_world_size)
+            ]
+            send_tensors = [torch.Tensor(t) for t in send_tensors]
+        else:
+            send_tensors = None
+
+        if get_args().disable_gloo_group:
+            from mindspeed.utils import _scatter_hccl
+            _scatter_hccl(
+                recv_tensor,
+                send_tensors,
+                data_parallel_global_ranks[0],
+                self.data_parallel_group)
+        else:
+            torch.distributed.scatter(
+                recv_tensor,
+                send_tensors,
+                data_parallel_global_ranks[0],
+                data_parallel_group_gloo,
+            )
+        # ms adaptation: Use the supported interface untyped_storage copy instead.
+        shard_main_param_res_buffer.untyped_storage().copy_(recv_tensor.untyped_storage())

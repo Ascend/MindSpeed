@@ -94,7 +94,7 @@ def get_parameter_state_dp_zero(self):
                         except KeyError as e:
                             raise KeyError(f"Missing key '{key}' in tensors or local_shards") from e
 
-                        local_shard[gbuf_local_start:gbuf_local_end] = (tensor * 1).numpy()
+                        local_shard[gbuf_local_start:gbuf_local_end] = tensor.numpy()
 
                 # Gather contiguous shards on DP rank 0.
                 for key, send_tensor in local_shards.items():
