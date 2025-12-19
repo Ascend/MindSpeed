@@ -1,16 +1,12 @@
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-from typing import Optional, Callable, Tuple
+from typing import Optional, Callable
 
 import torch
-import torch_npu
 from torch.nn import Parameter
 
-from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu
-from megatron.core.transformer.moe.experts import expert_dist_ckpt_decorator
-from megatron.core.transformer.utils import sharded_state_dict_default
+import torch_npu
 from megatron.core import parallel_state
-from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
 from megatron.core.extensions.transformer_engine import condition_init_method
 from megatron.core.parallel_state import (
@@ -22,9 +18,12 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_world_size
 )
-from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu
+from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
+from megatron.core.transformer.moe.experts import expert_dist_ckpt_decorator
+from megatron.core.transformer.utils import sharded_state_dict_default, make_sharded_tensors_for_checkpoint
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.core.transformer.moe.grouped_gemm_util import Ops
+from mindspeed.core.transformer.moe.grouped_matmul_util import MXFP8GMMFunction
 
 
 class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
@@ -62,6 +61,30 @@ class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
                                     split_item=3, group_type=2, group_list_type=group_list_type)[0]
         
         return grad, None, None, None, *grad_weight
+
+
+class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
+    @classmethod
+    def forward(cls, ctx, input_tensor: torch.Tensor,
+                m_split=None,
+                weight=None,
+                *ori_weight) -> torch.Tensor:
+
+        if not isinstance(m_split, torch.Tensor):
+            m_split = torch.tensor(m_split, device='npu', dtype=torch.int64)
+        ctx.group_list = torch.cumsum(m_split, dim=0)
+        weight = torch.stack(weight, dim=0)
+        fwd_output = cls.op_forward(input_tensor, weight, ctx.group_list)[0]
+        ctx.save_for_backward(input_tensor, weight)
+        return fwd_output
+
+    @classmethod
+    def backward(cls, ctx, grad_output):
+        group_list = ctx.group_list
+        inp, weight = ctx.saved_tensors
+        grad = cls.op_dx(grad_output, weight, group_list)[0]
+        grad_weight = cls.op_dw(inp, grad_output, group_list)[0]
+        return grad, None, None, *grad_weight
 
 
 class MindSpeedTEGroupedLinear(torch.nn.Module):
@@ -142,8 +165,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
                 weight = [w.view(self.config.hidden_size, -1) for w in self.total_weight]
             else:
                 weight = [w.view(-1, self.config.hidden_size) for w in self.total_weight]
-            from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
-            output = get_gmm_op_cls().gmm_apply(x, torch.stack(weight, dim=0), None, m_splits)
+            output = MindSpeedTEGroupedLinearMXFP8GMM.apply(x, m_splits, weight, *[w.T for w in self.total_weight])
         return output, None
 
     def _sharded_state_dict_grouped(
@@ -309,7 +331,7 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
         return super()._sharded_state_dict_grouped(
             tp_axis_map, prefix, sharded_offsets, metadata
         )
-    
+
 
 def mindspeed_groupedmlp_weighted_bias_swiglu_impl(x, bias, probs, fp8_input_store=False):
     """Patch of TEGroupedMLP with MindSpeed.

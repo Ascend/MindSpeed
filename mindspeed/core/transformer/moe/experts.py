@@ -144,9 +144,9 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
                 # revert the output shape: [E, C, H/TP] -> [E*C, H/TP]
                 fc2_output = fc2_output.view(-1, fc2_output.shape[2])
             elif gmm_quant_func:
-                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert)
+                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1)
                 intermediate_parallel = self.activation_func(fc1_output)
-                fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert)
+                fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
                 fc1_output = gg.ops.gmm(permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight1)
@@ -181,7 +181,7 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
 
                 fc1_output = fused_alltoall_gather_bmm(permuted_local_hidden_states, w1, None, bmm_param)
             elif gmm_quant_func:
-                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert)
+                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1)
             else:
                 fc1_output = gg.ops.gmm(
                     permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
@@ -197,7 +197,7 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
                 # revert the output shape: [E, C, H/TP] -> [E*C, H/TP]
                 fc2_output = fc2_output.view(-1, fc2_output.shape[2])
             elif gmm_quant_func:
-                fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert)
+                fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
                 fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight2)

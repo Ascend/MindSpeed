@@ -79,6 +79,7 @@ def transformer_block_checkpointed_forward(
         rotary_pos_emb: Tensor,
         attention_bias: Tensor,
         packed_seq_params: PackedSeqParams,
+        use_inner_fp8_context
 ):
     """Forward method with activation checkpointing."""
 
@@ -90,25 +91,33 @@ def transformer_block_checkpointed_forward(
                 context_mask,
                 rotary_pos_emb,
         ):
+            from megatron.core.fp8_utils import get_fp8_context
+            from contextlib import nullcontext
             for index in range(start, end):
                 layer = self._get_layer(index)
-                hidden_states, context = layer(
-                    hidden_states=hidden_states,
-                    attention_mask=attention_mask,
-                    context=context,
-                    context_mask=context_mask,
-                    rotary_pos_emb=rotary_pos_emb,
-                    attention_bias=attention_bias,
-                    inference_params=None,
-                    packed_seq_params=packed_seq_params,
+                inner_fp8_context = (
+                    get_fp8_context(self.config, layer.layer_number - 1)
+                    if use_inner_fp8_context
+                    else nullcontext()
                 )
+                with inner_fp8_context:
+                    hidden_states, context = layer(
+                        hidden_states=hidden_states,
+                        attention_mask=attention_mask,
+                        context=context,
+                        context_mask=context_mask,
+                        rotary_pos_emb=rotary_pos_emb,
+                        attention_bias=attention_bias,
+                        inference_params=None,
+                        packed_seq_params=packed_seq_params,
+                    )
             return hidden_states, context
 
         return custom_forward
 
     def checkpoint_handler(forward_func):
         if self.config.fp8:
-            from transformer_engine.pytorch.distributed import checkpoint as te_checkpoint
+            from megatron.core.extensions.transformer_engine import te_checkpoint
 
             return te_checkpoint(
                 forward_func,

@@ -1,11 +1,9 @@
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
-from functools import wraps
 
-import numpy as np
 import torch
-
 import torch_npu
+
 from mindspeed.te.pytorch.fp8.tensor import MXFP8Tensor, Float8TensorWithTranspose
 
 

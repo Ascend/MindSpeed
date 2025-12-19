@@ -57,7 +57,7 @@ class GmmExpertsImpl:
             w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
             quant_gmm_func = get_gmm_quant_func()
             if quant_gmm_func:
-                fc1_output = quant_gmm_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert)
+                fc1_output = quant_gmm_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1)
             else:
                 fc1_output = gg.ops.gmm(
                     permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
@@ -72,7 +72,7 @@ class GmmExpertsImpl:
                                                                                       fc1_output,
                                                                                       permuted_probs.unsqueeze(-1))
             if quant_gmm_func:
-                fc2_output = quant_gmm_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert)
+                fc2_output = quant_gmm_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
                 fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight2)

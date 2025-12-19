@@ -52,7 +52,7 @@ class Float8Tensor:
         from mindspeed.te.pytorch.fp8 import cast_to_fp8
         quant_tensor = cast_to_fp8(tensor, fp8_format)
         if get_args().te_comparison_with_cpu:
-            te_cast_comparision(fp8_format, tensor, quant_tensor)
+            te_cast_comparison(fp8_format, tensor, quant_tensor)
         return cls(
             data=quant_tensor,
             fp8_dtype=fp8_format.dtype,
@@ -88,25 +88,35 @@ class Float8Tensor:
             dtype=self.dtype,
         )
 
-    def quant_matmul(self, other):
-        if isinstance(self.data, torch_npu.HiFloat8Tensor):
-            output = torch_npu.npu_quant_matmul(self.data._data, other.data._data, other.fp8_scale,
-                                                pertoken_scale=self.fp8_scale,
-                                                output_dtype=self.dtype,
+    def quant_matmul(self, other, transpose):
+        x1 = self.t() if transpose[0] else self
+        x2 = other.t() if transpose[1] else other
+        if isinstance(x1.data, torch_npu.HiFloat8Tensor):
+            output = torch_npu.npu_quant_matmul(x1.data._data, x2.data._data, x2.fp8_scale,
+                                                pertoken_scale=x1.fp8_scale,
+                                                output_dtype=x1.dtype,
                                                 x1_dtype=torch_npu.hifloat8, x2_dtype=torch_npu.hifloat8)
         # blockwise tensor 3d to 2d
-        elif self.fp8_scale.numel() != 1:
-            data = self.data.view([-1, self.data.shape[-1]])
-            fp8_scale = self.fp8_scale.contiguous()
-            output = torch_npu.npu_quant_matmul(data, other.data, other.fp8_scale,
+        elif x1.fp8_scale.numel() != 1:
+            data = x1.data.view([-1, x1.data.shape[-1]])
+            fp8_scale = x1.fp8_scale.contiguous()
+            output = torch_npu.npu_quant_matmul(data, x2.data, x2.fp8_scale,
                                                 pertoken_scale=fp8_scale,
-                                                output_dtype=self.dtype,
+                                                output_dtype=x1.dtype,
                                                 group_sizes=[128, 128, 128])
-            output = output.view([*self.data.shape[:-1], output.shape[-1]])
+            output = output.view([*x1.data.shape[:-1], output.shape[-1]])
         else:
-            output = torch_npu.npu_quant_matmul(self.data, other.data, other.fp8_scale,
-                                                pertoken_scale=self.fp8_scale,
-                                                output_dtype=self.dtype)
+            output = torch_npu.npu_quant_matmul(x1.data, x2.data, x2.fp8_scale,
+                                                pertoken_scale=x1.fp8_scale,
+                                                output_dtype=x1.dtype)
+        # te cpu compare
+        args = get_args()
+        if args.te_comparison_with_cpu:
+            from mindspeed.te.pytorch.fp8 import te_online_comparison_cpu
+            te_online_comparison_cpu(x1, x2, output)
+        if args.te_comparison_with_bf16:
+            from mindspeed.te.pytorch.fp8 import te_online_comparison_bf16
+            te_online_comparison_bf16(x1, x2, output)
         return output
 
 
@@ -127,7 +137,7 @@ class Float8TensorWithTranspose(Float8Tensor):
     def t(self):
         raise NotImplementedError()
 
-    def quant_matmul(self, other, transpose=(False, False)):
+    def quant_matmul(self, other: 'Float8Tensor', transpose=(False, False)):
         raise NotImplementedError()
 
     def get_by_trans(self, transpose=False):
@@ -142,7 +152,7 @@ class Float8TensorWithTranspose(Float8Tensor):
         return output.reshape(*x.shape[:-1], *output.shape[1:])
 
 
-def te_cast_comparision(fp8_format, tensor, quant_tensor):
+def te_cast_comparison(fp8_format, tensor, quant_tensor):
     from mindspeed.te.pytorch.fp8 import cast_to_fp8_cpu
     if fp8_format.dtype not in [torch.float8_e4m3fn, torch.float8_e5m2]:
         raise ValueError(

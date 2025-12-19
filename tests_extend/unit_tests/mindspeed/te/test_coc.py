@@ -8,6 +8,7 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
 from megatron.training.arguments import parse_args, core_transformer_config_from_args
 from megatron.training.global_vars import set_args
 from megatron.training.initialize import _set_random_seed
+from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
 from mindspeed.te.pytorch.module.linear import TEColumnParallelLinear, TERowParallelLinear
 from mindspeed.te.pytorch.module.ops.default_ops import DefaultOps
 from mindspeed.te.pytorch.module.ops.mc2_ops import Mc2Ops
@@ -32,9 +33,9 @@ class TestAllgatherMatmul(DistributedTest):
 
         x = torch.randn(seq_size, batch_size, input_size, dtype=dtype).npu()
         w = torch.randn(seq_size, input_size, dtype=dtype).npu()
-
-        output_baseline = DefaultOps.allgather_matmul(x, w.t(), None)
-        output_mc2 = Mc2Ops.allgather_matmul(x, w.t(), None)
+        fp8_meta = FP8Metadata(["inputs", "weight", "grads"])
+        output_baseline = DefaultOps.allgather_matmul(x, w.t(), None, fp8_meta)
+        output_mc2 = Mc2Ops.allgather_matmul(x, w.t(), None, fp8_meta)
         assert torch.allclose(output_baseline[0], output_mc2[0], rtol=0.005, atol=0.005)
 
 
@@ -55,9 +56,9 @@ class TestMatmulReduceScatter(DistributedTest):
 
         x = torch.randn(seq_size, batch_size, input_size, dtype=dtype).npu()
         w = torch.randn(seq_size, input_size, dtype=dtype).npu()
-
-        output_baseline, _, _ = DefaultOps.matmul_reduce_scatter(x, w, None)
-        output_mc2, _, _ = Mc2Ops.matmul_reduce_scatter(x, w, None)
+        fp8_meta = FP8Metadata(["inputs", "weight", "grads"])
+        output_baseline, _, _ = DefaultOps.matmul_reduce_scatter(x, w, None, fp8_meta)
+        output_mc2, _, _ = Mc2Ops.matmul_reduce_scatter(x, w, None, fp8_meta)
         assert torch.allclose(output_baseline, output_mc2, rtol=0.005, atol=0.005)
 
 
@@ -78,9 +79,9 @@ class TestMatmulAllReduce(DistributedTest):
 
         x = torch.randn(seq_size, batch_size, input_size, dtype=dtype).npu()
         w = torch.randn(seq_size, input_size, dtype=dtype).npu()
-
-        output_baseline, _, _ = DefaultOps.matmul_all_reduce(x, w, None)
-        output_mc2, _, _ = Mc2Ops.matmul_all_reduce(x, w, None)
+        fp8_meta = FP8Metadata(["inputs", "weight", "grads"])
+        output_baseline, _, _ = DefaultOps.matmul_all_reduce(x, w, None, fp8_meta)
+        output_mc2, _, _ = Mc2Ops.matmul_all_reduce(x, w, None, fp8_meta)
         assert torch.allclose(output_baseline, output_mc2, rtol=0.005, atol=0.005)
 
 

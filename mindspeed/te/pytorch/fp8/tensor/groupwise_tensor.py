@@ -8,7 +8,7 @@ class GroupwiseTensor(Float8TensorWithTranspose):
     def t(self):
         raise ValueError('GroupwiseTensor not support transpose')
 
-    def quant_matmul(self, other, transpose=(False, False)):
+    def quant_matmul(self, other: 'GroupwiseTensor', transpose=(False, False)):
         x1, x1_scale = map(view_as_n_dim, self.get_by_trans(transpose[0]))
         x2, x2_scale = map(view_as_n_dim, other.get_by_trans(transpose[1]))
         output = torch_npu.npu_quant_matmul(x1, x2, x2_scale, pertoken_scale=x1_scale, output_dtype=self.dtype,

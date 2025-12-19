@@ -3,10 +3,7 @@ from typing import List
 
 import torch
 
-from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.te.pytorch.fp8 import cast_to_fp8_cpu
-from mindspeed.te.pytorch.fp8.constants import AMAX_COMPUTE_MAP, FormatEnum, FP8Format
-from mindspeed.te.pytorch.fp8.tensor import Float8TensorCpu
+from mindspeed.te.pytorch.fp8.constants import AMAX_COMPUTE_MAP, FP8Format
 
 logger = logging.getLogger(__name__)
 

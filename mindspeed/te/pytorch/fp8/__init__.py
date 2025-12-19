@@ -1,55 +1,33 @@
 import logging
-import math
 
-import numpy as np
 import torch
 
 import torch_npu
-from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.te.pytorch.fp8.constants import FormatEnum
-from mindspeed.te.pytorch.fp8.tensor import Float8Tensor, Float8TensorCpu, MXFP8Tensor, MXFP8TensorCpu, Float8TensorWithTranspose
+from mindspeed.te.pytorch.fp8.tensor import Float8Tensor, Float8TensorCpu, MXFP8Tensor, MXFP8TensorCpu, \
+    Float8TensorWithTranspose, is_fp8_tensor_with_trans, is_fp8_tensor
 
 logger = logging.getLogger(__name__)
 
 
 def fp8_matmul(inputs, weight, fp8_meta, key, transpose=(False, False)):
-    from mindspeed.te.pytorch.fp8.recipes import MXFP8BlockScaling, GroupwiseBlockScaling
-
-    if isinstance(fp8_meta.fp8_recipe, MXFP8BlockScaling) or isinstance(fp8_meta.fp8_recipe, GroupwiseBlockScaling):
-        if not isinstance(inputs, Float8TensorWithTranspose):
-            inputs = fp8_meta.pre_compute(key[0], inputs)
-        if not isinstance(weight, Float8TensorWithTranspose):
-            weight = fp8_meta.pre_compute(key[1], weight)
-
-        # quant matmul with transpose
+    """
+    Returns:
+        output: high accuracy output
+        input: fp8 input
+        weight: fp8 weight
+    """
+    if not is_fp8_tensor(inputs):
+        inputs = fp8_meta.pre_compute(key[0], inputs)
+    if not is_fp8_tensor(weight):
+        weight = fp8_meta.pre_compute(key[1], weight)
+    if is_fp8_tensor_with_trans(inputs):
         if key == ('grads', 'inputs'):
             # EVB 调测算子能力不支持transpose临时规避
             transpose = (True, True)
-        output = inputs.quant_matmul(weight, transpose)
-
-        args = get_args()
-        if args.te_comparison_with_cpu:
-            te_online_comparison_mxfp8_cpu(inputs, weight, transpose, output)
-        if args.te_comparison_with_bf16:
-            te_online_comparison_mxfp8_bf16(inputs, weight, transpose, output)
-
-    else:
-        if not isinstance(inputs, Float8Tensor):
-            inputs = fp8_meta.pre_compute(key[0], inputs)
-        if not isinstance(weight, Float8Tensor):
-            weight = fp8_meta.pre_compute(key[1], weight)
-        inputs = inputs.t() if transpose[0] else inputs
-        weight = weight.t() if transpose[1] else weight
-
-        # quant matmul
-        output = inputs.quant_matmul(weight)
-
-        args = get_args()
-        if args.te_comparison_with_cpu:
-            te_online_comparison_cpu(inputs, weight, output)
-        if args.te_comparison_with_bf16:
-            te_online_comparison_bf16(inputs, weight, output)
-    return output
+    # quant matmul
+    output = inputs.quant_matmul(weight, transpose)
+    return output, inputs, weight
 
 
 def te_online_comparison_cpu(inputs, weight, output):

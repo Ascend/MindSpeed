@@ -16,6 +16,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
         self.add_parser_argument_choices_value(parser, "--fp8-format", 'hif8')
         self.add_parser_argument_choices_value(parser, "--fp8-recipe", 'groupwise')
         self.add_parser_argument_choices_value(parser, "--fp8-recipe", 'blockwise')
+        self.add_parser_argument_choices_value(parser, "--moe-router-dtype", 'fp8')  # 穿刺验证参数
         group.add_argument('--no-use-gmm-fp8', action='store_false',
                            help='not use GMM with scaling recipe.', dest='use_gmm_fp8')
         group.add_argument('--te-comparison-with-cpu', action='store_true',
@@ -75,8 +76,6 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             pm.register_patch('transformer_engine.common.recipe.Format', Format)
             pm.register_patch('megatron.core.enums.Fp8Recipe', Fp8Recipe)
 
-            # pm.register_patch('megatron.core.models.gpt.gpt_layer_specs.get_gpt_layer_with_transformer_engine_spec',
-            #                     get_gpt_layer_te_spec)
             pm.register_patch('megatron.core.fp8_utils.get_fp8_context', get_fp8_context)
             pm.register_patch('transformer_engine.pytorch.fp8_model_init', fp8_model_init)
             pm.register_patch('transformer_engine.pytorch.fp8_autocast', fp8_autocast)
@@ -85,9 +84,19 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             pm.register_patch("megatron.core.extensions.transformer_engine.TEDelayedScaling", TEDelayedScaling)
             pm.register_patch("megatron.core.extensions.transformer_engine.Fp8Padding", Fp8Padding)
             pm.register_patch("megatron.core.extensions.transformer_engine.Fp8Unpadding", Fp8Unpadding)
-            # pm.register_patch('megatron.core.models.gpt.gpt_layer_specs._get_mlp_module_spec',
-            #                   _get_mlp_module_te_spec)
 
+            from mindspeed.te.pytorch.module.checkpoint import transformer_block_forward, \
+                transformer_block_checkpointed_forward, te_checkpoint
+            pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.forward',
+                              transformer_block_forward)
+            # 让路其他组件
+            if not (
+                getattr(args, 'swap_attention', False)
+                or getattr(args, 'recompute_method', False) == 'block'
+            ):
+                pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
+                                  transformer_block_checkpointed_forward)
+            pm.register_patch('megatron.core.extensions.transformer_engine.te_checkpoint', te_checkpoint)
             if not getattr(args, "moe_fb_overlap", False):
                 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.adaptor import (
                     dualpipev_fb_overlap_mtp_layer_forward_te_without_overlap, get_moe_module_spec_wrapper)

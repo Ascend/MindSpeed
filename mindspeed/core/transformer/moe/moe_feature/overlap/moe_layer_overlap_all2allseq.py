@@ -2,6 +2,8 @@
 # Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 
 import torch
+
+from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
 from mindspeed.moe.utils import MoEAuxLossAutoScaler
 from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import async_all_to_all, async_all_gather
 from mindspeed.ops.gmm import GMMFunction
@@ -17,10 +19,6 @@ from mindspeed.core.transformer.moe.moe_feature import (
     permute,
     save_to_aux_losses_tracker,
     sort_chunks_by_idxs)
-
-                                        
-def gmm_op(x, weight, bias, group_list, group_type):
-    return GMMFunction.builder.load().npu_gmm([x], [weight], bias, group_list, group_type, 0)
 
 
 class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
@@ -288,7 +286,7 @@ class MoELayerOverlapAllToAllSeq(torch.autograd.Function):
                 if global_input_tokens.nelement() != 0:
                     group_list = torch.cumsum(ctx.tokens_per_expert, dim=0)
                     w1 = ctx.weight1.view(ctx.num_local_experts, ctx.hidden_size, -1)
-                    mm1_out_ = gmm_op(global_input_tokens, w1, [], group_list, 0)[0]
+                    mm1_out_ = get_gmm_op_cls().op_forward(global_input_tokens, w1, group_list)[0]
                     group_list.untyped_storage().resize_(0)
                 else:
                     w1 = ctx.weight1.view(ctx.hidden_size, -1)

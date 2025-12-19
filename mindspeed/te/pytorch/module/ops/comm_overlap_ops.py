@@ -36,16 +36,52 @@ class CommOverlapOps(ABC):
     @staticmethod
     @abstractmethod
     def allgather_matmul(input_, weight, bias, fp8_meta=None, key=None):
+        """
+
+        Args:
+            input_:
+            weight:
+            bias:
+            fp8_meta(mindspeed.te.pytorch.fp8.metadata.FP8Metadata):
+            key:
+
+        Returns:
+
+        """
         ...
 
     @staticmethod
     @abstractmethod
     def matmul_reduce_scatter(input_, weight, bias, fp8_meta=None, key=None):
+        """
+
+        Args:
+            input_:
+            weight:
+            bias:
+            fp8_meta(mindspeed.te.pytorch.fp8.metadata.FP8Metadata):
+            key:
+
+        Returns:
+
+        """
         ...
 
     @staticmethod
     @abstractmethod
     def matmul_all_reduce(input_, weight, bias, fp8_meta=None, key=None):
+        """
+
+        Args:
+            input_:
+            weight:
+            bias:
+            fp8_meta(mindspeed.te.pytorch.fp8.metadata.FP8Metadata):
+            key:
+
+        Returns:
+
+        """
         ...
 
 

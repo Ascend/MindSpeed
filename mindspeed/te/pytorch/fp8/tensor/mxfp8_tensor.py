@@ -4,6 +4,7 @@ from functools import partial
 
 import torch_npu
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.te.pytorch.fp8.tensor.float8_tensor import Float8TensorWithTranspose
 from mindspeed.te.pytorch.utils import view_as_n_dim
 
@@ -22,4 +23,16 @@ class MXFP8Tensor(Float8TensorWithTranspose):
                                             scale_dtype=torch_npu.float8_e8m0fnu,
                                             pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
                                             group_sizes=[1, 1, 32])
-        return self.restore_reshape(output, transpose[0])
+        output = self.restore_reshape(output, transpose[0])
+        # compare with cpu
+        args = get_args()
+        if args.te_comparison_with_cpu:
+            from mindspeed.te.pytorch.fp8 import te_online_comparison_mxfp8_cpu
+            te_online_comparison_mxfp8_cpu(self, other, transpose, output)
+        if args.te_comparison_with_bf16:
+            from mindspeed.te.pytorch.fp8 import te_online_comparison_mxfp8_bf16
+            te_online_comparison_mxfp8_bf16(self, other, transpose, output)
+        # 使用完 后续就不会继续调用, 直接清理掉显存
+        for tensor in (x1, x1_scale, x2, x2_scale):
+            tensor.untyped_storage().resize_(0)
+        return output

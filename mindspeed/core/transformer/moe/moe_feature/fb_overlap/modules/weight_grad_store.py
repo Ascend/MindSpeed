@@ -9,7 +9,6 @@ from megatron.core.parallel_state import (
 )
 from megatron.training import get_args
 from mindspeed.ops.gmm import GMMFunction
-from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 
 
 def gather(input_slice, stream):
@@ -83,12 +82,13 @@ class WeightGradStore:
         args = get_args()
         if hasattr(weight, 'gmm_weight'):
             inputs, group_list, group_list_type = total_input
+            from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
+            gmm_cls = get_gmm_op_cls()
             if get_args().gemm_gradient_accumulation_fusion and not getattr(weight, 'is_hot_experts', False):
-                npu_groupmatmul_add_fp32(inputs, grad_output, group_list, weight.main_grad)
+                gmm_cls.gmm_add_impl(inputs, grad_output, group_list, weight)
             else:
                 if args.fp8 and args.use_gmm_fp8:
-                    from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
-                    grad_weight = get_gmm_op_cls().op_dw(inputs, grad_output, group_list, group_list_type)[0]
+                    grad_weight = gmm_cls.op_dw(inputs, grad_output, group_list, group_list_type)[0]
                 else:
                     grad_weight = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_output], [], group_list, 2, 0)[0]
                 if not getattr(weight, 'is_hot_experts', False):

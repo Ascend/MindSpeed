@@ -12,6 +12,6 @@ def get_ops():
 
 
 class DummyHandle:
-
-    def wait(self, *args, **kwargs):
+    @classmethod
+    def wait(cls, *args, **kwargs):
         pass

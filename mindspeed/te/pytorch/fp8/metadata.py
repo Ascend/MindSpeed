@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Type, Tuple, Optional
 
+from megatron.core.parallel_state import get_tensor_model_parallel_world_size, get_tensor_model_parallel_rank, \
+    get_tensor_model_parallel_group
 from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe, RecipeScaling
 from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
 
@@ -18,6 +20,9 @@ class FP8Metadata:
         for key in keys:
             setattr(self, key, None)
         self.fp8_recipe_tmp = None
+        self.tp_world_size = get_tensor_model_parallel_world_size()
+        self.tp_rank = get_tensor_model_parallel_rank()
+        self.tp_group = get_tensor_model_parallel_group()
 
     @property
     def fp8_recipe(self):
@@ -56,3 +61,8 @@ class FP8Metadata:
         self.init_recipes_if_necessarily(key, tensor.shape)
         recipe = getattr(self, key)
         return tensor if recipe.fp8_comm else recipe.pre_compute(tensor, key)
+
+    def set_tp_config(self, world_size, tp_rank, tp_group):
+        self.tp_world_size = world_size
+        self.tp_rank = tp_rank
+        self.tp_group = tp_group

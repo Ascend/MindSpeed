@@ -2,8 +2,9 @@
 
 import torch
 from einops import rearrange
+
+from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
 from mindspeed.model.transformer import should_recompute_activation
-from mindspeed.core.transformer.moe.moe_feature.overlap.moe_layer_overlap_all2all import gmm_op
 from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import async_all_to_all
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import (only_recompute_activation, 
                                                                            forward_func, backward_func,
@@ -28,8 +29,9 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
         ctx.activation_func = activation_func
         use_gmm = (inputs.nelement() != 0)
         ctx.use_gmm = use_gmm
+        gmm_cls = get_gmm_op_cls()
         if use_gmm:
-            mm1_out = gmm_op(inputs, weights1, [], group_list, 0)[0]
+            mm1_out = gmm_cls.op_forward(inputs, weights1, group_list)[0]
         else:
             mm1_out = torch.matmul(inputs, weights1)
         if moe_zero_memory != "disable":
@@ -48,7 +50,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
             mm1_out.untyped_storage().resize_(0)
             permuted_probs.untyped_storage().resize_(0)
         if use_gmm:
-            mm2_out = gmm_op(act_out, weights2, [], group_list, 0)[0]
+            mm2_out = gmm_cls.op_forward(act_out, weights2, group_list)[0]
         else:
             mm2_out = torch.matmul(act_out, weights2)
 
@@ -91,11 +93,10 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
         ep_group = parallel_state.get_expert_model_parallel_group()
         if config.moe_tp_extend_ep:
             ep_group = parallel_state.get_expert_tensor_and_model_parallel_group()
-
+        gmm_cls = get_gmm_op_cls()
         # grad of mm2
         if ctx.use_gmm:
-            weights2 = rearrange(weights2, 'n h f -> n f h')
-            grad_mm2_inputs = gmm_op(grad_outs, weights2, [], group_list, 0)[0]
+            grad_mm2_inputs = gmm_cls.op_dx(grad_outs, weights2, group_list)[0]
         else:
             grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
         # act_graph is act_out.
@@ -114,29 +115,9 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
 
         if ctx.use_gmm:
             if config.gemm_gradient_accumulation_fusion:
-
-                npu_groupmatmul_add_fp32(mm2_inputs, grad_outs, group_list, original_weight2.main_grad)
-
-                if hasattr(original_weight2, 'grad_added_to_main_grad'):
-                    if getattr(weights2, 'zero_out_wgrad', False):
-                        grad_weights2 = torch.zeros(
-                            weights2.transpose(-1, -2).shape,
-                            dtype=mm2_inputs.dtype,
-                            device=torch.cuda.current_device(),
-                            requires_grad=False,
-                        )
-                    else:
-                        grad_weights2 = torch.empty(
-                            weights2.transpose(-1, -2).shape,
-                            dtype=mm2_inputs.dtype,
-                            device=torch.cuda.current_device(),
-                            requires_grad=False,
-                        )
-                    original_weight2.grad_added_to_main_grad = True
-                else:
-                    grad_weights2 = None
+                grad_weights2 = gmm_cls.op_gmm_add(mm2_inputs, weights2, grad_outs, group_list, original_weight2)
             else:
-                grad_weights2 = gmm_op(mm2_inputs.t(), grad_outs, [], group_list, 2)[0]
+                grad_weights2 = gmm_cls.op_dw(mm2_inputs, grad_outs, group_list)[0]
         else:
             grad_weights2 = torch.matmul(mm2_inputs.t(), grad_outs)
 
@@ -174,8 +155,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
 
         if ctx.use_gmm:
             # Because probs, mm1_inputs_grad consists of two parts.
-            weights1 = rearrange(weights1, 'n h f -> n f h')
-            mm1_inputs_grad = gmm_op(act_inputs.grad, weights1, [], group_list, 0)[0]
+            mm1_inputs_grad = gmm_cls.op_dx(act_inputs.grad, weights1, group_list)[0]
         else:
             mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
@@ -223,29 +203,10 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
 
         if ctx.use_gmm:
             if config.gemm_gradient_accumulation_fusion:
-
-                npu_groupmatmul_add_fp32(mm1_inputs, act_inputs.grad, group_list, original_weight1.main_grad)
-            
-                if hasattr(original_weight1, 'grad_added_to_main_grad'):
-                    if getattr(weights1, 'zero_out_wgrad', False):
-                        mm1_weights_grad = torch.zeros(
-                            weights1.transpose(-1, -2).shape,
-                            dtype=mm1_inputs.dtype,
-                            device=torch.cuda.current_device(),
-                            requires_grad=False,
-                        )
-                    else:
-                        mm1_weights_grad = torch.empty(
-                            weights1.transpose(-1, -2).shape,
-                            dtype=mm1_inputs.dtype,
-                            device=torch.cuda.current_device(),
-                            requires_grad=False,
-                        )
-                    original_weight1.grad_added_to_main_grad = True
-                else:
-                    mm1_weights_grad = None
+                mm1_weights_grad = gmm_cls.op_gmm_add(mm1_inputs, weights1, act_inputs.grad, group_list,
+                                                         original_weight1)
             else:
-                mm1_weights_grad = gmm_op(mm1_inputs.t(), act_inputs.grad, [], group_list, 2)[0]
+                mm1_weights_grad = gmm_cls.op_dw(mm1_inputs, act_inputs.grad, group_list)[0]
         else:
             mm1_weights_grad = torch.matmul(mm1_inputs.t(), act_inputs.grad)
         act_inputs.grad.untyped_storage().resize_(0)
