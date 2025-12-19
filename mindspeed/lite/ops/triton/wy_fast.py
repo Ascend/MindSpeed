@@ -30,7 +30,7 @@ def prepare_wy_repr_bwd_kernel(
     cu_seqlens,
     chunk_indices,
     T,
-    B: tl.constexpr,
+    B,
     H: tl.constexpr,
     K: tl.constexpr,
     V: tl.constexpr,
@@ -42,6 +42,7 @@ def prepare_wy_repr_bwd_kernel(
 ):
     core_id = tl.program_id(0)
     total_cores = tl.num_programs(0)
+    T_max = T
 
     base_chunks_per_pid = NT // total_cores
     remainder_chunks = NT % total_cores
@@ -53,19 +54,22 @@ def prepare_wy_repr_bwd_kernel(
         chunks_this_pid = base_chunks_per_pid
         start_idx = core_id * chunks_this_pid + remainder_chunks
 
-    for i_t in range(start_idx, start_idx + chunks_this_pid):
-        for i_h in range(0, H):
-            for i_b in range(0, B):
+    for idx in range(start_idx, start_idx + chunks_this_pid):
+        for i_b in range(B):
+            for i_h in range(0, H):
 
                 if IS_VARLEN:
-                    i_n, i_t = tl.load(chunk_indices + i_t * 2).to(tl.int32), tl.load(chunk_indices + i_t * 2 + 1).to(tl.int32)
+                    i_n, i_t = tl.load(chunk_indices + idx * 2).to(tl.int32), tl.load(chunk_indices + idx * 2 + 1).to(tl.int32)
                     bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
+                    offset = bos + i_h * T_max
                     T = eos - bos
                 else:
+                    i_t = idx
                     bos, eos = i_b * T, i_b * T + T
-
-                p_beta = tl.make_block_ptr(beta + (bos * H + i_h * T), (T,), (1,), (i_t * BT,), (BT,), (0,))
-                p_g = tl.make_block_ptr(g + (bos * H + i_h * T), (T,), (1,), (i_t * BT,), (BT,), (0,))
+                    offset = bos * H + i_h * T_max
+            
+                p_beta = tl.make_block_ptr(beta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
+                p_g = tl.make_block_ptr(g + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
                 p_A = tl.make_block_ptr(A + (bos * H + i_h) * BT, (BT, T), (1, H * BT), (0, i_t * BT), (BT, BT), (0, 1))
 
                 b_A = tl.load(p_A, boundary_check=(0, 1))
@@ -104,27 +108,15 @@ def prepare_wy_repr_bwd_kernel(
                     b_dbeta += tl.sum(b_dv_beta * b_v, 1)
                     tl.store(p_dv, b_dv.to(p_dv.dtype.element_ty), boundary_check=(0, 1))
 
-                o_t = i_t * BT + tl.arange(0, BT)
-                o_t = o_t.to(tl.float32)
-                T_mask = o_t < T
-
-                row_indices = tl.arange(0, BT)[:, None]
-                col_indices = tl.arange(0, BT)[None, :]
-                tril_mask = row_indices > col_indices
-                tril_mask = tril_mask * T_mask[:, None]
-
-                b_dA = b_dA * tril_mask
-
-                b_dA = tl.dot(b_dA.to(b_A.dtype), b_A)
-                b_dA = tl.dot(b_A, b_dA.to(b_A.dtype))
-
-                b_g_diff = b_g[:, None] - b_g[None, :]
-                b_g_diff = tl.minimum(tl.maximum(b_g_diff, -50), 50)
-                b_decay_maxtrix = tl.exp(b_g_diff)
-                b_dA = -b_dA * b_decay_maxtrix * tril_mask
-
-                b_dA = b_dA.to(k.dtype.element_ty)
-                b_A = tl.zeros([BT, BT], dtype=tl.float32)
+                o_t = i_t * BT + tl.arange(0, BT)	
+                m_t = o_t < T	
+                m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)	
+                b_dA = tl.where(m_A, b_dA, 0)	
+                b_dA = tl.dot(b_dA.to(b_A.dtype), b_A)	
+                b_dA = tl.dot(b_A, b_dA.to(b_A.dtype))	
+                b_dA = tl.where(m_A, -b_dA * exp(b_g[:, None] - b_g[None, :]), 0)	
+                b_dA = b_dA.to(k.dtype.element_ty)	
+                b_A = tl.zeros([BT, BT], dtype=tl.float32)	
 
                 for i_k in range(tl.cdiv(K, BK)):
                     p_k = tl.make_block_ptr(k + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
@@ -141,8 +133,8 @@ def prepare_wy_repr_bwd_kernel(
 
                 b_dA_A = b_dA * b_A
                 b_dg += tl.sum(b_dA_A, axis=1) - tl.sum(b_dA_A, axis=0)
-                p_dg = tl.make_block_ptr(dg + (bos * H + i_h * T), (T,), (1,), (i_t * BT,), (BT,), (0,))
-                p_dbeta = tl.make_block_ptr(dbeta + (bos * H + i_h * T), (T,), (1,), (i_t * BT,), (BT,), (0,))
+                p_dg = tl.make_block_ptr(dg + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
+                p_dbeta = tl.make_block_ptr(dbeta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
                 tl.store(p_dg, b_dg.to(p_dg.dtype.element_ty), boundary_check=(0,))
                 tl.store(p_dbeta, b_dbeta.to(p_dbeta.dtype.element_ty), boundary_check=(0,))
 
@@ -164,8 +156,8 @@ def recompute_w_u_fwd_kernel(
     gk,
     cu_seqlens,
     chunk_indices,
-    B,
     T,
+    B,
     H: tl.constexpr,
     K: tl.constexpr,
     V: tl.constexpr,
@@ -179,6 +171,7 @@ def recompute_w_u_fwd_kernel(
 ):
     core_id = tl.program_id(0)
     total_cores = tl.num_programs(0)
+    T_max = T
 
     base_chunks_per_pid = NT // total_cores
     remainder_chunks = NT % total_cores
@@ -190,18 +183,21 @@ def recompute_w_u_fwd_kernel(
         chunks_this_pid = base_chunks_per_pid
         start_idx = core_id * chunks_this_pid + remainder_chunks
 
-    for i_t in range(start_idx, start_idx + chunks_this_pid):
-        for i_h in range(0, H):
-            for i_b in range(0, B):
+    for idx in range(start_idx, start_idx + chunks_this_pid):
+        for i_b in range(B):
+            for i_h in range(0, H):
 
                 if IS_VARLEN:
-                    i_n, i_t = tl.load(chunk_indices + i_t * 2).to(tl.int32), tl.load(chunk_indices + i_t * 2 + 1).to(tl.int32)
+                    i_n, i_t = tl.load(chunk_indices + idx * 2).to(tl.int32), tl.load(chunk_indices + idx * 2 + 1).to(tl.int32)
                     bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
+                    offset = bos + i_h * T_max
                     T = eos - bos
                 else:
+                    i_t = idx
                     bos, eos = i_b * T, i_b * T + T
-                
-                p_beta = tl.make_block_ptr(beta + (bos * H + i_h * T), (T,), (1,), (i_t * BT,), (BT,), (0,))
+                    offset = bos * H + i_h * T_max
+
+                p_beta = tl.make_block_ptr(beta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
                 b_beta = tl.load(p_beta, boundary_check=(0,))
 
                 p_A = tl.make_block_ptr(A + (bos * H + i_h) * BT, (T, BT), (H * BT, 1), (i_t * BT, 0), (BT, BT), (1, 0))
@@ -216,7 +212,7 @@ def recompute_w_u_fwd_kernel(
                     tl.store(p_u, b_u.to(p_u.dtype.element_ty), boundary_check=(0, 1))
 
                 if USE_G:
-                    p_g = tl.make_block_ptr(g + (bos * H + i_h * T), (T,), (1,), (i_t * BT,), (BT,), (0,))
+                    p_g = tl.make_block_ptr(g + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
                     b_g = tl.exp(tl.load(p_g, boundary_check=(0,)))
 
                 for i_k in range(tl.cdiv(K, BK)):
@@ -248,7 +244,7 @@ def recompute_w_u_fwd(
     BV = 128
 
     chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
-    NT = triton.cdiv(T, BT)
+    NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
     g = g.transpose(1, 2).contiguous() if g is not None else None
     beta = beta.transpose(1, 2).contiguous()
 
@@ -266,8 +262,8 @@ def recompute_w_u_fwd(
         gk=gk,
         cu_seqlens=cu_seqlens,
         chunk_indices=chunk_indices,
-        B=B,
         T=T,
+        B=B,
         H=H,
         K=K,
         V=V,
@@ -293,7 +289,7 @@ def prepare_wy_repr_bwd(
     B, T, H, K, V = *k.shape, v.shape[-1]
     BT = chunk_size
     chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
-    NT = triton.cdiv(T, BT)
+    NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
     BK = 64
     BV = 64
     beta = beta.transpose(1, 2).contiguous()
@@ -319,8 +315,8 @@ def prepare_wy_repr_bwd(
         dg=dg,
         cu_seqlens=cu_seqlens,
         chunk_indices=chunk_indices,
-        B=B,
         T=T,
+        B=B,
         H=H,
         K=K,
         V=V,
