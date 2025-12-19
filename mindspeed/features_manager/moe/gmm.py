@@ -20,14 +20,10 @@ class MoEGmmFeature(MindSpeedFeature):
 
     def register_patches(self, patch_manager, args):
         from mindspeed.core.transformer.moe.moe_feature.adaptor import MindSpeedGmmExperts
-        from mindspeed.core.transformer.moe.moe_feature.common import ascend_gmm_preprocess
         if args.moe_grouped_gemm:
             patch_manager.register_patch(
                 'megatron.core.transformer.moe.experts.GroupedMLP',
                 MindSpeedGmmExperts)
-            patch_manager.register_patch(
-                'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
-                ascend_gmm_preprocess)
 
         if args.use_ascend_mc2 and not hasattr(args, 'moe_grouped_gemm'):
             # MoE MLP not use mc2 linear

@@ -13,8 +13,6 @@ from mindspeed.core.transformer.moe.moe_feature import (
     sort_chunks_by_idxs,
     get_capacity)
 
-from mindspeed.core.transformer.moe.moe_feature import MoEAlltoAllSEQTokenDispatcher as MegatronMoEAlltoAllSEQTokenDispatcher
-
 
 class All2AllSeqTp2epDispatcherImpl:
     """
@@ -286,14 +284,6 @@ class All2AllSeqTp2epDispatcherImpl:
 
 # Define the substitute wrapper class (in same file or a separate file)
 # The original class MindSpeedMOEAlltoAllSEQTptoEpTokenDispatcher is located in 'MindSpeed/mindspeed/core/transformer/moe/moe_feature/adaptor.py'
-
-
-class _PatchedMOEAlltoAllSEQTptoEpTokenDispatcher(All2AllSeqTp2epDispatcherImpl,
-                                                  MegatronMoEAlltoAllSEQTokenDispatcher):
-    def __init__(self, *args, **kwargs):
-        # 保险起见：两边都显式调一遍，避免对方不是 cooperative super
-        MegatronMoEAlltoAllSEQTokenDispatcher.__init__(self, *args, **kwargs)
-        All2AllSeqTp2epDispatcherImpl.__init__(self, *args, **kwargs)
 
 
 def preprocess(self, routing_map):

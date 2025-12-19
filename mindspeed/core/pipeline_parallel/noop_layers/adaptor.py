@@ -11,7 +11,7 @@ from torch import Tensor
 from megatron.core import InferenceParams
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.parallel_state import get_moe_layer_wise_logging_tracker
+from megatron.core.transformer.moe.moe_utils import get_moe_layer_wise_logging_tracker
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import (
     clear_aux_losses_tracker, reduce_aux_losses_tracker_across_ranks)

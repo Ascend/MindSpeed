@@ -226,7 +226,6 @@ def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
             tensor_model_parallel_size: int = 1,
             pipeline_model_parallel_size: int = 1,
             virtual_pipeline_model_parallel_size: Optional[int] = None,
-            pipeline_model_parallel_split_rank: Optional[int] = None,
             pipeline_model_parallel_comm_backend: Optional[str] = None,
             use_sharp: bool = False,
             context_parallel_size: int = 1,
@@ -237,17 +236,16 @@ def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
             nccl_communicator_config_path: Optional[str] = None,
             distributed_timeout_minutes: int = 30,
             order: str = "tp-cp-ep-dp-pp",
-            encoder_tensor_model_parallel_size: int = 0,
-            encoder_pipeline_model_parallel_size: Optional[int] = 0,
             get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
             get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
-            create_gloo_process_groups: bool = True
+            create_gloo_process_groups: bool = True,
+            high_priority_stream_groups: Optional[List[str]] = None,
+            sharp_enabled_group: Optional[str] = None,
     ):
         initialize_model_parallel(
             tensor_model_parallel_size,
             pipeline_model_parallel_size,
             virtual_pipeline_model_parallel_size,
-            pipeline_model_parallel_split_rank,
             pipeline_model_parallel_comm_backend,
             use_sharp,
             context_parallel_size,
@@ -258,11 +256,11 @@ def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
             nccl_communicator_config_path,
             distributed_timeout_minutes,
             order,
-            encoder_tensor_model_parallel_size,
-            encoder_pipeline_model_parallel_size,
             get_embedding_ranks,
             get_position_embedding_ranks,
-            create_gloo_process_groups
+            create_gloo_process_groups,
+            high_priority_stream_groups,
+            sharp_enabled_group
         )
         nccl_comm_cfgs = {}
         if nccl_communicator_config_path is not None:

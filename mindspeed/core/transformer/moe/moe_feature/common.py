@@ -2,7 +2,6 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 import torch
 from mindspeed.core.transformer.moe.moe_feature import (
-    topk_softmax_with_capacity,
     gather_from_sequence_parallel_region,
     _split_along_first_dim,
     tensor_parallel,

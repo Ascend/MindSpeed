@@ -12,7 +12,7 @@ import torch
 from torch._C._distributed_c10d import ProcessGroup
 from megatron.core import mpu
 from megatron.core.utils import GlobalMemoryBuffer, is_torch_min_version
-from megatron.core.parallel_state import RankGenerator, create_hierarchical_parallel_groups, default_embedding_ranks, \
+from megatron.core.parallel_state import RankGenerator, create_hierarchical_groups, default_embedding_ranks, \
     default_position_embedding_ranks
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.multi_modal.dist_train.dist_train_config import get_dist_model_config, get_all_config_size, \
@@ -587,11 +587,11 @@ def _initialize_model_parallel(
     if nccl_communicator_config_path is not None:
         try:
             import yaml
-        except ImportError:
-            raise RuntimeError(
+        except ImportError as e:
+            raise ImportError(
                 "Cannot import `yaml`. Setting custom nccl communicator configs "
                 "requires the yaml package."
-            )
+            ) from e
 
         with open(nccl_communicator_config_path, "r") as stream:
             nccl_comm_cfgs = yaml.safe_load(stream)
@@ -631,7 +631,6 @@ def _initialize_model_parallel(
             f"decoder world_size ({decoder_world_size}) is not divisible by expert_tensor_model_pipeline_parallel size ({expert_tensor_model_pipeline_parallel_size})"
         )
 
-    # TODO: support expert specific ordering
     expert_decoder_rank_generator = RankGenerator(
         tp=expert_tensor_parallel_size,
         ep=expert_model_parallel_size,
@@ -786,7 +785,7 @@ def _initialize_model_parallel(
             subworld.context_parallel_group = group
             subworld.context_parallel_global_ranks = ranks
         if hierarchical_context_parallel_sizes:
-            subworld.hierarchical_context_parallel_groups += create_hierarchical_parallel_groups(
+            subworld.hierarchical_context_parallel_groups += create_hierarchical_groups(
                 rank,
                 ranks,
                 context_parallel_size,
@@ -1185,7 +1184,7 @@ def get_data_parallel_group(with_context_parallel=False, partial_data_parallel=F
         return _DATA_PARALLEL_GROUP_WITH_CP
     else:
         assert _DATA_PARALLEL_GROUP is not None, 'data parallel group is not initialized'
-        assert partial_data_parallel == False, 'Partial DP for Optimizer needs to include CP'
+        assert not partial_data_parallel, 'Partial DP for Optimizer needs to include CP'
         return _DATA_PARALLEL_GROUP
 
 
@@ -1204,7 +1203,7 @@ def get_data_parallel_group_gloo(with_context_parallel=False, partial_data_paral
         return _DATA_PARALLEL_GROUP_WITH_CP_GLOO
     else:
         assert _DATA_PARALLEL_GROUP_GLOO is not None, 'data parallel group-gloo is not initialized'
-        assert partial_data_parallel == False, 'Partial DP for Optimizer needs to include CP'
+        assert not partial_data_parallel, 'Partial DP for Optimizer needs to include CP'
         return _DATA_PARALLEL_GROUP_GLOO
 
 @subwrold_decorator
@@ -1412,8 +1411,10 @@ def get_virtual_pipeline_model_parallel_world_size():
 
 @subwrold_decorator
 def get_model_parallel_src_rank():
-    """Calculate the global rank corresponding to the first local rank
-    in the model parallel group."""
+    """
+        Calculate the global rank corresponding to the first local rank
+        in the model parallel group.
+    """
     assert _MODEL_PARALLEL_GLOBAL_RANKS is not None, "Model parallel group is not initialized"
     return _MODEL_PARALLEL_GLOBAL_RANKS[0]
 

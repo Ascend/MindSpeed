@@ -100,9 +100,9 @@ def sort_chunks_by_idxs_wrapper(fn):
 def moe_alltoall_token_dispatcher_init_wrapper(fn):
     @wraps(fn)
     def wrapper(
-            self, num_local_experts, local_expert_indices, config
+            self, num_local_experts, local_expert_indices, config, model_comm_pgs=None
     ) -> None:
-        fn(self, num_local_experts, local_expert_indices, config)
+        fn(self, num_local_experts, local_expert_indices, config, model_comm_pgs)
         # Since fused_sort_chunks_by_index is not currently supported, set self.permute_idx_device to None
         self.permute_idx_device = None
         input_chunk_idxs = torch.arange(

@@ -552,6 +552,7 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
         k_channels: Optional[int] = None,
         v_channels: Optional[int] = None,
         cp_comm_type: str = "p2p",
+        model_comm_pgs: str = None,
     ):
         self.config = config
         self.layer_number = max(1, layer_number)

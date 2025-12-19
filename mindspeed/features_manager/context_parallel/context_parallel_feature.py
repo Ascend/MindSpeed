@@ -84,9 +84,9 @@ class ContextParallelFeature(MindSpeedFeature):
         _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
         _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
         if int(getattr(args, 'context_parallel_size', 1)) > 1 or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
-            from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
+            from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention, MindSpeedTEDotProductAttention
             patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention', MindSpeedCPDotProductAttention)
-            patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedCPDotProductAttention)
+            patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedTEDotProductAttention)
 
             from mindspeed.core.context_parallel.adaptor import attention_init_wrapper
             patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)

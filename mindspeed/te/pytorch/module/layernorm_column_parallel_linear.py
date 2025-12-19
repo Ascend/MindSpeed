@@ -71,6 +71,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             is_expert: bool = False,
             skip_weight_param_allocation: bool = False,
             tp_comm_buffer_name: Optional[str] = None,
+            tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
 
         super(MindSpeedTELayerNormColumnParallelLinear, self).__init__()
@@ -148,14 +149,13 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                     dtype=config.params_dtype,
                 )
             )
-            if config.perform_initialization:
-                _initialize_affine_weight_gpu(
-                    self.weight,
-                    init_method,
-                    partition_dim=0,
-                    stride=1,
-                    is_expert=self.is_expert,
-                )
+            _initialize_affine_weight_gpu(
+                self.weight,
+                init_method,
+                partition_dim=0,
+                stride=1,
+                is_expert=self.is_expert,
+            )
 
         setattr(self.weight, 'allreduce', not (self.is_expert and self.expert_parallel))
 
@@ -214,14 +214,16 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             setattr(self.layer_norm_bias, 'sequence_parallel', self.sequence_parallel) 
         else:
             self.layer_norm_bias = None
-            
+
+        self.te_return_bias = self.skip_bias_add and bias
+
     def _layernorm(self, inp):
         return F.layer_norm(inp, [self.layer_norm_weight.numel()],
                             weight=self.layer_norm_weight,
                             bias=self.layer_norm_bias,
                             eps=self.config.layernorm_epsilon
                             )
-        
+
     def _rmsnorm(self, inp):
         if self.config.use_fused_rmsnorm:
             return torch_npu.npu_rms_norm(inp, self.layer_norm_weight, epsilon=self.config.layernorm_epsilon)[0]
@@ -248,7 +250,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             else:
                 norm_output = self._rmsnorm(inp)
 
-        bias = self.bias if not self.skip_bias_add else None
+        bias = self.bias if self.te_return_bias else None
 
         if (
             self.allreduce_dgrad

@@ -65,7 +65,7 @@ MindSpeed Core拉取源码后使用pip命令行安装`pip install -e MindSpeed`�
  ```shell
  git clone https://github.com/NVIDIA/Megatron-LM.git
  cd Megatron-LM
- git checkout core_v0.12.1
+ git checkout core_r0.14.0
  ```
 
 

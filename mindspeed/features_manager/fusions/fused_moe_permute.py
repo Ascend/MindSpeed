@@ -102,12 +102,3 @@ class FusedMoEPermuteFeature(MindSpeedFeature):
                 patch_manager.register_patch(
                     'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.__init__',
                     moe_alltoall_token_dispatcher_init_wrapper)
-            elif getattr(args, "moe_token_dispatcher_type", None) == "alltoall_seq":
-                from mindspeed.core.fusions.fused_moe_permute import (
-                    transformer_config_post_init_wrapper, alltoall_seq_token_permutation, alltoall_seq_token_unpermutation)
-                patch_manager.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__post_init__",
-                                             transformer_config_post_init_wrapper)
-                patch_manager.register_patch("megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_permutation",
-                                             alltoall_seq_token_permutation)
-                patch_manager.register_patch("megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.token_unpermutation",
-                                             alltoall_seq_token_unpermutation)

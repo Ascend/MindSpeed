@@ -45,7 +45,6 @@ def initialize_model_parallel(
         tensor_model_parallel_size=tensor_model_parallel_size,
         pipeline_model_parallel_size=pipeline_model_parallel_size,
         virtual_pipeline_model_parallel_size=virtual_pipeline_model_parallel_size,
-        pipeline_model_parallel_split_rank=pipeline_model_parallel_split_rank,
         context_parallel_size=context_parallel_size,
         expert_model_parallel_size=expert_model_parallel_size,
         expert_tensor_parallel_size=expert_tensor_parallel_size

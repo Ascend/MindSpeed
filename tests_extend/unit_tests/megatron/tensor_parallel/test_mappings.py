@@ -7,8 +7,9 @@ import mindspeed.megatron_adaptor
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from megatron.core.tensor_parallel import mappings
-
+from megatron.core.utils import get_tensor_model_parallel_group_if_none
 import megatron.core.parallel_state as Utils
+
 from tests_extend.unit_tests.common import DistributedTest
 
 
@@ -22,25 +23,28 @@ class TestTPMapping(DistributedTest):
         rank = int(os.environ['LOCAL_RANK'])
         Utils.initialize_model_parallel(4, 2)
         input_data = torch.ones((1)).cuda() * rank
-        output_data = mappings._CopyToModelParallelRegion.backward(None, input_data)
+        ctx = torch.autograd.function.FunctionCtx()
+        ctx.group = get_tensor_model_parallel_group_if_none(None)
+        output_data, _ = mappings._CopyToModelParallelRegion.backward(ctx, input_data)
         result = torch.ones(1).cuda()
         result = result * 22 if rank >= 4 else result * 6
         assert(torch.equal(output_data, result))
         assert(torch.equal(input_data, mappings.copy_to_tensor_model_parallel_region(input_data)))
-        assert(torch.equal(input_data, mappings._CopyToModelParallelRegion.symbolic(None, input_data)))
+        assert(torch.equal(input_data, mappings._CopyToModelParallelRegion.symbolic(None, input_data, None)))
         Utils.destroy_model_parallel()
     
     def test_ReduceFromModelParallelRegion(self):
         rank = int(os.environ['LOCAL_RANK'])
         Utils.initialize_model_parallel(4, 2)
         input_data = torch.ones((1)).cuda() * rank
-        output_data = mappings._ReduceFromModelParallelRegion.symbolic(None, input_data)
+        group = get_tensor_model_parallel_group_if_none(None)
+        output_data = mappings._ReduceFromModelParallelRegion.symbolic(None, input_data, group)
         result = torch.ones(1).cuda()
         result = result * 22 if rank >= 4 else result * 6
         assert(torch.equal(output_data, result))
         input_data = torch.ones((1)).cuda() * rank
         assert(torch.equal(mappings.reduce_from_tensor_model_parallel_region(input_data), result))
-        assert(torch.equal(input_data, mappings._ReduceFromModelParallelRegion.backward(None, input_data)))
+        assert(torch.equal(input_data, mappings._ReduceFromModelParallelRegion.backward(None, input_data)[0]))
         Utils.destroy_model_parallel()
     
     def test_ScatterToModelParallelRegion(self):
@@ -50,11 +54,14 @@ class TestTPMapping(DistributedTest):
         output_data = mappings.scatter_to_tensor_model_parallel_region(input_data)
         req_dim = int(rank % (Utils.world_size / 2))
         assert(torch.equal(output_data, input_data[:, req_dim].reshape((8, 1))))
-        output_data = mappings._ScatterToModelParallelRegion.symbolic(None, input_data)
+        group = get_tensor_model_parallel_group_if_none(None)
+        output_data = mappings._ScatterToModelParallelRegion.symbolic(None, input_data, group)
         assert(torch.equal(output_data, input_data[:, req_dim].reshape((8, 1))))
     
         input_data = torch.ones(8).cuda() * rank
-        actual_output_data = mappings._ScatterToModelParallelRegion.backward(None, input_data)
+        ctx = torch.autograd.function.FunctionCtx()
+        ctx.group = get_tensor_model_parallel_group_if_none(None)
+        actual_output_data, _ = mappings._ScatterToModelParallelRegion.backward(ctx, input_data)
         expected_output = torch.cat((
             torch.ones(8) * 0, 
             torch.ones(8) * 1, 
@@ -70,7 +77,9 @@ class TestTPMapping(DistributedTest):
         Utils.initialize_model_parallel(4, 2)
         input_data = torch.rand((8, 4)).cuda()
         req_dim = int(rank % (Utils.world_size / 2))
-        output_data = mappings._GatherFromModelParallelRegion.backward(None, input_data)
+        ctx = torch.autograd.function.FunctionCtx()
+        ctx.group = get_tensor_model_parallel_group_if_none(None)
+        output_data, _ = mappings._GatherFromModelParallelRegion.backward(ctx, input_data)
         assert(torch.equal(output_data, input_data[:, req_dim].reshape((8, 1))))
         input_data = torch.ones(8).cuda() * rank
         actual_output_data = mappings.gather_from_tensor_model_parallel_region(input_data)
@@ -82,7 +91,7 @@ class TestTPMapping(DistributedTest):
         if (rank >= 4):
             expected_output = expected_output + 4
         assert(torch.equal(actual_output_data, expected_output))
-        assert(torch.equal(mappings._GatherFromModelParallelRegion.symbolic(None, input_data), expected_output))
+        assert(torch.equal(mappings._GatherFromModelParallelRegion.symbolic(None, input_data, ctx.group), expected_output))
         Utils.destroy_model_parallel()
      
     def test_ScatterToSequenceParallelRegion(self):
@@ -90,12 +99,14 @@ class TestTPMapping(DistributedTest):
         Utils.initialize_model_parallel(4, 2)
         input_data = torch.rand((8, 4)).cuda()
         req_dim = int(rank % (Utils.world_size / 2)) * 2
-        output_data = mappings._ScatterToSequenceParallelRegion.symbolic(None, input_data)
+        ctx = torch.autograd.function.FunctionCtx()
+        ctx.group = get_tensor_model_parallel_group_if_none(None)
+        output_data = mappings._ScatterToSequenceParallelRegion.symbolic(None, input_data, ctx.group)
         assert(torch.equal(output_data, input_data[req_dim:req_dim + 2, :]))
         output_data = mappings.scatter_to_sequence_parallel_region(input_data)
         assert(torch.equal(output_data, input_data[req_dim:req_dim + 2, :]))
         input_data = torch.ones(4).cuda() * rank
-        output_data = mappings._ScatterToModelParallelRegion.backward(None, input_data)
+        output_data, _ = mappings._ScatterToModelParallelRegion.backward(ctx, input_data)
         expected_output = torch.concat((
             torch.ones(4) * 0, 
             torch.ones(4) * 1, 
@@ -119,7 +130,9 @@ class TestTPMapping(DistributedTest):
         if (rank >= 4):
             expected_output = expected_output + 4
         assert(torch.equal(output_data, expected_output))
-        assert(torch.equal(mappings._GatherFromSequenceParallelRegion.symbolic(None, input_data), expected_output))
+        ctx = torch.autograd.function.FunctionCtx()
+        ctx.group = get_tensor_model_parallel_group_if_none(None)
+        assert(torch.equal(mappings._GatherFromSequenceParallelRegion.symbolic(None, input_data, ctx.group), expected_output))
         input_data = torch.vstack((
             torch.ones(4) * 0, 
             torch.ones(4) * 1, 
@@ -129,7 +142,7 @@ class TestTPMapping(DistributedTest):
         class Ctx:
             tensor_parallel_output_grad = True
             output_split_sizes = None
-            group = None
+            group = get_tensor_model_parallel_group_if_none(None)
             use_global_buffer = False
         output_data = mappings._GatherFromSequenceParallelRegion.backward(Ctx(), input_data)
         expected_output = torch.ones((1, 4)).cuda() * 4 * int(rank % 4)
@@ -147,12 +160,14 @@ class TestTPMapping(DistributedTest):
         output_data = mappings.reduce_scatter_to_sequence_parallel_region(input_data)
         expected_output = torch.ones(4).cuda() * 4 * int(rank % 4)
         assert(torch.equal(output_data[0], expected_output))
-        assert(torch.equal(mappings._ReduceScatterToSequenceParallelRegion.symbolic(None, input_data), expected_output.reshape((1, 4))))
+        ctx = torch.autograd.function.FunctionCtx()
+        ctx.group = get_tensor_model_parallel_group_if_none(None)
+        assert(torch.equal(mappings._ReduceScatterToSequenceParallelRegion.symbolic(None, input_data, ctx.group), expected_output.reshape((1, 4))))
         input_data = torch.ones(4).cuda() * rank
 
         class Ctx:
             input_split_sizes = None
-            group = None
+            group = get_tensor_model_parallel_group_if_none(None)
             use_global_buffer = False
 
         output_data = mappings._ReduceScatterToSequenceParallelRegion.backward(Ctx(), input_data)
@@ -165,4 +180,3 @@ class TestTPMapping(DistributedTest):
             expected_output = expected_output + 4
         assert(torch.equal(output_data[0], expected_output))
         Utils.destroy_model_parallel()
-    

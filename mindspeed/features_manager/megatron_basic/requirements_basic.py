@@ -40,6 +40,16 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('transformer_engine.pytorch.GroupedLinear', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.distributed.CudaRNGStatesTracker', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.common.recipe.DelayedScaling', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.distributed.activation_recompute_forward', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.fp8.fp8_autocast', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.fp8.FP8GlobalStateManager', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.ops.Sequential', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.ops.GELU', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.ops.GEGLU', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.ops.SwiGLU', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.ops.ReLU', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.ops.ReGLU', torch.nn.Module, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.ops.FusibleOperation', torch.nn.Module, create_dummy=True)
         pm.register_patch('flash_attn.flash_attn_interface.flash_attn_unpadded_func', create_dummy=True)
 
     def apex_adaptation(self, pm, args):

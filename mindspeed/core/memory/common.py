@@ -1,6 +1,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 from functools import wraps
+from typing import Optional
 
 from torch import Tensor
 
@@ -79,6 +80,7 @@ def transformer_block_checkpointed_forward(
         rotary_pos_emb: Tensor,
         attention_bias: Tensor,
         packed_seq_params: PackedSeqParams,
+        use_inner_fp8_context: Optional[bool] = False,
 ):
     """Forward method with activation checkpointing."""
 

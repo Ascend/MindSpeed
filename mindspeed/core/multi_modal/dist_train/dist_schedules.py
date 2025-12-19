@@ -14,9 +14,6 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size,
     get_pipeline_model_parallel_rank,
     get_context_parallel_world_size,
-    is_pipeline_stage_before_split,
-    get_pipeline_model_parallel_next_rank,
-    get_pipeline_model_parallel_prev_rank
 )
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.multi_modal.dist_train.dist_ranks_match import get_dst_ranks

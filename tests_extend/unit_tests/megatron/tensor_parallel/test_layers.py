@@ -40,7 +40,8 @@ class TestTPLayers(DistributedTest):
         sequence_parallel = False
         grad_output_buffer = None
         wgrad_deferral_limit = None
-    
+        tp_group = None
+
         output_parallel = linear_with_frozen_weight(
             input_data,
             weight,
@@ -48,6 +49,7 @@ class TestTPLayers(DistributedTest):
             gradient_accumulation_fusion,
             async_grad_allreduce,
             sequence_parallel,
+            tp_group,
             grad_output_buffer,
             wgrad_deferral_limit,
             allreduce_dgrad,

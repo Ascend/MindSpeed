@@ -20,7 +20,6 @@ from mindspeed.core.transformer.moe.moe_feature import (
     reduce_from_tensor_model_parallel_region,
     set_tensor_grad_fn_sequence_sr,
     get_capacity,
-    MoEAlltoAllSEQTokenDispatcher,
     )
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import (
     forward_func, 

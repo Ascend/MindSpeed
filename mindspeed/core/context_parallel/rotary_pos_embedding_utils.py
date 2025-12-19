@@ -12,7 +12,7 @@ from mindspeed.core.context_parallel.model_parallel_utils import (get_context_pa
 from mindspeed.core.context_parallel.utils import get_remapped_seq_order
 
 
-def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
+def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim, cp_group):
     args = get_args()
 
     cp_expanded_by_2d_tp = args.tp_y > 1

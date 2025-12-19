@@ -63,7 +63,7 @@ def step_optimizer(model, use_distributed: bool, seed: int = None,
     kwargs['main_params_dtype'] = torch.float32
     kwargs['exp_avg_dtype'] = torch.float32
     kwargs['exp_avg_sq_dtype'] = torch.float32
-    onfig = OptimizerConfig(**kwargs)
+    config = OptimizerConfig(**kwargs)
     config.timers = get_timers()
     optimizer = get_megatron_optimizer(config, model, no_wd_decay_cond,
                                        scale_lr_cond, lr_mult)

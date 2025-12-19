@@ -91,7 +91,7 @@ def transformer_config_post_init_wrapper(fn):
 
 
 def apply_rotary_pos_emb(
-    t: Tensor, freqs: Tensor, config: TransformerConfig, cu_seqlens: Optional[Tensor] = None, mscale: float = 1.0
+    t: Tensor, freqs: Tensor, config: TransformerConfig, cu_seqlens: Optional[Tensor] = None, mscale: float = 1.0, cp_group: torch.distributed.ProcessGroup = None,
 ):
     """
     Old version for fix rotary_pos_emb in core_r0.10.0.

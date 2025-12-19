@@ -1,11 +1,20 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+from typing import Optional
 
 import math
 import torch
 import torch_npu
-
-from megatron.core.transformer.utils import attention_mask_func
+from torch import Tensor
+from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.process_groups_config import ModelCommProcessGroups
+from megatron.core.parallel_state import (
+    get_context_parallel_group,
+    get_hierarchical_context_parallel_groups,
+    get_tensor_model_parallel_group,
+)
+from megatron.core.transformer.module import MegatronModule
+from megatron.core.packed_seq_params import PackedSeqParams
 from mindspeed.core.context_parallel import AttnMaskType
 from mindspeed.core.context_parallel import FusedScaleMaskSoftmax
 from mindspeed.core.context_parallel import divide
@@ -36,47 +45,84 @@ except ImportError:
     rearrange = None
 
 
-class CPDotProductAttentionImpl:
-    """
-    Implementation of dot product attention with cp support.
+class TEDotProductAttention(MegatronModule):
+    """MindSpeed impl for the Transformer-Engine's `DotProductAttention` layer
+    that also has "flash attention" enabled.
+
+    Note that if Megatron's parallel_state has not been initialized yet, the
+    tp_group and cp_group passed to TE will be None and must be set later
+    via set_tensor_parallel_group() and set_context_parallel_group().
     """
 
-    def __init__(self,
-                 config,
-                 layer_number,
-                 attn_mask_type,
-                 attention_type,
-                 attention_dropout: float = None,
-                 softmax_scale: float = None,
-                 cp_comm_type: str = None,
-                 model_comm_pgs: str = None):
-        cp_size = config.context_parallel_size
-        config.context_parallel_size = 1
+    cp_stream: torch.cuda.Stream = None
+
+    def __init__(
+        self,
+        config: TransformerConfig,
+        layer_number: int,
+        attn_mask_type: AttnMaskType,
+        attention_type: str,
+        attention_dropout: Optional[float] = None,
+        softmax_scale: Optional[float] = None,
+        k_channels: Optional[int] = None, #
+        v_channels: Optional[int] = None, #
+        cp_comm_type: str = "p2p",
+        model_comm_pgs: ModelCommProcessGroups = None, #
+    ):
+        super().__init__(config=config)
         self.config = config
-        super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale, cp_comm_type)
-        assert (
-                self.config.context_parallel_size == 1
-        ), "Context parallelism is only supported by TEDotProductAttention!"
-
-        assert (
-                self.config.window_size is None
-        ), "Sliding Window Attention is only supported by TEDotProductAttention!"
-
+        self.cp_size = parallel_state.get_context_parallel_world_size()
         self.layer_number = max(1, layer_number)
         self.attn_mask_type = attn_mask_type
         self.attention_type = attention_type  # unused for now
 
-        projection_size = self.config.kv_channels * self.config.num_attention_heads
-        # Per attention head and per partition values.
-        world_size = parallel_state.get_tensor_model_parallel_world_size()
-        self.hidden_size_per_partition = divide(projection_size, world_size)
+        kv_channels = k_channels * v_channels if (k_channels is not None and v_channels is not None) else self.config.kv_channels
+        projection_size = kv_channels * self.config.num_attention_heads
         self.hidden_size_per_attention_head = divide(projection_size, config.num_attention_heads)
-        self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
-        self.num_query_groups_per_partition = divide(self.config.num_query_groups, world_size)
 
-        coeff = None
+        if (attention_dropout or self.config.attention_dropout) is not None:
+            self.attention_dropout = torch.nn.Dropout(
+                self.config.attention_dropout if attention_dropout is None else attention_dropout
+            )
+
+        context_transdict = {
+            'p2p': 'megatron_cp_algo',
+            'a2a': 'ulysses_cp_algo',
+            'a2a+p2p': 'hybrid_cp_algo'
+        }
+        if cp_comm_type not in context_transdict.keys():
+            raise NotImplementedError(f'The cp type {cp_comm_type} is not support for MindSpeed TE!')
+
+        if self.cp_size > 1:
+            if context_transdict[cp_comm_type] != config.context_parallel_algo:
+                print(f'MindSpeed CP {config.context_parallel_algo} not equal Megatron CP {cp_comm_type}! \
+                    Please check CP type. Now runing CP type is {context_transdict[cp_comm_type]}')
+        self.cp_algo = context_transdict[cp_comm_type]
+        '''
+        CP Comm group settings.
+        In Mindspeed, p2p equals ring, a2a equals ulysses, and p2p+a2a equals hybird.
+        '''
+        if model_comm_pgs is None:
+            model_comm_pgs = ModelCommProcessGroups(
+                tp=get_tensor_model_parallel_group(check_initialized=False),
+                cp=get_context_parallel_group(check_initialized=False),
+                hcp=get_hierarchical_context_parallel_groups(check_initialized=False),
+            )
+        else:
+            if not hasattr(model_comm_pgs, "tp"):
+                raise AssertionError("TEDotProductAttention model_comm_pgs must have tp pg")
+            if not hasattr(model_comm_pgs, "cp"):
+                raise AssertionError("TEDotProductAttention model_comm_pgs must have cp pg")
+            if cp_comm_type == "a2a+p2p":
+                if not hasattr(model_comm_pgs, "hcp"):
+                    raise AssertionError("TEDotProductAttention model_comm_pgs must have hierarchical cp pg")
+
+        self.is_ulysses_algo = self.cp_algo == 'ulysses_cp_algo'
+
+        # scale cal.
         if softmax_scale is None:
             self.softmax_scale = 1.0 / math.sqrt(self.hidden_size_per_attention_head)
+
         else:
             self.softmax_scale = softmax_scale
 
@@ -84,29 +130,13 @@ class CPDotProductAttentionImpl:
             coeff = self.layer_number
             self.softmax_scale /= coeff
 
-        self.norm_factor = math.sqrt(self.hidden_size_per_attention_head)
-        if self.config.apply_query_key_layer_scaling:
-            coeff = self.layer_number
-            self.norm_factor *= coeff
+        self.scale = self.softmax_scale
 
-        self.scale_mask_softmax = FusedScaleMaskSoftmax(
-            input_in_fp16=self.config.fp16,
-            input_in_bf16=self.config.bf16,
-            attn_mask_type=self.attn_mask_type,
-            scaled_masked_softmax_fusion=self.config.masked_softmax_fusion,
-            mask_func=attention_mask_func,
-            softmax_in_fp32=self.config.attention_softmax_in_fp32,
-            scale=coeff,
-        )
-
-        # Dropout. Note that for a single iteration, this layer will generate
-        # different outputs on different number of parallel partitions but
-        # on average it should not be partition dependent.
-        self.attention_dropout = torch.nn.Dropout(
-            self.config.attention_dropout if attention_dropout is None else attention_dropout
-        )
-
-        config.context_parallel_size = cp_size
+        self.cp_expanded_by_2d_tp = getattr(self.config, 'tp_2d', False) and getattr(self.config, 'tp_y', 1) > 1
+        if self.cp_expanded_by_2d_tp:
+            self.tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
+        else:
+            self.tp_y_cp_sz = self.config.context_parallel_size
 
         # add pse
         self.pse = None
@@ -134,14 +164,18 @@ class CPDotProductAttentionImpl:
 
     def forward(
         self,
-        query,
-        key,
-        value,
-        attention_mask,
-        attn_mask_type=None,
-        attention_bias=None,
-        packed_seq_params=None,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        attention_mask: Tensor,
+        attn_mask_type: AttnMaskType,
+        attention_bias: Tensor = None,
+        packed_seq_params: Optional[PackedSeqParams] = None,
     ):
+        """Forward."""
+        if attention_bias is not None:
+            raise AssertionError("Attention bias is not supported for TEDotProductAttention.")
+
         if attention_mask is None and self.attn_mask_type == AttnMaskType.causal:
             if not getattr(self.config, 'is_llava', False):
                 attention_mask = get_attention_mask()
@@ -150,23 +184,20 @@ class CPDotProductAttentionImpl:
                 if getattr(self.config, 'reset_attention_mask', False):
                     if self.config.attention_mask_type == 'general':
                         self.config.sparse_mode = 2
-                        if not (self.config.context_parallel_size == 1 or self.config.context_parallel_algo == 'ulysses_cp_algo'):
+                        if not (self.config.context_parallel_size == 1 or self.cp_algo == 'ulysses_cp_algo'):
                             self.config.sparse_mode = 1
 
         sparse_mode = self.config.sparse_mode
-        is_ulysses_algo = (getattr(self.config, 'context_parallel_algo', None) == 'ulysses_cp_algo')
 
-        assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
-
-        if packed_seq_params is not None and not is_ulysses_algo:
+        if packed_seq_params is not None and not self.is_ulysses_algo:
             #TND
-            T, n_head, D = query.shape[0], query.shape[1], query.shape[2]
+            _, n_head, _ = query.shape[0], query.shape[1], query.shape[2]
         else:
-            seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+            _, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
 
-        if packed_seq_params is not None and not is_ulysses_algo:
+        if packed_seq_params is not None and not self.is_ulysses_algo:
             # TND
-            cp_size = parallel_state.get_context_parallel_world_size()
+            
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
             actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
             shape_order = 'TND'
@@ -179,16 +210,8 @@ class CPDotProductAttentionImpl:
 
         if attn_mask_type == AttnMaskType.no_mask:
             sparse_mode = 0  # default mask
-
-        scale = self.softmax_scale
-
-        cp_expanded_by_2d_tp = getattr(self.config, 'tp_2d', False) and getattr(self.config, 'tp_y', 1) > 1
-        if cp_expanded_by_2d_tp:
-            tp_y_cp_sz = TensorParallelYUnionCP().get_parallel_group_world_size()
-        else:
-            tp_y_cp_sz = self.config.context_parallel_size
-
-        if (self.config.context_parallel_size > 1 and self.config.context_parallel_algo == "ulysses_cp_algo"
+    
+        if (self.config.context_parallel_size > 1 and self.cp_algo == "ulysses_cp_algo"
                 and self.config.context_parallel_kv_cache_policy):
             self.ulysses_comm_para['cache_policy'] = get_cache_policy(
                 self.layer_number, self.config.context_parallel_kv_cache_policy, self.config.context_parallel_cache_interval
@@ -198,7 +221,7 @@ class CPDotProductAttentionImpl:
             attn_para = dict()
             attn_para['packed_seq_params'] = packed_seq_params
             attn_para['attention_mask'] = attention_mask
-            attn_para['scale'] = scale
+            attn_para['scale'] = self.scale
             attn_para['pre_tokens'] = self.config.pre_tockens
             attn_para['next_tokens'] = self.config.next_tockens
             attn_para['keep_prob'] = 1 - self.attention_dropout.p
@@ -207,14 +230,15 @@ class CPDotProductAttentionImpl:
             output = ulyssesattn_context_parallel(query, key, value, attn_para, self.ulysses_comm_para)
 
             return output
-        if tp_y_cp_sz > 1 and self.config.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
+
+        if self.tp_y_cp_sz > 1 and self.cp_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
                                                              'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
             in_hybrid_mode = False
             if get_context_parallel_group_for_hybrid_ring(check_initialized=False) is not None:
                 in_hybrid_mode = True
 
             if not in_hybrid_mode:
-                if cp_expanded_by_2d_tp:
+                if self.cp_expanded_by_2d_tp:
                     tp_y_cp = TensorParallelYUnionCP()
                     cp_group = tp_y_cp.group
                     cp_size = tp_y_cp.get_parallel_group_world_size()
@@ -238,13 +262,13 @@ class CPDotProductAttentionImpl:
             cp_para['cp_size'] = cp_size
             cp_para['rank'] = rank
 
-            if self.config.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
+            if self.cp_algo in ['megatron_cp_algo', 'hybrid_cp_algo']:
                 is_general_eod = ((getattr(self.config, 'attention_mask_type', None) == 'general') and (packed_seq_params is not None))
                 if is_general_eod:
                     query, key, value = [rearrange(x, '(b s) n d -> s b (n d)', b=self.config.micro_batch_size) for x in [query, key, value]]
                 cp_para['cp_global_ranks'] = cp_global_ranks
                 if self.config.use_cp_send_recv_overlap:
-                    if cp_expanded_by_2d_tp:
+                    if self.cp_expanded_by_2d_tp:
                         cp_para['cp_group_for_send_recv_overlap'] = tp_y_cp.overlap_group
                     else:
                         cp_para[
@@ -264,7 +288,7 @@ class CPDotProductAttentionImpl:
                     cp_para['cache_policy'] = get_cache_policy(
                         self.layer_number, self.config.context_parallel_kv_cache_policy, self.config.context_parallel_cache_interval
                     )
-                output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask,
+                output = ringattn_context_parallel(query, key, value, n_head, cp_para, self.scale, attention_mask,
                                                    self.attention_dropout.p,
                                                    packed_seq_params)
                 if is_general_eod:
@@ -272,7 +296,7 @@ class CPDotProductAttentionImpl:
 
             else:
                 cp_para['scheduling_info'] = get_scheduling_info()
-                output = adaptive_attn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask,
+                output = adaptive_attn_context_parallel(query, key, value, n_head, cp_para, self.scale, attention_mask,
                                                         self.attention_dropout.p)
 
         else:
@@ -287,7 +311,7 @@ class CPDotProductAttentionImpl:
                     pse=self.pse,
                     padding_mask=None,
                     atten_mask=attention_mask,
-                    scale=scale,
+                    scale=self.scale,
                     pse_type=self.pse_type,
                     pre_tokens=self.config.pre_tockens,
                     next_tokens=self.config.next_tockens,
@@ -303,7 +327,7 @@ class CPDotProductAttentionImpl:
                     pse=None,
                     padding_mask=None,
                     atten_mask=attention_mask,
-                    scale=scale,
+                    scale=self.scale,
                     pre_tockens=self.config.pre_tockens,
                     next_tockens=self.config.next_tockens,
                     keep_prob=1 - self.attention_dropout.p,
@@ -316,4 +340,5 @@ class CPDotProductAttentionImpl:
             if packed_seq_params is not None:
                 output = rearrange(output, '(b s) h d -> s b (h d)', b=bsz)
                 shape_order = 'TND'
+
         return output

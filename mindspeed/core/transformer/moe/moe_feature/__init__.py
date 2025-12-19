@@ -15,7 +15,6 @@ from megatron.core.transformer.moe.moe_utils import (
     save_to_aux_losses_tracker,
     sort_chunks_by_idxs,
     get_capacity,
-    topk_softmax_with_capacity
 )
 
 from megatron.core.tensor_parallel.layers import (
@@ -57,7 +56,6 @@ from megatron.core.transformer.multi_token_prediction import MultiTokenPredictio
 from megatron.core.transformer.moe.moe_layer import MoELayer, BaseMoELayer, BaseMoELayer as MegatronBaseMoeLayer
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP, set_tensor_grad_fn_sequence_sr
 from megatron.core.transformer.moe.experts import GroupedMLP
-from megatron.core.transformer.moe.legacy_a2a_token_dispatcher import MoEAlltoAllSEQTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAllGatherTokenDispatcher
 from megatron.core.packed_seq_params import PackedSeqParams

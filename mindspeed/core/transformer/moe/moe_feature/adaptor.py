@@ -3,7 +3,6 @@
 
 from mindspeed.core.transformer.moe.moe_feature import MoELayer as MegatronMoELayer
 from mindspeed.core.transformer.moe.moe_feature import GroupedMLP as MegatronGroupedMLP
-from mindspeed.core.transformer.moe.moe_feature import MoEAlltoAllSEQTokenDispatcher as MegatronMoEAlltoAllSEQTokenDispatcher
 from mindspeed.core.transformer.moe.moe_feature import MoEAllGatherTokenDispatcher as MegatronMoEAllGatherTokenDispatcher
 from mindspeed.core.transformer.moe.moe_feature import MoEAlltoAllTokenDispatcher as MegatronMoEAlltoAllTokenDispatcher
 
@@ -21,12 +20,6 @@ from mindspeed.core.transformer.moe.moe_feature.overlap.token_dispatcher import 
                                                                                 )
 from mindspeed.core.transformer.moe.moe_feature.overlap.experts import OverLapGmmExpertsImpl, AlltoAllOverLapGmmExpertsImpl
 from mindspeed.core.transformer.moe.moe_feature.gmm.experts import GmmExpertsImpl
-
-
-class MindSpeedMOEAlltoAllSEQTptoEpTokenDispatcher(All2AllSeqTp2epDispatcherImpl, MegatronMoEAlltoAllSEQTokenDispatcher):
-    # TokenDispatcher of AlltoAllSEQ API which support tp_extend_ep
-    def __init__(self, *args, **kwargs):
-        All2AllSeqTp2epDispatcherImpl.__init__(self, *args, **kwargs)
 
 
 class MindSpeedTpExtendEpGmmExperts(TpExtendEpGmmExpertsImpl, MegatronGroupedMLP):
@@ -55,12 +48,6 @@ class MindSpeedAlltoAllSeqOverlapMoeLayerAdaptor(AlltoAllSeqOverlapMoeLayer, Meg
     def __init__(self, *args, **kwargs):
 
         AlltoAllSeqOverlapMoeLayer.__init__(self, *args, **kwargs)
-
-
-class MindSpeedMOEAlltoAllSeqOverLapDispatcherAdaptor(MoEAlltoAllSeqOverLapDispatcher, MegatronMoEAlltoAllSEQTokenDispatcher):
-    # TokenDispatcher of AlltoAllSEQ overlap API which support tp_extend_ep
-    def __init__(self, *args, **kwargs):
-        MoEAlltoAllSeqOverLapDispatcher.__init__(self, *args, **kwargs)
 
 
 class MindSpeedAllGatherOverlapMoeLayerAdaptor(AllGatherOverlapMoeLayer, MegatronMoELayer):

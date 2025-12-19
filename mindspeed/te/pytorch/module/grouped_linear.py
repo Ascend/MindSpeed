@@ -241,6 +241,7 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add: bool,
             is_expert: bool,
             tp_comm_buffer_name: Optional[str] = None,
+            tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -286,6 +287,7 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add: bool,
             is_expert: bool,
             tp_comm_buffer_name: Optional[str] = None,
+            tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,

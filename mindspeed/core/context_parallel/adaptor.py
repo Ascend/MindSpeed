@@ -7,6 +7,7 @@ from mindspeed.core.context_parallel.model_parallel_utils import get_context_par
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.context_parallel.dot_product_attention import CPDotProductAttentionImpl
 from mindspeed.core.context_parallel import DotProductAttention as MegatronDotProductAttention
+from mindspeed.te.pytorch.module.TE_dot_product_attention import TEDotProductAttention as MindSpeedTEDotProductAttention
 
 
 class MindSpeedCPDotProductAttention(CPDotProductAttentionImpl, MegatronDotProductAttention):
@@ -24,8 +25,9 @@ def attention_init_wrapper(fn):
         layer_number,
         attn_mask_type,
         attention_type,
-        cp_comm_type: str = None,):
-        fn(self, config, submodules, layer_number, attn_mask_type, attention_type, cp_comm_type)
+        cp_comm_type: str = None,
+        model_comm_pgs: str = None):
+        fn(self, config, submodules, layer_number, attn_mask_type, attention_type, cp_comm_type, model_comm_pgs)
         cp = config.context_parallel_size
         if config.tp_2d:
             tp_y_cp_sz = cp * config.tp_y
