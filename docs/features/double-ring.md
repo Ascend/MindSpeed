@@ -36,4 +36,5 @@ Ring Attention使能方式参考[此处](ring-attention-context-parallel.md)
 ## 注意事项
 
 1. 需要确保`--context-parallel-size`能被`--cp-window-size`整除。
-2. 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如Llama2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
+2. 需要确保`--cp-window-size`小于`--context-parallel-size`。
+3. 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如Llama2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
