@@ -46,6 +46,18 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
         pm.register_patch('transformer_engine.pytorch.tensor.QuantizedTensor', torch.nn.Module, create_dummy=True)
 
     def register_patches(self, pm: MindSpeedPatchesManager, args):
+        from mindspeed.te.pytorch.module.checkpoint import transformer_block_forward, \
+            transformer_block_checkpointed_forward
+        pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.forward',
+                          transformer_block_forward)
+        # 让路其他组件
+        if not (
+            getattr(args, 'swap_attention', False)
+            or getattr(args, 'recompute_method', False) == 'block'
+        ):
+            pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
+                              transformer_block_checkpointed_forward)
+
         if getattr(args, "fp8_format", False):
             from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
                 MindSpeedTEDotProductAttention
@@ -85,18 +97,9 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             pm.register_patch("megatron.core.extensions.transformer_engine.Fp8Padding", Fp8Padding)
             pm.register_patch("megatron.core.extensions.transformer_engine.Fp8Unpadding", Fp8Unpadding)
 
-            from mindspeed.te.pytorch.module.checkpoint import transformer_block_forward, \
-                transformer_block_checkpointed_forward, te_checkpoint
-            pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.forward',
-                              transformer_block_forward)
-            # 让路其他组件
-            if not (
-                getattr(args, 'swap_attention', False)
-                or getattr(args, 'recompute_method', False) == 'block'
-            ):
-                pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
-                                  transformer_block_checkpointed_forward)
+            from mindspeed.te.pytorch.module.checkpoint import te_checkpoint
             pm.register_patch('megatron.core.extensions.transformer_engine.te_checkpoint', te_checkpoint)
+
             if not getattr(args, "moe_fb_overlap", False):
                 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.adaptor import (
                     dualpipev_fb_overlap_mtp_layer_forward_te_without_overlap, get_moe_module_spec_wrapper)
