@@ -144,17 +144,18 @@ def ref_chunk_bwd_dv_local(
 
 @pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'D', 'scale', 'chunk_size'),
+    ('B', 'T', 'H', 'D', 'scale', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-D{}-scale{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-D{}-scale{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-            (1, 1024, 32, 128, 0.5, 16),
-            (1, 4096, 32, 128, 0.5, 16),
+        (1, 4096, 32, 128, 0.5, 16, [0, 1024, 1164, 2000, 3000]),
+        (1, 4096, 32, 128, 0.5, 16, None),
+        (1, 2048, 32, 128, 0.5, 16, None),
+        (2, 4096, 32, 128, 0.5, 16, None),
         ]
     ]
 )
-def test_chunk_bwd_dv_local(B, T, H, D, scale, chunk_size):
-
+def test_chunk_bwd_dv_local(B, T, H, D, scale, chunk_size, cu_seqlens):
     device = "npu:0"
     device_dtype = torch.float32
 
@@ -163,22 +164,27 @@ def test_chunk_bwd_dv_local(B, T, H, D, scale, chunk_size):
     do = torch.rand((B, T, H, D), device=device, dtype=device_dtype)
     g = torch.rand((B, T, H), device=device, dtype=device_dtype)
 
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to(device)
+
     ref_dv = ref_chunk_bwd_dv_local(
         q=q,
         k=k,
         do=do,
         g=g,
+        cu_seqlens=cu_seqlens,
         scale=scale,
         chunk_size=chunk_size
     )
-    
+
     dv = bwd_chunk_dv_local(
         q=q,
         k=k,
         do=do,
         g=g,
+        cu_seqlens=cu_seqlens,
         scale=scale,
         chunk_size=chunk_size
     )
 
-    assert_close('dv', ref_dv, dv, 0.001)
+    torch.testing.assert_close(ref_dv, dv, rtol=1e-3, atol=1e-3)

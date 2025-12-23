@@ -285,43 +285,47 @@ def ref_chunk_scaled_dot_kkt_fwd(
 
 @pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'K', 'chunk_size'),
+    ('B', 'T', 'H', 'K', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-K{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-K{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-            (1, 1024, 32, 128, 16),
-            (1, 4096, 32, 128, 16),
+        (1, 4096, 32, 128, 16, [0, 1024, 1164, 2000, 3000]),
+        (1, 4096, 32, 128, 16, None),
+        (1, 2048, 32, 128, 16, None),
+        (2, 4096, 32, 128, 16, None),
         ]
     ]
 )
-def test_chunk_scaled_dot_kkt_fwd(B, T, H, K, chunk_size):
-
+def test_chunk_scaled_dot_kkt_fwd(B, T, H, K, chunk_size, cu_seqlens):
     device = "npu:0"
     device_dtype = torch.float32
+    torch.manual_seed(0)
 
     k = torch.rand((B, T, H, K), device=device, dtype=device_dtype)
     beta = torch.rand((B, T, H), device=device, dtype=device_dtype)
     g = torch.rand((B, T, H), device=device, dtype=device_dtype)
     gk = None
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to(device)
 
     ref_A = ref_chunk_scaled_dot_kkt_fwd(
-            k=k,
-            g=g,
-            gk=gk,
-            beta=beta,
-            cu_seqlens=None,
-            chunk_size=chunk_size,
-            output_dtype=device_dtype
-        )
-    
-    A = chunk_scaled_dot_kkt_fwd(
-            k=k,
-            g=g,
-            gk=gk,
-            beta=beta,
-            cu_seqlens=None,
-            chunk_size=chunk_size,
-            output_dtype=device_dtype
-        )
+        k=k,
+        g=g,
+        gk=gk,
+        beta=beta,
+        cu_seqlens=cu_seqlens,
+        chunk_size=chunk_size,
+        output_dtype=device_dtype
+    )
 
-    assert_close('A', ref_A, A, 0.001)
+    A = chunk_scaled_dot_kkt_fwd(
+        k=k,
+        g=g,
+        gk=gk,
+        beta=beta,
+        cu_seqlens=cu_seqlens,
+        chunk_size=chunk_size,
+        output_dtype=device_dtype
+    )
+
+    torch.testing.assert_close(ref_A, A, rtol=1e-3, atol=1e-3)
