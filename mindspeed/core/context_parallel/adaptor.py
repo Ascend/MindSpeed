@@ -7,7 +7,6 @@ from mindspeed.core.context_parallel.model_parallel_utils import get_context_par
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.context_parallel.dot_product_attention import CPDotProductAttentionImpl
 from mindspeed.core.context_parallel import DotProductAttention as MegatronDotProductAttention
-from mindspeed.te.pytorch.module.TE_dot_product_attention import TEDotProductAttention as MindSpeedTEDotProductAttention
 
 
 class MindSpeedCPDotProductAttention(CPDotProductAttentionImpl, MegatronDotProductAttention):

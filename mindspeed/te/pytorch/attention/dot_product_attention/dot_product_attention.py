@@ -14,6 +14,8 @@ from megatron.core.parallel_state import (
     get_context_parallel_global_ranks,
     get_tensor_model_parallel_group,
 )
+from megatron.core.process_groups_config import ModelCommProcessGroups
+
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 from torch.distributed import ProcessGroup as dist_group_type
@@ -21,6 +23,7 @@ from torch.distributed import ProcessGroup as dist_group_type
 from mindspeed.core.transformer.flash_attention.generate_mask.generate_mask import get_attention_mask
 
 from .backend import FlashAttention
+from .context_parallel import CPStrategyFactory
 from .utils import get_distributed_world_size
 
 
@@ -214,11 +217,19 @@ class DotProductAttention(torch.nn.Module):
                 cp_size *= get_distributed_world_size(group)
         self.context_parallel = cp_size > 1
 
-        self.core_attention = FlashAttention(softmax_scale=softmax_scale,
-                                             attention_dropout=self.attention_dropout,
-                                             attention_type=self.attention_type,
-                                             deterministic=self.deterministic,
-                                             )
+        if self.context_parallel:
+            self.core_attention = CPStrategyFactory.create_strategy(strategy_type=self.cp_comm_type,
+                                                                    softmax_scale=softmax_scale,
+                                                                    attention_dropout=self.attention_dropout,
+                                                                    attention_type=self.attention_type,
+                                                                    deterministic=self.deterministic,
+                                                                    )
+        else:
+            self.core_attention = FlashAttention(softmax_scale=softmax_scale,
+                                                 attention_dropout=self.attention_dropout,
+                                                 attention_type=self.attention_type,
+                                                 deterministic=self.deterministic,
+                                                 )
 
     def set_tensor_parallel_group(
         self,
@@ -552,7 +563,7 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
         k_channels: Optional[int] = None,
         v_channels: Optional[int] = None,
         cp_comm_type: str = "p2p",
-        model_comm_pgs: str = None,
+        model_comm_pgs: ModelCommProcessGroups = None,
     ):
         self.config = config
         self.layer_number = max(1, layer_number)
@@ -564,10 +575,35 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
         extra_kwargs["num_gqa_groups"] = self.config.num_query_groups
         extra_kwargs["attention_type"] = attention_type
 
+        if model_comm_pgs is None:
+            # For backward compatibility, remove in v0.14 and raise error
+            # raise ValueError("TEDotProductAttention was called without ModelCommProcessGroups")
+            model_comm_pgs = ModelCommProcessGroups(
+                tp=get_tensor_model_parallel_group(check_initialized=False),
+                cp=get_context_parallel_group(check_initialized=False),
+                hcp=get_hierarchical_context_parallel_groups(check_initialized=False),
+            )
+        else:
+            assert hasattr(
+                model_comm_pgs, "tp"
+            ), "TEDotProductAttention model_comm_pgs must have tp pg"
+            assert hasattr(
+                model_comm_pgs, "cp"
+            ), "TEDotProductAttention model_comm_pgs must have cp pg"
+            if cp_comm_type == "a2a+p2p":
+                assert hasattr(
+                    model_comm_pgs, "hcp"
+                ), "TEDotProductAttention model_comm_pgs must have hierarchical cp pg"
+
         # This check is important as CP config can be disabled while having a valid CP group
         if self.config.context_parallel_size > 1:
-            extra_kwargs["cp_group"] = get_context_parallel_group(check_initialized=False)
-            extra_kwargs["cp_global_ranks"] = get_context_parallel_global_ranks(check_initialized=False)
+            cp_group = model_comm_pgs.cp
+            cp_global_ranks = torch.distributed.get_process_group_ranks(
+                model_comm_pgs.cp
+            )
+
+            extra_kwargs["cp_group"] = cp_group
+            extra_kwargs["cp_global_ranks"] = cp_global_ranks
             extra_kwargs["cp_comm_type"] = self.config.context_parallel_algo
 
             if getattr(MindSpeedTEDotProductAttention, "cp_stream") is None:
@@ -600,7 +636,7 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
             attn_mask_type=self.attn_mask_type,
             sequence_parallel=self.config.sequence_parallel,
             tp_size=self.config.tensor_model_parallel_size,
-            tp_group=get_tensor_model_parallel_group(check_initialized=False),
+            tp_group=model_comm_pgs.tp,
             layer_number=self.layer_number,
             **extra_kwargs,
         )

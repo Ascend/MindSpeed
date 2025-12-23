@@ -42,6 +42,8 @@ def get_ring_degree():
         return cp_size
     elif args.context_parallel_algo == 'ulysses_cp_algo':
         return 1
+    elif args.context_parallel_algo == 'kvallgather_cp_algo':
+        return 1
     else:
         return args.ring_degree
 
@@ -108,7 +110,10 @@ def get_batch_on_this_cp_rank(batch):
 
     cp_expanded_by_2d_tp = args.tp_y > 1
     if args.reset_attention_mask and args.attention_mask_type == 'causal':
-        batch = _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, get_actual_seq_len())
+        if args.context_parallel_algo == 'kvallgather_cp_algo':
+            batch = _get_batch_on_this_cp_rank_in_ulysses_cp(batch)
+        else:
+            batch = _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, get_actual_seq_len())
     elif args.context_parallel_algo == 'megatron_cp_algo':
         if args.attention_mask_type == 'general':
             batch = _get_batch_on_this_cp_rank_in_megatron_cp_general(batch)
@@ -127,6 +132,8 @@ def get_batch_on_this_cp_rank(batch):
         batch = _get_batch_on_this_cp_rank_in_adaptive_cp(batch)
     elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
         batch = _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch)
+    elif args.context_parallel_algo == 'kvallgather_cp_algo':
+        batch = _get_batch_on_this_cp_rank_in_megatron_cp(batch)
     return batch
 
 

@@ -245,7 +245,7 @@ def attention_forward(
     # ===================================================
     # Adjust key, value, and rotary_pos_emb for inference
     # ===================================================
-    query, key, value, rotary_pos_emb, attn_mask_type = self._adjust_key_value_for_inference(
+    query, key, value, rotary_pos_emb, attn_mask_type, block_table = self._adjust_key_value_for_inference(
         inference_context, query, key, value, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin, sequence_len_offset
     )
 
@@ -649,6 +649,8 @@ def get_ring_degree():
     if args.context_parallel_algo == 'megatron_cp_algo':
         return cp_size
     elif args.context_parallel_algo == 'ulysses_cp_algo':
+        return 1
+    elif args.context_parallel_algo == 'kvallgather_cp_algo':
         return 1
     else:
         return args.ring_degree
