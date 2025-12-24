@@ -249,7 +249,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             else:
                 norm_output = self._rmsnorm(inp)
 
-        bias = self.bias if self.te_return_bias else None
+        bias = self.bias if not self.skip_bias_add else None
 
         if (
             self.allreduce_dgrad
@@ -293,6 +293,9 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                     else None
                 )
             )
+
+        bias = self.bias if self.te_return_bias else None
+
         return output_parallel, bias
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
