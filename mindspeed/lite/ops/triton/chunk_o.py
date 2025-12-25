@@ -50,24 +50,23 @@ def chunk_bwd_kernel_dqkwg(
     IS_VARLEN: tl.constexpr,
 ):
     i_t, i_b = tl.program_id(0), tl.program_id(1)
-
+    T_max = T
     if IS_VARLEN:
         i_tg = i_t
         i_n, i_t = tl.load(chunk_indices + i_t * 2).to(tl.int32), tl.load(chunk_indices + i_t * 2 + 1).to(tl.int32)
         bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
-        all_T = T
+        total = B * T_max
         T = eos - bos
-        NT = tl.cdiv(T, BT)
     else:
         NT = tl.cdiv(T, BT)
         i_tg = i_b * NT + i_t
         bos, eos = i_b * T, i_b * T + T
-        all_T = B * T
+        total = B * T_max
 
     NK = tl.cdiv(K, BK)
     for i_k in range(NK):
         if USE_G:
-            dg_k = dg + i_k * all_T * H
+            dg_k = dg + i_k * total * H
 
         for i_h in range(H):
             v_h = v + (bos * H + i_h) * V
@@ -86,7 +85,12 @@ def chunk_bwd_kernel_dqkwg(
                 dv_h = dv + (bos * H + i_h) * V
 
             if USE_G:
-                dg_h = dg_k + bos * H + i_h * T
+                if IS_VARLEN:
+                    dg_h = dg_k + i_h * T_max + bos
+                    g_h = g + i_h * T_max + bos
+                else:
+                    dg_h = dg_k + (i_b * H + i_h) * T_max
+                    g_h = g + (i_b * H + i_h) * T_max
                 b_dg_last = tl.zeros([1, ], dtype=tl.float32)
 
             if USE_G_GAMMA:
@@ -142,7 +146,6 @@ def chunk_bwd_kernel_dqkwg(
 
             if USE_G:
                 b_dg = tl.zeros([BT, ], dtype=tl.float32)
-                g_h = g + bos * H + i_h * T
 
                 p_g = tl.make_block_ptr(g_h, (T,), (1,), (i_t * BT,), (BT,), (0,))
                 b_g = tl.load(p_g, boundary_check=(0,))
@@ -225,6 +228,8 @@ def chunk_bwd_kernel_dv_local(
     IS_VARLEN: tl.constexpr,
 ):
     i_t, i_b = tl.program_id(0), tl.program_id(1)
+    T_max = T
+
     if IS_VARLEN:
         i_n, i_t = tl.load(chunk_indices + i_t * 2).to(tl.int32), tl.load(chunk_indices + i_t * 2 + 1).to(tl.int32)
         bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
@@ -233,22 +238,26 @@ def chunk_bwd_kernel_dv_local(
         bos, eos = i_b * T, i_b * T + T
 
     for i_h in range(H):
-        # offset calculation
         offset_kh = (bos * H + i_h) * K
         offset_vh = (bos * H + i_h) * V
 
         b_A = tl.zeros([BT, BT], dtype=tl.float32)
         for i_k in range(tl.cdiv(K, BK)):
             p_k = tl.make_block_ptr(k + offset_kh, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
-            p_q = tl.make_block_ptr(q + offset_vh, (K, T), (1, H * K), (i_k * BK, i_t * BT), (BK, BT), (0, 1))
+            p_q = tl.make_block_ptr(q + offset_kh, (K, T), (1, H * K), (i_k * BK, i_t * BT), (BK, BT), (0, 1))
             b_q = tl.load(p_q, boundary_check=(0, 1))
             b_k = tl.load(p_k, boundary_check=(0, 1))
             b_A += tl.dot(b_k, b_q)
 
         if USE_G:
-            offset_g = bos * H + i_h * T
+            if IS_VARLEN:
+                offset_g = i_h * T_max + bos
+            else:
+                offset_g = i_b * H * T_max + i_h * T_max
+
             p_g = tl.make_block_ptr(g + offset_g, (T,), (1,), (i_t * BT,), (BT,), (0,))
             b_g = tl.load(p_g, boundary_check=(0,))
+
         if USE_G_GAMMA:
             b_gamma = tl.load(g_gamma + i_h)
             b_g = b_gamma * (tl.arange(0, BT) + 1)
@@ -256,8 +265,9 @@ def chunk_bwd_kernel_dv_local(
         o_t = i_t * BT + tl.arange(0, BT)
         m_t = o_t < T
         m_A = (o_t[:, None] <= o_t[None, :]) & (m_t[:, None] & m_t)
+
         if USE_G:
-            b_A = tl.where(m_A, b_A * exp(b_g[None, :] - b_g[:, None]) * scale, 0).to(do.dtype.element_ty)
+            b_A = tl.where(m_A, b_A * tl.exp(b_g[None, :] - b_g[:, None]) * scale, 0).to(do.dtype.element_ty)
         else:
             b_A = tl.where(m_A, b_A * scale, 0).to(do.dtype.element_ty)
 
@@ -407,7 +417,6 @@ def chunk_bwd_dqkwg(
     chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
     NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
 
-    CONST_TILING = 64 if check_shared_mem() else 32
     BK = 64
     BV = 64
     NK = triton.cdiv(K, BK)
@@ -416,7 +425,6 @@ def chunk_bwd_dqkwg(
     g = g.transpose(1, 2).contiguous()
     dg = torch.empty(NK, *g.shape, dtype=torch.float32, device=g.device) if g is not None else None
     dw = torch.empty_like(w) if w is not None else None
-
     grid = (NT, B)
     chunk_bwd_kernel_dqkwg[grid](
         q=q,
