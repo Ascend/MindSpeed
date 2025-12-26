@@ -60,7 +60,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         # experts ep group allgather hidden_states
         global_hidden_states_tuple = None
         if moe_layer.config.sequence_parallel or moe_layer.config.expert_model_parallel_size > 1:
-            if '910B' in acl.get_soc_name():
+            if '910B' in torch_npu.npu.get_device_name():
                 _, global_hidden_states, ghs_handle = async_all_gather(
                     hidden_states,
                     parallel_state.get_expert_tensor_and_model_parallel_group(),
@@ -194,7 +194,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         if share_experts_graph is not None:
             # shared_expert backward.
             share_experts_graph.backward(ag_share_experts_grad_input)
-        if '910B' in acl.get_soc_name() or share_experts_graph is None:
+        if '910B' in torch_npu.npu.get_device_name() or share_experts_graph is None:
             from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import set_ag_tp_hidden_status
             set_ag_tp_hidden_status(input_)
 

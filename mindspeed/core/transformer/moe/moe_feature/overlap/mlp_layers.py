@@ -116,7 +116,7 @@ class ShareExpertLinearWithGradAccumulationAndAsyncCommunication(torch.autograd.
                 total_input = all_gather_buffer
             else:
                 total_input = input
-            if ctx.need_save and '910B' not in acl.get_soc_name():
+            if ctx.need_save and '910B' not in torch_npu.npu.get_device_name():
                 set_ag_tp_hidden_status(total_input)
         grad_input = grad_output.matmul(weight)
 

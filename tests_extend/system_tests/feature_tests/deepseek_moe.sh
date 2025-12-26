@@ -110,10 +110,15 @@ OUTPUT_ARGS="
     --eval-iters 10 \
 "
 
+OPTIMIZE_ARGS="
+    --swap-optimizer \
+"
+
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \
     $MOE_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
+    $OPTIMIZE_ARGS \
 
 set +x

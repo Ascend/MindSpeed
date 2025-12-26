@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 
+import mindspeed.megatron_adaptor
 from megatron.core import mpu, parallel_state
 from megatron.core.datasets.blended_megatron_dataset_builder import \
     BlendedMegatronDatasetBuilder
@@ -18,8 +19,6 @@ from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.enums import ModelType
 from megatron.training import get_args, get_tokenizer, pretrain
 from megatron.training.arguments import core_transformer_config_from_args
-
-import mindspeed.megatron_adaptor
 
 
 class MultiParamSimpleModel(nn.Module):

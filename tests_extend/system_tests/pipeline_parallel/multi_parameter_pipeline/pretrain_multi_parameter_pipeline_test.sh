@@ -71,7 +71,7 @@ GPT_ARGS="
     --lr-warmup-fraction 0.01 \
     --mock-data \
     --npu-deterministic \
-    --optimization-level 0 \
+    --optimization-level 2 \
     --transformer-impl local \
     --use-multiparameter-pipeline-model-parallel
 "

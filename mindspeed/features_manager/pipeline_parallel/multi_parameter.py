@@ -35,7 +35,7 @@ class MultiParameterFeature(MindSpeedFeature):
     def validate_args(self, args):
         self.incompatible_check(args, 'moe_fb_overlap')
 
-        if getattr(args, "use_multiparameter_pipeline_model_parallel", False):
+        if getattr(args, "use_multiparameter_pipeline_model_parallel", False) and (not hasattr(args, 'pipeline_tensor_shapes') or args.pipeline_tensor_shapes is None):
             if getattr(args, "schedules_method", False) == "dualpipev":
                 raise AssertionError(
                     "The dualpipev and use_multiparameter_pipeline_model_parallel are incompatible."
