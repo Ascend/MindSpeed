@@ -9,7 +9,7 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
 | master（主线）             | Core 0.12.1 | 2.1.0, 2.6.0, 2.7.1 | 在研版本        | 在研版本    | Python3.10.x              |
 | core_r0.10.0（主线）       | Core 0.10.0 | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
 | core_r0.9.0（主线）        | Core 0.9.0  | 2.1.0        | 在研版本        | 在研版本    | Python3.9.x, Python3.10.x              |
-| 2.2.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0, 2.7.1 | 7.2.0       | 8.2.RC1 | Python3.10.x               |
+| 2.2.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0, 2.7.1 | 7.2.0       | 8.3.RC1 | Python3.10.x               |
 | 2.1.0_core_r0.12.1（商用） | Core 0.12.1 | 2.1.0, 2.6.0 | 7.1.0       | 8.2.RC1 |  Python3.10.x              |
 | 2.1.0_core_r0.8.0（商用）  | Core 0.8.0  | 2.1.0        | 7.1.0       | 8.2.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
 | 2.0.0_core_r0.8.0（商用）  | Core 0.8.0  | 2.1.0        | 7.0.0       | 8.1.RC1 | Python3.8.x, Python3.9.x, Python3.10.x |
@@ -36,14 +36,14 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
   <tbody>
     <tr>
       <td>昇腾NPU驱动</td>
-      <td rowspan="2">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/softwareinst/instg/instg_0005.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">驱动固件安装指南</a>》</td>
+      <td rowspan="2">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/softwareinst/instg/instg_0005.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">驱动固件安装指南</a>》</td>
     </tr>
     <tr>
       <td>昇腾NPU固件</td>
     </tr>
     <tr>
       <td>Toolkit（开发套件）</td>
-      <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/softwareinst/instg/instg_quick.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a>》</td>
+      <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/canncommercial/83RC1/softwareinst/instg/instg_quick.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit">CANN 软件安装指南</a>》</td>
     </tr>
     <tr>
       <td>Kernel（算子包）</td>
@@ -53,7 +53,7 @@ MindSpeed支持Atlas 800T A2等昇腾训练硬件形态。软件版本配套表�
     </tr>
     <tr>
       <td>PyTorch</td>
-      <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/Pytorch/710/configandinstg/instg/insg_0001.html">Ascend Extension for PyTorch 配置与安装</a>》</td>
+      <td rowspan="3">《<a href="https://www.hiascend.com/document/detail/zh/Pytorch/720/configandinstg/instg/insg_0001.html">Ascend Extension for PyTorch 配置与安装</a>》</td>
     </tr>
     <tr>
       <td>torch_npu插件</td>
