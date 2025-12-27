@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
 # 如需排查问题可以打开下一行
 #set -x
 

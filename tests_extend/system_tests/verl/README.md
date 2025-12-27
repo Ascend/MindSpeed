@@ -17,7 +17,7 @@
 | 组件 | 版本 |
 |------|------|
 | Python | 3.11 |
-| CANN | 8.3.RC1 |
+| CANN | 8.5.0 |
 | torch | 2.7.1 |
 | torch_npu | 2.7.1 |
 | vLLM | 0.11.0 |
@@ -74,7 +74,7 @@ actor_rollout_ref.actor.megatron.use_dist_checkpointing=False \
 actor_rollout_ref.ref.megatron.use_dist_checkpointing=False \
 ```
 
-使用RoPE融合优化 <a href="/docs/features/rotary-embedding.md">link</a>
+使用RoPE融合优化 [link](../../../docs/features/rotary-embedding.md)
 
 ```
 +actor_rollout_ref.actor.megatron.override_transformer_config.position_embedding_type=rope \
