@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import torch
 import torch_npu
 
@@ -26,17 +28,11 @@ class QuantDtype:
             self.gmm_kwargs = {}
 
 
-qdtype = None
-
-
+@lru_cache
 def get_quant_dtype():
-    global qdtype
-    if qdtype:
-        return qdtype
     args = get_args()
     if args.fp8 == 'hif8':
-        qdtype = QuantDtype(torch_npu.hifloat8, torch_npu.hifloat8, torch_npu.hifloat8)
+        return QuantDtype(torch_npu.hifloat8, torch_npu.hifloat8, torch_npu.hifloat8)
     elif args.fp8 == 'hybrid':
-        qdtype = QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e5m2)
-    qdtype = QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e4m3fn)
-    return qdtype
+        return QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e5m2)
+    return QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e4m3fn)

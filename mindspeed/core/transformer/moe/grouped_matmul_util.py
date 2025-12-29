@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Type
 
 import torch
@@ -9,6 +10,14 @@ from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_s
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from mindspeed.te.pytorch.fp8.constants import Fp8Recipe
 from mindspeed.te.pytorch.utils import get_quant_dtype
+
+
+@lru_cache
+def is_a5():
+    try:
+        return "Ascend910_95" in torch_npu.npu.get_device_name()
+    except Exception:
+        return False
 
 
 def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
@@ -105,14 +114,14 @@ class BaseGMMFunction(torch.autograd.Function):
         if hasattr(origin_weight, 'grad_added_to_main_grad'):
             if getattr(weight, 'zero_out_wgrad', False):
                 grad_weights = torch.zeros(
-                    weight.transpose(-1, -2).shape,
+                    weight.shape,
                     dtype=x.dtype,
                     device=torch.cuda.current_device(),
                     requires_grad=False,
                 )
             else:
                 grad_weights = torch.empty(
-                    weight.transpose(-1, -2).shape,
+                    weight.shape,
                     dtype=x.dtype,
                     device=torch.cuda.current_device(),
                     requires_grad=False,
@@ -131,6 +140,10 @@ class BF16GMMFunction(BaseGMMFunction):
 
     @classmethod
     def op_forward(cls, x, weight, group_list, group_list_type=0, bias=None):
+        if not is_a5():
+            from mindspeed.ops.gmm import GMMFunction
+            return GMMFunction.builder.load().npu_gmm([x], [weight], bias or [], group_list.tolist(), 0, 0)
+
         return torch_npu.npu_grouped_matmul([x], [weight], bias=bias, group_list=group_list,
                                             split_item=3, group_type=0, group_list_type=group_list_type)
 
@@ -140,11 +153,17 @@ class BF16GMMFunction(BaseGMMFunction):
             weight = rearrange(weight, 'n h f -> n f h')
         else:
             weight = weight.t()
+        if not is_a5():
+            from mindspeed.ops.gmm import GMMFunction
+            return GMMFunction.builder.load().npu_gmm([grad], [weight], bias or [], group_list.tolist(), 0, 0)
         return torch_npu.npu_grouped_matmul([grad], [weight], bias=bias, group_list=group_list,
                                             split_item=3, group_type=0, group_list_type=group_list_type)
 
     @classmethod
     def op_dw(cls, x, grad, group_list, group_list_type=0, bias=None):
+        if not is_a5():
+            from mindspeed.ops.gmm import GMMFunction
+            return GMMFunction.builder.load().npu_gmm([x.t()], [grad], bias or [], group_list.tolist(), 2, 0)
         return torch_npu.npu_grouped_matmul([x.t()], [grad], bias=bias, group_list=group_list,
                                             split_item=3, group_type=2, group_list_type=group_list_type)
 

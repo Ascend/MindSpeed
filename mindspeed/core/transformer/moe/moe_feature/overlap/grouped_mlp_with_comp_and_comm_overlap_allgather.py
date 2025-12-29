@@ -27,6 +27,9 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         ctx.config = config        
         use_gmm = (inputs.nelement() != 0)
         ctx.use_gmm = use_gmm
+        if isinstance(group_list, torch.Tensor):
+            if group_list.device.type == 'cpu':
+                group_list = group_list.npu()
         gmm_cls = get_gmm_op_cls()
         if use_gmm:
             mm1_out = gmm_cls.op_forward(inputs, weights1, group_list)[0]
