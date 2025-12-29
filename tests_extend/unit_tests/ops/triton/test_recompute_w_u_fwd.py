@@ -12,6 +12,7 @@ import triton.language as tl
 
 from mindspeed.lite.ops.triton.utils import assert_close
 from mindspeed.lite.ops.triton.wy_fast import fwd_recompute_w_u
+from mindspeed.lite.ops.triton.utils import prepare_chunk_indices
 
 
 @triton.heuristics({
@@ -104,7 +105,7 @@ def recompute_w_u_fwd(
     BK = 64
     BV = 64
 
-    chunk_indices = None
+    chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
     NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
 
     w = torch.empty_like(k)
@@ -133,16 +134,18 @@ def recompute_w_u_fwd(
 
 @pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'D', 'chunk_size'),
+    ('B', 'T', 'H', 'D', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-            (1, 1024, 32, 128, 16),
-            (1, 4096, 32, 128, 16),
+            (1, 1024, 32, 128, 16, None),
+            (1, 4096, 32, 128, 16, None),
+            (1, 4096, 32, 128, 16, [0, 1024, 2168, 3087, 4096]),
+            (2, 4096, 32, 128, 16, None),
         ]
     ]
 )
-def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
+def test_recompute_w_u_fwd(B, T, H, D, chunk_size, cu_seqlens):
 
     device = "npu:0"
     device_dtype = torch.float32
@@ -152,6 +155,8 @@ def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
     beta = torch.randn((B, T, H), device=device, dtype=device_dtype)
     A = torch.randn((B, T, H, chunk_size), device=device, dtype=device_dtype)
     g = torch.randn((B, T, H), device=device, dtype=device_dtype)
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to(device)
 
     ref_w, ref_u = recompute_w_u_fwd(
         k=k,
@@ -159,7 +164,7 @@ def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
         beta=beta,
         A=A,
         g=g,
-        cu_seqlens=None,
+        cu_seqlens=cu_seqlens,
     )
 
     w, u = fwd_recompute_w_u(
@@ -168,7 +173,7 @@ def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
         beta=beta,
         A=A,
         g=g,
-        cu_seqlens=None,
+        cu_seqlens=cu_seqlens,
     )
 
     assert_close('w', ref_w, w, 0.001)
