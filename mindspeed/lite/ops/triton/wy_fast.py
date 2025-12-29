@@ -114,7 +114,7 @@ def prepare_wy_repr_bwd_kernel(
                 b_dA = tl.where(m_A, b_dA, 0)	
                 b_dA = tl.dot(b_dA.to(b_A.dtype), b_A)	
                 b_dA = tl.dot(b_A, b_dA.to(b_A.dtype))	
-                b_dA = tl.where(m_A, -b_dA * exp(b_g[:, None] - b_g[None, :]), 0)	
+                b_dA = tl.where(m_A, -b_dA * tl.exp(b_g[:, None] - b_g[None, :]), 0)	
                 b_dA = b_dA.to(k.dtype.element_ty)	
                 b_A = tl.zeros([BT, BT], dtype=tl.float32)	
 
