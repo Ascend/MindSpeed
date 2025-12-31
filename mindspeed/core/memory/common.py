@@ -80,7 +80,7 @@ def transformer_block_checkpointed_forward(
         rotary_pos_emb: Tensor,
         attention_bias: Tensor,
         packed_seq_params: PackedSeqParams,
-        use_inner_fp8_context: Optional[bool] = False,
+        use_inner_quantization_context: bool,
 ):
     """Forward method with activation checkpointing."""
 

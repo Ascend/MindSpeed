@@ -35,6 +35,8 @@ class FusedRoPEFeature(MindSpeedFeature):
                                                        apply_rotary_pos_emb)
         patch_manager.register_patch('megatron.core.models.common.embeddings.rope_utils._apply_rotary_pos_emb_bshd',
                                      apply_rotary_pos_emb_bshd)
+        patch_manager.register_patch("megatron.core.transformer.transformer_config.MLATransformerConfig.__post_init__",
+                                     transformer_config_post_init_wrapper)
         patch_manager.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__post_init__",
                                      transformer_config_post_init_wrapper)
         patch_manager.register_patch('megatron.core.models.common.embeddings.rope_utils.apply_rotary_pos_emb',

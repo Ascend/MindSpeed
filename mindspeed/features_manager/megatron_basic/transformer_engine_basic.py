@@ -106,9 +106,10 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             from mindspeed.te.pytorch.module.grouped_linear import MindSpeedTEGroupedLinear, \
                 MindSpeedTEColumnParallelGroupedLinear, MindSpeedTERowParallelGroupedLinear
 
+            from mindspeed.te.pytorch.module.linear import MindSpeedTELinear, MindSpeedTEColumnParallelLinear
             if not getattr(args, 'use_ascend_mc2', False):
                 pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
-                                  ColumnParallelLinear)
+                                  MindSpeedTEColumnParallelLinear)
                 pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear', RowParallelLinear)
             else:
                 from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2ColumnParallelLinear
@@ -129,3 +130,5 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                               MindSpeedTEColumnParallelGroupedLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelGroupedLinear',
                               MindSpeedTERowParallelGroupedLinear)
+            pm.register_patch('megatron.core.extensions.transformer_engine.TELinear',
+                              MindSpeedTELinear)

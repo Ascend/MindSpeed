@@ -104,7 +104,10 @@ class MegatronBasicFeature(MindSpeedFeature):
         pm.register_patch('megatron.training.initialize._compile_dependencies', _compile_dependencies)
         pm.register_patch('megatron.training.dist_signal_handler.get_device', get_device_wrapper)
 
-        from mindspeed.core.megatron_basic.megatron_basic import get_device_arch_version
+        from mindspeed.core.megatron_basic.megatron_basic import get_device_arch_version, report_memory, get_model_wrapper
         pm.register_patch('megatron.training.utils.get_device_arch_version', get_device_arch_version)
+        pm.register_patch('megatron.training.utils.report_memory', report_memory)
+        pm.register_patch('megatron.training.training.get_model', get_model_wrapper)
 
-
+        from mindspeed.core.models.gpt.dsa import rotate_activation
+        pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.rotate_activation', rotate_activation)

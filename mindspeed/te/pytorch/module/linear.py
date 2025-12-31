@@ -1,5 +1,7 @@
+# Copyright (c) 2023; BAAI. All rights reserved.
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2024; Huawei Technologies Co., Ltd.  All rights reserved.
+
 from typing import Any, Callable, Optional
 
 import torch
@@ -14,7 +16,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size,
 )
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu, \
-    set_tensor_model_parallel_attributes
+    set_tensor_model_parallel_attributes, ColumnParallelLinear, linear_with_grad_accumulation_and_async_allreduce
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import divide
 from mindspeed.args_utils import get_full_args as get_args
@@ -672,3 +674,174 @@ def reshape_to_2D(input_tensor):
         return input_tensor
     output = input_tensor.reshape(-1, input_tensor.shape[-1])
     return output
+
+
+class MindSpeedTELinear(torch.nn.Module):
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int,
+        *,
+        parallel_mode: Optional[str],
+        config: ModelParallelConfig,
+        init_method: Callable,
+        bias: bool,
+        skip_bias_add: bool,
+        skip_weight_param_allocation: bool,
+        tp_comm_buffer_name: Optional[str] = None,
+        is_expert: bool = False,
+        symmetric_ar_type: Optional[str] = None,
+        tp_group: Optional[torch.distributed.ProcessGroup] = None,
+    ):
+        super(MindSpeedTELinear, self).__init__()
+
+        self.te_return_bias = skip_bias_add and bias
+        if parallel_mode == "duplicated":
+            if tp_group is not None:
+                raise ValueError("duplicated linear should not have tp_group set")
+            tp_size = 1
+        
+        self.config = config
+        self.input_size = input_size
+        self.output_size = output_size
+
+        self.skip_bias_add = skip_bias_add
+        self.is_expert = is_expert
+        self.sequence_parallel = self.config.sequence_parallel
+        self.gradient_accumulation_fusion = self.config.gradient_accumulation_fusion
+        self.allreduce_dgrad = False
+        # Similar to TE, MoE is currently not supported in MindSpeedTELayerNormColumnParallelLinear.
+        if is_expert:
+            raise ValueError('Transformer Engine linear layers do not yet support MoE')
+
+        if skip_weight_param_allocation:
+            raise ValueError(
+                'Transformer Engine linear layers do not support skip_weight_param_allocation'
+            )
+
+        self.output_size_per_partition = divide(output_size, tp_size)
+
+        # Because skip_weight_param_allocation is not supported in TE, always do weight initialize.
+        if config.use_cpu_initialization:
+            self.weight = torch.nn.Parameter(
+                torch.empty(
+                    self.output_size_per_partition, self.input_size, dtype=config.params_dtype
+                )
+            )
+            if config.perform_initialization:
+                self.master_weight = _initialize_affine_weight_cpu(
+                    self.weight,
+                    self.output_size,
+                    self.input_size,
+                    self.output_size_per_partition,
+                    0,
+                    init_method,
+                    stride=1,
+                    rank=0,
+                    world_size=1,
+                )
+        else:
+            self.weight = torch.nn.Parameter(
+                torch.empty(
+                    self.output_size_per_partition,
+                    self.input_size,
+                    device=torch.cuda.current_device(),
+                    dtype=config.params_dtype,
+                )
+            )
+            if config.perform_initialization:
+                _initialize_affine_weight_gpu(
+                    self.weight,
+                    init_method,
+                    partition_dim=0,
+                    stride=1,
+                    is_expert=self.is_expert,
+                )
+
+        if bias:
+            if config.use_cpu_initialization:
+                self.bias = torch.nn.Parameter(
+                    torch.empty(self.output_size_per_partition, dtype=config.params_dtype)
+                )
+            else:
+                self.bias = torch.nn.Parameter(
+                    torch.empty(
+                        self.output_size_per_partition,
+                        device=torch.cuda.current_device(),
+                        dtype=config.params_dtype,
+                    )
+                )
+            # stride=1 in this case.
+            if config.perform_initialization:
+                # Always initialize bias to zero.
+                with torch.no_grad():
+                    self.bias.zero_()
+
+        else:
+            self.register_parameter('bias', None)
+
+        for param in self.parameters():
+            if self.is_expert:
+                # Reduce the gradient on the expert_data_parallel group for expert linear layers
+                setattr(param, "allreduce", not (self.is_expert and self.expert_parallel))
+            else:
+                # Reduce the gradient on DP group
+                setattr(param, "allreduce", True)
+                if parallel_mode == "duplicated":
+                    # Reduce the gradient further on the TP group since the weight is
+                    # duplicated across TP ranks
+                    setattr(param, "sequence_parallel", self.sequence_parallel)
+
+        # Forward impl settings without ascend-mc2.
+        self._linear_forward_impl = linear_with_grad_accumulation_and_async_allreduce
+
+
+    def forward(self, inp: torch.Tensor, is_first_microbatch: Optional[bool] = None, fp8_output=False):
+        bias = self.bias if not self.skip_bias_add else None
+
+        input_parallel = inp
+
+        output_parallel = self._linear_forward_impl(
+            input=input_parallel,
+            weight=self.weight,
+            bias=bias,
+            gradient_accumulation_fusion=self.gradient_accumulation_fusion,
+            allreduce_dgrad=self.allreduce_dgrad,
+            sequence_parallel=False,
+            grad_output_buffer=(
+                self.grad_output_buffer if self.config.defer_embedding_wgrad_compute else None
+            ),
+            wgrad_deferral_limit=(
+                self.config.wgrad_deferral_limit
+                if self.config.defer_embedding_wgrad_compute
+                else None
+            )
+        )
+
+        bias = self.bias if self.te_return_bias else None
+
+        return output_parallel, bias
+
+    def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
+        """Sharding along axis 0, bias sharded"""
+        state_dict = self.state_dict(prefix='', keep_vars=True)
+        return make_sharded_tensors_for_checkpoint(
+            state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
+        )
+
+
+class MindSpeedTEColumnParallelLinear(ColumnParallelLinear):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(
+        self,
+        input_: torch.Tensor,
+        weight: Optional[torch.Tensor] = None,
+        runtime_gather_output: Optional[bool] = None,
+    ):
+        # Align the capability to apply contiguous to the input of each layer.
+        if not input_.is_contiguous():
+            input_ = input_.contiguous()
+
+        return super().forward(input_, weight, runtime_gather_output)

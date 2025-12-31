@@ -7,7 +7,6 @@ import torch_npu
 from torch.nn import Parameter
 
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu
-from megatron.core.transformer.moe.experts import expert_dist_ckpt_decorator
 from megatron.core.transformer.utils import sharded_state_dict_default
 from megatron.core import parallel_state
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
@@ -23,6 +22,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size
 )
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from megatron.core.process_groups_config import ProcessGroupCollection
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.grouped_gemm_util import Ops
 
@@ -67,7 +67,7 @@ class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
 class MindSpeedTEGroupedLinear(torch.nn.Module):
     def __init__(self, num_gemms: int, input_size: int, output_size: int, *, parallel_mode: Optional[str], config,
                  init_method: Callable, bias: bool, skip_bias_add: bool, is_expert: bool = False,
-                 tp_comm_buffer_name: Optional[str] = None, **kwargs):
+                 tp_comm_buffer_name: Optional[str] = None, pg_collection: Optional[ProcessGroupCollection] = None,):
         super().__init__()
         self.num_gemms = num_gemms
         self.config = config
@@ -85,6 +85,8 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         else:
             tp_group = get_tensor_model_parallel_group(check_initialized=False)
             tp_size = get_tensor_model_parallel_world_size()
+
+        self.tp_group = tp_group
 
         self.expert_parallel = self.config.expert_model_parallel_size > 1
         self.explicit_expert_comm = is_expert and (tp_size > 1 or self.expert_parallel)
@@ -190,7 +192,6 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             sh_ten.replica_id = (*replica_id[:2], edp_replica_id)
         return sharded_state_dict
 
-    @expert_dist_ckpt_decorator
     def sharded_state_dict(
             self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[dict] = None
     ):
@@ -200,7 +201,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         """
         sharded_state_dict = {}
         for name, module in self._modules.items():
-            sub_sd = sharded_state_dict_default(module, f'{name}.', sharded_offsets, metadata)
+            sub_sd = sharded_state_dict_default(module, f'{name}.', sharded_offsets, metadata, tp_group=self.tp_group)
             if name == 'linear_fc1' and self.config.gated_linear_unit:
                 num_global_experts = (
                         parallel_state.get_expert_model_parallel_world_size() * self.num_local_experts
@@ -241,7 +242,7 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add: bool,
             is_expert: bool,
             tp_comm_buffer_name: Optional[str] = None,
-            tp_group: Optional[torch.distributed.ProcessGroup] = None,
+            pg_collection: Optional[ProcessGroupCollection] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -254,6 +255,7 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add=skip_bias_add,
             is_expert=is_expert,
             tp_comm_buffer_name=tp_comm_buffer_name,
+            pg_collection=pg_collection,
         )
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
@@ -287,7 +289,7 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add: bool,
             is_expert: bool,
             tp_comm_buffer_name: Optional[str] = None,
-            tp_group: Optional[torch.distributed.ProcessGroup] = None,
+            pg_collection: Optional[ProcessGroupCollection] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -300,6 +302,7 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add=skip_bias_add,
             is_expert=is_expert,
             tp_comm_buffer_name=tp_comm_buffer_name,
+            pg_collection=pg_collection,
         )
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):

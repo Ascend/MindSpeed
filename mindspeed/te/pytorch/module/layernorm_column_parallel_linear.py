@@ -149,13 +149,14 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                     dtype=config.params_dtype,
                 )
             )
-            _initialize_affine_weight_gpu(
-                self.weight,
-                init_method,
-                partition_dim=0,
-                stride=1,
-                is_expert=self.is_expert,
-            )
+            if config.perform_initialization:
+                _initialize_affine_weight_gpu(
+                    self.weight,
+                    init_method,
+                    partition_dim=0,
+                    stride=1,
+                    is_expert=self.is_expert,
+                )
 
         setattr(self.weight, 'allreduce', not (self.is_expert and self.expert_parallel))
 
@@ -239,6 +240,11 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.norm_ckpt = None
 
     def forward(self, inp: torch.Tensor, is_first_microbatch: Optional[bool] = None, fp8_output=False):
+
+        # Align the capability to apply contiguous to the input of each layer.
+        if not inp.is_contiguous():
+            inp = inp.contiguous()
+
         if self.config.normalization == 'LayerNorm':
             if self.is_recompute_norm:
                 norm_output = self.norm_ckpt.checkpoint(self._layernorm, False, inp)

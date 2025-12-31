@@ -9,6 +9,7 @@ from torch import _C
 from torch_npu.npu import _lazy_call, device as device_ctx_manager
 from megatron.core.optimizer.cpu_offloading import HybridDeviceOptimizer
 from megatron.core.optimizer.distrib_optimizer import HAVE_APEX_OR_TE
+from megatron.core import mpu
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPYCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D
@@ -337,3 +338,26 @@ def dist_optim_load_state_dict(self, state_dict):
             self.load_parameter_state_from_fs_model_space(param_state)
         else:
             raise NotImplementedError(f'Unknown sharding_type: {sharding_type}')
+
+
+def report_memory(name):
+    """Simple GPU memory report."""
+    mega_bytes = 1024.0 * 1024.0
+    string = name + ' memory (MB)'
+    string += ' | allocated: {}'.format(torch.cuda.memory_allocated() / mega_bytes)
+    string += ' | max allocated: {}'.format(torch.cuda.max_memory_allocated() / mega_bytes)
+    string += ' | reserved: {}'.format(torch.cuda.memory_reserved() / mega_bytes)
+    string += ' | max reserved: {}'.format(torch.cuda.max_memory_reserved() / mega_bytes)
+    if mpu.get_data_parallel_rank() == 0:
+        print("[Rank {}] {}".format(torch.distributed.get_rank(), string), flush=True)
+
+
+def get_model_wrapper(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        model = func(*args, **kwargs)
+
+        # Fix native Megatron bug: dual-stream missing wait operation.
+        torch.cuda.synchronize()
+        return model
+    return wrapper
