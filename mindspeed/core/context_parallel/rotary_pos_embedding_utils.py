@@ -39,6 +39,11 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
         pos_emb = _get_pos_emb_on_this_cp_rank_in_adaptive_cp(pos_emb, seq_dim)
     elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
         pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emb, seq_dim)
+    elif args.context_parallel_algo == 'kvallgather_cp_algo':
+        if args.reset_position_ids:
+            pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
+        else:
+            pos_emb = _get_pos_emb_on_this_cp_rank_in_megatron_cp(pos_emb, seq_dim)
     return pos_emb
 
 

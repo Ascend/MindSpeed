@@ -650,6 +650,8 @@ def get_ring_degree():
         return cp_size
     elif args.context_parallel_algo == 'ulysses_cp_algo':
         return 1
+    elif args.context_parallel_algo == 'kvallgather_cp_algo':
+        return 1
     else:
         return args.ring_degree
 

@@ -19,7 +19,7 @@ class ContextParallelFeature(MindSpeedFeature):
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--context-parallel-algo', type=str, default='megatron_cp_algo',
-                           choices=['megatron_cp_algo', 'hybrid_cp_algo', 'hybrid_adaptive_cp_algo'],
+                           choices=['megatron_cp_algo', 'hybrid_cp_algo', 'hybrid_adaptive_cp_algo', 'kvallgather_cp_algo'],
                            help='context parallel algorithm')
 
         # ring context parallel
@@ -79,14 +79,33 @@ class ContextParallelFeature(MindSpeedFeature):
                 raise AssertionError('ring_degree should be divisible by cp_window_size when using double ring with hybrid context parallelism.')
             args.use_flash_attn = True
 
+        # kvallgather context parallel
+        if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
+            if args.transformer_impl != 'transformer_engine':
+                raise AssertionError('Only transformer engine supports kvallgather_cp_algo')
+
+            if args.attention_mask_type != "causal":
+                raise AssertionError("kvallgather_cp_algo only supports causal attention mask type")
+                
+            if not getattr(args, 'reset_attention_mask', False):
+                if hasattr(args, 'seq_length') and args.seq_length % (2 * args.context_parallel_size) != 0:
+                    raise AssertionError("sequence length must be divisible by 2 * context_parallel_size in kvallgather_cp_algo with SBHD format")
+            else:
+                if hasattr(args, 'seq_length') and args.seq_length % args.context_parallel_size != 0:
+                    raise AssertionError("sequence length must be divisible by context_parallel_size in kvallgather_cp_algo with THD format")
 
     def register_patches(self, patch_manager, args):
         _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
         _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
         if int(getattr(args, 'context_parallel_size', 1)) > 1 or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
+            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
+                MindSpeedTEDotProductAttention
             patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention', MindSpeedCPDotProductAttention)
-            patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedCPDotProductAttention)
+            if args.context_parallel_algo == 'kvallgather_cp_algo':
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedTEDotProductAttention)
+            else:
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedCPDotProductAttention)
 
             from mindspeed.core.context_parallel.adaptor import attention_init_wrapper
             patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)

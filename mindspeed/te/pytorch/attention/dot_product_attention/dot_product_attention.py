@@ -21,6 +21,7 @@ from torch.distributed import ProcessGroup as dist_group_type
 from mindspeed.core.transformer.flash_attention.generate_mask.generate_mask import get_attention_mask
 
 from .backend import FlashAttention
+from .context_parallel import CPStrategyFactory
 from .utils import get_distributed_world_size
 
 
@@ -214,11 +215,19 @@ class DotProductAttention(torch.nn.Module):
                 cp_size *= get_distributed_world_size(group)
         self.context_parallel = cp_size > 1
 
-        self.core_attention = FlashAttention(softmax_scale=softmax_scale,
-                                             attention_dropout=self.attention_dropout,
-                                             attention_type=self.attention_type,
-                                             deterministic=self.deterministic,
-                                             )
+        if self.context_parallel:
+            self.core_attention = CPStrategyFactory.create_strategy(strategy_type=self.cp_comm_type,
+                                                                    softmax_scale=softmax_scale,
+                                                                    attention_dropout=self.attention_dropout,
+                                                                    attention_type=self.attention_type,
+                                                                    deterministic=self.deterministic,
+                                                                    )
+        else:
+            self.core_attention = FlashAttention(softmax_scale=softmax_scale,
+                                                 attention_dropout=self.attention_dropout,
+                                                 attention_type=self.attention_type,
+                                                 deterministic=self.deterministic,
+                                                 )
 
     def set_tensor_parallel_group(
         self,
