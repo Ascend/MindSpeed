@@ -26,12 +26,12 @@
 | 类型           | Linux权限参考最大值 |
 | -------------- | ---------------  |
 | 用户主目录                        |   750（rwxr-x---）            |
-| 程序文件(含脚本文件、库文件等)       |   550（r-xr-x---）             |
+| 程序文件（含脚本文件、库文件等）       |   550（r-xr-x---）             |
 | 程序文件目录                      |   550（r-xr-x---）            |
 | 配置文件                          |  640（rw-r-----）             |
 | 配置文件目录                      |   750（rwxr-x---）            |
-| 日志文件(记录完毕或者已经归档)        |  440（r--r-----）             | 
-| 日志文件(正在记录)                |    640（rw-r-----）           |
+| 日志文件（记录完毕或者已经归档）        |  440（r--r-----）             | 
+| 日志文件（正在记录）                |    640（rw-r-----）           |
 | 日志文件目录                      |   750（rwxr-x---）            |
 | Debug文件                         |  640（rw-r-----）         |
 | Debug文件目录                     |   750（rwxr-x---）  |
@@ -39,7 +39,7 @@
 | 维护升级文件目录                  |   770（rwxrwx---）    |
 | 业务数据文件                      |   640（rw-r-----）    |
 | 业务数据文件目录                  |   750（rwxr-x---）      |
-| 密钥组件、私钥、证书、密文文件目录    |  700（rwx—----）      |
+| 密钥组件、私钥、证书、密文文件目录    |  700（rwx------）      |
 | 密钥组件、私钥、证书、加密密文        | 600（rw-------）      |
 | 加解密接口、加解密脚本            |   500（r-x------）        |
 
@@ -81,7 +81,7 @@
 |  开源引入  |                               https://github.com/NVIDIA/Megatron-LM/pull/598                                |                  docs/faq/data_helpers.md                  |            https://github.com/NVIDIA/Megatron-LM/pull/598                 |             data_helpers说明文档              |
 |  开源引入  |                              https://pytorch.org/docs/stable/distributed.html                               |              mindspeed/core/parallel_state.py              |                       https://pytorch.org/docs/stable/distributed.html                       |         torch.distributed相关接口注意事项         |
 |  开源引入  |                              https://github.com/pytorch/pytorch/pull/40762                               |                   mindspeed/moe/utils.py                   |                    https://github.com/pytorch/pytorch/pull/40762                      |              _AllToAll自动反向参考              |
-|  开源引入  |                           https://github.com/NVIDIA/Megatron-LM                            |          mindspeed/optimizer/distrib_optimizer.py          |      https://github.com/NVIDIA/Megatron-LM/blob/main/docs/source/api-guide/dist_optimizer.md      | distributed_optimizer_zero3_init文档字符串参数说明 |
+|  开源引入  |                           https://github.com/NVIDIA/Megatron-LM                            |          mindspeed/optimizer/distrib_optimizer.py          |      https://github.com/NVIDIA/Megatron-LM/blob/main/docs/user-guide/features/dist_optimizer.md      | distributed_optimizer_zero3_init文档字符串参数说明 |
 |  开源引入  |                           https://github.com/InternLM/InternEvo                            | mindspeed/docs/features/ring-attention-context-parallel.md |                           https://arxiv.org/pdf/2406.18485                   |    ring-attention-context-parallel说明文档    |
 |  开源引入  |                           https://github.com/sail-sg/zero-bubble-pipeline-parallelism                            |   mindspeed/docs/features/nanopipe-pipeline-parallel.md    |                           https://arxiv.org/abs/2401.10241                   |      nanopipe-pipeline-parallel说明文档       |
 |  开源引入  |                           https://github.com/iclr24-3434/AMPipe.git                            |             mindspeed/docs/features/ampipe.md              |                           https://openreview.net/pdf?id=yLgr02IsXY                   |                ampipe说明文档                 |
