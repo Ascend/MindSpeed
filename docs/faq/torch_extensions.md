@@ -13,7 +13,7 @@ Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 ```
 
 ## 问题根因
-此问题为 Pytorch extension 编译问题，编译开始前其中一个线程会生成 `.lock` 文件对编译文件夹进行锁定，其他线程会进行等待。
+此问题为 PyTorch extension 编译问题，编译开始前其中一个线程会生成 `.lock` 文件对编译文件夹进行锁定，其他线程会进行等待。
 如果因为其他原因导致编译的线程中途被强制结束，`.lock` 文件不会被清除，导致第二次编译开始时，所有的线程看到存在 `.lock` 文件，就都会开始进行等待。
 
 
