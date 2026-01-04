@@ -2,7 +2,6 @@
 
 from contextlib import nullcontext
 import torch
-import acl
 from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
 from megatron.core import parallel_state, tensor_parallel
 from megatron.training import get_args

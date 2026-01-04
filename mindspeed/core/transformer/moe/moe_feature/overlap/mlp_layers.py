@@ -5,7 +5,6 @@ import os
 import warnings
 from typing import Any, Callable, List, Optional
 
-import acl
 import torch
 import torch_npu
 import torch.distributed

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import torch
-import acl
 from einops import rearrange
 from megatron.core.transformer.moe.moe_utils import permute
 from megatron.core.parallel_state import (get_expert_model_parallel_group, 

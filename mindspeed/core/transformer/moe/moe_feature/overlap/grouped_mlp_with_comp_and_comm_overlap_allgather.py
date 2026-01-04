@@ -1,7 +1,6 @@
 # Copyright (c) 2025, Huawei Technologies. All rights reserved.
 
 import torch
-import acl
 from einops import rearrange
 
 from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
