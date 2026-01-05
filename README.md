@@ -38,7 +38,7 @@ MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模�
 
 - [May 21, 2025]: 🚀 MindSpeed Core 支持Mcore 0.12.1版本。
 
-> 注： 当前版本初步支持两种版本的transformer实现。如需回溯老版本transformer实现，需要用户配置参数`--transformer-impl local`。
+> 注： 当前版本初步支持两种版本的Transformer实现。如需回溯老版本Transformer实现，需要用户配置参数`--transformer-impl local`。
 
 # 版本说明
 ---
@@ -565,7 +565,7 @@ MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并�
 
 ## 自定义算子
 
-昇腾训练自定义算子统一由torch_npu提供API，以下API预计2025年q4起不维护，请优先使用torch_npu提供的自定义算子，如有新需求或问题可提issue反馈，我们会尽快回复。
+昇腾训练自定义算子统一由torch_npu提供API，以下API预计2025年Q4起不维护，请优先使用torch_npu提供的自定义算子，如有新需求或问题可提issue反馈，我们会尽快回复。
 
 部分自定义算子设置为公开接口，公开接口设置说明请参照 MindSpeed 安全声明中的[公开接口声明](SECURITYNOTE.md#公开接口声明)，具体对外接口细节参照以下算子对应的手册链接。
 
