@@ -93,7 +93,7 @@ class TestNPUFFN(DistributedTest):
             expert_tokens=expert_tokens, expert_tokens_index=expert_tokens_index,
             bias1=bias1, bias2=bias2)
 
-    @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
+    @pytest.mark.skip(reason='for inference env')
     @pytest.mark.parametrize('tokens_mode', [EXPERT_TOKENS_MODE_NONE, EXPERT_TOKENS_MODE_TOKENS])
     @pytest.mark.parametrize('dtype', [torch.float16])
     @pytest.mark.parametrize('is_graph_mode', [True, False])
