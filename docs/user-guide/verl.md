@@ -37,4 +37,6 @@ MindSpeed 自定义入参可通过 `override_transformer_config` 参数传入，
 | MoE Grouped GEMM  | +actor_rollout_ref.actor.megatron.override_transformer_config.moe_grouped_gemm=True | Preview |
 | MoE Token Permute and Unpermute 融合优化  | +actor_rollout_ref.actor.megatron.override_transformer_config.use_fused_moe_token_permute_and_unpermute=True | Preview |
 
+其中，mbridge暂不支持同时开启VPP；同理VPP请在未开启mbridge时使用。
+
 注："Preview"状态表示预览非正式发布版本，"Released"状态表示正式发布版本，"Dev"状态表示正在开发中。

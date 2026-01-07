@@ -23,7 +23,7 @@
 | vLLM | 0.11.0 |
 | vLLM-ascend | 0.11.0rc1 |
 | Megatron-LM | v0.12.1 |
-| triton-ascend | 3.2.0rc4 |
+| triton-ascend | 3.2.0.dev |
 
 ## 模型训练
 
