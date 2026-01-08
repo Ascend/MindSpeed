@@ -203,16 +203,16 @@ class TEColumnParallelLinear(torch.nn.Module):
 
 class ColumnParallelSeq(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_, weight, bias, fp8_meta):
+    def forward(ctx, input_, weight, bias, fp8_meta: FP8Metadata):
         ctx.use_bias = bias is not None
         ctx.fp8_meta = fp8_meta
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
         ctx.total_input = None
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
 
-        output_parallel, total_input, weight_fp8 = get_ops().allgather_matmul(input_, weight.t(), None,
+        output_parallel, total_input, weight_fp8 = get_ops().allgather_matmul(input_, weight, None,
                                                                               fp8_meta, ('inputs', 'weight'),
-                                                                              ctx.fp8_enable)
+                                                                              ctx.fp8_enable, (False, True))
         if COMM_OVERLAP_CONFIG.save_allgather_input:
             ctx.total_input = total_input
 
@@ -226,7 +226,7 @@ class ColumnParallelSeq(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        fp8_meta = ctx.fp8_meta
+        fp8_meta: FP8Metadata = ctx.fp8_meta
         fp8_enable = ctx.fp8_enable
         input_size = ctx.input_size
         tp_group = get_tensor_model_parallel_group()
@@ -247,10 +247,9 @@ class ColumnParallelSeq(torch.autograd.Function):
             grad_input = grad_output.matmul(weight)
             sub_grad_input = torch.empty(input_.size(), dtype=input_.dtype, device=input_.device, requires_grad=False)
         else:
-            # 前向保存的是weight.t(), 所以这里需要t()再次转置回来
-            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, fp8_meta, ('grads', 'weight'), (False, True))
+            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, fp8_meta, ('grads', 'weight'))
             # 开启fp8之后，由于暂时没有fp8通信，这里保存的是total input，而不是input_
-            sub_grad_input = torch.empty(input_size, dtype=total_input.dtype, device=total_input.device,
+            sub_grad_input = torch.empty(input_size, dtype=total_input.dtype, device=weight.device,
                                          requires_grad=False)
 
         reduce_scatter_handle = torch.distributed._reduce_scatter_base(sub_grad_input, grad_input, group=tp_group,
@@ -265,7 +264,7 @@ class ColumnParallelSeq(torch.autograd.Function):
 
 class ColumnParallelNoSeq(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_, weight, bias, fp8_meta):
+    def forward(ctx, input_, weight, bias, fp8_meta: FP8Metadata):
         ctx.use_bias = bias is not None
         ctx.fp8_meta = fp8_meta
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
@@ -456,7 +455,7 @@ class TERowParallelLinear(torch.nn.Module):
 
 class RowParallelSeq(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_, weight, bias, fp8_meta):
+    def forward(ctx, input_, weight, bias, fp8_meta: FP8Metadata):
         ctx.use_bias = bias is not None
         ctx.fp8_meta = fp8_meta
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
@@ -481,7 +480,7 @@ class RowParallelSeq(torch.autograd.Function):
 
 class RowParallelNoSeq(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_, weight, bias, fp8_meta):
+    def forward(ctx, input_, weight, bias, fp8_meta: FP8Metadata):
         ctx.use_bias = bias is not None
         ctx.fp8_meta = fp8_meta
         ctx.fp8_enable = fp8_meta.is_fp8_enable()

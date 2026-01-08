@@ -71,7 +71,7 @@ class BaseGMMFunction(torch.autograd.Function):
             # dw 分离, 延迟处理
             weight_tensor = rearrange(weight, 'n h f -> h n f')
             WeightGradStore.put(
-                [x, group_list, group_list_type],
+                [x, group_list, group_list_type, weight.shape],
                 grad_outputs,
                 weight_param,
                 sequence_parallel=False,
@@ -109,9 +109,9 @@ class BaseGMMFunction(torch.autograd.Function):
         raise NotImplementedError
 
     @classmethod
-    def op_gmm_add(cls, x, weight, grad, group_list, origin_weight):
-        cls.gmm_add_impl(x, grad, group_list, origin_weight)
-        if hasattr(origin_weight, 'grad_added_to_main_grad'):
+    def op_gmm_add(cls, x, weight, grad, group_list, weight_param):
+        cls.gmm_add_impl(x, grad, group_list, weight_param, weight.shape)
+        if hasattr(weight_param, 'grad_added_to_main_grad'):
             if getattr(weight, 'zero_out_wgrad', False):
                 grad_weights = torch.zeros(
                     weight.shape,
@@ -126,14 +126,14 @@ class BaseGMMFunction(torch.autograd.Function):
                     device=torch.cuda.current_device(),
                     requires_grad=False,
                 )
-            origin_weight.grad_added_to_main_grad = True
+            weight_param.grad_added_to_main_grad = True
         else:
             grad_weights = None
         return grad_weights
 
     @classmethod
-    def gmm_add_impl(cls, x, grad, group_list, origin_weight):
-        npu_groupmatmul_add_fp32(x, grad, group_list, origin_weight.main_grad)
+    def gmm_add_impl(cls, x, grad, group_list, weight_param, weight_shape):
+        npu_groupmatmul_add_fp32(x, grad, group_list, weight_param.main_grad)
 
 
 class BF16GMMFunction(BaseGMMFunction):
@@ -209,17 +209,15 @@ class MXFP8GMMFunction(BaseGMMFunction):
                                             per_token_scale_dtype=torch_npu.float8_e8m0fnu, split_item=3)
 
     @classmethod
-    def gmm_add_impl(cls, x, grad, group_list, origin_weight):
+    def gmm_add_impl(cls, x, grad, group_list, weight_param, weight_shape):
         qdtype = get_quant_dtype()
         x_quant, x_scale = torch_npu.npu_grouped_dynamic_mx_quant(
             x, group_list.to(torch.int32), round_mode="rint", dst_type=qdtype.x, blocksize=32)
         grad_quant, grad_scale = torch_npu.npu_grouped_dynamic_mx_quant(
             grad, group_list.to(torch.int32), round_mode="rint", dst_type=qdtype.grads, blocksize=32)
-        args = get_args()
-        g_size = args.num_experts // args.expert_model_parallel_size
-        torch_npu.npu_add_quant_gmm_(origin_weight.main_grad.view(g_size, -1, origin_weight.main_grad.shape[-1]),
-                                     x_quant, grad_quant, grad_scale,
-                                     x1_scale=x_scale, group_list_type=0, group_list=group_list,
+        torch_npu.npu_add_quant_gmm_(weight_param.main_grad.view(weight_shape),
+                                     x_quant.t(), grad_quant, grad_scale, x1_scale=rearrange(x_scale, 'n h f -> h n f'),
+                                     group_list_type=0, group_list=group_list,
                                      x1_scale_dtype=torch_npu.float8_e8m0fnu, x2_scale_dtype=torch_npu.float8_e8m0fnu)
 
 

@@ -19,7 +19,7 @@ from .weight_grad_store import WeightGradStore
 def get_gmm_weight_grad(inputs, grad_out, group_list, group_list_data_type, weight_param, weight_tensor):
     if WeightGradStore.is_decoupleBlock:
         WeightGradStore.put(
-            [inputs, group_list, group_list_data_type],
+            [inputs, group_list, group_list_data_type, weight_tensor.shape],
             grad_out,
             weight_param,
             sequence_parallel=False,

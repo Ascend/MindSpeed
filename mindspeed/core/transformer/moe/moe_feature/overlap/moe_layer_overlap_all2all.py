@@ -25,6 +25,10 @@ from mindspeed.core.transformer.moe.moe_feature import (
     )
 
 
+def gmm_op(x, weight, bias, group_list, group_type):
+    return GMMFunction.builder.load().npu_gmm([x], [weight], bias, group_list, group_type, 0)
+
+
 class MoELayerOverlapAllToAll(torch.autograd.Function):
     @staticmethod
     def forward(ctx, hidden_states, config, moe_layer: MoELayer):

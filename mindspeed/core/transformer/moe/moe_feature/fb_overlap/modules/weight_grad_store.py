@@ -81,11 +81,11 @@ class WeightGradStore:
         total_input, grad_output, weight, sequence_parallel, in_row = grad_store_cache
         args = get_args()
         if hasattr(weight, 'gmm_weight'):
-            inputs, group_list, group_list_type = total_input
+            inputs, group_list, group_list_type, weight_shape = total_input
             from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
             gmm_cls = get_gmm_op_cls()
             if get_args().gemm_gradient_accumulation_fusion and not getattr(weight, 'is_hot_experts', False):
-                gmm_cls.gmm_add_impl(inputs, grad_output, group_list, weight)
+                gmm_cls.gmm_add_impl(inputs, grad_output, group_list, weight, weight_shape)
             else:
                 if args.fp8 and args.use_gmm_fp8:
                     grad_weight = gmm_cls.op_dw(inputs, grad_output, group_list, group_list_type)[0]

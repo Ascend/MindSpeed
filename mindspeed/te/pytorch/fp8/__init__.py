@@ -6,11 +6,13 @@ import torch_npu
 from mindspeed.te.pytorch.fp8.constants import FormatEnum
 from mindspeed.te.pytorch.fp8.tensor import Float8Tensor, Float8TensorCpu, MXFP8Tensor, MXFP8TensorCpu, \
     Float8TensorWithTranspose, is_fp8_tensor_with_trans, is_fp8_tensor
+from mindspeed.te.pytorch.module_typing import FP8Metadata, FP8Tensor
 
 logger = logging.getLogger(__name__)
 
 
-def fp8_matmul(inputs, weight, fp8_meta, key, transpose=(False, False)):
+def fp8_matmul(inputs, weight, fp8_meta: FP8Metadata, key, transpose=(False, False)
+               ) -> tuple[torch.Tensor, FP8Tensor, FP8Tensor]:
     """
     Returns:
         output: high accuracy output

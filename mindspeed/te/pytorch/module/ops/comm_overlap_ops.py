@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from mindspeed.te.pytorch.module_typing import FP8Metadata
 
 
 class CommOverlapConfig:
@@ -35,53 +36,17 @@ class CommOverlapOps(ABC):
 
     @staticmethod
     @abstractmethod
-    def allgather_matmul(input_, weight, bias, fp8_meta=None, key=None):
-        """
-
-        Args:
-            input_:
-            weight:
-            bias:
-            fp8_meta(mindspeed.te.pytorch.fp8.metadata.FP8Metadata):
-            key:
-
-        Returns:
-
-        """
+    def allgather_matmul(input_, weight, bias, fp8_meta: FP8Metadata, key=None, transpose=(False, False)):
         ...
 
     @staticmethod
     @abstractmethod
-    def matmul_reduce_scatter(input_, weight, bias, fp8_meta=None, key=None):
-        """
-
-        Args:
-            input_:
-            weight:
-            bias:
-            fp8_meta(mindspeed.te.pytorch.fp8.metadata.FP8Metadata):
-            key:
-
-        Returns:
-
-        """
+    def matmul_reduce_scatter(input_, weight, bias, fp8_meta: FP8Metadata, key=None, transpose=(False, False)):
         ...
 
     @staticmethod
     @abstractmethod
-    def matmul_all_reduce(input_, weight, bias, fp8_meta=None, key=None):
-        """
-
-        Args:
-            input_:
-            weight:
-            bias:
-            fp8_meta(mindspeed.te.pytorch.fp8.metadata.FP8Metadata):
-            key:
-
-        Returns:
-
-        """
+    def matmul_all_reduce(input_, weight, bias, fp8_meta: FP8Metadata, key=None):
         ...
 
 

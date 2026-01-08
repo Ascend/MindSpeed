@@ -1,3 +1,4 @@
+import typing
 from enum import Enum
 from typing import Optional, NamedTuple
 

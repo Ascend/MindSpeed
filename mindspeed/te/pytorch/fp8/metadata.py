@@ -1,18 +1,8 @@
-from dataclasses import dataclass
-from typing import Type, Tuple, Optional
-
 from megatron.core.parallel_state import get_tensor_model_parallel_world_size, get_tensor_model_parallel_rank, \
     get_tensor_model_parallel_group
-from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe, RecipeScaling
+from mindspeed.te.pytorch.fp8.recipes.recipe import RecipeScaling
 from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
-
-
-@dataclass
-class FP8Config:
-    default: Tuple[Type[Recipe], RecipeScaling]
-    inputs: Optional[Tuple[Type[Recipe], RecipeScaling]] = None
-    weight: Optional[Tuple[Type[Recipe], RecipeScaling]] = None
-    grads: Optional[Tuple[Type[Recipe], RecipeScaling]] = None
+from mindspeed.te.pytorch.module_typing import FP8Tensor, FP8Recipe
 
 
 class FP8Metadata:
@@ -25,7 +15,7 @@ class FP8Metadata:
         self.tp_group = get_tensor_model_parallel_group()
 
     @property
-    def fp8_recipe(self):
+    def fp8_recipe(self) -> RecipeScaling:
         if FP8GlobalStateManager.FP8_RECIPE is not None:
             self.fp8_recipe_tmp = FP8GlobalStateManager.get_fp8_recipe()
         return self.fp8_recipe_tmp
@@ -52,15 +42,20 @@ class FP8Metadata:
         recipe = self.create_recipe(key, self.fp8_recipe, tensor_shape)
         setattr(self, key, recipe)
 
-    def pre_communication(self, key, tensor):
+    def pre_communication(self, key, tensor) -> FP8Tensor:
         self.init_recipes_if_necessarily(key, tensor.shape)
-        recipe = getattr(self, key)
-        return tensor if not recipe.fp8_comm else recipe.pre_communication(tensor)
+        recipe: FP8Recipe = getattr(self, key)
+        return tensor if not recipe.fp8_comm else recipe.quantization(tensor, key)
 
-    def pre_compute(self, key, tensor):
+    def pre_compute(self, key, tensor) -> FP8Tensor:
+        self.init_recipes_if_necessarily(key, tensor.shape)
+        recipe: FP8Recipe = getattr(self, key)
+        return tensor if recipe.fp8_comm else recipe.quantization(tensor, key)
+
+    def quantization(self, key, tensor):
         self.init_recipes_if_necessarily(key, tensor.shape)
         recipe = getattr(self, key)
-        return tensor if recipe.fp8_comm else recipe.pre_compute(tensor, key)
+        return recipe.quantization(tensor, key)
 
     def set_tp_config(self, world_size, tp_rank, tp_group):
         self.tp_world_size = world_size
