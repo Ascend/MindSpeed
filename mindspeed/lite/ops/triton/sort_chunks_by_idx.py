@@ -7,53 +7,60 @@ import triton
 import triton.language as tl
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({'SUB_BLOCK_SIZE': 8}),
+        triton.Config({'SUB_BLOCK_SIZE': 16}),
+        triton.Config({'SUB_BLOCK_SIZE': 32}),
+        triton.Config({'SUB_BLOCK_SIZE': 64}),
+        triton.Config({'SUB_BLOCK_SIZE': 128}),
+        triton.Config({'SUB_BLOCK_SIZE': 256}),
+        triton.Config({'SUB_BLOCK_SIZE': 512}),
+        triton.Config({'SUB_BLOCK_SIZE': 1024}),
+    ],
+    key=['num_splits'],
+)
 @triton.jit
 def _make_chunk_sort_map_kernel(
     # pointers
     split_sizes_ptr,
-    sorted_indices_ptr,
+    cumsum_ptr,
+    inverse_sorted_indices_ptr,
+    output_cumsum_ptr,
     dst_rows_ptr,
     # sizes
-    num_splits: tl.constexpr,
-    num_tokens: int,
+    num_splits,
+    num_tokens,
     # metas
     BLOCK_SIZE: int,
     SUB_BLOCK_SIZE: tl.constexpr,
     IDX_LOAD_WIDTH: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    pid_start = pid * BLOCK_SIZE
 
     load_split_offset = tl.arange(0, IDX_LOAD_WIDTH)
-    load_split_offset_cmp = load_split_offset.to(tl.float32)
-    sorted_indices = tl.load(
-        sorted_indices_ptr + load_split_offset, mask=load_split_offset_cmp < num_splits
-    )
     input_split_sizes = tl.load(
-        split_sizes_ptr + load_split_offset, mask=load_split_offset_cmp < num_splits, other=0
+        split_sizes_ptr + load_split_offset, mask=load_split_offset < num_splits, other=0
     ).to(tl.float32)
     input_split_sizes_cumsum = tl.cumsum(input_split_sizes)
-    output_split_sizes = tl.gather(input_split_sizes, sorted_indices, 0).to(tl.float32)
 
-    for i in range(0, BLOCK_SIZE, SUB_BLOCK_SIZE):
-        token_offsets = tl.arange(0, SUB_BLOCK_SIZE) + pid_start + i
+    for off in range(0, BLOCK_SIZE, SUB_BLOCK_SIZE):
+        token_offsets = pid * BLOCK_SIZE + off + tl.arange(0, SUB_BLOCK_SIZE)
         token_offsets_cmp = token_offsets.to(tl.float32)
 
-        input_split_sizes_mask = tl.where(input_split_sizes_cumsum[None, :] <= token_offsets_cmp[:, None], 1.0, 0.0)
+        input_split_sizes_mask = tl.where(input_split_sizes_cumsum[None, :] <= token_offsets_cmp[:, None], 1, 0)
         input_chunk_indices = tl.sum(input_split_sizes_mask, axis=-1)
+        cumsum_mask = input_chunk_indices < (num_splits + 1)
+        input_split_sizes_presums = tl.load(cumsum_ptr + input_chunk_indices, mask=cumsum_mask, other=0)
 
-        output_chunk_mask = (sorted_indices[None, :] == input_chunk_indices[:, None])
-        output_chunk_indices = tl.argmax(output_chunk_mask, axis=-1)
-        output_chunk_indices_cmp = output_chunk_indices.to(tl.float32)
+        inv_mask = input_chunk_indices < num_splits
+        output_chunk_indices = tl.load(inverse_sorted_indices_ptr + input_chunk_indices, mask=inv_mask, other=0)
 
-        output_pre_split_sizes = tl.where(load_split_offset_cmp[None, :] < output_chunk_indices_cmp[:, None],
-            output_split_sizes[None, :], 0.0)
+        output_chunk_mask = output_chunk_indices < (num_splits + 1)
+        output_presums = tl.load(output_cumsum_ptr + output_chunk_indices, mask=output_chunk_mask, other=0)
 
-        output_presums = tl.sum(output_pre_split_sizes, axis=-1)
-        input_split_sizes_presums = tl.sum(input_split_sizes[None, :] * input_split_sizes_mask, axis=-1)
         dst_rows = output_presums + token_offsets_cmp - input_split_sizes_presums
-
-        store_mask = (token_offsets < num_tokens) & (token_offsets < pid_start + BLOCK_SIZE)
+        store_mask = token_offsets < num_tokens 
         tl.store(dst_rows_ptr + token_offsets, dst_rows, mask=store_mask)
 
 
@@ -78,17 +85,31 @@ def make_chunk_sort_map(
         Number of splits of split_sizes and sorted_indices.
     """
     row_id_map = torch.empty((num_tokens,), dtype=torch.int32, device="npu")
-    num_blocks = 48
+    num_blocks = min(48, num_tokens)
     block_size = triton.cdiv(num_tokens, num_blocks)
     grid = (num_blocks, 1, 1)
+
+    cumsum = torch.empty(split_sizes.size(0) + 1, dtype=torch.int32, device="npu")
+    cumsum[0] = 0
+    cumsum[1:] = split_sizes.cumsum(dim=0, dtype=torch.int32)
+
+    inverse_sorted_indices = torch.empty(num_splits, dtype=torch.int32, device="npu")
+    inverse_sorted_indices.scatter_(dim=0, index=sorted_indices, src=torch.arange(num_splits, dtype=torch.int32, device="npu"))
+
+    output_split_sizes = split_sizes[sorted_indices]
+    output_cumsum = torch.empty(split_sizes.size(0) + 1, dtype=torch.int32, device="npu")
+    output_cumsum[0] = 0 
+    output_cumsum[1:] = output_split_sizes.cumsum(dim=0, dtype=torch.int32)
+
     _make_chunk_sort_map_kernel[grid](
         split_sizes,
-        sorted_indices,
+        cumsum,
+        inverse_sorted_indices,
+        output_cumsum,
         row_id_map,
         num_splits,
         num_tokens,
         block_size,
-        SUB_BLOCK_SIZE=40,
         IDX_LOAD_WIDTH=triton.next_power_of_2(num_splits),
     )
     return row_id_map
@@ -245,7 +266,7 @@ class _moe_chunk_sort(torch.autograd.Function):
             is_forward=True,
         )
 
-        ctx.save_for_backward(row_id_map)
+        ctx.row_id_map = row_id_map
         ctx.num_tokens = num_tokens
         ctx.hidden_size = hidden_size
         return output, permuted_probs
@@ -263,10 +284,9 @@ class _moe_chunk_sort(torch.autograd.Function):
         act_grad = None
         probs_grad = None
         if ctx.needs_input_grad[0]:
-            (row_id_map,) = ctx.saved_tensors
             act_grad, probs_grad = sort_chunks_by_map(
                 permuted_act_grad,
-                row_id_map,
+                ctx.row_id_map,
                 permuted_probs_grad,
                 ctx.num_tokens,
                 ctx.hidden_size,

@@ -96,7 +96,12 @@ class MoEAlltoAllSeqOverLapDispatcher:
         self.input_splits = self.disaptor.input_splits
         self.output_splits = self.disaptor.output_splits
         self.num_out_tokens = self.disaptor.num_out_tokens
-        self.num_global_tokens_per_local_expert_cpu = self.disaptor.num_global_tokens_per_local_expert_cpu
+        if self.config.moe_permute_fusion:
+            self.restore_output_by_local_experts = self.restore_output_by_local_experts.npu(non_blocking=True)
+            self.sort_input_by_local_experts = self.sort_input_by_local_experts.npu(non_blocking=True)
+            self.num_global_tokens_per_local_expert_cpu = self.num_global_tokens_per_local_expert
+        else:
+            self.num_global_tokens_per_local_expert_cpu = self.disaptor.num_global_tokens_per_local_expert_cpu
         self.comm_stream = (
             self.disaptor.comm_stream
             if (self.config.moe_tp_extend_ep and hasattr(self.disaptor, 'comm_stream'))
@@ -203,13 +208,22 @@ class MoEAlltoAllSeqOverLapDispatcher:
         def alltoall_token_permutation2(global_input_tokens, global_probs, permute1_probs_handle=None):
             # Permutation 2: Sort tokens by local expert.
             if self.num_local_experts > 1:
-                global_input_tokens, global_probs = async_comm_sort_chunks_by_idxs(
-                    global_input_tokens,
-                    self.num_global_tokens_per_local_expert_cpu.ravel(),
-                    self.sort_input_by_local_experts,
-                    probs=global_probs,
-                    prob_handle=permute1_probs_handle
-                )
+                if self.config.moe_permute_fusion:
+                    global_input_tokens, global_probs = sort_chunks_by_idxs(
+                        global_input_tokens,
+                        self.num_global_tokens_per_local_expert_cpu.ravel(),
+                        self.sort_input_by_local_experts,
+                        probs=global_probs,
+                        fused=self.config.moe_permute_fusion
+                    )
+                else:
+                    global_input_tokens, global_probs = async_comm_sort_chunks_by_idxs(
+                        global_input_tokens,
+                        self.num_global_tokens_per_local_expert_cpu.ravel(),
+                        self.sort_input_by_local_experts,
+                        probs=global_probs,
+                        prob_handle=permute1_probs_handle
+                    )
             else:
                 # Avoid memory released before used.
                 global_input_tokens, global_probs = global_input_tokens.clone(), global_probs.clone()
@@ -275,6 +289,7 @@ class MoEAlltoAllSeqOverLapDispatcher:
                     hidden_states,
                     self.num_global_tokens_per_local_expert_cpu.T.ravel(),
                     self.restore_output_by_local_experts,
+                    fused=self.config.moe_permute_fusion
                 )
             else:
                 # Avoid memory released before used.
@@ -611,9 +626,12 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
             )
 
         if self.num_local_experts > 1:
-            self.num_global_tokens_per_local_expert_cpu = num_global_tokens_per_local_expert.view(
+            self.num_global_tokens_per_local_expert = num_global_tokens_per_local_expert.view(
                 -1, self.num_local_experts
-            ).to(torch.device("cpu"), non_blocking=True)
+            )
+            if not self.config.moe_permute_fusion:
+                self.num_global_tokens_per_local_expert.to(torch.device("cpu"), non_blocking=True)
+            self.num_global_tokens_per_local_expert_cpu = self.num_global_tokens_per_local_expert
 
         return num_tokens_per_local_expert
 
@@ -817,6 +835,7 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
                     self.num_global_tokens_per_local_expert_cpu.ravel(),
                     self.sort_input_by_local_experts,
                     probs=global_probs,
+                    fused=self.config.moe_permute_fusion
                 )
 
             if self.cuda_sync_point == "before_finish":
@@ -897,6 +916,7 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
                 hidden_states,
                 self.num_global_tokens_per_local_expert_cpu.T.ravel(),
                 self.restore_output_by_local_experts,
+                fused=self.config.moe_permute_fusion
             )
         if self.tp_size > 1:
             hidden_states = reduce_scatter_to_sequence_parallel_region(
