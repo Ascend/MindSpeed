@@ -83,9 +83,8 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
     def __init__(self, config: TransformerConfig, submodules: MLPSubmodules, gate: bool):
         config = deepcopy(config)
         config.moe_shared_expert_overlap = True
-        super().__init__(config=config, submodules=submodules, gate=False)
+        super().__init__(config=config, submodules=submodules, gate=gate)
         self.config.coc_row_nocomm = self.config.coc_fused_kernel
-        assert not self.use_shared_expert_gate
         self.cached_fc1_ag_input = None
         self.cached_fc1_input_grad = None
         self.fc1_input_comm_handle = None
@@ -101,6 +100,7 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
 
         if self.tp_size > 1:
             assert self.config.sequence_parallel
+            assert not self.use_shared_expert_gate
 
     def pre_forward_comm(self, input_, wait_event=None):
         """
@@ -110,6 +110,10 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         """
         assert self.config.moe_shared_expert_overlap
         assert self.cached_output is None
+
+        if self.use_shared_expert_gate:
+            logits = torch.nn.functional.linear(input_, self.gate_weight)
+            self.gate_score = torch.nn.functional.sigmoid(logits)
 
         if self.tp_size > 1:
             _, self.cached_fc1_ag_input, self.fc1_input_comm_handle = async_all_gather(
@@ -225,8 +229,14 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
             # output_before_rs is only used for run backward graph for shared experts.
             output_before_rs.untyped_storage().resize_(0)
 
+        if self.use_shared_expert_gate:
+            assert self.gate_score is not None
+            output = self.cached_output * self.gate_score
+            output_before_rs *= self.gate_score
+            self.gate_score = None
+        else:
+            output = self.cached_output
 
-        output = self.cached_output
         self.cached_output = None
 
         return output, output_before_rs
