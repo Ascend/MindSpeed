@@ -1,10 +1,7 @@
 # Copyright (c) 2023; Tri Dao. All rights reserved.
 # Copyright (c) 2024; Huawei Technologies Co., Ltd.  All rights reserved.
 
-import contextlib
 import math
-from dataclasses import dataclass
-from typing import List, Tuple, Union, Optional
 
 import torch
 import torch.nn.functional as F

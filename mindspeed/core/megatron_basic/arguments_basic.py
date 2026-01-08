@@ -90,13 +90,15 @@ def transformer_config_init_wrapper(fn):
     def wrapper(self, *args, **kwargs):
         known_config = {}
         unknown_config = {}
+        ignore_config = ['rope_type']
         full_args = vars(get_full_args()).copy()
         full_args.update(dict(kwargs))
 
         config_key = inspect.signature(self.__class__).parameters
         for key, value in full_args.items():
             if key in config_key:
-                known_config[key] = value
+                if value is not None or key not in ignore_config:
+                    known_config[key] = value
             else:
                 unknown_config[key] = value
 
