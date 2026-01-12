@@ -16,7 +16,7 @@ class MoEFixRouterFeature(MindSpeedFeature):
                            help='Enable .')
 
     def validate_args(self, args):
-        if args.expert_model_parallel_size <= 1:
+        if args.fix_router and args.expert_model_parallel_size <= 1:
             raise AssertionError('when enable fix-router, expert_model_parallel_size must be greater than 1')
 
     def register_patches(self, patch_manager, args):
