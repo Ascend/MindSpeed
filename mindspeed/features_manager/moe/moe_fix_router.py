@@ -17,8 +17,7 @@ class MoEFixRouterFeature(MindSpeedFeature):
 
     def validate_args(self, args):
         if args.expert_model_parallel_size <= 1:
-            raise argparse.ArgumentError('when enable fix-router, '
-                                         'expert_model_parallel_size must be greater than 1')
+            raise AssertionError('when enable fix-router, expert_model_parallel_size must be greater than 1')
 
     def register_patches(self, patch_manager, args):
         from mindspeed.core.transformer.moe.moe_utils import topk_softmax_with_capacity
