@@ -47,8 +47,10 @@ def chunk_bwd_kernel_dqkwg(
     USE_G_GAMMA: tl.constexpr,
     USE_DW: tl.constexpr,
     IS_VARLEN: tl.constexpr,
+    gdiff,
 ):
     i_t, i_b = tl.program_id(0), tl.program_id(1)
+    pid_it = i_t
     T_max = T
     if IS_VARLEN:
         i_tg = i_t
@@ -77,7 +79,6 @@ def chunk_bwd_kernel_dqkwg(
             dq_h = dq + (bos * H + i_h) * K
             dk_h = dk + (bos * H + i_h) * K
 
-            # for delta rule only
             if USE_DW:
                 w_h = w + (bos * H + i_h) * K
                 dw_h = dw + (bos * H + i_h) * K
@@ -141,7 +142,6 @@ def chunk_bwd_kernel_dqkwg(
 
             o_t = i_t * BT + tl.arange(0, BT)
             m_t = o_t < T
-            m_A = (o_t[:, None] >= o_t[None, :]) & (m_t[:, None] & m_t)
 
             if USE_G:
                 b_dg = tl.zeros([BT, ], dtype=tl.float32)
@@ -149,16 +149,23 @@ def chunk_bwd_kernel_dqkwg(
                 p_g = tl.make_block_ptr(g_h, (T,), (1,), (i_t * BT,), (BT,), (0,))
                 b_g = tl.load(p_g, boundary_check=(0,))
                 b_g_last = tl.load(g_h + (min(i_t * BT + BT, T) - 1) * 1)
-                b_dg_last *= exp(b_g_last)
+                b_dg_last *= tl.exp(b_g_last)
 
-                b_dq = b_dq * exp(b_g)[:, None] * scale
+                b_dq = b_dq * tl.exp(b_g)[:, None] * scale
                 b_dg += tl.sum(b_dq * b_q, axis=1)
 
-                b_dk = b_dk * tl.where(m_t, exp(-b_g + b_g_last), 0)[:, None]
+                b_dk = b_dk * tl.where(m_t, tl.exp(-b_g + b_g_last), 0)[:, None]
                 b_dg -= tl.sum(b_k * b_dk, axis=1)
                 b_dg_last += tl.sum(b_dk * b_k)
 
-                b_ds = tl.where(m_A, b_ds * exp(b_g[:, None] - b_g[None, :]), 0) * scale
+                if IS_VARLEN: 
+                    p_gdiff = tl.make_block_ptr(gdiff + pid_it * BT * BT * H + i_h * BT * BT, (BT, BT), (BT, 1), (0, 0), (BT, BT), (1, 0))
+                else:
+                    p_gdiff = tl.make_block_ptr(gdiff + i_b * H * NT * BT * BT + i_h * NT * BT * BT + i_t * BT * BT, (BT, BT), (BT, 1), (0, 0), (BT, BT), (1, 0))
+
+                gdiff_ = tl.load(p_gdiff)
+                b_ds = b_ds * gdiff_ * scale
+                    
                 b_ds2 = b_ds * tl.dot(b_q, tl.trans(b_k))
                 b_dg += tl.sum(b_ds2, axis=1)
                 b_dg -= tl.sum(b_ds2, axis=0)
@@ -416,7 +423,7 @@ def chunk_bwd_dqkwg(
     chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
     NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
 
-    BK = 64
+    BK = 128
     BV = 64
     NK = triton.cdiv(K, BK)
     dq = torch.empty_like(q)
@@ -425,6 +432,48 @@ def chunk_bwd_dqkwg(
     dg = torch.empty(NK, *g.shape, dtype=torch.float32, device=g.device) if g is not None else None
     dw = torch.empty_like(w) if w is not None else None
     grid = (NT, B)
+    if cu_seqlens is None:
+        if NT * BT == T:
+            g_ = g.reshape(B, H, NT, BT)
+            g_diff = g_[:, :, :, :, None] - g_[:, :, :, None, :]
+            g_diff = g_diff.clamp(-60, 60).exp()
+            g_diff[:, :, :] *= torch.tril(torch.ones(BT, BT), diagonal=0).to(g.device)
+        else:
+            diff = NT * BT - T
+            g_ = torch.cat((g, torch.zeros(B, H, diff).to(g.device)), dim=-1).reshape(B, H, NT, BT)
+            g_diff = g_[:, :, :, :, None] - g_[:, :, :, None, :]
+            g_diff = g_diff.clamp(-60, 60).exp()
+            g_diff[:, :, :] *= torch.tril(torch.ones(BT, BT), diagonal=0).to(g.device)
+            bias = torch.arange(0, BT).to(g.device)
+            o_t = (NT - 1) * BT + bias
+            m_t = o_t < T
+            m_A = (m_t[:, None] & m_t)
+            g_diff[:, :, -1] *= m_A
+    else:
+        g_diff = []
+        bias = torch.arange(0, BT).to(g.device)
+        for i in range(len(chunk_indices)):
+            i_n = chunk_indices[i, 0]
+            i_t = chunk_indices[i, 1]
+            bos = cu_seqlens[i_n]
+            eos = cu_seqlens[i_n + 1]
+            cur_T = eos - bos
+
+            o_t = i_t * BT + bias
+            m_t = o_t < cur_T
+            m_A = ((o_t[:, None] >= o_t[None, :]) & (m_t[:, None] & m_t))
+
+            if bos + (i_t + 1) * BT > T:
+                cur_g = torch.zeros((B, H, BT)).to(g.device)
+                cur_g[:, :, :-(bos + (i_t + 1) * BT - T)] = g[:, :, bos + i_t * BT:bos + (i_t + 1) * BT]
+                cur_g = g[:, :, bos + i_t * BT:bos + (i_t + 1) * BT]
+            cur_gdiff = cur_g[:, :, :, None] - cur_g[:, :, None, :]
+            cur_gdiff = cur_gdiff.clamp(-60, 60).exp()
+            cur_gdiff = cur_gdiff * m_A
+            g_diff.append(cur_gdiff)
+        
+        g_diff = torch.vstack(g_diff)
+
     chunk_bwd_kernel_dqkwg[grid](
         q=q,
         k=k,
@@ -451,6 +500,7 @@ def chunk_bwd_dqkwg(
         BT=BT,
         BK=BK,
         BV=BV,
+        gdiff=g_diff,
     )
 
     if dg is not None:
