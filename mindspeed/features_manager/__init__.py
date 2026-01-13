@@ -83,6 +83,7 @@ from mindspeed.features_manager.distributed.reset_bucket_group_order_feature imp
 from mindspeed.features_manager.custom_fsdp.custom_fsdp_feature import CustomFSDPFeature
 from mindspeed.features_manager.tensor_parallel.tp_2d import TP2dFeature
 from mindspeed.features_manager.compress_dense.compress_dense import AnsCompressTensorFeature
+from mindspeed.features_manager.compress.compress import CompressActivationFeature, CompressOptimizerFeature
 from mindspeed.features_manager.disable_gloo_group.disable_gloo_group_feature import DisableGlooGroupFeature
 
 from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeature
@@ -285,6 +286,13 @@ def add_compress_dense_features(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_compress_memory_feature(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        CompressActivationFeature(),
+        CompressOptimizerFeature()
+    ])
+
+
 def add_disable_gloo_group_feature(features_list: List[MindSpeedFeature]):
     features_list.extend([
         DisableGlooGroupFeature()
@@ -336,6 +344,7 @@ def create_features_list():
     add_reuse_param_features(features_list)
     add_swap_manage_features(features_list)
     add_compress_dense_features(features_list)
+    add_compress_memory_feature(features_list)
     add_disable_gloo_group_feature(features_list)
     add_swap_optimizer_feature(features_list)
     add_transformer_features(features_list)
