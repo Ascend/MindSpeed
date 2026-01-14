@@ -377,7 +377,10 @@ def chunk_fwd_kernel_o(
                         b_A += tl.dot(b_q, b_k)
 
                     if USE_G:
-                        p_g = tl.make_block_ptr(g + bos * H + i_h * T_max, (T,), (1,), (i_t * BT,), (BT,), (0,))
+                        if IS_VARLEN:
+                            p_g = tl.make_block_ptr(g + bos + i_h * T_max, (T,), (1,), (i_t * BT,), (BT,), (0,))
+                        else:
+                            p_g = tl.make_block_ptr(g + bos * H + i_h * T_max, (T,), (1,), (i_t * BT,), (BT,), (0,))
                         b_g = tl.load(p_g, boundary_check=(0,))
                         b_o = b_o * exp(b_g)[:, None]
                         b_A = b_A * exp(b_g[:, None] - b_g[None, :])
