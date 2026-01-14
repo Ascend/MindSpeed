@@ -15,7 +15,8 @@ from megatron.core.transformer.moe.moe_utils import (
     save_to_aux_losses_tracker,
     sort_chunks_by_idxs,
     get_capacity,
-    topk_softmax_with_capacity
+    topk_softmax_with_capacity,
+    maybe_move_tensor_to_cpu
 )
 
 from megatron.core.tensor_parallel.layers import (

@@ -136,3 +136,61 @@ def async_all_to_all(input_, output_split_sizes, input_split_sizes, group, event
             async_op=True
         )
     return input_, a2a_out, handle
+
+
+class AsyncAllToAllWithBackward(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_, output_split_sizes, input_split_sizes, group, event=None, stream=None, async_op=True):
+        if output_split_sizes is None:
+            # Equal split (all2all)
+            a2a_out = torch.empty_like(input_)
+        else:
+            # Unequal split (all2all-v)
+            a2a_out = input_.new_empty(
+                size=[sum(output_split_sizes)] + list(input_.size()[1:]),
+                dtype=input_.dtype,
+                device=torch.cuda.current_device(),
+            )
+
+        if event:
+            # multi stream wait event
+            global COMM_STREAM
+            if COMM_STREAM is None:
+                COMM_STREAM = torch_npu.npu.Stream(device=torch.npu.current_device())
+            with torch_npu.npu.stream(COMM_STREAM):
+                event.wait()
+                if stream:
+                    COMM_STREAM.wait_stream(stream)
+                handle = dist.all_to_all_single(
+                    a2a_out,
+                    input_.contiguous(),
+                    output_split_sizes=output_split_sizes,
+                    input_split_sizes=input_split_sizes,
+                    group=group,
+                    async_op=async_op
+                )
+        else:
+            handle = dist.all_to_all_single(
+                a2a_out,
+                input_.contiguous(),
+                output_split_sizes=output_split_sizes,
+                input_split_sizes=input_split_sizes,
+                group=group,
+                async_op=async_op
+            )
+        ctx.input_split_sizes = input_split_sizes
+        ctx.output_split_sizes = output_split_sizes
+        ctx.group = group
+        return input_, a2a_out, handle 
+    
+    @staticmethod
+    def backward(ctx, *grad_output):
+        """Backward function"""
+        return(
+            AsyncAllToAllWithBackward.apply(grad_output[1], ctx.input_split_sizes, ctx.output_split_sizes, ctx.group, None, None, False)[1],
+            None,
+            None,
+            None,
+            None,
+            None
+        )

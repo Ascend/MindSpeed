@@ -21,6 +21,10 @@ from mindspeed.core.transformer.moe.moe_feature.overlap.token_dispatcher import 
                                                                                 )
 from mindspeed.core.transformer.moe.moe_feature.overlap.experts import OverLapGmmExpertsImpl, AlltoAllOverLapGmmExpertsImpl
 from mindspeed.core.transformer.moe.moe_feature.gmm.experts import GmmExpertsImpl
+from mindspeed.core.transformer.moe.moe_feature.mc2moe.legacy_a2a_token_dispatcher import MoEAlltoAllSEQMC2TokenDispatcher
+from mindspeed.core.transformer.moe.moe_feature.mc2moe.token_dispatcher import MoEAlltoAllMC2TokenDispatcher
+from mindspeed.core.transformer.moe.moe_feature.mc2moe.experts import GmmExpertsMC2Impl
+from mindspeed.core.transformer.moe.moe_feature.mc2moe.moe_layer import AlltoAllMC2MoeLayer
 
 
 class MindSpeedMOEAlltoAllSEQTptoEpTokenDispatcher(All2AllSeqTp2epDispatcherImpl, MegatronMoEAlltoAllSEQTokenDispatcher):
@@ -55,6 +59,18 @@ class MindSpeedAlltoAllSeqOverlapMoeLayerAdaptor(AlltoAllSeqOverlapMoeLayer, Meg
     def __init__(self, *args, **kwargs):
 
         AlltoAllSeqOverlapMoeLayer.__init__(self, *args, **kwargs)
+
+
+class MindSpeedAlltoAllMC2MoeLayerAdaptor(AlltoAllMC2MoeLayer, MegatronMoELayer):
+    # MoELayer of AlltoAll&AlltoAllSeq MC2 API 
+    def __init__(self, *args, **kwargs):
+        AlltoAllMC2MoeLayer.__init__(self, *args, **kwargs)
+
+
+class MoEAlltoAllSEQMC2TokenDispatcherAdaptor(MoEAlltoAllSEQMC2TokenDispatcher, MegatronMoEAlltoAllSEQTokenDispatcher):
+    # TokenDispatcher of AlltoAllSEQ overlap API which support tp_extend_ep
+    def __init__(self, *args, **kwargs):
+        MoEAlltoAllSEQMC2TokenDispatcher.__init__(self, *args, **kwargs)
 
 
 class MindSpeedMOEAlltoAllSeqOverLapDispatcherAdaptor(MoEAlltoAllSeqOverLapDispatcher, MegatronMoEAlltoAllSEQTokenDispatcher):
@@ -101,7 +117,19 @@ class MindSpeedMOEAlltoAllOverLapDispatcherAdaptor(MoEAlltoAllOverLapDispatcher,
         MoEAlltoAllOverLapDispatcher.__init__(self, *args, **kwargs)
 
 
+class MoEAlltoAllMC2TokenDispatcherAdaptor(MoEAlltoAllMC2TokenDispatcher, MegatronMoEAlltoAllTokenDispatcher):
+    # TokenDispatcher of AlltoAllSEQ overlap API which support tp_extend_ep
+    def __init__(self, *args, **kwargs):
+        MoEAlltoAllMC2TokenDispatcher.__init__(self, *args, **kwargs)
+
+
 class MindSpeedAlltoALLOverLapGmmExperts(AlltoAllOverLapGmmExpertsImpl, MegatronGroupedMLP):
     # GroupedGEMM API
     def __init__(self, *args, **kwargs):
         AlltoAllOverLapGmmExpertsImpl.__init__(self, *args, **kwargs)
+
+
+class MindSpeedGmmMC2Experts(GmmExpertsMC2Impl, MegatronGroupedMLP):
+    # GroupedGEMM API
+    def __init__(self, *args, **kwargs):
+        GmmExpertsMC2Impl.__init__(self, *args, **kwargs)

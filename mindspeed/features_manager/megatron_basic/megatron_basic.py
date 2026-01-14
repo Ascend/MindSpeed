@@ -59,13 +59,6 @@ class MegatronBasicFeature(MindSpeedFeature):
         pm.register_patch('megatron.core.transformer.transformer_block.LayerNormImpl', PTNorm)
         pm.register_patch('megatron.core.extensions.transformer_engine.TENorm', PTNorm)
 
-        # coalescing_manager patches
-        from mindspeed.core.distributed.param_and_grad_buffer import start_param_sync, finish_param_sync, start_grad_sync, finish_grad_sync
-        pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_param_sync', start_param_sync)
-        pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_param_sync', finish_param_sync)
-        pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_grad_sync', start_grad_sync)
-        pm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_grad_sync', finish_grad_sync)
-
         # fix duplicate all-gather
         from mindspeed.core.optimizer.fix_duplicate_allgather import start_param_sync
         from mindspeed.core.optimizer.fix_duplicate_allgather import step_with_ready_grads_distrib_opti_wrapper

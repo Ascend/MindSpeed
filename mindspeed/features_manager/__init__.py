@@ -51,6 +51,7 @@ from mindspeed.features_manager.moe.fb_overlap import MoEFwdBwdOverlapFeature
 from mindspeed.features_manager.moe.balanced_moe import BalancedMoEFeature
 from mindspeed.features_manager.moe.moe_allgather_overlap import MoEAllGatherOverLapFeature
 from mindspeed.features_manager.moe.moe_alltoall_overlap import MoEAlltoAllOverLapFeature
+from mindspeed.features_manager.moe.moe_alltoall_mc2 import MoEAlltoAllMC2Feature
 from mindspeed.features_manager.moe.moe_zero_memory import MoEZeroMemoryFeature
 from mindspeed.features_manager.moe.experts_placement import ExpertsPlacementFeature
 from mindspeed.features_manager.moe.moe_fix_router import MoEFixRouterFeature
@@ -219,6 +220,7 @@ def add_moe_features(features_list: List[MindSpeedFeature]):
         MoEFwdBwdOverlapFeature(),
         BalancedMoEFeature(),
         ExpertsPlacementFeature(),
+        MoEAlltoAllMC2Feature(),
         MoEFixRouterFeature(),
     ])
 
