@@ -2,6 +2,7 @@ import logging
 
 import torch
 from torch.distributed.fsdp import fully_shard, MixedPrecisionPolicy
+from torch.distributed.tensor import Shard
 
 from mindspeed.lite.mindspeed_lite_config import EPPlanConfig
 from mindspeed.lite.utils.log import print_rank
@@ -13,7 +14,8 @@ logger = logging.getLogger(__name__)
 def expert_fully_shard_modules(model: torch.nn.Module, efsdp_mesh, plan: EPPlanConfig) -> torch.nn.Module:
     efsdp_modules = get_efsdp_modules(model, plan)
     config = {'mesh': efsdp_mesh,
-              'mp_policy': MixedPrecisionPolicy(param_dtype=torch.bfloat16, reduce_dtype=torch.float32), }
+              'mp_policy': MixedPrecisionPolicy(param_dtype=torch.bfloat16, reduce_dtype=torch.float32),
+              'shard_placement_fn': lambda x: Shard(1)}
 
     for experts in efsdp_modules:
         if isinstance(experts, torch.nn.ModuleList):
