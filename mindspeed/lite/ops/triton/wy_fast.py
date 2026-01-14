@@ -56,16 +56,21 @@ def prepare_wy_repr_bwd_kernel(
 
     for idx in range(start_idx, start_idx + chunks_this_pid):
         for i_b in range(B):
-            for i_h in range(0, H):
+            if IS_VARLEN:
+                i_n, i_t = tl.load(chunk_indices + idx * 2).to(tl.int32), tl.load(chunk_indices + idx * 2 + 1).to(tl.int32)
+                bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
+                T = eos - bos
+            else:
+                i_t = idx
+                bos, eos = i_b * T, i_b * T + T
 
+            o_t = i_t * BT + tl.arange(0, BT)	
+            m_t = o_t < T	
+            m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)	
+            for i_h in range(0, H):
                 if IS_VARLEN:
-                    i_n, i_t = tl.load(chunk_indices + idx * 2).to(tl.int32), tl.load(chunk_indices + idx * 2 + 1).to(tl.int32)
-                    bos, eos = tl.load(cu_seqlens + i_n).to(tl.int32), tl.load(cu_seqlens + i_n + 1).to(tl.int32)
                     offset = bos + i_h * T_max
-                    T = eos - bos
                 else:
-                    i_t = idx
-                    bos, eos = i_b * T, i_b * T + T
                     offset = bos * H + i_h * T_max
             
                 p_beta = tl.make_block_ptr(beta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
@@ -108,13 +113,10 @@ def prepare_wy_repr_bwd_kernel(
                     b_dbeta += tl.sum(b_dv_beta * b_v, 1)
                     tl.store(p_dv, b_dv.to(p_dv.dtype.element_ty), boundary_check=(0, 1))
 
-                o_t = i_t * BT + tl.arange(0, BT)	
-                m_t = o_t < T	
-                m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)	
                 b_dA = tl.where(m_A, b_dA, 0)	
                 b_dA = tl.dot(b_dA.to(b_A.dtype), b_A)	
                 b_dA = tl.dot(b_A, b_dA.to(b_A.dtype))	
-                b_dA = tl.where(m_A, -b_dA * tl.exp(b_g[:, None] - b_g[None, :]), 0)	
+                b_dA = tl.where(m_A, -b_dA * exp(b_g[:, None] - b_g[None, :]), 0)	
                 b_dA = b_dA.to(k.dtype.element_ty)	
                 b_A = tl.zeros([BT, BT], dtype=tl.float32)	
 
@@ -290,8 +292,8 @@ def prepare_wy_repr_bwd(
     BT = chunk_size
     chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
     NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
-    BK = 64
-    BV = 64
+    BK = 128
+    BV = 128
     beta = beta.transpose(1, 2).contiguous()
     g = g.transpose(1, 2).contiguous()
 
