@@ -65,7 +65,8 @@ from mindspeed.features_manager.transformer.flash_attention.alibi_feature import
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v1_feature import FusionAttentionFeature
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
 from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
-from mindspeed.features_manager.transformer.flash_attention.reset_attention_mask_feature import ResetAttentionMaskFeature
+from mindspeed.features_manager.transformer.flash_attention.reset_attention_mask_feature import \
+    ResetAttentionMaskFeature
 from mindspeed.features_manager.transformer.module_rearrange.mcore_rearrange import MegatronMcoreRearrangeFeature
 from mindspeed.features_manager.pipeline_parallel.variable_seq_length import VariableSequenceLengthFeature
 from mindspeed.features_manager.pipeline_parallel.multi_parameter import MultiParameterFeature
@@ -78,7 +79,8 @@ from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFe
 
 from mindspeed.features_manager.tokenizer.build_tokenizer import BuildTokenizerFeature
 from mindspeed.features_manager.distributed.buffer_pad import BufferPadFeature
-from mindspeed.features_manager.distributed.torch_fully_sharded_data_parallel import TorchFullyShardedDataParallelFeature
+from mindspeed.features_manager.distributed.torch_fully_sharded_data_parallel import \
+    TorchFullyShardedDataParallelFeature
 from mindspeed.features_manager.distributed.reset_bucket_group_order_feature import ResetBucketGroupOrderFeature
 
 from mindspeed.features_manager.custom_fsdp.custom_fsdp_feature import CustomFSDPFeature
@@ -100,6 +102,7 @@ from mindspeed.features_manager.ai_framework.ms_patch_feature import MindSporePa
 from mindspeed.features_manager.auto_settings.auto_settings_feature import AutoSettingsFeature
 from mindspeed.features_manager.ckpt_acceleration.ckpt_acceleration import CkptAccelerationFeature
 
+from mindspeed.features_manager.qos.qos_feature import QosFeature
 
 FEATURES_LIST = [
     # Functional features
@@ -325,6 +328,12 @@ def add_ckpt_acceleration_feature(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_aiqos_feature(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        QosFeature(),
+    ])
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -353,6 +362,7 @@ def create_features_list():
     add_ai_framework_feature(features_list)
     add_auto_settings_feature(features_list)
     add_ckpt_acceleration_feature(features_list)
+    add_aiqos_feature(features_list)
     return features_list
 
 
