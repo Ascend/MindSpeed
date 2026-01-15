@@ -1,0 +1,47 @@
+{
+    "task": "statistics",
+    "dump_path": "./dump_path", 
+    "rank": [0],  
+    "step": [0],  
+    "level": "L1", 
+    "enable_dataloader": false,
+    "async_dump": false,
+    "tensor": {
+        "scope": [], 
+        "list":[], 
+        "data_mode": ["all"],
+        "file_format": "npy" 
+    },
+    "statistics": {
+        "scope": [], 
+        "list":[], 
+        "data_mode": ["all"],
+        "summary_mode": "statistics"
+    },
+    "overflow_check": {
+        "overflow_nums": 1, 
+        "check_mode":"all" 
+    },
+    "run_ut": {
+        "white_list": [],
+        "black_list": [],
+        "error_data_path": "./"
+    },
+    "grad_probe": {
+        "grad_level": "L1",
+        "param_list": [],
+        "bounds": [-1, 0, 1]
+    },
+    "free_benchmark": {
+        "scope": [], 
+        "list": [],
+        "fuzz_device": "npu",
+        "pert_mode": "improve_precision",
+        "handler_type": "check",
+        "fuzz_level": "L1",
+        "fuzz_stage": "forward",
+        "if_preheat": false,
+        "preheat_step": 15,
+        "max_sample": 20
+    }
+}

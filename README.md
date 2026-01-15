@@ -559,6 +559,11 @@ MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并�
       <td><a href="docs/features/npu_deterministic.md">link</a></td>
       <td style="text-align: center; vertical-align: middle">❌</td>
     </tr>
+    <tr>
+      <td>Ascend MindStudio Training Tools 精度对照</td>
+      <td><a href="docs/features/npu_datadump.md">link</a></td>
+      <td style="text-align: center; vertical-align: middle">❌</td>
+    </tr>
   </tbody>
 </table>
 

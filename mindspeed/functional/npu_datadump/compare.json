@@ -1,0 +1,5 @@
+{
+"npu_path": "example/npu_dump/step0",
+"bench_path": "example/bench_dump/step0",
+"is_print_compare_log": true
+}

@@ -12,6 +12,7 @@ from mindspeed.features_manager.data_parallel.async_log_allreduce import AsyncLo
 from mindspeed.features_manager.functional.profile import ProfileFeature
 from mindspeed.features_manager.functional.profiler_default import ProfilerDefaultFeature
 from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
+from mindspeed.features_manager.functional.npu_datadump import NPUDataDumpFeature
 from mindspeed.features_manager.functional.tflops_calculate import TflopsCalculateFeature
 
 from mindspeed.features_manager.fusions.grouped_matmul import GroupedMatmulFeature
@@ -149,6 +150,7 @@ def add_functional_features(features_list: List[MindSpeedFeature]):
         NPUDeterministicFeature(),
         TflopsCalculateFeature(),
         ProfileFeature(),
+        NPUDataDumpFeature()
     ])
 
 
