@@ -7,7 +7,7 @@ MindSpeed凭借其卓越的性能表现与深度优化的算法架构，为客�
 ## 总体架构
 
 **图 1**  MindSpeed整体架构  
-![](figures/MindSpeed整体架构.png "MindSpeed整体架构")
+![](figures/MindSpeed_architecture.png "MindSpeed整体架构")
 
 **表 1**  组件介绍
 
