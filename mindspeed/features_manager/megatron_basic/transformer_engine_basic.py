@@ -23,6 +23,15 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                            default=False, help='Compare the cast and quantmatmul of te on cpu and npu online.')
         group.add_argument('--te-comparison-with-bf16', action='store_true',
                            default=False, help='Compare the cast and quantmatmul of te with bf16 online.')
+        group.add_argument('--te-gmm-mode',
+                           choices=['performance', 'compatible'],
+                           default='compatible',
+                           help='Select the TE-GMM execution mode. '
+                                '"performance": Enables high-performance optimizations. '
+                                '"compatible": Default. Ensures compatibility with native TE behavior.',
+                           dest='te_gmm_mode'
+                         )
+
 
     def validate_args(self, args):
         if args.fp8 and args.transformer_impl == 'local':
@@ -58,6 +67,24 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
                               transformer_block_checkpointed_forward)
 
+        if not getattr(args, 'te_gmm_mode', 'compatible') == 'performance':
+            from mindspeed.te.pytorch.module.grouped_linear import MindSpeedTEGroupedLinear, \
+                MindSpeedTEColumnParallelGroupedLinear, MindSpeedTERowParallelGroupedLinear
+            pm.register_patch('megatron.core.extensions.transformer_engine.TEGroupedLinear', MindSpeedTEGroupedLinear)
+            pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelGroupedLinear',
+                            MindSpeedTEColumnParallelGroupedLinear)
+            pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelGroupedLinear',
+                            MindSpeedTERowParallelGroupedLinear)
+        else:
+            from mindspeed.te.pytorch.module.performance_grouped_linear import MindSpeedTEPerformanceGroupedLinear, \
+                MindSpeedTEPerformanceColumnParallelGroupedLinear, MindSpeedTEPerformanceRowParallelGroupedLinear
+            pm.register_patch('megatron.core.extensions.transformer_engine.TEGroupedLinear',
+                                MindSpeedTEPerformanceGroupedLinear)
+            pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelGroupedLinear',
+                                MindSpeedTEPerformanceColumnParallelGroupedLinear)
+            pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelGroupedLinear',
+                                MindSpeedTEPerformanceRowParallelGroupedLinear)
+            
         if getattr(args, "fp8_format", False):
             from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
                 MindSpeedTEDotProductAttention
@@ -79,11 +106,6 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
 
             pm.register_patch('megatron.core.extensions.transformer_engine.TELayerNormColumnParallelLinear',
                               MindSpeedTELayerNormColumnParallelLinear)
-            pm.register_patch('megatron.core.extensions.transformer_engine.TEGroupedLinear', MindSpeedTEGroupedLinear)
-            pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelGroupedLinear',
-                              MindSpeedTEColumnParallelGroupedLinear)
-            pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelGroupedLinear',
-                              MindSpeedTERowParallelGroupedLinear)
 
             pm.register_patch('transformer_engine.common.recipe.Format', Format)
             pm.register_patch('megatron.core.enums.Fp8Recipe', Fp8Recipe)
@@ -115,8 +137,6 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
             from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import \
                 MindSpeedTELayerNormColumnParallelLinear
-            from mindspeed.te.pytorch.module.grouped_linear import MindSpeedTEGroupedLinear, \
-                MindSpeedTEColumnParallelGroupedLinear, MindSpeedTERowParallelGroupedLinear
 
             if not getattr(args, 'use_ascend_mc2', False):
                 pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
@@ -136,8 +156,3 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
 
             pm.register_patch('megatron.core.extensions.transformer_engine.TELayerNormColumnParallelLinear',
                               MindSpeedTELayerNormColumnParallelLinear)
-            pm.register_patch('megatron.core.extensions.transformer_engine.TEGroupedLinear', MindSpeedTEGroupedLinear)
-            pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelGroupedLinear',
-                              MindSpeedTEColumnParallelGroupedLinear)
-            pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelGroupedLinear',
-                              MindSpeedTERowParallelGroupedLinear)
