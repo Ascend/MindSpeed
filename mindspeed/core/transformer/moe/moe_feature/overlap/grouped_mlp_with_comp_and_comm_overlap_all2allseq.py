@@ -104,9 +104,11 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
         is_recompute_activation = moe_zero_memory == "level0" or should_recompute_activation(layer_number) or (
                     moe_zero_memory == "level1" and is_only_recompute_activation)
         if is_recompute_activation:
+            dtype = act_inputs.dtype
             activation_func = ctx.activation_func
             act_without_probs_ = activation_func(act_inputs)
             mm2_inputs = act_without_probs_ * permuted_probs_inputs_detach.unsqueeze(-1)
+            mm2_inputs = mm2_inputs.to(dtype)
             act_without_probs_size = act_without_probs_.untyped_storage().size()
             act_without_probs.untyped_storage().resize_(act_without_probs_size)
             act_without_probs.untyped_storage().copy_(act_without_probs_.untyped_storage())
