@@ -58,7 +58,7 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
     else:
         from transformer_engine.common.recipe import Float8CurrentScaling, MXFP8BlockScaling, Format
         from transformer_engine.pytorch import fp8_autocast, fp8_model_init
-        from mindspeed.te.pytorch.fp8.recipes import BlockRecipeScaling, GroupwiseBlockScaling
+        from mindspeed.te.pytorch.fp8.recipes import Float8BlockScaling
         if config.fp8 == "e4m3":
             fp8_format = Format.E4M3
         elif config.fp8 == "hybrid":
@@ -84,11 +84,7 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
                 fp8_format=fp8_format
             )
         elif config.fp8_recipe == Fp8Recipe.blockwise:
-            fp8_recipe = BlockRecipeScaling(
-                fp8_format=fp8_format
-            )
-        elif config.fp8_recipe == Fp8Recipe.groupwise:
-            fp8_recipe = GroupwiseBlockScaling(
+            fp8_recipe = Float8BlockScaling(
                 fp8_format=fp8_format
             )
         else:

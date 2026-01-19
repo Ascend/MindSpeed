@@ -3,7 +3,6 @@
 from typing import Optional
 
 import torch
-import torch_npu
 
 from mindspeed.te.pytorch.fp8.constants import FP8Format
 from mindspeed.te.pytorch.fp8.tensor import Float8Tensor

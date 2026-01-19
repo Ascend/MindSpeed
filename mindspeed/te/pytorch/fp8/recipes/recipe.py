@@ -1,15 +1,18 @@
 import dataclasses
 from typing import TypedDict
 
+import torch
+
 from megatron.core.transformer import TransformerConfig
-from mindspeed.te.pytorch.fp8.constants import Format, FP8Format
+from mindspeed.te.pytorch.fp8.constants import Format, FP8Format, TensorKey
+from mindspeed.te.pytorch.module_typing import FP8RecipeScaling
 
 
 class Recipe:
 
-    def __init__(self, key, recipe_config: 'RecipeScaling', shape):
+    def __init__(self, key, recipe_config: FP8RecipeScaling, shape):
         self.key = key
-        self.config = recipe_config
+        self.config: FP8RecipeScaling = recipe_config
         self.shape = shape
         self.fp8_format: FP8Format = getattr(self.config.fp8_format.value, self.key).value
 
@@ -19,22 +22,14 @@ class Recipe:
         return getattr(self.config, str(item))
 
     @property
-    def fp8_format_dtype(self):
+    def fp8_format_dtype(self) -> torch.dtype:
         return self.fp8_format.dtype
 
     @property
-    def quant_dtype(self):
+    def quant_dtype(self) -> torch.dtype:
         return self.fp8_format.quant_type
 
-    def pre_communication(self, tensor, key=None):
-        tensor = self.quantization(tensor, key)
-        return tensor
-
-    def pre_compute(self, tensor, key=None):
-        tensor = self.quantization(tensor, key)
-        return tensor
-
-    def quantization(self, tensor, key=None):
+    def quantization(self, tensor: torch.Tensor, key: TensorKey, colwise: bool, rowwise: bool):
         pass
 
     def dequantization(self, tensor):

@@ -42,11 +42,11 @@ class ScaleData:
 
     def append_amax(self, amax):
         if self.amax_history_current_len < self.amax_history_len:
-            self.amax_history[self.amax_history_current_len, :].copy_(amax)
+            self.amax_history[self.amax_history_current_len, :].copy_(amax, non_blocking=True)
             self.amax_history_current_len += 1
         else:
             self.amax_history = self.amax_history.roll(-1, 1)
-            self.amax_history[self.amax_history_len - 1, :].copy_(amax)
+            self.amax_history[self.amax_history_len - 1, :].copy_(amax, non_blocking=True)
 
     def reduce_amax(self, group=None):
         if group is None or torch.distributed.get_world_size(group) <= 1:
@@ -62,19 +62,25 @@ class ScaleData:
         self.amax_compute(self.amax, self.amax_history, self.last_history_index)
         # 这里为适配算子对原始公式进行取反
         # 原始公式 (self.fp8_max / self.amax) / (2 ** self.margin)
-        self.scale.copy_((self.amax * (2 ** self.margin)) / self.fp8_max)
+        self.scale.copy_(((self.amax * (2 ** self.margin)) / self.fp8_max), non_blocking=True)
 
     def delayed_recipe_update_amax(self, tensor, stream):
-        if self.current_interval >= self.config.config.fp8_interval:
-            self.current_interval = 1
-            with torch.cuda.stream(stream):
-                amax = torch.amax(torch.abs(tensor))
-                self.append_amax(amax)
-        else:
-            self.current_interval += 1
-
-        # first amax will use current max
         if self.amax_history_current_len == 0:
-            torch.cuda.current_stream().wait_stream(stream)
+            # first amax will use current max
+            self.current_interval = 1
+            amax = torch.amax(torch.abs(tensor))
             self.append_amax(amax)
             self.delayed_recipe_update_scale()
+            scale = self.scale.clone()
+        else:
+            scale = self.scale.clone()
+
+            if self.current_interval >= self.config.config.fp8_interval:
+                self.current_interval = 1
+                with torch.cuda.stream(stream):
+                    amax = torch.amax(torch.abs(tensor))
+                    self.append_amax(amax)
+                    self.delayed_recipe_update_scale()
+            else:
+                self.current_interval += 1
+        return scale

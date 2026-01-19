@@ -14,7 +14,6 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
     def register_args(self, parser):
         group = parser.add_argument_group(title=self.feature_name)
         self.add_parser_argument_choices_value(parser, "--fp8-format", 'hif8')
-        self.add_parser_argument_choices_value(parser, "--fp8-recipe", 'groupwise')
         self.add_parser_argument_choices_value(parser, "--fp8-recipe", 'blockwise')
         self.add_parser_argument_choices_value(parser, "--moe-router-dtype", 'fp8')  # 穿刺验证参数
         group.add_argument('--no-use-gmm-fp8', action='store_false',

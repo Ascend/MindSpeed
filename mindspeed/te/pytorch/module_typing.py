@@ -8,22 +8,25 @@ INCLUDE_TYPEALIAS = {
 }
 
 if typing.TYPE_CHECKING:
+    import torch
+
+    # noinspection PyUnusedImports
     from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
     from mindspeed.te.pytorch.fp8.recipes import (
         MXFP8ScalingRecipe,
         CurrentScalingRecipe,
         DelayedScalingRecipe,
-        BlockScalingRecipe,
+        Float8BlockRecipe,
         MXFP8BlockScaling,
         Float8CurrentScaling,
         TEDelayedScaling,
-        BlockRecipeScaling
+        Float8BlockScaling,
     )
-    from mindspeed.te.pytorch.fp8 import Float8Tensor, Float8TensorWithTranspose, MXFP8Tensor
+    from mindspeed.te.pytorch.fp8.tensor import Float8Tensor, Float8TensorWithTranspose, MXFP8Tensor
 
-    FP8Recipe = typing.Union[CurrentScalingRecipe, DelayedScalingRecipe, BlockScalingRecipe, MXFP8ScalingRecipe]
-    FP8RecipeScaling = typing.Union[Float8CurrentScaling, TEDelayedScaling, BlockRecipeScaling, MXFP8BlockScaling]
-    FP8Tensor = typing.Union[Float8Tensor, Float8TensorWithTranspose, MXFP8Tensor]
+    FP8Recipe = typing.Union[CurrentScalingRecipe, DelayedScalingRecipe, Float8BlockRecipe, MXFP8ScalingRecipe]
+    FP8RecipeScaling = typing.Union[Float8CurrentScaling, TEDelayedScaling, Float8BlockScaling, MXFP8BlockScaling]
+    FP8Tensor = typing.Union[Float8Tensor, Float8TensorWithTranspose, MXFP8Tensor, torch.Tenror]
 else:
 
     def __getattr__(name):

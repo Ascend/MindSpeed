@@ -28,7 +28,7 @@ class Mc2Ops(CommOverlapOps):
         return output, all_gather_grad_output, None
 
     @staticmethod
-    def fp8_all_gather_matmul(inputs: FP8Tensor, weight, fp8_meta: FP8Metadata, key, bias, transpose):
+    def fp8_all_gather_matmul(inputs: FP8Tensor, weight: FP8Tensor, bias, fp8_meta: FP8Metadata, key, transpose):
         if not is_fp8_tensor(inputs):
             inputs = fp8_meta.quantization(key[0], inputs)
         if not is_fp8_tensor(weight):
@@ -55,9 +55,9 @@ class Mc2Ops(CommOverlapOps):
     @staticmethod
     def fp8_matmul_reduce_scatter(inputs, weight, fp8_meta: FP8Metadata, key, bias, transpose):
         if not is_fp8_tensor(inputs):
-            inputs = fp8_meta.pre_compute(key[0], inputs)
+            inputs = fp8_meta.quantization(key[0], inputs)
         if not is_fp8_tensor(weight):
-            weight = fp8_meta.pre_compute(key[1], weight)
+            weight = fp8_meta.quantization(key[1], weight)
         output = inputs.matmul_reduce_scatter(weight, bias, fp8_meta, transpose)
         return output, inputs, weight
 

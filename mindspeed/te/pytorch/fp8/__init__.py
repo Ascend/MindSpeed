@@ -3,32 +3,41 @@ import logging
 import torch
 
 import torch_npu
-from mindspeed.te.pytorch.fp8.constants import FormatEnum
-from mindspeed.te.pytorch.fp8.tensor import Float8Tensor, Float8TensorCpu, MXFP8Tensor, MXFP8TensorCpu, \
-    Float8TensorWithTranspose, is_fp8_tensor_with_trans, is_fp8_tensor
+from mindspeed.te.pytorch.fp8.checkpoint import is_fp8_activation_recompute_enabled, in_fp8_activation_recompute_phase
+from mindspeed.te.pytorch.fp8.constants import FormatEnum, MatmulKey
+from mindspeed.te.pytorch.fp8.tensor import is_fp8_tensor, is_fp8_tensor_with_trans, Float8TensorCpu, MXFP8TensorCpu
 from mindspeed.te.pytorch.module_typing import FP8Metadata, FP8Tensor
 
 logger = logging.getLogger(__name__)
 
 
-def fp8_matmul(inputs, weight, fp8_meta: FP8Metadata, key, transpose=(False, False)
-               ) -> tuple[torch.Tensor, FP8Tensor, FP8Tensor]:
+def fp8_matmul(
+    inputs: FP8Tensor,
+    weight: FP8Tensor,
+    fp8_meta: FP8Metadata,
+    key: MatmulKey,
+    is_rowwise=(False, False)
+) -> tuple[torch.Tensor, FP8Tensor, FP8Tensor]:
     """
     Returns:
         output: high accuracy output
-        input: fp8 input
+        input: fp8 inputs
         weight: fp8 weight
     """
+    if key == MatmulKey.forward:
+        rowwise = not is_fp8_activation_recompute_enabled() or in_fp8_activation_recompute_phase()
+    else:
+        rowwise = True
     if not is_fp8_tensor(inputs):
-        inputs = fp8_meta.pre_compute(key[0], inputs)
+        inputs = fp8_meta.quantization(key[0], inputs, rowwise=rowwise)
     if not is_fp8_tensor(weight):
-        weight = fp8_meta.pre_compute(key[1], weight)
+        weight = fp8_meta.quantization(key[1], weight, rowwise=rowwise)
     if is_fp8_tensor_with_trans(inputs):
-        if key == ('grads', 'inputs'):
+        if key == MatmulKey.dw:
             # EVB 调测算子能力不支持transpose临时规避
-            transpose = (True, True)
+            is_rowwise = (True, True)
     # quant matmul
-    output = inputs.quant_matmul(weight, transpose)
+    output = inputs.quant_matmul(weight, is_rowwise)
     return output, inputs, weight
 
 
@@ -93,18 +102,12 @@ def te_online_comparison_mxfp8_cpu(inputs, weight, transpose, output):
     # convert Float8Tensor to MXFP8TensorCpu
     weight_cpu = MXFP8TensorCpu(
         torch.float8_e4m3fn,
-        torch.tensor([]),
-        None,
-        torch.tensor([]),
-        None,
+        torch.Size(),
         torch.float32
     )
     input_cpu = MXFP8TensorCpu(
         torch.float8_e4m3fn,
-        torch.tensor([]),
-        None,
-        torch.tensor([]),
-        None,
+        torch.Size(),
         torch.float32
     )
     weight_cpu.from_MXFP8Tensor(weight)
@@ -154,8 +157,8 @@ def padding_bf16_scale(mxfp8_tensor, scale_tensor):
 
 
 def te_online_comparison_mxfp8_bf16(inputs, weight, transpose, output):
-    x1, x_scale = inputs.get_by_trans(transpose[0])
-    x2, weight_scale = weight.get_by_trans(transpose[1])
+    x1, x_scale = inputs.get_quant_data(transpose[0])
+    x2, weight_scale = weight.get_quant_data(transpose[1])
 
     x_mxfp8_bf16 = x1.to(torch.float32).to(torch.bfloat16)
     weight_mxfp8_bf16 = x2.to(torch.float32).to(torch.bfloat16)

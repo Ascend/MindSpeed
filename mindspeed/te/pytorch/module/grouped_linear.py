@@ -8,6 +8,7 @@ from torch.nn import Parameter
 import torch_npu
 from megatron.core import parallel_state
 from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
+from megatron.core.enums import Fp8Recipe
 from megatron.core.extensions.transformer_engine import condition_init_method
 from megatron.core.parallel_state import (
     get_expert_model_parallel_world_size,
@@ -150,7 +151,8 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
 
     def forward(self, x, m_splits):
-        if not getattr(get_args(), "fp8", False):
+        args = get_args()
+        if not getattr(args, "fp8", False) or getattr(args, "fp8_recipe", False) != Fp8Recipe.mxfp8:
             group_list_type = 1
             for w in self.total_weight:
                 if self.parallel_mode == 'column':

@@ -3,6 +3,7 @@ import os
 import pytest
 import torch
 import torch_npu
+# noinspection PyUnusedImports
 import mindspeed.megatron_adaptor
 from megatron.core.enums import Fp8Recipe
 
@@ -14,7 +15,7 @@ from mindspeed.core.transformer.moe.grouped_matmul_util import TensorwiseGMMFunc
 from mindspeed.te.pytorch.fp8 import cast_to_fp8, cast_to_fp8_cpu
 from mindspeed.te.pytorch.fp8.constants import Format, FormatEnum
 from mindspeed.te.pytorch.fp8.fp8 import fp8_autocast
-from mindspeed.te.pytorch.fp8.recipes import TensorwiseMatMul, MXFP8MatMul, GroupwiseMatMul, BlockwiseMatMul
+from mindspeed.te.pytorch.fp8.recipes import TensorwiseMatMul, MXFP8MatMul, Float8BlockMatMul
 from mindspeed.te.pytorch.module.linear import TEColumnParallelLinear, TERowParallelLinear
 from tests_extend.commons import initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
@@ -73,7 +74,7 @@ FORMAT_MAP = {
 
 def get_config_by_recipe(fp8_recipe, fp8_format, config):
     from mindspeed.te.pytorch.fp8.recipes import Float8CurrentScaling, TEDelayedScaling, MXFP8BlockScaling, \
-        BlockRecipeScaling, GroupwiseBlockScaling
+        Float8BlockScaling
     if fp8_format == "e4m3":
         fp8_format = Format.E4M3
     elif fp8_format == "hybrid":
@@ -97,11 +98,7 @@ def get_config_by_recipe(fp8_recipe, fp8_format, config):
             fp8_format=fp8_format
         )
     elif fp8_recipe == Fp8Recipe.blockwise:
-        fp8_recipe = BlockRecipeScaling(
-            fp8_format=fp8_format
-        )
-    elif fp8_recipe == Fp8Recipe.groupwise:
-        fp8_recipe = GroupwiseBlockScaling(
+        fp8_recipe = Float8BlockScaling(
             fp8_format=fp8_format
         )
     return fp8_recipe
@@ -382,10 +379,8 @@ class TestFP8GMM(DistributedTest):
     (TensorwiseMatMul, 'hif8'),
     (MXFP8MatMul, 'e4m3'),
     (MXFP8MatMul, 'hybrid'),
-    (GroupwiseMatMul, 'e4m3'),
-    [GroupwiseMatMul, 'hybrid'],
-    (BlockwiseMatMul, 'e4m3'),
-    (BlockwiseMatMul, 'hybrid'),
+    (Float8BlockMatMul, 'e4m3'),
+    (Float8BlockMatMul, 'hybrid'),
 ])
 class TestFP8MM(DistributedTest):
     iter_times = 10

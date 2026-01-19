@@ -28,7 +28,7 @@ def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
         return MXFP8GMMFunction
     elif args.fp8_recipe in [Fp8Recipe.tensorwise, Fp8Recipe.delayed]:
         return TensorwiseGMMFunction
-    # blockwise 和 groupwise 暂未实现 走高精度分支
+    # blockwise 暂未实现 走高精度分支
     return None
 
 

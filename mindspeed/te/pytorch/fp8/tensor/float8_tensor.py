@@ -1,15 +1,14 @@
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import logging
-from typing import Optional
+from typing import Optional, NamedTuple
 
 import torch
 import torch_npu
 
 from megatron.training import get_args
-from mindspeed.te.pytorch.fp8.constants import FP8Format
 from mindspeed.te.pytorch.module_typing import FP8Metadata
-from mindspeed.te.pytorch.utils import get_hccl_comm_name, view_as_n_dim, all_gather_along_dim
+from mindspeed.te.pytorch.utils import get_hccl_comm_name, view_as_n_dim, all_gather_along_dim, get_quant_dtype
 
 logger = logging.getLogger(__name__)
 
@@ -40,28 +39,6 @@ class Float8Tensor:
     def dtype(self):
         return self._dtype
 
-    @classmethod
-    def to_float8(
-        cls,
-        tensor: torch.Tensor,
-        *,
-        fp8_format: FP8Format = None,
-        scale: Optional[torch.Tensor] = None,
-        dtype=None
-    ):
-        if dtype is None:
-            dtype = tensor.dtype
-        from mindspeed.te.pytorch.fp8 import cast_to_fp8
-        quant_tensor = cast_to_fp8(tensor, fp8_format)
-        if get_args().te_comparison_with_cpu:
-            te_cast_comparison(fp8_format, tensor, quant_tensor)
-        return cls(
-            data=quant_tensor,
-            fp8_dtype=fp8_format.dtype,
-            fp8_scale=scale,
-            dtype=dtype,
-        )
-
     def reshape(self, *args):
         self.data = self.data.reshape(*args)
         return self
@@ -76,13 +53,7 @@ class Float8Tensor:
 
     def t(self):
         data = self.data.t()
-        # 当前版本hif8的t()返回的是高精度版本
-        if isinstance(self.data, torch_npu.HiFloat8Tensor):
-            data = torch_npu.HiFloat8Tensor.to_hifloat8(data)
-        if self.fp8_scale.numel() != 1:
-            fp8_scale = self.fp8_scale.t()
-        else:
-            fp8_scale = self.fp8_scale
+        fp8_scale = self.fp8_scale
         return Float8Tensor(
             data=data,
             fp8_dtype=self.fp8_dtype,
@@ -90,27 +61,13 @@ class Float8Tensor:
             dtype=self.dtype,
         )
 
-    def quant_matmul(self, other, transpose):
-        x1 = self.t() if transpose[0] else self
-        x2 = other.t() if transpose[1] else other
-        if isinstance(x1.data, torch_npu.HiFloat8Tensor):
-            output = torch_npu.npu_quant_matmul(x1.data._data, x2.data._data, x2.fp8_scale,
-                                                pertoken_scale=x1.fp8_scale,
-                                                output_dtype=x1.dtype,
-                                                x1_dtype=torch_npu.hifloat8, x2_dtype=torch_npu.hifloat8)
-        # blockwise tensor 3d to 2d
-        elif x1.fp8_scale.numel() != 1:
-            data = x1.data.view([-1, x1.data.shape[-1]])
-            fp8_scale = x1.fp8_scale.contiguous()
-            output = torch_npu.npu_quant_matmul(data, x2.data, x2.fp8_scale,
-                                                pertoken_scale=fp8_scale,
-                                                output_dtype=x1.dtype,
-                                                group_sizes=[128, 128, 128])
-            output = output.view([*x1.data.shape[:-1], output.shape[-1]])
-        else:
-            output = torch_npu.npu_quant_matmul(x1.data, x2.data, x2.fp8_scale,
-                                                pertoken_scale=x1.fp8_scale,
-                                                output_dtype=x1.dtype)
+    def quant_matmul(self, other: 'Float8Tensor', is_rowwise: tuple[bool, bool]):
+        x1 = self.t() if is_rowwise[0] else self
+        x2 = other.t() if is_rowwise[1] else other
+        qdtype = get_quant_dtype()
+        output = torch_npu.npu_quant_matmul(x1.data, x2.data, x2.fp8_scale,
+                                            pertoken_scale=x1.fp8_scale,
+                                            output_dtype=x1.dtype, **qdtype.mm_kwargs)
         # te cpu compare
         args = get_args()
         if args.te_comparison_with_cpu:
@@ -160,36 +117,61 @@ class Float8Tensor:
         return output.view(-1, self.shape[1], output.shape[1])
 
 
-class Float8TensorWithTranspose(Float8Tensor):
+class QuantTensorMeta(NamedTuple):
+    data: torch.Tensor
+    scale: torch.Tensor
+
+    def t(self):
+        return self.data.T, self.scale.transpose(0, 1)
+
+
+class Float8TensorWithTranspose:
+    col_tensor: QuantTensorMeta
+    row_tensor: QuantTensorMeta
+
     def __init__(
         self,
         fp8_dtype: torch.dtype,
-        data: torch.Tensor = None,
-        scale: Optional[torch.Tensor] = None,
-        data_t: torch.Tensor = None,
-        scale_t: Optional[torch.Tensor] = None,
+        origin_shape: torch.Size,
         dtype: torch.dtype = torch.float32,
     ):
-        super(Float8TensorWithTranspose, self).__init__(data, fp8_dtype, scale, dtype)
-        self.data_t = data_t
-        self.scale_t = scale_t
+        self.fp8_dtype = fp8_dtype
+        self.dtype = dtype
+        self.origin_shape = origin_shape
+
+    @property
+    def device(self):
+        return self.col_tensor.data.device
+
+    def set_col_data(self, data, scale, t=False):
+        if data is None:
+            return
+        self.col_tensor = QuantTensorMeta(
+            data.T if t else data,
+            scale.transpose(0, 1) if t else scale
+        )
+
+    def set_row_data(self, data, scale, t=False):
+        if data is None:
+            return
+        self.row_tensor = QuantTensorMeta(
+            data.T if t else data,
+            scale.transpose(0, 1) if t else scale
+        )
+
+    def get_quant_data(self, is_rowwise=False):
+        return self.row_tensor if is_rowwise else self.col_tensor
 
     def t(self):
+        raise ValueError(f'{self.__class__.__name__} not support transpose')
+
+    def quant_matmul(self, other: 'Float8TensorWithTranspose', is_rowwise):
         raise NotImplementedError()
 
-    def quant_matmul(self, other: 'Float8Tensor', transpose=(False, False)):
-        raise NotImplementedError()
-
-    def get_by_trans(self, transpose=False):
-        if transpose:
-            return self.data_t, self.scale_t
-        return self.data, self.fp8_scale
-
-    def restore_reshape(self, output, transpose=False):
-        x, _ = self.get_by_trans(transpose)
-        if len(x.shape) == 2:
-            return output
-        return output.reshape(*x.shape[:-1], *output.shape[1:])
+    def restore_reshape(self, other: 'Float8TensorWithTranspose', output: torch.Tensor):
+        if len(self.origin_shape) == len(other.origin_shape):
+            return output  # dw 场景直接返回2维原始output
+        return output.reshape(*self.origin_shape[:-1], *output.shape[1:])
 
 
 def te_cast_comparison(fp8_format, tensor, quant_tensor):

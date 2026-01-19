@@ -5,7 +5,6 @@ from typing import Optional
 
 import torch
 
-from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe
 from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
 
 
@@ -13,7 +12,7 @@ from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
 def fp8_autocast(
     enabled: bool = True,
     calibrating: bool = False,
-    fp8_recipe: Optional[Recipe] = None,
+    fp8_recipe=None,
     fp8_group: Optional[torch.distributed.ProcessGroup] = None,
     _graph: bool = False,
 ):
@@ -35,7 +34,7 @@ def fp8_autocast(
 @contextmanager
 def fp8_model_init(
     enabled: bool = True,
-    recipe: Optional[Recipe] = None,
+    recipe=None,
     preserve_high_precision_init_val: bool = False,
 ) -> None:
     """

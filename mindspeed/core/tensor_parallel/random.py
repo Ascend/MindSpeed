@@ -5,6 +5,8 @@ from functools import wraps
 from typing import List, Union
 import torch
 from torch import _C
+
+from mindspeed.te.pytorch.fp8.checkpoint import activation_recompute_forward
 from torch_npu.npu import _lazy_call, device as device_ctx_manager
 from torch.utils.checkpoint import _get_autocast_kwargs
 from megatron.core.tensor_parallel.utils import gather_split_1d_tensor
@@ -93,7 +95,8 @@ class CheckpointFunctionWithoutOutput(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_function, checkpoint, *args):
         with torch.no_grad():
-            outputs = run_function(*args)
+            with activation_recompute_forward(activation_recompute=True, recompute_phase=False):
+                outputs = run_function(*args)
 
         # Store everything
         ctx.save_for_backward(*detach_variable(args))
@@ -128,7 +131,7 @@ class CheckpointWithoutOutput:
                 "distribute_saved_activations"
             )
 
-        #Copy the rng states.
+        # Copy the rng states.
         self.fwd_cpu_rng_state = torch.get_rng_state()
         self.fwd_cuda_rng_state = torch.cuda.get_rng_state()
         self.fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
@@ -161,7 +164,9 @@ class CheckpointWithoutOutput:
         _set_cuda_rng_state(self.fwd_cuda_rng_state)
         get_cuda_rng_tracker().set_states(self.fwd_cuda_rng_state_tracker)
 
-        with torch.enable_grad():
+        with torch.enable_grad(), activation_recompute_forward(
+            activation_recompute=True, recompute_phase=True
+        ):
             outputs = self.run_function(*self.ctx.saved_tensors)
         self.run_function = None
         self.fwd_cpu_rng_state = None
@@ -187,7 +192,6 @@ class CheckpointWithoutOutput:
         self.ctx = None
 
 
-
 class RngStateContext:
     def __init__(self, cpu_rng_state, cuda_rng_state, cuda_rng_state_tracker):
         self.fwd_cpu_rng_state = cpu_rng_state
@@ -198,7 +202,8 @@ class RngStateContext:
 class CheckpointFunctionRipipe(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_function, distribute_saved_activations, *args):
-        fwd_rng_state = RngStateContext(torch.get_rng_state(), torch.cuda.get_rng_state(), get_cuda_rng_tracker().get_states())
+        fwd_rng_state = RngStateContext(torch.get_rng_state(), torch.cuda.get_rng_state(),
+                                        get_cuda_rng_tracker().get_states())
         with torch.no_grad():
             outputs = run_function(*args)
 
@@ -224,6 +229,7 @@ class CheckpointFunctionRipipe(torch.autograd.Function):
             torch.set_rng_state(bwd_cpu_rng_state)
             _set_cuda_rng_state(bwd_cuda_rng_state)
             get_cuda_rng_tracker().set_states(bwd_cuda_rng_state_tracker)
+
         if get_pipeline_checkpoint_manager().do_pre_recompute:
             get_pipeline_checkpoint_manager().add_recompute(recompute)
         ctx.recompute_func = recompute

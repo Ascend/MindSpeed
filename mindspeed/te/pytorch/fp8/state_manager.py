@@ -3,8 +3,6 @@
 
 import torch.distributed
 
-from mindspeed.te.pytorch.fp8.recipes.delayed_scaling_recipe import DelayedScalingRecipe
-
 
 class FP8GlobalStateManager:
     FP8_ENABLED = False
@@ -37,6 +35,7 @@ class FP8GlobalStateManager:
         # Reduce only the non-FP8 weight modules here.
         # FP8 weight modules are reduced at the end of the optimizer
         # step after the weight amax is populated.
+        from mindspeed.te.pytorch.fp8.recipes.delayed_scaling_recipe import DelayedScalingRecipe
         if enabled and cls.FP8_AUTOCAST_DEPTH == 0 and not _graph and torch.is_grad_enabled():
             for recipe in DelayedScalingRecipe.ALL_SCALING:
                 recipe.finally_step()

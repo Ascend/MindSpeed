@@ -9,25 +9,7 @@ from torch import Tensor
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import WrappedTensor, deprecate_inference_params, make_viewless_tensor
-
-
-def te_checkpoint(
-    forward_func,
-    *args,
-    **kwargs
-):
-    from megatron.core import tensor_parallel
-    if kwargs:
-        distribute_saved_activations = kwargs.pop("distribute_saved_activations", False)
-    else:
-        distribute_saved_activations = args[0]
-        args = args[3:]
-
-    return tensor_parallel.checkpoint(
-        forward_func,
-        distribute_saved_activations,
-        *args
-    )
+from mindspeed.te.pytorch.fp8.checkpoint import checkpoint as te_checkpoint
 
 
 def transformer_block_checkpointed_forward(

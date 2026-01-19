@@ -3,34 +3,34 @@ import dataclasses
 import torch
 
 import torch_npu
-from mindspeed.te.pytorch.fp8 import MXFP8Tensor
+from mindspeed.te.pytorch.fp8.tensor import MXFP8Tensor
+from mindspeed.te.pytorch.fp8.constants import TensorKey
 from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe, RecipeScaling
 from mindspeed.te.pytorch.utils import view_as_n_dim, get_quant_dtype
 
 
 class MXFP8ScalingRecipe(Recipe):
+    need_transpose_key = (TensorKey.weight, TensorKey.grads)
 
-    def quantization(self, tensor: torch.Tensor, key=None):
+    def quantization(self, tensor: torch.Tensor, key, colwise, rowwise):
         if tensor is None:
             return tensor
-        ori_dtype = tensor.dtype
-        # input、weight、grad三者均需要将转置和非转置全部处理，因此这里无传参控制是否采集转置数据
-        if key == 'weight':
-            y, mx_scale = torch_npu.npu_dynamic_mx_quant(tensor, axis=-2, dst_type=self.fp8_format_dtype)
-        else:
-            y, mx_scale = torch_npu.npu_dynamic_mx_quant(tensor, axis=-1, dst_type=self.fp8_format_dtype)
+        coly, col_scale, rowy, row_scale = None, None, None, None
+        tensor_2d = view_as_n_dim(tensor)
 
-        if key == 'inputs':
-            y_t, mx_scale_t = torch_npu.npu_dynamic_mx_quant(tensor, axis=0, dst_type=self.fp8_format_dtype)
-        elif key == 'grads':
-            y_t, mx_scale_t = torch_npu.npu_dynamic_mx_quant(view_as_n_dim(tensor), axis=-2,
-                                                             dst_type=self.fp8_format_dtype)
-            y_t, mx_scale_t = y_t.t(), mx_scale_t.transpose(0, 1)
-        else:
-            y_t, mx_scale_t = torch_npu.npu_dynamic_mx_quant(view_as_n_dim(tensor), axis=-1,
-                                                             dst_type=self.fp8_format_dtype)
-            y_t, mx_scale_t = y_t.t(), mx_scale_t.transpose(0, 1)
-        return MXFP8Tensor(self.fp8_format_dtype, y, mx_scale, y_t, mx_scale_t, ori_dtype)
+        mxfp8_tensor = MXFP8Tensor(self.fp8_format_dtype, tensor.shape, tensor.dtype)
+        if colwise:
+            coly, col_scale = torch_npu.npu_dynamic_mx_quant(tensor_2d, axis=-1, dst_type=self.fp8_format_dtype)
+        if rowwise:
+            rowy, row_scale = torch_npu.npu_dynamic_mx_quant(tensor_2d, axis=-2, dst_type=self.fp8_format_dtype)
+
+        if key == TensorKey.weight:
+            coly, col_scale, rowy, row_scale = rowy, row_scale, coly, col_scale
+
+        mxfp8_tensor.set_row_data(rowy, row_scale, key in self.need_transpose_key)
+        mxfp8_tensor.set_col_data(coly, col_scale)
+
+        return mxfp8_tensor
 
 
 @dataclasses.dataclass

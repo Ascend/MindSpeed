@@ -18,9 +18,9 @@ from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, 
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import divide
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.te.pytorch.fp8 import fp8_matmul
+from mindspeed.te.pytorch.fp8 import fp8_matmul, MatmulKey, is_fp8_tensor_with_trans
+from mindspeed.te.pytorch.fp8.constants import TensorKey
 from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
-from mindspeed.te.pytorch.fp8.tensor import MXFP8Tensor
 from mindspeed.te.pytorch.module.ops import get_ops, DummyHandle
 from mindspeed.te.pytorch.module.ops.comm_overlap_ops import COMM_OVERLAP_CONFIG
 
@@ -51,7 +51,7 @@ class TEColumnParallelLinear(torch.nn.Module):
             raise ValueError('Transformer Engine linear layers do not support gather_output = True')
 
         super(TEColumnParallelLinear, self).__init__()
-        self.fp8_meta = FP8Metadata(['inputs', 'weight', 'grads'])
+        self.fp8_meta = FP8Metadata()
 
         # Keep input parameters
         self.input_size = input_size
@@ -211,7 +211,7 @@ class ColumnParallelSeq(torch.autograd.Function):
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
 
         output_parallel, total_input, weight_fp8 = get_ops().allgather_matmul(input_, weight, None,
-                                                                              fp8_meta, ('inputs', 'weight'),
+                                                                              fp8_meta, MatmulKey.forward,
                                                                               ctx.fp8_enable, (False, True))
         if COMM_OVERLAP_CONFIG.save_allgather_input:
             ctx.total_input = total_input
@@ -239,15 +239,15 @@ class ColumnParallelSeq(torch.autograd.Function):
         if ctx.needs_input_grad[1] and not COMM_OVERLAP_CONFIG.save_allgather_input:
             # 暂时不会跑进该分支, 暂时不考虑下述变量适配
             if fp8_enable:
-                grad_output = fp8_meta.pre_communication('grads', grad_output)
-                input_ = fp8_meta.pre_communication('inputs', input_)
+                grad_output = fp8_meta.quantization(TensorKey.grads, grad_output)
+                input_ = fp8_meta.quantization(TensorKey.inputs, input_)
             all_gather_handle, total_input = async_gather_along_first_dim(input_, tp_group, tp_world_size)
 
         if not fp8_enable:
             grad_input = grad_output.matmul(weight)
             sub_grad_input = torch.empty(input_.size(), dtype=input_.dtype, device=input_.device, requires_grad=False)
         else:
-            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, fp8_meta, ('grads', 'weight'))
+            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, fp8_meta, MatmulKey.dx)
             # 开启fp8之后，由于暂时没有fp8通信，这里保存的是total input，而不是input_
             sub_grad_input = torch.empty(input_size, dtype=total_input.dtype, device=weight.device,
                                          requires_grad=False)
@@ -272,7 +272,7 @@ class ColumnParallelNoSeq(torch.autograd.Function):
         if fp8_meta is None or not fp8_meta.is_fp8_enable():
             output = torch.matmul(input_, weight.t())
         else:
-            output, input_, weight = fp8_matmul(input_, weight, fp8_meta, ('inputs', 'weight'), (False, True))
+            output, input_, weight = fp8_matmul(input_, weight, fp8_meta, MatmulKey.forward, (False, True))
 
         save_xw_for_backword(ctx, input_, weight)
 
@@ -290,7 +290,7 @@ class ColumnParallelNoSeq(torch.autograd.Function):
         if not ctx.fp8_enable:
             grad_input = grad_output.matmul(weight)
         else:
-            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, ctx.fp8_meta, ('grads', 'weight'))
+            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, ctx.fp8_meta, MatmulKey.dx)
 
         # 当前0shape规避allreduce输入矩阵为0的场景，实际需要支持allreduce TP=1场景，后续删除判断代码
         handle = DummyHandle
@@ -326,7 +326,7 @@ class TERowParallelLinear(torch.nn.Module):
             )
 
         super(TERowParallelLinear, self).__init__()
-        self.fp8_meta = FP8Metadata(['inputs', 'weight', 'grads'])
+        self.fp8_meta = FP8Metadata()
 
         # Keep input parameters
         self.input_size = input_size
@@ -461,7 +461,7 @@ class RowParallelSeq(torch.autograd.Function):
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
         output_parallel, input_, weight = get_ops().matmul_reduce_scatter(input_, weight, bias,
-                                                                          fp8_meta, ('inputs', 'weight'),
+                                                                          fp8_meta, MatmulKey.forward,
                                                                           ctx.fp8_enable)
         save_xw_for_backword(ctx, input_, weight)
 
@@ -473,7 +473,7 @@ class RowParallelSeq(torch.autograd.Function):
         input_, weight = load_xw_from_forward(ctx)
 
         grad_input, grad_output, _ = get_ops().allgather_matmul(grad_output, weight, None, ctx.fp8_meta,
-                                                                ('grads', 'weight'), ctx.fp8_enable)
+                                                                MatmulKey.dx, ctx.fp8_enable)
         grad_weight, grad_bias = calculate_grad(ctx, input_, weight, grad_output, grad_output_ori)
         return grad_input, grad_weight, grad_bias, None
 
@@ -487,7 +487,7 @@ class RowParallelNoSeq(torch.autograd.Function):
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
 
         output_, input_, weight = get_ops().matmul_all_reduce(input_, weight, bias, fp8_meta,
-                                                              ('inputs', 'weight'), ctx.fp8_enable)
+                                                              MatmulKey.forward, ctx.fp8_enable)
         save_xw_for_backword(ctx, input_, weight)
         return output_
 
@@ -498,7 +498,7 @@ class RowParallelNoSeq(torch.autograd.Function):
         if not ctx.fp8_enable:
             grad_input = grad_output.matmul(weight)
         else:
-            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, ctx.fp8_meta, ('grads', 'weight'))
+            grad_input, grad_output, _ = fp8_matmul(grad_output, weight, ctx.fp8_meta, MatmulKey.dx)
 
         grad_weight, grad_bias = calculate_grad(ctx, input_, weight, grad_output, grad_output_ori)
         return grad_input, grad_weight, grad_bias, None
@@ -520,7 +520,7 @@ def calculate_grad(ctx, inp, weight, grad, ori_grad):
     if is_grad_weight_needed:
         grad, total_input = reshape_to_2D(grad), reshape_to_2D(inp)
         if ctx.fp8_enable:
-            grad_weight, _, _ = fp8_matmul(grad, total_input, ctx.fp8_meta, ('grads', 'inputs'), (True, False))
+            grad_weight, _, _ = fp8_matmul(grad, total_input, ctx.fp8_meta, MatmulKey.dw, (True, False))
         elif ctx.gradient_accumulation_fusion and weight.main_grad.dtype == torch.float32:
             from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
             npu_matmul_add_fp32(total_input, grad, weight.main_grad)
@@ -584,7 +584,6 @@ def load_xw_from_forward(ctx):
 
 def reshape_to_2D(input_tensor):
     # Convert the tensor shapes to 2D for execution compatibility
-    if isinstance(input_tensor, MXFP8Tensor):
+    if is_fp8_tensor_with_trans(input_tensor):
         return input_tensor
-    output = input_tensor.reshape(-1, input_tensor.shape[-1])
-    return output
+    return input_tensor.reshape(-1, input_tensor.shape[-1])

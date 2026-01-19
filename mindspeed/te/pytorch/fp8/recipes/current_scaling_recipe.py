@@ -10,13 +10,13 @@ from mindspeed.te.pytorch.utils import view_as_n_dim, get_quant_dtype
 
 class CurrentScalingRecipe(Recipe):
 
-    def quantization(self, tensor, key=None):
+    def quantization(self, tensor, key, colwise, rowwise):
         if tensor is None:
             return tensor
         if is_fp8_tensor(tensor):  # if dtype is fp8
             return tensor
         quant_tensor, scale = torch_npu.npu_dynamic_quant(tensor, dst_type=self.quant_dtype, quant_mode='pertensor')
-        return Float8Tensor.to_float8(quant_tensor, fp8_format=self.fp8_format, scale=scale, dtype=tensor.dtype)
+        return Float8Tensor(quant_tensor, self.quant_dtype, scale, dtype=tensor.dtype)
 
 
 @dataclasses.dataclass

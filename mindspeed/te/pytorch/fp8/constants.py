@@ -1,4 +1,3 @@
-import typing
 from enum import Enum
 from typing import Optional, NamedTuple
 
@@ -57,15 +56,26 @@ class Fp8Recipe(str, Enum):
     tensorwise = 'tensorwise'
     mxfp8 = 'mxfp8'
     blockwise = 'blockwise'
-    groupwise = 'groupwise'
+
+
+class TensorKey(str, Enum):
+    inputs = 'inputs'
+    weight = 'weight'
+    grads = 'grads'
+
+
+class MatmulKey(tuple, Enum):
+    forward = (TensorKey.inputs, TensorKey.weight)
+    dx = (TensorKey.grads, TensorKey.weight)
+    dw = (TensorKey.grads, TensorKey.inputs)
 
 
 def amax_compute_max(amax, amax_history, last_history_index):
-    amax.copy_(torch.amax(amax_history, dim=0))
+    amax.copy_(torch.amax(amax_history, dim=0), non_blocking=True)
 
 
 def amax_compute_most_recent(amax: torch.Tensor, amax_history, last_history_index):
-    amax.copy_(amax_history[last_history_index])
+    amax.copy_(amax_history[last_history_index], non_blocking=True)
 
 
 AMAX_COMPUTE_MAP = {

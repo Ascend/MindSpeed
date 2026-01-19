@@ -83,7 +83,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.sequence_parallel = self.config.sequence_parallel
         self.gradient_accumulation_fusion = self.config.gradient_accumulation_fusion
         self.parallel_mode = 'column'
-        self.fp8_meta = FP8Metadata(['inputs', 'weight', 'grads'])
+        self.fp8_meta = FP8Metadata()
         self.is_recompute_norm = False
 
         # MindSpeedTELayerNormColumnParallelLinear check.
