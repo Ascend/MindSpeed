@@ -1,6 +1,6 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 from dataclasses import dataclass
-from typing import Any, Dict, List, Callable, Fsdpral, Union
+from typing import Any, Dict, List, Callable, Literal, Union
 
 
 @dataclass
@@ -24,7 +24,7 @@ class CPPlanConfig:
 @dataclass
 class EPPlanConfig:
     apply_modules: List[str] = None
-    dispatcher: Union[Fsdpral["eager", "fused", "mc2"], Callable] = None
+    dispatcher: Union[Literal["eager", "fused", "mc2"], Callable] = None
     apply_efsdp_modules: List[str] = None
     _gradient_divide_factor: float = None
 
