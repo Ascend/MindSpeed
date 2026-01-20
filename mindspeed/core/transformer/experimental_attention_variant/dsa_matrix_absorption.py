@@ -2,9 +2,10 @@
 # Copyright (c) 2025; Huawei Technologies Co., Ltd.  All rights reserved.
 
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 
 import torch
+import torch_npu
 
 try:
     from einops import rearrange
@@ -14,7 +15,6 @@ except ImportError:
     HAVE_EINOPS = False
 
 from megatron.core.models.backends import BackendSpecProvider
-from megatron.core import tensor_parallel
 from megatron.core.models.common.embeddings import apply_rotary_pos_emb
 from megatron.core.pipeline_parallel.fine_grained_activation_offload import (
     fine_grained_offloading_group_commit,
@@ -70,27 +70,8 @@ def compute_dsa_indexer_loss(
     pg_collection: ProcessGroupCollection,
 ) -> torch.Tensor:
     """
-    Compute KL divergence loss between index_scores and true attention_scores.
-
-    This loss trains the indexer to predict which tokens are important by matching the distribution
-    of true attention scores.
-
-    Reference: Section 2.1 of
-        https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/DeepSeek_V3_2.pdf
-
-    Args:
-        index_scores: Scores predicted by indexer [batch, seqlen_q, seqlen_k].
-        topk_indices: Top-k indices [batch, seqlen_q, index_topk].
-        query: Query tensor [seqlen_q, batch, heads, dim].
-        key: Key tensor [seqlen_k, batch, heads, dim].
-        softmax_scale: Scale coefficient after q @ k^T.
-        loss_coeff: Coefficient for the indexer KL divergence loss.
-        sparse_loss: bool, whether to use sparse indexer loss. If True, only the topk
-            indices will be used to compute the loss.
-        pg_collection: Process group collection, must have TP process group.
-
-    Returns:
-        index_loss: KL divergence loss (scalar).
+    Extended to support a mismatched number of key and query heads.
+    This enables functionality such as cross-attention with matrix absorption.
     """
     sq, b, np, hn = query.size()
     skv, b, nkv, hn = key.size()
@@ -105,11 +86,12 @@ def compute_dsa_indexer_loss(
     # Reshape to [b, np, sq, sk]
     attention_scores = attention_scores.reshape(b, np, sq, sk)
 
-
+    # causal_mask [sq, sk]
     causal_mask = torch.triu(
         torch.full((sq, sk), float('-inf'), dtype=torch.float32, device=attention_scores.device),
         diagonal=1,
     )
+    # index_mask [b, sq, sk]
     index_mask = torch.full(
         (b, sq, sk), float("-inf"), dtype=torch.float32, device=causal_mask.device
     ).scatter_(-1, topk_indices, 0)
@@ -155,7 +137,8 @@ def compute_dsa_indexer_loss(
 
 def unfused_dsa_fn(query, key, value, topk_indices, softmax_scale):
     """
-    Unfused sparse attention implementation.
+    Extended to support a mismatched number of key and query heads.
+    This enables functionality such as cross-attention with matrix absorption.
     """
     sq, b, np, hn = query.size()
     skv, b, nkv, hn = key.size()
@@ -858,4 +841,3 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             return query, key, value, q_compressed, kv_compressed
         else:
             return query, key, value
-
