@@ -110,7 +110,7 @@ def get_batch_on_this_cp_rank(batch):
 
     cp_expanded_by_2d_tp = args.tp_y > 1
     if args.reset_attention_mask and args.attention_mask_type == 'causal':
-        if args.context_parallel_algo == 'kvallgather_cp_algo':
+        if args.context_parallel_algo in ['ulysses_cp_algo', 'kvallgather_cp_algo']:
             batch = _get_batch_on_this_cp_rank_in_ulysses_cp(batch)
         else:
             batch = _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, get_actual_seq_len())

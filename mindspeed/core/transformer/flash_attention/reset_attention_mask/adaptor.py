@@ -547,7 +547,9 @@ class MindSpeedMLASelfAttention(MLASelfAttention):
         )
 
         bsz = query.shape[1]
-        is_ulysses_algo = (getattr(self.config, 'context_parallel_algo', None) == 'ulysses_cp_algo')
+        cp_size = int(getattr(self.config, 'context_parallel_size', 1))
+        cp_algo = getattr(self.config, 'context_parallel_algo', None)
+        is_ulysses_algo = cp_size > 1 and cp_algo == 'ulysses_cp_algo'
         if packed_seq_params is not None and not is_ulysses_algo:
             query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
 

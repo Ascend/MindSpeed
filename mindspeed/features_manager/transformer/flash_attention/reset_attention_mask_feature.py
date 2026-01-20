@@ -11,9 +11,6 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
 
     def validate_args(self, args):
         if args.context_parallel_size > 1 and hasattr(args, 'reset_attention_mask') and args.reset_attention_mask:
-            if (args.attention_mask_type == 'causal'
-                    and args.context_parallel_algo not in ('megatron_cp_algo', 'kvallgather_cp_algo')):
-                raise AssertionError('accelerated eod reset mode only support ring attention and kvallgather_cp')
             if args.attention_mask_type == 'causal' and not getattr(args, 'variable_seq_lengths', None):
                 raise AssertionError('accelerated eod reset mode needs variable_seq_lengths.')
     

@@ -80,8 +80,6 @@ def multi_latent_attention_init_impl(
             "'rope' and 'yarn'"
         )
 
-
-
     # Megatron use TEDotProductAttention
     # we use DotProductAttention
     self.core_attention = build_module(
