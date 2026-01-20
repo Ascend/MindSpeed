@@ -1,12 +1,13 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
-
+import math
 from functools import wraps
 from typing import Dict, Optional
 
 import torch
 
 from mindspeed.utils import set_position_ids
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def get_batch_on_this_cp_rank_wrapper(fn):
@@ -196,15 +197,29 @@ def _get_ltor_masks_and_position_ids(
     return attention_mask, loss_mask, (position_ids, actual_seq_len)
 
 
-def collate_wrapper(fn):	
+def collate_wrapper(fn):
     @wraps(fn)	
-    def wrapper(samples):	
-        actual_seq_len = [elem['position_ids'][1] for elem in samples]
+    def wrapper(samples):
         samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
-        batch = fn(samples)	
-        seq_len = actual_seq_len[0][-1]	
-        actual_seq_len = [elem + i * seq_len for i, elem in enumerate(actual_seq_len)]
-        batch['actual_seq_len'] = torch.cat(actual_seq_len)
-        return batch	
+        batch = fn(samples)
+        args = get_args()
+        if hasattr(args, 'sub_seq_length') and 0 < args.sub_seq_length <= args.seq_length:
+            actual_seq_len = get_actual_seq_len(args.seq_length, args.sub_seq_length)
+            batch['actual_seq_len'] = actual_seq_len
+
+        else:
+            actual_seq_len = [elem['position_ids'][1] for elem in samples]
+            seq_len = actual_seq_len[0][-1]
+            actual_seq_len = [elem + i * seq_len for i, elem in enumerate(actual_seq_len)]
+            batch['actual_seq_len'] = torch.cat(actual_seq_len)
+        return batch
 
     return wrapper
+
+
+def get_actual_seq_len(seq_length, sub_seq_length):
+    times = math.ceil(seq_length / sub_seq_length)
+    actual_seq_len_list = [sub_seq_length * i for i in range(1, times + 1)]
+    actual_seq_len_list[-1] = seq_length
+    actual_seq_len = torch.tensor(actual_seq_len_list, dtype=torch.int64)
+    return actual_seq_len

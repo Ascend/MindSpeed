@@ -9,6 +9,14 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('reset-attention-mask', optimization_level=2)
 
+    def register_args(self, parser: ArgumentParser):
+        group = parser.add_argument_group(title=self.feature_name)
+        group.add_argument('--sub-seq-length', type=int, default=-1,
+                           help='Sub-sequence length to process.  - If > 0: Specifies fixed sub-sequence length. '
+                                'Each sub-sequence will have this length,  except the last one which will take the '
+                                'remaining tokens. - If <= 0 or > seq_length: sub-sequences maintain their original'
+                                ' lengths.')
+
     def validate_args(self, args):
         if args.context_parallel_size > 1 and hasattr(args, 'reset_attention_mask') and args.reset_attention_mask:
             if args.attention_mask_type == 'causal' and not getattr(args, 'variable_seq_lengths', None):
