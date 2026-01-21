@@ -200,6 +200,7 @@ def _get_ltor_masks_and_position_ids(
 def collate_wrapper(fn):
     @wraps(fn)	
     def wrapper(samples):
+        actual_seq_len = [elem['position_ids'][1] for elem in samples]
         samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
         batch = fn(samples)
         args = get_args()
@@ -208,7 +209,6 @@ def collate_wrapper(fn):
             batch['actual_seq_len'] = actual_seq_len
 
         else:
-            actual_seq_len = [elem['position_ids'][1] for elem in samples]
             seq_len = actual_seq_len[0][-1]
             actual_seq_len = [elem + i * seq_len for i, elem in enumerate(actual_seq_len)]
             batch['actual_seq_len'] = torch.cat(actual_seq_len)
