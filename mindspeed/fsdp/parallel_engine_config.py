@@ -8,6 +8,16 @@ class FSDPPlanConfig:
     ignored_modules: List[str] = None
     apply_modules: Dict[str, Any] = None
 
+    # mp_policy settings
+    param_dtype: Optional[torch.dtype] = None
+    reduce_dtype: Optional[torch.dtype] = None
+    output_dtype: Optional[torch.dtype] = None
+    cast_forward_inputs: bool = True
+
+    # prefetch settings
+    num_to_forward_prefetch: Optional[int] = 0
+    num_to_backward_prefetch: Optional[int] = 0
+
 
 @dataclass
 class TPPlanConfig:

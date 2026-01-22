@@ -3,6 +3,7 @@ import logging
 
 from torch.utils.checkpoint import checkpoint
 
+from mindspeed.fsdp.utils.log import print_rank
 from mindspeed.fsdp.utils.str_match import module_name_match
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ def recompute_modules(model, plan):
     modules = get_recompute_modules(model, plan)
 
     for name, module in modules:
-        print(f'Applying recompute to module: {name}\n')
+        print_rank(logger.info, f'Applying recompute to module: {name}')
         module.forward = recompute_wrapper(module.forward)
 
     return model

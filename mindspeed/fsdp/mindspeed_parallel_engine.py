@@ -24,8 +24,6 @@ class MindSpeedParallelEngine(torch.nn.Module):
         self.apply_fsdp_modules()
 
     def apply_fsdp_modules(self):
-        if self.config.fully_shard_parallel_size == 1:
-            return
         self.model = fully_shard_parallel_modules(self.model, self.parallel_state.get_fsdp_device_mesh(), self.config.fsdp_plan)
 
     def apply_tp_modules(self):
