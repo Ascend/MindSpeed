@@ -241,6 +241,7 @@ def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
             create_gloo_process_groups: bool = True,
             high_priority_stream_groups: Optional[List[str]] = None,
             sharp_enabled_group: Optional[str] = None,
+            hybrid_context_parallel: bool = False,
     ):
         initialize_model_parallel(
             tensor_model_parallel_size,

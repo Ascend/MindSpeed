@@ -28,6 +28,11 @@ class DeepSeekSparseAttention(MindSpeedFeature):
                     "`--use-fused-sparse-flash-attention`, and "
                     "`--use-fused-lightning-indexer-kl-loss`."
                 )
+        
+            if args.context_parallel_size > 1 and args.context_parallel_algo != 'kvallgather_cp_algo':
+                raise AssertionError(
+                    "Context parallel is only supported with kvallgather_cp_algo for DSA."
+                )
 
     def register_patches(self, pm, args):
         from mindspeed.core.transformer.experimental_attention_variant.dsa_matrix_naive import rotate_activation
@@ -39,7 +44,11 @@ class DeepSeekSparseAttention(MindSpeedFeature):
             pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.unfused_dsa_fn', unfused_dsa_fn)
             pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.compute_dsa_indexer_loss', compute_dsa_indexer_loss)
             pm.register_patch('megatron.core.models.gpt.experimental_attention_variant_module_specs.get_dsa_module_spec_for_backend', get_dsa_module_spec_for_backend)
-        
+
         from mindspeed.core.transformer.experimental_attention_variant.dsa_fused import forward_with_scores, fused_dsa_attn_forward
         pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer.forward_with_scores', forward_with_scores)
         pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAttention.forward', fused_dsa_attn_forward)
+
+        if int(getattr(args, 'context_parallel_size', 1)) > 1 and getattr(args, 'context_parallel_algo', 'megatron_cp_algo') == 'kvallgather_cp_algo':
+            from mindspeed.core.transformer.experimental_attention_variant.dsa_kvallgather_context_parallel import transformer_config_post_init_wrapper
+            pm.register_patch('megatron.core.transformer.transformer_config.TransformerConfig.__post_init__', transformer_config_post_init_wrapper)

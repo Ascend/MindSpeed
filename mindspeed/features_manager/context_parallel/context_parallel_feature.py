@@ -81,7 +81,7 @@ class ContextParallelFeature(MindSpeedFeature):
 
         # kvallgather context parallel
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
-            if args.transformer_impl != 'transformer_engine':
+            if args.transformer_impl != 'transformer_engine' and args.experimental_attention_variant != 'dsa':
                 raise AssertionError('Only transformer engine supports kvallgather_cp_algo')
 
             if args.attention_mask_type != "causal":

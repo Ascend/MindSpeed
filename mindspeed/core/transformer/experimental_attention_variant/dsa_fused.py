@@ -13,6 +13,7 @@ try:
 except ImportError:
     HAVE_EINOPS = False
 
+from megatron.training import get_args
 from megatron.core.transformer.experimental_attention_variant.dsa import (
     DSAIndexerLossLoggingHelper,
     unfused_dsa_fn,
@@ -27,6 +28,11 @@ from megatron.core.tensor_parallel.mappings import (
     gather_from_tensor_model_parallel_region,
 )
 from megatron.core.transformer.enums import AttnMaskType
+
+from mindspeed.core.transformer.experimental_attention_variant.dsa_kvallgather_context_parallel import (
+    fused_lightning_indexer_kvallgather,
+    fused_sparse_lightning_indexer_kl_loss_kvallgather,
+    fused_npu_sparse_flash_attention_kvallgather)
 
 from mindspeed.core.transformer.experimental_attention_variant.utils import allgather_head_dim
 
@@ -61,6 +67,9 @@ def fused_dsa_attn_forward(
     Returns:
         output: Output tensor [sq, b, hidden_size]
     """
+
+    args = get_args()
+
     sq, b, np, hn = query.size()
     skv = key.size(0)
     hnv = value.size(3)
@@ -106,7 +115,30 @@ def fused_dsa_attn_forward(
 
 
     if self.config.use_fused_sparse_flash_attention:
-        output, softmax_max, softmax_sum = fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope, key_rope, self.softmax_scale)
+        if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
+            cp_group = mpu.get_context_parallel_group()
+            cp_stream = torch.npu.Stream(device=torch.npu.current_device())
+
+            output, softmax_max, softmax_sum = fused_npu_sparse_flash_attention_kvallgather(
+            query,
+            key,
+            value,
+            topk_indices,
+            query_rope,
+            key_rope,
+            self.softmax_scale,
+            cp_group = cp_group,
+            cp_stream = cp_stream
+            )
+        else:
+            output, softmax_max, softmax_sum = fused_npu_sparse_flash_attention(
+            query,
+            key,
+            value,
+            topk_indices,
+            query_rope,
+            key_rope,
+            self.softmax_scale)
     else:
         output = unfused_dsa_fn(query, key, value, topk_indices, self.softmax_scale)
 
@@ -183,6 +215,9 @@ def forward_with_scores(
         index_scores: Index scores [batch, seqlen, seqlen].
         topk_indices: Top-k indices [batch, seqlen, index_topk].
     """
+
+    args = get_args()
+
     assert packed_seq_params is None, "Packed sequence is not supported for DSAttention"
 
     # =========================================
@@ -248,7 +283,11 @@ def forward_with_scores(
     weights = weights * (self.index_n_heads**-0.5) * self.softmax_scale
     # [batch, seqlen, seqlen]
     if use_fused_lightning_indexer:
-        topk_indices, _ = fused_lightning_indexer(
+        if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
+            cp_group = self.pg_collection.cp
+            cp_stream = torch.npu.Stream(device=torch.npu.current_device())
+
+            topk_indices, _ = fused_lightning_indexer_kvallgather(
                 q,
                 k,
                 weights,
@@ -257,7 +296,20 @@ def forward_with_scores(
                 actual_seq_klen=None if packed_seq_params is None else packed_seq_params.cu_seqlens_kv,
                 layout_query='BSND',
                 layout_key='BSND',
-        )
+                cp_group=cp_group,
+                cp_stream=cp_stream
+            )
+        else:
+            topk_indices, _ = fused_lightning_indexer(
+                q,
+                k,
+                weights,
+                self.index_topk,
+                actual_seq_qlen=None if packed_seq_params is None else packed_seq_params.cu_seqlens_q,
+                actual_seq_klen=None if packed_seq_params is None else packed_seq_params.cu_seqlens_kv,
+                layout_query='BSND',
+                layout_key='BSND',
+            )
         return topk_indices, q, k, weights
     else:
         index_scores = self._compute_index_scores(q, weights, k)
@@ -322,6 +374,7 @@ def fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope
     key_rope = rearrange(key_rope, 's b h d -> b s h d')
 
     actual_seq_len = torch.tensor([query.shape[1]], dtype=torch.int32, device=query.device)
+
     output, softmax_max, softmax_sum, *_ = torch_npu.npu_sparse_flash_attention(
         query, key, value,
         sparse_indices=topk_indices.to(torch.int32),
@@ -332,12 +385,13 @@ def fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope
         key_rope=key_rope,
         scale_value=softmax_scale,
         sparse_block_size=1,
-        layout_query='BSND',  
-        layout_kv='BSND',     
-        sparse_mode=3,      
+        layout_query='BSND',
+        layout_kv='BSND',
+        sparse_mode=3,
         attention_mode=2,
         return_softmax_lse=True,
     )
+
     output = rearrange(output, 'b s h d -> s b h d')
 
     return output, softmax_max, softmax_sum
@@ -383,6 +437,9 @@ def fused_compute_dsa_indexer_kl_loss(
     Returns:
         index_loss: KL divergence loss (scalar).
     """
+
+    args = get_args()
+
     if tensor_model_parallel_size > 1:
         tp_group = mpu.get_tensor_model_parallel_group()
         total_query = allgather_head_dim(query, tensor_model_parallel_size, tp_group)
@@ -394,22 +451,46 @@ def fused_compute_dsa_indexer_kl_loss(
         total_query = query
         total_query_rope = q_pos_emb
 
-    loss = fused_sparse_lightning_indexer_kl_loss(
-        total_query,
-        key,
-        query_index,
-        key_index,
-        weights,
-        topk_indices,
-        softmax_max,
-        softmax_sum,
-        scale_value=softmax_scale,
-        query_rope=total_query_rope,
-        key_rope=k_pos_emb,
-        actual_seq_qlen=None,
-        actual_seq_klen=None,
-        layout='BSND',
-    )
+    if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
+        cp_group = mpu.get_context_parallel_group()
+        cp_stream = torch.npu.Stream(device=torch.npu.current_device())
+
+        loss = fused_sparse_lightning_indexer_kl_loss_kvallgather(
+            total_query,
+            key,
+            query_index,
+            key_index,
+            weights,
+            topk_indices,
+            softmax_max,
+            softmax_sum,
+            scale_value=softmax_scale,
+            query_rope=total_query_rope,
+            key_rope=k_pos_emb,
+            actual_seq_qlen=None,
+            actual_seq_klen=None,
+            layout='BSND',
+            cp_group=cp_group,
+            cp_stream=cp_stream,
+        )
+    else:
+        loss = fused_sparse_lightning_indexer_kl_loss(
+            total_query,
+            key,
+            query_index,
+            key_index,
+            weights,
+            topk_indices,
+            softmax_max,
+            softmax_sum,
+            scale_value=softmax_scale,
+            query_rope=total_query_rope,
+            key_rope=k_pos_emb,
+            actual_seq_qlen=None,
+            actual_seq_klen=None,
+            layout='BSND',
+        )
+
     indexer_loss = loss * loss_coeff
     return indexer_loss
 
@@ -435,10 +516,12 @@ def fused_sparse_lightning_indexer_kl_loss(
         next_tokens=65536,
 ):
     """NPU Sparse Lightning Indexer KL Divergence Loss Function"""
+
     query, key, query_index, key_index, weights = [
-        x.transpose(0, 1) 
+        x.transpose(0, 1)
         for x in [query, key, query_index, key_index, weights]
     ]
+
     topk_indices = topk_indices.unsqueeze(2)
     if query_rope is not None:
         query_rope, key_rope = [x.transpose(0, 1) for x in [query_rope, key_rope]]

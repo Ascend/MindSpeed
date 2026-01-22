@@ -580,7 +580,7 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
         core_attn_out = core_attn_out.view(core_attn_out.size(0), core_attn_out.size(1), self.num_attention_heads_per_partition, -1)
         v_weight = self.linear_v_up_proj.weight
         W_UV = v_weight.view(self.num_attention_heads_per_partition, self.config.v_head_dim, -1)
-        W_UV_T = W_UV.permute(0, 2, 1).contiguous()  
+        W_UV_T = W_UV.permute(0, 2, 1).contiguous()
         core_attn_out = torch.einsum("sbhc,hcv->sbhv", core_attn_out, W_UV_T)
         core_attn_out = core_attn_out.contiguous()
 
