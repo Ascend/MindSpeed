@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+from typing import Any, Dict, List, Callable, Literal, Union, Optional
 from dataclasses import dataclass
-from typing import Any, Dict, List, Callable, Literal, Union
+import torch
 
 
 @dataclass
