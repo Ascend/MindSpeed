@@ -29,7 +29,7 @@ def balanced_moe_grouped_mlp(local_expert_input,
 
     # Local expert gmm
     with torch.enable_grad():
-        (local_output, local_act_ckpt_manager), _ = local_experts(
+        (local_output, local_act_ckpt_manager, *_), _ = local_experts(
             local_expert_input, local_token_per_expert, permuted_probs=local_expert_input_probs
         )
 
@@ -41,7 +41,7 @@ def balanced_moe_grouped_mlp(local_expert_input,
 
     hot_experts.requires_grad_(True)
     with torch.enable_grad():
-        (hot_output, hot_act_ckpt_manager), _ = hot_experts(
+        (hot_output, hot_act_ckpt_manager, *_), _ = hot_experts(
             hot_expert_input, hot_token_per_expert, permuted_probs=hot_expert_input_probs
         )
     for finish_event in hot_expert_finish_events:
