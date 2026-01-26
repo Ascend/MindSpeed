@@ -81,9 +81,6 @@ class ContextParallelFeature(MindSpeedFeature):
 
         # kvallgather context parallel
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
-            if args.transformer_impl != 'transformer_engine':
-                raise AssertionError('Only transformer engine supports kvallgather_cp_algo')
-
             if args.attention_mask_type != "causal":
                 raise AssertionError("kvallgather_cp_algo only supports causal attention mask type")
                 
@@ -97,40 +94,32 @@ class ContextParallelFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         _use_cp = int(getattr(args, 'context_parallel_size', 1)) > 1
         _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
-        _use_te = getattr(args, 'transformer_impl', 'local') == 'transformer_engine'
         _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
 
-        _use_te_cp = _use_te and _use_cp
-        _use_local_cp = not _use_te and (_use_cp or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'))
-
-        if _use_te_cp:
-            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
-                MindSpeedTEDotProductAttention
-            patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
-                                         MindSpeedTEDotProductAttention)
-
-        elif _use_local_cp:
+        if _use_cp or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
-            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
-                MindSpeedTEDotProductAttention
+            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import MindSpeedTEDotProductAttention
+
             patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention',
                                          MindSpeedCPDotProductAttention)
-            patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
-                                         MindSpeedCPDotProductAttention)
+            if _cp_algo == 'kvallgather_cp_algo':
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
+                                             MindSpeedTEDotProductAttention)
+            else:
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
+                                             MindSpeedCPDotProductAttention)
 
             from mindspeed.core.context_parallel.adaptor import attention_init_wrapper
             from mindspeed.core.context_parallel.adaptor import multi_latent_attention_init_wrapper
             patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
             patch_manager.register_patch('megatron.core.transformer.multi_latent_attention.MultiLatentAttention.__init__',
-                                        multi_latent_attention_init_wrapper)
+                                         multi_latent_attention_init_wrapper)
 
-        if _use_cp or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.context_parallel.model_parallel_utils import (
                 initialize_model_parallel_cp_wrapper,
                 destroy_model_parallel_cp_wrapper,
                 get_context_parallel_group_for_send_recv_overlap
             )
-
             patch_manager.register_patch('megatron.core.parallel_state.initialize_model_parallel',
                                          initialize_model_parallel_cp_wrapper)
             patch_manager.register_patch('megatron.core.parallel_state.destroy_model_parallel',

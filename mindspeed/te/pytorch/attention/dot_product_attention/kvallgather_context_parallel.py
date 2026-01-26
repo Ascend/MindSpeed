@@ -179,8 +179,8 @@ class AttnFuncWithCPAndKVAllGatherForSBHD(torch.autograd.Function):
         out_per_step = [None, None]
         softmax_max = [None, None]
         softmax_sum = [None, None]
-        # [2, s//2, b, h]
-        out = torch.empty_like(q)
+        # [2, s//2, b, h_v]
+        out = torch.empty(*q.shape[:-1], v.shape[-1], dtype=q.dtype, device=q.device)
 
         for i in range(len(local_seq_chunk_ids) + 1):
             if i < len(local_seq_chunk_ids):
@@ -268,13 +268,14 @@ class AttnFuncWithCPAndKVAllGatherForSBHD(torch.autograd.Function):
 
         # [s, b, h] -> [2, s//2, b, h]
         q = q.view(2, q.shape[seq_dim] // 2, *q.shape[(seq_dim + 1):])
-        dout = dout.view(q.shape)
+        # [s, b, h_v] -> [2, s//2, b, h_v]
+        dout = dout.view(*q.shape[:-1], v.shape[-1])
 
         # [2, s//2, b, h]
         dq = torch.empty_like(q)
         # [cp*s, b, h]
         dk = torch.zeros((k.shape[0] * cp_size, *k.shape[1:]), dtype=k.dtype, device=k.device)
-        dv = torch.zeros_like(dk)
+        dv = torch.zeros((v.shape[0] * cp_size, *v.shape[1:]), dtype=v.dtype, device=v.device)
         dq_per_step = [None, None]
         dk_per_step = [None, None]
         dv_per_step = [None, None]
@@ -486,7 +487,7 @@ class AttnFuncWithCPAndKVAllGatherForTHD(torch.autograd.Function):
         # [t, n, d] -> [cp, t, n, d]
         k_ag, _ = gather_along_first_dim(k, cp_group)
         v_ag, _ = gather_along_first_dim(v, cp_group)
-        # [cp, t, n, d] -> [cp*t, b, h]
+        # [cp, t, n, d] -> [cp*t, n, d]
         k_ag = k_ag.view(-1, *k.shape[1:])
         v_ag = v_ag.view(-1, *v.shape[1:])
 
@@ -500,7 +501,7 @@ class AttnFuncWithCPAndKVAllGatherForTHD(torch.autograd.Function):
             kv_seq_range[0],
             kv_seq_range[1],
         )
-        # [cp*s, b, h] -> [s_range, b, h]
+        # [cp*s, n, d] -> [s_range, n, d]
         k_, v_ = [x[seq_start_idx:seq_end_idx] for x in [k_ag, v_ag]]
 
         attn_outs = torch_npu.npu_fusion_attention(
@@ -557,12 +558,12 @@ class AttnFuncWithCPAndKVAllGatherForTHD(torch.autograd.Function):
         dq = torch.empty_like(q)
         # [cp*t, n, d]
         dk = torch.zeros((k.shape[0] * cp_size, *k.shape[1:]), dtype=k.dtype, device=k.device)
-        dv = torch.zeros_like(dk)
+        dv = torch.zeros((v.shape[0] * cp_size, *v.shape[1:]), dtype=v.dtype, device=v.device)
 
         # [t, n, d] -> [cp, t, n, d]
         k_ag, _ = gather_along_first_dim(k, ctx.cp_group)
         v_ag, _ = gather_along_first_dim(v, ctx.cp_group)
-        # [cp, t, n, d] -> [cp*t, b, h]
+        # [cp, t, n, d] -> [cp*t, n, d]
         k_ag = k_ag.view(-1, *k.shape[1:])
         v_ag = v_ag.view(-1, *v.shape[1:])
 
