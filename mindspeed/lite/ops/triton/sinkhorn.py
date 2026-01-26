@@ -1,21 +1,17 @@
-import torch
-import torch.nn.functional as F
+# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
 import triton
 import triton.language as tl
-import triton.runtime.driver as driver
-
-
-def get_npu_properties():
-    """Get NPU device properties and return the number of vector cores"""
-    device = torch.npu.current_device()
-    return driver.active.utils.get_device_properties(device)
+import torch
+import torch.nn.functional as F
 
 
 @triton.jit
 def _hc_split_sinkhorn_kernel_part1(
     # Input/output tensor pointers
     mixes_ptr, hc_scale_ptr, hc_base_ptr,
-    pre_ptr, post_ptr,
+    pre_ptr, post_ptr, comb_ptr,
     # Dimension parameters
     batch_seq_size,
     # Constant parameters
@@ -28,8 +24,8 @@ def _hc_split_sinkhorn_kernel_part1(
     """
     Triton Kernel: Core computation for HC-Split Sinkhorn (Pre/Post components)
     
-    Removes all CUDA-related validations and compatible with older Triton versions 
-    (without keepdim parameter support). Each thread block processes one (batch, seq) sample.
+    Compatible with older Triton versions (without keepdim parameter support). 
+    Each thread block processes one (batch, seq) sample.
     
     Args:
         mixes_ptr: Pointer to input tensor mixes [batch_seq_size, feat_dim]
@@ -37,30 +33,37 @@ def _hc_split_sinkhorn_kernel_part1(
         hc_base_ptr: Pointer to base tensor [(2+hc_mult)*hc_mult]
         pre_ptr: Pointer to output pre tensor [batch_seq_size, hc_mult]
         post_ptr: Pointer to output post tensor [batch_seq_size, hc_mult]
+        comb_ptr: Pointer to output comb tensor [batch_seq_size, hc_mult*hc_mult]
         batch_seq_size: Total number of (batch, seq) samples (b*s)
-        hc_mult: HC dimension size (typically 4)
-        sinkhorn_iters: Number of Sinkhorn iterations (not used in this kernel)
         eps: Small constant to avoid division by zero
         feat_dim: Total feature dimension (2+hc_mult)*hc_mult
-        BLOCK_HC: Compile-time constant for HC block size (equal to hc_mult)
+        hc_mult: HC dimension size (typically 4)
+        group: Number of samples processed per thread block
     """
-    # program handles GROUP batch_seq entries
+    ar4 = tl.arange(0, hc_mult)
+    arange_val = tl.arange(0, hc_mult * hc_mult)
+    
+    # Calculate program IDs for grouped processing
     pid0 = tl.program_id(0) * group
     pids = pid0 + tl.arange(0, group)  
     pid_mask = pids < batch_seq_size
-
-    scale_pre = tl.load(hc_scale_ptr + 0)
-    scale_post = tl.load(hc_scale_ptr + 1)
-
-    ar4 = tl.arange(0, hc_mult)
-    base_pre = tl.load(hc_base_ptr + ar4)
-    base_post = tl.load(hc_base_ptr + hc_mult + ar4)
-
-    # offsets for each pid
+    
+    # Calculate memory offsets for each sample
+    pid_comb_off = pids[:, None] * hc_mult * hc_mult
     pid_feat_off = pids[:, None] * feat_dim
     pid_hc_off = pids[:, None] * hc_mult
- 
-    # mixes_pre/post: shape (G,4)
+    
+    # Load scale parameters (pre/post/comb)
+    scale_pre = tl.load(hc_scale_ptr + 0)
+    scale_post = tl.load(hc_scale_ptr + 1)
+    scale_comb = tl.load(hc_scale_ptr + 2)
+    
+    # Load base parameters
+    base_pre = tl.load(hc_base_ptr + ar4)
+    base_post = tl.load(hc_base_ptr + hc_mult + ar4)
+    base_comb = tl.load(hc_base_ptr + 2 * hc_mult + arange_val)
+    
+    # Load mixes tensor slices for pre/post/comb
     mixes_pre = tl.load(
         mixes_ptr + pid_feat_off + ar4[None, :],
         mask=pid_mask[:, None],
@@ -71,20 +74,33 @@ def _hc_split_sinkhorn_kernel_part1(
         mask=pid_mask[:, None],
         other=0.0
     )
-
-    # pre/post compute
+    mixes_comb = tl.load(
+        mixes_ptr + pid_feat_off[:, :, None] + (2 * hc_mult + arange_val)[None, :],
+        mask=pid_mask[:, None, None]
+    )
+    
+    # Compute pre tensor with sigmoid activation
     pre = tl.sigmoid(mixes_pre * scale_pre + base_pre[None, :]) + eps
-    post = 2.0 * tl.sigmoid(mixes_post * scale_post + base_post[None, :])
-
-    # store pre/post (contiguous, mask only for pid out-of-range)
     tl.store(
         pre_ptr + pid_hc_off + ar4[None, :],
         pre,
         mask=pid_mask[:, None]
     )
+    
+    # Compute post tensor with sigmoid activation
+    post = 2.0 * tl.sigmoid(mixes_post * scale_post + base_post[None, :])
     tl.store(
         post_ptr + pid_hc_off + ar4[None, :],
         post,
+        mask=pid_mask[:, None]
+    )
+    
+    # Compute comb logits and store
+    comb = mixes_comb * scale_comb + base_comb[None, :, :]
+    comb_flat = tl.reshape(comb, (group, hc_mult * hc_mult))
+    tl.store(
+        comb_ptr + pid_comb_off + arange_val[None, :],
+        comb_flat,
         mask=pid_mask[:, None]
     )
 
@@ -92,7 +108,7 @@ def _hc_split_sinkhorn_kernel_part1(
 @triton.jit
 def _hc_split_sinkhorn_kernel_part2(
     # Input/output tensor pointers
-    mixes_ptr, hc_scale_ptr, hc_base_ptr,
+    comb_tmp_ptr,
     comb_ptr,
     # Dimension parameters
     batch_seq_size, 
@@ -101,76 +117,56 @@ def _hc_split_sinkhorn_kernel_part2(
     # Constant parameters
     eps: tl.constexpr,
     group: tl.constexpr,
-    BLOCK_ALIGN: tl.constexpr
+    BLOCK_ALIGN: tl.constexpr = 8
 ):
     """
     Triton Kernel: Core computation for HC-Split Sinkhorn (Comb component)
     
     Implements Comb tensor calculation with Sinkhorn normalization iterations.
-    Removes all CUDA-related validations and compatible with older Triton versions 
-    (without keepdim parameter support). Each thread block processes one (batch, seq) sample.
+    Each thread block processes one (batch, seq) sample.
     
     Args:
-        mixes_ptr: Pointer to padded mixes tensor [batch_seq_size, BLOCK_HC*BLOCK_ALIGN]
-        hc_scale_ptr: Pointer to scale tensor [3]
-        hc_base_ptr: Pointer to padded base tensor [BLOCK_HC*BLOCK_ALIGN]
-        comb_ptr: Pointer to output comb tensor [batch_seq_size, BLOCK_HC*BLOCK_ALIGN]
+        comb_tmp_ptr: Pointer to temporary comb tensor [batch_seq_size, hc_mult*BLOCK_ALIGN]
+        comb_ptr: Pointer to output comb tensor [batch_seq_size, hc_mult*BLOCK_ALIGN]
         batch_seq_size: Total number of (batch, seq) samples (b*s)
         hc_mult: HC dimension size (typically 4)
         sinkhorn_iters: Number of Sinkhorn normalization iterations
         eps: Small constant to avoid division by zero
-        BLOCK_HC: Compile-time constant for HC block size (equal to hc_mult)
-        BLOCK_ALIGN: Compile-time constant for alignment (typically 8)
+        group: Number of samples processed per thread block
+        BLOCK_ALIGN: Compile-time constant for memory alignment (typically 8)
     """
     lin = tl.arange(0, hc_mult * BLOCK_ALIGN)
-    # program handles GROUP batch_seq entries
+    
+    # Calculate program IDs for grouped processing
     pid0 = tl.program_id(0) * group
     pids = pid0 + tl.arange(0, group)
     pid_mask = pids < batch_seq_size
-    # ---------------- scales (3) ----------------
-    scale_comb = tl.load(hc_scale_ptr + 2)
-    # ---------------- base (load once per program) ----------------
-    # comb base: 4x8 padded (mask columns)
-    r = tl.arange(0, hc_mult)[:, None]
-    c = tl.arange(0, BLOCK_ALIGN)[None, :]
-    col_mask = c < hc_mult
-    arange_val = tl.arange(0, hc_mult * BLOCK_ALIGN)
 
-    base_comb = tl.load(hc_base_ptr + arange_val)
-    # ---------------- mixes load (GROUP of pids) ----------------
-    # offsets for each pid
-    pid_feat_off = pids[:, None] * (hc_mult * BLOCK_ALIGN)
+    # Column mask for alignment handling
     pid_comb_off = pids[:, None] * (hc_mult * BLOCK_ALIGN)
 
-    mixes_comb = tl.load(
-        mixes_ptr + pid_feat_off[:, :, None] + arange_val[None, :, :],
-        mask=pid_mask[:, None, None]
+    # Load and reshape comb tensor
+    comb = tl.load(
+        comb_tmp_ptr + pid_comb_off + lin[None, :],
+        mask=pid_mask[:, None]
     )
-
-    # comb logits
-    comb = mixes_comb * scale_comb + base_comb[None, :, :]
-
     comb = comb.reshape(group, hc_mult, BLOCK_ALIGN)
 
-    # ---------------- row softmax (stable, only valid cols) ----------------
-    very_neg = -1.0e20
-    comb_for_max = tl.where(col_mask[None, :, :], comb, very_neg)
-    row_max = tl.max(comb_for_max, axis=2)
+    # Numerical stability: subtract row max before exp
+    row_max = tl.max(comb, axis=2)
     comb = tl.exp(comb - row_max[:, :, None])
 
-    # padding cols to 0 (once)
-    comb = tl.where(col_mask[None, :, :], comb, 0.0)
-
-    # ---------------- Sinkhorn iters (no mask/where inside loop) ----------------
-    # relies on padding cols staying 0: 0/(x+eps)=0
+    # Sinkhorn normalization iterations
     for _ in range(sinkhorn_iters):
+        # Row normalization
         row_sum = tl.sum(comb, axis=2)
         comb = comb / (row_sum[:, :, None] + eps)
 
+        # Column normalization
         col_sum = tl.sum(comb, axis=1)
         comb = comb / (col_sum[:, None, :] + eps)
 
-    # ---------------- store comb (G,32) contiguous ----------------
+    # Reshape and store final comb tensor
     comb_flat = tl.reshape(comb, (group, hc_mult * BLOCK_ALIGN))
     tl.store(
         comb_ptr + pid_comb_off + lin[None, :],
@@ -178,7 +174,7 @@ def _hc_split_sinkhorn_kernel_part2(
         mask=pid_mask[:, None]
     )
 
- 
+
 def hc_split_sinkhorn_triton(
     mixes: torch.Tensor,
     hc_scale: torch.Tensor,
@@ -188,8 +184,8 @@ def hc_split_sinkhorn_triton(
     eps: float = 1e-6
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Triton implementation of HC-Split Sinkhorn, fully aligned with PyTorch precision benchmark
-
+    Triton implementation of HC-Split Sinkhorn, optimized for GPU performance
+    
     Args:
         mixes: Input tensor with shape [batch_size, seq_len, (2+hc_mult)*hc_mult]
         hc_scale: Scale tensor with shape [3] (pre/post/comb scales)
@@ -210,72 +206,48 @@ def hc_split_sinkhorn_triton(
     hc_scale = hc_scale.to(dtype=torch.float32)
     hc_base = hc_base.to(dtype=torch.float32)
 
-    # 1. Dimension calculation and flattening (align with PyTorch benchmark)
+    # Flatten batch and sequence dimensions for Triton processing
     b, s, _ = mixes.shape
     feat_dim = (2 + hc_mult) * hc_mult
-    batch_seq_size = b * s  # Merge batch and sequence dimensions
-
-    # 2. Flatten input tensor ([b, s, feat_dim] → [b*s, feat_dim])
+    batch_seq_size = b * s
     mixes_flat = mixes.view(-1, feat_dim).contiguous()
 
-    # 3. Create output tensors (use input device/dtype, no CUDA enforcement)
+    # Initialize output tensors
     pre_flat = torch.empty((batch_seq_size, hc_mult), dtype=mixes.dtype, device=mixes.device)
     post_flat = torch.empty((batch_seq_size, hc_mult), dtype=mixes.dtype, device=mixes.device)
+    comb_tmp = torch.empty((batch_seq_size, hc_mult, hc_mult), dtype=mixes.dtype, device=mixes.device)
 
-    # 4. Configure Triton kernel parameters
+    # Configure Triton kernel parameters
     BLOCK_ALIGN = 8
-    group = 16
+    group_part1 = 64
+    group_part2 = 32
 
-    grid = (triton.cdiv(batch_seq_size, group),)
-    # 5. Launch Triton kernel for Pre/Post computation
-    _hc_split_sinkhorn_kernel_part1[grid](
-        # Input/output pointers
+    # Launch Part1 kernel (Pre/Post computation)
+    _hc_split_sinkhorn_kernel_part1[(triton.cdiv(batch_seq_size, group_part1),)](
         mixes_flat, hc_scale, hc_base,
-        pre_flat, post_flat,
-        # Dimension parameters
+        pre_flat, post_flat, comb_tmp,
         batch_seq_size,
-        # Constant parameters
         eps, feat_dim, hc_mult,
-        group
+        group_part1
     )
 
-    # Process Comb component: extract and pad to BLOCK_ALIGN
-    mixes_flat_slice = mixes_flat[:, 2 * hc_mult:]
-    mixes_flat_slice = mixes_flat_slice.view(-1, hc_mult, hc_mult)
-    
-    pad_num = BLOCK_ALIGN - hc_mult
-    mixes_flat_padded = F.pad(mixes_flat_slice, pad=(0, pad_num), mode="constant", value=0.0)
-    
-    # Pad hc_base for comb component
-    hc_base_slice = hc_base[2 * hc_mult:].view(hc_mult, hc_mult)
-    hc_base_padded = F.pad(hc_base_slice, pad=(0, pad_num), mode="constant", value=0.0)
-
-    # Create padded comb output tensor
+    # Pad comb tensor for memory alignment
+    comb_tmp_padded = F.pad(comb_tmp, pad=(0, BLOCK_ALIGN - hc_mult), mode="constant", value=float('-inf'))
     comb_flat_padded = torch.empty((batch_seq_size, hc_mult * BLOCK_ALIGN), dtype=mixes.dtype, device=mixes.device)
-    
-    # 5. Launch Triton kernel for Comb computation
-    _hc_split_sinkhorn_kernel_part2[grid](
-        # Input/output pointers
-        mixes_flat_padded, hc_scale, hc_base_padded,
+
+    # Launch Part2 kernel (Comb computation with Sinkhorn normalization)
+    _hc_split_sinkhorn_kernel_part2[(triton.cdiv(batch_seq_size, group_part2),)](
+        comb_tmp_padded,
         comb_flat_padded,
-        # Dimension parameters
         batch_seq_size, hc_mult, sinkhorn_iters,
-        eps, group,
-        # Block size
+        eps, group_part2,
         BLOCK_ALIGN=BLOCK_ALIGN,
     )
 
-    # 6. Reshape output tensors (inverse of flattening)
-    pre = pre_flat.view(b, s, hc_mult)
-    post = post_flat.view(b, s, hc_mult)
-    comb = comb_flat_padded.view(b, s, hc_mult, BLOCK_ALIGN)
-    # Truncate padding to original hc_mult dimension
-    comb = comb[:, :, :, :hc_mult]
-
-    # Restore original dtype
-    pre = pre.to(dtype=origin_dtype)
-    post = post.to(dtype=origin_dtype)
-    comb = comb.to(dtype=origin_dtype)
+    # Reshape outputs and restore original dtype
+    pre = pre_flat.view(b, s, hc_mult).to(dtype=origin_dtype)
+    post = post_flat.view(b, s, hc_mult).to(dtype=origin_dtype)
+    comb = comb_flat_padded.view(b, s, hc_mult, BLOCK_ALIGN)[:, :, :, :hc_mult].to(dtype=origin_dtype)
 
     return pre, post, comb
 
@@ -290,67 +262,101 @@ def hc_split_sinkhorn_backward_kernel_part1(
     hc_scale_ptr,
     hc_base_ptr,
     # Output gradient pointers
+    comb_tmp_ptr,
     grad_mixes_ptr,
     grad_hc_scale_ptr,
     grad_hc_base_ptr,
+    batch_seq_size,
     hc_mult: tl.constexpr = 4,
+    group: tl.constexpr = 32,
 ):
     """
     Triton Kernel: Compute gradients for Pre/Post components of HC-Split Sinkhorn
-
-    Each thread block processes one (batch_seq) sample.
+    
     Calculates gradients for sigmoid-transformed Pre/Post tensors and updates
     gradients for mixes, hc_scale, and hc_base.
+    
+    Args:
+        grad_pre_ptr: Gradient tensor pointer for pre output [batch_seq_size, hc_mult]
+        grad_post_ptr: Gradient tensor pointer for post output [batch_seq_size, hc_mult]
+        mixes_ptr: Forward input mixes tensor pointer [batch_seq_size, (2+hc_mult)*hc_mult]
+        hc_scale_ptr: Forward input scale tensor pointer [3]
+        hc_base_ptr: Forward input base tensor pointer [(2+hc_mult)*hc_mult]
+        comb_tmp_ptr: Temporary comb tensor pointer for backward computation
+        grad_mixes_ptr: Gradient tensor pointer for mixes input
+        grad_hc_scale_ptr: Gradient tensor pointer for hc_scale input
+        grad_hc_base_ptr: Gradient tensor pointer for hc_base input
+        batch_seq_size: Total number of (batch, seq) samples (b*s)
+        hc_mult: HC dimension size (default=4)
+        group: Number of samples processed per thread block (default=32)
     """
-    # Single thread block processes one (b*s) sample
-    idx = tl.program_id(0)
-    total_dim = (2 + hc_mult) * hc_mult
+    feat_dim = (2 + hc_mult) * hc_mult
+    arange_val = tl.arange(0, hc_mult * hc_mult)
+    
+    # Calculate program IDs for grouped processing
+    pid0 = tl.program_id(0) * group
+    pids = pid0 + tl.arange(0, group)  
+    pid_mask = pids < batch_seq_size
+    
+    # Memory offset calculations
+    pid_comb_off = pids[:, None] * hc_mult * hc_mult
+    pid_feat_off = pids[:, None] * feat_dim
+    pid_hc_off = pids[:, None] * hc_mult
+    ar4 = tl.arange(0, hc_mult)
 
-    # ------------------- 1. Gradient calculation for Pre component -------------------
-    # Load pre slice: idx*total_dim + [0, hc_mult)
-    pre_slice = tl.load(mixes_ptr + idx * total_dim + tl.arange(0, hc_mult))
+    # Load scale parameters
     scale_pre = tl.load(hc_scale_ptr + 0)
-    base_pre = tl.load(hc_base_ptr + tl.arange(0, hc_mult))
+    scale_post = tl.load(hc_scale_ptr + 1)
+    scale_comb = tl.load(hc_scale_ptr + 2)
 
-    # Forward calculation (reconstruct)
-    pre_input = pre_slice * scale_pre + base_pre
+    # Load forward input slices
+    pre_slice = tl.load(mixes_ptr + pid_feat_off + ar4[None, :], mask=pid_mask[:, None], other=0.0)
+    post_slice = tl.load(mixes_ptr + pid_feat_off + (hc_mult + ar4)[None, :], mask=pid_mask[:, None], other=0.0)
+    comb_slice = tl.load(mixes_ptr + pid_feat_off + (2 * hc_mult + arange_val)[None, :], mask=pid_mask[:, None], other=0.0)
+
+    # Load base parameters
+    base_pre = tl.load(hc_base_ptr + ar4)
+    base_post = tl.load(hc_base_ptr + hc_mult + ar4)
+    base_comb = tl.load(hc_base_ptr + 2 * hc_mult + arange_val)
+
+    # Compute gradients for pre component
+    pre_input = pre_slice * scale_pre + base_pre[None, :]
     sigmoid_pre = tl.sigmoid(pre_input)
-
-    # Load gradient and compute sigmoid derivative
-    grad_pre = tl.load(grad_pre_ptr + idx * hc_mult + tl.arange(0, hc_mult))
     sigmoid_deriv = sigmoid_pre * (1.0 - sigmoid_pre)
+    grad_pre = tl.load(grad_pre_ptr + pid_hc_off + ar4[None, :], mask=pid_mask[:, None], other=0.0)
     grad_pre_input = grad_pre * sigmoid_deriv
 
-    # Update gradients for pre slice [0, hc_mult)
-    tl.store(
-        grad_mixes_ptr + idx * total_dim + tl.arange(0, hc_mult),
-        grad_pre_input * scale_pre,
-    )
+    # Update gradients for mixes (pre slice)
+    tl.store(grad_mixes_ptr + pid_feat_off + ar4[None, :], grad_pre_input * scale_pre, mask=pid_mask[:, None])
+    
+    # Atomic updates for scale and base gradients
     tl.atomic_add(grad_hc_scale_ptr + 0, tl.sum(grad_pre_input * pre_slice))
-    tl.atomic_add(grad_hc_base_ptr + tl.arange(0, hc_mult), grad_pre_input)
+    grad_pre_input_sum = tl.sum(grad_pre_input, axis=0)
+    tl.atomic_add(grad_hc_base_ptr + ar4, grad_pre_input_sum)
 
-    # ------------------- 2. Gradient calculation for Post component -------------------
-    # Load post slice: idx*total_dim + [hc_mult, 2*hc_mult)
-    post_slice = tl.load(mixes_ptr + idx * total_dim + hc_mult + tl.arange(0, hc_mult))
-    scale_post = tl.load(hc_scale_ptr + 1)
-    base_post = tl.load(hc_base_ptr + hc_mult + tl.arange(0, hc_mult))
-
-    # Forward calculation (reconstruct)
-    post_input = post_slice * scale_post + base_post
+    # Compute gradients for post component
+    post_input = post_slice * scale_post + base_post[None, :]
     sigmoid_post = tl.sigmoid(post_input)
-
-    # Load gradient and compute sigmoid derivative
-    grad_post = tl.load(grad_post_ptr + idx * hc_mult + tl.arange(0, hc_mult))
     sigmoid_deriv_post = sigmoid_post * (1.0 - sigmoid_post)
+    grad_post = tl.load(grad_post_ptr + pid_hc_off + ar4[None, :], mask=pid_mask[:, None], other=0.0)
     grad_post_input = grad_post * 2.0 * sigmoid_deriv_post
 
-    # Update gradients for post slice [hc_mult, 2*hc_mult)
+    # Update gradients for mixes (post slice)
     tl.store(
-        grad_mixes_ptr + idx * total_dim + hc_mult + tl.arange(0, hc_mult),
+        grad_mixes_ptr + pid_feat_off + (hc_mult + ar4)[None, :],
         grad_post_input * scale_post,
+        mask=pid_mask[:, None]
     )
+    
+    # Atomic updates for scale and base gradients
     tl.atomic_add(grad_hc_scale_ptr + 1, tl.sum(grad_post_input * post_slice))
-    tl.atomic_add(grad_hc_base_ptr + hc_mult + tl.arange(0, hc_mult), grad_post_input)
+    grad_post_input_sum = tl.sum(grad_post_input, axis=0)
+    tl.atomic_add(grad_hc_base_ptr + hc_mult + ar4, grad_post_input_sum)
+
+    # Prepare comb logits for Part2 backward kernel
+    comb = comb_slice * scale_comb + base_comb[None, :, :]
+    comb_flat = tl.reshape(comb, (group, hc_mult * hc_mult))
+    tl.store(comb_tmp_ptr + pid_comb_off + arange_val[None, :], comb_flat, mask=pid_mask[:, None])
 
 
 @triton.jit
@@ -360,151 +366,139 @@ def hc_split_sinkhorn_backward_kernel_part2(
     # Forward input pointers
     mixes_ptr,
     hc_scale_ptr,
-    hc_base_ptr,
+    comb_tmp_ptr,
     # Output gradient pointers
     grad_mixes_ptr,
     grad_hc_scale_ptr,
     grad_hc_base_ptr,
     # Constant parameters (compile-time)
-    batch_seq_size: tl.constexpr,
+    batch_seq_size,
     hc_mult: tl.constexpr = 4,
     sinkhorn_iters: tl.constexpr = 20,
     eps: tl.constexpr = 1e-6,
     BLOCK_ALIGN: tl.constexpr = 8,
+    group: tl.constexpr = 32,
 ):
     """
     Triton Kernel: Compute gradients for Comb component of HC-Split Sinkhorn
-
-    Each thread block processes one (batch_seq) sample.
+    
     Reconstructs forward Sinkhorn iterations and backpropagates gradients
     through the normalization process.
+    
+    Args:
+        grad_comb_ptr: Gradient tensor pointer for comb output [batch_seq_size, hc_mult*BLOCK_ALIGN]
+        mixes_ptr: Forward input mixes tensor pointer (comb slice) [batch_seq_size, hc_mult*BLOCK_ALIGN]
+        hc_scale_ptr: Forward input scale tensor pointer [3]
+        comb_tmp_ptr: Temporary comb tensor pointer from forward pass
+        grad_mixes_ptr: Gradient tensor pointer for mixes (comb slice)
+        grad_hc_scale_ptr: Gradient tensor pointer for hc_scale (comb component)
+        grad_hc_base_ptr: Gradient tensor pointer for hc_base (comb component)
+        batch_seq_size: Total number of (batch, seq) samples (b*s)
+        hc_mult: HC dimension size (default=4)
+        sinkhorn_iters: Number of Sinkhorn iterations (default=20)
+        eps: Small constant to avoid division by zero (default=1e-6)
+        BLOCK_ALIGN: Memory alignment constant (default=8)
+        group: Number of samples processed per thread block (default=32)
     """
-    # Single thread block processes one (b*s) sample
-    idx = tl.program_id(0)
-    if idx >= batch_seq_size:
-        return
+    # Initialize indices and masks
+    arange_val = tl.arange(0, hc_mult * BLOCK_ALIGN)
+    pid0 = tl.program_id(0) * group
+    pids = pid0 + tl.arange(0, group)
+    pid_mask = pids < batch_seq_size
+    
+    # Column mask for alignment handling
+    c = tl.arange(0, BLOCK_ALIGN)[None, :]
+    col_mask = c < hc_mult
+    mask_val = col_mask[None, :, :]
+    pid_feat_off = pids[:, None] * hc_mult * BLOCK_ALIGN
 
-    # Define constants
-    EPS = eps
-    feat_dim = hc_mult * BLOCK_ALIGN
+    # Load and reshape comb tensors
+    comb_slice_flat = tl.load(mixes_ptr + pid_feat_off + arange_val)
+    comb_slice = comb_slice_flat.reshape(group, hc_mult, BLOCK_ALIGN)
 
-    # ------------------- Gradient calculation for Comb component -------------------
-    # Load comb slice and parameters
-    comb_slice_flat = tl.load(
-        mixes_ptr + idx * feat_dim + tl.arange(0, hc_mult * BLOCK_ALIGN)
-    )
-    comb_slice = comb_slice_flat.reshape(hc_mult, BLOCK_ALIGN)
-
+    # Load scale parameter for comb component
     scale_comb = tl.load(hc_scale_ptr + 2)
-    base_comb_flat = tl.load(hc_base_ptr + tl.arange(0, hc_mult * BLOCK_ALIGN))
-    base_comb = base_comb_flat.reshape(hc_mult, BLOCK_ALIGN)
 
-    # Reconstruct forward computation (without keepdim)
-    comb_init = comb_slice * scale_comb + base_comb
+    # Load initial comb values from forward pass
+    comb_init = tl.load(comb_tmp_ptr + pid_feat_off + arange_val)
+    comb_init = comb_init.reshape(group, hc_mult, BLOCK_ALIGN)
 
-    # Subtract row max for numerical stability (simulate keepdim=True)
-    row_max_compressed = tl.max(comb_init, axis=1)
-    row_max = row_max_compressed.reshape(hc_mult, 1)
+    # Reconstruct forward Sinkhorn computation
+    row_max = tl.max(comb_init, axis=2).reshape(group, hc_mult, 1)
     exp_comb = tl.exp(comb_init - row_max)
 
-    # Apply column mask (truncate beyond hc_mult)
-    mask = tl.arange(0, hc_mult * BLOCK_ALIGN) % BLOCK_ALIGN < hc_mult
-    comb = tl.reshape(exp_comb, (hc_mult * BLOCK_ALIGN))
-    comb = tl.where(mask, comb, 0.0)
-    exp_comb = tl.reshape(comb, (hc_mult, BLOCK_ALIGN))
-
-    # Initialize K and save row/column sums for backprop
+    # Save row/column sums for backward pass
+    row_sum_list = tl.full((sinkhorn_iters, group, hc_mult, 1), 0.0, dtype=tl.float32)
+    col_sum_list = tl.full((sinkhorn_iters, group, 1, BLOCK_ALIGN), 0.0, dtype=tl.float32)
     K = exp_comb
-    row_sum_list = tl.full((sinkhorn_iters, hc_mult, 1), 0.0, dtype=tl.float32)
-    col_sum_list = tl.full((sinkhorn_iters, 1, BLOCK_ALIGN), 0.0, dtype=tl.float32)
 
-    # Reconstruct forward Sinkhorn iterations
+    # Replay forward iterations to save intermediate values
     for i in range(sinkhorn_iters):
         # Row normalization
-        row_sum_compressed = tl.sum(K, axis=1)
-        row_sum = row_sum_compressed.reshape(hc_mult, 1)
-        K_row = K / (row_sum + EPS)
+        row_sum = tl.sum(K, axis=2).reshape(group, hc_mult, 1)
+        K_row = K / (row_sum + eps)
 
         # Column normalization
-        col_sum_compressed = tl.sum(K_row, axis=0)
-        col_sum = col_sum_compressed.reshape(1, BLOCK_ALIGN)
-        K_col = K_row / (col_sum + EPS)
+        col_sum = tl.sum(K_row, axis=1).reshape(group, 1, BLOCK_ALIGN)
+        K_col = K_row / (col_sum + eps)
 
-        # Save row/column sums
+        # Save intermediate sums
         row_sum_list = tl.insert_slice(
             ful=row_sum_list,
-            sub=row_sum[None, :, :],
-            offsets=[i, 0, 0],
-            sizes=[1, hc_mult, 1],
-            strides=[1, 1, 1],
+            sub=row_sum[None, :, :, :],
+            offsets=[i, 0, 0, 0],
+            sizes=[1, group, hc_mult, 1],
+            strides=[1, 1, 1, 1],
         )
         col_sum_list = tl.insert_slice(
             ful=col_sum_list,
-            sub=col_sum[None, :, :],
-            offsets=[i, 0, 0],
-            sizes=[1, 1, BLOCK_ALIGN],
-            strides=[1, 1, 1],
+            sub=col_sum[None, :, :, :],
+            offsets=[i, 0, 0, 0],
+            sizes=[1, group, 1, BLOCK_ALIGN],
+            strides=[1, 1, 1, 1],
         )
-
         K = K_col
 
-    # 3.3 Backpropagate through Sinkhorn iterations
-    grad_comb_flat = tl.load(
-        grad_comb_ptr
-        + idx * hc_mult * BLOCK_ALIGN
-        + tl.arange(0, hc_mult * BLOCK_ALIGN)
-    )
-    dK = grad_comb_flat.reshape(hc_mult, BLOCK_ALIGN)
+    # Load comb gradient and reshape
+    grad_comb_flat = tl.load(grad_comb_ptr + pid_feat_off + arange_val)
+    dK = grad_comb_flat.reshape(group, hc_mult, BLOCK_ALIGN)
 
-    # Reverse iteration for backprop
+    # Backpropagate through Sinkhorn iterations (reverse order)
     for j in range(sinkhorn_iters):
         i = sinkhorn_iters - j - 1
-
-        # Extract saved row/column sums
+    
+        # Extract saved intermediate sums
         row_sum = tl.extract_slice(
             row_sum_list,
-            [i, 0, 0],
-            [1, hc_mult, 1],
-            [1, 1, 1],
+            [i, 0, 0, 0],
+            [1, group, hc_mult, 1],
+            [1, 1, 1, 1],
         )
         col_sum = tl.extract_slice(
             col_sum_list,
-            [i, 0, 0],
-            [1, 1, BLOCK_ALIGN],
-            [1, 1, 1],
+            [i, 0, 0, 0],
+            [1, group, 1, BLOCK_ALIGN],
+            [1, 1, 1, 1],
         )
 
-        row_sum = row_sum.reshape(hc_mult, 1)
-        col_sum = col_sum.reshape(1, BLOCK_ALIGN)
+        # Backprop column normalization
+        col_sum = col_sum.reshape(group, 1, BLOCK_ALIGN) + eps
+        row_sum = row_sum.reshape(group, hc_mult, 1) + eps 
+        K_col = K * col_sum
+        
+        grad_direct = dK / col_sum
+        d_col_sum_compressed = -tl.sum(dK * K_col / (col_sum * col_sum), axis=-2)
+        dK_row = grad_direct + d_col_sum_compressed[:, None, :]
 
-        # Step 1: Reconstruct K_col
-        K_col = K * (col_sum + EPS)
-        # Step 2: Backprop column normalization
-        grad_direct = dK / (col_sum + EPS)
-        d_col_sum_compressed = -tl.sum(
-            dK * K_col / ((col_sum + EPS) * (col_sum + EPS)), axis=-2
-        )
-        d_col_sum = d_col_sum_compressed.reshape(1, BLOCK_ALIGN)
-        dK_row = grad_direct + d_col_sum
-
-        # Step 3: Reconstruct K_row
-        K_row = K_col * (row_sum + EPS)
-
-        # Step 4: Update K to K_row
+        # Backprop row normalization
+        K_row = K_col * row_sum
         K = K_row
+        
+        grad_direct_row = dK_row / row_sum
+        d_row_sum_compressed = -tl.sum(dK_row * K_row / (row_sum * row_sum), axis=-1)
+        dK = grad_direct_row + d_row_sum_compressed[:, :, None]
 
-        # Step 5: Backprop row normalization
-        grad_direct_row = dK_row / (row_sum + EPS)
-        d_row_sum_compressed = -tl.sum(
-            dK_row * K_row / ((row_sum + EPS) * (row_sum + EPS)), axis=-1
-        )
-        d_row_sum = d_row_sum_compressed.reshape(hc_mult, 1)
-        dK = grad_direct_row + d_row_sum
-
-        # Apply mask to gradient
-        tmp = tl.reshape(dK, (hc_mult * BLOCK_ALIGN))
-        tmp = tl.where(mask, tmp, 0.0)
-        dK = tl.reshape(tmp, (hc_mult, BLOCK_ALIGN))
+        dK = dK * mask_val
 
     # Backprop through exp and row max subtraction
     d_exp_comb = dK
@@ -512,27 +506,28 @@ def hc_split_sinkhorn_backward_kernel_part2(
 
     # Handle gradient of row max subtraction
     max_mask = tl.where(comb_init == row_max, 1.0, 0.0)
-    max_count_compressed = tl.sum(max_mask, axis=-1)
-    max_count = max_count_compressed.reshape(hc_mult, 1) + EPS
-
-    row_sum_d_before_exp_compressed = tl.sum(d_comb_before_exp, axis=-1)
-    row_sum_d_before_exp = row_sum_d_before_exp_compressed.reshape(hc_mult, 1)
-
+    max_count = tl.sum(max_mask, axis=-1).reshape(group, hc_mult, 1) + eps
+    row_sum_d_before_exp = tl.sum(d_comb_before_exp, axis=-1).reshape(group, hc_mult, 1)
     d_comb_init = d_comb_before_exp - (row_sum_d_before_exp * max_mask / max_count)
 
     # Backprop through linear transformation
     grad_comb_slice_flat = d_comb_init * scale_comb
 
-    # Update gradients
+    # Update mixes gradient
     tl.store(
-        grad_mixes_ptr + idx * feat_dim + tl.arange(0, hc_mult * BLOCK_ALIGN),
-        grad_comb_slice_flat.reshape(hc_mult * BLOCK_ALIGN),
+        grad_mixes_ptr + pid_feat_off + arange_val[None, :],
+        grad_comb_slice_flat.reshape(group, hc_mult * BLOCK_ALIGN),
+        mask=pid_mask[:, None]
     )
-    tl.atomic_add(grad_hc_scale_ptr + 2, tl.sum(d_comb_init * comb_slice))
-    tl.atomic_add(
-        grad_hc_base_ptr + tl.arange(0, hc_mult * BLOCK_ALIGN),
-        d_comb_init.reshape(hc_mult * BLOCK_ALIGN),
-    )
+
+    # Atomic updates for scale and base gradients (with boundary check)
+    tmp_res = d_comb_init * comb_slice
+    tmp_res = tl.where(pid_mask[:, None, None], tmp_res, 0.0)
+    d_comb_init = tl.where(pid_mask[:, None, None], d_comb_init, 0.0)
+
+    tl.atomic_add(grad_hc_scale_ptr + 2, tl.sum(tmp_res))
+    d_comb_init_sum = tl.sum(d_comb_init, axis=0)
+    tl.atomic_add(grad_hc_base_ptr + arange_val, d_comb_init_sum.reshape(hc_mult * BLOCK_ALIGN))
 
 
 def hc_split_sinkhorn_triton_backward(
@@ -547,11 +542,8 @@ def hc_split_sinkhorn_triton_backward(
     eps: float = 1e-6,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Backward pass for HC-Split Sinkhorn (Triton implementation)
-
-    Computes gradients for input tensors (mixes, hc_scale, hc_base) using
-    Triton kernels optimized for NPU execution.
-
+    Computes gradients for input tensors (mixes, hc_scale, hc_base) with GPU optimization
+    
     Args:
         grad_pre: Gradient of loss w.r.t. pre output, shape [b, s, hc_mult]
         grad_post: Gradient of loss w.r.t. post output, shape [b, s, hc_mult]
@@ -569,11 +561,11 @@ def hc_split_sinkhorn_triton_backward(
             - grad_hc_scale: Gradient w.r.t. hc_scale, shape [3]
             - grad_hc_base: Gradient w.r.t. hc_base, shape [(2+hc_mult)*hc_mult]
     """
-    # Input validation
-    b, s, total_dim = mixes.shape
+    # Input dimension validation
+    b, s, _ = mixes.shape
     batch_seq_size = b * s
 
-    # Save original dtype and convert to float32 for stable computation
+    # Convert to float32 for stable gradient computation
     origin_dtype = mixes.dtype
     mixes = mixes.to(dtype=torch.float32)
     hc_scale = hc_scale.to(dtype=torch.float32)
@@ -582,46 +574,41 @@ def hc_split_sinkhorn_triton_backward(
     grad_post = grad_post.to(dtype=torch.float32)
     grad_comb = grad_comb.to(dtype=torch.float32)
 
-    # Initialize output gradients (zero-initialized)
+    # Initialize gradient tensors with zeros
     grad_mixes = torch.zeros_like(mixes, device=mixes.device)
     grad_hc_scale = torch.zeros_like(hc_scale, device=hc_scale.device)
     grad_hc_base = torch.zeros_like(hc_base, device=hc_base.device)
+    comb_tmp = torch.empty((batch_seq_size, hc_mult, hc_mult), dtype=mixes.dtype, device=mixes.device)
 
-    # Flatten input gradients (adapt to Triton kernel input shape)
+    # Flatten gradient tensors for Triton processing
     grad_pre_flat = grad_pre.reshape(-1, hc_mult)
     grad_post_flat = grad_post.reshape(-1, hc_mult)
 
-    # Configure Triton grid (one thread block per batch_seq sample)
-    grid = (batch_seq_size,)
+    # Configure Triton kernel parameters
+    BLOCK_ALIGN = 8
+    group_part1 = 64
+    group_part2 = 32
 
     # Launch Part1 kernel (Pre/Post gradients)
-    hc_split_sinkhorn_backward_kernel_part1[grid](
-        # Input gradients
+    hc_split_sinkhorn_backward_kernel_part1[(triton.cdiv(batch_seq_size, group_part1),)](
         grad_pre_flat,
         grad_post_flat,
-        # Forward inputs
         mixes,
         hc_scale,
         hc_base,
-        # Output gradients
+        comb_tmp,
         grad_mixes,
         grad_hc_scale,
         grad_hc_base,
+        batch_seq_size,
         hc_mult=hc_mult,
+        group=group_part1
     )
 
-    # Process Comb component (padding for BLOCK_ALIGN)
-    mixes = mixes.view(-1, (2 + hc_mult) * hc_mult)
-    mixes_slice = mixes[:, 2 * hc_mult:].view(-1, hc_mult, hc_mult)
-    hc_base = hc_base.view((2 + hc_mult) * hc_mult)
-    hc_base_slice = hc_base[2 * hc_mult:].view(hc_mult, hc_mult)
-
-    # Apply padding to match BLOCK_ALIGN (8)
-    BLOCK_ALIGN = 8
-    mixes_pad = F.pad(mixes_slice, (0, BLOCK_ALIGN - hc_mult), mode="constant", value=0)
-    hc_base_pad = F.pad(
-        hc_base_slice, (0, BLOCK_ALIGN - hc_mult), mode="constant", value=0
-    )
+    # Prepare comb slice for Part2 backward kernel (padding for alignment)
+    mixes_flat = mixes.view(-1, (2 + hc_mult) * hc_mult)
+    mixes_slice = mixes_flat[:, 2 * hc_mult:].view(-1, hc_mult, hc_mult)
+    mixes_pad = F.pad(mixes_slice, (0, BLOCK_ALIGN - hc_mult), mode="constant", value=0.0)
 
     # Initialize padded gradient tensors
     grad_mixes_pad = torch.zeros(
@@ -633,30 +620,28 @@ def hc_split_sinkhorn_triton_backward(
         (hc_mult, BLOCK_ALIGN), dtype=grad_hc_base.dtype, device=grad_hc_base.device
     )
 
-    # Pad comb gradient
+    # Pad comb gradient tensor
     grad_comb_flat = grad_comb.reshape(-1, hc_mult, hc_mult)
     grad_comb_flat_pad = F.pad(
-        grad_comb_flat, (0, BLOCK_ALIGN - hc_mult), mode="constant", value=0
+        grad_comb_flat, (0, BLOCK_ALIGN - hc_mult), mode="constant", value=0.0
     )
+    comb_tmp_padded = F.pad(comb_tmp, pad=(0, BLOCK_ALIGN - hc_mult), mode="constant", value=float('-inf'))
 
     # Launch Part2 kernel (Comb gradients)
-    hc_split_sinkhorn_backward_kernel_part2[grid](
-        # Input gradient
+    hc_split_sinkhorn_backward_kernel_part2[(triton.cdiv(batch_seq_size, group_part2),)](
         grad_comb_flat_pad,
-        # Forward inputs
         mixes_pad,
         hc_scale,
-        hc_base_pad,
-        # Output gradients
+        comb_tmp_padded,
         grad_mixes_pad,
         grad_hc_scale,
         grad_hc_base_pad,
-        # Compile-time constants
-        batch_seq_size=batch_seq_size,
-        hc_mult=hc_mult,
-        sinkhorn_iters=sinkhorn_iters,
-        eps=eps,
+        batch_seq_size,
+        hc_mult,
+        sinkhorn_iters,
+        eps,
         BLOCK_ALIGN=BLOCK_ALIGN,
+        group=group_part2
     )
 
     # Merge padded gradients back to original shape
