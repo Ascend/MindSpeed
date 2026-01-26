@@ -1,4 +1,5 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+from functools import lru_cache
 import torch
 import torch_npu
 from mindspeed.op_builder import GroupMatmulAddOpBuilder
@@ -9,11 +10,12 @@ __all__ = ["npu_groupmatmul_add_fp32"]
 groupmatmul_add_op_builder = GroupMatmulAddOpBuilder()
 
 
+@lru_cache
 def is_a5():
     try:
         return "Ascend910_95" in torch_npu.npu.get_device_name()
     except Exception:
-        return false
+        return False
 
 
 def npu_groupmatmul_add_fp32(x, dy, grouplist, grad):
