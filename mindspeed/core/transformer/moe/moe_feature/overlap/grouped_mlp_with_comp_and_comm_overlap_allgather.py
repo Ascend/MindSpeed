@@ -53,7 +53,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         layer_number = ctx.layer_number
         config = ctx.config
         act_inputs, act_graph, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
-        token_unpermutation_graph, global_hidden_states_detach, local_map, reversed_local_input_permutation_mapping = get_gemm_backward_need_tensors()
+        token_permutation_graph, global_hidden_states_detach, local_map, reversed_local_input_permutation_mapping = get_gemm_backward_need_tensors()
         gmm_cls = get_gmm_op_cls()
         # grad of mm2
         if ctx.use_gmm:
@@ -96,7 +96,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
             mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
         # token unpermute backward.
-        backward_func(token_unpermutation_graph, mm1_inputs_grad)
+        backward_func(token_permutation_graph, mm1_inputs_grad)
         mm1_inputs_grad.untyped_storage().resize_(0)
         _, rs_global_hidden_states_grad, rs_handle = async_reduce_scatter(global_hidden_states_detach.grad,
                                                                           parallel_state.get_expert_tensor_and_model_parallel_group())
@@ -117,7 +117,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
                 mm1_weights_grad = gmm_cls.op_gmm_add(mm1_inputs, weights1, act_inputs.grad, group_list,
                                                       original_weight1)
             else:
-                mm1_weights_grad = gmm_cls.op_dw(mm1_inputs, act_inputs.grad, group_list)
+                mm1_weights_grad = gmm_cls.op_dw(mm1_inputs, act_inputs.grad, group_list)[0]
         else:
             mm1_weights_grad = torch.matmul(mm1_inputs.t(), act_inputs.grad)
 
