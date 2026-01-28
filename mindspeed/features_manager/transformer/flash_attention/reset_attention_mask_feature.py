@@ -11,7 +11,7 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        group.add_argument('--sub-seq-length', type=int, default=-1,
+        group.add_argument('--fix-sub-seq-length', type=int, default=-1,
                            help='Sub-sequence length to process.  - If > 0: Specifies fixed sub-sequence length. '
                                 'Each sub-sequence will have this length,  except the last one which will take the '
                                 'remaining tokens. - If <= 0 or > seq_length: sub-sequences maintain their original'

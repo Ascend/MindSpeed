@@ -204,8 +204,8 @@ def collate_wrapper(fn):
         samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
         batch = fn(samples)
         args = get_args()
-        if hasattr(args, 'sub_seq_length') and 0 < args.sub_seq_length <= args.seq_length:
-            actual_seq_len = get_actual_seq_len(args.seq_length, args.sub_seq_length)
+        if hasattr(args, 'fix_sub_seq_length') and 0 < args.fix_sub_seq_length <= args.seq_length:
+            actual_seq_len = get_actual_seq_len(args.seq_length, args.fix_sub_seq_length)
             batch['actual_seq_len'] = actual_seq_len
 
         else:

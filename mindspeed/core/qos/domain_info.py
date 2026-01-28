@@ -496,10 +496,10 @@ def get_context_parallel_comm_domain():
         comm_non_overlap_groups_amount = comm_cp_groups_amount
     else:
         ring_degree = rank_num // args.ulysses_degree_in_cp
-        sub_seq_length = seq_length // ring_degree
+        fix_sub_seq_length = seq_length // ring_degree
         ulysses_comm_per_layer = (
                                          rank_num - 1
-                                 ) / rank_num * sub_seq_length * micro_batch_size * hidden_size * 3 * 2
+                                 ) / rank_num * fix_sub_seq_length * micro_batch_size * hidden_size * 3 * 2
 
         ring_amount_per_layer = 0
         ring_comm_amount_per_layer = 0
