@@ -44,10 +44,6 @@ def expert_parallelize_modules(modules: torch.nn.Module, ep_mesh: DeviceMesh, pl
         # replace forward with ep forward
         experts_forward_fn = get_dispatcher_fn(plan.dispatcher, ep_group)
         module.forward = types.MethodType(experts_forward_fn, module)
-
-        # apply ep parameter grad division, if efsdp is enabled, the hook will be overridden
-        apply_grad_division_hook(module, ep_size)
-
     return modules
 
 
@@ -106,18 +102,3 @@ def get_dispatcher_fn(dispatcher, ep_group):
         raise RuntimeError(f'Unsupported dispatcher {dispatcher}.')
 
     return forward_fn
-
-
-def get_grad_division_hook(param, ep_size):
-    def hook(*unused):
-        return param.grad.mul_(1 / ep_size)
-
-    return hook
-
-
-def apply_grad_division_hook(module, ep_size):
-    for param in module.parameters():
-        if param.requires_grad:
-            param_tmp = param.expand_as(param)
-            grad_acc = param_tmp.grad_fn.next_functions[0][0]
-            grad_acc.register_hook(get_grad_division_hook(param, ep_size))

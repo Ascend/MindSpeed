@@ -5,7 +5,7 @@ from torch.distributed.distributed_c10d import ReduceOp
 def hccl_premul_sum_wrapper(op, output_name):
     def wrapper(*args, **kwargs):
         factor = None
-        if kwargs['op'] == ReduceOp.PREMUL_SUM:
+        if 'op' in kwargs and kwargs['op'] == ReduceOp.PREMUL_SUM:
             factor = kwargs['op'].__getstate__()[1]
             kwargs['op'] = ReduceOp.SUM
         handle = op(*args, **kwargs)
