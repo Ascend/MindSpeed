@@ -28,6 +28,9 @@ from .overlap_funcs import (
     transformer_layer_backward_dense,
     transformer_layer_backward_noop,
     transformer_layer_forward_moe_backward_moe_overlaping,
+    transformer_layer_forward_dense_backward_dense_overlaping,
+    transformer_layer_forward_moe_backward_dense_overlaping,
+    transformer_layer_forward_dense_backward_moe_overlaping
 )
 
 
@@ -119,7 +122,7 @@ def transformer_layer_forward_backward_overlaping(
     bwd_pp_comm_params: P2PCommParams = None,
     checkpoint=False
 ):
-    if not should_run_fb_overlap(fwd_layer, bwd_layer_graph):
+    if isinstance(fwd_layer, NoopTransformerLayer) or bwd_layer_graph is None or isinstance(bwd_layer_graph, NoopLayerGraph):
         # no f&w overlaping
         if bwd_layer_graph is None:
             out = transformer_layer_forward(
@@ -161,7 +164,13 @@ def transformer_layer_forward_backward_overlaping(
 
     else:
         fb_overlap_func = None
-        if (hasattr(fwd_layer.mlp, 'experts') or hasattr(fwd_layer.mlp,
+        if not hasattr(fwd_layer.mlp, 'experts') and not bwd_layer_graph.is_moe_layer:
+            fb_overlap_func = transformer_layer_forward_dense_backward_dense_overlaping
+        elif hasattr(fwd_layer.mlp, 'experts') and not bwd_layer_graph.is_moe_layer:
+            fb_overlap_func = transformer_layer_forward_moe_backward_dense_overlaping
+        elif not hasattr(fwd_layer.mlp, 'experts') and bwd_layer_graph.is_moe_layer:
+            fb_overlap_func = transformer_layer_forward_dense_backward_moe_overlaping
+        elif (hasattr(fwd_layer.mlp, 'experts') or hasattr(fwd_layer.mlp,
                                                          'hot_experts')) and bwd_layer_graph.is_moe_layer:
             if hasattr(fwd_layer.mlp, 'hot_experts'):
                 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \

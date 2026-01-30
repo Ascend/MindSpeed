@@ -81,6 +81,7 @@ def transformer_layer_forward_moe(
             # Shared Experts PreComm.
             self.mlp.shared_experts.pre_forward_comm(detached_mlp_input)
             shared_fc1_input = self.mlp.shared_experts.cached_fc1_input
+            share_expert_pre_event = dispatcher.overlap_stream.record_event()
     else:
         shared_fc1_input = None
 
@@ -95,10 +96,6 @@ def transformer_layer_forward_moe(
     probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
     perm1_out, perm1_probs, tokens_per_expert = dispatcher.token_permute1(detached_mlp_input, probs_detached, routing_map)
 
-    if use_shared_experts:
-        # Shared Experts Forward.
-        self.mlp.shared_experts.linear_fc1_forward_and_act()
-        self.mlp.shared_experts.linear_fc2_forward()
     if dispatcher.num_local_experts > 1:
         # launch synchronization here to wait for non-blocking mem copy in preprocess func.
         dispatcher.cuda_sync_point = "no_sync"
@@ -112,6 +109,12 @@ def transformer_layer_forward_moe(
 
     (perm_a2a_out, perm_a2a_handle), (perm_prob_a2a_out, perm_prob_a2a_handle) = dispatcher.async_dispatch_comm(perm1_out, perm1_probs)
 
+    if use_shared_experts:
+        # Shared Experts Forward.
+        torch.npu.current_stream().wait_event(share_expert_pre_event)
+        self.mlp.shared_experts.linear_fc1_forward_and_act()
+        self.mlp.shared_experts.linear_fc2_forward()
+
     if recomp_norm:
         self.norm_ckpt2.discard_output()
     # overlap perm a2a by shared experts computation.
@@ -121,6 +124,7 @@ def transformer_layer_forward_moe(
     perm1_out.untyped_storage().resize_(0)
 
     if use_shared_experts:
+        dispatcher.overlap_stream.wait_stream(torch.npu.current_stream())
         with torch.npu.stream(dispatcher.overlap_stream):
             self.mlp.shared_experts.post_forward_comm(wait_event=perm_prob_a2a_handle)
 
