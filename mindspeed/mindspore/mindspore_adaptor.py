@@ -84,3 +84,15 @@ def mindspore_adaptation(aspm, mindspeed_args):
     aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.get_parameter_state_dp_zero', get_parameter_state_dp_zero)
     from mindspeed.mindspore.core.optimizer.distrib_optimizer import load_parameter_state_from_dp_zero
     aspm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.load_parameter_state_from_dp_zero', load_parameter_state_from_dp_zero)
+
+    # coalescing_manager patches: rely on communication operators
+    from mindspeed.core.distributed.param_and_grad_buffer import start_param_sync, finish_param_sync, start_grad_sync, \
+        finish_grad_sync
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_param_sync',
+                        start_param_sync)
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_param_sync',
+                        finish_param_sync)
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_grad_sync',
+                        start_grad_sync)
+    aspm.register_patch('megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.finish_grad_sync',
+                        finish_grad_sync)
