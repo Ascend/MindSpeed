@@ -121,6 +121,10 @@ elif hasattr(triton.language, 'make_tensor_descriptor'):
         return None
 
 
+def _cpu_device_warning():
+    warnings.warn(('Triton is not supported on current platform, roll back to CPU.'), stacklevel=1)
+
+
 @lru_cache(maxsize=None)
 def get_available_device() -> str:
     try:
@@ -210,10 +214,6 @@ def input_guard(
             return fn(*contiguous_args, **contiguous_kwargs)
 
     return wrapper
-
-
-def _cpu_device_warning():
-    warnings.warn(('Triton is not supported on current platform, roll back to CPU.'), stacklevel=1)
 
 
 @tensor_cache
@@ -342,3 +342,11 @@ def get_autotune_config(
 
 def get_npu_properties():
     return driver.active.utils.get_device_properties(torch.npu.current_device())
+
+
+@functools.cache
+def get_multiprocessor_count(tensor_idx: int = 0) -> int:
+    if triton.runtime.driver.active.get_current_target().backend == 'npu':
+        return triton.runtime.driver.active.utils.get_device_properties(tensor_idx)['num_vectorcore']
+    else:
+        return 1
