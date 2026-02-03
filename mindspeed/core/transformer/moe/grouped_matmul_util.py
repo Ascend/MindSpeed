@@ -133,10 +133,7 @@ class BaseGMMFunction(torch.autograd.Function):
 
     @classmethod
     def gmm_add_impl(cls, x, grad, group_list, weight_param, weight_shape):
-        if is_a5():
-            npu_groupmatmul_add_fp32(x, grad, group_list, weight_param.main_grad.view(weight_shape))
-        else:
-            npu_groupmatmul_add_fp32(x, grad, group_list, weight_param.main_grad)
+        npu_groupmatmul_add_fp32(x, grad, group_list, weight_param.main_grad)
 
 
 class BF16GMMFunction(BaseGMMFunction):
