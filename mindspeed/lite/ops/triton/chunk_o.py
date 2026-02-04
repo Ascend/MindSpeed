@@ -504,6 +504,7 @@ def chunk_bwd_dqkwg(
         BT=BT,
         BK=BK,
         BV=BV,
+        gdiff=g_diff,
     )
 
     if dg is not None:
