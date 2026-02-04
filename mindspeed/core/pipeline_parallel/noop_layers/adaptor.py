@@ -51,16 +51,8 @@ class NoopTransformerLayer(MegatronModule):
         hidden_states: Tensor,
         attention_mask: Optional[Tensor],
         context: Optional[Tensor] = None,
-        context_mask: Optional[Tensor] = None,
-        rotary_pos_emb: Optional[Tensor] = None,
-        rotary_pos_cos: Optional[Tensor] = None,
-        rotary_pos_sin: Optional[Tensor] = None,
-        attention_bias: Optional[Tensor] = None,
-        inference_context: Optional[BaseInferenceContext] = None,
-        packed_seq_params: Optional[PackedSeqParams] = None,
-        sequence_len_offset: Optional[Tensor] = None,
-        *,
-        inference_params: Optional[BaseInferenceContext] = None,
+        *args,
+        **kwargs
     ):
         """
         Perform the forward pass through the noop transformer block.
