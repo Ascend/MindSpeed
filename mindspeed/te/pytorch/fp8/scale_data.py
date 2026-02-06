@@ -73,6 +73,7 @@ class ScaleData:
             self.delayed_recipe_update_scale()
             scale = self.scale.clone()
         else:
+            stream.wait_stream(torch.cuda.current_stream())
             scale = self.scale.clone()
 
             if self.current_interval >= self.config.config.fp8_interval:
