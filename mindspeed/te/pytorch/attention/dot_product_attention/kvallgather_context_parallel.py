@@ -179,8 +179,11 @@ class AttnFuncWithCPAndKVAllGatherForSBHD(torch.autograd.Function):
         out_per_step = [None, None]
         softmax_max = [None, None]
         softmax_sum = [None, None]
-        # [2, s//2, b, h_v]
-        out = torch.empty(*q.shape[:-1], v.shape[-1], dtype=q.dtype, device=q.device)
+        # [2, s//2, b, h]
+        if k.shape[-1] == v.shape[-1]:
+            out = torch.empty_like(q)
+        else:
+            out = torch.empty(*q.shape[:-1], v.shape[-1], dtype=q.dtype, device=q.device)
 
         for i in range(len(local_seq_chunk_ids) + 1):
             if i < len(local_seq_chunk_ids):
@@ -269,7 +272,10 @@ class AttnFuncWithCPAndKVAllGatherForSBHD(torch.autograd.Function):
         # [s, b, h] -> [2, s//2, b, h]
         q = q.view(2, q.shape[seq_dim] // 2, *q.shape[(seq_dim + 1):])
         # [s, b, h_v] -> [2, s//2, b, h_v]
-        dout = dout.view(*q.shape[:-1], v.shape[-1])
+        if k.shape[-1] == v.shape[-1]:
+            dout = dout.view(q.shape)
+        else:
+            dout = dout.view(*q.shape[:-1], v.shape[-1])
 
         # [2, s//2, b, h]
         dq = torch.empty_like(q)
