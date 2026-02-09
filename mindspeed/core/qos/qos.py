@@ -107,7 +107,7 @@ class Qos:
             # Define valid string values and update regex pattern to match them (case-insensitive)
             valid_values = r'(high|low|middle)'
             # Regex pattern: matches {key:value, key:value,...} format with valid string values
-            pattern = fr'^\{{\s*([a-zA-Z0-9_]+:\s*{valid_values}\s*(,\s*[a-zA-Z0-9_]+:\s*{valid_values}\s*)*)?\}}$'
+            pattern = fr'^\{{\s*([a-zA-Z0-9_-]+:\s*{valid_values}\s*(,\s*[a-zA-Z0-9_-]+:\s*{valid_values}\s*)*)?\}}$'
 
             # Validate the overall format with case-insensitive matching
             if not re.match(pattern, clean_str, re.IGNORECASE):
@@ -164,9 +164,9 @@ class Qos:
 
     def set_parallel_qos(self, parallel_type):
         if parallel_type is None:
-            return _DEFAULT_QOS_LOW
+            return _DEFAULT_QOS
         if parallel_type.lower() not in _PARALLEL_TYPES or parallel_type.lower() not in self.aiqos_schedule:
-            return _DEFAULT_QOS_LOW
+            return _DEFAULT_QOS
         return self.aiqos_schedule[parallel_type.lower()]
 
     def cal_auto_qos(self):
