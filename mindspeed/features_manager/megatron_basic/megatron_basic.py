@@ -1,6 +1,23 @@
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
+def _repair_modelopt_torch_tree():
+    try:
+        import sys
+
+        mo = sys.modules.get("modelopt")
+        if mo is None:
+            return
+        if hasattr(mo, "torch"):
+            return
+
+        for k in list(sys.modules.keys()):
+            if k == "modelopt" or k == "modelopt.torch" or k.startswith("modelopt.torch."):
+                sys.modules.pop(k, None)
+    except Exception:
+        pass
+
+
 class MegatronBasicFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('megatron-basic', optimization_level=0)
@@ -33,6 +50,7 @@ class MegatronBasicFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         try:
             import megatron.training
+            _repair_modelopt_torch_tree()
             only_mcore = False
         except ModuleNotFoundError:
             only_mcore = True
