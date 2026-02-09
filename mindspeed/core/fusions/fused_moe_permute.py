@@ -11,12 +11,7 @@ from megatron.core.transformer.moe.moe_utils import unpermute as megatron_unperm
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import sort_chunks_by_idxs
 from mindspeed.te.pytorch.permutation import MoePermuteMaskMap, MoeUnpermuteMaskMap
-
-try:
-    import triton
-    _HAS_TRITON = True
-except ImportError:
-    _HAS_TRITON = False
+from mindspeed.utils import has_triton
 
 
 def convert_tensors_to_fp32_if_needed(
@@ -109,7 +104,7 @@ def moe_alltoall_token_dispatcher_init_wrapper(fn):
             self, num_local_experts, local_expert_indices, config
     ) -> None:
         fn(self, num_local_experts, local_expert_indices, config)
-        if _HAS_TRITON and self.config.moe_permute_fusion:
+        if has_triton() and self.config.moe_permute_fusion:
             self.permute_idx_device = torch.device("npu") 
         else:
             # Since fused_sort_chunks_by_index is not currently supported, set self.permute_idx_device to None

@@ -32,6 +32,8 @@ from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import (
     async_alltoall_with_backward,
     async_reduce_scatter
     )
+from mindspeed.utils import has_triton
+
 
 """ We use the following notation throughout this file:
      H: hidden size
@@ -208,7 +210,9 @@ class MoEAlltoAllSeqOverLapDispatcher:
         def alltoall_token_permutation2(global_input_tokens, global_probs, permute1_probs_handle=None):
             # Permutation 2: Sort tokens by local expert.
             if self.num_local_experts > 1:
-                if self.config.moe_permute_fusion:
+                if self.config.moe_permute_fusion and has_triton():
+                    if permute1_probs_handle:
+                        permute1_probs_handle.wait()
                     global_input_tokens, global_probs = sort_chunks_by_idxs(
                         global_input_tokens,
                         self.num_global_tokens_per_local_expert_cpu.ravel(),

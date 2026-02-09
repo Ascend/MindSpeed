@@ -40,6 +40,18 @@ _POSITION_IDS = None
 _REARRANGE_IDX_TENSOR = None
 _KV_INDEX = None
 _Q_INDEX = None
+_HAS_TRITON = None
+
+
+def has_triton():
+    global _HAS_TRITON
+    if _HAS_TRITON is None:
+        try:
+            import triton
+            _HAS_TRITON = True
+        except ImportError:
+            _HAS_TRITON = False
+    return _HAS_TRITON
 
 
 def generate_rearrange_idx_tensor(tp_y_cp_size):
