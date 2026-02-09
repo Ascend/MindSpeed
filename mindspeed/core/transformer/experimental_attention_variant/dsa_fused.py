@@ -78,34 +78,34 @@ def fused_dsa_attn_forward(
     x = x.detach()
     qr = qr.detach()
 
-    # Get a FP32 mask with -inf for masked positions.
-    if attn_mask_type is not None:
-        assert attn_mask_type == AttnMaskType.causal, 'Only causal mask is supported for now'
-        # Generate upper triangular mask with -inf above diagonal, 0 elsewhere
-        # torch.triu with diagonal=1 creates upper triangular matrix (excluding main diagonal)
-        # float_mask [sq, skv]
-        float_mask = torch.triu(
-            torch.full((sq, skv), float('-inf'), dtype=torch.float32, device=x.device),
-            diagonal=1,
-        )
-    else:
-        assert attention_mask.shape == (b, 1, sq, skv), 'attention_mask shape mismatch'
-        # [b, 1, sq, skv] -> [b, sq, skv]
-        mask = attention_mask.squeeze()
-        # float_mask [b, sq, skv]
-        float_mask = torch.zeros_like(mask, dtype=torch.float32).masked_fill(
-            mask, float('-inf')
-        )
-
     # ===================================
     # Get index scores and top-k indices
     # ===================================
     if self.config.use_fused_lightning_indexer:
         topk_indices, query_index, key_index, weights = self.indexer.forward_with_scores(
-            x, qr, mask=float_mask, packed_seq_params=packed_seq_params, use_fused_lightning_indexer=True
+            x, qr, mask=None, packed_seq_params=packed_seq_params, use_fused_lightning_indexer=True
         )
 
     else:
+        # Get a FP32 mask with -inf for masked positions.
+        if attn_mask_type is not None:
+            assert attn_mask_type == AttnMaskType.causal, 'Only causal mask is supported for now'
+            # Generate upper triangular mask with -inf above diagonal, 0 elsewhere
+            # torch.triu with diagonal=1 creates upper triangular matrix (excluding main diagonal)
+            # float_mask [sq, skv]
+            float_mask = torch.triu(
+                torch.full((sq, skv), float('-inf'), dtype=torch.float32, device=x.device),
+                diagonal=1,
+            )
+        else:
+            assert attention_mask.shape == (b, 1, sq, skv), 'attention_mask shape mismatch'
+            # [b, 1, sq, skv] -> [b, sq, skv]
+            mask = attention_mask.squeeze()
+            # float_mask [b, sq, skv]
+            float_mask = torch.zeros_like(mask, dtype=torch.float32).masked_fill(
+                mask, float('-inf')
+            )
+
         index_scores, topk_indices = self.indexer.forward_with_scores(
             x, qr, mask=float_mask, packed_seq_params=packed_seq_params
         )

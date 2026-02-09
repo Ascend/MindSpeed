@@ -74,30 +74,25 @@ def fused_lightning_indexer_kvallgather(
     local_seq_chunk_ids = [rank + 1, 2 * cp_size - rank]
     chunk_size = k_ag.shape[1] // cp_size // 2
 
-    stream_list = [torch.npu.current_stream(), cp_stream]
-    cp_stream.wait_stream(torch.npu.current_stream())
 
     for i, chunk_id in enumerate(local_seq_chunk_ids):
-        with torch.npu.stream(stream_list[i]):
-            q_ = q[i].contiguous()
-            k_ag_ = k_ag[:, :chunk_id * chunk_size, ...].contiguous()
+        q_ = q[i]
+        k_ag_ = k_ag[:, :chunk_id * chunk_size, ...]
 
-            weights_ = weights[i].contiguous()
+        weights_ = weights[i]
 
-            indices[i], scores[i] = torch_npu.npu_lightning_indexer(
-                q_,
-                k_ag_,
-                weights_,
-                actual_seq_lengths_query=actual_seq_qlen,
-                actual_seq_lengths_key=actual_seq_klen,
-                layout_query=layout_query,
-                layout_key=layout_key,
-                sparse_count=index_topk,
-                sparse_mode=3,
-                return_value=True,
-            )
-
-    torch.npu.current_stream().wait_stream(cp_stream)
+        indices[i], scores[i] = torch_npu.npu_lightning_indexer(
+            q_,
+            k_ag_,
+            weights_,
+            actual_seq_lengths_query=actual_seq_qlen,
+            actual_seq_lengths_key=actual_seq_klen,
+            layout_query=layout_query,
+            layout_key=layout_key,
+            sparse_count=index_topk,
+            sparse_mode=3,
+            return_value=True,
+        )
 
     topk_indices = torch.cat(indices, dim=1).squeeze(2)
     topk_score = torch.cat(scores, dim=1).squeeze(2)
@@ -150,10 +145,6 @@ def fused_npu_sparse_flash_attention_kvallgather(
     b, s, sparse_size = topk_indices.shape
     topk_indices = topk_indices.view(b, 2, s // 2, sparse_size).transpose(0, 1).unsqueeze(3)
 
-    # create two streams to resolve wave quantization issue of Flash Attn in each step
-    cp_stream.wait_stream(torch.npu.current_stream())
-    flash_attn_streams = [torch.npu.current_stream(), cp_stream]
-
     out_per_step = [None, None]
     softmax_max = [None, None]
     softmax_sum = [None, None]
@@ -161,40 +152,31 @@ def fused_npu_sparse_flash_attention_kvallgather(
     out = torch.empty_like(q)
 
     num_steps = 2
-    for i in range(num_steps + 1):
-        if i < num_steps:
-            with torch.npu.stream(flash_attn_streams[i]):
-                # [b, 2, s//2, n, d] -> [b, s//2, n, d]
-                q_ = q[i].contiguous()
-                q_rope_ = q_rope[i].contiguous()
-                topk_indices_ = topk_indices[i].contiguous()
+    for i in range(num_steps):
+        attn_outs = torch_npu.npu_sparse_flash_attention(
+            q[i], 
+            k_ag, 
+            v_ag,
+            sparse_indices=topk_indices[i].to(torch.int32),
+            block_table=None,
+            actual_seq_lengths_query=None,
+            actual_seq_lengths_kv=None,
+            query_rope=q_rope[i],
+            key_rope=k_rope_ag,
+            scale_value=scale,
+            sparse_block_size=1,
+            layout_query='BSND',
+            layout_kv='BSND',
+            sparse_mode=3,
+            attention_mode=2,
+            return_softmax_lse=True,
+        )
 
-                attn_outs = torch_npu.npu_sparse_flash_attention(
-                    q_, k_ag, v_ag,
-                    sparse_indices=topk_indices_.to(torch.int32),
-                    block_table=None,
-                    actual_seq_lengths_query=None,
-                    actual_seq_lengths_kv=None,
-                    query_rope=q_rope_,
-                    key_rope=k_rope_ag,
-                    scale_value=scale,
-                    sparse_block_size=1,
-                    layout_query='BSND',
-                    layout_kv='BSND',
-                    sparse_mode=3,
-                    attention_mode=2,
-                    return_softmax_lse=True,
-                )
+        out_per_step[i] = attn_outs[0]
+        softmax_max[i] = attn_outs[1]
+        softmax_sum[i] = attn_outs[2]
 
-                out_per_step[i] = attn_outs[0]
-                softmax_max[i] = attn_outs[1]
-                softmax_sum[i] = attn_outs[2]
-
-        if i > 0:
-            with torch.npu.stream(flash_attn_streams[i - 1]):
-                out[i - 1].copy_(out_per_step[i - 1])
-
-    torch.npu.current_stream().wait_stream(cp_stream)
+        out[i].copy_(out_per_step[i])
 
     # [b, n2, s, n1/n2]
     softmax_max_out = torch.cat(softmax_max, dim=2)
@@ -283,33 +265,27 @@ def fused_sparse_lightning_indexer_kl_loss_kvallgather(
     local_seq_chunk_ids = [rank + 1, 2 * cp_size - rank]
     chunk_size = key_ag.shape[1] // cp_size // 2
 
-    stream_list = [torch.npu.current_stream(), cp_stream]
-    cp_stream.wait_stream(torch.npu.current_stream())
-
     for i, chunk_id in enumerate(local_seq_chunk_ids):
-        with torch.npu.stream(stream_list[i]):
-            kv_len = chunk_id * chunk_size
-            loss[i] = LILossTrain.apply(
-                query[i],
-                key_ag[:, :kv_len, ...],
-                query_index[i],
-                key_index_ag[:, :kv_len, ...],
-                weights[i],
-                topk_indices[i],
-                softmax_max[i],
-                softmax_sum[i],
-                scale_value,
-                query_rope[i],
-                key_rope_ag[:, :kv_len, ...],
-                actual_seq_qlen,
-                actual_seq_klen,
-                layout,
-                sparse_mode,
-                pre_tokens,
-                next_tokens,
-            )
-
-    torch.npu.current_stream().wait_stream(cp_stream)
+        kv_len = chunk_id * chunk_size
+        loss[i] = LILossTrain.apply(
+            query[i],
+            key_ag[:, :kv_len, ...],
+            query_index[i],
+            key_index_ag[:, :kv_len, ...],
+            weights[i],
+            topk_indices[i],
+            softmax_max[i],
+            softmax_sum[i],
+            scale_value,
+            query_rope[i],
+            key_rope_ag[:, :kv_len, ...],
+            actual_seq_qlen,
+            actual_seq_klen,
+            layout,
+            sparse_mode,
+            pre_tokens,
+            next_tokens,
+        )
 
     return sum(loss) / sq
 
