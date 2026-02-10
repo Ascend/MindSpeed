@@ -49,7 +49,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
                 MindSpeedTEDotProductAttention
             from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import \
-                MindSpeedTELayerNormColumnParallelLinear
+                TELayerNormColumnParallelLinear
             from mindspeed.te.pytorch.module.grouped_linear import MindSpeedTEGroupedLinear, \
                 MindSpeedTEColumnParallelGroupedLinear, MindSpeedTERowParallelGroupedLinear
             from mindspeed.te.pytorch.module.linear import TERowParallelLinear, TEColumnParallelLinear
@@ -65,7 +65,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                 pm.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedTEDotProductAttention)
 
             pm.register_patch('megatron.core.extensions.transformer_engine.TELayerNormColumnParallelLinear',
-                              MindSpeedTELayerNormColumnParallelLinear)
+                              TELayerNormColumnParallelLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TEGroupedLinear', MindSpeedTEGroupedLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelGroupedLinear',
                               MindSpeedTEColumnParallelGroupedLinear)
@@ -102,11 +102,11 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                 MindSpeedTEDotProductAttention
             from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
             from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import \
-                MindSpeedTELayerNormColumnParallelLinear
+                TELayerNormColumnParallelLinear
             from mindspeed.te.pytorch.module.grouped_linear import MindSpeedTEGroupedLinear, \
                 MindSpeedTEColumnParallelGroupedLinear, MindSpeedTERowParallelGroupedLinear
 
-            from mindspeed.te.pytorch.module.linear import MindSpeedTELinear, MindSpeedTEColumnParallelLinear
+            from mindspeed.te.pytorch.module.linear import TELinear, MindSpeedTEColumnParallelLinear
             if not getattr(args, 'use_ascend_mc2', False):
                 pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
                                   MindSpeedTEColumnParallelLinear)
@@ -124,11 +124,11 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                                   MindSpeedTEDotProductAttention)
 
             pm.register_patch('megatron.core.extensions.transformer_engine.TELayerNormColumnParallelLinear',
-                              MindSpeedTELayerNormColumnParallelLinear)
+                              TELayerNormColumnParallelLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TEGroupedLinear', MindSpeedTEGroupedLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelGroupedLinear',
                               MindSpeedTEColumnParallelGroupedLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelGroupedLinear',
                               MindSpeedTERowParallelGroupedLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TELinear',
-                              MindSpeedTELinear)
+                              TELinear)

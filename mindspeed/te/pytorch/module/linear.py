@@ -676,7 +676,7 @@ def reshape_to_2D(input_tensor):
     return output
 
 
-class MindSpeedTELinear(torch.nn.Module):
+class TELinear(torch.nn.Module):
     def __init__(
         self,
         input_size: int,
@@ -693,7 +693,7 @@ class MindSpeedTELinear(torch.nn.Module):
         symmetric_ar_type: Optional[str] = None,
         tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
-        super(MindSpeedTELinear, self).__init__()
+        super(TELinear, self).__init__()
 
         self.te_return_bias = skip_bias_add and bias
         if parallel_mode == "duplicated":

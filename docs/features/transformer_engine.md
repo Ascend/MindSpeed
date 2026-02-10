@@ -11,7 +11,7 @@ MindSpeed提供的TE模块可以无缝替换NVIDIA提供的TE模块，从而更�
 为了兼容第三方框架对Megatron-TE相关接口的依赖，方便在NPU中进行模型的推理及训练，Mindspeed提供了在Ascend-NPU下等价抽象的TE接口。
 目前MindSpeed提供的接口有：
 - MindSpeedTELayernorm
-- MindSpeedTELayerNormColumnParallelLinear
+- TELayerNormColumnParallelLinear
 - MindSpeedTEGroupedLinear
 - TEColumnParallelLinear
 - TERowParallelLinear
@@ -40,7 +40,7 @@ MindSpeed提供的TE模块可以无缝替换NVIDIA提供的TE模块，从而更�
 
  
 **注意**
-- `MindSpeedTELayerNormColumnParallelLinear` 支持与 `ascend-mc2` 同时使能，但不支持与 `ascend-coc` 同时使能。
+- `TELayerNormColumnParallelLinear` 支持与 `ascend-mc2` 同时使能，但不支持与 `ascend-coc` 同时使能。
 - `MindSpeedTEGroupedLinear` 在部分重构GMM的特性中，如1f1b-overlap等场景下，可能会失效。
 - 当前低精度GMM不支持blockwise场景，其他支持策略场景下，低精度训练自动启用低精度GMM计算，如不需要启用，可使能参数`--no-use-gmm-fp8`
 - 低精度训练仅支持mcore models，即需要开启`--use-mcore-models`  
