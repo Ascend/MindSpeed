@@ -1,5 +1,6 @@
 import pytest
 import math
+from einops import rearrange
 
 import torch
 from mindspeed import megatron_adaptor
@@ -42,7 +43,7 @@ class FlashSelfAttention(torch.nn.Module):
         ---------
             q, k, v: The tensor containing the query, key, and value. (S, B, H, D)
         """
-
+        q, k, v = [rearrange(x, 's b h d -> s b (h d)') for x in [q, k, v]]
         output = torch_npu.npu_fusion_attention(
             q, k, v, head_num, 'SBH',
             pse=None,
@@ -77,14 +78,15 @@ def run_ulysses_cp(cp_size, bs, seq_len, dtype):
     b, n, s, d = bs, 32, seq_len, 128
     scale = 1.0 / math.sqrt(d)
 
-    q = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
-    k = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
-    v = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
+    q = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
+    k = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
+    v = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
     dout = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
 
     attn_mask = ~torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
+    query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [q, k, v]]
     out = torch_npu.npu_fusion_attention(
-        q, k, v, n, 'SBH',
+        query, key, value, n, 'SBH',
         pse=None,
         padding_mask=None,
         atten_mask=attn_mask,
@@ -139,15 +141,15 @@ def run_ulysses_cp_unaligned(cp_size, bs, seq_len, dtype):
     b, n, s, d = bs, 32, seq_len, 128
     scale = 1.0 / math.sqrt(d)
 
-    q = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
-    k = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
-    v = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
+    q = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
+    k = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
+    v = torch.randn(s, b, n, d, dtype=dtype, device='npu', requires_grad=True)
     dout = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
 
     attn_mask = ~torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
-
+    query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [q, k, v]]
     out = torch_npu.npu_fusion_attention(
-        q, k, v, n, 'SBH',
+        query, key, value, n, 'SBH',
         pse=None,
         padding_mask=None,
         atten_mask=attn_mask,
