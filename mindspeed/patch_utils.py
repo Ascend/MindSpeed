@@ -221,7 +221,12 @@ def transformer_config_post_init_inject_mindspeed_args_wrapper(fn):
         from mindspeed.args_utils import get_mindspeed_args
 
         args = get_mindspeed_args(get_defaults=True)
+        skip_keys = {
+            "context_parallel_algo",
+        }
         for key, value in vars(args).items():
+            if key in skip_keys:
+                continue
             if not hasattr(self, key):
                 setattr(self, key, value)
         return fn(self)
