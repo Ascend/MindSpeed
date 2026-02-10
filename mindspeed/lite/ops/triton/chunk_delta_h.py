@@ -398,9 +398,10 @@ def chunk_gated_delta_rule_bwd_kernel_dhu_blockdim64(
 
         last_idx = min((i_t + 1) * BT, T) - 1
         if USE_G:
-            bg_last = tl.load(g + i_h * T_all + bos + last_idx)
+            bos_g = (i_n * H + i_h) * T_all
+            bg_last = tl.load(g + bos_g + last_idx)
             bg_last_exp = tl.exp(bg_last)
-            p_g = tl.make_block_ptr(base=g + i_h * T_all + bos, shape=(T,), strides=(1,), offsets=(i_t * BT,), block_shape=(BT,), order=(0,))
+            p_g = tl.make_block_ptr(base=g + bos_g, shape=(T,), strides=(1,), offsets=(i_t * BT,), block_shape=(BT,), order=(0,))
             b_g = tl.load(p_g, boundary_check=(0,))
             b_g_exp = tl.exp(b_g)
 
