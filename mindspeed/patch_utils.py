@@ -168,7 +168,8 @@ class MindSpeedPatchesManager:
         for orig_func_name, patch in MindSpeedPatchesManager.patches_info.items():
             if not orig_func_name.endswith("TransformerConfig.__post_init__"):
                 continue
-            patch.set_patch_func(transformer_config_post_init_inject_mindspeed_args_wrapper)
+            patch.remove_wrappers(["transformer_config_post_init_inject_mindspeed_args_wrapper"])
+            patch.wrappers.append(transformer_config_post_init_inject_mindspeed_args_wrapper)
 
     @staticmethod
     def register_patch(orig_func_name, new_func=None, force_patch=False, create_dummy=False):
