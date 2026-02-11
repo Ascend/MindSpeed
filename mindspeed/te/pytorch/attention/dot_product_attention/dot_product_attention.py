@@ -666,6 +666,9 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
             else {}
         )
 
+        packed_seq_kwargs.pop('cp_group', None)
+        packed_seq_kwargs.pop('local_cp_size', None)
+
         core_attn_out = super().forward(
             query,
             key,

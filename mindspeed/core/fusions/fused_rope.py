@@ -126,5 +126,6 @@ def apply_rotary_pos_emb(
         freqs,
         rotary_interleaved=config.rotary_interleaved,
         multi_latent_attention=config.multi_latent_attention,
-        mscale=mscale
+        mscale=mscale,
+        cp_group=cp_group
     )
