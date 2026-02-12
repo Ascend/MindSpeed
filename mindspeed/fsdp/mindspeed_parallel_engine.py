@@ -21,6 +21,7 @@ class MindSpeedParallelEngine(torch.nn.Module):
         self.apply_tp_modules()
         self.apply_ep_modules()
         self.apply_recompute_modules()
+        self.apply_quantization_modules()
         self.apply_fsdp_modules()
 
     def apply_fsdp_modules(self):
@@ -40,6 +41,18 @@ class MindSpeedParallelEngine(torch.nn.Module):
         if not self.config.recompute:
             return
         self.model = recompute_modules(self.model, self.config.recompute_plan)
+
+    def apply_quantization_modules(self):
+        """Apply quantization based on quantization_format + quantization_recipe."""
+        if not self.config.quantization_plan.quant_recipe:
+            return
+        try:
+            from mindspeed.fsdp.quantization.converter.model_converter import build_model_converter
+
+            model_converters = build_model_converter(self.config.quantization_plan)
+            model_converters.convert(self.model)
+        except Exception as e:
+            raise RuntimeError(f"Failed to convert quantization plan") from e
 
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
