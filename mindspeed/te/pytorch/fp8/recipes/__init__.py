@@ -29,7 +29,14 @@ MATMUL_MAP = {
 }
 
 
-def matmul_fp8(inputs, weight):
+def matmul_fp8(inputs: torch.Tensor, weight: torch.Tensor):
     if get_args().fp8_recipe not in MATMUL_MAP:
         return torch.matmul(inputs, weight.t())
-    return MATMUL_MAP[get_args().fp8_recipe].apply(inputs, weight)
+    if weight.requires_grad:
+        # overlap 需要手动重计算, 需要额外判断重计算阶段
+        from mindspeed.te.pytorch.fp8 import is_fp8_activation_recompute_enabled, in_fp8_activation_recompute_phase
+        need_grad = not is_fp8_activation_recompute_enabled() or in_fp8_activation_recompute_phase()
+    else:
+        need_grad = False
+
+    return MATMUL_MAP[get_args().fp8_recipe].apply(inputs, weight, need_grad)

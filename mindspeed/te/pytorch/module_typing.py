@@ -22,11 +22,11 @@ if typing.TYPE_CHECKING:
         TEDelayedScaling,
         Float8BlockScaling,
     )
-    from mindspeed.te.pytorch.fp8.tensor import Float8Tensor, Float8TensorWithTranspose, MXFP8Tensor
+    from mindspeed.te.pytorch.fp8.tensor import Float8Tensor, Float8Tensor2D, MXFP8Tensor, Float8BlockTensor
 
     FP8Recipe = typing.Union[CurrentScalingRecipe, DelayedScalingRecipe, Float8BlockRecipe, MXFP8ScalingRecipe]
     FP8RecipeScaling = typing.Union[Float8CurrentScaling, TEDelayedScaling, Float8BlockScaling, MXFP8BlockScaling]
-    FP8Tensor = typing.Union[Float8Tensor, Float8TensorWithTranspose, MXFP8Tensor, torch.Tenror]
+    FP8Tensor = typing.Union[Float8Tensor, Float8Tensor2D, Float8BlockTensor, MXFP8Tensor, torch.Tenror]
 else:
 
     def __getattr__(name):

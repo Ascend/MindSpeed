@@ -45,7 +45,9 @@ class Mc2Ops(CommOverlapOps):
 
         x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
         output = torch_npu.npu_mm_reduce_scatter_base(
-            x, weight.t(), hcomm_name, fp8_meta.tp_world_size, reduce_op="sum", bias=bias
+            x.T if transpose[0] else x,
+            weight.T if transpose[1] else weight,
+            hcomm_name, fp8_meta.tp_world_size, reduce_op="sum", bias=bias
         )
         output = output.view(
             int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]

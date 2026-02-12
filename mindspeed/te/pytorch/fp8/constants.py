@@ -29,6 +29,8 @@ class FormatEnum(Enum):
     E4M3 = FP8Format(448, 4, 3, torch.float8_e4m3fn)
     E5M2 = FP8Format(57344, 5, 2, torch.float8_e5m2)
     HIF8 = FP8Format(57344, 5, 2, None)
+    HIF8_224 = FP8Format(224, 5, 2, None)
+    HIF8_15 = FP8Format(15, 5, 2, None)
 
 
 class _FormatConfig(NamedTuple):
@@ -41,9 +43,9 @@ class Format(Enum):
     E4M3 = _FormatConfig()
     HYBRID = _FormatConfig(grads=FormatEnum.E5M2)
     HIF8 = _FormatConfig(
-        inputs=FormatEnum.HIF8,
-        weight=FormatEnum.HIF8,
-        grads=FormatEnum.HIF8
+        inputs=FormatEnum.HIF8_15,
+        weight=FormatEnum.HIF8_15,
+        grads=FormatEnum.HIF8_224
     )
 
     @classmethod

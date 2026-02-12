@@ -3,12 +3,12 @@
 
 import torch_npu
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.te.pytorch.fp8.tensor.float8_tensor import Float8TensorWithTranspose
+from mindspeed.te.pytorch.fp8.tensor.float8_tensor import Float8Tensor2D
 from mindspeed.te.pytorch.module_typing import FP8Metadata
 from mindspeed.te.pytorch.utils import all_gather_along_dim
 
 
-class MXFP8Tensor(Float8TensorWithTranspose):
+class MXFP8Tensor(Float8Tensor2D):
 
     def quant_matmul(self, other: 'MXFP8Tensor', is_rowwise):
         x1, x1_scale = self.get_quant_data(is_rowwise[0])

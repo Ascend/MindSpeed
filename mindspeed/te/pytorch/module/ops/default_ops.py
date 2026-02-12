@@ -22,7 +22,7 @@ class DefaultOps(CommOverlapOps):
             )
             return output, total_input, None
         else:
-            output, input_fp8, weight_fp8 = fp8_matmul(total_input, weight, fp8_meta, key, transpose)
+            output, input_fp8, weight_fp8 = fp8_matmul(total_input, weight, fp8_meta, key)
             return output, input_fp8, weight_fp8
 
     @staticmethod
@@ -33,7 +33,7 @@ class DefaultOps(CommOverlapOps):
                 weight.t() if transpose[1] else weight
             )
         else:
-            output_, input_, weight = fp8_matmul(input_, weight, fp8_meta, key, transpose)
+            output_, input_, weight = fp8_matmul(input_, weight, fp8_meta, key)
 
         dim_size = list(output_.size())
         dim_size[0] = dim_size[0] // fp8_meta.tp_world_size
@@ -48,7 +48,7 @@ class DefaultOps(CommOverlapOps):
         if not fp8_enable:
             output_ = torch.matmul(input_, weight.t())
         else:
-            output_, input_, weight = fp8_matmul(input_, weight, fp8_meta, key, (False, True))
+            output_, input_, weight = fp8_matmul(input_, weight, fp8_meta, key)
 
         if fp8_meta.tp_world_size > 1:
             torch.distributed.all_reduce(output_, group=fp8_meta.tp_group)

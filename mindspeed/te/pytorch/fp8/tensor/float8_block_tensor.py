@@ -1,9 +1,9 @@
 import torch_npu
 
-from mindspeed.te.pytorch.fp8.tensor.float8_tensor import Float8TensorWithTranspose
+from mindspeed.te.pytorch.fp8.tensor.float8_tensor import Float8Tensor2D
 
 
-class Float8BlockTensor(Float8TensorWithTranspose):
+class Float8BlockTensor(Float8Tensor2D):
 
     def quant_matmul(self, other: 'Float8BlockTensor', is_rowwise):
         x1, x1_scale = self.get_quant_data(is_rowwise[0])

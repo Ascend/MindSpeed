@@ -27,30 +27,31 @@ class Float8CurrentScaling(RecipeScaling):
 class TensorwiseMatMul(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, x, weight):
+    def forward(ctx, x, weight, need_grad=True):
         qdtype = get_quant_dtype()
-        x_quant, x_scale = torch_npu.npu_dynamic_quant(x, dst_type=qdtype.x, quant_mode='pertensor')
+        x_quant, x_scale = torch_npu.npu_dynamic_quant(view_as_n_dim(x), dst_type=qdtype.x, quant_mode='pertensor')
         w_quant, w_scale = torch_npu.npu_dynamic_quant(weight, dst_type=qdtype.w, quant_mode='pertensor')
 
         output = torch_npu.npu_quant_matmul(x_quant, w_quant.t(), w_scale, pertoken_scale=x_scale,
                                             output_dtype=x.dtype, **qdtype.mm_kwargs)
+        if len(x.shape) != 2:
+            output = output.reshape(*x.shape[:-1], *output.shape[1:])
         if weight.requires_grad:
-            output.requires_grad = True
-        ctx.save_for_backward(x, weight)
+            ctx.save_for_backward(x, weight)
+        ctx.x_quant, ctx.x_scale, ctx.w_quant, ctx.w_scale = x_quant, x_scale, w_quant, w_scale
+        ctx.output_dtype = x.dtype
         return output
 
     @staticmethod
     def backward(ctx, grads: torch.Tensor):
-        x, weight = ctx.saved_tensors
         qdtype = get_quant_dtype()
-        w_quant, w_scale = torch_npu.npu_dynamic_quant(weight, dst_type=qdtype.w, quant_mode='pertensor')
-        grads_quant, grads_scale = torch_npu.npu_dynamic_quant(grads, dst_type=qdtype.grads, quant_mode='pertensor')
-        dx = torch_npu.npu_quant_matmul(grads_quant, w_quant, w_scale, pertoken_scale=grads_scale,
-                                        output_dtype=x.dtype, **qdtype.mm_kwargs)
-
-        x_quant, x_scale = torch_npu.npu_dynamic_quant(x, dst_type=qdtype.x, quant_mode='pertensor')
-        grads_quant, grads_scale = torch_npu.npu_dynamic_quant(view_as_n_dim(grads).t(), dst_type=qdtype.grads,
+        grads_quant, grads_scale = torch_npu.npu_dynamic_quant(view_as_n_dim(grads), dst_type=qdtype.grads,
                                                                quant_mode='pertensor')
-        dw = torch_npu.npu_quant_matmul(grads_quant, view_as_n_dim(x_quant), x_scale, pertoken_scale=grads_scale,
-                                        output_dtype=x.dtype, **qdtype.mm_kwargs)
-        return dx, dw, None, None
+        x_quant, x_scale, w_quant, w_scale = ctx.x_quant, ctx.x_scale, ctx.w_quant, ctx.w_scale
+        dx = torch_npu.npu_quant_matmul(grads_quant, w_quant, w_scale, pertoken_scale=grads_scale,
+                                        output_dtype=ctx.output_dtype, **qdtype.mm_kwargs)
+        if len(grads.shape) != 2:
+            dx = dx.reshape(*grads.shape[:-1], *dx.shape[1:])
+        dw = torch_npu.npu_quant_matmul(grads_quant.T, x_quant, x_scale, pertoken_scale=grads_scale,
+                                        output_dtype=ctx.output_dtype, **qdtype.mm_kwargs)
+        return dx, dw, None, None, None

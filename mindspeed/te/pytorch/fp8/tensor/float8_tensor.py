@@ -125,7 +125,7 @@ class QuantTensorMeta(NamedTuple):
         return self.data.T, self.scale.transpose(0, 1)
 
 
-class Float8TensorWithTranspose:
+class Float8Tensor2D:
     col_tensor: QuantTensorMeta
     row_tensor: QuantTensorMeta
 
@@ -165,10 +165,10 @@ class Float8TensorWithTranspose:
     def t(self):
         raise ValueError(f'{self.__class__.__name__} not support transpose')
 
-    def quant_matmul(self, other: 'Float8TensorWithTranspose', is_rowwise):
+    def quant_matmul(self, other: 'Float8Tensor2D', is_rowwise):
         raise NotImplementedError()
 
-    def restore_reshape(self, other: 'Float8TensorWithTranspose', output: torch.Tensor):
+    def restore_reshape(self, other: 'Float8Tensor2D', output: torch.Tensor):
         if len(self.origin_shape) == len(other.origin_shape):
             return output  # dw 场景直接返回2维原始output
         return output.reshape(*self.origin_shape[:-1], *output.shape[1:])

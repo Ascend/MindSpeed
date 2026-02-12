@@ -45,12 +45,8 @@ class Float8BlockRecipe(Recipe):
                 tensor_2d.T if key == TensorKey.grads else tensor_2d, dst_type=self.quant_dtype, **row_quant_dim
             )
 
-        if key == TensorKey.weight:
-            col_data, row_data, col_scale, row_scale = \
-                row_data, col_data, row_scale, col_scale
-        
-        quant_tensor.set_col_data(col_data, col_scale)
-        quant_tensor.set_row_data(row_data, row_scale, key == TensorKey.weight)
+        quant_tensor.set_col_data(col_data, col_scale, key == TensorKey.weight)
+        quant_tensor.set_row_data(row_data, row_scale)
         return quant_tensor
 
 
@@ -62,7 +58,7 @@ class Float8BlockScaling(RecipeScaling):
 class Float8BlockMatMul(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, x, weight):
+    def forward(ctx, x, weight, need_grad=True):
         qdtype = get_quant_dtype()
         x_mxfp8, x_scale = torch_npu.npu_dynamic_block_quant(view_as_n_dim(x), dst_type=qdtype.x,
                                                              **Float8BlockRecipe.left_dim)
@@ -95,4 +91,4 @@ class Float8BlockMatMul(torch.autograd.Function):
             view_as_n_dim(x).t(), dst_type=qdtype.x, **Float8BlockRecipe.right_dim)
         dw = torch_npu.npu_quant_matmul(grads_quant, x_quant.t(), x_scale.transpose(0, 1), pertoken_scale=grads_scale,
                                         output_dtype=x.dtype, group_sizes=[1, 128, 128])
-        return dx, dw, None, None
+        return dx, dw, None, None, None

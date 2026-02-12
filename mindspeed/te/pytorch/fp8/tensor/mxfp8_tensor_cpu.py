@@ -3,10 +3,10 @@
 
 import torch
 
-from mindspeed.te.pytorch.fp8.tensor import MXFP8Tensor, Float8TensorWithTranspose
+from mindspeed.te.pytorch.fp8.tensor import MXFP8Tensor, Float8Tensor2D
 
 
-class MXFP8TensorCpu(Float8TensorWithTranspose):
+class MXFP8TensorCpu(Float8Tensor2D):
 
     def from_MXFP8Tensor(self, mxfp8tensor: 'MXFP8Tensor'):
         self.fp8_dtype = mxfp8tensor.fp8_dtype

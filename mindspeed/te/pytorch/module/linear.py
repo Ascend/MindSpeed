@@ -18,7 +18,7 @@ from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, 
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import divide
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.te.pytorch.fp8 import fp8_matmul, MatmulKey, is_fp8_tensor_with_trans
+from mindspeed.te.pytorch.fp8 import fp8_matmul, MatmulKey, is_fp8_tensor_2d
 from mindspeed.te.pytorch.fp8.constants import TensorKey
 from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
 from mindspeed.te.pytorch.module.ops import get_ops, DummyHandle
@@ -175,9 +175,9 @@ class TEColumnParallelLinear(torch.nn.Module):
 
         if self.explicit_expert_comm and self.fp8_meta.fp8_enable:
             from mindspeed.te.pytorch.fp8.recipes import matmul_fp8
-            output = matmul_fp8(input_, self.weight)
+            output = matmul_fp8(input_, weight)
         elif self.explicit_expert_comm:
-            output = input_.matmul(self.weight.t())
+            output = input_.matmul(weight.t())
         elif self.sequence_parallel:
             output = ColumnParallelSeq.apply(input_, weight, bias, self.fp8_meta)
         else:
@@ -272,7 +272,7 @@ class ColumnParallelNoSeq(torch.autograd.Function):
         if fp8_meta is None or not fp8_meta.is_fp8_enable():
             output = torch.matmul(input_, weight.t())
         else:
-            output, input_, weight = fp8_matmul(input_, weight, fp8_meta, MatmulKey.forward, (False, True))
+            output, input_, weight = fp8_matmul(input_, weight, fp8_meta, MatmulKey.forward)
 
         save_xw_for_backword(ctx, input_, weight)
 
@@ -520,7 +520,7 @@ def calculate_grad(ctx, inp, weight, grad, ori_grad):
     if is_grad_weight_needed:
         grad, total_input = reshape_to_2D(grad), reshape_to_2D(inp)
         if ctx.fp8_enable:
-            grad_weight, _, _ = fp8_matmul(grad, total_input, ctx.fp8_meta, MatmulKey.dw, (True, False))
+            grad_weight, _, _ = fp8_matmul(grad, total_input, ctx.fp8_meta, MatmulKey.dw)
         elif ctx.gradient_accumulation_fusion and weight.main_grad.dtype == torch.float32:
             from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
             npu_matmul_add_fp32(total_input, grad, weight.main_grad)
@@ -584,6 +584,6 @@ def load_xw_from_forward(ctx):
 
 def reshape_to_2D(input_tensor):
     # Convert the tensor shapes to 2D for execution compatibility
-    if is_fp8_tensor_with_trans(input_tensor):
+    if is_fp8_tensor_2d(input_tensor):
         return input_tensor
     return input_tensor.reshape(-1, input_tensor.shape[-1])
