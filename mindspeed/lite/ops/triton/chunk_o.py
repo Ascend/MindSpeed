@@ -466,6 +466,7 @@ def chunk_bwd_dqkwg(
             if bos + (i_t + 1) * BT > T:
                 cur_g = torch.zeros((B, H, BT)).to(g.device)
                 cur_g[:, :, :-(bos + (i_t + 1) * BT - T)] = g[:, :, bos + i_t * BT:bos + (i_t + 1) * BT]
+            else:
                 cur_g = g[:, :, bos + i_t * BT:bos + (i_t + 1) * BT]
             cur_gdiff = cur_g[:, :, :, None] - cur_g[:, :, None, :]
             cur_gdiff = cur_gdiff.clamp(-60, 60).exp()

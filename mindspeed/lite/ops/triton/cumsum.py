@@ -2,10 +2,10 @@
 
 from typing import Optional
 
+import warnings
 import torch
 import triton
 import triton.language as tl
-
 from mindspeed.lite.ops.triton.utils import prepare_chunk_indices
 
 
@@ -52,42 +52,23 @@ def chunk_local_cumsum_scalar_kernel(
     else:
         bos, eos = i_b * T, i_b * T + T
 
-    if HEAD_FIRST:
-        ptr_s = tl.make_block_ptr(
-            s + bos * H, (H, T), (T, 1), (0, i_block * BLOCK_T), (H, BLOCK_T), (1, 0)
-        )
-        ptr_o = tl.make_block_ptr(
-            o + bos * H, (H, T), (T, 1), (0, i_block * BLOCK_T), (H, BLOCK_T), (1, 0)
-        )
-        b_s = tl.load(ptr_s, boundary_check=(0,)).to(tl.float32)
-        b_s = tl.reshape(b_s, (H, N_CHUNKS, CHUNK_SIZE))
-        b_s = tl.trans(b_s, (2, 0, 1))
-        b_o = tl.cumsum(b_s, axis=0)
-        if REVERSE:
-            b_z = tl.sum(b_s, axis=0)
-            b_o = -b_o + b_z[None] + b_s
-        if HAS_SCALE:
-            b_o *= scale
-        b_o = tl.trans(b_o, (1, 2, 0))
-        b_o = tl.reshape(b_o, (H, BLOCK_T))
-    else:
-        ptr_s = tl.make_block_ptr(
-            s + bos * H, (T, H), (H, 1), (i_block * BLOCK_T, 0), (BLOCK_T, H), (1, 0)
-        )
-        ptr_o = tl.make_block_ptr(
-            o + bos * H, (T, H), (H, 1), (i_block * BLOCK_T, 0), (BLOCK_T, H), (1, 0)
-        )
-        b_s = tl.load(ptr_s, boundary_check=(0,)).to(tl.float32)
-        b_s = tl.reshape(b_s, (N_CHUNKS, CHUNK_SIZE, H))
-        b_s = tl.trans(b_s, (1, 0, 2))
-        b_o = tl.cumsum(b_s, axis=0)
-        if REVERSE:
-            b_z = tl.sum(b_s, axis=0)
-            b_o = -b_o + b_z[None] + b_s
-        if HAS_SCALE:
-            b_o *= scale
-        b_o = tl.trans(b_o, (1, 0, 2))
-        b_o = tl.reshape(b_o, (BLOCK_T, H))
+    ptr_s = tl.make_block_ptr(
+        s + bos * H, (T, H), (H, 1), (i_block * BLOCK_T, 0), (BLOCK_T, H), (1, 0)
+    )
+    ptr_o = tl.make_block_ptr(
+        o + bos * H, (T, H), (H, 1), (i_block * BLOCK_T, 0), (BLOCK_T, H), (1, 0)
+    )
+    b_s = tl.load(ptr_s, boundary_check=(0,)).to(tl.float32)
+    b_s = tl.reshape(b_s, (N_CHUNKS, CHUNK_SIZE, H))
+    b_s = tl.trans(b_s, (1, 0, 2))
+    b_o = tl.cumsum(b_s, axis=0)
+    if REVERSE:
+        b_z = tl.sum(b_s, axis=0)
+        b_o = -b_o + b_z[None] + b_s
+    if HAS_SCALE:
+        b_o *= scale
+    b_o = tl.trans(b_o, (1, 0, 2))
+    b_o = tl.reshape(b_o, (BLOCK_T, H))
 
     tl.store(ptr_o, b_o.to(ptr_o.dtype.element_ty), boundary_check=(0,))
     return
@@ -102,16 +83,15 @@ def chunk_local_cumsum_scalar(
     head_first: bool = False,
     output_dtype: Optional[torch.dtype] = torch.float
 ) -> torch.Tensor:
+    
     if head_first:
-        g = g.transpose(1, 2).contiguous()
-        B, H, T = g.shape
-    else:
-        B, T, H = g.shape
+        warnings.warn("g must be head last, i.e. [B, T, H].")
+    B, T, H = g.shape
     if chunk_size != 2 ** (chunk_size.bit_length() - 1):
         raise ValueError(
             f"chunk_size must be a power of 2, chunk_size is{chunk_size}"
         )
-    BT = triton.next_power_of_2((2 ** 18) // (H * chunk_size))
+    BT = triton.next_power_of_2((1 << 17) // (H * chunk_size))
     chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
     NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
     g_org, g = g, torch.empty_like(g, dtype=output_dtype or g.dtype)
@@ -130,8 +110,6 @@ def chunk_local_cumsum_scalar(
         REVERSE=reverse,
         CHUNK_SIZE=chunk_size,
     )
-    if head_first:
-        g = g.transpose(1, 2).contiguous()
     return g
 
 
