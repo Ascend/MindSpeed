@@ -5,6 +5,7 @@ import math
 import torch
 import torch_npu
 
+from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.transformer.utils import attention_mask_func
 from mindspeed.core.context_parallel import AttnMaskType
 from mindspeed.core.context_parallel import FusedScaleMaskSoftmax
@@ -29,7 +30,6 @@ from mindspeed.core.context_parallel.model_parallel_utils import (get_context_pa
                                            get_ring_group_for_intra_window,
                                            get_ring_group_for_intra_window_send_recv_overlap)
 
-
 try:
     from einops import rearrange
 except ImportError:
@@ -49,7 +49,7 @@ class CPDotProductAttentionImpl:
                  attention_dropout: float = None,
                  softmax_scale: float = None,
                  cp_comm_type: str = None,
-                 model_comm_pgs: str = None):
+                 pg_collection: ProcessGroupCollection = None):
         cp_size = config.context_parallel_size
         config.context_parallel_size = 1
         self.config = config

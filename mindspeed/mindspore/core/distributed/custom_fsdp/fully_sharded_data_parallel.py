@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch.utils._pytree import tree_flatten, tree_unflatten
 
 from megatron.core.distributed.custom_fsdp.fully_sharded_data_parallel import TrainingState, RegisterFSDPBackwardFunction
-from megatron.core.distributed.custom_fsdp.param_and_grad_buffer import PrefetchOrder
+from megatron.core.distributed.fsdp.src.megatron_fsdp.param_and_grad_buffer import PrefetchOrder
 from megatron.core.fp8_utils import is_float8tensor
 from megatron.core.utils import is_submodule
 

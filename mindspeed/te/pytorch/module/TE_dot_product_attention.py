@@ -7,7 +7,7 @@ import torch
 import torch_npu
 from torch import Tensor
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.process_groups_config import ModelCommProcessGroups
+from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.parallel_state import (
     get_context_parallel_group,
     get_hierarchical_context_parallel_groups,
@@ -67,7 +67,7 @@ class TEDotProductAttention(MegatronModule):
         k_channels: Optional[int] = None, #
         v_channels: Optional[int] = None, #
         cp_comm_type: str = "p2p",
-        model_comm_pgs: ModelCommProcessGroups = None, #
+        pg_collection: ProcessGroupCollection = None,
     ):
         super().__init__(config=config)
         self.config = config
@@ -102,20 +102,20 @@ class TEDotProductAttention(MegatronModule):
         CP Comm group settings.
         In Mindspeed, p2p equals ring, a2a equals ulysses, and p2p+a2a equals hybird.
         '''
-        if model_comm_pgs is None:
-            model_comm_pgs = ModelCommProcessGroups(
+        if pg_collection is None:
+            pg_collection = ProcessGroupCollection(
                 tp=get_tensor_model_parallel_group(check_initialized=False),
                 cp=get_context_parallel_group(check_initialized=False),
                 hcp=get_hierarchical_context_parallel_groups(check_initialized=False),
             )
         else:
-            if not hasattr(model_comm_pgs, "tp"):
-                raise AssertionError("TEDotProductAttention model_comm_pgs must have tp pg")
-            if not hasattr(model_comm_pgs, "cp"):
-                raise AssertionError("TEDotProductAttention model_comm_pgs must have cp pg")
+            if not hasattr(pg_collection, "tp"):
+                raise AssertionError("TEDotProductAttention pg_collection must have tp pg")
+            if not hasattr(pg_collection, "cp"):
+                raise AssertionError("TEDotProductAttention pg_collection must have cp pg")
             if cp_comm_type == "a2a+p2p":
-                if not hasattr(model_comm_pgs, "hcp"):
-                    raise AssertionError("TEDotProductAttention model_comm_pgs must have hierarchical cp pg")
+                if not hasattr(pg_collection, "hcp"):
+                    raise AssertionError("TEDotProductAttention pg_collection must have hierarchical cp pg")
 
         self.is_ulysses_algo = self.cp_algo == 'ulysses_cp_algo'
 

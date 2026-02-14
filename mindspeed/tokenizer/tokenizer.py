@@ -18,7 +18,7 @@ from functools import wraps
 
 from transformers import AutoTokenizer
 from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
-from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
+from megatron.core.datasets.megatron_tokenizer import MegatronLegacyTokenizer
 
 
 def build_tokenizer_wrapper(build_tokenizer):
@@ -60,7 +60,7 @@ def build_tokenizer_wrapper(build_tokenizer):
     return wrapper
 
 
-class _AutoTokenizer(MegatronTokenizer):
+class _AutoTokenizer(MegatronLegacyTokenizer):
     """AutoTokenizer for Hf Pretrained model loading."""
 
     def __init__(self, tokenizer_name_or_path, vocab_extra_ids, model_max_length, use_fast, **kwargs):

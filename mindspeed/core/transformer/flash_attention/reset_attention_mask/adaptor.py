@@ -224,6 +224,7 @@ def attention_forward(
         rotary_pos_emb=None,
         rotary_pos_cos=None,
         rotary_pos_sin=None,
+        rotary_pos_cos_sin=None, 
         attention_bias=None,
         packed_seq_params=None,
         sequence_len_offset: Optional[int] = None,
@@ -246,7 +247,7 @@ def attention_forward(
     # Adjust key, value, and rotary_pos_emb for inference
     # ===================================================
     query, key, value, rotary_pos_emb, attn_mask_type, block_table = self._adjust_key_value_for_inference(
-        inference_context, query, key, value, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin, sequence_len_offset
+        inference_context, query, key, value, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin, rotary_pos_cos_sin, sequence_len_offset
     )
 
     # ================================================

@@ -8,7 +8,7 @@ if sys.version_info < (3,):
     raise Exception("Python 2 is not supported by MindSpeed.")
 
 __description__ = 'MindSpeed for LLMs of Ascend'
-__version__ = '0.14.1'
+__version__ = '0.15.3'
 __author__ = 'Ascend'
 __long_description__ = 'MindSpeed for LLMs of Ascend'
 __url__ = 'https://gitcode.com/Ascend/MindSpeed'

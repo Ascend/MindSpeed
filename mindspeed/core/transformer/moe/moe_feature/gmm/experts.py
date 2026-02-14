@@ -15,7 +15,7 @@ class GmmExpertsImpl:
     support gemm_fusion and activation recompute.
     """
 
-    def __init__(self, num_local_experts, config=None):
+    def __init__(self, num_local_experts, config=None, pg_collection=None):
         """adjust the logic for generate expert weight to avoid splitting by tp_size
 
         Args:
@@ -29,7 +29,7 @@ class GmmExpertsImpl:
         self.layer_number = None
         self.weight1 = None
         self.weight2 = None
-        super().__init__(num_local_experts, config)
+        super().__init__(num_local_experts, config, pg_collection)
         if self.config.gated_linear_unit:
             assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu

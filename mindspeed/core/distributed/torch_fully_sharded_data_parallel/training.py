@@ -128,7 +128,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     if wrap_with_ddp:
         if args.use_torch_fsdp2:
             DP = torch_FSDP
-        elif args.use_custom_fsdp:
+        elif args.use_megatron_fsdp:
             DP = custom_FSDP
         else:
             DP = DDP
@@ -148,7 +148,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             kwargs['bucket_size'] = args.ddp_bucket_size
         kwargs['pad_buckets_for_high_nccl_busbw'] = args.ddp_pad_buckets_for_high_nccl_busbw
         kwargs['average_in_collective'] = args.ddp_average_in_collective
-        if args.use_custom_fsdp and args.use_precision_aware_optimizer:
+        if args.use_megatron_fsdp and args.use_precision_aware_optimizer:
             kwargs["preserve_fp32_weights"] = False
         ddp_config = DistributedDataParallelConfig(**kwargs)
 

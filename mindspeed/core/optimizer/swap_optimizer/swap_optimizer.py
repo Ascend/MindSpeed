@@ -384,7 +384,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                             ]
 
                 for model_param, tensors in recv_tensors.items():
-                    if self.ddp_config.use_custom_fsdp or self.config.use_precision_aware_optimizer:
+                    if self.ddp_config.use_megatron_fsdp or self.config.use_precision_aware_optimizer:
                         self._set_main_param_and_optimizer_states(model_param, tensors)
                     else:
                         group_index, group_order = self.model_param_group_index_map[model_param]
@@ -417,7 +417,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         - Gather contiguous buffers on DP rank 0 and concatenate to world
           buffers.
         """
-        if self.ddp_config.use_custom_fsdp:
+        if self.ddp_config.use_megatron_fsdp:
             state = {"buckets_coalesced": True}
             for model_chunk in self.model_chunks:
                 pg_buffer = model_chunk.param_and_grad_buffer

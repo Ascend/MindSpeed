@@ -329,7 +329,7 @@ class MoEAllGatherOverLapDispatcher:
     Note that, in core_r0.10.0, the allgather spans the communication domain of TP*EP:
     """
 
-    def __init__(self, num_local_experts, local_expert_indices, config):
+    def __init__(self, num_local_experts, local_expert_indices, config, pg_collection):
         """
         Initialize the AlltoAllSeq token dispatcher.
 
@@ -356,7 +356,7 @@ class MoEAllGatherOverLapDispatcher:
         self.global_local_map = None
 
         # use MoEAllGatherTokenDispatcher to init
-        super().__init__(num_local_experts, local_expert_indices, config)
+        super().__init__(num_local_experts, local_expert_indices, config, pg_collection)
 
     def token_permutation(
         self, 
@@ -479,7 +479,7 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
     or MoEAlltoAllOverLapDispatcher (with moe_shared_expert_overlap).
     """
 
-    def __init__(self, num_local_experts, local_expert_indices, config):
+    def __init__(self, num_local_experts, local_expert_indices, config, pg_collection):
         """
         Initialize the AlltoAll overlap token dispatcher.
 
@@ -493,7 +493,7 @@ class MoEAlltoAllOverLapDispatcher(MoEAlltoAllTokenDispatcher):
         self.config = config
         self.local_expert_indices = local_expert_indices
         # use MOEAlltoAllTokenDispatcher to init
-        super().__init__(num_local_experts, local_expert_indices, config)
+        super().__init__(num_local_experts, local_expert_indices, config, pg_collection)
 
 
     def preprocess(self, routing_map: torch.Tensor) -> torch.Tensor:

@@ -182,7 +182,7 @@ def dist_optim_load_state_dict(self, state_dict):
     if len(self.optimizer.state) == 0:
         if isinstance(self.optimizer, HybridDeviceOptimizer):
             self.optimizer.dummy_step()
-        elif self.ddp_config.use_custom_fsdp:
+        elif self.ddp_config.use_megatron_fsdp:
             # Initializes optimizer states with dummy values.
 
             # This step is necessary to ensure that the optimizers' states are
@@ -325,7 +325,7 @@ def dist_optim_load_state_dict(self, state_dict):
                 f"Current state_dict.key(): {state_dict.key()}")
         param_state = state_dict['param_state']
         sharding_type = state_dict['param_state_sharding_type']
-        if self.ddp_config.use_custom_fsdp:
+        if self.ddp_config.use_megatron_fsdp:
             if sharding_type != "fully_sharded_model_space":
                 raise AssertionError("Only fully sharded model space is supported")
         logger.info(f'Loading distributed optimizer sharded state of type {sharding_type}')

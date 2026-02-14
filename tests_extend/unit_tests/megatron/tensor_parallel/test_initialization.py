@@ -1,4 +1,5 @@
 # Copyright (c) 2023; NVIDIA CORPORATION. All rights reserved.
+import os
 import pytest
 import torch
 import torch_npu
@@ -12,6 +13,13 @@ from megatron.core.tensor_parallel.layers import VocabParallelEmbedding, RowPara
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec
+
+
+@pytest.fixture(scope="class", autouse=True)
+def setup_gloo_ipv4():
+    os.environ['GLOO_IPV6'] = '0'
+    yield
+    del os.environ['GLOO_IPV6']
 
 
 class TestInitialization(DistributedTest):  

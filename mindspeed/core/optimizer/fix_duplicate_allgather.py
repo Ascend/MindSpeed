@@ -80,14 +80,14 @@ def get_megatron_optimizer_wrapper(func):
             is_expert_parallel = False
             for model_chunk in model_chunks:
                 ddp_config = model_chunk.ddp_config
-                if ddp_config.use_custom_fsdp:
+                if ddp_config.use_megatron_fsdp:
                     named_parameters = model_chunk.optimizer_named_parameters()
                 else:
                     named_parameters = model_chunk.named_parameters()
 
                 for name, param in named_parameters:
                     if (
-                        ddp_config.use_custom_fsdp
+                        ddp_config.use_megatron_fsdp
                         and ddp_config.data_parallel_sharding_strategy == "optim_grads_params"
                     ):
                         param_shard = param

@@ -55,6 +55,7 @@ class FusedTorchAdamW(TorchAdamW):
         eps: float = 1e-8,
         weight_decay: float = 1e-2,
         amsgrad: bool = False,
+        adam_w_mode: bool = False,
         *,
         maximize: bool = False,
         foreach: Optional[bool] = None,
@@ -77,7 +78,7 @@ class FusedTorchAdamW(TorchAdamW):
 
 class AdamW(Optimizer):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
-                 weight_decay=1e-2, amsgrad=False, *, maximize: bool = False):
+                 weight_decay=1e-2, amsgrad=False, adam_w_mode: bool = False, *, maximize: bool = False):
         if not 0.0 <= lr:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if not 0.0 <= eps:

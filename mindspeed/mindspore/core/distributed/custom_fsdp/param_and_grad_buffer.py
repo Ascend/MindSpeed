@@ -7,7 +7,7 @@ from typing import Any, List, Optional
 
 import torch
 
-from megatron.core.distributed.custom_fsdp.param_and_grad_buffer import _p_assert, _free_storage, PrefetchOrder, BucketStatus, gradient_reduce_preprocessing
+from megatron.core.distributed.fsdp.src.megatron_fsdp.param_and_grad_buffer import _p_assert, _free_storage, PrefetchOrder, BucketStatus, gradient_reduce_preprocessing
 
 
 def all_gather_params_wo_coalescing(

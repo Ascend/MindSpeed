@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 from functools import wraps
+from megatron.core.process_groups_config import ProcessGroupCollection
 from mindspeed.core.context_parallel import mpu
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.core.context_parallel.model_parallel_utils import get_context_parallel_group_for_hybrid_ulysses
@@ -25,8 +26,8 @@ def attention_init_wrapper(fn):
         attn_mask_type,
         attention_type,
         cp_comm_type: str = None,
-        model_comm_pgs: str = None):
-        fn(self, config, submodules, layer_number, attn_mask_type, attention_type, cp_comm_type, model_comm_pgs)
+        pg_collection: ProcessGroupCollection = None):
+        fn(self, config, submodules, layer_number, attn_mask_type, attention_type, cp_comm_type, pg_collection)
         cp = config.context_parallel_size
         if config.tp_2d:
             tp_y_cp_sz = cp * config.tp_y

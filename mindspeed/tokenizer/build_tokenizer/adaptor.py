@@ -3,7 +3,7 @@
 # Copyright (c) 2024; HUAWEI CORPORATION. All rights reserved.
 from transformers import AutoTokenizer
 from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
-from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
+from megatron.core.datasets.megatron_tokenizer import MegatronLegacyTokenizer
 
 
 def build_tokenizer_HF(args, **kwargs):
@@ -43,7 +43,7 @@ def build_tokenizer_HF(args, **kwargs):
     return tokenizer
 
 
-class _AutoTokenizer(MegatronTokenizer):
+class _AutoTokenizer(MegatronLegacyTokenizer):
     """AutoTokenizer for Hf Pretrained model loading."""
 
     def __init__(self, tokenizer_name_or_path, vocab_extra_ids, model_max_length, use_fast, **kwargs):

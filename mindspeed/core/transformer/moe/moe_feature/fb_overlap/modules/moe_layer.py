@@ -8,18 +8,18 @@ from mindspeed.core.transformer.moe.moe_feature import TopKRouter, BaseMoELayer,
 
 
 class MindSpeedFbOverlapMoELayer(BaseMoELayer):
-    def __init__(self, config, submodules=None, layer_number=None):
+    def __init__(self, config, submodules=None, layer_number=None, pg_collection=None):
         self.submodules = submodules
         # shared_expert two param mutual conversion
         if config.n_shared_experts:
             config.moe_shared_expert_intermediate_size = config.n_shared_experts * (
                 config.moe_ffn_hidden_size if config.moe_ffn_hidden_size is not None else config.ffn_hidden_size)
-        super(MindSpeedFbOverlapMoELayer, self).__init__(config, layer_number)
+        super(MindSpeedFbOverlapMoELayer, self).__init__(config, layer_number, pg_collection)
 
         self.moe_layer_recompute = False
 
         # Initialize router
-        self.router = TopKRouter(config=self.config)
+        self.router = TopKRouter(config=self.config, pg_collection=pg_collection)
 
         if not hasattr(self.config, 'shared_expert_gate'):
             self.config.shared_expert_gate = None
@@ -30,7 +30,7 @@ class MindSpeedFbOverlapMoELayer(BaseMoELayer):
                 f"use fb overlap should open moe_grouped_gemm"
             )
         # Initialize experts
-        self.experts = build_module(self.submodules.experts, self.num_local_experts, self.config)
+        self.experts = build_module(self.submodules.experts, self.num_local_experts, self.config, pg_collection)
 
         # Initialize token dispatcher
         if self.config.moe_token_dispatcher_type == 'alltoall':
@@ -43,7 +43,7 @@ class MindSpeedFbOverlapMoELayer(BaseMoELayer):
 
         # Initialize shared experts
         if self.use_shared_expert:
-            self.shared_experts = build_module(self.submodules.shared_experts, config=self.config)
+            self.shared_experts = build_module(self.submodules.shared_experts, config=self.config, pg_collection=pg_collection)
             # fb overlap set shared expert overlap by default
             self.shared_expert_overlap = True
                 

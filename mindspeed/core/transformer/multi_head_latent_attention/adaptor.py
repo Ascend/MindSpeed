@@ -18,6 +18,7 @@ from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import MLATransformerConfig
 from megatron.core.transformer.multi_latent_attention import MLASelfAttentionSubmodules
 from megatron.core.utils import divide
+from megatron.core.process_groups_config import ProcessGroupCollection
 
 
 def multi_latent_attention_init_impl(
@@ -28,6 +29,7 @@ def multi_latent_attention_init_impl(
     attn_mask_type: AttnMaskType,
     attention_type: str,
     cp_comm_type: str = None,
+    pg_collection: ProcessGroupCollection = None,
 ) -> None:
 
     Attention.__init__(
@@ -37,6 +39,7 @@ def multi_latent_attention_init_impl(
         layer_number=layer_number,
         attention_type=attention_type,
         attn_mask_type=attn_mask_type,
+        pg_collection=pg_collection,
     )
 
     self.query_projection_size = self.config.v_head_dim * self.config.num_attention_heads
@@ -55,6 +58,7 @@ def multi_latent_attention_init_impl(
 
     mscale = _yarn_get_mscale(self.config.rotary_scaling_factor, self.config.mscale)
     self.softmax_scale = mscale * mscale / math.sqrt(self.q_head_dim)
+    self.cache_mla_latents = self.config.cache_mla_latents
 
     if self.config.rope_type == "rope":
         self.rotary_pos_emb = RotaryEmbedding(

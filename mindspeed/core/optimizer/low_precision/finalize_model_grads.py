@@ -72,7 +72,7 @@ def _allreduce_word_embedding_grads(model: List[torch.nn.Module], config: Transf
 
         if model_module.share_embeddings_and_output_weights or getattr(config, "mtp_num_layers", 0):
             weight = model_module.shared_embedding_or_output_weight()
-            grad_attr = _get_main_grad_attr(weight, ddp_config.use_custom_fsdp)
+            grad_attr = _get_main_grad_attr(weight, ddp_config.use_megatron_fsdp)
             orig_grad = getattr(weight, grad_attr)
             grad = _unshard_if_dtensor(orig_grad)
             _maybe_adjust_quant_scale(grad, parallel_state.get_embedding_group())
@@ -98,7 +98,7 @@ def _allreduce_position_embedding_grads(model: List[torch.nn.Module], config: Tr
         assert hasattr(model_module, "position_embeddings")
 
         weight = model_module.position_embeddings.weight
-        grad_attr = _get_main_grad_attr(weight, ddp_config.use_custom_fsdp)
+        grad_attr = _get_main_grad_attr(weight, ddp_config.use_megatron_fsdp)
         orig_grad = getattr(weight, grad_attr)
         grad = _unshard_if_dtensor(orig_grad)
         _maybe_adjust_quant_scale(grad, parallel_state.get_position_embedding_group())
@@ -157,7 +157,7 @@ def _allreduce_layernorm_grads(model: List[torch.nn.Module], config: Transformer
                 if not (has_sequence_parallel or is_layernorm):
                     continue
 
-                grad_attr = _get_main_grad_attr(param, ddp_config.use_custom_fsdp)
+                grad_attr = _get_main_grad_attr(param, ddp_config.use_megatron_fsdp)
                 grad = getattr(param, grad_attr)
                 orig_grad = grad
                 grad = _unshard_if_dtensor(grad)
@@ -213,7 +213,7 @@ def _allreduce_conditional_embedding_grads(model: List[torch.nn.Module], config:
         for name, param in get_attr_wrapped_model(model_chunk, "named_parameters")():
             if not param.requires_grad or not getattr(param, "pipeline_parallel", False):
                 continue
-            grad_attr = _get_main_grad_attr(param, getattr(ddp_config, "use_custom_fsdp", False))
+            grad_attr = _get_main_grad_attr(param, getattr(ddp_config, "use_megatron_fsdp", False))
             orig_grad = getattr(param, grad_attr, None)
             if orig_grad is None:
                 continue

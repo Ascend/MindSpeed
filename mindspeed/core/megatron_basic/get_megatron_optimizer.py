@@ -70,7 +70,7 @@ def get_megatron_optimizer(
     optimizers = []
     model_chunk_offset = 0
     ddp_config = model_chunks[0].ddp_config  # Use the first model chunk's DDP config
-    if ddp_config.use_custom_fsdp:
+    if ddp_config.use_megatron_fsdp:
         for model_chunk, overlap_param_gather_with_optimizer_step in zip(
             all_dense_model_chunks, overlap_param_gather_with_optimizer_step_flags
         ):
