@@ -1,10 +1,10 @@
+import sys
+
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
 def _repair_modelopt_torch_tree():
     try:
-        import sys
-
         mo = sys.modules.get("modelopt")
         if mo is None:
             return

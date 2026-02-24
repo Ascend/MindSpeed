@@ -30,11 +30,14 @@ MindSpeed 自定义入参可通过 `override_transformer_config` 参数传入，
 | 分布式优化器 | actor_rollout_ref.actor.megatron.override_transformer_config.use_distributed_optimizer | Preview |
 | 重计算       | actor_rollout_ref.actor.megatron.override_transformer_config.recompute_method<br>actor_rollout_ref.actor.megatron.override_transformer_config.recompute_granularity<br>actor_rollout_ref.actor.megatron.override_transformer_config.recompute_num_layers | Preview |
 | CP           | actor_rollout_ref.actor.megatron.context_parallel_size<br>actor_rollout_ref.actor.megatron.override_transformer_config.context_parallel_size | Preview |
-| mbridge           | actor_rollout_ref.actor.megatron.use_mbridge | Preview |
+| mbridge           | actor_rollout_ref.actor.megatron.use_mbridge=True<br>actor_rollout_ref.actor.megatron.vanilla_mbridge=True | Preview |
+| megatron-bridge           | actor_rollout_ref.actor.megatron.use_mbridge=True<br>actor_rollout_ref.actor.megatron.vanilla_mbridge=False | Preview |
 | RoPE融合优化           | +actor_rollout_ref.actor.megatron.override_transformer_config.position_embedding_type=rope<br>+actor_rollout_ref.actor.megatron.override_transformer_config.use_fused_rotary_pos_emb=True | Preview |
 | SwiGLU融合优化   | +actor_rollout_ref.actor.megatron.override_transformer_config.swiglu=True<br>+actor_rollout_ref.actor.megatron.override_transformer_config.use_fused_swiglu=True | Preview |
 | RMSNorm融合优化  | +actor_rollout_ref.actor.megatron.override_transformer_config.normalization=RMSNorm<br>+actor_rollout_ref.actor.megatron.override_transformer_config.use_fused_rmsnorm=True | Preview |
 | MoE Grouped GEMM  | +actor_rollout_ref.actor.megatron.override_transformer_config.moe_grouped_gemm=True | Preview |
 | MoE Token Permute and Unpermute 融合优化  | +actor_rollout_ref.actor.megatron.override_transformer_config.use_fused_moe_token_permute_and_unpermute=True | Preview |
+
+其中，mbridge和megatron-bridge暂不支持同时开启VPP；同理VPP请在未开启mbridge或megatron-bridge时使用。
 
 注："Preview"状态表示预览非正式发布版本，"Released"状态表示正式发布版本，"Dev"状态表示正在开发中。
