@@ -1,6 +1,9 @@
+import logging
 import sys
 
 from mindspeed.features_manager.feature import MindSpeedFeature
+
+logger = logging.getLogger(__name__)
 
 
 def _repair_modelopt_torch_tree():
@@ -14,8 +17,8 @@ def _repair_modelopt_torch_tree():
         for k in list(sys.modules.keys()):
             if k == "modelopt" or k == "modelopt.torch" or k.startswith("modelopt.torch."):
                 sys.modules.pop(k, None)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to repair modelopt module tree: %s", exc)
 
 
 class MegatronBasicFeature(MindSpeedFeature):
