@@ -57,7 +57,7 @@ def load_state_dict_post_hook(weight_keys):
     return hook
 
 
-class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
+class TELayerNormColumnParallelLinear(torch.nn.Module):
     def __init__(
             self,
             input_size: int,
@@ -74,7 +74,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
 
-        super(MindSpeedTELayerNormColumnParallelLinear, self).__init__()
+        super(TELayerNormColumnParallelLinear, self).__init__()
         self.config = config
         self.input_size = input_size
         self.output_size = output_size
@@ -87,11 +87,11 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.fp8_meta = FP8Metadata(['inputs', 'weight', 'grads'])
         self.is_recompute_norm = False
 
-        # MindSpeedTELayerNormColumnParallelLinear check.
+        # TELayerNormColumnParallelLinear check.
         if gather_output:
             raise ValueError('Transformer Engine linear layers do not support gather_output = True')
 
-        # Similar to TE, MoE is currently not supported in MindSpeedTELayerNormColumnParallelLinear.
+        # Similar to TE, MoE is currently not supported in TELayerNormColumnParallelLinear.
         if is_expert:
             raise ValueError('Transformer Engine linear layers do not yet support MoE')
 

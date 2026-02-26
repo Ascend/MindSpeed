@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+from functools import wraps
 from typing import List, Dict, Union
 
 _MEGATRON_TRAINING_AVAILABLE = None
@@ -163,6 +164,14 @@ class MindSpeedPatchesManager:
     patches_info: Dict[str, Patch] = {}
 
     @staticmethod
+    def _inject_mindspeed_args_into_transformer_config():
+        for orig_func_name, patch in MindSpeedPatchesManager.patches_info.items():
+            if not orig_func_name.endswith("TransformerConfig.__post_init__"):
+                continue
+            patch.remove_wrappers(["transformer_config_post_init_inject_mindspeed_args_wrapper"])
+            patch.wrappers.append(transformer_config_post_init_inject_mindspeed_args_wrapper)
+
+    @staticmethod
     def register_patch(orig_func_name, new_func=None, force_patch=False, create_dummy=False):
         """Patch registration method. When this method is executed, the patch does not take effect in real time.
         It takes effect only after the apply_patches method is invoked. Other details are as follows:
@@ -201,5 +210,20 @@ class MindSpeedPatchesManager:
     @staticmethod
     def apply_patches():
         """Apply all patches registered in MindSpeedPatchesManager."""
+        MindSpeedPatchesManager._inject_mindspeed_args_into_transformer_config()
         for patch in MindSpeedPatchesManager.patches_info.values():
             patch.apply_patch()
+
+
+def transformer_config_post_init_inject_mindspeed_args_wrapper(fn):
+    @wraps(fn)
+    def wrapper(self):
+        from mindspeed.args_utils import get_mindspeed_args
+
+        args = get_mindspeed_args(get_defaults=True)
+        for key, value in vars(args).items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+        return fn(self)
+
+    return wrapper

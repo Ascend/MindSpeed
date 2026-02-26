@@ -2,6 +2,7 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 
 import dataclasses
+import inspect
 import math
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -665,6 +666,9 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
             if packed_seq_params is not None
             else {}
         )
+        if packed_seq_kwargs:
+            sig = inspect.signature(super().forward)
+            packed_seq_kwargs = {k: v for k, v in packed_seq_kwargs.items() if k in sig.parameters}
 
         core_attn_out = super().forward(
             query,
