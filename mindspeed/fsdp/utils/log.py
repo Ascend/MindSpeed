@@ -40,13 +40,18 @@ def set_log_level(level="INFO"):
 
 
 def print_rank(log: Callable, message: str, ranks: [int, List[int]] = 0):
+    if isinstance(ranks, int):
+        ranks = [ranks]
+
     if torch.distributed.is_initialized():
-        if isinstance(ranks, int):
-            ranks = [ranks]
         if torch.distributed.get_rank() in ranks:
             log(message)
     else:
-        log(message)
+        if "RANK" in os.environ:
+            if int(os.environ.get('RANK')) in ranks:
+                log(message)
+        else:
+            log(message)
 
 
 def log_warning_once(logger, message):
