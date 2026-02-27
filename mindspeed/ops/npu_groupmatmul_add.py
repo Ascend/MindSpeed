@@ -3,18 +3,11 @@ from functools import lru_cache
 import torch
 import torch_npu
 from mindspeed.op_builder import GroupMatmulAddOpBuilder
+from mindspeed.ops.npu_matmul_add import is_a5
 
 __all__ = ["npu_groupmatmul_add_fp32"]
 
 groupmatmul_add_op_builder = GroupMatmulAddOpBuilder()
-
-
-@lru_cache
-def is_a5():
-    try:
-        return "Ascend910_95" in torch_npu.npu.get_device_name()
-    except Exception:
-        return False
 
 
 def npu_groupmatmul_add_fp32(x, dy, grouplist, grad):

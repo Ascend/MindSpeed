@@ -1,13 +1,20 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+from functools import lru_cache
 import torch
 import torch_npu
 from mindspeed.op_builder import MatmulAddOpBuilder
 
 __all__ = ["npu_matmul_add_fp32"]
 
-IS_A5 = None
-
 matmul_add_op_builder = MatmulAddOpBuilder()
+
+
+@lru_cache
+def is_a5():
+    try:
+        return "Ascend910_95" in torch_npu.npu.get_device_name() or "Ascend950" in torch_npu.npu.get_device_name()
+    except Exception:
+        return False
 
 
 def npu_matmul_add_fp32(total_input, grad_output, grad):
@@ -20,13 +27,7 @@ def npu_matmul_add_fp32(total_input, grad_output, grad):
     for dim in grad_output.shape:
         if dim == 0:
             return
-    global IS_A5
-    if IS_A5 is None:
-        if "Ascend910_95" in torch_npu.npu.get_device_name():
-            IS_A5 = True
-        else:
-            IS_A5 = False
-    if IS_A5:
+    if is_a5():
         grad.addmm_(grad_output.t(), total_input)
     else:
         matmul_add_ops = matmul_add_op_builder.load()

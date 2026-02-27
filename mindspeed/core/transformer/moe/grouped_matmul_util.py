@@ -10,14 +10,7 @@ from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_s
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from mindspeed.te.pytorch.fp8.constants import Fp8Recipe
 from mindspeed.te.pytorch.utils import get_quant_dtype
-
-
-@lru_cache
-def is_a5():
-    try:
-        return "Ascend910_95" in torch_npu.npu.get_device_name()
-    except Exception:
-        return False
+from mindspeed.ops.npu_matmul_add import is_a5
 
 
 def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
