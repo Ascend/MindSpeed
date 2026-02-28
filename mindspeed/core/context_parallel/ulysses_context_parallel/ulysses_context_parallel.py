@@ -180,8 +180,6 @@ class UlyssesContextAttention(torch.nn.Module):
         else:
             spg = self.local_attn.ulysses_comm_para.get('spg')
             scatter_idx = self.local_attn.ulysses_comm_para.get('scatter_idx')
-            if query.dim() == 3:
-                scatter_idx = 1
             gather_idx = self.local_attn.ulysses_comm_para.get('gather_idx')
             seq_world_size = torch.distributed.get_world_size(spg)
 

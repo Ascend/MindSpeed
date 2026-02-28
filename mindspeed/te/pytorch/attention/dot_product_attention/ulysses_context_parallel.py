@@ -7,6 +7,7 @@ from typing import Optional, List
 import torch
 import torch_npu
 import torch.distributed as dist
+from einops import rearrange
 
 from .backend import get_fa_config
 from .utils import prepare_sbhd_format, prepare_thd_format
@@ -42,8 +43,6 @@ def AttnFuncWithCPAndQKVOA2A(
 ):
     spg = cp_group
     scatter_idx = ulysses_comm_para.get('scatter_idx')
-    if qkv_format == 'thd':
-        scatter_idx = 1
     gather_idx = ulysses_comm_para.get('gather_idx')
     seq_world_size = torch.distributed.get_world_size(spg)
 
@@ -65,14 +64,18 @@ def AttnFuncWithCPAndQKVOA2A(
     # shape_order获取
     fa_config = get_fa_config(attn_mask_type)
 
-    if qkv_format == 'sbhd':
-        q, k, v, n_head = prepare_sbhd_format(q, k, v)
-        shape_order = 'SBH'
-    elif qkv_format == 'thd':
-        n_head, cu_seqlens_q, cu_seqlens_kv = prepare_thd_format(q, cu_seqlens_q, cu_seqlens_kv)
+    seq_length, bsz, n_head, head_dim = q.shape[0], q.shape[1], q.shape[2], q.shape[3]
+    head_dim_k, head_dim_v = k.shape[3], v.shape[3]
+    q, k, v, _ = prepare_sbhd_format(q, k, v)
+    shape_order = 'SBH'
+
+    # For EoD ulysses
+    if qkv_format == 'thd':
+        q = rearrange(q, 's b (h d) -> (b s) h d', d=head_dim) 
+        k = rearrange(k, 's b (h d) -> (b s) h d', d=head_dim_k) 
+        v = rearrange(v, 's b (h d) -> (b s) h d', d=head_dim_v)
+        _, cu_seqlens_q, cu_seqlens_kv = prepare_thd_format(q, cu_seqlens_q, cu_seqlens_kv) 
         shape_order = 'TND'
-    else:
-        raise ValueError(f"Unsupported qkv_format: {qkv_format}")
 
     context_layer = torch_npu.npu_fusion_attention(
         q, k, v, n_head, shape_order,
@@ -88,6 +91,10 @@ def AttnFuncWithCPAndQKVOA2A(
         actual_seq_qlen=cu_seqlens_q,
         actual_seq_kvlen=cu_seqlens_kv
     )[0]
+
+    if qkv_format == 'thd': 
+        context_layer = rearrange(context_layer, '(b s) h d -> s b (h d)', b=bsz)
+        shape_order = 'TND'
 
     output = all_to_all(context_layer, spg, gather_idx, scatter_idx, query_layer.size(scatter_idx))
 

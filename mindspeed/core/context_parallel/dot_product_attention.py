@@ -157,13 +157,14 @@ class CPDotProductAttentionImpl:
 
         assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
 
-        if packed_seq_params is not None:
+        if packed_seq_params is not None and not is_ulysses_algo:
             #TND
             T, n_head, D = query.shape[0], query.shape[1], query.shape[2]
         else:
             seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+            head_dim_k, head_dim_v = key.shape[3], value.shape[3]
 
-        if packed_seq_params is not None:
+        if packed_seq_params is not None and not is_ulysses_algo:
             # TND
             cp_size = parallel_state.get_context_parallel_world_size()
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
@@ -275,6 +276,13 @@ class CPDotProductAttentionImpl:
                                                         self.attention_dropout.p)
 
         else:
+            # For EoD ulysses 
+            if packed_seq_params is not None: 
+                query = rearrange(query, 's b (h d) -> (b s) h d', d=head_dim) 
+                key = rearrange(key, 's b (h d) -> (b s) h d', d=head_dim_k) 
+                value = rearrange(value, 's b (h d) -> (b s) h d', d=head_dim_v) 
+                shape_order = 'TND'
+
             if self.config.use_fusion_attn_v2:
                 output = npu_fusion_attention(
                     query, key, value, n_head, shape_order,
@@ -306,5 +314,9 @@ class CPDotProductAttentionImpl:
                     actual_seq_qlen=actual_seq_qlen,
                     actual_seq_kvlen=actual_seq_kvlen
                 )[0]
+
+            if packed_seq_params is not None: 
+                output = rearrange(output, '(b s) h d -> s b (h d)', b=bsz) 
+                shape_order = 'TND'
 
         return output

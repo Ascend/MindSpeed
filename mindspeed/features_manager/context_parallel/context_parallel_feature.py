@@ -95,6 +95,7 @@ class ContextParallelFeature(MindSpeedFeature):
         _use_cp = int(getattr(args, 'context_parallel_size', 1)) > 1
         _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
         _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
+        _use_local = getattr(args, 'transformer_impl', 'local') != 'transformer_engine'
 
         if _use_cp or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
@@ -102,7 +103,7 @@ class ContextParallelFeature(MindSpeedFeature):
 
             patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention',
                                          MindSpeedCPDotProductAttention)
-            if _cp_algo == 'kvallgather_cp_algo':
+            if _cp_algo in ['kvallgather_cp_algo', 'ulysses_cp_algo']:
                 patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
                                              MindSpeedTEDotProductAttention)
             else:
@@ -111,9 +112,10 @@ class ContextParallelFeature(MindSpeedFeature):
 
             from mindspeed.core.context_parallel.adaptor import attention_init_wrapper
             from mindspeed.core.context_parallel.adaptor import multi_latent_attention_init_wrapper
-            patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
-            patch_manager.register_patch('megatron.core.transformer.multi_latent_attention.MultiLatentAttention.__init__',
-                                         multi_latent_attention_init_wrapper)
+            if _use_local:
+                patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
+                patch_manager.register_patch('megatron.core.transformer.multi_latent_attention.MultiLatentAttention.__init__',
+                                            multi_latent_attention_init_wrapper)
 
             from mindspeed.core.context_parallel.model_parallel_utils import (
                 initialize_model_parallel_cp_wrapper,
