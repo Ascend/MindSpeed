@@ -221,7 +221,7 @@ class FlatParameter(nn.Parameter, metaclass=_FlatParameterMeta):
         which case only the tensor data needs to be passed to the constructor.
 
         Args:
-            See the Attributes in the class docstring.
+            See the Attributes in the class docs/zhtring.
         """
         if len(param_infos) != len(shapes) or len(param_infos) != len(fqns):
             raise ValueError("Incorrect number of param_infos")

@@ -74,7 +74,7 @@ actor_rollout_ref.actor.megatron.use_dist_checkpointing=False \
 actor_rollout_ref.ref.megatron.use_dist_checkpointing=False \
 ```
 
-使用RoPE融合优化 [link](../../../docs/features/rotary-embedding.md)
+使用RoPE融合优化 [link](../../../docs/zh/features/rotary-embedding.md)
 
 ```
 +actor_rollout_ref.actor.megatron.override_transformer_config.position_embedding_type=rope \

@@ -40,7 +40,7 @@ class MoePermuteMaskMap(torch.autograd.Function):
             permuted_probs_grad: torch.Tensor,
             _,
     ) -> Tuple[torch.Tensor, ...]:
-        # pylint: disable=missing-function-docstring
+        # pylint: disable=missing-function-docs/zhtring
         act_grad = None
         probs_grad = None
         if ctx.needs_input_grad[0]:
@@ -77,7 +77,7 @@ class MoeUnpermuteMaskMap(torch.autograd.Function):
             routing_map: Optional[torch.Tensor] = None,
             drop_and_pad: bool = False,
     ) -> torch.Tensor:
-        # pylint: disable=missing-function-docstring
+        # pylint: disable=missing-function-docs/zhtring
         if not permuted_tokens.numel():
             ctx.probs = probs
             return permuted_tokens
@@ -100,7 +100,7 @@ class MoeUnpermuteMaskMap(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, unpermuted_tokens_grad):
-        # pylint: disable=missing-function-docstring
+        # pylint: disable=missing-function-docs/zhtring
         if not unpermuted_tokens_grad.numel():
             return unpermuted_tokens_grad, None, None, ctx.probs, None, None
         restore_shape = ctx.restore_shape

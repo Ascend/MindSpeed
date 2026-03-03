@@ -134,7 +134,7 @@ class BaseDatasetHandler(object):
                 current = time.time()
                 elapsed = current - proc_start
                 mbs = total_bytes_processed / elapsed / 1024 / 1024
-                logger.info("Processed %s documents (%s docs/s, %s MB/s).", i, i / elapsed, mbs)
+                logger.info("Processed %s documents (%s docs/zh/s, %s MB/s).", i, i / elapsed, mbs)
 
         logger.info("Skip %s sample exceeded seq-length(%s)", skip_num // 3, self.args.seq_length)
         for key in self.args.json_keys:

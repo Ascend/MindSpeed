@@ -232,7 +232,7 @@ class _moe_chunk_sort(torch.autograd.Function):
         sorted_idxs: torch.Tensor,
         probs: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # pylint: disable=missing-function-docstring
+        # pylint: disable=missing-function-docs/zhtring
         if not inp.numel():
             return inp, probs
 
@@ -277,7 +277,7 @@ class _moe_chunk_sort(torch.autograd.Function):
         permuted_act_grad: torch.Tensor,
         permuted_probs_grad: torch.Tensor,
     ) -> Tuple[torch.Tensor, ...]:
-        # pylint: disable=missing-function-docstring
+        # pylint: disable=missing-function-docs/zhtring
         if not permuted_act_grad.numel():
             return permuted_act_grad, None, None, permuted_probs_grad
 
