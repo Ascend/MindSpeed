@@ -63,13 +63,16 @@ atb::Tensor AtTensor2Tensor(const at::Tensor atTensor)
 void RunAtbCmd(atb::Operation *op, const ParamSetter &paramsetter, const std::string &name)
 {
     auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);
-    auto contextPtr = GetContext(acl_stream);
-    uint64_t workspaceSize = OperationSetup(paramsetter.variantPack, op, contextPtr);
+    if (msContext == nullptr) {
+        auto status = atb::CreateContext(&msContext);
+    }
+    uint64_t workspaceSize = OperationSetup(paramsetter.variantPack, op, msContext);
     auto workspaceTensor = GetWorkspaceTensor(workspaceSize, op);
     const void *workspacePtr = nullptr;
     workspacePtr = workspaceTensor.storage().data();
-    auto acl_call = [op, contextPtr, paramsetter, workspacePtr, workspaceSize]() -> int {
-        auto st = op->Execute(paramsetter.variantPack, (uint8_t *)workspacePtr, workspaceSize, contextPtr);
+    auto acl_call = [op, acl_stream, paramsetter, workspacePtr, workspaceSize]() -> int {
+        msContext->SetExecuteStream(acl_stream);
+        auto st = op->Execute(paramsetter.variantPack, (uint8_t *)workspacePtr, workspaceSize, msContext);
         DestroyOperation(op);
         return 0;
     };
