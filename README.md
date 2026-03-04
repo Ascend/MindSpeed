@@ -1,4 +1,4 @@
-  <p align="center"> <img src="docs/zh/LOGO.png" height="172px" width="598px"> </p>
+  <p align="center"> <img src="docs/LOGO.png" height="172px" width="598px"> </p>
 
 <p align="center">
     <a> <img src="https://img.shields.io/badge/python-3.8%7C3.9%7C3.10-green"> </a>
@@ -7,7 +7,7 @@
         <img alt="Badge" src="https://img.shields.io/badge/License-MIT-blue.svg">
     </a>
     <a href="https://www.hiascend.com/software/mindspeed">
-        <img alt="Documentation" src="https://img.shields.io/website/http/huggingface.co/docs/zh/transformers/index.svg?down_color=red&down_message=offline&up_message=online">
+        <img alt="Documentation" src="https://img.shields.io/website/http/huggingface.co/docs/transformers/index.svg?down_color=red&down_message=offline&up_message=online">
     </a>
     <a>
         <img src="https://app.codacy.com/project/badge/Grade/1710faac5e634acaabfc26b0a778cdde">

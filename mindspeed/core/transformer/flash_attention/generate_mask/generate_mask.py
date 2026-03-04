@@ -16,6 +16,8 @@ def set_attention_mask(attn_mask):
 def generate_attention_mask(config, compress, device):
     global _GLOBAL_ATTN_MASK
     if not getattr(config, 'use_flash_attn', False):
+        if config.transformer_impl == 'transformer_engine' and config.attention_mask_type == 'causal':
+            raise ValueError("Flash Attention is required when using transformer_engine, please set --use-flash-attn")
         warnings.warn("Flash Attention is highly recommended!")
         if not hasattr(config, 'micro_batch_size'):
             raise RuntimeError('Please set micro_batch_size or set use_flash_attn=True in config.')
