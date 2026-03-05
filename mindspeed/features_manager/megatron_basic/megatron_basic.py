@@ -43,9 +43,11 @@ class MegatronBasicFeature(MindSpeedFeature):
 
     def register_mcore_basic_patches(self, pm, args):
         # configuration patches
-        from mindspeed.core.megatron_basic.arguments_basic import transformer_config_init_wrapper, transformer_config_post_init_wrapper
+        from mindspeed.core.megatron_basic.arguments_basic import (transformer_config_init_wrapper,
+                                                                   transformer_config_post_init_wrapper,
+                                                                   transformer_config_init_subclass)
         pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__init__", transformer_config_init_wrapper)
-        pm.register_patch("megatron.core.transformer.transformer_config.MLATransformerConfig.__init__", transformer_config_init_wrapper)
+        pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__init_subclass__", classmethod(transformer_config_init_subclass))
         pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__post_init__", transformer_config_post_init_wrapper)
 
         # initialization patches
