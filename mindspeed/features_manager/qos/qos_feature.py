@@ -11,6 +11,7 @@ class QosFeature(MindSpeedFeature):
         group.add_argument('--aiqos', action='store_true', help='use ai qos feature')
         group.add_argument('--aiqos-mode', type=str, default='auto', help='ai qos mode')
         group.add_argument('--aiqos-schedule', type=str, help='ai qos schedule')
+        group.add_argument('--aiqos-enable-roce', action='store_true', help='ai qos roce enable')
 
     def is_need_apply(self, args):
         return self.optimization_level <= args.optimization_level

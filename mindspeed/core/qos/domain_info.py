@@ -228,7 +228,7 @@ def RankGenerate():
         order='tp-cp-ep-dp-pp',
         rank_offset=0,
     )
-    return g;
+    return g
 
 
 def get_tensor_parallel_comm_domain():
@@ -592,18 +592,39 @@ def get_overlap_time_dict():
     return time_overlap
 
 
-def get_overlap_space_dict(domain_partition_information):
-    boundary = 8
+def get_overlap_space_dict(domain_partition_information, link_type="SDMA"):
+    boundary_roce_910b = 8
+    boundary_roce_910_93 = os.environ.get('SuperNodeDieNum', 384)
 
     if is_a3_version:
-        boundary = os.environ.get('SuperNodeDieNum', 384)
+        if link_type == "SDMA":
+            cross_boundary = []
+            for domain in domains:
+                cross_flag = is_adjacent_two_node_group(domain_partition_information[domain])
+                if not cross_flag:
+                    cross_boundary.append(domain)
+            return overlap_space_padding(cross_boundary)
 
-    cross_boundary = []
-    for domain in domains:
-        cross_flag = is_cross_boundary(domain_partition_information[domain], boundary)
-        if cross_flag:
-            cross_boundary.append(domain)
+        elif link_type == "ROCE":
+            cross_boundary = []
+            for domain in domains:
+                cross_flag = is_cross_boundary(domain_partition_information[domain], boundary_roce_910_93)
+                if cross_flag:
+                    cross_boundary.append(domain)
+            return overlap_space_padding(cross_boundary)
+        else:
+            raise ValueError(f"Unsupported link type: {link_type}, only 'SDMA' and 'ROCE' are supported")
+    else:
+        # A2 CASE ONLY ROCE
+        cross_boundary = []
+        for domain in domains:
+            cross_flag = is_cross_boundary(domain_partition_information[domain], boundary_roce_910b)
+            if cross_flag:
+                cross_boundary.append(domain)
+        return overlap_space_padding(cross_boundary)
 
+
+def overlap_space_padding(cross_boundary):
     space_overlap = {}
     keys = [
         (x, y)
@@ -645,3 +666,17 @@ def is_cross_boundary(comm_domains: list[list[int]], boundary: int) -> bool:
 
     # All communication domains are contained within single machines
     return False
+
+
+def is_adjacent_two_node_group(rank_groups):
+    # Check if SIO is used; if SIO is not used, spatial conflicts will occur via HCCS.
+    for group in rank_groups:
+        if not isinstance(group, list) or len(group) != 2:
+            return False
+        if not (isinstance(group[0], int) and isinstance(group[1], int)):
+            return False
+        if abs(group[1] - group[0]) != 1:
+            return False
+        if group[0] % 2 != 0:
+            return False
+    return True

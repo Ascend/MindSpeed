@@ -28,8 +28,10 @@ from megatron.core.parallel_state import (
 )
 
 import megatron.core.parallel_state as mcps
+from megatron.training import get_args
 from mindspeed.core.qos.qos import Qos
 from mindspeed.log_config import log_rank_0
+from mindspeed.core.qos.domain_info import is_a3_version
 
 LOG = getLogger(__name__)
 
@@ -65,11 +67,32 @@ def create_group_qos(
     if pg_options is None:
         kwargs['pg_options'] = torch_npu._C._distributer_c10d.ProcessGroupHCCL.Options()
     ai_qos = Qos()
-    qos = ai_qos.set_parallel_qos(parallel_type)
-    if not (0 <= qos <= 7):
-        raise ValueError(f"Invalid QoS value! {parallel_type}={qos} (valid range: 0-7)")
-    kwargs['pg_options'].hccl_config = {'qos_service_level': qos, 'qos_traffic_class': qos * 32}
-    log_rank_0(LOG.info, f"{parallel_type} ai qos: {qos}")
+    roce_qos = ai_qos.set_parallel_roce_qos(parallel_type)
+    sdma_qos = ai_qos.set_parallel_sdma_qos(parallel_type)
+    if not (0 <= roce_qos <= 7) or not (0 <= sdma_qos <= 7):
+        error_msg_parts = []
+        if not (0 <= roce_qos <= 7):
+            error_msg_parts.append(f"roce_qos={roce_qos} (valid range: 0-7)")
+        if not (0 <= sdma_qos <= 7):
+            error_msg_parts.append(f"sdma_qos={sdma_qos} (valid range: 0-7)")
+
+        raise ValueError(
+            f"Invalid QoS value for parallel type '{parallel_type}'! "
+            + " | ".join(error_msg_parts)
+        )
+    args = get_args()
+    if is_a3_version:
+        if args.aiqos_enable_roce:
+            kwargs['pg_options'].hccl_config = {'hccl_sdma_qos': sdma_qos, 'qos_service_level': roce_qos,
+                                                'qos_traffic_class': roce_qos * 32}
+            log_rank_0(LOG.info, f"{parallel_type} roce_qos: {roce_qos}, sdma_qos: {sdma_qos}")
+        else:
+            kwargs['pg_options'].hccl_config = {'hccl_sdma_qos': sdma_qos}
+            log_rank_0(LOG.info, f"{parallel_type} sdma_qos: {sdma_qos}")
+    else:
+        kwargs['pg_options'].hccl_config = {'qos_service_level': roce_qos, 'qos_traffic_class': roce_qos * 32}
+        log_rank_0(LOG.info, f"{parallel_type} roce_qos: {roce_qos}")
+
     return torch.distributed.new_group(**kwargs)
 
 
