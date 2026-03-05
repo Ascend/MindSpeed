@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-from typing import Any, Dict, List, Callable, Literal, Union, Optional
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Callable, Literal, Union, Optional
+
 import torch
 
 
@@ -48,6 +49,8 @@ class QuantizeConfig:
     quant_apply_modules: List[str] = None
     quant_ignored_modules: List[str] = None
     converters: List[str] = None
+    quant_gmm: bool = False
+    gemm_gradient_accumulation_fusion: bool = False
     extra_args: Dict[str, Any] = field(default_factory=dict)  # for future extensibility
 
 
