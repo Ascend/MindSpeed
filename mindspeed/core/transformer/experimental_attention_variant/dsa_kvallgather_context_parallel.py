@@ -123,6 +123,9 @@ def fused_npu_sparse_flash_attention_kvallgather(
     cp_stream: Stream
     """
 
+    cp_size = get_distributed_world_size(cp_group)
+    rank = get_distributed_rank(cp_group)
+
     if scale is None:
         scale = q.shape[-1] ** (-0.5)
 
@@ -150,19 +153,22 @@ def fused_npu_sparse_flash_attention_kvallgather(
     softmax_sum = [None, None]
     # [2, b, s//2, n, d]
     out = torch.empty_like(q)
+    local_seq_chunk_ids = [rank + 1, 2 * cp_size - rank]
+    chunk_size = k_ag.shape[1] // cp_size // 2
 
-    num_steps = 2
-    for i in range(num_steps):
+    for i, chunk_id in enumerate(local_seq_chunk_ids):
+        kv_len = chunk_id * chunk_size
+
         attn_outs = torch_npu.npu_sparse_flash_attention(
             q[i], 
-            k_ag, 
-            v_ag,
+            k_ag[:, :kv_len, ...],
+            v_ag[:, :kv_len, ...],
             sparse_indices=topk_indices[i].to(torch.int32),
             block_table=None,
             actual_seq_lengths_query=None,
             actual_seq_lengths_kv=None,
             query_rope=q_rope[i],
-            key_rope=k_rope_ag,
+            key_rope=k_rope_ag[:, :kv_len, ...],
             scale_value=scale,
             sparse_block_size=1,
             layout_query='BSND',
