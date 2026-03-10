@@ -2,7 +2,7 @@
 
 请先参考[软件安装](./installation.md)进行环境准备，环境准备后按照如下步骤操作，即可实现Megatron-LM在昇腾设备上的高效运行，且无缝集成并充分发挥MindSpeed所提供的丰富加速与优化技术。
 
-## 1. 在Megatron-LM中导入MindSpeed适配器
+## 在Megatron-LM中导入MindSpeed适配器
 
 在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下新增一行“import mindspeed.megatron_adaptor”代码，即如下修改：
 
@@ -14,19 +14,22 @@
     import inspect
   ```
 
-### 2. 数据准备，参考[Megatron-LM官方文档](https://github.com/NVIDIA/Megatron-LM?tab=readme-ov-file#datasets)准备训练数据
+### 数据准备
 
-a. 下载[Tokenizer](https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main)。
+参考[Megatron-LM官方文档](https://github.com/NVIDIA/Megatron-LM?tab=readme-ov-file#datasets)准备训练数据
 
-新建“Megatron-LM/gpt-tokenizer”目录，并将vocab.json和merges.txt文件下载至该目录。
+1. 下载[Tokenizer](https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main)
 
-b. 下载数据集。
+    新建“Megatron-LM/gpt-tokenizer”目录，并将vocab.json和merges.txt文件下载至该目录。
 
-以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例。
+2. 下载数据集，以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例
 
-> 注：用户需要自行设置代理，以便访问或下载数据集。
+```text
+ > [!CAUTION]注意
+ > 用户需要自行设置代理，以便访问或下载数据集。
+```
 
-### 3. 配置环境变量
+### 配置环境变量
 
 当前以root用户安装后的默认路径为例，请用户根据set_env.sh的实际路径执行如下命令。
 
@@ -34,57 +37,57 @@ b. 下载数据集。
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
-### 4. 数据处理
+### 数据处理
 
-a. 语料格式转换。
+1. 语料格式转换
 
-数据处理依赖于多个第三方库，请确保已正确安装如下依赖：
+    数据处理依赖于多个第三方库，请确保已正确安装如下依赖：
+    
+    ```shell
+    pip3 install nltk pyarrow pandas
+    ```
+    
+    以下代码段展示了如何读取Parquet格式的原始语料，并将其转换为JSON格式，以便后续处理。
+    
+    ```python
+    import json
+    import pandas as pd
+    
+    data_df = pd.read_parquet("train-00000-of-00001-a09b74b3ef9c3b56.parquet")
+    data_df['text'] = data_df['text'].apply(lambda v: json.dumps({"text": v}))
+    with open("alpaca_json.json", encoding='utf-8', mode='w') as f:
+        for i, row in data_df.iterrows():
+            f.write(row['text'])
+            f.write('\n')
+    ```
 
-```shell
-pip3 install nltk pyarrow pandas
-```
+2. 预训练数据集生成
 
-以下代码段展示了如何读取Parquet格式的原始语料，并将其转换为JSON格式，以便后续处理。
+    若在昇腾设备上使用preprocess_data.py脚本处理数据，须在“Megatron-LM”目录下修改“tools/preprocess_data.py”脚本，在“import torch”下新增一行“import mindspeed.megatron_adaptor”代码。
+    
+    ```python
+    import torch
+    import mindspeed.megatron_adaptor
+    import numpy as np
+    ```
+    
+    新建“Megatron-LM/gpt_pretrain_data”目录，通过运行preprocess_data.py脚本，可以将转换后的JSON文件进一步处理为适合Megatron-LM预训练的二进制格式。
+    
+    ```python
+    python tools/preprocess_data.py \
+       --input alpaca_json.json \
+       --output-prefix ./gpt_pretrain_data/alpaca \
+       --tokenizer-type GPT2BPETokenizer \
+       --vocab-file ./gpt-tokenizer/vocab.json \
+       --merge-file ./gpt-tokenizer/merges.txt \
+       --append-eod \
+       --log-interval 1000 \
+       --workers 8
+    ```
+    
+    执行成功后，将在gpt_pretrain_data目录下生成两个文件：alpaca_text_document.bin和alpaca_text_document.idx，代表预处理完成的预训练数据集。
 
-```python
-import json
-import pandas as pd
-
-data_df = pd.read_parquet("train-00000-of-00001-a09b74b3ef9c3b56.parquet")
-data_df['text'] = data_df['text'].apply(lambda v: json.dumps({"text": v}))
-with open("alpaca_json.json", encoding='utf-8', mode='w') as f:
-    for i, row in data_df.iterrows():
-        f.write(row['text'])
-        f.write('\n')
-```
-
-b. 预训练数据集生成。
-
-若在昇腾设备上使用preprocess_data.py脚本处理数据，须在“Megatron-LM”目录下修改“tools/preprocess_data.py”脚本，在“import torch”下新增一行“import mindspeed.megatron_adaptor”代码。
-
-```python
-import torch
-import mindspeed.megatron_adaptor
-import numpy as np
-```
-
-新建“Megatron-LM/gpt_pretrain_data”目录，通过运行preprocess_data.py脚本，可以将转换后的JSON文件进一步处理为适合Megatron-LM预训练的二进制格式。
-
-```python
-python tools/preprocess_data.py \
-   --input alpaca_json.json \
-   --output-prefix ./gpt_pretrain_data/alpaca \
-   --tokenizer-type GPT2BPETokenizer \
-   --vocab-file ./gpt-tokenizer/vocab.json \
-   --merge-file ./gpt-tokenizer/merges.txt \
-   --append-eod \
-   --log-interval 1000 \
-   --workers 8
-```
-
-执行成功后，将在gpt_pretrain_data目录下生成两个文件：alpaca_text_document.bin和alpaca_text_document.idx，代表预处理完成的预训练数据集。
-
-### 5. 准备预训练脚本
+### 准备预训练脚本
 
 在“Megatron-LM”目录下准备预训练脚本train_distributed.sh，脚本示例如下：
 
@@ -161,7 +164,7 @@ set +x
 
 ```
 
-### 6. 配置路径
+### 配置路径
 
 请编辑示例脚本train_distributed.sh，并设置如下环境变量以指定必要的路径：
 
@@ -172,12 +175,12 @@ MERGE_FILE=./gpt-tokenizer/merges.txt
 DATA_PATH=./gpt_pretrain_data/alpaca_text_document
 ```
 
-> 注：上述路径需根据您的实际情况进行适当调整。
+上述路径需根据您的实际情况进行适当调整。
 
-### 7. 运行脚本启动预训练
+### 运行脚本启动预训练
 
 ```shell
 bash ./train_distributed.sh
 ```
 
-> 注：示例脚本train_distributed.sh中的部分参数（如--hidden-size、--num-layers）需根据实际场景进行适配，避免OOM等现象。
+示例脚本train_distributed.sh中的部分参数（如--hidden-size、--num-layers）需根据实际场景进行适配，避免OOM等现象。

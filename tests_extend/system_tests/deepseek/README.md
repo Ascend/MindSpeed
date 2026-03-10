@@ -24,6 +24,7 @@ DeepSeek-V3 训练的硬件配置:
     cd MindSpeed-LLM
     cp -r ../Megatron-LM/megatron ./
    ```
+
 2. 搭建环境
 
    ```bash
@@ -38,6 +39,7 @@ DeepSeek-V3 训练的硬件配置:
    # 修改 ascend-toolkit 路径
    source /usr/local/Ascend/ascend-toolkit/set_env.sh
    ```
+
 3. 下载 DeepSeek-V3 的 [预训练权重和词表](https://hf-mirror.com/deepseek-ai/DeepSeek-V3/tree/main)
 
    ```shell

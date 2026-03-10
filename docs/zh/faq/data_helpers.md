@@ -49,21 +49,18 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 
 ### 规避方案
 
-1. 减小模型训练步数
+  减小模型训练步数
 
-#### 推荐方案
+### 推荐方案
 
-1. 将相关变量修改为 int64 数据类型，具体可查看：[PR](https://github.com/NVIDIA/Megatron-LM/pull/598)
+#### 1. 将相关变量修改为 int64 数据类型，具体可查看[fix data helps overflow bug](https://github.com/NVIDIA/Megatron-LM/pull/598)
 
-    > 可以在 Megatron-LM 目录下，运行`mindspeed -P`命令，自动完成修改。
-    >
-    >```shell
-    > mindspeed -P
-    >```
-    >
-2. 删除 `megatron/core/datasets/` 下面的 `helpers.cpython-xx-xxx-linux-gnu.so` 文件。
-3. 删除已生成的数据集缓存文件夹，例如 `enwiki/my-t5_text_sentence/cache/GPTDataset_indices`。
+   > 可以在 Megatron-LM 目录下，运行`mindspeed -P`命令，自动完成修改。
+>
+   >```shell
+   > mindspeed -P
+   >```
 
-## 备注
+#### 2. 删除 `megatron/core/datasets/` 下面的 `helpers.cpython-xx-xxx-linux-gnu.so` 文件
 
-此问题为 Megatron-LM 原生问题，CPP 代码难以通过 monkey patch 的方式进行修改。已多次提交修复 PR，但似乎 Megatron-LM 较为封闭，无人管理且不接受来自社区的代码提交。
+#### 3. 删除已生成的数据集缓存文件夹，例如 `enwiki/my-t5_text_sentence/cache/GPTDataset_indices`

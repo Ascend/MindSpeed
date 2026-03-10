@@ -33,7 +33,7 @@ cd ..
 
 ### 模型训练
 
-1. 准备数据集
+#### 1. 准备数据集
 
 下载 Mixtral-8x7B [数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)
 
@@ -53,9 +53,9 @@ python ./tools/preprocess_data.py \
     --tokenizer-type PretrainedFromHF
 ```
 
-2. 配置 Mixtral-8x7B 预训练脚本：***pretrain_mixtral.sh***
+#### 2. 配置 Mixtral-8x7B 预训练脚本：***pretrain_mixtral.sh***
 
-```
+```bash
 # 拷贝mixtral训练所用脚本到Megatron-LM目录下
 cp ../MindSpeed/tests_extend/system_tests/mixtral/pretrain_mixtral.sh .
 
@@ -85,19 +85,19 @@ PP=4
 EP=2
 ```
 
-3. 开启确定性计算
+#### 3. 开启确定性计算
 
 在pretrain_mixtral.sh脚本添加 `export HCCL_DETERMINISTIC=TRUE`
 
 另外，在pretrain_gpt.py中添加代码
-```
+
+```python
 # ptdbg_ascend 参见 https://gitcode.com/Ascend/tools/blob/master/ptdbg_ascend/README.md
 from ptdbg_ascend import seed_all
 seed_all(mode=True)
 ```
 
-
-4. 启动 Mixtral-8x7B 预训练脚本: ***pretrain_mixtral.sh***
+#### 4. 启动 Mixtral-8x7B 预训练脚本: ***pretrain_mixtral.sh***
 
 ```shell
 bash pretrain_mixtral.sh

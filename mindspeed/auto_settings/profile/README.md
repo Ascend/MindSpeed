@@ -1,4 +1,5 @@
-### profiling_configs.json规则
+# profiling_configs.json规则
+
 1. 可识别字段有```name```, ```tp```, ```cp```, ```pp```, ```seq```, ```experts```, ```ep```, ```mc2```
     - 可识别字段拥有缺省默认值, 可选择不配置
 2. ```name```字段默认值为空字符串, 若取值中出现```skip```或其任意大小写变体, 此条配置会被跳过

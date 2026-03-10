@@ -27,6 +27,7 @@ Llama3-8B 训练的硬件配置:
    mv ../MindSpeed/tools/data_handler.py .
    mv ../MindSpeed/tests_extend/system_tests/llama3/pretrain_llama3_8b_ptd.sh ./examples/
    ```
+
 2. 搭建环境
 
    ```bash
@@ -42,6 +43,7 @@ Llama3-8B 训练的硬件配置:
    # 修改 ascend-toolkit 路径
    source /usr/local/Ascend/ascend-toolkit/set_env.sh
    ```
+
 3. 下载 Llama3-8B 的 [预训练权重和词表](https://hf-mirror.com/unsloth/llama-3-8b/tree/main)
 
    ```shell

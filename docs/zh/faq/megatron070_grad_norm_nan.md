@@ -1,13 +1,13 @@
-# megatron0.7.0版本长稳测试出现grad norm为nan
+# Megatron-LM 0.7.0版本长稳测试出现GradNorm为NaN
 
 ## 问题现象
 
-在megatron0.7.0版本中，采用mindspeed自定义`--tokenizer-type PretrainedFromHF`， 长稳测试一定步数后发现loss抖动异常最终出现grad norm为nan的问题，报错示例如下：
+在Megatron-LM 0.7.0版本中，采用mindspeed自定义`--tokenizer-type PretrainedFromHF`， 长稳测试一定步数后发现loss抖动异常最终出现grad norm为nan的问题，报错示例如下：
 
-```txt
+```bash 
 2024-09-18 11:14:247 iteration 427/ 5000  consumed samples: 6832 elapsed time per iteration (
 ms): 209.8 | Learning rate: 1.229919E-06 | global batch size:   16 | Lm loss: 8.567080E+00 | loss scale: 1.0 | gr
-ad norm: 35.518 | number of skipped iterations:   О | number of nan iterations: 0
+ad norm: 35.518 | number of skipped iterations:   О | number of nan iterations: 0 
 [2024-09-18 11:14:25] iteration 428/   5000] consumed samples: 6848 elapsed time per iteration (
 ms): 210.5 | Learning rate: 1.229826E-06 | global batch size: _ 16 | lm loss: 7.180392E+00 | loss scale: 1.0 | gr
 ad norm: 36.838 ] number of skipped iterations:   О | number of nan iterations:
