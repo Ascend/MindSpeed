@@ -11,10 +11,11 @@
 ## 使用方法
 为了开启全分片数据并行，需要加入以下配置
 ```bash
---use-custom-fsdp
+--use-megatron-fsdp
 --data-parallel-sharding-strategy optim_grads_params
 --no-gradient-accumulation-fusion
 --use-distributed-optimizer
+--ckpt-format fsdp_dtensor
 ```
 需要关闭CUDA_MAX_CONNECTIONS
 

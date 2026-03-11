@@ -119,9 +119,10 @@ OUTPUT_ARGS="
 "
 
 FSDP_ARGS="
-    --use-custom-fsdp \
+    --use-megatron-fsdp \
     --data-parallel-sharding-strategy optim_grads_params \
     --no-gradient-accumulation-fusion \
+    --ckpt-format fsdp_dtensor \
 "
 
 
