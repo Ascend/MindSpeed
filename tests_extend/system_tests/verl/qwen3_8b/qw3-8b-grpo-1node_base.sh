@@ -34,7 +34,7 @@ NPUS_PER_NODE=8   # 每台机器的 NPU 数
 
 # 配置huggingface格式权重路径，转化为megatron格式的权重路径，训练数据集路径，测试数据集路径，保存权重的路径
 HF_MODEL_PATH=/home/ori_models/Qwen3-8B
-DIST_CKPT_PATH=/home2/bridge/Qwen3-8B/iter_0000000
+DIST_CKPT_PATH=/home/bridge/Qwen3-8B/iter_0000000
 TRAIN_DATA_PATH=/home/datasets/processed_gsm8k/train.parquet
 TEST_DATA_PATH=/home/datasets/processed_gsm8k/test.parquet
 SAVE_CKPT_PATH=/home/checkpoints/verl_grpo_example_gsm8k/qwen3_8b_function_bridge
