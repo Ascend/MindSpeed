@@ -57,7 +57,8 @@ def delete_lock_file():
 def repatch(args):
     MindSpeedFeaturesManager.remove_patches()
     full_args = get_full_args()
-    for k, v in args.items():
+    patch_args = vars(args) if hasattr(args, "__dict__") else args
+    for k, v in patch_args.items():
         setattr(full_args, k, v)
     MindSpeedFeaturesManager.apply_features_pre_patches(full_args)
     MindSpeedFeaturesManager.apply_features_patches(full_args)
