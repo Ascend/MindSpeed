@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
 # 如需排查问题可以打开下一行
-#set -x
+set -x
 
 # 配置主节点 IP
-MASTER_IP="填写主节点IP"
+MASTER_IP="填写当前节点IP"
 # 配置当前节点用于通信的网卡名。在宿主机上执行`ifconfig`，查询本机IP所对应的网络接口名
 SOCKET_IFNAME="填写当前节点通信网卡名"
-CURRENT_IP=$(ifconfig "$SOCKET_IFNAME" | grep -Eo 'inet (addr:)?([0-9]{1,3}\.){3}[0-9]{1,3}' | awk '{print $NF}')
+CURRENT_IP="填写当前节点IP"
 echo "MASTER_IP = $MASTER_IP"
 echo "CURRENT_IP = $CURRENT_IP"
 echo "SOCKET_IFNAME = $SOCKET_IFNAME"
