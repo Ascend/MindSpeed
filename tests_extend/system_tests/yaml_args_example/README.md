@@ -10,6 +10,7 @@
     ```
 
 3. 在`Megatron-LM`目录下，执行示例脚本。
+
    ```shell
    cd {PATH_TO_MEGATRON_LM}
    bash tests_extend/system_tests/yaml_args_example/pretrain_yaml_args.sh
