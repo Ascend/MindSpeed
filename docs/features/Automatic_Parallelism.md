@@ -54,7 +54,7 @@
 #!/bin/bash
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export NPU_ASD_ENABLE=0
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+source /usr/local/Ascend/cann/set_env.sh
 
 MASTER_ADDR=localhost
 MASTER_PORT=6001

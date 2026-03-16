@@ -9,7 +9,7 @@
 ### 1. set the environment variables
  ```shell
 # Default path, change it if needed.
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+source /usr/local/Ascend/cann/set_env.sh
  ```
 #### if use Ascend-Transformer-Boost
  ```shell

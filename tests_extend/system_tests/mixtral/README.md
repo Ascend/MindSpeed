@@ -63,8 +63,8 @@ cp ../MindSpeed/tests_extend/system_tests/mixtral/pretrain_mixtral.sh .
 
 ```shell
 # 按照如下内容修改pretrain_mixtral.sh测试脚本文件
-# 设置 ascend-toolkit 路径
-source /usr/local/Ascend/ascend-toolkit/set_env.sh 
+# 设置 cann 路径
+source /usr/local/Ascend/cann/set_env.sh 
 
 # 根据实际情况配置词表、数据集、模型参数保存路径
 DATA_PATH="./dataset/Mixtral-8x7B/alpaca_text_document"

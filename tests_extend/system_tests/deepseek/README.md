@@ -35,8 +35,8 @@ DeepSeek-V3 训练的硬件配置:
    pip install torch-2.7.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl 
    pip install torch_npu-2.7.1*-cp310-cp310-manylinux_2_28_aarch64.whl
 
-   # 修改 ascend-toolkit 路径
-   source /usr/local/Ascend/ascend-toolkit/set_env.sh
+   # 修改 cann 路径
+   source /usr/local/Ascend/cann/set_env.sh
    ```
 3. 下载 DeepSeek-V3 的 [预训练权重和词表](https://hf-mirror.com/deepseek-ai/DeepSeek-V3/tree/main)
 
@@ -71,8 +71,8 @@ DeepSeek-V3 训练的硬件配置:
      cd ..
      # 处理数据   
      mkdir ./dataset/deepseek3-hf/
-     # 修改 ascend-toolkit 路径
-     source /usr/local/Ascend/ascend-toolkit/set_env.sh
+     # 修改 cann 路径
+     source /usr/local/Ascend/cann/set_env.sh
      # MindSpeed-LLM目录下执行
      python ./preprocess_data.py \
         --input ./dataset/train-00000-of-00001-a09b74b3ef9c3b56.parquet \
@@ -90,8 +90,8 @@ DeepSeek-V3 训练的硬件配置:
    配置DeepSeek-V3 预训练脚本: examples/pretrain_deepseek_v3_ptd_dualpipev.sh
 
    ```shell
-    # 设置 ascend-toolkit 路径
-    source /usr/local/Ascend/ascend-toolkit/set_env.sh 
+    # 设置 cann 路径
+    source /usr/local/Ascend/cann/set_env.sh 
 
     # 根据实际情况配置词表、数据集、环境变量保存路径
     source "../MindSpeed/tests_extend/system_tests/env_npu.sh"

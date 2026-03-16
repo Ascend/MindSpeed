@@ -32,7 +32,7 @@ b. 下载数据集。
 当前以root用户安装后的默认路径为例，请用户根据set_env.sh的实际路径执行如下命令。
 
 ```shell
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+source /usr/local/Ascend/cann/set_env.sh
 ```
 
 ### 4. 数据处理

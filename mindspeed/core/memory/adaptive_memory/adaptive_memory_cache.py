@@ -134,12 +134,12 @@ class PolicyCacheManager(metaclass=SingletonBase):
         torch_npu_version: str = torch_npu.__version__
 
         library_path = os.environ.get("LD_LIBRARY_PATH").split(":")
-        ascend_toolkit_path = next((x for x in library_path if "ascend-toolkit" in x), None)
+        ascend_toolkit_path = next((x for x in library_path if "cann" in x), None)
         driver_path = next((x for x in library_path if "driver" in x), None)
         if ascend_toolkit_path is None or driver_path is None:
             return {}
 
-        ascend_toolkit_version_file = self._get_version_file(ascend_toolkit_path, "ascend-toolkit", "version.cfg")
+        ascend_toolkit_version_file = self._get_version_file(ascend_toolkit_path, "cann", "version.cfg")
         driver_version_file = self._get_version_file(driver_path, "driver", "version.info")
         if not os.path.isfile(ascend_toolkit_version_file) or not os.path.isfile(driver_version_file):
             return {}

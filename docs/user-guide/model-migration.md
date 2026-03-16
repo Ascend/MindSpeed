@@ -94,7 +94,7 @@ from typing import Union
 需要根据机器上具体情况进行调整。
 
 ```shell
-source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
+source ${CANN_INSTALL_PATH}/Ascend/cann/set_env.sh
 ```
 
 ### 数据集准备

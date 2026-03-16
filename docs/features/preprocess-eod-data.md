@@ -28,7 +28,7 @@ cd ..
 
 ```shell
 # 请按照您的真实环境 source set_env.sh 环境变量
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+source /usr/local/Ascend/cann/set_env.sh
 cd Megatron-LM
 mv ../MindSpeed/tools/preprocess_data.py .
 mv ../MindSpeed/tools/data_handler.py .

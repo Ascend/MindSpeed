@@ -24,7 +24,7 @@ export HCCL_IF_BASE_PORT=48890
 export RAY_DEBUG_POST_MORTEM=1
 export PYTORCH_NPU_ALLOC_CONF=max_split_size_mb:2048
 # 配置cann路径
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+source /usr/local/Ascend/cann/set_env.sh
 source /usr/local/Ascend/nnal/atb/set_env.sh
 
 # 配置集群规模

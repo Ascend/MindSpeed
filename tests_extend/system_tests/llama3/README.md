@@ -39,8 +39,8 @@ Llama3-8B 训练的硬件配置:
    pip install torch_npu-2.1.0*-cp38-cp38m-linux_aarch64.whl
    pip install apex-0.1_ascend*-cp38-cp38m-linux_aarch64.whl
 
-   # 修改 ascend-toolkit 路径
-   source /usr/local/Ascend/ascend-toolkit/set_env.sh
+   # 修改 cann 路径
+   source /usr/local/Ascend/cann/set_env.sh
    ```
 3. 下载 Llama3-8B 的 [预训练权重和词表](https://hf-mirror.com/unsloth/llama-3-8b/tree/main)
 
@@ -74,8 +74,8 @@ Llama3-8B 训练的硬件配置:
      cd ..
      # 处理数据   
      mkdir ./dataset/llama-3-8b-hf/
-     # 修改 ascend-toolkit 路径
-     source /usr/local/Ascend/ascend-toolkit/set_env.sh
+     # 修改 cann 路径
+     source /usr/local/Ascend/cann/set_env.sh
      python ./preprocess_data.py \
        --input ./dataset/train-00000-of-00001-a09b74b3ef9c3b56.parquet \
        --tokenizer-name-or-path ./model_from_hf/llama-3-8b-hf/ \
@@ -89,8 +89,8 @@ Llama3-8B 训练的硬件配置:
    配置llama3-8B 预训练脚本: examples/pretrain_llama3_8b_ptd.sh
 
    ```shell
-    # 设置 ascend-toolkit 路径
-    source /usr/local/Ascend/ascend-toolkit/set_env.sh 
+    # 设置 cann 路径
+    source /usr/local/Ascend/cann/set_env.sh 
 
     # 根据实际情况配置词表、数据集、环境变量保存路径
     source "../MindSpeed/tests_extend/system_tests/env_npu.sh"
