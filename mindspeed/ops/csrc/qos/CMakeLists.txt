@@ -73,8 +73,13 @@ pybind11_add_module(aiQos ${CMAKE_SOURCE_DIR}/${SRC_FILE})
 # 7. Link Libraries
 # ==============================================================================
 # Link required libraries to the extension module
+if(EXISTS "/usr/local/dcmi/libdcmi.so")
+    set(DCMI_LIB_PATH "/usr/local/dcmi/libdcmi.so")
+else()
+    set(DCMI_LIB_PATH "/usr/local/Ascend/driver/lib64/driver/libdcmi.so")
+endif()
 target_link_libraries(aiQos PRIVATE
-    /usr/local/dcmi/libdcmi.so  # DCMI core library
+    ${DCMI_LIB_PATH}  # DCMI core library
     m                           # Math library
     pthread                     # POSIX thread library
     dl                          # Dynamic linking library

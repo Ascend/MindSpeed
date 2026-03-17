@@ -30,7 +30,7 @@ class QosFeature(MindSpeedFeature):
                 # Check if schedule is provided
                 if not args.aiqos_schedule:
                     raise ValueError(
-                        "QoS manual mode requires --qos-schedule parameter. "
+                        "QoS manual mode requires --aiqos-schedule parameter. "
                     )
             # Import QoS modules and register patches
             from mindspeed.core.qos.adaptor import create_group_qos, initialize_model_parallel_qos

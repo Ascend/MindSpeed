@@ -1,10 +1,13 @@
 #ifdef __cplusplus
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <stdexcept>
+#include <vector>
 #endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <pybind11/pybind11.h>
 #include "dcmi_interface_api.h"
 
 #define NPU_OK (0)
@@ -13,6 +16,9 @@
 #ifndef DCMI_QOS_CFG_RESERVED_LEN
 #define DCMI_QOS_CFG_RESERVED_LEN 16
 #endif
+
+#define BITMAP_ARRAY_LENGTH     4
+#define PCIE_MASTER_ID     7
 
 int set_gbl_qos(int card_id, int device_id, int mode)
 {
@@ -129,10 +135,39 @@ int qos_init()
     return 0;
 }
 
+int set_h2d_qos(int card_id, int device_id, int mpamid, int qos, unsigned long long bitmap[BITMAP_ARRAY_LENGTH])
+{
+    struct dcmi_qos_master_config masterConfig = {0};
+    masterConfig.master = PCIE_MASTER_ID;
+    masterConfig.mpamid = mpamid;
+    masterConfig.qos = qos;
+    for (int i = 0; i < BITMAP_ARRAY_LENGTH; i++) {
+        masterConfig.bitmap[i] = bitmap[i];
+    }
+
+    int ret = dcmi_set_device_info(
+        card_id,
+        device_id,
+        DCMI_MAIN_CMD_QOS,
+        (unsigned int)DCMI_QOS_SUB_MASTER_CONFIG,
+        (const void*)(&masterConfig),
+        (unsigned int)sizeof(struct dcmi_qos_master_config)
+    );
+    if (ret != 0) {
+        printf("[ERROR] Failed to set H2D QoS for card %d - device %d, error code: %d\n",
+            card_id, device_id, ret);
+        return ret;
+    } else {
+        printf("[SUCCESS] Succeeded in setting H2D QoS for card %d - device %d, qos = %d \n", card_id, device_id, qos);
+    }
+    return 0;
+}
+
 namespace py = pybind11;
 
 PYBIND11_MODULE(aiQos, m)
 {
+    m.doc() = "AI QoS (Quality of Service) control module for hardware resource management";
     m.def(
         "set_bw",
         &set_bw,
@@ -143,16 +178,32 @@ PYBIND11_MODULE(aiQos, m)
         py::arg("card_id"),
         py::arg("device_id")
     );
-
     m.def(
         "init",
         &qos_init);
-
     m.def(
         "set_gbl_qos",
         &set_gbl_qos,
         py::arg("card_id"),
         py::arg("device_id"),
         py::arg("mode")
+    );
+    m.def(
+        "set_h2d_qos",
+        [](int card_id, int device_id, int mpamid, int qos, const std::vector<unsigned long long>& bitmap_vec) {
+            if (bitmap_vec.size() != BITMAP_ARRAY_LENGTH) {
+                throw py::value_error("Bitmap must be a list of exactly 4 integers. Current count: " + std::to_string(bitmap_vec.size()));
+            }
+            unsigned long long bitmap[BITMAP_ARRAY_LENGTH];
+            for (int i = 0; i < BITMAP_ARRAY_LENGTH; ++i) {
+                bitmap[i] = bitmap_vec[i];
+            }
+            return set_h2d_qos(card_id, device_id, mpamid, qos, bitmap);
+        },
+        py::arg("card_id"),
+        py::arg("device_id"),
+        py::arg("mpamid"),
+        py::arg("qos"),
+        py::arg("bitmap")
     );
 }

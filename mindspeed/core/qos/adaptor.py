@@ -65,7 +65,7 @@ def create_group_qos(
             # type error.
             kwargs.pop('timeout')
     if pg_options is None:
-        kwargs['pg_options'] = torch_npu._C._distributer_c10d.ProcessGroupHCCL.Options()
+        kwargs['pg_options'] = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
     ai_qos = Qos()
     roce_qos = ai_qos.set_parallel_roce_qos(parallel_type)
     sdma_qos = ai_qos.set_parallel_sdma_qos(parallel_type)

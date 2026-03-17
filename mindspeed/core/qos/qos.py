@@ -6,8 +6,6 @@ import re
 from itertools import combinations
 from logging import getLogger
 
-from torch.fx.experimental.migrate_gradual_types.constraint_transformation import generate_disj
-
 from megatron.training import get_args
 from mindspeed.core.multi_modal.dist_train.dist_parallel_state import get_tensor_model_parallel_world_size
 from mindspeed.log_config import log_rank_0
@@ -45,7 +43,7 @@ _PARALLEL_TYPES = [
     'intra-dp-cp',
     'inter-dp-cp',
     'cp',
-    'mp'
+    'mp',
     'tp',
     'pp',
     'embd',
@@ -55,26 +53,13 @@ _PARALLEL_TYPES = [
     'tp-cp',
     'ep',
     'ep-tp',
-    'tp-ep-mp'
+    'tp-ep-mp',
     'tp-ep-pp',
     'ep-dp',
     'hcp'
 ]
 
 domains = ('tp', 'dp', 'pp', 'ep', 'cp')
-
-
-def mpamqos():
-    if is_a3_version:
-        import aiQos
-        aiQos.init()
-        card_id_list = [0, 1, 2, 3, 4, 5, 6, 7]
-        device_id_list = [0, 1]
-        for card_id in card_id_list:
-            for device_id in device_id_list:
-                aiQos.set_gbl_qos(card_id=card_id, device_id=device_id, mode=1)
-                aiQos.set_bw(target=0, bw_low=10, bw_high=50, hardlimit=0, card_id=card_id,
-                             device_id=device_id)
 
 
 class Qos:
@@ -261,20 +246,15 @@ class Qos:
         sorted_rate = dict(sorted(zip(rate, min_single_comb), key=lambda x: x[0], reverse=True))
         length = len(sorted_rate)
         qos_res = {}
-        if link_type == "SDMA":
-            if length <= 2:
-                queue = self.sdma_queue_list[1]
-            else:
-                queue = self.sdma_queue_list[0]
-        elif link_type == "ROCE":
-            if length <= 2:
-                queue = self.roce_queue_list[1]
-            else:
-                queue = self.roce_queue_list[0]
+        queue_index = 1 if length <= 2 else 0
+        q_list = self.sdma_queue_list if link_type == "SDMA" else self.roce_queue_list
+        if not q_list:
+            raise ValueError(f"Queue list is empty for link_type '{link_type}'. "
+                             + f"Please ensure self.{link_type.lower()}_queue_list is initialized.")
         for value in sorted_rate.values():
             for flow in value:
-                qos_res[domains[flow]] = queue
-            queue += 1
+                qos_res[domains[flow]] = q_list[queue_index]
+            queue_index += 1
         return qos_res
 
     def init_domain_qos_schedule_rules(self):
@@ -297,7 +277,8 @@ class Qos:
                 self.roce_aiqos_schedule['ep-dp'] = self.roce_aiqos_schedule['dp']
                 self.roce_aiqos_schedule['mp'] = self.roce_aiqos_schedule['pp']
                 self.roce_aiqos_schedule['tp-ep-pp'] = self.roce_aiqos_schedule['pp']
-                self.sdma_aiqos_schedule['tp-ep-mp'] = max(self.sdma_aiqos_schedule['pp'], self.sdma_aiqos_schedule['tp'])
+                self.roce_aiqos_schedule['tp-ep-mp'] = max(self.roce_aiqos_schedule['pp'],
+                                                           self.roce_aiqos_schedule['tp'])
 
 
 def generate_distributions(m, n):
