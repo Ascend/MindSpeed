@@ -1,6 +1,10 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 import torch
+try:
+    import torch_npu
+except ImportError:
+    torch_npu = None
 
 
 def eager_permute(tokens, indices):
@@ -12,7 +16,7 @@ def eager_permute(tokens, indices):
 
 
 def fused_permute(tokens, indices):
-    raise NotImplementedError
+    return torch_npu.npu_moe_token_permute(tokens, indices)
 
 
 def permute(tokens, indices, fused=False):
@@ -31,7 +35,9 @@ def eager_unpermute(permuted_tokens, sorted_indices, probs):
 
 
 def fused_unpermute(permuted_tokens, sorted_indices, probs):
-    raise NotImplementedError
+    if probs is not None:
+        permuted_tokens = permuted_tokens.to(probs.dtype)
+    return torch_npu.npu_moe_token_unpermute(permuted_tokens, sorted_indices, probs)
 
 
 def unpermute(permuted_tokens, sorted_indices, probs=None, fused=False):
