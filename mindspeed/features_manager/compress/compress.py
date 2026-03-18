@@ -47,7 +47,7 @@ class CompressOptimizerFeature(MindSpeedFeature):
                        help='Compress optimizer states.')
 
     def validate_args(self, args):
-        if args.compress_optimizer != "disable":
+        if getattr(args, "compress_optimizer", False):
             import torch_npu
             if not hasattr(torch_npu, "npu_hans_encode") or not hasattr(torch_npu, "npu_hans_decode") \
                 or not hasattr(torch_npu, "empty_with_swapped_memory"):
