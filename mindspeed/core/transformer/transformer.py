@@ -242,7 +242,11 @@ def norm_recompute_forward(
 
     # Optional Input Layer norm
     self.norm_ckpt1 = CheckpointWithoutOutput()
-    input_layernorm_output = self.norm_ckpt1.checkpoint(self.input_layernorm, False, hidden_states)
+    if self.config.transformer_impl != "transformer_engine":
+        input_layernorm_output = self.norm_ckpt1.checkpoint(self.input_layernorm, False, hidden_states)
+    else:
+        self.self_attention.linear_qkv.enable_recompute_norm(self.norm_ckpt1)
+        input_layernorm_output = self.input_layernorm(hidden_states)
 
     # Self attention.
     attention_output_with_bias = self.self_attention(
@@ -292,7 +296,11 @@ def norm_recompute_forward(
 
     # Optional Layer norm post the cross-attention.
     self.norm_ckpt2 = CheckpointWithoutOutput()
-    pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, hidden_states)
+    if self.config.transformer_impl != "transformer_engine":
+        pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, hidden_states)
+    else:
+        self.mlp.linear_fc1.enable_recompute_norm(self.norm_ckpt2)
+        pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
 
     # MLP.
     mlp_output_with_bias = self.mlp(pre_mlp_layernorm_output)

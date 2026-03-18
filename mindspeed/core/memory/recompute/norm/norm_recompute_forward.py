@@ -93,7 +93,11 @@ def norm_recompute_forward_impl(
     # Optional Layer norm post the cross-attention.
     if is_recompute_norm:
         self.norm_ckpt2 = CheckpointWithoutOutput(get_cuda_rng_tracker)
-        pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, hidden_states)
+        if self.config.transformer_impl != "transformer_engine":
+            pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, hidden_states)
+        else:
+            self.mlp.linear_fc1.enable_recompute_norm(self.norm_ckpt2)
+            pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
     else:
         pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
 
