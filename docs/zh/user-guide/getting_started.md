@@ -1,20 +1,20 @@
-# 快速上手
+# 快速入门
 
 请先参考[软件安装](./installation.md)进行环境准备，环境准备后按照如下步骤操作，即可实现Megatron-LM在昇腾设备上的高效运行，且无缝集成并充分发挥MindSpeed所提供的丰富加速与优化技术。
 
 ## 在Megatron-LM中导入MindSpeed适配器
 
-在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下新增一行“import mindspeed.megatron_adaptor”代码，即如下修改：
+  在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下新增一行“import mindspeed.megatron_adaptor”代码，即如下修改：
 
-  ```Python
-    import torch
-    import mindspeed.megatron_adaptor # 新增代码行
-    from functools import partial
-    from contextlib import nullcontext
-    import inspect
-  ```
+   ```Python
+        import torch
+        import mindspeed.megatron_adaptor # 新增代码行
+        from functools import partial
+        from contextlib import nullcontext
+        import inspect
+   ```
 
-### 数据准备
+## 数据准备
 
 参考[Megatron-LM官方文档](https://github.com/NVIDIA/Megatron-LM?tab=readme-ov-file#datasets)准备训练数据
 
@@ -24,12 +24,10 @@
 
 2. 下载数据集，以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例
 
-```text
- > [!CAUTION]注意
- > 用户需要自行设置代理，以便访问或下载数据集。
-```
+>[!CAUTION]注意    
+>用户需要自行设置代理，以便访问或下载数据集。
 
-### 配置环境变量
+## 配置环境变量
 
 当前以root用户安装后的默认路径为例，请用户根据set_env.sh的实际路径执行如下命令。
 
@@ -37,7 +35,7 @@
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
-### 数据处理
+## 数据处理
 
 1. 语料格式转换
 
@@ -87,7 +85,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
     
     执行成功后，将在gpt_pretrain_data目录下生成两个文件：alpaca_text_document.bin和alpaca_text_document.idx，代表预处理完成的预训练数据集。
 
-### 准备预训练脚本
+## 准备预训练脚本
 
 在“Megatron-LM”目录下准备预训练脚本train_distributed.sh，脚本示例如下：
 
@@ -164,7 +162,7 @@ set +x
 
 ```
 
-### 配置路径
+## 配置路径
 
 请编辑示例脚本train_distributed.sh，并设置如下环境变量以指定必要的路径：
 
@@ -177,7 +175,7 @@ DATA_PATH=./gpt_pretrain_data/alpaca_text_document
 
 上述路径需根据您的实际情况进行适当调整。
 
-### 运行脚本启动预训练
+## 运行脚本启动预训练
 
 ```shell
 bash ./train_distributed.sh

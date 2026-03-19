@@ -1,8 +1,12 @@
-# 安装说明
+# 软件安装
 
 本文主要向用户介绍如何快速基于PyTorch框架以及MindSpore框架完成MindSpeed Core（亲和加速模块）的安装。
 
-## 硬件配套和支持的操作系统
+## 安装前准备
+
+请参见《版本说明》中的“[相关产品版本配套说明](./release_notes.md#相关产品版本配套说明)”章节，下载安装对应的软件版本。
+
+### 硬件配套和支持的操作系统
 
 **表 1**  产品硬件支持列表
 
@@ -24,10 +28,6 @@
 - 各硬件产品对应虚拟机部署场景支持的操作系统请参考《CANN 软件安装指南》的“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0101.html?Mode=VmIns&InstallType=local&OS=openEuler)”章节（商用版）或“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/softwareinst/instg/instg_0101.html?Mode=VmIns&InstallType=local&OS=openEuler)”章节（社区版）。
 
 - 各硬件产品对应容器部署场景支持的操作系统请参考《CANN 软件安装指南》的“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0101.html?Mode=DockerIns&InstallType=local&OS=openEuler)”章节（商用版）或“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/softwareinst/instg/instg_0101.html?Mode=DockerIns&InstallType=local&OS=openEuler)”章节（社区版）。
-
-## 安装前准备
-
-请参见《版本说明》中的“[相关产品版本配套说明](./RELEASENOTE.md#相关产品版本配套说明)”章节，下载安装对应的软件版本。
 
 ### 安装驱动固件
 
@@ -89,7 +89,7 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
       pip install -e MindSpeed
       ```
 
-      如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed
+      如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
 
    3. 获取Megatron-LM源码切换 core_v0.12.1 版本
 
@@ -101,17 +101,11 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
         git checkout core_v0.12.1
         ```
 
-### 卸载MindSpeed
- 
-```shell
-pip uninstall -y mindspeed
-```
-
 ## 基于MindSpore框架
 
 ### 安装MindSpore框架 
 
-详情请参考[MindSpore](https://gitcode.com/mindspore/mindspore#%E5%AE%89%E8%A3%85)社区
+参考[MindSpore官方安装指导](https://www.mindspore.cn/install)，根据系统类型、CANN版本及Python版本选择相应的安装命令进行安装，安装前请确保网络畅通。
 
 ### 安装MindSpeed-Core-MS
 
@@ -147,6 +141,8 @@ pip uninstall -y mindspeed
     git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
     ```
 
+    如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
+
 2. 设置环境变量
 
     ```shell
@@ -163,3 +159,11 @@ pip uninstall -y mindspeed
     # 运行NNAL默认安装路径下atb文件夹中的环境配置脚本set_env.sh
     source /usr/local/Ascend/nnal/atb/set_env.sh
    ```
+
+## 卸载MindSpeed
+
+执行以下命令卸载MindSpeed。
+
+```shell
+pip uninstall -y mindspeed
+```
