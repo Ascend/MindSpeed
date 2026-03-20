@@ -65,7 +65,7 @@ run_training() {
         actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
         actor_rollout_ref.rollout.tensor_model_parallel_size=$tp_rollout \
         actor_rollout_ref.rollout.name=vllm \
-        actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
+        actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
         actor_rollout_ref.rollout.n=8 \
         actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
         algorithm.use_kl_in_reward=False \
