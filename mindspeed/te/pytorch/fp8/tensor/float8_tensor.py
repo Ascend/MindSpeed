@@ -7,8 +7,10 @@ import torch
 import torch_npu
 
 from megatron.training import get_args
+
+from mindspeed.te.pytorch.fp8 import get_matmul_wise_by_tensor_key, MatmulKey
 from mindspeed.te.pytorch.module_typing import FP8Metadata
-from mindspeed.te.pytorch.utils import get_hccl_comm_name, view_as_n_dim, all_gather_along_dim, get_quant_dtype
+from mindspeed.te.pytorch.utils import get_hccl_comm_name, all_gather_along_dim, get_quant_dtype, view_as_n_dim
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,9 @@ class Float8Tensor:
             dtype=self.dtype,
         )
 
+    def get_quant_data(self):
+        return self.data, self.fp8_scale
+
     def quant_matmul(self, other: 'Float8Tensor', is_rowwise: tuple[bool, bool]):
         x1 = self.t() if is_rowwise[0] else self
         x2 = other.t() if is_rowwise[1] else other
@@ -78,41 +83,39 @@ class Float8Tensor:
             te_online_comparison_bf16(x1, x2, output)
         return output
 
-    def all_gather_matmul(self, other: 'Float8Tensor', bias, fp8_meta: FP8Metadata, transpose):
-        x1, x1_scale = map(view_as_n_dim, (self.data, self.fp8_scale))
-        _, x1_scale = all_gather_along_dim(x1_scale)
-        x2, x2_scale = map(view_as_n_dim, (other.data, other.fp8_scale))
+    def all_gather_matmul(self, other: 'Float8Tensor', bias, fp8_meta: FP8Metadata, key: MatmulKey):
+        x1_need_transpose, x2_need_transpose = get_matmul_wise_by_tensor_key(self, key)
+        _, x1_scale = all_gather_along_dim(self.fp8_scale)
+        x1 = view_as_n_dim(self.data).t() if x1_need_transpose else view_as_n_dim(self.data)
+        x2 = view_as_n_dim(other.data).t() if x2_need_transpose else view_as_n_dim(other.data)
         # x1 scale 因为是单标量tensor 与之前allgather输出 tensor相同 可以省一次allgather
         hcomm_name = get_hccl_comm_name(fp8_meta.tp_group, fp8_meta.tp_rank)
         output, gather_out, _ = torch_npu.npu_all_gather_quant_mm(
             x1, x2, hcomm_name, fp8_meta.tp_world_size,
-            bias=bias, x1_scale=x1_scale, x2_scale=x2_scale,
+            bias=bias, x1_scale=self.fp8_scale, x2_scale=other.fp8_scale,
             y_dtype=self.dtype
         )
-        gather_out = Float8Tensor(gather_out.t(), self.fp8_dtype, x1_scale, self.dtype)
+        gather_out = Float8Tensor(
+            gather_out,
+            self.fp8_dtype,
+            x1_scale,
+            self.dtype
+        )
         return output.view(-1, self.shape[1], output.shape[1]), gather_out
 
-    def matmul_reduce_scatter(self, other: 'Float8Tensor', bias, fp8_meta: FP8Metadata, transpose=(False, False)):
-        x1, x1_scale = map(view_as_n_dim, (self.data, self.fp8_scale))
-        x2, x2_scale = map(view_as_n_dim, (other.data, other.fp8_scale))
-        if transpose[0]:
-            x1, x1_scale = x1.T, x1_scale.T
-        if transpose[1]:
-            x2, x2_scale = x2.T, x2_scale.T
+    def matmul_reduce_scatter(self, other: 'Float8Tensor', bias, fp8_meta: FP8Metadata, key: MatmulKey):
+        x1_need_transpose, x2_need_transpose = get_matmul_wise_by_tensor_key(self, key)
+        x1 = view_as_n_dim(self.data).t() if x1_need_transpose else view_as_n_dim(self.data)
+        x2 = view_as_n_dim(other.data).t() if x2_need_transpose else view_as_n_dim(other.data)
 
         hcomm_name = get_hccl_comm_name(fp8_meta.tp_group, fp8_meta.tp_rank)
         output, _ = torch_npu.npu_quant_mm_reduce_scatter(
             x1, x2, hcomm_name, fp8_meta.tp_world_size,
             bias=bias,
             reduce_op='sum',
-            x1_scale=x1_scale, x2_scale=x2_scale,
-            quant_scale=None,
-            block_size=0,
-            comm_turn=0,
-            group_sizes=[1, 1, 32],
-            amax_output=False,
+            x1_scale=self.fp8_scale, x2_scale=other.fp8_scale,
+            **get_quant_dtype().mm_kwargs,
             y_dtype=self.dtype,
-            x1_dtype=None, x2_dtype=None,
         )
         return output.view(-1, self.shape[1], output.shape[1])
 
@@ -133,15 +136,13 @@ class Float8Tensor2D:
         self,
         fp8_dtype: torch.dtype,
         origin_shape: torch.Size,
+        device: 'torch.device',
         dtype: torch.dtype = torch.float32,
     ):
         self.fp8_dtype = fp8_dtype
-        self.dtype = dtype
         self.origin_shape = origin_shape
-
-    @property
-    def device(self):
-        return self.col_tensor.data.device
+        self.device = device
+        self.dtype = dtype
 
     def set_col_data(self, data, scale, t=False):
         if data is None:

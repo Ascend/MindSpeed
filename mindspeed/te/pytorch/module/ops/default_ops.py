@@ -1,13 +1,13 @@
 import torch
 
-from mindspeed.te.pytorch.fp8 import fp8_matmul
+from mindspeed.te.pytorch.fp8 import fp8_matmul, get_matmul_wise_by_tensor_key
 from mindspeed.te.pytorch.module.ops.comm_overlap_ops import CommOverlapOps
 
 
 class DefaultOps(CommOverlapOps):
 
     @staticmethod
-    def allgather_matmul(input_, weight, bias, fp8_meta, key=None, fp8_enable=False, transpose=(False, False)):
+    def allgather_matmul(input_, weight, bias, fp8_meta, key=None, fp8_enable=False):
 
         dim_size = list(input_.size())
         dim_size[0] = dim_size[0] * fp8_meta.tp_world_size
@@ -16,6 +16,7 @@ class DefaultOps(CommOverlapOps):
         torch.distributed._all_gather_base(total_input, input_.contiguous(), group=fp8_meta.tp_group, async_op=False)
 
         if not fp8_enable:
+            transpose = get_matmul_wise_by_tensor_key(total_input, key)
             output = torch.matmul(
                 total_input.t() if transpose[0] else total_input,
                 weight.t() if transpose[1] else weight
@@ -26,8 +27,9 @@ class DefaultOps(CommOverlapOps):
             return output, input_fp8, weight_fp8
 
     @staticmethod
-    def matmul_reduce_scatter(input_, weight, bias, fp8_meta, key=None, fp8_enable=False, transpose=(False, True)):
+    def matmul_reduce_scatter(input_, weight, bias, fp8_meta, key, fp8_enable=False):
         if not fp8_enable:
+            transpose = get_matmul_wise_by_tensor_key(input_, key)
             output_ = torch.matmul(
                 input_.t() if transpose[0] else input_,
                 weight.t() if transpose[1] else weight

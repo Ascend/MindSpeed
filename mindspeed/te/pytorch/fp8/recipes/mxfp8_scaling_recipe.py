@@ -18,7 +18,7 @@ class MXFP8ScalingRecipe(Recipe):
         coly, col_scale, rowy, row_scale = None, None, None, None
         tensor_2d = view_as_n_dim(tensor)
         fp8_dtype = self.quant_dtype
-        mxfp8_tensor = MXFP8Tensor(fp8_dtype, tensor.shape, tensor.dtype)
+        mxfp8_tensor = MXFP8Tensor(fp8_dtype, tensor.shape, tensor.device, tensor.dtype)
 
         if rowwise and colwise:
             coly, col_scale, rowy, row_scale = \

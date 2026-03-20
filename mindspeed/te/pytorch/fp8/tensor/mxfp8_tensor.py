@@ -3,6 +3,8 @@
 
 import torch_npu
 from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.te.pytorch.fp8 import MatmulKey
+from mindspeed.te.pytorch.fp8.constants import get_matmul_wise_by_tensor_key
 from mindspeed.te.pytorch.fp8.tensor.float8_tensor import Float8Tensor2D
 from mindspeed.te.pytorch.module_typing import FP8Metadata
 from mindspeed.te.pytorch.utils import all_gather_along_dim
@@ -32,9 +34,24 @@ class MXFP8Tensor(Float8Tensor2D):
             tensor.untyped_storage().resize_(0)
         return output
 
-    def all_gather_matmul(self, other: 'MXFP8Tensor', bias, fp8_meta: FP8Metadata, transpose: tuple[bool, bool]):
-        x2, x2_scale = other.get_quant_data(transpose[1])
-        row_data, row_scale = self.row_tensor.t() if transpose == (False, False) else self.row_tensor
+    def quant_matmul_add(self, main_grad, other: 'MXFP8Tensor', is_rowwise):
+        x1, x1_scale = self.get_quant_data(is_rowwise[0])
+        x2, x2_scale = other.get_quant_data(is_rowwise[1])
+        torch_npu.npu_add_quant_matmul_(
+            main_grad, x1, x2,
+            x2_scale, x1_scale=x1_scale,
+            x1_scale_dtype=torch_npu.float8_e8m0fnu,
+            x2_scale_dtype=torch_npu.float8_e8m0fnu,
+            group_sizes=[1, 1, 32]
+        )
+        # 使用完 后续就不会继续调用, 直接清理掉显存
+        for tensor in (x1, x1_scale, x2, x2_scale):
+            tensor.untyped_storage().resize_(0)
+
+    def all_gather_matmul(self, other: 'MXFP8Tensor', bias, fp8_meta: FP8Metadata, key: MatmulKey):
+        _, is_rowwise = get_matmul_wise_by_tensor_key(self, key)
+        x2, x2_scale = other.get_quant_data(is_rowwise)
+        row_data, row_scale = self.row_tensor.t() if key == MatmulKey.dx else self.row_tensor
         _, row_data = all_gather_along_dim(row_data)
         _, row_scale = all_gather_along_dim(row_scale)
         output, _, _ = torch_npu.npu_all_gather_quant_mm(
@@ -55,13 +72,14 @@ class MXFP8Tensor(Float8Tensor2D):
             x1_scale_dtype=torch_npu.float8_e8m0fnu,
             x2_scale_dtype=torch_npu.float8_e8m0fnu,
         )
-        gather_out = MXFP8Tensor(self.fp8_dtype, self.origin_shape, dtype=self.dtype)
-        gather_out.set_row_data(row_data, row_scale, transpose == (False, False))
+        gather_out = MXFP8Tensor(self.fp8_dtype, self.origin_shape, self.device, dtype=self.dtype)
+        gather_out.set_row_data(row_data, row_scale, key == MatmulKey.dx)
         return output.view(-1, self.origin_shape[1], output.shape[1]), gather_out
 
-    def matmul_reduce_scatter(self, other: 'MXFP8Tensor', bias, fp8_meta: FP8Metadata, transpose: tuple[bool, bool]):
-        x1, x1_scale = self.get_quant_data(transpose[0])
-        x2, x2_scale = other.get_quant_data(transpose[1])
+    def matmul_reduce_scatter(self, other: 'MXFP8Tensor', bias, fp8_meta: FP8Metadata, key: MatmulKey):
+        x1_row_wise, x2_row_wise = get_matmul_wise_by_tensor_key(self, key)
+        x1, x1_scale = self.get_quant_data(x1_row_wise)
+        x2, x2_scale = other.get_quant_data(x2_row_wise)
 
         output, _ = torch_npu.npu_quant_mm_reduce_scatter(
             x1, x2,

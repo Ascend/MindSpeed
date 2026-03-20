@@ -9,6 +9,8 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
 from megatron.training.arguments import parse_args, core_transformer_config_from_args
 from megatron.training.global_vars import set_args
 from megatron.training.initialize import _set_random_seed
+
+from mindspeed.te.pytorch.fp8 import MatmulKey
 from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
 from mindspeed.te.pytorch.module.linear import TEColumnParallelLinear, TERowParallelLinear
 from mindspeed.te.pytorch.module.ops.default_ops import DefaultOps
@@ -36,8 +38,8 @@ class TestAllgatherMatmul(DistributedTest):
         w = torch.randn(seq_size, input_size, dtype=dtype) * 5
         fp8_meta = FP8Metadata(["inputs", "weight", "grads"])
         output_baseline = self.allgather_matmul(x, w).view(-1)
-        output_default = DefaultOps.allgather_matmul(x.npu(), w.npu(), None, fp8_meta, transpose=(False, True))
-        output_mc2 = Mc2Ops.allgather_matmul(x.npu(), w.npu(), None, fp8_meta, transpose=(False, True))
+        output_default = DefaultOps.allgather_matmul(x.npu(), w.npu(), None, fp8_meta, MatmulKey.forward)
+        output_mc2 = Mc2Ops.allgather_matmul(x.npu(), w.npu(), None, fp8_meta, MatmulKey.forward)
         output_default = output_default[0].view(-1).cpu()
         output_mc2 = output_mc2[0].view(-1).cpu()
         assert multi_compare(output_mc2, output_baseline, output_default, f"{torch.npu.current_device()}") != "FAIL"
@@ -54,7 +56,7 @@ class TestAllgatherMatmul(DistributedTest):
 class TestMatmulReduceScatter(DistributedTest):
     world_size = 8
 
-    def test_matmul_reduce_sactter(self):
+    def test_matmul_reduce_scatter(self):
         batch_size = 1
         seq_size = 4096
         input_size = 1024
@@ -70,8 +72,8 @@ class TestMatmulReduceScatter(DistributedTest):
         w = torch.randn(seq_size, input_size, dtype=dtype) * 5
         fp8_meta = FP8Metadata(["inputs", "weight", "grads"])
         output_baseline = self.reduce_scatter(x, w).view(-1)
-        output_default, _, _ = DefaultOps.matmul_reduce_scatter(x.npu(), w.npu(), None, fp8_meta)
-        output_mc2, _, _ = Mc2Ops.matmul_reduce_scatter(x.npu(), w.npu(), None, fp8_meta)
+        output_default, _, _ = DefaultOps.matmul_reduce_scatter(x.npu(), w.npu(), None, fp8_meta, MatmulKey.forward)
+        output_mc2, _, _ = Mc2Ops.matmul_reduce_scatter(x.npu(), w.npu(), None, fp8_meta, MatmulKey.forward)
         output_default = output_default.view(-1).cpu()
         output_mc2 = output_mc2.view(-1).cpu()
         assert multi_compare(

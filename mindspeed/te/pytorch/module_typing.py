@@ -26,7 +26,7 @@ if typing.TYPE_CHECKING:
 
     FP8Recipe = typing.Union[CurrentScalingRecipe, DelayedScalingRecipe, Float8BlockRecipe, MXFP8ScalingRecipe]
     FP8RecipeScaling = typing.Union[Float8CurrentScaling, TEDelayedScaling, Float8BlockScaling, MXFP8BlockScaling]
-    FP8Tensor = typing.Union[Float8Tensor, Float8Tensor2D, Float8BlockTensor, MXFP8Tensor, torch.Tenror]
+    FP8Tensor = typing.Union[Float8Tensor, Float8Tensor2D, Float8BlockTensor, MXFP8Tensor, torch.Tensor]
 else:
 
     def __getattr__(name):

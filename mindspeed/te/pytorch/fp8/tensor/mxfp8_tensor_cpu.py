@@ -15,12 +15,14 @@ class MXFP8TensorCpu(Float8Tensor2D):
         self.data_t = mxfp8tensor.row_tensor.data.cpu()
         self.scale_t = mxfp8tensor.row_tensor.scale
         self._dtype = mxfp8tensor.dtype
+        self.device = mxfp8tensor.device
         self.origin_shape = mxfp8tensor.origin_shape
 
     def to_MXFP8Tensor(self):
         mxfp8tensor_npu = MXFP8Tensor(
             self.fp8_dtype,
             self.origin_shape,
+            self.device,
             self._dtype
         )
         mxfp8tensor_npu.set_col_data(self.data, self.fp8_scale)

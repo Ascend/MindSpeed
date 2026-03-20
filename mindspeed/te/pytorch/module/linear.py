@@ -1,5 +1,5 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 from typing import Any, Callable, Optional
 
 import torch
@@ -18,8 +18,7 @@ from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, 
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import divide
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.te.pytorch.fp8 import fp8_matmul, MatmulKey, is_fp8_tensor_2d
-from mindspeed.te.pytorch.fp8.constants import TensorKey
+from mindspeed.te.pytorch.fp8 import fp8_matmul, MatmulKey, is_fp8_tensor_2d, fp8_matmul_add
 from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
 from mindspeed.te.pytorch.module.ops import get_ops, DummyHandle
 from mindspeed.te.pytorch.module.ops.comm_overlap_ops import COMM_OVERLAP_CONFIG
@@ -172,7 +171,6 @@ class TEColumnParallelLinear(torch.nn.Module):
                 )
 
         bias = self.bias if not self.skip_bias_add else None
-
         if self.explicit_expert_comm and self.fp8_meta.fp8_enable:
             from mindspeed.te.pytorch.fp8.recipes import matmul_fp8
             output = matmul_fp8(input_, weight)
@@ -212,51 +210,46 @@ class ColumnParallelSeq(torch.autograd.Function):
 
         output_parallel, total_input, weight_fp8 = get_ops().allgather_matmul(input_, weight, None,
                                                                               fp8_meta, MatmulKey.forward,
-                                                                              ctx.fp8_enable, (False, True))
+                                                                              ctx.fp8_enable)
         if COMM_OVERLAP_CONFIG.save_allgather_input:
             ctx.total_input = total_input
 
         if ctx.fp8_enable:
-            save_xw_for_backword(ctx, None, weight_fp8)
+            BackwardStateStorage.save(ctx, None, weight_fp8, weight)
         else:
-            save_xw_for_backword(ctx, input_, weight)
+            BackwardStateStorage.save(ctx, input_, weight, weight)
         ctx.input_size = input_.size()
 
         return output_parallel
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, grad_output: torch.Tensor):
         fp8_meta: FP8Metadata = ctx.fp8_meta
         fp8_enable = ctx.fp8_enable
         input_size = ctx.input_size
         tp_group = get_tensor_model_parallel_group()
-        tp_world_size = get_tensor_model_parallel_world_size()
-        grad_output_ori = grad_output
+        ori_grad = grad_output
 
-        input_, weight = load_xw_from_forward(ctx)
-
+        input_, weight, weight_param = BackwardStateStorage.load(ctx)
         all_gather_handle, total_input = DummyHandle, ctx.total_input
         if ctx.needs_input_grad[1] and not COMM_OVERLAP_CONFIG.save_allgather_input:
-            # 暂时不会跑进该分支, 暂时不考虑下述变量适配
-            if fp8_enable:
-                grad_output = fp8_meta.quantization(TensorKey.grads, grad_output)
-                input_ = fp8_meta.quantization(TensorKey.inputs, input_)
-            all_gather_handle, total_input = async_gather_along_first_dim(input_, tp_group, tp_world_size)
-
+            # It won't touch this branch temporarily, it's not suitable for now
+            pass
         if not fp8_enable:
             grad_input = grad_output.matmul(weight)
             sub_grad_input = torch.empty(input_.size(), dtype=input_.dtype, device=input_.device, requires_grad=False)
         else:
             grad_input, grad_output, _ = fp8_matmul(grad_output, weight, fp8_meta, MatmulKey.dx)
-            # 开启fp8之后，由于暂时没有fp8通信，这里保存的是total input，而不是input_
-            sub_grad_input = torch.empty(input_size, dtype=total_input.dtype, device=weight.device,
+            # After enabling FP8, total_input is saved here instead of input_ due to lack of FP8 communication
+            sub_grad_input = torch.empty(input_size, dtype=total_input.dtype, device=total_input.device,
                                          requires_grad=False)
 
         reduce_scatter_handle = torch.distributed._reduce_scatter_base(sub_grad_input, grad_input, group=tp_group,
                                                                        async_op=True)
 
         all_gather_handle.wait()
-        grad_weight, grad_bias = calculate_grad(ctx, total_input, weight, grad_output, grad_output_ori)
+        grad_weight, grad_bias = calculate_grad(ctx, total_input, weight_param, grad_output,
+                                                ori_grad)
 
         reduce_scatter_handle.wait()
         return sub_grad_input, grad_weight, grad_bias, None
@@ -271,34 +264,34 @@ class ColumnParallelNoSeq(torch.autograd.Function):
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
         if fp8_meta is None or not fp8_meta.is_fp8_enable():
             output = torch.matmul(input_, weight.t())
+            BackwardStateStorage.save(ctx, input_, weight, weight)
         else:
-            output, input_, weight = fp8_matmul(input_, weight, fp8_meta, MatmulKey.forward)
-
-        save_xw_for_backword(ctx, input_, weight)
+            output, fp8_input, fp8_weight = fp8_matmul(input_, weight, fp8_meta, MatmulKey.forward)
+            BackwardStateStorage.save(ctx, fp8_input, fp8_weight, weight)
 
         if bias is not None:
             output = output + bias
         return output
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, grad_output: torch.Tensor):
         tp_group = get_tensor_model_parallel_group()
         tp_world_size = get_tensor_model_parallel_world_size()
-        grad_output_ori = grad_output
-        input_, weight = load_xw_from_forward(ctx)
+        ori_grad = grad_output
+        input_, weight, weight_param = BackwardStateStorage.load(ctx)
 
         if not ctx.fp8_enable:
             grad_input = grad_output.matmul(weight)
         else:
             grad_input, grad_output, _ = fp8_matmul(grad_output, weight, ctx.fp8_meta, MatmulKey.dx)
 
-        # 当前0shape规避allreduce输入矩阵为0的场景，实际需要支持allreduce TP=1场景，后续删除判断代码
+        # Handle allreduce for zero-shape input to avoid issues when TP=1, will be removed later
         handle = DummyHandle
         if tp_world_size > 1:
             handle = torch.distributed.all_reduce(grad_input, group=tp_group, async_op=True)
 
-        grad_weight, grad_bias = calculate_grad(ctx, input_, weight, grad_output, grad_output_ori)
-        # 在计算之后等待
+        grad_weight, grad_bias = calculate_grad(ctx, input_, weight_param, grad_output, ori_grad)
+        # Wait after computation
         handle.wait()
 
         return grad_input, grad_weight, grad_bias, None
@@ -460,21 +453,22 @@ class RowParallelSeq(torch.autograd.Function):
         ctx.fp8_meta = fp8_meta
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
-        output_parallel, input_, weight = get_ops().matmul_reduce_scatter(input_, weight, bias,
-                                                                          fp8_meta, MatmulKey.forward,
-                                                                          ctx.fp8_enable)
-        save_xw_for_backword(ctx, input_, weight)
+        output_parallel, input_, _weight = get_ops().matmul_reduce_scatter(
+            input_, weight, bias, fp8_meta, MatmulKey.forward, ctx.fp8_enable
+        )
+        BackwardStateStorage.save(ctx, input_, _weight, weight)
 
         return output_parallel
 
     @staticmethod
     def backward(ctx, grad_output):
-        grad_output_ori = grad_output
-        input_, weight = load_xw_from_forward(ctx)
+        ori_grad = grad_output
+        input_, weight, weight_param = BackwardStateStorage.load(ctx)
 
-        grad_input, grad_output, _ = get_ops().allgather_matmul(grad_output, weight, None, ctx.fp8_meta,
-                                                                MatmulKey.dx, ctx.fp8_enable)
-        grad_weight, grad_bias = calculate_grad(ctx, input_, weight, grad_output, grad_output_ori)
+        grad_input, grad_output, _ = get_ops().allgather_matmul(
+            grad_output, weight, None, ctx.fp8_meta, MatmulKey.dx, ctx.fp8_enable
+        )
+        grad_weight, grad_bias = calculate_grad(ctx, input_, weight_param, grad_output, ori_grad)
         return grad_input, grad_weight, grad_bias, None
 
 
@@ -486,104 +480,165 @@ class RowParallelNoSeq(torch.autograd.Function):
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
 
-        output_, input_, weight = get_ops().matmul_all_reduce(input_, weight, bias, fp8_meta,
-                                                              MatmulKey.forward, ctx.fp8_enable)
-        save_xw_for_backword(ctx, input_, weight)
+        output_, _input, _weight = get_ops().matmul_all_reduce(input_, weight, bias, fp8_meta,
+                                                               MatmulKey.forward, ctx.fp8_enable)
+        BackwardStateStorage.save(ctx, _input, _weight, weight)
         return output_
 
     @staticmethod
     def backward(ctx, grad_output):
-        grad_output_ori = grad_output
-        input_, weight = load_xw_from_forward(ctx)
+        ori_grad = grad_output
+        input_, weight, weight_param = BackwardStateStorage.load(ctx)
         if not ctx.fp8_enable:
             grad_input = grad_output.matmul(weight)
         else:
             grad_input, grad_output, _ = fp8_matmul(grad_output, weight, ctx.fp8_meta, MatmulKey.dx)
 
-        grad_weight, grad_bias = calculate_grad(ctx, input_, weight, grad_output, grad_output_ori)
+        grad_weight, grad_bias = calculate_grad(ctx, input_, weight_param, grad_output, ori_grad)
         return grad_input, grad_weight, grad_bias, None
 
 
 def async_gather_along_first_dim(input_, group, world_size):
     dim_size = list(input_.size())
     dim_size[0] = dim_size[0] * world_size
-    output_ = torch.empty(dim_size, dtype=input_.dtype, device=torch.npu.current_device(), requires_grad=False)
-    work = torch.distributed._all_gather_base(output_, input_.contiguous(), group=group, async_op=True)
+    output_ = torch.empty(
+        dim_size, dtype=input_.dtype, device=torch.npu.current_device(), requires_grad=False
+    )
+    work = torch.distributed._all_gather_base(
+        output_, input_.contiguous(), group=group, async_op=True
+    )
     return work, output_
 
 
-def calculate_grad(ctx, inp, weight, grad, ori_grad):
-    _, is_grad_weight_needed, is_grad_bias_needed, _ = ctx.needs_input_grad
-    grad_weight, grad_bias = None, None
+class BackwardStateStorage:
+    """
+    Manages state storage from forward to backward pass in Autograd Functions.
+    
+    Handles three modes:
+    1. FP8 mode: Store quantized input/weight and original weight parameter
+    2. Gradient Accumulation Fusion mode: Save input only, store weight as attribute
+    3. Normal mode: Save input and weight via save_for_backward
+    """
 
-    # calculate_grad_weight
-    if is_grad_weight_needed:
-        grad, total_input = reshape_to_2D(grad), reshape_to_2D(inp)
+    @staticmethod
+    def save(ctx, input_: torch.Tensor,
+             weight: torch.Tensor, weight_param: Optional[torch.Tensor] = None) -> None:
+        """Save input and weight from forward pass for backward pass."""
         if ctx.fp8_enable:
-            grad_weight, _, _ = fp8_matmul(grad, total_input, ctx.fp8_meta, MatmulKey.dw)
-        elif ctx.gradient_accumulation_fusion and weight.main_grad.dtype == torch.float32:
-            from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
-            npu_matmul_add_fp32(total_input, grad, weight.main_grad)
-
-            if hasattr(weight, 'grad_added_to_main_grad'):
-                # When overlap_grad_reduce is True, need to ensure that backward hooks
-                # are all run on the main backprop thread to prevent deadlocks. Setup
-                # dummy grad_weight tensor to prevent backward hooks from being run
-                # in a background thread.
-                if getattr(weight, 'zero_out_wgrad', False):
-                    grad_weight = torch.zeros(
-                        weight.main_grad.shape,
-                        dtype=total_input.dtype,
-                        device=torch.cuda.current_device(),
-                        requires_grad=False,
-                    )
-                else:
-                    grad_weight = torch.empty(
-                        weight.main_grad.shape,
-                        dtype=total_input.dtype,
-                        device=torch.cuda.current_device(),
-                        requires_grad=False,
-                    )
-                weight.grad_added_to_main_grad = True
-            else:
-                grad_weight = None
+            # FP8 mode: quantized tensors don't need grad tracking, store as attributes
+            ctx.input_fp8 = input_
+            ctx.weight_fp8 = weight
+            ctx.weight_param = weight_param
+        elif ctx.gradient_accumulation_fusion:
+            # Fusion mode: save input only, store weight as attribute
+            ctx.save_for_backward(input_)
+            ctx.weight = weight
+            ctx.weight_param = weight_param
         else:
-            grad_weight = grad.t().matmul(total_input)
+            # Normal mode: save input and weight
+            ctx.save_for_backward(input_, weight)
+            ctx.weight_param = weight_param
 
-    # calculate_grad_bias
-    if is_grad_bias_needed and ctx.use_bias:
+    @staticmethod
+    def load(ctx) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Load input and weight saved from forward pass in backward pass."""
         if ctx.fp8_enable:
-            grad = reshape_to_2D(ori_grad)
-        grad_bias = grad.sum(dim=0)
+            return ctx.input_fp8, ctx.weight_fp8, ctx.weight_param
+        elif ctx.gradient_accumulation_fusion:
+            return ctx.saved_tensors[0], ctx.weight, ctx.weight_param
+        else:
+            input_, weight = ctx.saved_tensors
+            return input_, weight, ctx.weight_param
+
+
+def _calculate_grad_weight(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
+                           grad: torch.Tensor) -> Optional[torch.Tensor]:
+    """Calculate gradient of weight."""
+    grad, total_input = reshape_to_2D(grad), reshape_to_2D(inp)
+
+    if ctx.fp8_enable:
+        from mindspeed.te.pytorch.fp8.recipes import MXFP8BlockScaling
+        if ctx.gradient_accumulation_fusion and isinstance(ctx.fp8_meta.fp8_recipe, MXFP8BlockScaling):
+            fp8_matmul_add(weight_param.main_grad, grad, total_input, ctx.fp8_meta)
+            return _create_grad_weight_placeholder(weight_param)
+        else:
+            grad_weight, _, _ = fp8_matmul(grad, total_input, ctx.fp8_meta, MatmulKey.dw)
+            return grad_weight
+    elif ctx.gradient_accumulation_fusion and weight_param.main_grad.dtype == torch.float32:
+        from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
+        npu_matmul_add_fp32(total_input, grad, weight_param.main_grad)
+        return _create_grad_weight_placeholder(weight_param)
+    else:
+        return grad.t().matmul(total_input)
+
+
+def _calculate_grad_bias(ctx, grad: torch.Tensor, ori_grad: torch.Tensor) -> Optional[torch.Tensor]:
+    """Calculate gradient of bias."""
+    if not ctx.use_bias:
+        return None
+    if ctx.fp8_enable:
+        grad = reshape_to_2D(ori_grad)
+    return grad.sum(dim=0)
+
+
+def _create_grad_weight_placeholder(weight: torch.Tensor) -> Optional[torch.Tensor]:
+    """
+        # When overlap_grad_reduce is True, need to ensure that backward hooks
+        # are all run on the main backprop thread to prevent deadlocks. Setup
+        # dummy grad_weight tensor to prevent backward hooks from being run
+        # in a background thread.
+    """
+    if not hasattr(weight, 'grad_added_to_main_grad'):
+        return None
+
+    if getattr(weight, 'zero_out_wgrad', False):
+        grad_weight = torch.zeros(
+            weight.main_grad.shape,
+            dtype=weight.dtype,
+            device=torch.cuda.current_device(),
+            requires_grad=False,
+        )
+    else:
+        grad_weight = torch.empty(
+            weight.main_grad.shape,
+            dtype=weight.dtype,
+            device=torch.cuda.current_device(),
+            requires_grad=False,
+        )
+    weight.grad_added_to_main_grad = True
+    return grad_weight
+
+
+def calculate_grad(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
+                   grad: torch.Tensor, ori_grad: torch.Tensor) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+    """
+    Calculate gradients of weight and bias.
+    
+    Args:
+        ctx: Autograd context
+        inp: Input tensor (may be FP8 quantized)
+        weight_param: Original weight parameter (for gradient accumulation)
+        grad: Output gradient (may be FP8 quantized)
+        ori_grad: Original output gradient (for bias calculation)
+    
+    Returns:
+        (grad_weight, grad_bias)
+    """
+    _, is_grad_weight_needed, is_grad_bias_needed, _ = ctx.needs_input_grad
+
+    grad_weight = None
+    if is_grad_weight_needed:
+        grad_weight = _calculate_grad_weight(ctx, inp, weight_param, grad)
+
+    grad_bias = None
+    if is_grad_bias_needed:
+        grad_bias = _calculate_grad_bias(ctx, grad, ori_grad)
 
     return grad_weight, grad_bias
 
 
-def save_xw_for_backword(ctx, input_, weight):
-    if ctx.fp8_enable:
-        ctx.input_fp8 = input_
-        ctx.weight_fp8 = weight
-    elif ctx.gradient_accumulation_fusion:
-        ctx.save_for_backward(input_)
-        ctx.weight = weight
-    else:
-        ctx.save_for_backward(input_, weight)
-
-
-def load_xw_from_forward(ctx):
-    if ctx.fp8_enable:
-        input_ = ctx.input_fp8
-        weight = ctx.weight_fp8
-    elif ctx.gradient_accumulation_fusion:
-        input_ = ctx.saved_tensors[0]
-        weight = ctx.weight
-    else:
-        input_, weight = ctx.saved_tensors
-    return input_, weight
-
-
-def reshape_to_2D(input_tensor):
-    # Convert the tensor shapes to 2D for execution compatibility
+def reshape_to_2D(input_tensor: torch.Tensor) -> torch.Tensor:
+    """Reshape tensor to 2D for execution compatibility."""
     if is_fp8_tensor_2d(input_tensor):
         return input_tensor
     return input_tensor.reshape(-1, input_tensor.shape[-1])

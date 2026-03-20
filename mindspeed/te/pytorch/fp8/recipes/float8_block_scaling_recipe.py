@@ -31,7 +31,7 @@ class Float8BlockRecipe(Recipe):
             return tensor
         tensor_2d = view_as_n_dim(tensor)
         col_data, row_data, col_scale, row_scale = None, None, None, None
-        quant_tensor = Float8BlockTensor(self.fp8_format_dtype, tensor.shape, tensor.dtype)
+        quant_tensor = Float8BlockTensor(self.fp8_format_dtype, tensor.shape, tensor.device, tensor.dtype)
 
         col_quant_dim = self.quant_dim[(key, self.colwise)]
         row_quant_dim = self.quant_dim[(key, self.rowwise)]

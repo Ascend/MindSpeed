@@ -72,6 +72,26 @@ class MatmulKey(tuple, Enum):
     dw = (TensorKey.grads, TensorKey.inputs)
 
 
+# MXFP8 and Blockwise Recipe
+MATMUL_WISE_MAP = {
+    MatmulKey.forward: (False, False),
+    MatmulKey.dx: (False, True),
+    MatmulKey.dw: (True, True),
+}
+# Delayed And Current Recipe
+MATMUL_WISE_MAP_NORMAL = {
+    MatmulKey.forward: (False, True),
+    MatmulKey.dx: (False, False),
+    MatmulKey.dw: (True, False),
+}
+
+
+def get_matmul_wise_by_tensor_key(tensor, key):
+    from mindspeed.te.pytorch.fp8 import is_fp8_tensor_2d
+    matmul_wise = MATMUL_WISE_MAP if is_fp8_tensor_2d(tensor) else MATMUL_WISE_MAP_NORMAL
+    return matmul_wise[key]
+
+
 def amax_compute_max(amax, amax_history, last_history_index):
     amax.copy_(torch.amax(amax_history, dim=0), non_blocking=True)
 

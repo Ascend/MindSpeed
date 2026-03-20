@@ -4,24 +4,11 @@ import torch
 
 import torch_npu
 from mindspeed.te.pytorch.fp8.checkpoint import is_fp8_activation_recompute_enabled, in_fp8_activation_recompute_phase
-from mindspeed.te.pytorch.fp8.constants import FormatEnum, MatmulKey
+from mindspeed.te.pytorch.fp8.constants import FormatEnum, MatmulKey, get_matmul_wise_by_tensor_key
 from mindspeed.te.pytorch.fp8.tensor import is_fp8_tensor, is_fp8_tensor_2d, Float8TensorCpu, MXFP8TensorCpu
 from mindspeed.te.pytorch.module_typing import FP8Metadata, FP8Tensor
 
 logger = logging.getLogger(__name__)
-
-# MXFP8 and Blockwise Recipe
-MATMUL_WISE_MAP = {
-    MatmulKey.forward: (False, False),
-    MatmulKey.dx: (False, True),
-    MatmulKey.dw: (True, True),
-}
-# Delayed And Current Recipe
-MATMUL_WISE_MAP_NORMAL = {
-    MatmulKey.forward: (False, True),
-    MatmulKey.dx: (False, False),
-    MatmulKey.dw: (True, False),
-}
 
 
 def fp8_matmul(
@@ -45,9 +32,23 @@ def fp8_matmul(
     if not is_fp8_tensor(weight):
         weight = fp8_meta.quantization(key[1], weight, rowwise=rowwise)
     # quant matmul
-    matmul_wise = MATMUL_WISE_MAP if is_fp8_tensor_2d(inputs) else MATMUL_WISE_MAP_NORMAL
-    output = inputs.quant_matmul(weight, matmul_wise[key])
+    output = inputs.quant_matmul(weight, get_matmul_wise_by_tensor_key(inputs, key))
     return output, inputs, weight
+
+
+def fp8_matmul_add(
+    main_grad: torch.Tensor,
+    inputs: FP8Tensor,
+    weight: FP8Tensor,
+    fp8_meta: FP8Metadata,
+    key: MatmulKey = MatmulKey.dw
+):
+    if not is_fp8_tensor(inputs):
+        inputs = fp8_meta.quantization(key[0], inputs, rowwise=True)
+    if not is_fp8_tensor(weight):
+        weight = fp8_meta.quantization(key[1], weight, rowwise=True)
+    # quant matmul
+    inputs.quant_matmul_add(main_grad, weight, get_matmul_wise_by_tensor_key(inputs, key))
 
 
 def te_online_comparison_cpu(inputs, weight, output):
