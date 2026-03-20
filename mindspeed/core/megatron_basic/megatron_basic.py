@@ -246,7 +246,7 @@ def dist_optim_load_state_dict(self, state_dict):
                 for gbuf_range_map in gbuf_range_map_for_all_buckets:
                     for model_param, param_range_map in gbuf_range_map["param_map"].items():
 
-                        # Get parameter ordering information (see method docs/zhtring
+                        # Get parameter ordering information (see method docstring
                         # for details).
                         group_index, group_order = self.model_param_group_index_map[model_param]
                         state_order = inner_state_dict["param_groups"][group_index]["params"][
@@ -266,7 +266,7 @@ def dist_optim_load_state_dict(self, state_dict):
                             tensors["master_param"] = init_shard(numel)
                         state_dict_state.append((state_order, tensors))
 
-        # Sort by state order (see method docs/zhtring for details).
+        # Sort by state order (see method docstring for details).
         state_dict_state.sort(key=lambda s: s[0])
         state_dict_state = {s[0]: s[1] for s in state_dict_state}
 

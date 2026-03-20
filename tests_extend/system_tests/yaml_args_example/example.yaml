@@ -505,7 +505,7 @@ use_multiparameter_pipeline_model_parallel: False
 use_nanopipe: False
 use_nanopipe_swap: False
 use_nd_matmul: False
-use_one_sent_docs/zh: False
+use_one_sent_docs: False
 use_pipe_experts: False
 use_rotary_position_embeddings: False
 use_rts: False
