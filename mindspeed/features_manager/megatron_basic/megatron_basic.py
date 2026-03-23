@@ -107,4 +107,12 @@ class MegatronBasicFeature(MindSpeedFeature):
         from mindspeed.core.megatron_basic.megatron_basic import get_device_arch_version
         pm.register_patch('megatron.training.utils.get_device_arch_version', get_device_arch_version)
 
+        # Fix DDP init on non-default NPU stream (Megatron 0.15 new behavior).
+        # megatron/training/training.py wraps DDP construction in
+        # `with torch.cuda.stream(torch.cuda.Stream()):`, which on NPU causes
+        # AccumulateGrad nodes to be associated with a temporary stream whose handle
+        # is later recycled by HCCL, leading to hooks and grad_weight allocation
+        # running on the HCCL stream and delaying memory release.
+        from mindspeed.core.distributed.ddp_init_stream_fix import get_model_wrapper
+        pm.register_patch('megatron.training.training.get_model', get_model_wrapper)
 
