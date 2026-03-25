@@ -24,7 +24,7 @@
 
 2. 下载数据集，以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例
 
->[!CAUTION]注意    
+>[!CAUTION]     
 >用户需要自行设置代理，以便访问或下载数据集。
 
 ## 配置环境变量
@@ -89,7 +89,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 在“Megatron-LM”目录下准备预训练脚本train_distributed.sh，脚本示例如下：
 
-```shell
+```bash
 #!/bin/bash
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 NPUS_PER_NODE=8
@@ -166,7 +166,7 @@ set +x
 
 请编辑示例脚本train_distributed.sh，并设置如下环境变量以指定必要的路径：
 
-```shell
+```bash
 CKPT_DIR=./ckpt
 VOCAB_FILE=./gpt-tokenizer/vocab.json
 MERGE_FILE=./gpt-tokenizer/merges.txt
@@ -177,7 +177,7 @@ DATA_PATH=./gpt_pretrain_data/alpaca_text_document
 
 ## 运行脚本启动预训练
 
-```shell
+```bash
 bash ./train_distributed.sh
 ```
 

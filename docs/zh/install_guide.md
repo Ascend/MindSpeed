@@ -158,6 +158,7 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
     # NNAL默认安装路径为：/usr/local/Ascend/nnal
     # 运行NNAL默认安装路径下atb文件夹中的环境配置脚本set_env.sh
     source /usr/local/Ascend/nnal/atb/set_env.sh
+    source /usr/local/Ascend/cann/set_env.sh
    ```
 
 ## 卸载MindSpeed
