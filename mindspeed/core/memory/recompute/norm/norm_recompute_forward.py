@@ -3,10 +3,35 @@
 from typing import Any, Dict, Optional, Union
 from torch import Tensor
 
+from megatron.core.transformer.identity_op import IdentityOp
 from mindspeed.core.memory.recompute.norm import PackedSeqParams
 from mindspeed.core.memory.recompute.recompute_common import CheckpointWithoutOutput
 from mindspeed.mindspore.core.utils import make_viewless_tensor
 from mindspeed.core.memory.recompute.norm.should_recompute import should_recompute_norm
+from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import MindSpeedTELayerNormColumnParallelLinear
+
+
+def enable_recompute_norm_checkpoint(
+    layer,
+    norm_ckpt,
+    submodule_name: Optional[str] = None,
+    support_module_type=MindSpeedTELayerNormColumnParallelLinear
+):
+    if layer is None or norm_ckpt is None:
+        raise ValueError("Please check your input!!!")
+
+    if submodule_name is not None:
+        target_layer = getattr(layer, submodule_name, None)
+
+    if target_layer is None:
+        raise AssertionError(
+            f"Can't find submodule {submodule_name}, {type(layer)} does not support transformer_engine recompute norm."
+        )
+
+    if isinstance(target_layer, support_module_type):
+        target_layer.enable_recompute_norm(norm_ckpt)
+    else:
+        raise NotImplementedError(f"Transformer_engine recompute norm does not yet support {type(target_layer)}.")
 
 
 # pylint: disable=too-many-arguments
@@ -34,11 +59,11 @@ def norm_recompute_forward_impl(
     if is_recompute_norm:
         # Optional Input Layer norm
         self.norm_ckpt1 = CheckpointWithoutOutput(get_cuda_rng_tracker)
-        if self.config.transformer_impl != "transformer_engine":
-            input_layernorm_output = self.norm_ckpt1.checkpoint(self.input_layernorm, False, hidden_states)
-        else:
-            self.self_attention.linear_qkv.enable_recompute_norm(self.norm_ckpt1)
+        if self.config.transformer_impl == "transformer_engine" and isinstance(self.input_layernorm, IdentityOp):
+            enable_recompute_norm_checkpoint(self.self_attention, self.norm_ckpt1, 'linear_qkv')
             input_layernorm_output = self.input_layernorm(hidden_states)
+        else:
+            input_layernorm_output = self.norm_ckpt1.checkpoint(self.input_layernorm, False, hidden_states)
     else:
         input_layernorm_output = self.input_layernorm(hidden_states)
 
@@ -93,11 +118,11 @@ def norm_recompute_forward_impl(
     # Optional Layer norm post the cross-attention.
     if is_recompute_norm:
         self.norm_ckpt2 = CheckpointWithoutOutput(get_cuda_rng_tracker)
-        if self.config.transformer_impl != "transformer_engine":
-            pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, hidden_states)
-        else:
-            self.mlp.linear_fc1.enable_recompute_norm(self.norm_ckpt2)
+        if self.config.transformer_impl == "transformer_engine" and isinstance(self.pre_mlp_layernorm, IdentityOp):
+            enable_recompute_norm_checkpoint(self.mlp, self.norm_ckpt2, 'linear_fc1')
             pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
+        else:
+            pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, hidden_states)
     else:
         pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
 
