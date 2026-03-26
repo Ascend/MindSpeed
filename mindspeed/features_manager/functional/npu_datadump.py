@@ -18,5 +18,5 @@ class NPUDataDumpFeature(MindSpeedFeature):
                 raise AssertionError('Mstt not found. You can install it with `pip install mindstudio-probe`.') from e
 
             from mindspeed.functional.npu_datadump.npu_datadump import dump_start_wrapper, dump_end_wrapper
-            patch_manager.register_patch('megatron.training.ft_integration.on_training_step_start', dump_start_wrapper)
+            patch_manager.register_patch('megatron.training.training.train_step', dump_start_wrapper)
             patch_manager.register_patch('megatron.training.ft_integration.on_training_step_end', dump_end_wrapper)

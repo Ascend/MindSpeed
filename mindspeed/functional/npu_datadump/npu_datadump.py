@@ -16,8 +16,8 @@ LOG = getLogger(__name__)
 def dump_start_wrapper(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        MSTT_DEBUGGER.start()
-        fn(*args, **kwargs)
+        MSTT_DEBUGGER.start(model=args[2])
+        return fn(*args, **kwargs)
     return wrapper
 
 
