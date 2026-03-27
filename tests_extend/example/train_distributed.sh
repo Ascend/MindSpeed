@@ -1,19 +1,23 @@
 #!/bin/bash
+# Distributed training launch script (PyTorch backend)
+
 export CUDA_DEVICE_MAX_CONNECTIONS=1
-NPUS_PER_NODE=8
-MASTER_ADDR=localhost
-MASTER_PORT=6001
-NNODES=1
-NODE_RANK=0
-WORLD_SIZE=$(($NPUS_PER_NODE*$NNODES))
-CKPT_DIR=./ckpt
-VOCAB_FILE=<Specify path to file>/vocab.json
-MERGE_FILE=<Specify path to file>/merges.txt
-DATA_PATH=<Specify path and file prefix>_text_document
-TP=2
-PP=2
-CP=1
-EP=1
+
+NPUS_PER_NODE=8    # Number of NPUs per node
+MASTER_ADDR=localhost    # Master node address
+MASTER_PORT=6001    # Master node port
+NNODES=1    # Number of nodes
+NODE_RANK=0    # Current node rank
+WORLD_SIZE=$(($NPUS_PER_NODE*$NNODES))    # Global number of processes
+CKPT_DIR=./ckpt    # Checkpoint directory
+VOCAB_FILE=<Specify path to file>/vocab.json    # Vocabulary file path
+MERGE_FILE=<Specify path to file>/merges.txt    # BPE merge file path
+DATA_PATH=<Specify path and file prefix>_text_document    # Data path
+TP=2    # Tensor parallelism degree
+PP=2    # Pipeline parallelism degree
+CP=1    # Context parallelism degree
+EP=1    # Expert parallelism degree
+
 DISTRIBUTED_ARGS="
     --nproc_per_node $NPUS_PER_NODE \
     --nnodes $NNODES \
