@@ -164,20 +164,33 @@ def transformer_layer_forward_backward_overlaping(
 
     else:
         fb_overlap_func = None
-        if not hasattr(fwd_layer.mlp, 'experts') and not bwd_layer_graph.is_moe_layer:
+        fwd_is_balanced_moe = hasattr(fwd_layer.mlp, 'hot_experts')
+        fwd_is_moe = hasattr(fwd_layer.mlp, 'experts') and not fwd_is_balanced_moe
+        fwd_is_dense = not fwd_is_moe and not fwd_is_balanced_moe
+        bwd_is_moe = bwd_layer_graph.is_moe_layer
+        bwd_is_balanced_moe = bwd_is_moe and hasattr(bwd_layer_graph.layer.mlp, 'hot_experts')
+
+        if fwd_is_dense and not bwd_is_moe:
             fb_overlap_func = transformer_layer_forward_dense_backward_dense_overlaping
-        elif hasattr(fwd_layer.mlp, 'experts') and not bwd_layer_graph.is_moe_layer:
+        elif fwd_is_balanced_moe and not bwd_is_moe:
+            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \
+                transformer_layer_forward_balanced_moe_backward_dense_overlaping
+            fb_overlap_func = transformer_layer_forward_balanced_moe_backward_dense_overlaping
+        elif fwd_is_moe and not bwd_is_moe:
             fb_overlap_func = transformer_layer_forward_moe_backward_dense_overlaping
-        elif not hasattr(fwd_layer.mlp, 'experts') and bwd_layer_graph.is_moe_layer:
-            fb_overlap_func = transformer_layer_forward_dense_backward_moe_overlaping
-        elif (hasattr(fwd_layer.mlp, 'experts') or hasattr(fwd_layer.mlp,
-                                                         'hot_experts')) and bwd_layer_graph.is_moe_layer:
-            if hasattr(fwd_layer.mlp, 'hot_experts'):
+        elif fwd_is_dense and bwd_is_moe:
+            if bwd_is_balanced_moe:
                 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \
-                    transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
-                fb_overlap_func = transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
+                    transformer_layer_forward_dense_backward_balanced_moe_overlaping
+                fb_overlap_func = transformer_layer_forward_dense_backward_balanced_moe_overlaping
             else:
-                fb_overlap_func = transformer_layer_forward_moe_backward_moe_overlaping
+                fb_overlap_func = transformer_layer_forward_dense_backward_moe_overlaping
+        elif fwd_is_balanced_moe and bwd_is_moe:
+            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \
+                transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
+            fb_overlap_func = transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
+        elif fwd_is_moe and bwd_is_moe:
+            fb_overlap_func = transformer_layer_forward_moe_backward_moe_overlaping
         else:
             raise AssertionError('Check Layer Spec, f&b overlap func is not supported!')
 
