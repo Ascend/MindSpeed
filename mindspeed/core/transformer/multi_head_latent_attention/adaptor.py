@@ -39,6 +39,7 @@ def multi_latent_attention_init_impl(
         layer_number=layer_number,
         attention_type=attention_type,
         attn_mask_type=attn_mask_type,
+        cp_comm_type=cp_comm_type,
         pg_collection=pg_collection,
     )
 
@@ -96,6 +97,7 @@ def multi_latent_attention_init_impl(
         attention_type=self.attention_type,
         softmax_scale=self.softmax_scale,
         cp_comm_type=cp_comm_type,
+        pg_collection=self.pg_collection,
     )
 
     # Output.
@@ -123,7 +125,8 @@ def dot_product_attention_init_wrapper(fn):
         attention_type: str,
         attention_dropout: float = None,
         softmax_scale: float = None,
-        cp_comm_type: str = None
+        cp_comm_type: str = None,
+        pg_collection: ProcessGroupCollection = None,
     ):
 
         fn(
@@ -135,6 +138,7 @@ def dot_product_attention_init_wrapper(fn):
             attention_dropout=attention_dropout,
             softmax_scale=softmax_scale,
             cp_comm_type=cp_comm_type,
+            pg_collection=pg_collection
         )
 
         projection_size = self.config.v_head_dim * self.config.num_attention_heads

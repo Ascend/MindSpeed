@@ -53,7 +53,7 @@ class CPDotProductAttentionImpl:
         cp_size = config.context_parallel_size
         config.context_parallel_size = 1
         self.config = config
-        super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale, cp_comm_type)
+        super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale, cp_comm_type, pg_collection)
         assert (
                 self.config.context_parallel_size == 1
         ), "Context parallelism is only supported by TEDotProductAttention!"
