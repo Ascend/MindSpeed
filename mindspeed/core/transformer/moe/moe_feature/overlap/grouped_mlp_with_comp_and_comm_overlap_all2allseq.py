@@ -31,7 +31,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
         ctx.use_gmm = use_gmm
         gmm_cls = get_gmm_op_cls()
         if use_gmm:
-            mm1_out = gmm_cls.op_forward(inputs, weights1, group_list)[0]
+            mm1_out = gmm_cls.op_forward(ctx, inputs, weights1, group_list)[0]
         else:
             mm1_out = torch.matmul(inputs, weights1)
         if moe_zero_memory != "disable":
@@ -50,7 +50,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
             mm1_out.untyped_storage().resize_(0)
             permuted_probs.untyped_storage().resize_(0)
         if use_gmm:
-            mm2_out = gmm_cls.op_forward(act_out, weights2, group_list)[0]
+            mm2_out = gmm_cls.op_forward(ctx, act_out, weights2, group_list)[0]
         else:
             mm2_out = torch.matmul(act_out, weights2)
 
@@ -96,7 +96,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
         gmm_cls = get_gmm_op_cls()
         # grad of mm2
         if ctx.use_gmm:
-            grad_mm2_inputs = gmm_cls.op_dx(grad_outs, weights2, group_list)[0]
+            grad_mm2_inputs = gmm_cls.op_dx(ctx, grad_outs, weights2, group_list)[0]
         else:
             grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
         # act_graph is act_out.
@@ -157,7 +157,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
 
         if ctx.use_gmm:
             # Because probs, mm1_inputs_grad consists of two parts.
-            mm1_inputs_grad = gmm_cls.op_dx(act_inputs.grad, weights1, group_list)[0]
+            mm1_inputs_grad = gmm_cls.op_dx(ctx, act_inputs.grad, weights1, group_list)[0]
         else:
             mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 

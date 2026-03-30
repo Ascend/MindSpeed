@@ -3,8 +3,10 @@ import dataclasses
 import torch
 import torch_npu
 
+from mindspeed.te.pytorch.fp8.constants import TensorKey
 from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe, RecipeScaling
 from mindspeed.te.pytorch.fp8.tensor import is_fp8_tensor, Float8Tensor
+from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.utils import view_as_n_dim, get_quant_dtype
 
 
@@ -15,7 +17,14 @@ class CurrentScalingRecipe(Recipe):
             return tensor
         if is_fp8_tensor(tensor):  # if dtype is fp8
             return tensor
-        quant_tensor, scale = torch_npu.npu_dynamic_quant(tensor, dst_type=self.quant_dtype, quant_mode='pertensor')
+        quant_tensor, scale = self.run_quantizer(
+            tensor,
+            key,
+            torch_npu.npu_dynamic_quant,
+            op_name="npu_dynamic_quant",
+            dst_type=self.quant_dtype,
+            quant_mode='pertensor',
+        )
         return Float8Tensor(quant_tensor, self.quant_dtype, scale, dtype=tensor.dtype)
 
 
@@ -30,7 +39,14 @@ class TensorwiseMatMul(torch.autograd.Function):
     def forward(ctx, x, weight, need_grad=True):
         qdtype = get_quant_dtype()
         x_quant, x_scale = torch_npu.npu_dynamic_quant(view_as_n_dim(x), dst_type=qdtype.x, quant_mode='pertensor')
-        w_quant, w_scale = torch_npu.npu_dynamic_quant(weight, dst_type=qdtype.w, quant_mode='pertensor')
+        w_quant, w_scale = reuse_or_quantize(
+            weight,
+            TensorKey.weight,
+            torch_npu.npu_dynamic_quant,
+            op_name="npu_dynamic_quant",
+            dst_type=qdtype.w,
+            quant_mode='pertensor',
+        )
 
         output = torch_npu.npu_quant_matmul(x_quant, w_quant.t(), w_scale, pertoken_scale=x_scale,
                                             output_dtype=x.dtype, **qdtype.mm_kwargs)

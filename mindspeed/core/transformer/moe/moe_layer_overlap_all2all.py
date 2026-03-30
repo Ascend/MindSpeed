@@ -273,7 +273,7 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
                 if global_input_tokens.nelement() != 0:
                     group_list = torch.cumsum(ctx.tokens_per_expert, dim=0)
                     w1 = ctx.weight1.view(ctx.num_local_experts, ctx.hidden_size, -1)
-                    mm1_out_ = get_gmm_op_cls().op_forward(global_input_tokens, w1, group_list)[0]
+                    mm1_out_ = get_gmm_op_cls().op_forward(ctx, global_input_tokens, w1, group_list)[0]
                     group_list.untyped_storage().resize_(0)
                 else:
                     w1 = ctx.weight1.view(ctx.hidden_size, -1)

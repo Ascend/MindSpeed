@@ -7,6 +7,37 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 from mindspeed.patch_utils import MindSpeedPatchesManager
 
 
+def init_weight_quantization_reuse(pm, args):
+    from mindspeed.te.pytorch.fp8.reuse import optimizer_step_reuse_cleanup_wrapper
+    from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
+
+    FP8GlobalStateManager.set_weight_quantization_reuse_enabled(
+        bool(getattr(args, "fp8_reuse_quantized_weight", False))
+    )
+
+    if FP8GlobalStateManager.FP8_REUSE_QUANTIZED_WEIGHT:
+        pm.register_patch(
+            "megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step",
+            optimizer_step_reuse_cleanup_wrapper,
+        )
+        pm.register_patch(
+            "megatron.core.optimizer.optimizer.MixedPrecisionOptimizer.step_with_ready_grads",
+            optimizer_step_reuse_cleanup_wrapper,
+        )
+        pm.register_patch(
+            "megatron.core.optimizer.optimizer.ChainedOptimizer.step",
+            optimizer_step_reuse_cleanup_wrapper,
+        )
+        pm.register_patch(
+            "megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.step",
+            optimizer_step_reuse_cleanup_wrapper,
+        )
+        pm.register_patch(
+            "megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.step_with_ready_grads",
+            optimizer_step_reuse_cleanup_wrapper,
+        )
+
+
 class TransformerEngineBasicFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('transformer-engine-basic', optimization_level=0)
@@ -15,7 +46,8 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         self.add_parser_argument_choices_value(parser, "--fp8-format", 'hif8')
         self.add_parser_argument_choices_value(parser, "--fp8-recipe", 'blockwise')
-        self.add_parser_argument_choices_value(parser, "--moe-router-dtype", 'fp8')  # 穿刺验证参数
+        self.add_parser_argument_choices_value(parser, "--moe-router-dtype", 'fp8')  # Validation argument for router dtype.
+
         group.add_argument('--no-use-gmm-fp8', action='store_false',
                            help='not use GMM with scaling recipe.', dest='use_gmm_fp8')
         group.add_argument('--te-comparison-with-cpu', action='store_true',
@@ -30,7 +62,9 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                                 '"compatible": Default. Ensures compatibility with native TE behavior.',
                            dest='te_gmm_mode'
                          )
-
+        group.add_argument("--fp8-reuse-quantized-weight", action="store_true",
+                           default=False, help="Reuse quantized FP8 weight tensors within one optimizer step.",
+        )
 
     def validate_args(self, args):
         if args.fp8 and args.transformer_impl == 'local':
@@ -49,6 +83,16 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             if args.fp8_recipe not in ('mxfp8', 'tensorwise', 'delayed'):
                 warnings.warn(f"gmm fp8 only supports tensorwise, mxfp8, and delayed recipe, but {args.fp8_recipe} provided, "
                               f"using bf16 gmm instead.")
+        if getattr(args, "fp8_reuse_quantized_weight", False) and not args.fp8:
+            raise ValueError("fp8_reuse_quantized_weight is only valid when FP8 training is enabled")
+        fp8_reuse = getattr(args, "fp8_reuse_quantized_weight", False)
+        is_compatible = getattr(args, "te_gmm_mode", None) == 'compatible'
+        no_overlap = getattr(args, "moe_fb_overlap", False) == False
+        if fp8_reuse and (is_compatible and no_overlap):
+            raise ValueError(
+                "fp8_reuse_quantized_weight is enabled but it is not compatible "
+                "with te_gmm_mode='compatible' and moe_fb_overlap=False"
+            )
 
     def pre_register_patches(self, pm, args):
         pm.register_patch('transformer_engine.pytorch.tensor.QuantizedTensor', torch.nn.Module, create_dummy=True)
@@ -58,7 +102,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
             transformer_block_checkpointed_forward
         pm.register_patch('megatron.core.transformer.transformer_block.TransformerBlock.forward',
                           transformer_block_forward)
-        # 让路其他组件
+        # Keep the existing patch order for other components.
         if not (
             getattr(args, 'swap_attention', False)
             or getattr(args, 'recompute_method', False) == 'block'
@@ -83,7 +127,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                                 MindSpeedTEPerformanceColumnParallelGroupedLinear)
             pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelGroupedLinear',
                                 MindSpeedTEPerformanceRowParallelGroupedLinear)
-            
+
         if getattr(args, "fp8_format", False):
             from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
                 MindSpeedTEDotProductAttention
@@ -130,6 +174,8 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                     pm.register_patch(
                         'megatron.core.transformer.multi_token_prediction.MultiTokenPredictionLayer.forward',
                         dualpipev_fb_overlap_mtp_layer_forward_te_without_overlap)
+            if getattr(args, "fp8_reuse_quantized_weight", False):
+                init_weight_quantization_reuse(pm, args)
         else:
             from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
                 MindSpeedTEDotProductAttention

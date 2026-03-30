@@ -34,7 +34,16 @@ class DelayedScalingRecipe(Recipe):
         if is_fp8_tensor(tensor):  # if dtype is fp8 return
             return tensor
         scale = self.scale.delayed_recipe_update_amax(tensor, DelayedScalingRecipe.MAX_STREAM)
-        quant_tensor = torch_npu.npu_quantize(tensor, scale, zero_points=None, dtype=self.quant_dtype, axis=-1)
+        quant_tensor = self.run_quantizer(
+            tensor,
+            key,
+            torch_npu.npu_quantize,
+            allow_reuse=False,
+            scale=scale,
+            zero_points=None,
+            dtype=self.quant_dtype,
+            axis=-1,
+        )
         return Float8Tensor(quant_tensor, self.quant_dtype, scale, dtype=tensor.dtype)
 
 

@@ -40,13 +40,13 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         gmm_cls = get_gmm_op_cls()
         ctx.use_gmm = use_gmm
         if use_gmm:
-            mm1_out = gmm_cls.op_forward(inputs, weights1, group_list)[0]
+            mm1_out = gmm_cls.op_forward(ctx, inputs, weights1, group_list)[0]
         else:
             mm1_out = torch.matmul(inputs, weights1)
         inputs.untyped_storage().resize_(0)
         act_out, detached_act_inputs = forward_func(activation_func, mm1_out)
         if use_gmm:
-            mm2_out = gmm_cls.op_forward(act_out, weights2, group_list)[0]
+            mm2_out = gmm_cls.op_forward(ctx, act_out, weights2, group_list)[0]
         else:
             mm2_out = torch.matmul(act_out, weights2)
         if should_recompute_activation(layer_number):
@@ -65,7 +65,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         gmm_cls = get_gmm_op_cls()
         # grad of mm2
         if ctx.use_gmm:
-            grad_mm2_inputs = gmm_cls.op_dx(grad_outs, weights2, group_list)[0]
+            grad_mm2_inputs = gmm_cls.op_dx(ctx, grad_outs, weights2, group_list)[0]
         else:
             grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
         if should_recompute_activation(layer_number):
@@ -99,7 +99,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
         _, ag_inputs_tp_ep, ag_handle = async_all_gather(ag_inputs_tp, ag_group)
         if ctx.use_gmm:
             # grad of mm1-inputs
-            mm1_inputs_grad = gmm_cls.op_dx(act_inputs.grad, weights1, group_list)[0]
+            mm1_inputs_grad = gmm_cls.op_dx(ctx, act_inputs.grad, weights1, group_list)[0]
         else:
             mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 

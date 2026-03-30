@@ -6,6 +6,7 @@ import torch_npu
 from mindspeed.te.pytorch.fp8.tensor import MXFP8Tensor
 from mindspeed.te.pytorch.fp8.constants import TensorKey
 from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe, RecipeScaling
+from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.utils import view_as_n_dim, get_quant_dtype
 
 
@@ -18,15 +19,34 @@ class MXFP8ScalingRecipe(Recipe):
         coly, col_scale, rowy, row_scale = None, None, None, None
         tensor_2d = view_as_n_dim(tensor)
         fp8_dtype = self.quant_dtype
-        mxfp8_tensor = MXFP8Tensor(fp8_dtype, tensor.shape, tensor.device, tensor.dtype)
+        mxfp8_tensor = MXFP8Tensor(fp8_dtype, tensor.shape, tensor.device, tensor.dtype, key=key)
 
         if rowwise and colwise:
-            coly, col_scale, rowy, row_scale = \
-                torch_npu.npu_dynamic_mx_quant_with_dual_axis(tensor_2d, dst_type=fp8_dtype)
+            coly, col_scale, rowy, row_scale = self.run_quantizer(
+                tensor_2d,
+                key,
+                torch_npu.npu_dynamic_mx_quant_with_dual_axis,
+                op_name="npu_dynamic_mx_quant_with_dual_axis",
+                dst_type=fp8_dtype,
+            )
         elif colwise:
-            coly, col_scale = torch_npu.npu_dynamic_mx_quant(tensor_2d, axis=-1, dst_type=fp8_dtype)
+            coly, col_scale = self.run_quantizer(
+                tensor_2d,
+                key,
+                torch_npu.npu_dynamic_mx_quant,
+                op_name="npu_dynamic_mx_quant",
+                axis=-1,
+                dst_type=fp8_dtype,
+            )
         elif rowwise:
-            rowy, row_scale = torch_npu.npu_dynamic_mx_quant(tensor_2d, axis=-2, dst_type=fp8_dtype)
+            rowy, row_scale = self.run_quantizer(
+                tensor_2d,
+                key,
+                torch_npu.npu_dynamic_mx_quant,
+                op_name="npu_dynamic_mx_quant",
+                axis=-2,
+                dst_type=fp8_dtype,
+            )
 
         # forward: x.col   @ w.col.T
         # dx     : g.col   @ w.row
@@ -52,11 +72,23 @@ class MXFP8MatMul(torch.autograd.Function):
         if need_grad:
             x_quant, x_scale, ctx.x, ctx.x_scale = \
                 torch_npu.npu_dynamic_mx_quant_with_dual_axis(x_2d, dst_type=qdtype.x)
-            w_quant, w_scale, ctx.w, ctx.w_scale = \
-                torch_npu.npu_dynamic_mx_quant_with_dual_axis(weight, dst_type=qdtype.x)
+            w_quant, w_scale, ctx.w, ctx.w_scale = reuse_or_quantize(
+                weight,
+                TensorKey.weight,
+                torch_npu.npu_dynamic_mx_quant_with_dual_axis,
+                op_name="npu_dynamic_mx_quant_with_dual_axis",
+                dst_type=qdtype.w,
+            )
         else:
             x_quant, x_scale = torch_npu.npu_dynamic_mx_quant(x_2d, axis=-1, dst_type=qdtype.x)
-            w_quant, w_scale = torch_npu.npu_dynamic_mx_quant(weight, axis=-1, dst_type=qdtype.w)
+            w_quant, w_scale = reuse_or_quantize(
+                weight,
+                TensorKey.weight,
+                torch_npu.npu_dynamic_mx_quant,
+                op_name="npu_dynamic_mx_quant",
+                axis=-1,
+                dst_type=qdtype.w,
+            )
             ctx.save_for_backward(x, weight)
         output = torch_npu.npu_quant_matmul(x_quant, w_quant.t(), w_scale.transpose(0, 1),
                                             pertoken_scale=x_scale,
@@ -78,7 +110,14 @@ class MXFP8MatMul(torch.autograd.Function):
             x_quant, x_scale, w_quant, w_scale = ctx.x, ctx.x_scale, ctx.w, ctx.w_scale
         else:
             x, weight = ctx.saved_tensors
-            w_quant, w_scale = torch_npu.npu_dynamic_mx_quant(weight, axis=-2, dst_type=qdtype.w)
+            w_quant, w_scale = reuse_or_quantize(
+                weight,
+                TensorKey.weight,
+                torch_npu.npu_dynamic_mx_quant,
+                op_name="npu_dynamic_mx_quant",
+                axis=-2,
+                dst_type=qdtype.w,
+            )
             x_quant, x_scale = torch_npu.npu_dynamic_mx_quant(view_as_n_dim(x), axis=-2, dst_type=qdtype.x)
 
         dx = torch_npu.npu_quant_matmul(grads_dx, w_quant, w_scale,

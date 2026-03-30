@@ -74,7 +74,7 @@ class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
             m_split = torch.tensor(m_split, device='npu', dtype=torch.int64)
         ctx.group_list = torch.cumsum(m_split, dim=0)
         weight = torch.stack(weight, dim=0)
-        fwd_output = cls.op_forward(input_tensor, weight, ctx.group_list)[0]
+        fwd_output = cls.op_forward(ctx, input_tensor, weight, ctx.group_list)[0]
         ctx.save_for_backward(input_tensor, weight)
         return fwd_output
 
@@ -82,7 +82,7 @@ class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
     def backward(cls, ctx, grad_output):
         group_list = ctx.group_list
         inp, weight = ctx.saved_tensors
-        grad = cls.op_dx(grad_output, weight, group_list)[0]
+        grad = cls.op_dx(ctx, grad_output, weight, group_list)[0]
         grad_weight = cls.op_dw(inp, grad_output, group_list)[0]
         return grad, None, *grad_weight
 

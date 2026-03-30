@@ -29,9 +29,8 @@ class MXFP8Tensor(Float8Tensor2D):
         if args.te_comparison_with_bf16:
             from mindspeed.te.pytorch.fp8 import te_online_comparison_mxfp8_bf16
             te_online_comparison_mxfp8_bf16(self, other, is_rowwise, output)
-        # 使用完 后续就不会继续调用, 直接清理掉显存
-        for tensor in (x1, x1_scale, x2, x2_scale):
-            tensor.untyped_storage().resize_(0)
+        self.release(x1, x1_scale)
+        other.release(x2, x2_scale)
         return output
 
     def quant_matmul_add(self, main_grad, other: 'MXFP8Tensor', is_rowwise):
@@ -44,9 +43,8 @@ class MXFP8Tensor(Float8Tensor2D):
             x2_scale_dtype=torch_npu.float8_e8m0fnu,
             group_sizes=[1, 1, 32]
         )
-        # 使用完 后续就不会继续调用, 直接清理掉显存
-        for tensor in (x1, x1_scale, x2, x2_scale):
-            tensor.untyped_storage().resize_(0)
+        self.release(x1, x1_scale)
+        other.release(x2, x2_scale)
 
     def all_gather_matmul(self, other: 'MXFP8Tensor', bias, fp8_meta: FP8Metadata, key: MatmulKey):
         _, is_rowwise = get_matmul_wise_by_tensor_key(self, key)

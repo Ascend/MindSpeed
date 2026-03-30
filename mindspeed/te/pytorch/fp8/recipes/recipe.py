@@ -1,10 +1,11 @@
 import dataclasses
-from typing import TypedDict
+from typing import Any, Callable, TypedDict
 
 import torch
 
 from megatron.core.transformer import TransformerConfig
 from mindspeed.te.pytorch.fp8.constants import Format, FP8Format, TensorKey
+from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.module_typing import FP8RecipeScaling
 
 
@@ -29,11 +30,30 @@ class Recipe:
     def quant_dtype(self) -> torch.dtype:
         return self.fp8_format.quant_type
 
+    def run_quantizer(
+        self,
+        tensor: torch.Tensor,
+        tensor_key: TensorKey,
+        quantizer: Callable[..., Any],
+        *,
+        allow_reuse: bool = True,
+        op_name: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        return reuse_or_quantize(
+            tensor,
+            tensor_key,
+            quantizer,
+            allow_reuse=allow_reuse,
+            op_name=op_name,
+            **kwargs,
+        )
+
     def quantization(self, tensor: torch.Tensor, key: TensorKey, colwise: bool, rowwise: bool):
         pass
 
     def dequantization(self, tensor):
-        # 算子内实现反量化, 这里不在做实现
+        # Dequantization is implemented inside the kernel path.
         pass
 
 

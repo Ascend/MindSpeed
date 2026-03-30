@@ -1,3 +1,4 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 from functools import lru_cache
 from typing import Type
 
@@ -8,7 +9,8 @@ from einops import rearrange
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
-from mindspeed.te.pytorch.fp8.constants import Fp8Recipe
+from mindspeed.te.pytorch.fp8.constants import Fp8Recipe, TensorKey
+from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.utils import get_quant_dtype
 from mindspeed.ops.npu_matmul_add import is_a5
 
@@ -21,7 +23,7 @@ def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
         return MXFP8GMMFunction
     elif args.fp8_recipe in [Fp8Recipe.tensorwise, Fp8Recipe.delayed]:
         return TensorwiseGMMFunction
-    # blockwise 暂未实现 走高精度分支
+    # Blockwise FP8 is not implemented here yet, so fall back to the high-precision path.
     return None
 
 
@@ -35,7 +37,7 @@ def get_gmm_op_cls() -> Type['BaseGMMFunction']:
 class BaseGMMFunction(torch.autograd.Function):
     @classmethod
     def gmm_apply(cls, x, weight, bias, tokens_per_expert, weight_param):
-        # 兼容传参tokens_per_expert 转化为group_list
+        # Accept tokens_per_expert and normalize it into group_list.
         if isinstance(tokens_per_expert, list):
             tokens_per_expert = torch.tensor(tokens_per_expert, device='npu', dtype=torch.int64)
         group_list = torch.cumsum(tokens_per_expert, dim=0)
@@ -48,7 +50,7 @@ class BaseGMMFunction(torch.autograd.Function):
                 group_list = group_list.npu()
         else:
             group_list = torch.tensor(group_list, device='npu', dtype=torch.int64)
-        output = cls.op_forward(x, weight, group_list, group_list_type, bias=bias)
+        output = cls.op_forward(ctx, x, weight, group_list, group_list_type, bias=bias)
         ctx.save_for_backward(x, weight, group_list)
         ctx.weight_param = weight_param
         ctx.group_list_type = group_list_type
@@ -59,9 +61,9 @@ class BaseGMMFunction(torch.autograd.Function):
         x, weight, group_list = ctx.saved_tensors
         weight_param = ctx.weight_param
         group_list_type = ctx.group_list_type
-        dx = cls.op_dx(grad_outputs, weight, group_list, group_list_type)[0]
+        dx = cls.op_dx(ctx, grad_outputs, weight, group_list, group_list_type)[0]
         if WeightGradStore.is_decoupleBlock:
-            # dw 分离, 延迟处理
+            # Split dw computation and defer it to the delayed path.
             weight_tensor = rearrange(weight, 'n h f -> h n f')
             WeightGradStore.put(
                 [x, group_list, group_list_type, weight.shape],
@@ -87,12 +89,12 @@ class BaseGMMFunction(torch.autograd.Function):
         return dx, grad_weights, None, None, None, None
 
     @classmethod
-    def op_forward(cls, x, weight, group_list, group_list_type=0, bias=None):
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
         # x * weight
         raise NotImplementedError
 
     @classmethod
-    def op_dx(cls, grad, weight, group_list, group_list_type=0, bias=None):
+    def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         # grad * wt
         raise NotImplementedError
 
@@ -132,7 +134,7 @@ class BaseGMMFunction(torch.autograd.Function):
 class BF16GMMFunction(BaseGMMFunction):
 
     @classmethod
-    def op_forward(cls, x, weight, group_list, group_list_type=0, bias=None):
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
         if not is_a5():
             from mindspeed.ops.gmm import GMMFunction
             return GMMFunction.builder.load().npu_gmm([x], [weight], bias or [], group_list, 0, 0)
@@ -141,7 +143,7 @@ class BF16GMMFunction(BaseGMMFunction):
                                             split_item=3, group_type=0, group_list_type=group_list_type)
 
     @classmethod
-    def op_dx(cls, grad, weight, group_list, group_list_type=0, bias=None):
+    def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         if len(weight.shape) == 3:
             weight = rearrange(weight, 'n h f -> n f h')
         else:
@@ -164,22 +166,39 @@ class BF16GMMFunction(BaseGMMFunction):
 class MXFP8GMMFunction(BaseGMMFunction):
 
     @classmethod
-    def op_forward(cls, x, weight, group_list, group_list_type=0, bias=None):
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         x_mxfp8, x_scale = torch_npu.npu_dynamic_mx_quant(x, axis=-1, dst_type=qdtype.x)
-        weight_mxfp8, weight_scale = torch_npu.npu_dynamic_mx_quant(weight, axis=-2, dst_type=qdtype.w)
-        return torch_npu.npu_grouped_matmul([x_mxfp8], [weight_mxfp8], bias=bias,
-                                            scale=[weight_scale], per_token_scale=[x_scale],
+        weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale = reuse_or_quantize(
+            weight,
+            TensorKey.weight,
+            torch_npu.npu_dynamic_mx_quant_with_dual_axis,
+            op_name="npu_dynamic_mx_quant_with_dual_axis",
+            dst_type=qdtype.w,
+        )
+        ctx.w_quant = (weight_col_mxfp8, weight_col_scale)
+        return torch_npu.npu_grouped_matmul([x_mxfp8], [weight_row_mxfp8], bias=bias,
+                                            scale=[weight_row_scale], per_token_scale=[x_scale],
                                             group_list=group_list, group_type=0,
                                             output_dtype=x.dtype, group_list_type=group_list_type,
                                             scale_dtype=torch_npu.float8_e8m0fnu,
                                             per_token_scale_dtype=torch_npu.float8_e8m0fnu, split_item=3)
 
     @classmethod
-    def op_dx(cls, grad, weight, group_list, group_list_type=0, bias=None):
+    def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         grad_mxfp8, grad_scale = torch_npu.npu_dynamic_mx_quant(grad, axis=-1, dst_type=qdtype.grads)
-        weight_mxfp8, weight_scale = torch_npu.npu_dynamic_mx_quant(weight, axis=-1, dst_type=qdtype.w)
+        if hasattr(ctx, "w_quant"):
+            weight_mxfp8, weight_scale = ctx.w_quant
+        else:
+            weight_mxfp8, weight_scale = reuse_or_quantize(
+                weight,
+                TensorKey.weight,
+                torch_npu.npu_dynamic_mx_quant,
+                op_name="npu_dynamic_mx_quant",
+                axis=-1,
+                dst_type=qdtype.w,
+            )
         return torch_npu.npu_grouped_matmul([grad_mxfp8], [rearrange(weight_mxfp8, 'n h f -> n f h')], bias=bias,
                                             scale=[rearrange(weight_scale, 'n h f g -> n f h g')],
                                             per_token_scale=[grad_scale], group_list=group_list, group_type=0,
@@ -217,7 +236,7 @@ class MXFP8GMMFunction(BaseGMMFunction):
 class TensorwiseGMMFunction(BaseGMMFunction):
 
     @classmethod
-    def op_forward(cls, x, weight, group_list, group_list_type=0, bias=None):
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         x_quant, x_scale, w_quant, w_scale = cls.quantize(x, weight, qdtype.x, qdtype.w)
         return torch_npu.npu_grouped_matmul([x_quant], [w_quant], scale=[w_scale], per_token_scale=[x_scale],
@@ -225,7 +244,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
                                             output_dtype=x.dtype, group_list_type=group_list_type, **qdtype.gmm_kwargs)
 
     @classmethod
-    def op_dx(cls, grad, weight, group_list, group_list_type=0, bias=None):
+    def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         weight_t = rearrange(weight, 'n h f -> n f h')
         grad_quant, grad_scale, w_quant, w_scale = cls.quantize(grad, weight_t, qdtype.grads, qdtype.w)
@@ -246,7 +265,13 @@ class TensorwiseGMMFunction(BaseGMMFunction):
     def quantize(cls, x: torch.Tensor, weight: torch.Tensor, x_dst_type: torch.dtype, w_dst_type: torch.dtype):
         args = get_args()
         g_size = args.num_experts // args.expert_model_parallel_size
-        # 这里采用 pertoken 量化 一行即为一组
+        # Use per-token quantization and treat each row as one quantization group.
         x_quant, x_scale = torch_npu.npu_dynamic_quant(x.reshape(g_size, -1), dst_type=x_dst_type)
-        weight_quant, weight_scale = torch_npu.npu_dynamic_quant(weight.reshape(g_size, -1), dst_type=w_dst_type)
+        weight_quant, weight_scale = reuse_or_quantize(
+            weight.reshape(g_size, -1),
+            TensorKey.weight,
+            torch_npu.npu_dynamic_quant,
+            op_name="npu_dynamic_quant",
+            dst_type=w_dst_type,
+        )
         return x_quant.reshape(x.shape), x_scale, weight_quant.reshape(weight.shape), weight_scale

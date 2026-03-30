@@ -7,6 +7,7 @@ from mindspeed.te.pytorch.fp8.constants import TensorKey
 from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe, RecipeScaling, BlockDim
 from mindspeed.te.pytorch.fp8.tensor import is_fp8_tensor
 from mindspeed.te.pytorch.fp8.tensor.float8_block_tensor import Float8BlockTensor
+from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.utils import view_as_n_dim, get_quant_dtype
 
 
@@ -31,18 +32,28 @@ class Float8BlockRecipe(Recipe):
             return tensor
         tensor_2d = view_as_n_dim(tensor)
         col_data, row_data, col_scale, row_scale = None, None, None, None
-        quant_tensor = Float8BlockTensor(self.fp8_format_dtype, tensor.shape, tensor.device, tensor.dtype)
+        quant_tensor = Float8BlockTensor(self.fp8_format_dtype, tensor.shape, tensor.device, tensor.dtype, key=key)
 
         col_quant_dim = self.quant_dim[(key, self.colwise)]
         row_quant_dim = self.quant_dim[(key, self.rowwise)]
 
         if colwise:
-            col_data, col_scale = torch_npu.npu_dynamic_block_quant(
-                tensor_2d, dst_type=self.quant_dtype, **col_quant_dim
+            col_data, col_scale = self.run_quantizer(
+                tensor_2d,
+                key,
+                torch_npu.npu_dynamic_block_quant,
+                op_name="npu_dynamic_block_quant",
+                dst_type=self.quant_dtype,
+                **col_quant_dim,
             )
         if rowwise:
-            row_data, row_scale = torch_npu.npu_dynamic_block_quant(
-                tensor_2d.T if key == TensorKey.grads else tensor_2d, dst_type=self.quant_dtype, **row_quant_dim
+            row_data, row_scale = self.run_quantizer(
+                tensor_2d.T if key == TensorKey.grads else tensor_2d,
+                key,
+                torch_npu.npu_dynamic_block_quant,
+                op_name="npu_dynamic_block_quant",
+                dst_type=self.quant_dtype,
+                **row_quant_dim,
             )
 
         quant_tensor.set_col_data(col_data, col_scale, key == TensorKey.weight)
@@ -62,7 +73,14 @@ class Float8BlockMatMul(torch.autograd.Function):
         qdtype = get_quant_dtype()
         x_mxfp8, x_scale = torch_npu.npu_dynamic_block_quant(view_as_n_dim(x), dst_type=qdtype.x,
                                                              **Float8BlockRecipe.left_dim)
-        w_quant, w_scale = torch_npu.npu_dynamic_block_quant(weight, dst_type=qdtype.w, **Float8BlockRecipe.right_dim)
+        w_quant, w_scale = reuse_or_quantize(
+            weight,
+            TensorKey.weight,
+            torch_npu.npu_dynamic_block_quant,
+            op_name="npu_dynamic_block_quant",
+            dst_type=qdtype.w,
+            **Float8BlockRecipe.right_dim,
+        )
         output = torch_npu.npu_quant_matmul(x_mxfp8, w_quant.t(), w_scale.transpose(0, 1), pertoken_scale=x_scale,
                                             output_dtype=x.dtype, group_sizes=[1, 128, 128])
         if len(x.shape) != 2:
@@ -78,8 +96,14 @@ class Float8BlockMatMul(torch.autograd.Function):
         qdtype = get_quant_dtype()
         grads_quant, grads_scale = torch_npu.npu_dynamic_block_quant(
             view_as_n_dim(grads), dst_type=qdtype.grads, **Float8BlockRecipe.left_dim)
-        w_quant, w_scale = torch_npu.npu_dynamic_block_quant(
-            weight.t(), dst_type=qdtype.w, **Float8BlockRecipe.right_dim)
+        w_quant, w_scale = reuse_or_quantize(
+            weight.t(),
+            TensorKey.weight,
+            torch_npu.npu_dynamic_block_quant,
+            op_name="npu_dynamic_block_quant",
+            dst_type=qdtype.w,
+            **Float8BlockRecipe.right_dim,
+        )
         dx = torch_npu.npu_quant_matmul(grads_quant, w_quant.t(), w_scale.transpose(0, 1), pertoken_scale=grads_scale,
                                         output_dtype=x.dtype, group_sizes=[1, 128, 128])
         if len(grads.shape) != 2:

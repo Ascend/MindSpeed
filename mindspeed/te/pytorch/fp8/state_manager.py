@@ -1,6 +1,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
+import torch
 import torch.distributed
 
 
@@ -13,6 +14,7 @@ class FP8GlobalStateManager:
     FP8_GRAPH_CAPTURING = False
     FP8_AUTOCAST_DEPTH = 0
     FUSION_MATMUL = False
+    FP8_REUSE_QUANTIZED_WEIGHT = False
 
     @classmethod
     def fp8_autocast_enter(cls, enabled, fp8_recipe, calibrating, fp8_group, _graph):
@@ -63,3 +65,14 @@ class FP8GlobalStateManager:
     @classmethod
     def get_fp8_recipe(cls):
         return cls.FP8_RECIPE
+
+    @classmethod
+    def set_weight_quantization_reuse_enabled(cls, enabled: bool) -> None:
+        if not enabled and cls.FP8_REUSE_QUANTIZED_WEIGHT:
+            from mindspeed.te.pytorch.fp8.reuse import clear_weight_quantization_reuse_cache
+            clear_weight_quantization_reuse_cache()
+        cls.FP8_REUSE_QUANTIZED_WEIGHT = enabled
+
+    @classmethod
+    def is_weight_quantization_reuse_enabled(cls) -> bool:
+        return cls.FP8_ENABLED and cls.FP8_REUSE_QUANTIZED_WEIGHT

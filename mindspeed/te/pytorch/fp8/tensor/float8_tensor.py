@@ -9,6 +9,8 @@ import torch_npu
 from megatron.training import get_args
 
 from mindspeed.te.pytorch.fp8 import get_matmul_wise_by_tensor_key, MatmulKey
+from mindspeed.te.pytorch.fp8.constants import TensorKey
+from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
 from mindspeed.te.pytorch.module_typing import FP8Metadata
 from mindspeed.te.pytorch.utils import get_hccl_comm_name, all_gather_along_dim, get_quant_dtype, view_as_n_dim
 
@@ -138,11 +140,13 @@ class Float8Tensor2D:
         origin_shape: torch.Size,
         device: 'torch.device',
         dtype: torch.dtype = torch.float32,
+        key: TensorKey = None,
     ):
         self.fp8_dtype = fp8_dtype
         self.origin_shape = origin_shape
         self.device = device
         self.dtype = dtype
+        self.key = key
 
     def set_col_data(self, data, scale, t=False):
         if data is None:
@@ -171,8 +175,14 @@ class Float8Tensor2D:
 
     def restore_reshape(self, other: 'Float8Tensor2D', output: torch.Tensor):
         if len(self.origin_shape) == len(other.origin_shape):
-            return output  # dw 场景直接返回2维原始output
+            return output
         return output.reshape(*self.origin_shape[:-1], *output.shape[1:])
+
+    def release(self, data: torch.Tensor, scale: torch.Tensor) -> None:
+        if self.key == TensorKey.weight and FP8GlobalStateManager.is_weight_quantization_reuse_enabled():
+            return
+        data.untyped_storage().resize_(0)
+        scale.untyped_storage().resize_(0)
 
 
 def te_cast_comparison(fp8_format, tensor, quant_tensor):
