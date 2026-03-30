@@ -1,11 +1,14 @@
 # Copyright (c) 2025, Huawei Technologies.
 # All rights reserved.
+import os
 import torch
 import torch.nn.functional as F
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.moe_feature import grouped_gemm_util as gg
 from mindspeed.model.transformer import should_recompute_activation
+
+from mindspeed.core.qat.w4a16_fake_quantization import W4A16FakeQuantization
 
 
 class GmmExpertsImpl:
@@ -51,6 +54,11 @@ class GmmExpertsImpl:
 
         gemm_fusion = self.config.gemm_gradient_accumulation_fusion
 
+        quant_w4a16_enable = False
+        if hasattr(self.config, 'qat_scheme') and self.config.qat_scheme == "w4a16-mxfp4":
+            quant_w4a16_enable = True
+            fakequant_func = W4A16FakeQuantization.apply
+
         if permuted_local_hidden_states.nelement() != 0:
             from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
@@ -59,6 +67,9 @@ class GmmExpertsImpl:
             if quant_gmm_func:
                 fc1_output = quant_gmm_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1)
             else:
+                if quant_w4a16_enable:
+                    w1 = self.weight1.view(-1, self.config.hidden_size)
+                    w1 = fakequant_func(w1, [1, 32], False).reshape(self.num_local_experts, self.config.hidden_size, -1)
                 fc1_output = gg.ops.gmm(
                     permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
                     original_weight=self.weight1
@@ -74,12 +85,18 @@ class GmmExpertsImpl:
             if quant_gmm_func:
                 fc2_output = quant_gmm_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
+                if quant_w4a16_enable:
+                    w2 = self.weight2.view(-1, self.config.hidden_size)
+                    w2 = fakequant_func(w2, [1, 32], False).reshape(self.num_local_experts, -1, self.config.hidden_size)
                 fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight2)
         else:
             assert torch.count_nonzero(tokens_per_expert) == 0
             w1 = self.weight1.view(self.config.hidden_size, -1)
             w2 = self.weight2.view(-1, self.config.hidden_size)
+            if quant_w4a16_enable:
+                w2 = fakequant_func(self.weight1.view(-1, self.config.hidden_size), [1, 32], False).reshape(self.config.hidden_size, -1)
+                w2 = fakequant_func(self.weight2.view(-1, self.config.hidden_size), [1, 32], False).reshape(-1, self.config.hidden_size)
             h = torch.matmul(permuted_local_hidden_states, w1)
             if not is_recompute_activation:
                 intermediate_parallel = self.activation_func_with_probs(h, permuted_probs.unsqueeze(-1))

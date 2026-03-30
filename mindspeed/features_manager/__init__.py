@@ -25,6 +25,7 @@ from mindspeed.features_manager.affinity.affinity import AffinityFeature
 from mindspeed.features_manager.megatron_basic.requirements_basic import RequirementsBasicFeature
 from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBasicFeature
 from mindspeed.features_manager.megatron_basic.transformer_engine_basic import TransformerEngineBasicFeature
+from mindspeed.features_manager.qat.qat_quant_engine import QATQuantEngineFeature
 from mindspeed.features_manager.pipeline_parallel import NoopLayersFeature
 from mindspeed.features_manager.pipeline_parallel.optimize_p2p_comm import OptimizeP2PCommFeature
 from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import RiPipeSchedulesBubbleFeature, \
@@ -338,6 +339,12 @@ def add_aiqos_feature(features_list: List[MindSpeedFeature]):
     ])
 
 
+def add_qat_features(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        QATQuantEngineFeature(),
+    ])
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -367,6 +374,7 @@ def create_features_list():
     add_auto_settings_feature(features_list)
     add_ckpt_acceleration_feature(features_list)
     add_aiqos_feature(features_list)
+    add_qat_features(features_list)
     return features_list
 
 
