@@ -158,7 +158,7 @@ def recompute_w_u_fwd_kernel(
     gk,
     cu_seqlens,
     chunk_indices,
-    T,
+    T_tmp,
     B,
     H: tl.constexpr,
     K: tl.constexpr,
@@ -173,7 +173,7 @@ def recompute_w_u_fwd_kernel(
 ):
     core_id = tl.program_id(0)
     total_cores = tl.num_programs(0)
-    T_max = T
+    T_max = T_tmp
 
     base_chunks_per_pid = NT // total_cores
     remainder_chunks = NT % total_cores
@@ -195,6 +195,7 @@ def recompute_w_u_fwd_kernel(
                     offset = bos + i_h * T_max
                     T = eos - bos
                 else:
+                    T = T_tmp
                     i_t = idx
                     bos, eos = i_b * T, i_b * T + T
                     offset = bos * H + i_h * T_max
@@ -264,7 +265,7 @@ def recompute_w_u_fwd(
         gk=gk,
         cu_seqlens=cu_seqlens,
         chunk_indices=chunk_indices,
-        T=T,
+        T_tmp=T,
         B=B,
         H=H,
         K=K,
