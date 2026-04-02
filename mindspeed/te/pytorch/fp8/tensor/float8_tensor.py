@@ -179,7 +179,7 @@ class Float8Tensor2D:
         return output.reshape(*self.origin_shape[:-1], *output.shape[1:])
 
     def release(self, data: torch.Tensor, scale: torch.Tensor) -> None:
-        if self.key == TensorKey.weight and FP8GlobalStateManager.is_weight_quantization_reuse_enabled():
+        if self.key == TensorKey.weight and FP8GlobalStateManager.is_weight_quantization_reuse_configured():
             return
         data.untyped_storage().resize_(0)
         scale.untyped_storage().resize_(0)

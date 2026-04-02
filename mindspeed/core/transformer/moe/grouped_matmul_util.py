@@ -166,7 +166,7 @@ class BF16GMMFunction(BaseGMMFunction):
 class MXFP8GMMFunction(BaseGMMFunction):
 
     @classmethod
-    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None, reuse_identity=None):
         qdtype = get_quant_dtype()
         x_mxfp8, x_scale = torch_npu.npu_dynamic_mx_quant(x, axis=-1, dst_type=qdtype.x)
         weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale = reuse_or_quantize(
@@ -174,6 +174,7 @@ class MXFP8GMMFunction(BaseGMMFunction):
             TensorKey.weight,
             torch_npu.npu_dynamic_mx_quant_with_dual_axis,
             op_name="npu_dynamic_mx_quant_with_dual_axis",
+            reuse_identity=reuse_identity,
             dst_type=qdtype.w,
         )
         ctx.w_quant = (weight_col_mxfp8, weight_col_scale)
@@ -188,17 +189,7 @@ class MXFP8GMMFunction(BaseGMMFunction):
     def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         grad_mxfp8, grad_scale = torch_npu.npu_dynamic_mx_quant(grad, axis=-1, dst_type=qdtype.grads)
-        if hasattr(ctx, "w_quant"):
-            weight_mxfp8, weight_scale = ctx.w_quant
-        else:
-            weight_mxfp8, weight_scale = reuse_or_quantize(
-                weight,
-                TensorKey.weight,
-                torch_npu.npu_dynamic_mx_quant,
-                op_name="npu_dynamic_mx_quant",
-                axis=-1,
-                dst_type=qdtype.w,
-            )
+        weight_mxfp8, weight_scale = ctx.w_quant
         return torch_npu.npu_grouped_matmul([grad_mxfp8], [rearrange(weight_mxfp8, 'n h f -> n f h')], bias=bias,
                                             scale=[rearrange(weight_scale, 'n h f g -> n f h g')],
                                             per_token_scale=[grad_scale], group_list=group_list, group_type=0,
@@ -271,7 +262,6 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             weight.reshape(g_size, -1),
             TensorKey.weight,
             torch_npu.npu_dynamic_quant,
-            op_name="npu_dynamic_quant",
             dst_type=w_dst_type,
         )
         return x_quant.reshape(x.shape), x_scale, weight_quant.reshape(weight.shape), weight_scale

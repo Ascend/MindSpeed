@@ -42,7 +42,7 @@ class Float8BlockRecipe(Recipe):
                 tensor_2d,
                 key,
                 torch_npu.npu_dynamic_block_quant,
-                op_name="npu_dynamic_block_quant",
+                reuse_identity=tensor,
                 dst_type=self.quant_dtype,
                 **col_quant_dim,
             )
@@ -51,7 +51,7 @@ class Float8BlockRecipe(Recipe):
                 tensor_2d.T if key == TensorKey.grads else tensor_2d,
                 key,
                 torch_npu.npu_dynamic_block_quant,
-                op_name="npu_dynamic_block_quant",
+                reuse_identity=tensor,
                 dst_type=self.quant_dtype,
                 **row_quant_dim,
             )
@@ -77,7 +77,6 @@ class Float8BlockMatMul(torch.autograd.Function):
             weight,
             TensorKey.weight,
             torch_npu.npu_dynamic_block_quant,
-            op_name="npu_dynamic_block_quant",
             dst_type=qdtype.w,
             **Float8BlockRecipe.right_dim,
         )
@@ -100,7 +99,6 @@ class Float8BlockMatMul(torch.autograd.Function):
             weight.t(),
             TensorKey.weight,
             torch_npu.npu_dynamic_block_quant,
-            op_name="npu_dynamic_block_quant",
             dst_type=qdtype.w,
             **Float8BlockRecipe.right_dim,
         )

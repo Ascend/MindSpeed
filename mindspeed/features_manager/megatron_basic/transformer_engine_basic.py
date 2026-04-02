@@ -85,14 +85,6 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
                               f"using bf16 gmm instead.")
         if getattr(args, "fp8_reuse_quantized_weight", False) and not args.fp8:
             raise ValueError("fp8_reuse_quantized_weight is only valid when FP8 training is enabled")
-        fp8_reuse = getattr(args, "fp8_reuse_quantized_weight", False)
-        is_compatible = getattr(args, "te_gmm_mode", None) == 'compatible'
-        no_overlap = getattr(args, "moe_fb_overlap", False) == False
-        if fp8_reuse and (is_compatible and no_overlap):
-            raise ValueError(
-                "fp8_reuse_quantized_weight is enabled but it is not compatible "
-                "with te_gmm_mode='compatible' and moe_fb_overlap=False"
-            )
 
     def pre_register_patches(self, pm, args):
         pm.register_patch('transformer_engine.pytorch.tensor.QuantizedTensor', torch.nn.Module, create_dummy=True)

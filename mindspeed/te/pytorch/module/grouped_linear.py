@@ -68,13 +68,14 @@ class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
     @classmethod
     def forward(cls, ctx, input_tensor: torch.Tensor,
                 m_split=None,
-                *weight) -> torch.Tensor:
+                reuse_identity=None,
+                *weight_views) -> torch.Tensor:
 
         if not isinstance(m_split, torch.Tensor):
             m_split = torch.tensor(m_split, device='npu', dtype=torch.int64)
         ctx.group_list = torch.cumsum(m_split, dim=0)
-        weight = torch.stack(weight, dim=0)
-        fwd_output = cls.op_forward(ctx, input_tensor, weight, ctx.group_list)[0]
+        weight = torch.stack(weight_views, dim=0)
+        fwd_output = cls.op_forward(ctx, input_tensor, weight, ctx.group_list, reuse_identity=reuse_identity)[0]
         ctx.save_for_backward(input_tensor, weight)
         return fwd_output
 
@@ -84,7 +85,7 @@ class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
         inp, weight = ctx.saved_tensors
         grad = cls.op_dx(ctx, grad_output, weight, group_list)[0]
         grad_weight = cls.op_dw(inp, grad_output, group_list)[0]
-        return grad, None, *grad_weight
+        return grad, None, None, *grad_weight
 
 
 class MindSpeedTEGroupedLinear(torch.nn.Module):
@@ -162,7 +163,12 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             output = MindSpeedTEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight,
                                                        *self.total_weight_T)
         else:
-            output = MindSpeedTEGroupedLinearMXFP8GMM.apply(x, m_splits, *[w.T for w in self.total_weight])
+            output = MindSpeedTEGroupedLinearMXFP8GMM.apply(
+                x,
+                m_splits,
+                self.total_weight,
+                *[w.T for w in self.total_weight]
+            )
         return output, None
 
     def _sharded_state_dict_grouped(

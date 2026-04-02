@@ -38,6 +38,7 @@ class Recipe:
         *,
         allow_reuse: bool = True,
         op_name: str | None = None,
+        reuse_identity: Any = None,
         **kwargs: Any,
     ) -> Any:
         return reuse_or_quantize(
@@ -46,6 +47,7 @@ class Recipe:
             quantizer,
             allow_reuse=allow_reuse,
             op_name=op_name,
+            reuse_identity=reuse_identity,
             **kwargs,
         )
 

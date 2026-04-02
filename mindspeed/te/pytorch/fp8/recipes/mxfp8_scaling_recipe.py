@@ -27,6 +27,7 @@ class MXFP8ScalingRecipe(Recipe):
                 key,
                 torch_npu.npu_dynamic_mx_quant_with_dual_axis,
                 op_name="npu_dynamic_mx_quant_with_dual_axis",
+                reuse_identity=tensor,
                 dst_type=fp8_dtype,
             )
         elif colwise:
@@ -35,6 +36,7 @@ class MXFP8ScalingRecipe(Recipe):
                 key,
                 torch_npu.npu_dynamic_mx_quant,
                 op_name="npu_dynamic_mx_quant",
+                reuse_identity=tensor,
                 axis=-1,
                 dst_type=fp8_dtype,
             )
@@ -44,6 +46,7 @@ class MXFP8ScalingRecipe(Recipe):
                 key,
                 torch_npu.npu_dynamic_mx_quant,
                 op_name="npu_dynamic_mx_quant",
+                reuse_identity=tensor,
                 axis=-2,
                 dst_type=fp8_dtype,
             )
@@ -76,7 +79,6 @@ class MXFP8MatMul(torch.autograd.Function):
                 weight,
                 TensorKey.weight,
                 torch_npu.npu_dynamic_mx_quant_with_dual_axis,
-                op_name="npu_dynamic_mx_quant_with_dual_axis",
                 dst_type=qdtype.w,
             )
         else:
@@ -85,7 +87,6 @@ class MXFP8MatMul(torch.autograd.Function):
                 weight,
                 TensorKey.weight,
                 torch_npu.npu_dynamic_mx_quant,
-                op_name="npu_dynamic_mx_quant",
                 axis=-1,
                 dst_type=qdtype.w,
             )
@@ -114,7 +115,6 @@ class MXFP8MatMul(torch.autograd.Function):
                 weight,
                 TensorKey.weight,
                 torch_npu.npu_dynamic_mx_quant,
-                op_name="npu_dynamic_mx_quant",
                 axis=-2,
                 dst_type=qdtype.w,
             )

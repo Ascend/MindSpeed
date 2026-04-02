@@ -21,7 +21,6 @@ class CurrentScalingRecipe(Recipe):
             tensor,
             key,
             torch_npu.npu_dynamic_quant,
-            op_name="npu_dynamic_quant",
             dst_type=self.quant_dtype,
             quant_mode='pertensor',
         )
@@ -43,7 +42,6 @@ class TensorwiseMatMul(torch.autograd.Function):
             weight,
             TensorKey.weight,
             torch_npu.npu_dynamic_quant,
-            op_name="npu_dynamic_quant",
             dst_type=qdtype.w,
             quant_mode='pertensor',
         )

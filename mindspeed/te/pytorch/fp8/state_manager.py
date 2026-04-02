@@ -70,9 +70,13 @@ class FP8GlobalStateManager:
     def set_weight_quantization_reuse_enabled(cls, enabled: bool) -> None:
         if not enabled and cls.FP8_REUSE_QUANTIZED_WEIGHT:
             from mindspeed.te.pytorch.fp8.reuse import clear_weight_quantization_reuse_cache
-            clear_weight_quantization_reuse_cache()
+            clear_weight_quantization_reuse_cache(release_storage=False)
         cls.FP8_REUSE_QUANTIZED_WEIGHT = enabled
 
     @classmethod
     def is_weight_quantization_reuse_enabled(cls) -> bool:
         return cls.FP8_ENABLED and cls.FP8_REUSE_QUANTIZED_WEIGHT
+
+    @classmethod
+    def is_weight_quantization_reuse_configured(cls) -> bool:
+        return cls.FP8_REUSE_QUANTIZED_WEIGHT
