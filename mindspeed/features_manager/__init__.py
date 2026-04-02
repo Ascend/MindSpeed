@@ -60,7 +60,7 @@ from mindspeed.features_manager.moe.moe_fix_router import MoEFixRouterFeature
 
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferAdaptiveFeature
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_set import HcclBufferSetFeature
-
+from mindspeed.features_manager.hccl_buffer.hccl_op_mode_set import HcclOpModeSetFeature
 from mindspeed.features_manager.optimizer.fused_ema_adamw_feature import FusedEmaAdamwFeature
 from mindspeed.features_manager.optimizer.virtual_optimizer import VirtualOptimizerFeature
 from mindspeed.features_manager.transformer.flash_attention.alibi_feature import AlibiFeature
@@ -237,6 +237,7 @@ def add_hccl_buffer_features(features_list: List[MindSpeedFeature]):
     features_list.extend([
         HcclBufferSetFeature(),
         HcclBufferAdaptiveFeature(),
+        HcclOpModeSetFeature(),
     ])
 
 

@@ -1,39 +1,49 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 import math
+
 _HCCL_GROUP_BUFFER = {}
+_HCCL_OP_MODE = {}
 
 
-def parse_hccl_buffer_string(hccl_group_buffer):
-    global _HCCL_GROUP_BUFFER
-
-    if hccl_group_buffer is None:
+def _parse_key_value_string(input_string, target_dict, dict_name="config"):
+    if input_string is None or not input_string:
         return
 
-    allowed_keys = ["dp", "dp_cp", "cp", "mp", "mp_exp", "tp", "pp", "embd", "tp_dp_cp", 
-                    "tp_dp", "tp_cp", "tp_exp", "exp", "dp_modulo_exp", "pp_new_stream", 
-                    "cp2", "cp_ulysses", "cp_ring", "cp_ring_intra", "cp_ring_intra_overlap", "nd1_dim1", "ag_x_sd_rcv_overlap", 
-                    "nd1_dim2", "ag_y_sd_rcv_overlap", "nd2_dim1", "nd2_dim2"]
+    allowed_keys = ["dp", "dp_cp", "cp", "mp", "mp_exp", "tp", "pp", "embd", "tp_dp_cp", "dp_cp",
+                    "tp_dp", "tp_cp", "tp_exp", "tp_ep_mp", "exp", "ep", "dp_modulo_exp", "pp_new_stream",
+                    "cp2", "cp_ulysses", "cp_ring", "cp_ring_intra", "cp_ring_intra_overlap",
+                    "nd1_dim1", "ag_x_sd_rcv_overlap", "nd1_dim2", "ag_y_sd_rcv_overlap",
+                    "nd2_dim1", "nd2_dim2", "default_group"]
 
-    parts = hccl_group_buffer.split(';')
+    parts = input_string.split(';')
     for part in parts:
         key_value = part.split(':')
         if len(key_value) == 2:
-            key = key_value[0].strip()
-            value_str = key_value[1].strip()
-            key = key.replace(' ', '')
-            value_str = value_str.replace(' ', '')
+            key = key_value[0].strip().replace(' ', '')
+            value_str = key_value[1].strip().replace(' ', '')
+
             if key in allowed_keys:
                 try:
                     value = int(value_str)
                     if value <= 0:
-                        raise RuntimeError(f"Value {value} must be greater than 0")
-                    _HCCL_GROUP_BUFFER[key] = value
+                        raise RuntimeError(f"Value {value} for key '{key}' must be greater than 0")
+                    target_dict[key] = value
                 except ValueError as e:
-                    raise RuntimeError(f"{value_str} is not a valid positive integer") from e
+                    raise RuntimeError(f"'{value_str}' is not a valid positive integer for key '{key}'") from e
             else:
-                raise RuntimeError(f"Key {key} is not allowed")
+                raise RuntimeError(f"Key '{key}' is not allowed in {dict_name}")
         else:
-            raise RuntimeError("The str of hccl-group-buffer is not valid")
+            raise RuntimeError(
+                f"The value format of {dict_name} is not valid. Expected 'key:value' pairs separated by ';'")
+
+
+def parse_hccl_buffer_string(hccl_group_buffer):
+    _parse_key_value_string(hccl_group_buffer, _HCCL_GROUP_BUFFER, "--hccl-group-buffer")
+
+
+def parse_hccl_op_mode_string(hccl_op_mode_string):
+    _parse_key_value_string(hccl_op_mode_string, _HCCL_OP_MODE, "--hccl-op-mode")
+
 
 
 def hccl_buffer_auto_adaptive(args):
