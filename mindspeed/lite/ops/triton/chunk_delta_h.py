@@ -248,6 +248,9 @@ def chunk_gated_delta_rule_fwd_h(
     B, T, H, K, V = *k.shape, u.shape[-1]
     BT = chunk_size
 
+    if initial_state is not None:
+        raise ValueError("The training does not support initial_state.")
+
     chunk_indices = prepare_chunk_indices(cu_seqlens, chunk_size) if cu_seqlens is not None else None
     # N: the actual number of sequences in the batch with either equal or variable lengths
     if cu_seqlens is None:
