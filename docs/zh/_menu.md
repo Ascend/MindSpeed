@@ -3,7 +3,7 @@
 - [简介](introduction.md)
 - [软件安装](install_guide.md) 
 - [特性使用]()
-  - [特性列表](feture_list.md)
+  - [特性列表](feature_list.md)
   - [序列并行场景性能优化案例](user-guide/megatron_performance_optimization.md)
 - [自定义算子](ops_list.md)
 - [常见问题]()
