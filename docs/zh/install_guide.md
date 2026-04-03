@@ -1,12 +1,8 @@
 # 软件安装
 
-本文主要向用户介绍如何快速基于PyTorch框架以及MindSpore框架完成MindSpeed Core（亲和加速模块）的安装。
+本文主要向用户介绍如何快速基于PyTorch框架以及MindSpore框架完成MindSpeed Core（大模型训练加速库）的安装。
 
-## 安装前准备
-
-请参见《版本说明》中的“[相关产品版本配套说明](./release_notes.md#相关产品版本配套说明)”章节，下载安装对应的软件版本。
-
-### 硬件配套和支持的操作系统
+## 硬件配套和支持的操作系统
 
 **表 1**  产品硬件支持列表
 
@@ -28,6 +24,10 @@
 - 各硬件产品对应虚拟机部署场景支持的操作系统请参考《CANN 软件安装指南》的“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0101.html?Mode=VmIns&InstallType=local&OS=openEuler)”章节（商用版）或“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/softwareinst/instg/instg_0101.html?Mode=VmIns&InstallType=local&OS=openEuler)”章节（社区版）。
 
 - 各硬件产品对应容器部署场景支持的操作系统请参考《CANN 软件安装指南》的“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0101.html?Mode=DockerIns&InstallType=local&OS=openEuler)”章节（商用版）或“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/softwareinst/instg/instg_0101.html?Mode=DockerIns&InstallType=local&OS=openEuler)”章节（社区版）。
+
+## 安装前准备
+
+请参见《版本说明》中的“[相关产品版本配套说明](./release_notes.md#相关产品版本配套说明)”章节，下载安装对应的软件版本。
 
 ### 安装驱动固件
 
@@ -77,10 +77,14 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
 
 ### 安装MindSpeed
 
-   1. 下载MindSpeed源码master分支（请注意下列命令的大小写）
+   >[!NOTE]
+   >如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
+
+   1. 下载MindSpeed源码26.0.0_core_r0.12.1分支（请注意下列命令的大小写）
    
       ```shell  
         git clone https://gitcode.com/Ascend/MindSpeed.git
+        git checkout 26.0.0_core_r0.12.1
       ```
 
    2. 安装MindSpeed
@@ -88,8 +92,6 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
       ```shell
       pip install -e MindSpeed
       ```
-
-      如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
 
    3. 获取Megatron-LM源码切换 core_v0.12.1 版本
 
@@ -105,7 +107,7 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
 
 ### 安装MindSpore框架 
 
-参考[MindSpore官方安装指导](https://www.mindspore.cn/install)，根据系统类型、CANN版本及Python版本选择相应的安装命令进行安装，安装前请确保网络畅通。
+参考[MindSpore官方安装指导](https://www.mindspore.cn/install)，根据系统类型、CANN版本及Python版本获取相应的安装命令以安装MindSpore 2.9.0，安装前请确保网络畅通。
 
 ### 安装MindSpeed-Core-MS
 
@@ -113,58 +115,61 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
 
 + 一键安装 
  
-  执行以下命令获取MindSpeed-Core-MS代码仓，并安装第三方依赖，如下所示：
+   1. 执行以下命令获取MindSpeed-Core-MS代码仓，并安装第三方依赖，如下所示：
 
-  ```shell
-  git clone https://gitcode.com/Ascend/MindSpeed-Core-MS.git -b master
-  cd MindSpeed-Core-MS
-  pip install -r requirements.txt
-  ```
+      ```shell
+      git clone https://gitcode.com/Ascend/MindSpeed-Core-MS.git -b master
+      cd MindSpeed-Core-MS
+      pip install -r requirements.txt
+      ```
 
-  > [!NOTICE]  
-  > 若使用MindSpeed-Core-MS目录下的一键适配命令脚本（如[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)）可忽略后面步骤。
+   2. 使用MindSpeed-Core-MS目录下的一键适配命令脚本[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)，即可完成安装。
+
+      ```bash
+      bash auto_convert.sh
+      ```
 
 + 手动安装
 
   参考如下步骤完成手动安装。
   
-1. 获取源码
+   1. 获取源码
 
-    ```shell
-    #获取指定版本的MindSpeed-Core-MS源码
-    git clone https://gitcode.com/Ascend/MindSpeed-Core-MS.git -b master
-    cd MindSpeed-Core-MS
+      ```shell
+      #获取指定版本的MindSpeed-Core-MS源码
+      git clone https://gitcode.com/Ascend/MindSpeed-Core-MS.git -b master
+      cd MindSpeed-Core-MS
 
-    # 在MindSpeed-Core-MS目录下，获取指定版本的MindSpeed，Megatron-LM和MSAdapter源码
-    git clone https://gitcode.com/Ascend/MindSpeed.git -b master
-    git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
-    git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
-    ```
+      # 在MindSpeed-Core-MS目录下，获取指定版本的MindSpeed，Megatron-LM和MSAdapter源码
+      git clone https://gitcode.com/Ascend/MindSpeed.git -b 26.0.0_core_r0.12.1
+      git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
+      git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
+      ```
 
-    如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
+      如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
 
-2. 设置环境变量
+   2. 设置环境变量
 
-    ```shell
-    # 若环境中，PYTHONPATH等环境变量失效（例如退出容器后再进入等），需要重新设置环境变量
-    MindSpeed_Core_MS_PATH=$(pwd)
-    export PYTHONPATH=${MindSpeed_Core_MS_PATH}/MSAdapter:${MindSpeed_Core_MS_PATH}/MSAdapter/msa_thirdparty:${MindSpeed_Core_MS_PATH}/MindSpeed:$PYTHONPATH
-    echo $PYTHONPATH
-    ```
-  
-3. 设置CANN环境变量
+      ```shell
+      # 若环境中，PYTHONPATH等环境变量失效（例如退出容器后再进入等），需要重新设置环境变量
+      MindSpeed_Core_MS_PATH=$(pwd)
+      export PYTHONPATH=${MindSpeed_Core_MS_PATH}/MSAdapter:${MindSpeed_Core_MS_PATH}/MSAdapter/msa_thirdparty:${MindSpeed_Core_MS_PATH}/MindSpeed:$PYTHONPATH
+      echo $PYTHONPATH
+      ```
+   
+   3. 设置CANN环境变量
 
-   ```shell
-    # NNAL默认安装路径为：/usr/local/Ascend/nnal
-    # 运行NNAL默认安装路径下atb文件夹中的环境配置脚本set_env.sh
-    source /usr/local/Ascend/nnal/atb/set_env.sh
-    source /usr/local/Ascend/cann/set_env.sh
-   ```
+      ```shell
+      # NNAL默认安装路径为：/usr/local/Ascend/nnal
+      # 运行NNAL默认安装路径下atb文件夹中的环境配置脚本set_env.sh
+      source /usr/local/Ascend/nnal/atb/set_env.sh
+      source /usr/local/Ascend/cann/set_env.sh --cxx_abi=0
+      ```
 
 ## 卸载MindSpeed
 
 执行以下命令卸载MindSpeed。
 
 ```shell
-pip uninstall -y mindspeed
+pip uninstall -y mindspeed #注意命令中为小写mindspeed
 ```

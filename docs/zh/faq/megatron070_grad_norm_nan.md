@@ -1,4 +1,4 @@
-# Megatron-LM 0.7.0版本长稳测试出现GradNorm为NaN
+# Megatron-LM 0.7.0版本长稳测试出现GradNorm为nan
 
 ## 问题现象
 
@@ -44,10 +44,10 @@ ve. Device: 5, node: node-15-11
 
 ## 问题根因
 
-1. 问题场景使用的数据集生成时，增加了`--append-eod`参数，这会让每个数据sample末尾增加一个eos结束标志位；
-2. megatron0.7.0对数据集提取过程增加了pad功能（在`class GPTDataset`类中），`PretrainedFromHF`模式下，会将pad标志位与eos标志位配成相同值（`pad_token_id == eos_token_id`）。loss_mask中会去掉pad标志位，但实际去掉的都是eos标志位。
-3. 以上两个原因综合导致了grad norm为nan的问题，这个问题是megatron原生问题，相同配置下实测GPU中也会报错。
+ 问题场景使用的数据集生成时，增加了`--append-eod`参数，这会让每个数据sample末尾增加一个eos结束标志位；
+Megatron-0.7.0对数据集提取过程增加了pad功能（在`class GPTDataset`类中），`PretrainedFromHF`模式下，会将pad标志位与eos标志位配成相同值（`pad_token_id == eos_token_id`）。loss_mask中会去掉pad标志位，但实际去掉的都是eos标志位。
+ 以上两个原因综合导致了grad norm为nan的问题，这个问题是Megatron原生问题，相同配置下实测GPU中也会报错。
 
 ## 解决方案
 
-在`--tokenizer-type PretrainedFromHF`模式下，不使用`--append-eod`生成数据集
+在`--tokenizer-type PretrainedFromHF`模式下，不使用`--append-eod`生成数据集。

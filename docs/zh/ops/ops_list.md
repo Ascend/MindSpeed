@@ -6,7 +6,6 @@
 >
 > 下表中的“Released”代表商用版本已发布，“✅”代表支持，“❌”代表不支持。
 
- 
 **表 1**  自定义算子列表
 
 <table style="border-collapse:collapse;border-spacing:0;table-layout: fixed; width: 727px" class="tg"><colgroup><col style="width: 89px"><col style="width: 248px"><col style="width: 73px"><col style="width: 150px"><col style="width: 167px"></colgroup>

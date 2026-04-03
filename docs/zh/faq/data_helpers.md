@@ -41,9 +41,9 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 
 ## 问题根因
 
-在 `megatron/core/datasets/helpers.cpp` 文件里的 `build_sample_idx()` 函数中创建了 `sample_idx` 的 int32 数组去记录每个 sample 的 index，
-而每个 sample 的 index 又是以 `doc_idx_index` 这个 int64 的变量去计算，在 `sample_idx[2 * sample_index] = doc_idx_index;` 这个赋值操作中存在溢出的可能。
-在数据集中的句子较短，而要求训练的步数 *Global Batch Size* Sequence Length 较大的情况下就会出现 `doc_idx_index` 超过 int32 的表达范围而导致最终的 index 溢出。
+在 `megatron/core/datasets/helpers.cpp` 文件里的 `build_sample_idx()` 函数中创建了 `sample_idx`的int32数组去记录每个 sample 的 index，
+而每个sample的index又是以`doc_idx_index` 这个int64的变量去计算，在 `sample_idx[2 * sample_index] = doc_idx_index;` 这个赋值操作中存在溢出的可能。
+在数据集中的句子较短，而要求训练的步数、全局批量大小（Global Batch Size）、序列长度（Sequence Length） 较大的情况下，就会出现 `doc_idx_index` 超过 int32 的表达范围而导致最终的 index 溢出。
 
 ## 解决方案
 
@@ -53,7 +53,7 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 
 ### 推荐方案
 
- 1. 将相关变量修改为 int64 数据类型，具体可查看[fix data helps overflow bug](https://github.com/NVIDIA/Megatron-LM/pull/598)。
+ 1. 将相关变量修改为 int64 数据类型，具体可查看[fix data helpers overflow bug](https://github.com/NVIDIA/Megatron-LM/pull/598)。
   可以在 Megatron-LM 目录下，运行`mindspeed -P`命令，自动完成修改。
 
     ```shell

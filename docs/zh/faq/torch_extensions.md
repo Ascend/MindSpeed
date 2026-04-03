@@ -1,4 +1,4 @@
-# Torch extensions 卡住
+# Torch extensions卡住
 
 ## 问题现象
 
