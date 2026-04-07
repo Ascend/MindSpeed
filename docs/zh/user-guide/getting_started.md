@@ -48,9 +48,9 @@
     data_df = pd.read_parquet("train-00000-of-00001-a09b74b3ef9c3b56.parquet")
     data_df['text'] = data_df['text'].apply(lambda v: json.dumps({"text": v}))
     with open("alpaca_json.json", encoding='utf-8', mode='w') as f:
-    for i, row in data_df.iterrows():
-        f.write(row['text'])
-        f.write('\n')
+        for i, row in data_df.iterrows():
+            f.write(row['text'])
+            f.write('\n')
     ```
 
 4. 预训练数据集生成
@@ -209,4 +209,3 @@
 
     > [!NOTE]
     > 示例脚本train_distributed.sh中的部分参数（如--hidden-size、--num-layers）需根据实际场景进行适配，避免OOM等现象。
-

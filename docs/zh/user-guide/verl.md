@@ -4,14 +4,14 @@
 
 ### 1. MindSpeed 安装
 
-按照 MindSpeed 文档，安装对应依赖。
-> <https://gitcode.com/Ascend/MindSpeed#%E5%AE%89%E8%A3%85>
+请参见[MindSpeed安装指导](../install_guide.md)，下载安装对应的软件版本。
 
 ### 2. Verl 安装
 
-按照 Verl 文档，安装对应依赖：
-> <https://github.com/volcengine/verl/blob/main/docs/ascend_tutorial/quick_start/ascend_quick_start.rst>
-> 注：若使用的CANN版本高于8.3.RC1，vllm和vllm-ascend安装版本须大于等于0.9.1，0.9.1版本vllm安装可参考：<https://docs.vllm.ai/projects/vllm-ascend-cn/zh-cn/latest/installation.html>
+请参见[Verl Ascend Quickstart](https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/quick_start/ascend_quick_start.rst)，下载安装对应的软件版本。
+
+> [!NOTE]
+> 若使用的CANN版本高于8.3.RC1，vllm和vllm-ascend安装版本须大于等于0.9.1，0.9.1版本vllm安装可参考[vllm-ascend安装](https://docs.vllm.ai/projects/vllm-ascend-cn/zh-cn/latest/installation.html)。
 
 ## 使能 MindSpeed 后端
 
@@ -20,6 +20,11 @@
 MindSpeed 自定义入参可通过 `override_transformer_config` 参数传入，例如对 `actor` 模型开启 FA 特性可使用 `+actor_rollout_ref.actor.megatron.override_transformer_config.use_flash_attn=True`。
 
 ## 特性支持列表
+
+> [!NOTE]
+> "Preview"状态表示预览非正式发布版本，"Released"状态表示正式发布版本，"Dev"状态表示正在开发中。
+
+**表 1** 特性列表
 
 | 特性名称     | 配置参数                                                     | 状态    |
 | ------------ | ------------------------------------------------------------ | ------- |
@@ -39,6 +44,9 @@ MindSpeed 自定义入参可通过 `override_transformer_config` 参数传入，
 | MoE Grouped GEMM  | +actor_rollout_ref.actor.megatron.override_transformer_config.moe_grouped_gemm=True | Preview |
 | MoE Token Permute and Unpermute 融合优化  | +actor_rollout_ref.actor.megatron.override_transformer_config.use_fused_moe_token_permute_and_unpermute=True | Preview |
 
-其中，mbridge暂不支持同时开启VPP；同理VPP请在未开启mbridge时使用。
+**表 2** 特性补充说明
 
-注："Preview"状态表示预览非正式发布版本，"Released"状态表示正式发布版本，"Dev"状态表示正在开发中。
+|特性名称|说明|
+|-|-|
+|mbridge|暂不支持同时开启VPP。|
+|VPP|请在未开启mbridge时使用。|
