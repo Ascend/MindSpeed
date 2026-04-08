@@ -85,7 +85,7 @@ if __name__ == "__main__":
 from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.all_gather_matmul(input1, input2, output, bias)
-````
+```
 
 ### 接口功能
 
@@ -247,7 +247,7 @@ if __name__ == "__main__":
 from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.matmul_reduce_scatter(input1, input2, output, bias)
-````
+```
 
 ### 接口功能
 
@@ -327,7 +327,7 @@ if __name__ == "__main__":
 from mindspeed.ops.lcal_functional import coc_ops
 
 coc_ops.pure_matmul(input1, input2, output, bias)
-````
+```
 
 ### 接口功能
 

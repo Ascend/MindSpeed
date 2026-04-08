@@ -63,13 +63,13 @@ For buffer in buffers:
 
 ### 1. 配置参数
 
-````bash
+```bash
 enable_expert_placement: True  # 专家迁移功能开关
 enable_fine_grained_expert_placement: True #细粒度分层专家迁移开关，若false，则所有moe层均默认按固定频率迁移
 expert_placement_freq: 50 #专家迁移频率
 print_expert_load: True  #设备级专家负载打印开关
 fine_grained_expert_placement_thre: 0.08 #细粒度分层专家迁移开关阈值，值越高，迁移收益要求越大
-````
+```
 
 ### 2. 功能支持与限制
 

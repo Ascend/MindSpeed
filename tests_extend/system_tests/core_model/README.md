@@ -146,7 +146,7 @@ coverage html --data-file=.coverage -d <输出目录>
 **分析**
 
 - FA只需要添加参数：--use-flash-attn
-添加样例只需要在gpt-usecase.yaml文件的products下添加一条：
+添加样例只需要在gpt_usecase.yaml文件的products下添加一条：
 \- { use_mcore: [ True, False ], tp_size: [ 2 ], pp_size: [ 2 ], extra_args: [ '"--use-flash-attn"'] }
 **注意**
 - 训练的其他参数见pretrain_gpt_usecase.sh，所有用例执行的入口文件是pretrain_gpt_usecase.py，详细信息看这两个文件
