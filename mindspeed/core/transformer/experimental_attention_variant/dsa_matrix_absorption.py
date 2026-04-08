@@ -44,6 +44,7 @@ from megatron.core.transformer.multi_latent_attention import (
     MLASelfAttentionSubmodules,
 )
 from megatron.core.transformer.multi_latent_attention import MultiLatentAttention
+from megatron.training import get_args
 
 
 try:
@@ -57,6 +58,8 @@ try:
 except ImportError:
     TEColumnParallelLinear, TELinear, Linear, set_save_original_input = None, None, None, None
     HAVE_TE = False
+
+from mindspeed.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd_in_complex
 
 
 def compute_dsa_indexer_loss(
@@ -785,24 +788,29 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
                 q, [self.config.qk_head_dim, self.config.qk_pos_emb_head_dim], dim=-1
             )
 
-            # q_pos_emb: [num_tokens, n, qk_pos_emb_head_dim]
-            q_pos_emb = apply_rotary_pos_emb(
-                q_pos_emb,
-                rotary_pos_emb,
-                config=self.config,
-                cu_seqlens=cu_seqlens_q,
-                mscale=mscale,
-                cp_group=self.pg_collection.cp,
-            )
-            # k_pos_emb:[num_tokens, 1, qk_pos_emb_head_dim]
-            k_pos_emb = apply_rotary_pos_emb(
-                k_pos_emb,
-                rotary_pos_emb,
-                config=self.config,
-                cu_seqlens=cu_seqlens_kv,
-                mscale=mscale,
-                cp_group=self.pg_collection.cp,
-            )
+            args = get_args()
+            if args.apply_rope_in_complex:
+                q_pos_emb = apply_rotary_pos_emb_bshd_in_complex(q_pos_emb, rotary_pos_emb, rotary_interleaved=False)
+                k_pos_emb = apply_rotary_pos_emb_bshd_in_complex(k_pos_emb, rotary_pos_emb, rotary_interleaved=False)
+            else:
+                # q_pos_emb: [num_tokens, n, qk_pos_emb_head_dim]
+                q_pos_emb = apply_rotary_pos_emb(
+                    q_pos_emb,
+                    rotary_pos_emb,
+                    config=self.config,
+                    cu_seqlens=cu_seqlens_q,
+                    mscale=mscale,
+                    cp_group=self.pg_collection.cp,
+                )
+                # k_pos_emb:[num_tokens, 1, qk_pos_emb_head_dim]
+                k_pos_emb = apply_rotary_pos_emb(
+                    k_pos_emb,
+                    rotary_pos_emb,
+                    config=self.config,
+                    cu_seqlens=cu_seqlens_kv,
+                    mscale=mscale,
+                    cp_group=self.pg_collection.cp,
+                )
 
             # Compute query components. Multiply by up k if absorbing
             kv_nope_weight = self.linear_k_up_proj.weight

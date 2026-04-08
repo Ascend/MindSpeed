@@ -88,6 +88,26 @@ def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool
     return torch.cat((t, t_pass), dim=-1)
 
 
+def apply_rotary_pos_emb_bshd_in_complex(
+        t: Tensor,
+        freqs: Tensor,
+        rotary_interleaved: bool = False
+) -> Tensor:
+    if rotary_interleaved:
+        s, b, n, d = t.shape
+        t = t.view(s, b, n, 2, d // 2).transpose(4, 3)
+    freqs, _ = freqs.chunk(2, dim=-1)
+
+    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
+
+    x = torch.view_as_complex(t.float().view(*t.shape[:-1], -1, 2)).squeeze(-1)
+    y = torch.view_as_real(x * freqs_cis).flatten(3)
+    if rotary_interleaved:
+        y = torch.cat([y[..., 0::2], y[..., 1::2]], dim=-1)
+
+    return y.to(t.dtype)
+
+
 def apply_yarn_scaling(freqs: torch.Tensor):
     args = get_args()
 

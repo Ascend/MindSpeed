@@ -11,6 +11,7 @@ class DeepSeekSparseAttention(MindSpeedFeature):
         group.add_argument("--use-fused-lightning-indexer", action='store_true', help="Enable fused lightning indexer in DSA.")
         group.add_argument("--use-fused-sparse-flash-attention", action='store_true', help="Enable sparse flashattention in DSA.")
         group.add_argument("--use-fused-lightning-indexer-kl-loss", action='store_true', help="Enable sparse lightning indexer kl loss in DSA.")
+        group.add_argument("--apply-rope-in-complex", action='store_true', help="Apply complex computation of rope in DSA.")
 
     def validate_args(self, args):
         if not getattr(args, 'qk_layernorm') and getattr(args, 'experimental_attention_variant') == 'dsa':
@@ -48,6 +49,9 @@ class DeepSeekSparseAttention(MindSpeedFeature):
         from mindspeed.core.transformer.experimental_attention_variant.dsa_fused import forward_with_scores, fused_dsa_attn_forward
         pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer.forward_with_scores', forward_with_scores)
         pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAttention.forward', fused_dsa_attn_forward)
+        if args.apply_rope_in_complex:
+            from mindspeed.core.transformer.experimental_attention_variant.dsa_matrix_naive import apply_rope_in_complex
+            pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer._apply_rope', apply_rope_in_complex)
 
         if int(getattr(args, 'context_parallel_size', 1)) > 1 and getattr(args, 'context_parallel_algo', 'megatron_cp_algo') == 'kvallgather_cp_algo':
             from mindspeed.core.transformer.experimental_attention_variant.dsa_kvallgather_context_parallel import transformer_config_post_init_wrapper

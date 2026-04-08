@@ -8,6 +8,8 @@ import torch.nn.functional as F
 
 from scipy.linalg import hadamard
 
+from mindspeed.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd_in_complex
+
 
 def hadamard_transform_ref(x, scale=1.0):
     """
@@ -45,3 +47,13 @@ def rotate_activation(x: torch.Tensor) -> torch.Tensor:
 
     hidden_size = x.size(-1)
     return hadamard_transform(x, scale=hidden_size ** -0.5)
+
+
+def apply_rope_in_complex(self, x: torch.Tensor, rotary_pos_emb: torch.Tensor, mscale: float) -> torch.Tensor:
+    """Apply RoPE to the input tensor in complex"""
+    x_pe, x_nope = torch.split(
+        x, [self.index_head_dim - self.qk_pos_emb_head_dim, self.qk_pos_emb_head_dim], dim=-1
+    )
+    x_pe = apply_rotary_pos_emb_bshd_in_complex(x_pe, rotary_pos_emb, rotary_interleaved=True)
+    x = torch.cat([x_pe, x_nope], dim=-1)
+    return x
