@@ -64,15 +64,15 @@ def prepare_wy_repr_bwd_kernel(
                 i_t = idx
                 bos, eos = i_b * T, i_b * T + T
 
-            o_t = i_t * BT + tl.arange(0, BT)	
-            m_t = o_t < T	
-            m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)	
+            o_t = i_t * BT + tl.arange(0, BT)
+            m_t = o_t < T
+            m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)
             for i_h in range(0, H):
                 if IS_VARLEN:
                     offset = bos + i_h * T_max
                 else:
                     offset = bos * H + i_h * T_max
-            
+
                 p_beta = tl.make_block_ptr(beta + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
                 p_g = tl.make_block_ptr(g + offset, (T,), (1,), (i_t * BT,), (BT,), (0,))
                 p_A = tl.make_block_ptr(A + (bos * H + i_h) * BT, (BT, T), (1, H * BT), (0, i_t * BT), (BT, BT), (0, 1))
@@ -113,12 +113,12 @@ def prepare_wy_repr_bwd_kernel(
                     b_dbeta += tl.sum(b_dv_beta * b_v, 1)
                     tl.store(p_dv, b_dv.to(p_dv.dtype.element_ty), boundary_check=(0, 1))
 
-                b_dA = tl.where(m_A, b_dA, 0)	
-                b_dA = tl.dot(b_dA.to(b_A.dtype), b_A)	
-                b_dA = tl.dot(b_A, b_dA.to(b_A.dtype))	
-                b_dA = tl.where(m_A, -b_dA * exp(b_g[:, None] - b_g[None, :]), 0)	
-                b_dA = b_dA.to(k.dtype.element_ty)	
-                b_A = tl.zeros([BT, BT], dtype=tl.float32)	
+                b_dA = tl.where(m_A, b_dA, 0)
+                b_dA = tl.dot(b_dA.to(b_A.dtype), b_A)
+                b_dA = tl.dot(b_A, b_dA.to(b_A.dtype))
+                b_dA = tl.where(m_A, -b_dA * exp(b_g[:, None] - b_g[None, :]), 0)
+                b_dA = b_dA.to(k.dtype.element_ty)
+                b_A = tl.zeros([BT, BT], dtype=tl.float32)
 
                 for i_k in range(tl.cdiv(K, BK)):
                     p_k = tl.make_block_ptr(k + (bos * H + i_h) * K, (T, K), (H * K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
@@ -158,7 +158,7 @@ def recompute_w_u_fwd_kernel(
     gk,
     cu_seqlens,
     chunk_indices,
-    T,
+    T_tmp,
     B,
     H: tl.constexpr,
     K: tl.constexpr,
@@ -173,7 +173,7 @@ def recompute_w_u_fwd_kernel(
 ):
     core_id = tl.program_id(0)
     total_cores = tl.num_programs(0)
-    T_max = T
+    T_max = T_tmp
 
     base_chunks_per_pid = NT // total_cores
     remainder_chunks = NT % total_cores
@@ -195,6 +195,7 @@ def recompute_w_u_fwd_kernel(
                     offset = bos + i_h * T_max
                     T = eos - bos
                 else:
+                    T = T_tmp
                     i_t = idx
                     bos, eos = i_b * T, i_b * T + T
                     offset = bos * H + i_h * T_max
@@ -264,7 +265,7 @@ def recompute_w_u_fwd(
         gk=gk,
         cu_seqlens=cu_seqlens,
         chunk_indices=chunk_indices,
-        T=T,
+        T_tmp=T,
         B=B,
         H=H,
         K=K,
