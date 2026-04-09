@@ -16,13 +16,15 @@
 
 | 组件 | 版本 |
 |------|------|
+| MindSpeed | dev |
 | Python | 3.11 |
-| CANN | 8.3.RC1 |
-| torch | 2.7.1 |
-| torch_npu | 2.7.1 |
-| vLLM | 0.11.0 |
-| vLLM-ascend | 0.11.0rc1 |
-| Megatron-LM | v0.12.1 |
+| CANN | 8.5.0 |
+| torch | 2.8.0 |
+| torch_npu | 2.8.0 |
+| vLLM | 0.13.0 |
+| vLLM-ascend | releases/v0.13.0 |
+| Megatron-LM | commit 3714d8 |
+| Megatron-Bridge | v0.2.2 |
 
 ## 模型训练
 
@@ -36,7 +38,7 @@
 
 3. 启动训练  
 
-   ```
+   ```bash
    # 确保在verl目录下执行训练脚本
    cd verl
 
