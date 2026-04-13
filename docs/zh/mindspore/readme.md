@@ -37,7 +37,7 @@ MindSpeed已支持接入华为自研AI框架MindSpore，旨在提供华为全栈
   </tr>
 </table>
 
-### 获取 [MindSpore-Core-MS](https://gitcode.com/Ascend/MindSpeed-Core-MS/) 代码仓
+### 获取 [MindSpeed-Core-MS](https://gitcode.com/Ascend/MindSpeed-Core-MS/) 代码仓
 
 执行以下命令拉取MindSpeed-Core-MS代码仓，并安装Python三方依赖库，如下所示：
 
@@ -53,7 +53,7 @@ pip install -r requirements.txt
 
 ### 获取并适配相应版本的 MindSpeed、Megatron-LM 和 MSAdapter
 
-1. 进入MindSpore-Core-MS目录后，获取指定版本仓库的源码：
+1. 进入MindSpeed-Core-MS目录后，获取指定版本仓库的源码：
 
    ```shell
    # 获取指定版本的MindSpeed源码：
@@ -66,7 +66,7 @@ pip install -r requirements.txt
    git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
    ```
 
-   具体版本对应关系参考MindSpore-Core-MS下的[一键适配命令脚本](https://gitcode.com/Ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)。
+   具体版本对应关系参考MindSpeed-Core-MS下的[一键适配命令脚本](https://gitcode.com/Ascend/MindSpeed-Core-MS/#%E4%B8%80%E9%94%AE%E9%80%82%E9%85%8D)，如[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)。
 
 2. 设置环境变量：
 
@@ -101,10 +101,10 @@ pip install -r requirements.txt
 2. （可选）若未准备好相应训练数据，则需进行数据集的下载及处理供后续使用。数据集准备流程可参考
 <a href="https://www.hiascend.com/document/detail/zh/Pytorch/700/modthirdparty/Mindspeedguide/mindspeed_0003.html">数据集处理</a>。
 
-3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。以下示例脚本可供参考。
+3. 在 Megatron-LM 目录下，准备好训练数据，并在示例脚本中填写对应路径，然后执行。以下示例可供参考。
 
     ```shell
-    MindSpeed/tests_extend/example/train_distributed_ms.sh
+    bash ./train_distributed_ms.sh
     ```
 
 ---
