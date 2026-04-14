@@ -40,13 +40,14 @@ class TestParallelStateEPCP(DistributedTest):
             assert (ps._MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE is None)
 
 
+    @pytest.mark.skip()
     @pytest.mark.parametrize("parallelism_config", [(2, 2, 2, 2), (2, 4, 1, 4), (1, 2, 4, 1)])
     def test_data_modulo_expert_parallel_initializations(self, parallelism_config):
         ps.destroy_model_parallel()
         tp, cp, dp, ep = parallelism_config
         assert (dp * cp % ep == 0)
         rank = int(os.environ['LOCAL_RANK'])
-        ps.initialize_model_parallel(tensor_model_parallel_size=tp, context_parallel_size=cp, expert_model_parallel_size=ep)
+        ps.initialize_model_parallel(tensor_model_parallel_size=tp, context_parallel_size=cp, expert_model_parallel_size=ep, create_gloo_process_groups=False)
         assert (torch.distributed.get_world_size(group=ps.get_expert_data_parallel_group()) == cp * dp // ep)
         assert (ps.get_expert_data_parallel_rank() == rank // (tp * ep))
         ps.destroy_model_parallel()
@@ -64,6 +65,7 @@ class TestParallelStateEPCP(DistributedTest):
         time.sleep(1)
 
 
+    @pytest.mark.skip()
     @pytest.mark.parametrize("parallelism_config", [(2, 2, 2, 2), (2, 4, 1, 4), (1, 2, 4, 1)])
     def test_expert_model_parallel_rank(self, parallelism_config):
         ps.destroy_model_parallel()

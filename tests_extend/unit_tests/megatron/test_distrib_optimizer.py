@@ -15,6 +15,7 @@ from megatron.core.parallel_state import get_data_parallel_group
 from megatron.training.global_vars import set_args, get_args, get_timers, _set_timers
 from megatron.training.arguments import parse_args
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
+from megatron.core.optimizer_param_scheduler import ParamGroupOverride
 from megatron.core.utils import get_model_config
 
 
@@ -65,8 +66,8 @@ def step_optimizer(model, use_distributed: bool, seed: int = None,
     kwargs['exp_avg_sq_dtype'] = torch.float32
     config = OptimizerConfig(**kwargs)
     config.timers = get_timers()
-    optimizer = get_megatron_optimizer(config, model, no_wd_decay_cond,
-                                       scale_lr_cond, lr_mult)
+    paramgroup = ParamGroupOverride()
+    optimizer = get_megatron_optimizer(config, model, paramgroup)
 
     for _ in range(500):
         # Force optimizer state initialization

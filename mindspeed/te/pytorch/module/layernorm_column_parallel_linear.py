@@ -72,6 +72,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             skip_weight_param_allocation: bool = False,
             tp_comm_buffer_name: Optional[str] = None,
             tp_group: Optional[torch.distributed.ProcessGroup] = None,
+            stride: int = 1,
     ):
 
         super(MindSpeedTELayerNormColumnParallelLinear, self).__init__()

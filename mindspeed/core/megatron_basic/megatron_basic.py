@@ -337,3 +337,30 @@ def dist_optim_load_state_dict(self, state_dict):
             self.load_parameter_state_from_fs_model_space(param_state)
         else:
             raise NotImplementedError(f'Unknown sharding_type: {sharding_type}')
+        
+
+def _synchronize_steps(self):
+    """
+    Synchronize the step of all optimizers.
+    TE FusedAdam will not accumulate "step" for empty param groups,
+    so we need to align the step across param groups before saving and after loading.
+    """
+
+    steps = []
+    for optimizer in self.chained_optimizers:
+        for param_group in optimizer.optimizer.param_groups:
+            if len(param_group['params']) > 0 and 'step' in param_group:
+                if torch.is_tensor(param_group['step']):
+                    steps.append(param_group['step'].item())
+                else:
+                    steps.append(param_group['step'])
+    steps = list(set(steps))
+    if len(steps) > 1:
+        raise AssertionError(f"steps: {steps}")
+    step = steps[0] if len(steps) == 1 else None
+    for optimizer in self.chained_optimizers:
+        for param_group in optimizer.optimizer.param_groups:
+            if len(param_group['params']) > 0 and 'step' in param_group:
+                param_group['step'] = torch.tensor(step)
+
+    return step

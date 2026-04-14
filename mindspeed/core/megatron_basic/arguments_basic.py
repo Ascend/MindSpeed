@@ -111,3 +111,27 @@ def transformer_config_init_wrapper(fn):
         fn(self, *args, **known_config)
 
     return wrapper
+
+
+def transformer_config_init_subclass(cls, **kwargs):
+    mutable_types = (list, dict, set, bytearray)
+    unknown_config = {}
+    full_args = vars(get_full_args()).copy()
+    full_args.update(kwargs)
+
+    config_key = inspect.signature(cls).parameters
+    for key, value in full_args.items():
+        if key not in config_key:
+            unknown_config[key] = value
+
+    for key, value in unknown_config.items():
+        if not hasattr(cls, key):
+            cls.__annotations__[key] = type(value)
+            value = field(default_factory=value) if callable(value) and not isinstance(value, type) else value
+            if callable(value) and not isinstance(value, type):
+                value = field(default_factory=value)
+            elif type(value) in mutable_types:
+                value = field(default_factory=lambda: value)
+            else:
+                value = value
+            setattr(cls, key, value)

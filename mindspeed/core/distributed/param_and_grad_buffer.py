@@ -6,7 +6,7 @@ import warnings
 from contextlib import nullcontext
 from functools import wraps
 from logging import getLogger
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 
@@ -137,7 +137,7 @@ def finish_param_sync(self, skip_next_bucket_dispatch: bool = False):
 
 
 # The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
-def start_grad_sync(self):
+def start_grad_sync(self, force_all_reduce: Optional[bool] = False):
     """
     Initiates grad sync (all-reduce or reduce-scatter) communication operations
     for all buckets in the bucket group.
@@ -146,6 +146,11 @@ def start_grad_sync(self):
     communication call. When ddp_config.overlap_grad_reduce is set to False, makes
     synchronous call.
     """
+    if self.is_first_batch and self.grad_reduce_handle is not None:
+        # Make this start_grad_sync call a no-op if in first batch and collective has
+        # already been dispatched.
+        return
+
     assert (
         self.grad_reduce_handle is None
     ), 'Should not have multiple communication calls outstanding at once'
@@ -239,7 +244,7 @@ def start_grad_sync(self):
 
 
 # The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
-def finish_grad_sync(self):
+def finish_grad_sync(self, force_all_reduce: Optional[bool] = False):
     """
     Finishes grad sync (all-reduce or reduce-scatter) communication operations
     for all buckets in the bucket group.
@@ -253,14 +258,20 @@ def finish_grad_sync(self):
     if not self.ddp_config.overlap_grad_reduce:
         self.start_grad_sync()
         return
+    # If first batch, start asynchronous communication here. register_grad_ready() launches
+    # asynchronous communication only once self.golden_per_param_grad_ready_counts is
+    # populated at the end of this first batch.
+    if self.is_first_batch:
+        self.start_grad_sync(force_all_reduce=force_all_reduce)
     # When using partial DP DistOpt, we don't need to sync as we launch comms on a separate
     # communication stream
     if self.ddp_config.num_distributed_optimizer_instances > 1:
         torch.cuda.default_stream().wait_stream(self.communication_stream)
         return
     assert self.grad_reduce_handle is not None, (
-        f'Communication call has not been issued for this bucket '
-        f'({len(self.params_with_grad)}/{len(self.params)} params have grad available)'
+        f"Communication call has not been issued for this bucket "
+        f"({len(self.per_param_grad_ready_counts)}/{len(self.params)} "
+        "params have grad available)"
     )
     for handle in self.grad_reduce_handle:
         handle.wait()

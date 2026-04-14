@@ -19,3 +19,4 @@ gpytorch
 pandas
 scikit-learn
 SQLAlchemy
+pydantic

@@ -1,13 +1,13 @@
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 from typing import Optional, Callable, Tuple
+from functools import wraps
 
 import torch
 import torch_npu
 from torch.nn import Parameter
 
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu
-from megatron.core.transformer.moe.experts import expert_dist_ckpt_decorator
 from megatron.core.transformer.utils import sharded_state_dict_default
 from megatron.core import parallel_state
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
@@ -23,8 +23,46 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size
 )
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from megatron.core.process_groups_config import ProcessGroupCollection
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.grouped_gemm_util import Ops
+
+
+def expert_dist_ckpt_decorator(func):
+    """Decorator of shared_state_dict in expert layer for distributed checkpoint.
+    Since !1940, the TP size for Expert layer can be different with Attention.
+    To make distributed checkpoint work in such cases, we use a decorator to
+    replace the default TP parallel states with expert-TP parallel states.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # Store original states
+        original_rank = parallel_state._MPU_TENSOR_MODEL_PARALLEL_RANK
+        original_size = parallel_state._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE
+        original_group = parallel_state._TENSOR_MODEL_PARALLEL_GROUP
+        try:
+            # Set new states
+            parallel_state._MPU_TENSOR_MODEL_PARALLEL_RANK = (
+                parallel_state.get_expert_tensor_parallel_rank()
+            )
+            parallel_state._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = (
+                parallel_state.get_expert_tensor_parallel_world_size()
+            )
+            parallel_state._TENSOR_MODEL_PARALLEL_GROUP = (
+                parallel_state.get_expert_tensor_parallel_group()
+            )
+
+            # Execute the function
+            result = func(*args, **kwargs)
+        finally:
+            # Restore original states
+            parallel_state._MPU_TENSOR_MODEL_PARALLEL_RANK = original_rank
+            parallel_state._MPU_TENSOR_MODEL_PARALLEL_WORLD_SIZE = original_size
+            parallel_state._TENSOR_MODEL_PARALLEL_GROUP = original_group
+        return result
+
+    return wrapper
 
 
 class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
@@ -147,42 +185,56 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         return output, None
 
     def _sharded_state_dict_grouped(
-            self, tp_axis_map, prefix='', sharded_offsets=(), metadata=None
+        self, tp_axis_map, prefix="", sharded_offsets=(), metadata=None
     ):
         """
         prefix should be module_name to make keys identical to sequetial ones.
         """
+        singleton_local_shards = (metadata or {}).get('singleton_local_shards', False)
         sharded_state_dict = {}
-        full_state_dict = self.state_dict(prefix='', keep_vars=True)
+        full_state_dict = self.state_dict(prefix="", keep_vars=True)
         num_global_experts = get_expert_model_parallel_world_size() * self.num_gemms
         local_expert_indices_offset = get_expert_model_parallel_rank() * self.num_gemms
         ep_axis = len(sharded_offsets)
         for gemm_idx in range(self.num_gemms):
+            global_expert_idx = local_expert_indices_offset + gemm_idx
             state_dict = {
-                f'{gemm_idx}.weight': full_state_dict[f'weight{gemm_idx}'],
+                f"{gemm_idx}.weight": full_state_dict[f"weight{gemm_idx}"],
             }
             if self.use_bias:
-                state_dict[f'{gemm_idx}.bias'] = full_state_dict[f'bias{gemm_idx}']
+                state_dict[f"{gemm_idx}.bias"] = full_state_dict[f"bias{gemm_idx}"]
+            if singleton_local_shards:
+                expert_prefix = f"{global_expert_idx}.{prefix}"
+                new_sharded_offsets = sharded_offsets
+            else:
+                expert_prefix = prefix
+                new_sharded_offsets = (
+                    *sharded_offsets,
+                    (ep_axis, global_expert_idx, num_global_experts),
+                )
             sub_sd = make_sharded_tensors_for_checkpoint(
                 state_dict,
                 '',
                 tp_axis_map,
-                (
-                    *sharded_offsets,
-                    (ep_axis, local_expert_indices_offset + gemm_idx, num_global_experts),
-                ),
+                new_sharded_offsets,
+                tp_group=get_expert_tensor_parallel_group(),
+                dp_cp_group=metadata["dp_cp_group"],
             )
             # Remove expert layers indexing from sharded keys
-            replace_prefix_for_sharding(sub_sd, f'{gemm_idx}.', prefix)
-            sharded_state_dict.update({f'{prefix}weight{gemm_idx}': sub_sd[f'{gemm_idx}.weight']})
+            replace_prefix_for_sharding(sub_sd, f"{gemm_idx}.", expert_prefix)
+            sharded_state_dict.update(
+                {
+                    f"{prefix}weight{gemm_idx}": sub_sd[f"{gemm_idx}.weight"],
+                }
+            )
             if self.use_bias:
-                sharded_state_dict[f'{prefix}bias{gemm_idx}'] = sub_sd[f'{gemm_idx}.bias']
+                sharded_state_dict[f"{prefix}bias{gemm_idx}"] = sub_sd[f"{gemm_idx}.bias"]
         # Adjust replica ids - replication along DP modulo EP
         for k, sh_ten in sharded_state_dict.items():
             replica_id = sh_ten.replica_id
             assert (
-                    len(replica_id) == 3
-            ), f'Expected replica_id for {k} to be in (PP, TP, DP) format, got: {replica_id}'
+                len(replica_id) == 3
+            ), f"Expected replica_id for {k} to be in (PP, TP, DP) format, got: {replica_id}"
             if getattr(sh_ten, "is_data_parallel_fully_shard", False):
                 edp_replica_id = 0
             else:
@@ -241,7 +293,7 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add: bool,
             is_expert: bool,
             tp_comm_buffer_name: Optional[str] = None,
-            tp_group: Optional[torch.distributed.ProcessGroup] = None,
+            pg_collection: Optional[ProcessGroupCollection] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -287,7 +339,7 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
             skip_bias_add: bool,
             is_expert: bool,
             tp_comm_buffer_name: Optional[str] = None,
-            tp_group: Optional[torch.distributed.ProcessGroup] = None,
+            pg_collection: Optional[ProcessGroupCollection] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -323,3 +375,5 @@ def mindspeed_groupedmlp_weighted_bias_swiglu_impl(x, bias, probs, fp8_input_sto
     dtype = x.dtype
     res = fused_swiglu(x) * probs
     return res.to(dtype)
+
+

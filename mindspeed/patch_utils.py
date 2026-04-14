@@ -1,4 +1,5 @@
 import importlib
+import inspect
 import sys
 import types
 from typing import List, Dict, Union
@@ -93,8 +94,10 @@ class Patch:
 
     def remove_patch(self):
         for key, value in sys.modules.copy().items():
-            if 'mindspeed' in key:
+            if 'mindspeed' in key or 'torch.classes' == key:
                 continue
+            if inspect.isclass(self.orig_module) and hasattr(value, self.orig_module_name.split('.')[-1]):
+                value = getattr(value, self.orig_module_name.split('.')[-1])
             if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
                     and id(getattr(value, self.orig_func_name)) == id(self.final_patch_func):
                 setattr(value, self.orig_func_name, self.orig_func)

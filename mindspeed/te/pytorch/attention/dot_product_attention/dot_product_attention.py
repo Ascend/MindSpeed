@@ -6,6 +6,7 @@ import math
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import torch.distributed as dist
 import torch
 import torch_npu
 from megatron.core.packed_seq_params import PackedSeqParams
@@ -320,6 +321,8 @@ class DotProductAttention(torch.nn.Module):
         cu_seqlens_kv_padded: torch.Tensor = None,
         max_seqlen_q: int = None,
         max_seqlen_kv: int = None,
+        local_cp_size: int = None,
+        cp_group: dist.ProcessGroup = None,
         attn_mask_type: Optional[str] = None,
         window_size: Optional[Tuple[int, int]] = None,
         checkpoint_core_attention: bool = False,

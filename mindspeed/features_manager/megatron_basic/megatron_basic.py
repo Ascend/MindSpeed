@@ -43,9 +43,11 @@ class MegatronBasicFeature(MindSpeedFeature):
 
     def register_mcore_basic_patches(self, pm, args):
         # configuration patches
-        from mindspeed.core.megatron_basic.arguments_basic import transformer_config_init_wrapper, transformer_config_post_init_wrapper
+        from mindspeed.core.megatron_basic.arguments_basic import (transformer_config_init_wrapper,
+                                                                   transformer_config_post_init_wrapper,
+                                                                   transformer_config_init_subclass)
         pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__init__", transformer_config_init_wrapper)
-        pm.register_patch("megatron.core.transformer.transformer_config.MLATransformerConfig.__init__", transformer_config_init_wrapper)
+        pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__init_subclass__", classmethod(transformer_config_init_subclass))
         pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__post_init__", transformer_config_post_init_wrapper)
 
         # initialization patches
@@ -78,17 +80,12 @@ class MegatronBasicFeature(MindSpeedFeature):
         from mindspeed.core.fp8_utils import quantize_param_shard
         pm.register_patch('megatron.core.fp8_utils.quantize_param_shard', quantize_param_shard)
 
-        # fix count_zeros in ChainedOptimizer for core_r0.12.1.
-        from mindspeed.core.megatron_basic.count_zero_fix import step
-        pm.register_patch('megatron.core.optimizer.optimizer.ChainedOptimizer.step', step)
-
         # avoid async save
         from mindspeed.core.megatron_basic.megatron_basic import preload_tensors
         pm.register_patch('megatron.core.dist_checkpointing.strategies.filesystem_async.FileSystemWriterAsync.preload_tensors', preload_tensors)
 
-        # avoid incorrect weight_decay override in resume task
-        from mindspeed.core.megatron_basic.megatron_basic import dist_optim_load_state_dict
-        pm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.load_state_dict', dist_optim_load_state_dict)
+        from mindspeed.core.megatron_basic.megatron_basic import _synchronize_steps
+        pm.register_patch('megatron.core.optimizer.optimizer.ChainedOptimizer._synchronize_steps', _synchronize_steps)
 
     def register_non_mcore_basic_patches(self, pm, args):
         # args parser patch
