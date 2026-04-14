@@ -4,7 +4,7 @@
 
 ### 1. MindSpeed 安装
 
-请参见[MindSpeed安装指导](../install_guide.md)，下载安装对应的软件版本。
+请参见[MindSpeed安装指导](../user-guide/install_guide.md)，下载安装对应的软件版本。
 
 ### 2. Verl 安装
 

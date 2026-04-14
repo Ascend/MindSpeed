@@ -1,6 +1,6 @@
 # 软件安装
 
-本文主要向用户介绍如何快速基于PyTorch框架以及MindSpore框架完成MindSpeed Core（大模型训练加速库）的安装。
+本文主要向用户介绍如何快速基于MindSpore框架完成MindSpeed Core（大模型训练加速库）的安装。
 
 ## 硬件配套和支持的操作系统
 
@@ -14,7 +14,7 @@
 |<term>Atlas A2 推理系列产品</term>|x|
 |<term>Atlas 200I/500 A2 推理产品</term>|x|
 |<term>Atlas 推理系列产品</term>|x|
-|<term>Atlas 训练系列产品</term>|√|
+|<term>Atlas 训练系列产品</term>|x|
 
 > [!NOTE]  
 > 本节表格中“√”代表支持，“x”代表不支持。
@@ -27,7 +27,7 @@
 
 ## 安装前准备
 
-请参见《版本说明》中的“[相关产品版本配套说明](./release_notes.md#相关产品版本配套说明)”章节，下载安装对应的软件版本。
+请参见《版本说明》中的“[相关产品版本配套说明](../release_notes.md#相关产品版本配套说明)”章节，下载安装对应的软件版本。
 
 ### 安装驱动固件
 
@@ -47,12 +47,6 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
 获取[CANN](https://www.hiascend.com/cann/download)，安装配套版本的Toolkit、ops和NNAL并配置CANN环境变量。具体请参考《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0000.html)》（商用版）或《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/softwareinst/instg/instg_0000.html)》（社区版）。
 
 ```shell
-#基于PyTorch框架设置环境变量
-source /usr/local/Ascend/cann/set_env.sh # 修改为实际安装的Toolkit包路径
-source /usr/local/Ascend/nnal/atb/set_env.sh # 修改为实际安装的nnal包路径
-```
-
-```shell
 #基于MindSpore框架设置环境变量
 source /usr/local/Ascend/cann/set_env.sh # 修改为实际安装的Toolkit包路径
 source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=0 # 修改为实际安装的nnal包路径
@@ -60,20 +54,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=0 # 修改为实际安装
 
 > [!NOTICE]  
 > 建议使用非root用户安装运行torch\_npu，且建议对安装程序的目录文件做好权限管控：文件夹权限设置为750，文件权限设置为640。可以通过设置umask控制安装后文件的权限，如设置umask为0027。
-> 更多安全相关内容请参见《[安全声明](SECURITYNOTE.md)》中各组件关于“文件权限控制”的说明。
-
-## 基于PyTorch框架
-
-### 安装PyTorch以及torch_npu
-
-请参考《Ascend Extension for PyTorch 软件安装指南》中的“[安装PyTorch框架](https://www.hiascend.com/document/detail/zh/Pytorch/730/configandinstg/instg/docs/zh/installation_guide/installation_via_binary_package.md)”章节，获取配套版本的PyTorch以及torch_npu软件包。
-可参考如下安装命令：
-
-```shell
-# 安装torch和torch_npu 构建参考 https://gitcode.com/ascend/pytorch/releases
-pip3 install torch-2.7.1-cp310-cp310-manylinux_2_28_aarch64.whl 
-pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
-```
+> 更多安全相关内容请参见《[安全声明](../SECURITYNOTE.md)》中各组件关于“文件权限控制”的说明。
 
 ### 安装MindSpeed
 
@@ -103,17 +84,15 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
         git checkout core_v0.12.1
         ```
 
-## 基于MindSpore框架
-
-### 安装MindSpore框架 
+## 安装MindSpore框架 
 
 参考[MindSpore官方安装指导](https://www.mindspore.cn/install)，根据系统类型、CANN版本及Python版本获取相应的安装命令以安装MindSpore 2.9.0，安装前请确保网络畅通。
 
-### 安装MindSpeed-Core-MS
+## 安装MindSpeed-Core-MS
 
 针对MindSpore，我们提供了一键转换工具MindSpeed-Core-MS，旨在帮助用户自动获取相关源码并对torch代码一键适配。
 
-+ 一键安装 
+### 一键安装 
  
    1. 执行以下命令获取MindSpeed-Core-MS代码仓，并安装第三方依赖，如下所示：
 
@@ -129,7 +108,7 @@ pip3 install torch_npu-2.7.1rc1-cp310-cp310-manylinux_2_28_aarch64.whl
       bash auto_convert.sh
       ```
 
-+ 手动安装
+### 手动安装
 
   参考如下步骤完成手动安装。
   

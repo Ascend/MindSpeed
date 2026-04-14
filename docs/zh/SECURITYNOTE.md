@@ -104,12 +104,12 @@
 
 ## 通信安全加固
 
-[通信安全加固说明](https://gitcode.com/Ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA
+[通信安全加固说明](https://gitcode.com/Ascend/pytorch/blob/v2.7.1-26.0.0/docs/zh/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA
 )
 
 ## 通信矩阵
 
-[通信矩阵说明](https://gitcode.com/Ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E7%9F%A9%E9%98%B5%E4%BF%A1%E6%81%AF)
+[通信矩阵说明](https://gitcode.com/Ascend/pytorch/blob/v2.7.1-26.0.0/docs/zh/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E7%9F%A9%E9%98%B5)
 
 ### 特殊场景
 

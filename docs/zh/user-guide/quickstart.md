@@ -4,7 +4,7 @@
 
 ## 环境准备
 
-1. 请先参考[MindSpeed安装指导](../install_guide.md)进行环境准备。
+1. 请先参考[MindSpeed安装指导](install_guide.md)进行环境准备。
 
 2. 在Megatron-LM中导入MindSpeed适配器。
 
