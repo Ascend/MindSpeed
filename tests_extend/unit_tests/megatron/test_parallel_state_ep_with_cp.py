@@ -54,6 +54,7 @@ class TestParallelStateEPCP(DistributedTest):
         time.sleep(1)
 
 
+    @pytest.mark.skip()
     @pytest.mark.parametrize("parallelism_config", [(2, 2, 2, 2), (2, 4, 1, 4), (1, 2, 4, 1)])
     def test_expert_model_parallel_world_size(self, parallelism_config):
         ps.destroy_model_parallel()

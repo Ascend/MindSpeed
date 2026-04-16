@@ -127,3 +127,7 @@ class ContextParallelFeature(MindSpeedFeature):
             patch_manager.register_patch(
                 'megatron.core.models.common.embeddings.rotary_pos_embedding.get_pos_emb_on_this_cp_rank',
                 get_pos_emb_on_this_cp_rank)
+            
+        # gdn feature
+        from mindspeed.core.ssm.gated_delta_net import GatedDeltaNet
+        patch_manager.register_patch('megatron.core.ssm.gated_delta_net.GatedDeltaNet', GatedDeltaNet)

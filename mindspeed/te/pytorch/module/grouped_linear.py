@@ -241,7 +241,6 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
                 edp_replica_id = get_expert_data_parallel_rank()
             sh_ten.replica_id = (*replica_id[:2], edp_replica_id)
         return sharded_state_dict
-
     @expert_dist_ckpt_decorator
     def sharded_state_dict(
             self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[dict] = None
@@ -273,6 +272,8 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             replace_prefix_for_sharding(sub_sd, f'{name}.', f'{prefix}experts.{name}.')
             sharded_state_dict.update({f"{prefix}{k}": v for k, v in sub_sd.items()})
         return sharded_state_dict
+
+from megatron.core.process_groups_config import ProcessGroupCollection
 
 
 class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
@@ -319,6 +320,8 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
         return super()._sharded_state_dict_grouped(
             tp_axis_map, prefix, sharded_offsets, metadata
         )
+
+from megatron.core.process_groups_config import ProcessGroupCollection
 
 
 class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):

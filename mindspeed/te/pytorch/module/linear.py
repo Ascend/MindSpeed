@@ -55,6 +55,7 @@ class MindSpeedTELinear(torch.nn.Module):
         self.input_size = input_size
         self.output_size = output_size
 
+        self.parallel_mode = parallel_mode
         self.skip_bias_add = skip_bias_add
         self.is_expert = is_expert
         self.sequence_parallel = self.config.sequence_parallel

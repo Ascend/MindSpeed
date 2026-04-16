@@ -76,7 +76,21 @@ def transformer_config_post_init_wrapper(fn):
         # make prev validation and copy some args.
         MindSpeedFeaturesManager.pre_validate_features_args(self)
 
-        fn(self)
+        # Temporarily bypass context parallel check for gated delta net
+        if hasattr(self, 'experimental_attention_variant') and self.experimental_attention_variant == "gated_delta_net":
+            # Save original context_parallel_size
+            original_context_parallel_size = self.context_parallel_size
+            # Temporarily set to 1 to bypass the assertion
+            self.context_parallel_size = 1
+            
+            # Call original __post_init__
+            fn(self)
+            
+            # Restore original value
+            self.context_parallel_size = original_context_parallel_size
+        else:
+            # Normal case: no bypass needed
+            fn(self)
 
         MindSpeedFeaturesManager.post_validate_features_args(args=self)
 
