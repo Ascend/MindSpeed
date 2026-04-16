@@ -18,9 +18,9 @@ from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, 
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import divide
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.te.pytorch.fp8 import fp8_matmul, MatmulKey, is_fp8_tensor_2d, fp8_matmul_add
+from mindspeed.te.pytorch.fp8 import MatmulKey, fp8_matmul, fp8_matmul_add, is_fp8_tensor_2d
 from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
-from mindspeed.te.pytorch.module.ops import get_ops, DummyHandle
+from mindspeed.te.pytorch.module.ops import DummyHandle, get_ops
 from mindspeed.te.pytorch.module.ops.comm_overlap_ops import COMM_OVERLAP_CONFIG
 
 
@@ -556,6 +556,12 @@ def _calculate_grad_weight(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
     """Calculate gradient of weight."""
     grad, total_input = reshape_to_2D(grad), reshape_to_2D(inp)
 
+    if ctx.gradient_accumulation_fusion and weight_param.main_grad.dtype != torch.float32:
+        raise RuntimeError(
+            f"Unsupported gradient type ({weight_param.main_grad.dtype}) for gradient accumulation fusion, "
+            f"expected type is float32"
+        )
+
     if ctx.fp8_enable:
         from mindspeed.te.pytorch.fp8.recipes import MXFP8BlockScaling
         if ctx.gradient_accumulation_fusion and isinstance(ctx.fp8_meta.fp8_recipe, MXFP8BlockScaling):
@@ -564,7 +570,7 @@ def _calculate_grad_weight(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
         else:
             grad_weight, _, _ = fp8_matmul(grad, total_input, ctx.fp8_meta, MatmulKey.dw)
             return grad_weight
-    elif ctx.gradient_accumulation_fusion and weight_param.main_grad.dtype == torch.float32:
+    elif ctx.gradient_accumulation_fusion:
         from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
         npu_matmul_add_fp32(total_input, grad, weight_param.main_grad)
         return _create_grad_weight_placeholder(weight_param)

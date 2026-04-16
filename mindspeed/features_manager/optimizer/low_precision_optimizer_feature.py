@@ -67,12 +67,11 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
         self._normalize_flags(args)
         if (
             getattr(args, "quant_grads", False)
-            and getattr(args, "moe_fb_overlap", False)
             and getattr(args, "gradient_accumulation_fusion", False)
         ):
             raise AssertionError(
-                "quant_grads is incompatible with MoE fb-overlap + "
-                "gradient_accumulation_fusion. Please disable "
+                "quant_grads is incompatible with "
+                "gradient_accumulation_fusion. Please use "
                 "--no-gradient-accumulation-fusion or turn off --quant-grads."
             )
 
