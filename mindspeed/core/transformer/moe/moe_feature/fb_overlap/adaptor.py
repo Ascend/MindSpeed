@@ -21,7 +21,7 @@ from megatron.core.transformer.mlp import MLPSubmodules
 from megatron.core.transformer.cuda_graphs import is_graph_capturing
 from megatron.core.utils import make_viewless_tensor
 from megatron.core import parallel_state
-from megatron.training.utils import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from .modules.experts import MindSpeedFbOverlapGmmExperts
 from .modules.shared_experts import SharedExpertMLPFbOverlap
