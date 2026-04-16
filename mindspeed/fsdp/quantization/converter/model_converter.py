@@ -1,3 +1,4 @@
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #
@@ -55,7 +56,7 @@ class ModelConvertersContainer(ModelConverter):
     """
 
     def __init__(self, config: QuantizeConfig):
-        converter_classes = [_registry_model_converter_cls[name] for name in config.converters]
+        converter_classes = [_registry_model_converter_cls[name] for name in config.quant_converters]
 
         self.converters = [mh_cls(config) for mh_cls in converter_classes]
 
