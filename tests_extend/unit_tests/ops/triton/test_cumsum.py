@@ -11,6 +11,7 @@ import triton.language as tl
 
 from mindspeed.lite.ops.triton.utils import assert_close
 from mindspeed.lite.ops.triton.cumsum import chunk_local_cumsum
+from mindspeed.lite.ops.triton.utils import prepare_chunk_indices
 
 
 @triton.heuristics({
@@ -142,32 +143,44 @@ def origin_chunk_local_cumsum(
 
 
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'chunk_size', 'reverse', 'head_first'),
+    ('B', 'T', 'H', 'chunk_size', 'reverse', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-chunk_size{}-reverse{}-cu_seqlens{}".format(*test))
         for test in [
-        (1, 1024, 32, 16, False, False),
-        (1, 4096, 32, 16, False, False),
-        (1, 1024, 32, 16, False, True),
-        (1, 4096, 32, 16, False, True),
-        (1, 1024, 32, 16, True, False),
-        (1, 4096, 32, 16, True, False),
-        (1, 1024, 32, 16, True, True),
-        (1, 4096, 32, 16, True, True),
+        (1, 1024, 32, 64, False, None),
+        (1, 4096, 32, 64, False, None),
+        (1, 1024, 32, 64, True, None),
+        (1, 4096, 32, 64, True, None),
+        (1, 1024, 32, 64, False, [0, 175, 1024]),
+        (1, 4096, 32, 64, False, [0, 175, 1024, 2764, 4096]),
+        (1, 1024, 32, 64, True, [0, 175, 1024]),
+        (1, 4096, 32, 64, True, [0, 175, 1024, 2764, 4096]),
+        (2, 1024, 32, 64, False, None),
+        (2, 4096, 32, 64, False, None),
+        (2, 1024, 32, 64, True, None),
+        (2, 4096, 32, 64, True, None),
+        (1, 1024, 32, 16, False, None),# 统一用例
+        (1, 1024, 32, 16, False, [0, 10, 66, 140, 229, 351, 401, 574, 684, 819, 874, 922, 1024]),
     ]
     ]
 )
-@pytest.mark.skip(reason='Hanged to be fixed')
-def test_cumsum(B, T, H, chunk_size, reverse, head_first):
+def test_cumsum(B, T, H, chunk_size, reverse, cu_seqlens):
     device = "npu:0"
-    device_dtype = torch.float32
+    device_dtype = torch.bfloat16
+    torch.manual_seed(42)
+    torch.npu.manual_seed(42)  # 补充NPU随机种子
+
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to(device)
 
     g = torch.randn((B, T, H), device=device, dtype=device_dtype)
+    cu_seqlens = cu_seqlens
 
     ref_g = origin_chunk_local_cumsum(
         g=g,
         chunk_size=chunk_size,
         reverse=reverse,
+        cu_seqlens=cu_seqlens,
         head_first=False,
     )
 
@@ -175,7 +188,9 @@ def test_cumsum(B, T, H, chunk_size, reverse, head_first):
         g=g,
         chunk_size=chunk_size,
         reverse=reverse,
-        head_first=head_first
+        cu_seqlens=cu_seqlens,
+        head_first=False
     )
 
+    print("g diff:", torch.max(torch.abs(ref_g - cur_g)))
     assert_close('g', ref_g, cur_g, 0.001)

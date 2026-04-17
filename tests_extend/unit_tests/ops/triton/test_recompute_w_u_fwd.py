@@ -132,7 +132,6 @@ def recompute_w_u_fwd(
     return w, u
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
     ('B', 'T', 'H', 'D', 'chunk_size', 'cu_seqlens'),
     [
@@ -176,5 +175,7 @@ def test_recompute_w_u_fwd(B, T, H, D, chunk_size, cu_seqlens):
         cu_seqlens=cu_seqlens,
     )
 
+    print("w diff:", torch.max(torch.abs(ref_w - w)))
+    print("u diff:", torch.max(torch.abs(ref_u - u)))
     assert_close('w', ref_w, w, 0.001)
     assert_close('u', ref_u, u, 0.001)

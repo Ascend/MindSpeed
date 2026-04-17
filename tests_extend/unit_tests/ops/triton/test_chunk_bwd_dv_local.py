@@ -142,13 +142,12 @@ def ref_chunk_bwd_dv_local(
     return dv
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
     ('B', 'T', 'H', 'D', 'scale', 'chunk_size', 'cu_seqlens'),
     [
         pytest.param(*test, id="B{}-T{}-H{}-D{}-scale{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-        (1, 4096, 32, 128, 0.5, 16, [0, 1024, 1164, 2000, 3000]),
+        (1, 4096, 32, 128, 0.5, 16, [0, 1024, 1164, 2000, 4096]),
         (1, 4096, 32, 128, 0.5, 16, None),
         (1, 2048, 32, 128, 0.5, 16, None),
         (2, 4096, 32, 128, 0.5, 16, None),
@@ -158,6 +157,8 @@ def ref_chunk_bwd_dv_local(
 def test_chunk_bwd_dv_local(B, T, H, D, scale, chunk_size, cu_seqlens):
     device = "npu:0"
     device_dtype = torch.float32
+    torch.manual_seed(42)
+    torch.npu.manual_seed(42)
 
     q = torch.rand((B, T, H, D), device=device, dtype=device_dtype)
     k = torch.rand((B, T, H, D), device=device, dtype=device_dtype)
@@ -187,4 +188,5 @@ def test_chunk_bwd_dv_local(B, T, H, D, scale, chunk_size, cu_seqlens):
         chunk_size=chunk_size
     )
 
-    torch.testing.assert_close(ref_dv, dv, rtol=1e-3, atol=1e-3)
+    print("dv diff:", torch.max(torch.abs(ref_dv - dv)))
+    assert_close('dv', ref_dv, dv, 0.001)

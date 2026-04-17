@@ -159,19 +159,23 @@ def chunk_fwd_o_ori(
 
 
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'K', 'HT', 'chunk_size'),
+    ('B', 'T', 'H', 'K', 'HT', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-K{}-HT{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-K{}-HT{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-            (1, 1024, 32, 128, 64, 16),
-            (1, 4096, 32, 128, 256, 16),
+            (1, 1024, 32, 128, 64, 16, None),
+            (2, 1024, 32, 128, 64, 16, None),
+            (1, 4096, 32, 128, 256, 16, None),
+            (1, 1024, 32, 128, 64, 16, [0, 10, 66, 140, 229, 351, 401, 574, 684, 819, 874, 922, 1024]),
         ]
     ]
 )
-@pytest.mark.skip(reason='Hanged to be fixed')
-def test_chunk_o(B, T, H, K, HT, chunk_size):
+def test_chunk_o(B, T, H, K, HT, chunk_size, cu_seqlens):
     device = "npu:0"
     device_dtype = torch.float32
+
+    torch.manual_seed(42)
+    torch.npu.manual_seed(42)
 
     q = torch.randn((B, T, H, K), device=device, dtype=device_dtype)
     k = torch.randn((B, T, H, K), device=device, dtype=device_dtype)
@@ -179,6 +183,8 @@ def test_chunk_o(B, T, H, K, HT, chunk_size):
     h = torch.randn((B, HT, H, K, K), device=device, dtype=device_dtype)
     g = torch.randn((B, T, H), device=device, dtype=device_dtype)
     scale = 0.08838834764831845
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to(device)
 
     ref_o = chunk_fwd_o_ori(
         q=q,
@@ -187,7 +193,7 @@ def test_chunk_o(B, T, H, K, HT, chunk_size):
         h=h,
         g=g,
         scale=scale,
-        cu_seqlens=None,
+        cu_seqlens=cu_seqlens,
         chunk_size=chunk_size,
     )
 
@@ -198,8 +204,9 @@ def test_chunk_o(B, T, H, K, HT, chunk_size):
         h=h,
         g=g,
         scale=scale,
-        cu_seqlens=None,
+        cu_seqlens=cu_seqlens,
         chunk_size=chunk_size,
     )
 
-    assert_close("o", ref_o, out_o, 0.001)
+    print("o diff:", torch.max(torch.abs(ref_o - out_o)))
+    assert_close('o', ref_o, out_o, 0.001)

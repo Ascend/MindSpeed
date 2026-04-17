@@ -9,10 +9,16 @@ import pytest
 import torch
 import triton
 import triton.language as tl
+import torch.nn.functional as F
 
 from mindspeed.lite.ops.triton.utils import assert_close
 from mindspeed.lite.ops.triton.chunk_delta_h import chunk_gated_delta_rule_bwd_dhu
+from mindspeed.lite.ops.triton.chunk_delta_h import chunk_gated_delta_rule_fwd_h
+from mindspeed.lite.ops.triton.cumsum import chunk_local_cumsum
 from mindspeed.lite.ops.triton.chunk_o import chunk_bwd_dv_local
+from mindspeed.lite.ops.triton.wy_fast import recompute_w_u_fwd
+from mindspeed.lite.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
+from mindspeed.lite.ops.triton.solve_tril import solve_tril
 from mindspeed.lite.ops.triton.utils import prepare_chunk_indices, prepare_chunk_offsets
 
 
@@ -264,30 +270,106 @@ def chunk_gated_delta_rule_bwd_dhu_ref(
     return dh, dh0, dv2
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'D', 'chunk_size'),
+    ('B', 'T', 'H', 'D', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-            (1, 1024, 32, 128, 64),
-            (1, 32768, 32, 128, 64),
-        ]
+        (1, 1024, 32, 128, 64, None),
+        (2, 1024, 32, 128, 64, None),
+        (1, 32768, 32, 128, 64, None),
+        (1, 1024, 32, 128, 64, [0, 10, 66, 140, 229, 351, 401, 574, 684, 819, 874, 922, 1024]),
+        (1, 32768, 32, 128, 64, [0, 10, 66, 140, 229, 351, 401, 574, 684, 819,
+        874, 922, 1069, 1141, 1244, 1326, 1453, 1564, 1616, 1764,
+        1894, 1972, 2147, 2224, 2294, 2362, 2452, 2522, 2684, 2841,
+        2927, 3096, 3161, 3273, 3373, 3441, 3482, 3595, 3652, 3735,
+        3830, 3873, 3986, 4075, 4232, 4372, 4430, 4523, 4571, 4672,
+        4793, 4990, 5053, 5115, 5269, 5331, 5472, 5609, 5668, 5783,
+        5962, 6088, 6175, 6275, 6331, 6460, 6710, 6859, 6905, 7073,
+        7221, 7320, 7434, 7595, 7646, 7691, 7769, 7880, 7976, 8039,
+        8106, 8519, 8708, 8766, 8851, 9162, 9213, 9302, 9385, 9502,
+        9566, 9624, 9770, 9815, 9904, 9972, 10056, 10186, 10270, 10366,
+        10457, 10528, 10612, 10711, 10818, 10943, 10993, 11082, 11157, 11232,
+        11354, 11454, 11587, 11693, 11772, 11859, 11927, 11976, 12067, 12196,
+        12250, 12313, 12400, 12495, 12691, 12754, 12953, 13069, 13162, 13221,
+        13314, 13461, 13701, 13752, 13877, 14052, 14201, 14347, 14414, 14492,
+        14640, 14760, 14837, 14919, 15049, 15154, 15264, 15373, 15551, 15672,
+        15791, 15859, 15906, 15964, 16119, 16189, 16280, 16333, 16416, 16482,
+        16527, 16597, 16647, 16719, 16828, 16913, 16976, 17145, 17197, 17332,
+        17561, 17880, 18090, 18141, 18269, 18413, 18471, 18559, 18631, 18700,
+        18788, 18885, 19043, 19093, 19137, 19278, 19349, 19465, 19632, 19702,
+        19773, 19839, 19896, 19989, 20146, 20209, 20286, 20336, 20427, 20505,
+        20573, 20628, 20689, 20767, 20929, 21002, 21124, 21234, 21296, 21409,
+        21492, 21553, 21626, 21712, 21865, 21992, 22106, 22177, 22244, 22378,
+        22449, 22519, 22588, 22702, 22752, 22844, 22942, 23036, 23243, 23382,
+        23445, 23519, 23661, 23756, 23832, 24364, 24422, 24487, 24809, 24870,
+        25101, 25206, 25562, 25623, 25659, 25764, 25861, 26015, 26187, 26250,
+        26298, 26578, 26680, 26792, 26950, 27012, 27060, 27173, 27228, 27427,
+        27504, 27595, 27692, 27753, 27807, 27931, 27982, 28104, 28166, 28222,
+        28410, 28548, 28597, 28716, 28773, 28928, 29088, 29363, 29502, 29641,
+        29700, 29756, 30026, 30213, 30285, 30430, 30586, 30694, 30849, 30946,
+        31047, 31110, 31163, 31263, 31326, 31365, 31455, 31527, 31738, 31851,
+        31920, 32003, 32070, 32173, 32223, 32258, 32383, 32443, 32617, 32768]),
+    ]
     ]
 )
-def test_chunk_gated_delta_rule_bwd_dhu(B, T, H, D, chunk_size):
+def test_chunk_gated_delta_rule_bwd_dhu(B, T, H, D, chunk_size, cu_seqlens):
     device = "npu:0"
+    torch.manual_seed(42)
+    torch.npu.manual_seed(42)
 
-    q = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    k = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    w = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    g = torch.randn((B, T, H), device=device, dtype=torch.float32)
-    h0 = None
+    data_type = torch.bfloat16
+    chunk_size = chunk_size
+    K = D
+    V = K
+    q = torch.randn(B, T, H, K, dtype=data_type).npu()
+    k = F.normalize(torch.randn(B, T, H, K, dtype=data_type).npu(), p=2, dim=-1)
+    v = torch.randn(B, T, H, V, dtype=data_type).npu()
+    beta = torch.rand(B, T, H, dtype=data_type).npu().sigmoid()
+    g = F.logsigmoid(torch.rand(B, T, H, dtype=data_type)).npu()
+    initial_state = None
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to('npu:0')
+    scale = 1. / (K ** 0.5)
+    output_final_state = False
     dht = None
-    do = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    dv = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    scale = 1. / (D ** 0.5)
-    cu_seqlens = None
+    do = torch.randn(B, T, H, V, dtype=data_type).npu()
+
+    g = chunk_local_cumsum(g, chunk_size=chunk_size, cu_seqlens=cu_seqlens, head_first=True)
+    # obtain WY representation. u is actually the new v.
+    A = chunk_scaled_dot_kkt_fwd(
+        k=k,
+        g=g,
+        beta=beta,
+        cu_seqlens=cu_seqlens,
+        chunk_size=chunk_size,
+        output_dtype=torch.float32
+    )
+    A = solve_tril(
+        A=A,
+        cu_seqlens=cu_seqlens,
+        output_dtype=k.dtype
+    )
+    w, u = recompute_w_u_fwd(
+        k=k,
+        v=v,
+        beta=beta,
+        A=A,
+        g=g,
+        cu_seqlens=cu_seqlens,
+    )
+
+    h, v_new, _ = chunk_gated_delta_rule_fwd_h(
+        k=k,
+        w=w,
+        u=u,
+        g=g,
+        initial_state=initial_state,
+        output_final_state=output_final_state,
+        chunk_size=chunk_size,
+        cu_seqlens=cu_seqlens,
+    )
+
     dv = chunk_bwd_dv_local(
         q=q,
         k=k,
@@ -295,6 +377,7 @@ def test_chunk_gated_delta_rule_bwd_dhu(B, T, H, D, chunk_size):
         do=do,
         scale=scale,
         cu_seqlens=cu_seqlens,
+        chunk_size=chunk_size,
     )
 
     _, _, ref_dv2 = chunk_gated_delta_rule_bwd_dhu_ref(
@@ -302,7 +385,7 @@ def test_chunk_gated_delta_rule_bwd_dhu(B, T, H, D, chunk_size):
         k=k,
         w=w,
         g=g,
-        h0=h0,
+        h0=initial_state,
         dht=dht,
         do=do,
         dv=dv,
@@ -316,7 +399,7 @@ def test_chunk_gated_delta_rule_bwd_dhu(B, T, H, D, chunk_size):
         k=k,
         w=w,
         g=g,
-        h0=h0,
+        h0=initial_state,
         dht=dht,
         do=do,
         dv=dv,
@@ -325,4 +408,5 @@ def test_chunk_gated_delta_rule_bwd_dhu(B, T, H, D, chunk_size):
         chunk_size=chunk_size,
     )
 
-    assert_close('dv2', ref_dv2, dv2, 0.001)
+    print("dv diff:", torch.max(torch.abs(ref_dv2 - dv2)))
+    assert_close('dv', ref_dv2, dv2, 0.001)

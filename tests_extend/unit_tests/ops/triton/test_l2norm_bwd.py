@@ -130,7 +130,6 @@ def ref_l2norm_bwd(
     return dx.view(y_shape_og)
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
     ('B', 'T', 'H', 'K'),
     [

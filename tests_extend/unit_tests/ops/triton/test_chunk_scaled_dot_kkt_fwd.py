@@ -283,23 +283,25 @@ def ref_chunk_scaled_dot_kkt_fwd(
     return A
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
     ('B', 'T', 'H', 'K', 'chunk_size', 'cu_seqlens'),
     [
         pytest.param(*test, id="B{}-T{}-H{}-K{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-        (1, 4096, 32, 128, 16, [0, 1024, 1164, 2000, 3000]),
+        (1, 4096, 32, 128, 16, [0, 1024, 1164, 2000, 4096]),
         (1, 4096, 32, 128, 16, None),
-        (1, 2048, 32, 128, 16, None),
+        (1, 1024, 32, 128, 16, None),
         (2, 4096, 32, 128, 16, None),
+        (1, 1024, 32, 128, 16, None),# 统一用例
+        (1, 1024, 32, 128, 16, [0, 10, 66, 140, 229, 351, 401, 574, 684, 819, 874, 922, 1024]),
         ]
     ]
 )
 def test_chunk_scaled_dot_kkt_fwd(B, T, H, K, chunk_size, cu_seqlens):
     device = "npu:0"
-    device_dtype = torch.float32
-    torch.manual_seed(0)
+    device_dtype = torch.float16
+    torch.manual_seed(42)
+    torch.npu.manual_seed(42)  # 补充NPU随机种子
 
     k = torch.rand((B, T, H, K), device=device, dtype=device_dtype)
     beta = torch.rand((B, T, H), device=device, dtype=device_dtype)
@@ -328,4 +330,5 @@ def test_chunk_scaled_dot_kkt_fwd(B, T, H, K, chunk_size, cu_seqlens):
         output_dtype=device_dtype
     )
 
-    torch.testing.assert_close(ref_A, A, rtol=1e-3, atol=1e-3)
+    print("A diff:", torch.max(torch.abs(ref_A - A)))
+    assert_close('A', ref_A, A, 0.001)

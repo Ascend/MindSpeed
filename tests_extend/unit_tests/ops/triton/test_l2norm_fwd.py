@@ -129,7 +129,6 @@ def ref_l2norm_fwd(
     return y.view(x_shape_og), rstd.view(x_shape_og[:-1])
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
     ('B', 'T', 'H', 'K'),
     [

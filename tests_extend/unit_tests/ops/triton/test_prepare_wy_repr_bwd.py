@@ -178,7 +178,6 @@ def prepare_wy_repr_bwd(
     return dk, dv, dbeta, dg
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
     ('B', 'T', 'H', 'D', 'chunk_size', 'cu_seqlens'),
     [
@@ -230,6 +229,10 @@ def test_prepare_wy_repr_bwd(B, T, H, D, chunk_size, cu_seqlens):
         chunk_size=chunk_size,
     )
 
+    print("dk diff:", torch.max(torch.abs(ref_dk - dk)))
+    print("dv diff:", torch.max(torch.abs(ref_dv - dv)))
+    print("dbeta diff:", torch.max(torch.abs(ref_dbeta - dbeta)))
+    print("dg diff:", torch.max(torch.abs(ref_dg - dg)))
     assert_close('dk', ref_dk, dk, 0.001)
     assert_close('dv', ref_dv, dv, 0.001)
     assert_close('dbeta', ref_dbeta, dbeta, 0.001)

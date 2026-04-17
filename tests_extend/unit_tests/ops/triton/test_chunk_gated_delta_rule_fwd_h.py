@@ -10,8 +10,14 @@ import torch
 import triton
 import triton.language as tl
 
+import torch.nn.functional as F
+
 from mindspeed.lite.ops.triton.utils import assert_close
 from mindspeed.lite.ops.triton.chunk_delta_h import chunk_gated_delta_rule_fwd_h
+from mindspeed.lite.ops.triton.cumsum import chunk_local_cumsum
+from mindspeed.lite.ops.triton.wy_fast import recompute_w_u_fwd
+from mindspeed.lite.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
+from mindspeed.lite.ops.triton.solve_tril import solve_tril
 from mindspeed.lite.ops.triton.utils import prepare_chunk_indices, prepare_chunk_offsets
 
 
@@ -260,34 +266,58 @@ def chunk_gated_delta_rule_fwd_h_ref(
     return h, v_new, final_state
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'D', 'chunk_size'),
+    ('B', 'T', 'H', 'D', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-        (1, 1024, 32, 128, 64),
-        (1, 32768, 32, 128, 64),
+        (1, 1024, 32, 128, 64, None),
+        (2, 1024, 32, 128, 64, None),
+        (1, 4096, 32, 128, 64, None),
+        (1, 1024, 32, 128, 64, [0, 10, 66, 140, 229, 351, 401, 574, 684, 819, 874, 922, 1024]),
     ]
     ]
 )
-def test_chunk_gated_delta_rule_fwd_h(B, T, H, D, chunk_size):
-    device = "npu:1"
+def test_chunk_gated_delta_rule_fwd_h(B, T, H, D, chunk_size, cu_seqlens):
+    torch.manual_seed(42)
+    torch.npu.manual_seed(42)
 
-    u = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    k = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    w = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
-    g = torch.randn((B, T, H), device=device, dtype=torch.float32)
-    beta = torch.randn((B, T, H), device=device, dtype=torch.float32)
+    data_type = torch.bfloat16
+    chunk_size = chunk_size
+    K = D
+    V = K
+    q = torch.randn(B, T, H, K, dtype=data_type).npu()
+    k = F.normalize(torch.randn(B, T, H, K, dtype=data_type).npu(), p=2, dim=-1)
+    v = torch.randn(B, T, H, V, dtype=data_type).npu()
+    beta = torch.rand(B, T, H, dtype=data_type).npu().sigmoid()
+    g = F.logsigmoid(torch.rand(B, T, H, dtype=data_type)).npu()
     initial_state = None
-    cu_seqlens = None
-    output_final_state = True
-    v = torch.randn((B, T, H, D), device=device, dtype=torch.bfloat16)
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to('npu:0')
+    scale = 1. / (K ** 0.5)
+    output_final_state = False
 
-    w, u, _ = prepare_wy_repr_fwd(
+    g = chunk_local_cumsum(g, chunk_size=chunk_size, cu_seqlens=cu_seqlens, head_first=True)
+    # obtain WY representation. u is actually the new v.
+    A = chunk_scaled_dot_kkt_fwd(
+        k=k,
+        g=g,
+        beta=beta,
+        cu_seqlens=cu_seqlens,
+        chunk_size=chunk_size,
+        output_dtype=torch.float32
+    )
+    A = solve_tril(
+        A=A,
+        cu_seqlens=cu_seqlens,
+        output_dtype=k.dtype
+    )
+    w, u = recompute_w_u_fwd(
         k=k,
         v=v,
         beta=beta,
+        A=A,
+        g=g,
         cu_seqlens=cu_seqlens,
     )
 
@@ -308,9 +338,11 @@ def test_chunk_gated_delta_rule_fwd_h(B, T, H, D, chunk_size):
         g=g,
         initial_state=initial_state,
         output_final_state=output_final_state,
-        chunk_size=64,
+        chunk_size=chunk_size,
         cu_seqlens=cu_seqlens,
     )
 
+    print("h diff:", torch.max(torch.abs(ref_h_npu - h_npu)))
+    print("v diff:", torch.max(torch.abs(ref_v_new_npu - v_new_npu)))
     assert_close('h', ref_h_npu, h_npu, 0.001)
-    assert_close('v_new', ref_v_new_npu, v_new_npu, 0.001)
+    assert_close('v', ref_v_new_npu, v_new_npu, 0.001)

@@ -10,6 +10,7 @@ import triton
 import triton.language as tl
 
 from mindspeed.lite.ops.triton.solve_tril import solve_tril
+from mindspeed.lite.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
 from mindspeed.lite.ops.triton.utils import is_amd, is_tma_supported, assert_close, device, make_tensor_descriptor, prepare_chunk_indices, device_platform, input_guard
 
 FLA_TRIL_PRECISION = os.environ.get('FLA_TRIL_PRECISION', 'ieee')
@@ -390,6 +391,7 @@ def solve_tril_ori(
             (2, 1000, 5, 64),
             (3, 1024, 6, 64),
             (4, 2048, 8, 64),
+            (1, 1024, 32, 16),# 统一用例
         ]
     ]
 )
@@ -397,21 +399,75 @@ def solve_tril_ori(
     device_platform == 'intel',
     reason='Intel Pytorch Failure'
 )
-@pytest.mark.skip(reason='Hanged to be fixed')
 def test_solve_tril(B, T, H, chunk_size):
     # do not randomly intiialize A otherwise the inverse is not stable
-    k = F.normalize(torch.randn((B, H, T, 64), dtype=torch.float32, device=device), dim=-1)
+    k = F.normalize(torch.randn((B, H, T, 128), dtype=torch.float32, device=device), dim=-1)
     # Pad the second-to-last dimension (T) to be a multiple of chunk_size
     padding_size = (chunk_size - T % chunk_size) % chunk_size
     k_padded = F.pad(k, (0, 0, 0, padding_size, 0, 0, 0, 0))
-    k_padded = k_padded.reshape(B, H, -1, chunk_size, 64)
+    k_padded = k_padded.reshape(B, H, -1, chunk_size, 128)
     A = (k_padded @ k_padded.transpose(-1, -2)).tril(-1)
 
     ref = torch.inverse(A + torch.eye(A.shape[-1], device=A.device)[None, None, None, ...])
     ref = ref.reshape(B, H, -1, chunk_size)[:, :, :T, :]
 
-    tri = solve_tril(A.reshape(B, H, -1, chunk_size)[:, :, :T, :].transpose(1, 2))
-    ref = solve_tril_ori(A.reshape(B, H, -1, chunk_size)[:, :, :T, :].transpose(1, 2))
+    tri_ori = solve_tril_ori(A.reshape(B, H, -1, chunk_size)[:, :, :T, :].transpose(1, 2)).transpose(1, 2)
+    tri = solve_tril(A.reshape(B, H, -1, chunk_size)[:, :, :T, :].transpose(1, 2)).transpose(1, 2)
 
-    assert_close('solve_tril', ref, tri, 0.0001)
+    print("solve_tril_varlen ref and tri diff:", torch.max(torch.abs(ref - tri)))
+    assert_close('solve_tril_varlen', ref, tri, 0.0001)
+    print("solve_tril_varlen ori and tri diff:", torch.max(torch.abs(tri_ori - tri)))
+    assert_close('solve_tril_varlen', tri_ori, tri, 0.0001)
 
+
+@pytest.mark.parametrize(
+    ('H', 'D', 'chunk_size', 'cu_seqlens'),
+    [
+        pytest.param(*test, id="H{}-D{}-chunk_size{}-cu_seqlens{}".format(*test))
+        for test in [
+            (4, 64, 16, [0, 15]),
+            (4, 64, 32, [0, 256, 500, 1000]),
+            (4, 100, 64, [0, 15, 100, 300, 1200, 2000]),
+            (4, 64, 16, [0, 1, 100, 300, 1200, 2048]),
+            (4, 128, 32, [0, 200, 512, 1200, 2048]),
+            (32, 128, 16, [0, 10, 66, 140, 229, 351, 401, 574, 684, 819, 874, 922, 1024]),
+        ]
+    ],
+)
+@pytest.mark.skipif(
+    os.getenv('SKIP_TEST_CHUNK_VARLEN') == '1',
+    reason='Test skipped:Variable-length chunk test is disabled by environment variable SKIP_TEST_CHUNK_VARLEN=1',
+)
+@pytest.mark.skipif(
+    device_platform == 'intel',
+    reason='Intel Pytorch Failure',
+)
+def test_solve_tril_varlen(
+    H: int,
+    D: int,
+    chunk_size: int,
+    cu_seqlens: list[int],
+):
+    T = cu_seqlens[-1]
+    cu_seqlens = torch.tensor(cu_seqlens, dtype=torch.int32, device=device)
+    # Construct the input. otherwise inverse's condition number might be too large to measure the error
+    k = F.normalize(torch.randn((1, T, H, D), dtype=torch.bfloat16, device=device), dim=-1)
+    g = torch.randn((1, T, H), device=device, dtype=torch.bfloat16)
+    beta = torch.randn((1, T, H), dtype=torch.bfloat16, device=device).sigmoid()
+    A = chunk_scaled_dot_kkt_fwd(k=k, g=g, beta=beta, cu_seqlens=cu_seqlens, chunk_size=chunk_size)
+
+    ref = torch.zeros_like(A)
+    for i in range(len(cu_seqlens) - 1):
+        for j in range(cu_seqlens[i], cu_seqlens[i + 1], chunk_size):
+            actual_size = min(chunk_size, cu_seqlens[i + 1] - j)
+            ref[:, j:j + actual_size, :, :actual_size] = torch.inverse(
+                A[:, j:j + actual_size, :, :actual_size].transpose(1, 2) +
+                torch.eye(actual_size, device=A.device, dtype=A.dtype)[None, None, ...],
+            ).transpose(1, 2)
+
+    tri_ori = solve_tril_ori(A, cu_seqlens=cu_seqlens)
+    tri = solve_tril(A, cu_seqlens=cu_seqlens)
+    print("solve_tril_varlen ref and tri diff:", torch.max(torch.abs(ref - tri)))
+    assert_close('solve_tril_varlen', ref, tri, 0.0001)
+    print("solve_tril_varlen ori and tri diff:", torch.max(torch.abs(tri_ori - tri)))
+    assert_close('solve_tril_varlen', tri_ori, tri, 0.0001)
