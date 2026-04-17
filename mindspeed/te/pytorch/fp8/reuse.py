@@ -10,13 +10,15 @@ import torch
 import torch.distributed as dist
 
 
+_WEIGHT_REUSE_POOL: dict[str, Any] = {}
+_RELEASED_BF16_WEIGHT_POOL: dict[int, tuple[torch.Tensor, int, int]] = {}
+
 CacheKey = tuple[Any, ...]
 KwargsSignature = tuple[tuple[str, Any], ...]
 
 _EMPTY_KWARGS_SIGNATURE: KwargsSignature = ()
 _CACHE_MISS = object()
 
-_WEIGHT_REUSE_POOL: dict[CacheKey, Any] = {}
 _WEIGHT_REUSE_HITS = 0
 _WEIGHT_REUSE_MISSES = 0
 _CACHED_RANK: int | None = None
@@ -83,6 +85,14 @@ def _is_stable_weight_tensor(tensor: torch.Tensor) -> bool:
 
 
 
+def _get_storage_ptr_for_reuse_key(base_tensor: torch.Tensor) -> int:
+    released_weight = _RELEASED_BF16_WEIGHT_POOL.get(id(base_tensor))
+    if released_weight is not None:
+        _, _, storage_ptr = released_weight
+        return storage_ptr
+    return base_tensor.untyped_storage().data_ptr()
+
+
 def _supports_weight_reuse(
     tensor: torch.Tensor,
     reuse_identity: Any = None,
@@ -110,11 +120,12 @@ def generate_weight_reuse_key(
 
     return (
         op_name,
-        _get_rank_fast(),
-        base_tensor.untyped_storage().data_ptr(),
+        _get_rank_fast(),        
+        _get_storage_ptr_for_reuse_key(base_tensor),
         tensor.storage_offset(),
         tensor.numel(),
         _make_kwargs_signature(kwargs),
+
     )
 
 
@@ -151,6 +162,9 @@ def reuse_or_quantize(
         return cached
 
     result = quantizer(tensor, **kwargs)
+    #当前只支持MXFP8场景的释放； 4对应的是双轴量化4个结果：weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale 
+    if isinstance(result, tuple) and len(result) == 4:
+        release_bf16_weight_after_quantization(tensor, tensor_key)    
     _WEIGHT_REUSE_POOL[cache_key] = result
     _WEIGHT_REUSE_MISSES += 1
     return result
@@ -169,7 +183,47 @@ def _iter_cached_tensors(value: Any):
             yield from _iter_cached_tensors(item)
 
 
+def _supports_bf16_weight_release(tensor: torch.Tensor, tensor_key: Any) -> bool:
+    return (
+        _is_weight_reuse_enabled(tensor_key)
+        and _supports_weight_reuse(tensor)
+        and tensor.dtype == torch.bfloat16
+    )
+
+
+def release_bf16_weight_after_quantization(tensor: torch.Tensor, tensor_key: Any) -> None:
+    """Release BF16 weight storage after quantization and remember how to restore it."""
+    if not _supports_bf16_weight_release(tensor, tensor_key):
+        return
+
+    base_tensor = _get_reuse_base_tensor(tensor)
+    storage = base_tensor.untyped_storage()
+    storage_size = storage.size()
+    if storage_size == 0:
+        return
+    expected_tensor_bytes = base_tensor.numel() * base_tensor.element_size()
+    # 防止误杀共享显存(flat_buffer)
+    if storage_size > expected_tensor_bytes:
+        return
+
+    tensor_id = id(base_tensor)
+    if tensor_id not in _RELEASED_BF16_WEIGHT_POOL:
+        _RELEASED_BF16_WEIGHT_POOL[tensor_id] = (base_tensor, storage_size, storage.data_ptr())
+    storage.resize_(0)
+
+
+def restore_bf16_weight_storage() -> None:
+    """Restore BF16 weight storage before optimizer updates write model weights again."""
+    for tensor, storage_size, _ in _RELEASED_BF16_WEIGHT_POOL.values():
+        storage = tensor.untyped_storage()
+        if storage.size() == storage_size:
+            continue
+        storage.resize_(storage_size)
+    _RELEASED_BF16_WEIGHT_POOL.clear()
+
+
 def clear_weight_quantization_reuse_cache(release_storage: bool = False) -> None:
+
     """Release cached quantized tensors at the optimizer step boundary."""
     global _WEIGHT_REUSE_HITS, _WEIGHT_REUSE_MISSES
 
@@ -199,6 +253,8 @@ def optimizer_step_reuse_cleanup_wrapper(step: Callable[..., Any]) -> Callable[.
     @wraps(step)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         clear_weight_quantization_reuse_cache()
+        restore_bf16_weight_storage()
         return step(*args, **kwargs)
+
 
     return wrapper
