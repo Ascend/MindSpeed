@@ -58,6 +58,7 @@ MLA_ARGS="
     --v-head-dim 128 \
     --qk-layernorm \
     --rotary-scaling-factor 40 \
+    --rope-type yarn \
 "
 
 

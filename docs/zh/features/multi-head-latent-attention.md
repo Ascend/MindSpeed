@@ -34,6 +34,8 @@ MLA 解决了标准 Transformer 模型的内存瓶颈，可作为一种通用的
 
 `--rotary-scaling-factor`：Rotary scaling factor for the rotary embeddings
 
+`--rope-type yarn`：RoPE type, must be set to "yarn" when using MLA
+
 ## 使用效果
 
 与传统 MHA 相比，MLA 可以显著降低 KV 缓存占用，同时又具有恢复 key 和 value 矩阵中全部信息的能力，特征表达能力优于其他 KV cache 方法（例如 GQA, MQA 等），保证了模型的性能。
