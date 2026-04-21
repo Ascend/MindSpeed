@@ -97,19 +97,33 @@ class ContextParallelFeature(MindSpeedFeature):
                         "sequence length must be divisible by context_parallel_size in kvallgather_cp_algo with THD format")
 
     def register_patches(self, patch_manager, args):
+        _use_cp = int(getattr(args, 'context_parallel_size', 1)) > 1
         _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
         _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
-        if int(getattr(args, 'context_parallel_size', 1)) > 1 or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
+        _use_te = getattr(args, 'transformer_impl', 'transformer_engine') == 'transformer_engine'
+
+        if _use_cp or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
-            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
-                MindSpeedTEDotProductAttention
-            patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention', MindSpeedCPDotProductAttention)
-            patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedTEDotProductAttention)
+            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import MindSpeedTEDotProductAttention
+
+            patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention',
+                                         MindSpeedCPDotProductAttention)
+            if _cp_algo in ['kvallgather_cp_algo']:
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
+                                             MindSpeedTEDotProductAttention)
+            else:
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
+                                             MindSpeedCPDotProductAttention)
 
             from mindspeed.core.context_parallel.adaptor import attention_init_wrapper
-            patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
-
-            from mindspeed.core.context_parallel.model_parallel_utils import initialize_model_parallel_cp_wrapper, destroy_model_parallel_cp_wrapper, get_context_parallel_group_for_send_recv_overlap
+            if not _use_te:
+                patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
+            
+            from mindspeed.core.context_parallel.model_parallel_utils import (
+                initialize_model_parallel_cp_wrapper,
+                destroy_model_parallel_cp_wrapper,
+                get_context_parallel_group_for_send_recv_overlap
+            )
 
             patch_manager.register_patch('megatron.core.parallel_state.initialize_model_parallel',
                                          initialize_model_parallel_cp_wrapper)
@@ -117,7 +131,7 @@ class ContextParallelFeature(MindSpeedFeature):
                                          destroy_model_parallel_cp_wrapper)
             patch_manager.register_patch('megatron.core.parallel_state.get_context_parallel_group_for_send_recv_overlap',
                                          get_context_parallel_group_for_send_recv_overlap)
-
+            
             megatron_training_available = is_megatron_training_available()
             if megatron_training_available:
                 from mindspeed.core.context_parallel.get_batch_utils import get_batch_on_this_cp_rank
