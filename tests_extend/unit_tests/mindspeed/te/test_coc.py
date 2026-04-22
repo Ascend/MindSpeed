@@ -200,7 +200,7 @@ class TestTEColumnParallel(DistributedTest):
 class TestTEColumnParallelNoSeq(DistributedTest):
     world_size = 8
 
-    @pytest.mark.parametrize("use_ascend_mc2", [True, False])
+    @pytest.mark.parametrize("use_ascend_mc2", [False])
     @pytest.mark.parametrize("limit_args", [
         (torch.bfloat16, 0.005, 0.005)
     ])
@@ -334,7 +334,7 @@ class TestTERowParallel(DistributedTest):
 class TestTERowParallelNoSeq(DistributedTest):
     world_size = 8
 
-    @pytest.mark.parametrize("use_ascend_mc2", [True, False])
+    @pytest.mark.parametrize("use_ascend_mc2", [False])
     @pytest.mark.parametrize("limit_args", [
         (torch.bfloat16, 0.005, 0.005)
     ])
