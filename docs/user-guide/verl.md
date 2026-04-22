@@ -3,13 +3,14 @@
 ## 环境准备
 
 ### 1. MindSpeed 安装
+
 按照 MindSpeed 文档，安装对应依赖。
 > https://gitcode.com/Ascend/MindSpeed#%E5%AE%89%E8%A3%85
 
 ### 2. Verl 安装
-按照 Verl 文档，安装对应依赖：
-> https://github.com/volcengine/verl/blob/main/docs/ascend_tutorial/ascend_quick_start.rst
 
+按照 Verl 文档，安装对应依赖：
+> https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/quick_start/ascend_quick_start.rst
 > 注：若使用的CANN版本高于8.3.RC1，vllm和vllm-ascend安装版本须大于等于0.9.1，0.9.1版本vllm安装可参考：https://vllm-ascend.readthedocs.io/en/v0.9.1/installation.html
 
 ## 使能 MindSpeed 后端
@@ -19,6 +20,7 @@
 MindSpeed 自定义入参可通过 `override_transformer_config` 参数传入，例如对 `actor` 模型开启 FA 特性可使用 `+actor_rollout_ref.actor.megatron.override_transformer_config.use_flash_attn=True`。
 
 ## 特性支持列表
+
 | 特性名称     | 配置参数                                                     | 状态    |
 | ------------ | ------------------------------------------------------------ | ------- |
 | FA（必须开） | +actor_rollout_ref.actor.megatron.override_transformer_config.use_flash_attn=True | Preview |

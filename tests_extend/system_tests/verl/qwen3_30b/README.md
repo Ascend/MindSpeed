@@ -17,23 +17,22 @@
 | 组件 | 版本 |
 |------|------|
 | Python | 3.11 |
-| CANN | 8.3.RC1 |
-| torch | 2.7.1 |
-| torch_npu | 2.7.1 |
-| vLLM | 0.11.0 |
-| vLLM-ascend | 0.11.0rc1 |
+| CANN | 8.5.0 |
+| torch | 2.8.0 |
+| torch_npu | 2.8.0 |
+| vLLM | 0.13.0 |
+| vLLM-ascend | releases/v0.13.0 |
 | Megatron-LM | v0.12.1 |
-| triton-ascend | 3.2.0rc4 |
 
 ## 模型训练
 
-1. 准备数据
+### 1. 准备数据
 
 自行下载权重 [Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B/tree/main)
 
 将huggingface格式的权重转换为Megatron Core格式：
 
-```
+```bash
 # 权重转换脚本位于verl代码仓中
 cd verl 
 
@@ -45,8 +44,7 @@ python scripts/converter_hf_to_mcore.py \
 
 自行下载数据集 [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k/tree/main)
 
-
-2. 配置训练脚本
+### 2. 配置训练脚本
 
 * 首先根据需要调整如下路径：
 
@@ -68,28 +66,28 @@ python scripts/converter_hf_to_mcore.py \
 
 使用mbridge在线转换huggingface权重（需安装mbridge包）
 
-```
+```bash
 actor_rollout_ref.actor.megatron.use_mbridge=True \
 actor_rollout_ref.actor.megatron.use_dist_checkpointing=False \
 actor_rollout_ref.ref.megatron.use_dist_checkpointing=False \
 ```
 
-使用RoPE融合优化 <a href="/docs/features/rotary-embedding.md">link</a>
+使用RoPE融合优化 [RoPE融合优化](../../../../docs/features/rotary-embedding.md)
 
-```
+```bash
 +actor_rollout_ref.actor.megatron.override_transformer_config.position_embedding_type=rope \
 +actor_rollout_ref.actor.megatron.override_transformer_config.use_fused_rotary_pos_emb=True \
 ```
 
-3. 启动训练
+### 3. 启动训练
 
-训练脚本为`qwen3_30b/qw3-30bmoe-grpo-2node_base.sh`，配置训练脚本中所需的所有参数，然后在**所有节点**执行训练脚本。
+训练脚本为`qw3-30bmoe-grpo-2node_base.sh`，配置训练脚本中所需的所有参数，然后在**所有节点**执行训练脚本。
 
-```
+```bash
 # 确保在verl目录下执行训练脚本
 cd verl
 
 # 后台执行该训练脚本，并将日志保存
-nohup bash qwen3_30b/qw3-30bmoe-grpo-2node_base.sh > qwen3_30b/qw3-30bmoe-grpo-2node_base.log 2>&1 &
-tail -f qwen3_30b/qw3-30bmoe-grpo-2node_base.log
+nohup bash qw3-30bmoe-grpo-2node_base.sh > qw3-30bmoe-grpo-2node_base.log 2>&1 &
+tail -f qw3-30bmoe-grpo-2node_base.log
 ```
