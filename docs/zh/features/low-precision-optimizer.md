@@ -31,3 +31,7 @@
 ## 使用效果
 
 降低优化器静态内存开销。
+
+## 使用限制
+
+梯度量化压缩`--quant-grads`不支持GEMM梯度累加融合`--gemm-gradient-accumulation-fusion`。需要使能`--no-gradient-accumulation-fusion`来关闭梯度累加融合
