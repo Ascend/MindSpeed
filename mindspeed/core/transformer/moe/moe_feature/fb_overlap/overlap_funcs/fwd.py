@@ -2,6 +2,8 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
 import torch
+from torch import Tensor
+
 from megatron.core.utils import make_viewless_tensor
 from megatron.core import parallel_state, tensor_parallel
 from megatron.training import get_args
@@ -15,10 +17,14 @@ from ..modules.utils import (
 
 def router_forward(
     self,
-    hidden_states
-):
-    probs, routing_map = self.mlp.router(hidden_states)
-
+    hidden_states,
+    input_ids
+):  
+    args = get_args()
+    if getattr(args, 'n_hash_layers', 0) >= 1:
+        probs, routing_map = self.mlp.router(hidden_states, input_ids)
+    else:
+        probs, routing_map = self.mlp.router(hidden_states)
     return probs, routing_map
 
 
@@ -34,7 +40,8 @@ def transformer_layer_forward_moe(
     attention_bias=None,
     inference_params=None,
     packed_seq_params=None,
-    checkpoint=False
+    input_ids: Tensor = None,
+    checkpoint=False,
 ):
     # hidden_states: [s, b, h]
     args = get_args()
@@ -65,12 +72,29 @@ def transformer_layer_forward_moe(
     # Residual connection.
     residual2 = detached_attention_out
 
-    # Layer Norm after attention
-    if recomp_norm:
-        self.norm_ckpt2 = CheckpointWithoutOutput()
-        pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, detached_attention_out)
+    if getattr(args, 'enable_mhc', False):
+        # mlp mhc pre
+        post, comb = None, None
+        mlp_mhc_pre_output = self.mlp_mhc(detached_attention_out, mhc_stage='pre')
+        if isinstance(mlp_mhc_pre_output, tuple):
+            mlp_mhc_pre_output, post, comb = mlp_mhc_pre_output[0], mlp_mhc_pre_output[1], mlp_mhc_pre_output[2]
+            detached_mlp_mhc_pre_output = detach_tensor(mlp_mhc_pre_output, checkpoint_forward=checkpoint)
+            detached_mlp_mhc_post = detach_tensor(post, checkpoint_forward=checkpoint)
+            detached_mlp_mhc_comb = detach_tensor(comb, checkpoint_forward=checkpoint)
+
+        # Layer Norm after attention
+        if recomp_norm:
+            self.norm_ckpt2 = CheckpointWithoutOutput()
+            pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, detached_mlp_mhc_pre_output)
+        else:
+            pre_mlp_layernorm_output = self.pre_mlp_layernorm(detached_mlp_mhc_pre_output)
     else:
-        pre_mlp_layernorm_output = self.pre_mlp_layernorm(detached_attention_out)
+        # Layer Norm after attention
+        if recomp_norm:
+            self.norm_ckpt2 = CheckpointWithoutOutput()
+            pre_mlp_layernorm_output = self.norm_ckpt2.checkpoint(self.pre_mlp_layernorm, False, detached_attention_out)
+        else:
+            pre_mlp_layernorm_output = self.pre_mlp_layernorm(detached_attention_out)
 
     # MLP.
     dispatcher = self.mlp.token_dispatcher
@@ -89,7 +113,7 @@ def transformer_layer_forward_moe(
     if hasattr(self.mlp.token_dispatcher, "num_tokens_per_expert") \
             and (getattr(get_args(), "enable_expert_placement", False) or getattr(get_args(), "print_expert_load", False)):
         self.mlp.predict_expert_load(self.mlp.token_dispatcher.num_tokens_per_expert)
-    probs, routing_map = router_forward(self, detached_mlp_input)
+    probs, routing_map = router_forward(self, detached_mlp_input, input_ids)
     shared_expert_output = None
 
     # Token Perm1 Forward
@@ -154,7 +178,6 @@ def transformer_layer_forward_moe(
     unperm1_out = dispatcher.token_unpermute1(detached_expert_output, None)
     expert_output.untyped_storage().resize_(0)
 
-
     # Launch Token Unperm2 A2A
     unperm_a2a_out, unperm_a2a_handle = dispatcher.async_combine_comm(unperm1_out)
     unperm_a2a_handle.wait()
@@ -195,8 +218,18 @@ def transformer_layer_forward_moe(
     output = make_viewless_tensor(
         inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
     )
+    detached_output = detach_tensor(output, checkpoint_forward=checkpoint)
 
-    saved_tensors = (
+    if getattr(args, 'enable_mhc', False):
+        # mHC post
+        mlp_mhc_output = self.mlp_mhc(detached_output, 
+            mhc_stage='post', 
+            residual=residual2, 
+            post=detached_mlp_mhc_post, 
+            comb=detached_mlp_mhc_comb
+        )
+
+    saved_tensors = [
         (attention_out, detached_attention_out),
         (pre_mlp_layernorm_output, detached_mlp_input),
         (probs, probs_detached),
@@ -207,10 +240,18 @@ def transformer_layer_forward_moe(
         (expert_output, detached_expert_output),  # grouped mlp graph
         (unperm1_out, None),  # unperm1 graph
         (None, detached_unperm_a2a_out),
-        (output, None),  # unperm2 graph
+        (output, detached_output),  # unperm2 graph
         (share_experts_graph, detached_shared_expert_output),
-        detached_layer_input
-    )
+    ]
+
+    if getattr(args, 'enable_mhc', False):
+        saved_tensors.extend([
+            (mlp_mhc_output, None), # mlp_mhc_post graph
+            ((mlp_mhc_pre_output, post, comb), (detached_mlp_mhc_pre_output, detached_mlp_mhc_post, detached_mlp_mhc_comb)), # mlp_mhc_pre graph
+        ])
+
+    saved_tensors.append(detached_layer_input)
+    saved_tensors = tuple(saved_tensors)
 
     graph = LayerGraph(
         saved_tensors, recompute_needed_tensors, self, checkpointed=checkpoint
@@ -223,7 +264,10 @@ def transformer_layer_forward_moe(
     if hasattr(self.self_attention, 'swap_managers'):
         graph.attn_swap_managers = self.self_attention.swap_managers
 
-    return output, context, graph
+    if getattr(args, 'enable_mhc', False):
+        return mlp_mhc_output, context, graph
+    else:
+        return output, context, graph
 
 
 def transformer_layer_forward_dense(
@@ -344,6 +388,7 @@ def transformer_layer_forward_noop(
     attention_bias=None,
     inference_params=None,
     packed_seq_params=None,
+    input_ids: Tensor = None,
     checkpoint=False
 ):
     detached_layer_input = hidden_states

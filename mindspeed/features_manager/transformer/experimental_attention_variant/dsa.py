@@ -29,7 +29,7 @@ class DeepSeekSparseAttention(MindSpeedFeature):
             )
 
         if args.use_fused_lightning_indexer or args.use_fused_sparse_flash_attention or args.use_fused_lightning_indexer_kl_loss:
-            if not (args.use_dsa_absorb and args.use_fused_lightning_indexer
+            if not ((args.use_dsa_absorb or args.use_g2_attention) and args.use_fused_lightning_indexer
                     and args.use_fused_sparse_flash_attention
                     and args.use_fused_lightning_indexer_kl_loss):
                 raise AssertionError(

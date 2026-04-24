@@ -7,6 +7,7 @@ from contextlib import nullcontext
 import torch
 from torch import Tensor
 
+from megatron.training import get_args
 from mindspeed.core.fp8_utils import get_fp8_context
 from mindspeed.core.transformer.moe.moe_feature import (
     get_args, InferenceParams,
@@ -46,6 +47,8 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
         output_layer=None,
         output_weight: Optional[torch.Tensor] = None,
         compute_language_model_loss=None,
+        pre_process: Tensor = None,
+        post_process: Tensor = None,
         bwd_block_output_grad=None,
         bwd_block_graphs=None,
         pp_comm_params: P2PCommParams = None,
@@ -75,6 +78,8 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
             output_layer,
             output_weight,
             compute_language_model_loss,
+            pre_process,
+            post_process,
         )
         
         return hidden_states_main_model
@@ -124,7 +129,6 @@ def transformer_block_fb_overlap_init_wrapper(init_fn):
     return wrapper
 
 
-
 def transformer_block_forward(
     self,
     hidden_states: Tensor,
@@ -139,7 +143,9 @@ def transformer_block_forward(
     packed_seq_params: Optional[PackedSeqParams] = None,
     sequence_len_offset: Optional[Tensor] = None,
     inference_params: Optional[BaseInferenceContext] = None,
+    input_ids: Tensor = None,
 ):
+    args = get_args()
     if not self.pre_process:
         # See set_input_tensor()
         hidden_states = self.input_tensor
@@ -197,14 +203,18 @@ def transformer_block_forward(
                 attention_bias=attention_bias,
                 inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
-                checkpoint=checkpoint
+                input_ids=input_ids,
+                checkpoint=checkpoint,
             )
             layer_graphs.append(saved_graphs)
 
     # Final layer norm.
     if self.post_process and self.post_layer_norm and self.final_layernorm is not None:
         detached_hidden_states = detach_tensor(hidden_states)
-        layer_graphs[-1].unperm2_graph = (layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
+        if getattr(args, 'enable_mhc', False):
+            layer_graphs[-1].mlp_mhc_post_graph = (layer_graphs[-1].mlp_mhc_post_graph[0], detached_hidden_states)
+        else:
+            layer_graphs[-1].unperm2_graph = (layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
         hidden_states = self.final_layernorm(detached_hidden_states)
 
     if torch.is_grad_enabled() or get_args().schedules_method == 'dualpipev':
@@ -231,11 +241,13 @@ def transformer_block_forward_backward_overlaping(
     bwd_block_graphs: List[LayerGraph] = None,
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
+    input_ids: Tensor = None,
 ):
+    args = get_args()
     if bwd_block_graphs is None:
         return transformer_block_forward(
             self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin,
-            attention_bias, inference_context, packed_seq_params, sequence_len_offset, inference_params
+            attention_bias, inference_context, packed_seq_params, sequence_len_offset, inference_params, input_ids
         )
 
     fwd_block = self
@@ -324,6 +336,7 @@ def transformer_block_forward_backward_overlaping(
                     packed_seq_params=packed_seq_params,
                     pp_comm_params=cur_p2p_params,
                     bwd_pp_comm_params=cur_bwd_p2p_params,
+                    input_ids=input_ids,
                     checkpoint=checkpoint
                 )
             fwd_layer_graphs.append(fwd_layer_graph)
@@ -331,7 +344,11 @@ def transformer_block_forward_backward_overlaping(
     # Final layer norm.
     if fwd_block.post_process and fwd_block.post_layer_norm and fwd_block.final_layernorm is not None:
         detached_hidden_states = detach_tensor(fwd_hidden_states)
-        fwd_layer_graphs[-1].unperm2_graph = (fwd_layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
+        if getattr(args, 'enable_mhc', False):
+            fwd_layer_graphs[-1].mlp_mhc_post_graph = (fwd_layer_graphs[-1].mlp_mhc_post_graph[0], detached_hidden_states)
+        else:
+            fwd_layer_graphs[-1].unperm2_graph = (fwd_layer_graphs[-1].unperm2_graph[0], detached_hidden_states)
+
         fwd_hidden_states = fwd_block.final_layernorm(detached_hidden_states)
 
     if torch.is_grad_enabled() or get_args().schedules_method == 'dualpipev':
@@ -343,7 +360,7 @@ def transformer_block_forward_backward_overlaping(
 
 def transformer_block_backward(
     block_output_grad,
-    layer_graphs: List[LayerGraph],
+    layer_graphs: List[LayerGraph]
 ):
     # should call backward fisrt for final_layernorm and postprocess grad
     layer_output_grad = block_output_grad

@@ -24,3 +24,4 @@ from .matmul_add_builder import MatmulAddOpBuilder
 from .groupmatmul_add_builder import GroupMatmulAddOpBuilder
 from .fused_ema_adamw_builder import FusedEmaAdamWOpBuilder
 from .smart_swap_builder import SmartSwapBuilder
+from .npu_sparse_lightning_indexer_grad_kl_loss_builder import NPUSparseLIGradKlLossOpBuilder

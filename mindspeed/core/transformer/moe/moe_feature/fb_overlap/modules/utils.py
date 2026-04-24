@@ -2,6 +2,7 @@
 
 import torch
 from megatron.core.pipeline_parallel import p2p_communication
+from megatron.training import get_args
 from torch.autograd.variable import Variable
 
 
@@ -57,9 +58,9 @@ class NoopLayerGraph:
     def __init__(self, layer_input, layer_output, layer, checkpointed=False):
         self.layer_input = layer_input
         if not checkpointed:
-            self.unperm2_graph = (layer_output, None)
+            self.mlp_mhc_post_graph = (layer_output, None)
         else:
-            self.unperm2_graph = (None, None)
+            self.mlp_mhc_post_graph = (None, None)
         self.checkpointed = checkpointed
         self.is_moe_layer = False
         self.layer = layer
@@ -71,6 +72,7 @@ class NoopLayerGraph:
 class LayerGraph:
     def __init__(self, saved_graph_and_graph_inputs, recompute_needed_tensors, layer,
                  checkpointed=False, hot_experts_list=None, hot_expert_inter_ep_grad_reduce_handles=None, params=None):
+        args = get_args()
         if not checkpointed:
             self.attn_graph = saved_graph_and_graph_inputs[0]
             self.pre_mlp_layernorm_graph = saved_graph_and_graph_inputs[1]
@@ -83,8 +85,16 @@ class LayerGraph:
             self.unperm_a2a_graph = saved_graph_and_graph_inputs[8]
             self.unperm2_graph = saved_graph_and_graph_inputs[9]
             self.shared_experts_graph = saved_graph_and_graph_inputs[10]
+
+        if getattr(args, 'enable_mhc', False):
+            if not checkpointed:
+                self.mlp_mhc_post_graph = saved_graph_and_graph_inputs[11]
+                self.mlp_mhc_pre_graph = saved_graph_and_graph_inputs[12]
+            else:
+                self.mlp_mhc_post_graph = (None, None)
         else:
-            self.unperm2_graph = (None, None)
+            if checkpointed:
+                self.unperm2_graph = (None, None)
 
         self.layer_input = saved_graph_and_graph_inputs[-1]
         self.recompute_needed_tensors = recompute_needed_tensors

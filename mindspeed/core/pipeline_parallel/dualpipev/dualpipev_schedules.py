@@ -822,7 +822,11 @@ def forward_backward_pipelining_with_cutinhalf(
 
     model_type = get_model_type(model[0])
 
-    tensor_shape = [seq_length, micro_batch_size, config.hidden_size]
+    if getattr(config, 'enable_mhc', False):
+        tensor_shape = [seq_length, micro_batch_size, config.hc_mult, config.hidden_size]
+    else:
+        tensor_shape = [seq_length, micro_batch_size, config.hidden_size]
+
     tensor_shape[0] = tensor_shape[0] // parallel_state.get_context_parallel_world_size()
     if config.sequence_parallel:
         tensor_shape[0] = tensor_shape[0] // parallel_state.get_tensor_model_parallel_world_size()
@@ -873,7 +877,10 @@ def forward_backward_pipelining_with_cutinhalf(
                 output_tensor_, model_graph, pp_comm_output = output_tensor
 
             if is_dualpipev_last_stgae(model_chunk_id):
-                logits_inputs.append(model_graph[-1].unperm2_graph[1])
+                if getattr(config, 'enable_mhc', False):
+                    logits_inputs.append(model_graph[-1].mlp_mhc_post_graph[1])
+                else:
+                    logits_inputs.append(model_graph[-1].unperm2_graph[1])
             model_graphs[model_chunk_id].append(model_graph)
         else:
             output_tensor_ = output_tensor

@@ -31,7 +31,7 @@ def gmm_op(x, weight, bias, group_list, group_type):
 
 class MoELayerOverlapAllToAll(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, hidden_states, config, moe_layer: MoELayer):
+    def forward(ctx, hidden_states, config, moe_layer: MoELayer, input_ids=None):
         ctx.config = config
         save_tensors = []
         ctx.input_shape = hidden_states.shape
@@ -41,7 +41,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         ctx.is_only_recompute_activation = only_recompute_activation(config, moe_layer.layer_number)
         # router
         with torch.enable_grad():
-            scores, routing_map = moe_layer.router(hidden_states)
+            scores, routing_map = moe_layer.router(hidden_states, input_ids=input_ids)
 
         save_tensors.append(scores)
         scores = scores.detach()
@@ -402,4 +402,4 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         #Wait stream for share_expert_overlap.
         if n_shared_experts:
             ctx.moe_layer.shared_experts.stream.wait_stream(torch.cuda.current_stream())
-        return grad_output, None, None
+        return grad_output, None, None, None

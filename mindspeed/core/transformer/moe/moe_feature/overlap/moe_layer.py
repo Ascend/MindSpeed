@@ -225,5 +225,5 @@ class AlltoAllOverlapMoeLayer(MegatronBaseMoeLayer):
             if self.shared_expert_overlap:
                 self.token_dispatcher.set_shared_experts(self.shared_experts)
 
-    def forward(self, hidden_states):
-        return MoELayerOverlapAllToAll.apply(hidden_states, self.config, self)
+    def forward(self, hidden_states, input_ids=None):
+        return MoELayerOverlapAllToAll.apply(hidden_states, self.config, self, input_ids)

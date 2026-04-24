@@ -45,6 +45,14 @@ def attention_forward(
     packed_seq_params=None,
     recompute_norm=False
 ):
+    args = get_args()
+    if getattr(args, 'enable_mhc', False):
+        # attn mHC pre
+        post, comb = None, None
+        hidden_states = self.attn_mhc(hidden_states, mhc_stage='pre')
+        if isinstance(hidden_states, tuple):
+            hidden_states, post, comb = hidden_states[0], hidden_states[1], hidden_states[2]
+
     # Optional Input Layer norm
     def pre_norm(hidden_states):
         args = get_args()
@@ -63,7 +71,7 @@ def attention_forward(
     attention_output_with_bias = self.self_attention(
         input_layernorm_output,
         attention_mask=attention_mask,
-        inference_params=inference_params,
+        inference_context=inference_params,
         rotary_pos_emb=rotary_pos_emb,
         rotary_pos_cos=rotary_pos_cos,
         rotary_pos_sin=rotary_pos_sin,
@@ -81,5 +89,14 @@ def attention_forward(
     if recompute_norm:
         self.norm_ckpt1.discard_output()
         hidden_states.register_hook(self.norm_ckpt1.recompute)
+
+    if getattr(args, 'enable_mhc', False):
+        # attn mHC post
+        hidden_states = self.attn_mhc(hidden_states, 
+            mhc_stage='post', 
+            residual=residual, 
+            post=post, 
+            comb=comb
+        )
 
     return hidden_states

@@ -33,15 +33,24 @@ def transformer_layer_backward_moe(
     if self.attn_swap_managers:
         for manager in self.attn_swap_managers:
             manager.async_swap_in(wait_stream=torch.npu.current_stream())
+    
+    if getattr(args, 'enable_mhc', False):
+        run_graph_backward(self.mlp_mhc_post_graph, layer_output_grad, keep_grad=True)
 
     if use_shared_experts:
         dispatcher.overlap_stream.wait_stream(torch.npu.current_stream())
         with torch.npu.stream(dispatcher.overlap_stream):
             shared_experts = self.layer.mlp.shared_experts
-            shared_expert_grad = layer_output_grad if layer_output_grad is not None else self.unperm2_graph[1].grad
+            if not getattr(args, 'enable_mhc', False) and layer_output_grad is not None:
+                shared_expert_grad = layer_output_grad
+            else:
+                shared_expert_grad = self.unperm2_graph[1].grad
             shared_experts.pre_backward_comm(shared_expert_grad)
 
-    run_graph_backward(self.unperm2_graph, layer_output_grad, keep_grad=True)
+    if getattr(args, 'enable_mhc', False):
+        run_graph_backward(self.unperm2_graph, keep_grad=True)
+    else:
+        run_graph_backward(self.unperm2_graph, layer_output_grad, keep_grad=True)
 
     if layer_output_grad is not None and not args.moe_unperm2_mem_optim_swap:
         layer_output_grad.untyped_storage().resize_(0)
@@ -95,6 +104,7 @@ def transformer_layer_backward_moe(
         self.probs_swap_manager.wait_swap_in()
     if self.act_ckpt_manager is not None:
         self.act_ckpt_manager.recompute(True)
+    
     WeightGradStore.start_decouple()
     run_graph_backward(self.grouped_mlp_graph, keep_grad=True)  # keep for dw commputation
     if not in_detach_stage:
@@ -147,12 +157,22 @@ def transformer_layer_backward_moe(
         probs_grad = probs_grad.sum(dim=-1)
         layer_output_grad.untyped_storage().resize_(0)
         self.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
+    
     run_graph_backward(self.router_graph, probs_grad)
     torch.npu.current_stream().wait_stream(dispatcher.overlap_stream)
     run_graph_backward(self.pre_mlp_layernorm_graph)
+
+    if getattr(args, 'enable_mhc', False):
+        # backward for mlp_mhc_pre
+        run_graph_backward(self.mlp_mhc_pre_graph, 
+            (self.mlp_mhc_pre_graph[1][0].grad, 
+            self.mlp_mhc_pre_graph[1][1].grad, 
+            self.mlp_mhc_pre_graph[1][2].grad))
+    
     if self.attn_swap_managers:
         for manager in self.attn_swap_managers:
             manager.wait_swap_in()
+
     run_graph_backward(self.attn_graph)
 
     self.recompute_needed_tensors = [None for _ in range(len(self.recompute_needed_tensors))]
@@ -175,7 +195,7 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
 
 
 def transformer_layer_backward_noop(layer_output_grad, layer_graph):
-    run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
+    run_graph_backward(layer_graph.mlp_mhc_post_graph, layer_output_grad, keep_grad=True)
 
     return getattr(layer_graph.layer_input, 'grad', None)
 

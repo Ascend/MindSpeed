@@ -5,6 +5,8 @@ from contextlib import nullcontext
 import torch
 from torch import Tensor
 
+from megatron.training import get_args
+
 from mindspeed.core.fp8_utils import get_fp8_context
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import NoopTransformerLayer
 from mindspeed.core.transformer.moe.moe_feature import (
@@ -71,7 +73,8 @@ def transformer_layer_forward(*args, **kwargs):
 def transformer_layer_backward(
     layer_output_grad,
     layer_graph,
-):
+):  
+    args = get_args()
     if layer_graph.checkpointed:
         with torch.enable_grad():
             if layer_graph.layer.layer_number > 1:
@@ -79,7 +82,10 @@ def transformer_layer_backward(
             _, _, restored_layer_graph = transformer_layer_forward(
                 layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
             )
-            restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], layer_graph.unperm2_graph[1])
+            if getattr(args, 'enable_mhc', False):
+                restored_layer_graph.mlp_mhc_post_graph = (restored_layer_graph.mlp_mhc_post_graph[0], layer_graph.mlp_mhc_post_graph[1])
+            else:
+                restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], layer_graph.unperm2_graph[1])
             layer_graph = restored_layer_graph
     if isinstance(layer_graph, NoopLayerGraph):
         return transformer_layer_backward_noop(layer_output_grad, layer_graph)
@@ -120,6 +126,7 @@ def transformer_layer_forward_backward_overlaping(
     packed_seq_params=None,
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
+    input_ids: Tensor = None,
     checkpoint=False
 ):
     if isinstance(fwd_layer, NoopTransformerLayer) or bwd_layer_graph is None or isinstance(bwd_layer_graph, NoopLayerGraph):
@@ -127,18 +134,18 @@ def transformer_layer_forward_backward_overlaping(
         if bwd_layer_graph is None:
             out = transformer_layer_forward(
                 fwd_layer, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, checkpoint=checkpoint
+                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids=input_ids, checkpoint=checkpoint
             )
             if len(out) > 2 and checkpoint:
                 out[2].record_layer_inputs(
                     attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                    rotary_pos_sin, attention_bias, inference_params, packed_seq_params
+                    rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
                 )
             return out
         else:
             output, context, graph = transformer_layer_forward(
                 fwd_layer, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, checkpoint=checkpoint
+                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids=input_ids, checkpoint=checkpoint
             )
             # handle fwd p2p communication
             next_iter_input_tensor, fwd_p2p_handles = None, None
@@ -156,7 +163,7 @@ def transformer_layer_forward_backward_overlaping(
             if checkpoint:
                 graph.record_layer_inputs(
                     attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                    rotary_pos_sin, attention_bias, inference_params, packed_seq_params
+                    rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
                 )
             return (output, context, graph,
                     (bwd_input_grad, None),
@@ -204,16 +211,24 @@ def transformer_layer_forward_backward_overlaping(
         out = fb_overlap_func(
             fwd_layer, hidden_states, attention_mask, bwd_layer_output_grad, bwd_layer_graph, bwd_unperm_a2a_handle,
             next_bwd_layer_graph, context, context_mask, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin, attention_bias,
-            inference_params, packed_seq_params, pp_comm_params, bwd_pp_comm_params, checkpoint=checkpoint
+            inference_params, packed_seq_params, pp_comm_params, bwd_pp_comm_params, input_ids=input_ids, checkpoint=checkpoint
         )
 
         if checkpoint:
             out[2].record_layer_inputs(
                 attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params
+                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
             )
 
         return out
+
+
+def hc_repeat(x: torch.Tensor, enable_mhc=False, hc_mult=1, *args, **kwargs):
+    if enable_mhc:
+        # x:[s, b, h]
+        return x.unsqueeze(2).repeat(1, 1, hc_mult, 1)
+    else:
+        return x
 
 
 def dualpipev_fb_overlap_mtp_layer_forward(
@@ -230,6 +245,9 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     inference_params: InferenceParams = None,
     packed_seq_params: PackedSeqParams = None,
     sequence_len_offset: Tensor = None,
+    input_ids: Tensor = None,
+    pre_process: Tensor = None,
+    post_process: Tensor = None
 ):
     """
     Perform the forward pass through the MTP layer with moe_fb_overlap.
@@ -305,6 +323,10 @@ def dualpipev_fb_overlap_mtp_layer_forward(
         # For sequence parallel, scatter after linear_fc and before transformer layer.
         if self.sequence_parallel:
             hidden_states = scatter_to_sequence_parallel_region(hidden_states)
+        
+        args = get_args()
+        if pre_process:
+            hidden_states = hc_repeat(hidden_states, getattr(args, 'enable_mhc', False), getattr(args, 'hc_mult', 1))
         hidden_states, _, _ = MTPTransformerLayer.apply(
             self.transformer_layer,
             self.config,
@@ -318,9 +340,14 @@ def dualpipev_fb_overlap_mtp_layer_forward(
             attention_bias,
             inference_params,
             packed_seq_params,
-            False
+            False,
+            input_ids,
+            self.hc_head,
+            pre_process,
+            post_process
         )
-
+        if post_process:
+            hidden_states = self.hc_head(hidden_states, mhc_stage='head')
     # Layer norm before shared head layer.
     if self.final_layernorm is not None:
         hidden_states = self.final_layernorm(hidden_states)
@@ -328,7 +355,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     # deallocate_output_tensor() throwing an error, so a viewless tensor is
     # created to prevent this.
     hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
-
+    
     return hidden_states
 
 
@@ -350,8 +377,13 @@ class MTPTransformerLayer(torch.autograd.Function):
             attention_bias,
             inference_params,
             packed_seq_params,
-            checkpoint=False
+            checkpoint=False,
+            input_ids=None,
+            hc_head=None,
+            pre_process: Tensor = None,
+            post_process: Tensor = None
     ):
+        args = get_args()
         hidden_states = bwd_synchronize_check.apply(hidden_states)
 
         if checkpoint:
@@ -381,13 +413,14 @@ class MTPTransformerLayer(torch.autograd.Function):
                                                         attention_bias,
                                                         inference_params,
                                                         packed_seq_params,
+                                                        input_ids,
                                                         checkpoint)
 
         #Record MTP-layer input for backward recompute.
         if checkpoint:
             graph.record_layer_inputs(
                 attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params
+                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
             )
         output = bwd_synchronize_check.apply(output)
         ctx.graph = graph
@@ -397,4 +430,4 @@ class MTPTransformerLayer(torch.autograd.Function):
     def backward(ctx, layer_output_grad, context, layer_graph):
         layer_graph = ctx.graph
         layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
-        return None, None, layer_graph.layer_input.grad, None, None, None, None, None, None, None, None, None, None
+        return None, None, layer_graph.layer_input.grad, None, None, None, None, None, None, None, None, None, None, None, None, None, None
