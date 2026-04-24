@@ -31,10 +31,13 @@ class RMSNorm(torch.nn.Module):
 
     def unfused_rmsnorm(self, x):
         output = self._norm(x.float()).type_as(x)
+        if self.config.layernorm_zero_centered_gamma:
+            return output * (1 + self.weight)
         return output * self.weight
 
     def fused_rmsnorm(self, x):
-        return torch_npu.npu_rms_norm(x, self.weight, epsilon=self.eps)[0]
+        weight = 1 + self.weight if self.config.layernorm_zero_centered_gamma else self.weight
+        return torch_npu.npu_rms_norm(x, weight, epsilon=self.eps)[0]
 
     def forward(self, x):
         if self.config.use_fused_rmsnorm:

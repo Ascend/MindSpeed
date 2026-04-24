@@ -225,11 +225,29 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                             eps=self.config.layernorm_epsilon
                             )
 
+    def _rmsnorm_scale(self, x_norm):
+        """Plain γ*x_norm or TE zero-centered (1+γ)*x_norm."""
+        if getattr(self.config, "layernorm_zero_centered_gamma", False):
+            return x_norm * (1 + self.layer_norm_weight)
+        return x_norm * self.layer_norm_weight
+    
     def _rmsnorm(self, inp):
-        if self.config.use_fused_rmsnorm:
-            return torch_npu.npu_rms_norm(inp, self.layer_norm_weight, epsilon=self.config.layernorm_epsilon)[0]
-        return (inp * torch.rsqrt(inp.pow(2).mean(-1, keepdim=True) + self.config.layernorm_epsilon)) \
-                * self.layer_norm_weight
+        eps = self.config.layernorm_epsilon
+        use_fp32_reduce = getattr(self.config, "rmsnorm_zerocenter", False)
+        zero_centered_gamma = getattr(self.config, "layernorm_zero_centered_gamma", False)
+        # npu_rms_norm is γ*x_norm only; skip when (1+γ) is required.
+        use_fused = self.config.use_fused_rmsnorm and not zero_centered_gamma
+        if use_fp32_reduce:
+            input_dtype = inp.dtype
+            x = inp.to(torch.float32)
+            variance = x.pow(2).mean(-1, keepdim=True)
+            x_norm = x * torch.rsqrt(variance + eps)
+            return self._rmsnorm_scale(x_norm.to(input_dtype)).to(input_dtype)
+    
+        if use_fused:
+            return torch_npu.npu_rms_norm(inp, self.layer_norm_weight, epsilon=eps)[0]
+        x_norm = inp * torch.rsqrt(inp.pow(2).mean(-1, keepdim=True) + eps)
+        return self._rmsnorm_scale(x_norm)
 
     def enable_recompute_norm(self, norm_ckpt):
         self.is_recompute_norm = True
