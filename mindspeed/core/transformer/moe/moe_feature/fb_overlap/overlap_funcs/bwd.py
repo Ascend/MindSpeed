@@ -195,7 +195,11 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
 
 
 def transformer_layer_backward_noop(layer_output_grad, layer_graph):
-    run_graph_backward(layer_graph.mlp_mhc_post_graph, layer_output_grad, keep_grad=True)
+    args = get_args()
+    if getattr(args, 'enable_mhc', False):
+        run_graph_backward(layer_graph.mlp_mhc_post_graph, layer_output_grad, keep_grad=True)
+    else:
+        run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
 
     return getattr(layer_graph.layer_input, 'grad', None)
 

@@ -56,11 +56,18 @@ def run_graph_backward(graph, output_tensor_grad=None, keep_graph=False, keep_gr
 
 class NoopLayerGraph:
     def __init__(self, layer_input, layer_output, layer, checkpointed=False):
+        args = get_args()
         self.layer_input = layer_input
         if not checkpointed:
-            self.mlp_mhc_post_graph = (layer_output, None)
+            if getattr(args, 'enable_mhc', False):
+                self.mlp_mhc_post_graph = (layer_output, None)
+            else:
+                self.unperm2_graph = (layer_output, None)
         else:
-            self.mlp_mhc_post_graph = (None, None)
+            if getattr(args, 'enable_mhc', False):
+                self.mlp_mhc_post_graph = (None, None)
+            else:
+                self.unperm2_graph = (None, None)
         self.checkpointed = checkpointed
         self.is_moe_layer = False
         self.layer = layer
