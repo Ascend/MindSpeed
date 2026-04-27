@@ -17,7 +17,10 @@ from megatron.core.parallel_state import (
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu, \
     set_tensor_model_parallel_attributes, linear_with_grad_accumulation_and_async_allreduce
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
-from megatron.core.utils import divide
+from megatron.core.utils import (
+    divide,
+    get_tensor_model_parallel_group_if_none,
+)
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.te.pytorch.fp8 import fp8_matmul
 from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
@@ -146,6 +149,8 @@ class MindSpeedTELinear(torch.nn.Module):
         # Forward impl settings without ascend-mc2.
         self._linear_forward_impl = linear_with_grad_accumulation_and_async_allreduce
 
+        tp_group = get_tensor_model_parallel_group_if_none(tp_group, is_expert=is_expert)
+        self._tp_group = tp_group
 
     def forward(self, inp: torch.Tensor, is_first_microbatch: Optional[bool] = None, fp8_output=False):
         bias = self.bias if not self.skip_bias_add else None
@@ -177,7 +182,12 @@ class MindSpeedTELinear(torch.nn.Module):
         """Sharding along axis 0, bias sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
-            state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
+            state_dict,
+            prefix,
+            None,
+            sharded_offsets,
+            tp_group=self._tp_group,
+            dp_cp_group=metadata["dp_cp_group"],
         )
     
 
