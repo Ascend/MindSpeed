@@ -3,6 +3,7 @@
 import inspect
 import torch
 
+from mindspeed.args_utils import get_full_args
 from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func, get_gmm_op_cls
 from mindspeed.moe.utils import MoEAuxLossAutoScaler
 from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import async_all_to_all
@@ -41,7 +42,11 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         ctx.is_only_recompute_activation = only_recompute_activation(config, moe_layer.layer_number)
         # router
         with torch.enable_grad():
-            scores, routing_map = moe_layer.router(hidden_states, input_ids=input_ids)
+            args = get_full_args()
+            if getattr(args, 'n_hash_layers', 0) >= 1:
+                scores, routing_map = moe_layer.router(hidden_states, input_ids=input_ids)
+            else:
+                scores, routing_map = moe_layer.router(hidden_states)
 
         save_tensors.append(scores)
         scores = scores.detach()

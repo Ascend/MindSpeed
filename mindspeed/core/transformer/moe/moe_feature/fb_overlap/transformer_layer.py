@@ -5,8 +5,7 @@ from contextlib import nullcontext
 import torch
 from torch import Tensor
 
-from megatron.training import get_args
-
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.fp8_utils import get_fp8_context
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import NoopTransformerLayer
 from mindspeed.core.transformer.moe.moe_feature import (

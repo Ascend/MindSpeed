@@ -1,9 +1,11 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
 import torch
+
 from megatron.core import parallel_state
-from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
+
+from mindspeed.args_utils import get_full_args
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather, async_reduce_scatter
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.transformer.moe.moe_utils import get_prob_backward_need_tensors
@@ -16,7 +18,7 @@ def transformer_layer_backward_moe(
     layer_graph
 ):
     self = layer_graph
-    args = get_args()
+    args = get_full_args()
     in_detach_stage = WeightGradStore.is_decoupleBlock
     dispatcher = self.layer.mlp.token_dispatcher
     use_shared_experts = hasattr(self.layer.mlp, 'shared_experts') and self.layer.mlp.shared_experts is not None
@@ -195,7 +197,7 @@ def transformer_layer_backward_dense(layer_output_grad, layer_graph):
 
 
 def transformer_layer_backward_noop(layer_output_grad, layer_graph):
-    args = get_args()
+    args = get_full_args()
     if getattr(args, 'enable_mhc', False):
         run_graph_backward(layer_graph.mlp_mhc_post_graph, layer_output_grad, keep_grad=True)
     else:

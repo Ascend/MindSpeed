@@ -1,9 +1,10 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 
 import torch
-from megatron.core.pipeline_parallel import p2p_communication
-from megatron.training import get_args
 from torch.autograd.variable import Variable
+
+from megatron.core.pipeline_parallel import p2p_communication
+from mindspeed.args_utils import get_full_args
 
 
 def detach_tensor(tensor, checkpoint_forward=False):
@@ -56,7 +57,7 @@ def run_graph_backward(graph, output_tensor_grad=None, keep_graph=False, keep_gr
 
 class NoopLayerGraph:
     def __init__(self, layer_input, layer_output, layer, checkpointed=False):
-        args = get_args()
+        args = get_full_args()
         self.layer_input = layer_input
         if not checkpointed:
             if getattr(args, 'enable_mhc', False):
@@ -79,7 +80,7 @@ class NoopLayerGraph:
 class LayerGraph:
     def __init__(self, saved_graph_and_graph_inputs, recompute_needed_tensors, layer,
                  checkpointed=False, hot_experts_list=None, hot_expert_inter_ep_grad_reduce_handles=None, params=None):
-        args = get_args()
+        args = get_full_args()
         if not checkpointed:
             self.attn_graph = saved_graph_and_graph_inputs[0]
             self.pre_mlp_layernorm_graph = saved_graph_and_graph_inputs[1]

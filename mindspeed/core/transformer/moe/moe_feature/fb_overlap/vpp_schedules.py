@@ -5,7 +5,7 @@ import contextlib
 from typing import Callable, Iterator, List, Optional, Union
 from functools import partial, wraps
 import torch
-from megatron.training import get_timers, get_args
+from megatron.training import get_timers
 from megatron.core import parallel_state
 from megatron.core.enums import ModelType
 from megatron.core.pipeline_parallel import p2p_communication
@@ -25,6 +25,8 @@ from megatron.core.utils import (
     get_model_type,
 )
 from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler
+
+from mindspeed.args_utils import get_full_args as get_args
 from .gpt_model import gpt_model_backward
 from .modules.utils import P2PCommParams
 

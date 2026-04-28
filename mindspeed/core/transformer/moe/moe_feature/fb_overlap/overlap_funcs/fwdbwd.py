@@ -6,8 +6,9 @@ from torch import Tensor
 
 from megatron.core.utils import make_sharded_tensor_for_checkpoint, make_viewless_tensor
 from megatron.core import parallel_state, tensor_parallel
-from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute
+
+from mindspeed.args_utils import get_full_args
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather, async_reduce_scatter
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
@@ -27,7 +28,7 @@ def router_forward(
     hidden_states,
     input_ids
 ):  
-    args = get_args()
+    args = get_full_args()
     if getattr(args, 'n_hash_layers', 0) >= 1:
         probs, routing_map = self.mlp.router(hidden_states, input_ids)
     else:
@@ -60,7 +61,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
         checkpoint_context = torch.no_grad()
     else:
         checkpoint_context = nullcontext()
-    args = get_args()
+    args = get_full_args()
     use_shared_experts = hasattr(bwd_layer_graph.layer.mlp, 'shared_experts') and bwd_layer_graph.layer.mlp.shared_experts is not None
     bwd_shared_experts = bwd_layer_graph.layer.mlp.shared_experts if use_shared_experts else None
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
@@ -372,7 +373,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     bwd_pp_comm_params: P2PCommParams = None,
     checkpoint=False
 ):
-    args = get_args()
+    args = get_full_args()
     tp_size = parallel_state.get_tensor_model_parallel_world_size()
     use_shared_experts = hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None
     fwd_shared_experts = fwd_layer.mlp.shared_experts if use_shared_experts else None
@@ -385,7 +386,6 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
         checkpoint_context = torch.no_grad()
     else:
         checkpoint_context = nullcontext()
-    args = get_args()
     recomp_norm = getattr(args, 'recompute_norm', False)
 
     if bwd_layer_graph.attn_swap_managers:
@@ -651,7 +651,7 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
         checkpoint_context = torch.no_grad()
     else:
         checkpoint_context = nullcontext()
-    args = get_args()
+    args = get_full_args()
     ep_group = parallel_state.get_expert_model_parallel_group()
     recomp_norm = getattr(args, 'recompute_norm', False)
     if bwd_layer_graph.attn_swap_managers:
@@ -797,7 +797,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
         checkpoint_context = torch.no_grad()
     else:
         checkpoint_context = nullcontext()
-    args = get_args()
+    args = get_full_args()
     use_shared_experts = hasattr(fwd_layer.mlp, 'shared_experts') and fwd_layer.mlp.shared_experts is not None
     fwd_shared_experts = fwd_layer.mlp.shared_experts if use_shared_experts else None
     bwd_shared_experts = bwd_layer_graph.layer.mlp.shared_experts if use_shared_experts else None

@@ -24,6 +24,9 @@ class MoEAlltoAllOverLapFeature(MindSpeedFeature):
         if args.moe_alltoall_overlap_comm and args.moe_token_dispatcher_type not in ('alltoall', 'alltoall_seq'):
             raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall` or `--moe-token-dispatcher-type alltoall_seq`.')
         if args.moe_alltoall_overlap_comm:
+            if args.expert_model_parallel_size == 1:
+                raise AssertionError('`--moe-alltoall-overlap-comm` only support with `--expert-model-parallel-size` > 1.')
+
             if args.moe_token_dispatcher_type == 'alltoall':
                 if not args.moe_grouped_gemm:
                     raise AssertionError('`--moe-alltoall-overlap-comm` and `--moe-allgather-overlap-comm` only support with `--moe-grouped-gemm`.')

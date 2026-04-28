@@ -6,7 +6,7 @@ from torch import Tensor
 
 from megatron.core.utils import make_viewless_tensor
 from megatron.core import parallel_state, tensor_parallel
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from ..modules.attention import attention_forward
 from ..modules.utils import (
@@ -20,7 +20,7 @@ def router_forward(
     hidden_states,
     input_ids
 ):  
-    args = get_args()
+    args = get_full_args()
     if getattr(args, 'n_hash_layers', 0) >= 1:
         probs, routing_map = self.mlp.router(hidden_states, input_ids)
     else:
@@ -44,7 +44,7 @@ def transformer_layer_forward_moe(
     checkpoint=False,
 ):
     # hidden_states: [s, b, h]
-    args = get_args()
+    args = get_full_args()
     use_shared_experts = hasattr(self.mlp, 'shared_experts') and self.mlp.shared_experts is not None
     recomp_norm = getattr(args, 'recompute_norm', False)
     self.mlp.experts.layer_number = self.layer_number
@@ -111,7 +111,7 @@ def transformer_layer_forward_moe(
 
     # Router forward.
     if hasattr(self.mlp.token_dispatcher, "num_tokens_per_expert") \
-            and (getattr(get_args(), "enable_expert_placement", False) or getattr(get_args(), "print_expert_load", False)):
+            and (getattr(get_full_args(), "enable_expert_placement", False) or getattr(get_full_args(), "print_expert_load", False)):
         self.mlp.predict_expert_load(self.mlp.token_dispatcher.num_tokens_per_expert)
     probs, routing_map = router_forward(self, detached_mlp_input, input_ids)
     shared_expert_output = None
@@ -285,7 +285,7 @@ def transformer_layer_forward_dense(
     checkpoint=False
 ):
     # hidden_states: [s, b, h]
-    args = get_args()
+    args = get_full_args()
     recomp_norm = getattr(args, 'recompute_norm', False)
 
     detached_layer_input = hidden_states

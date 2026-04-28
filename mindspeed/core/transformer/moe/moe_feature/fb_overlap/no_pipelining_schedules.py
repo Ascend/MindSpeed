@@ -8,7 +8,7 @@ import torch
 from megatron.core.pipeline_parallel.schedules import check_first_val_step
 from megatron.core.utils import get_model_config, get_model_type
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.vpp_schedules import forward_step, backward_step, forward_step_func_wrapper
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args
 
 def forward_backward_no_pipelining(
     *,
@@ -31,7 +31,7 @@ def forward_backward_no_pipelining(
 
     See get_forward_backward_func() for argument details
     """
-    args = get_args()
+    args = get_full_args()
     if isinstance(model, list):
         assert len(model) == 1, "non-pipeline-parallel schedule does not support model chunking"
         model = model[0]
