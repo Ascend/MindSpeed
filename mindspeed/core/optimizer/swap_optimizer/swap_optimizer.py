@@ -548,7 +548,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
         return state
 
-    def _copy_model_params_to_main_params(self):
+    def _copy_model_params_to_main_params(self, state_dict=None):
         """
         Copy model params to main params.
 
