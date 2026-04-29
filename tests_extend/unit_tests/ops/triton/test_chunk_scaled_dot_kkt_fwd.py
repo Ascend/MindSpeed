@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) 2023-2025; Songlin Yang; Yu Zhang
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 from typing import Optional
 
@@ -9,11 +9,11 @@ import torch
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
-from mindspeed.lite.ops.triton.utils import assert_close
-from mindspeed.lite.ops.triton.utils import exp
-from mindspeed.lite.ops.triton.utils import is_amd
-from mindspeed.lite.ops.triton.utils import prepare_chunk_indices
+from mindspeed.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
+from mindspeed.ops.triton.utils import assert_close
+from mindspeed.ops.triton.utils import exp
+from mindspeed.ops.triton.utils import is_amd
+from mindspeed.ops.triton.utils import prepare_chunk_indices
 
 BT_LIST = [8, 16, 32, 64, 128]
 NUM_WARPS_AUTOTUNE = [1, 2, 4, 8, 16] if is_amd else [1, 2, 4, 8, 16, 32]

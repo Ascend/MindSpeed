@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 import os
 from typing import List, Optional, Tuple
@@ -9,9 +11,9 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.solve_tril import solve_tril
-from mindspeed.lite.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
-from mindspeed.lite.ops.triton.utils import is_amd, is_tma_supported, assert_close, device, make_tensor_descriptor, prepare_chunk_indices, device_platform, input_guard
+from mindspeed.ops.triton.solve_tril import solve_tril
+from mindspeed.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
+from mindspeed.ops.triton.utils import is_amd, is_tma_supported, assert_close, device, make_tensor_descriptor, prepare_chunk_indices, device_platform, input_guard
 
 FLA_TRIL_PRECISION = os.environ.get('FLA_TRIL_PRECISION', 'ieee')
 ALLOWED_TRIL_PRECISIONS = ['ieee', 'tf32'] if is_amd else ['ieee', 'tf32', 'tf32x3']

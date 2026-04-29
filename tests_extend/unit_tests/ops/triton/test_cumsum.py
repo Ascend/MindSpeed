@@ -1,5 +1,6 @@
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 # -*- coding: utf-8 -*-
+# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 import os
 from typing import List, Optional, Tuple
@@ -9,9 +10,9 @@ import torch
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.utils import assert_close
-from mindspeed.lite.ops.triton.cumsum import chunk_local_cumsum
-from mindspeed.lite.ops.triton.utils import prepare_chunk_indices
+from mindspeed.ops.triton.utils import assert_close
+from mindspeed.ops.triton.cumsum import chunk_local_cumsum
+from mindspeed.ops.triton.utils import prepare_chunk_indices
 
 
 @triton.heuristics({

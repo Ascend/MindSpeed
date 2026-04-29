@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 import os
 from typing import List, Optional, Tuple
@@ -11,15 +11,15 @@ import triton
 import triton.language as tl
 import torch.nn.functional as F
 
-from mindspeed.lite.ops.triton.utils import assert_close
-from mindspeed.lite.ops.triton.chunk_delta_h import chunk_gated_delta_rule_bwd_dhu
-from mindspeed.lite.ops.triton.chunk_delta_h import chunk_gated_delta_rule_fwd_h
-from mindspeed.lite.ops.triton.cumsum import chunk_local_cumsum
-from mindspeed.lite.ops.triton.chunk_o import chunk_bwd_dv_local
-from mindspeed.lite.ops.triton.wy_fast import recompute_w_u_fwd
-from mindspeed.lite.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
-from mindspeed.lite.ops.triton.solve_tril import solve_tril
-from mindspeed.lite.ops.triton.utils import prepare_chunk_indices, prepare_chunk_offsets
+from mindspeed.ops.triton.utils import assert_close
+from mindspeed.ops.triton.chunk_delta_h import chunk_gated_delta_rule_bwd_dhu
+from mindspeed.ops.triton.chunk_delta_h import chunk_gated_delta_rule_fwd_h
+from mindspeed.ops.triton.cumsum import chunk_local_cumsum
+from mindspeed.ops.triton.chunk_o import chunk_bwd_dv_local
+from mindspeed.ops.triton.wy_fast import recompute_w_u_fwd
+from mindspeed.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
+from mindspeed.ops.triton.solve_tril import solve_tril
+from mindspeed.ops.triton.utils import prepare_chunk_indices, prepare_chunk_offsets
 
 
 @triton.heuristics({

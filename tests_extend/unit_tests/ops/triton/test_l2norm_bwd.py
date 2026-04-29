@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) 2023-2025; Songlin Yang; Yu Zhang
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 import pytest
 import torch
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.l2norm import l2norm_bwd
-from mindspeed.lite.ops.triton.utils import assert_close
-from mindspeed.lite.ops.triton.utils import is_amd
+from mindspeed.ops.triton.l2norm import l2norm_bwd
+from mindspeed.ops.triton.utils import assert_close
+from mindspeed.ops.triton.utils import is_amd
 
 BT_LIST = [8, 16, 32, 64, 128]
 NUM_WARPS_AUTOTUNE = [1, 2, 4, 8, 16] if is_amd else [1, 2, 4, 8, 16, 32]

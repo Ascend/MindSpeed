@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2025; Songlin Yang; Yu Zhang
+# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 from typing import Optional, Tuple

@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
+# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
+# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
 import pytest
 import torch
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.utils import prepare_chunk_indices, exp, assert_close, is_nvidia_hopper
-from mindspeed.lite.ops.triton.chunk_o import chunk_fwd_o
+from mindspeed.ops.triton.utils import prepare_chunk_indices, exp, assert_close, is_nvidia_hopper
+from mindspeed.ops.triton.chunk_o import chunk_fwd_o
 
 NUM_WARPS = [2, 4] if is_nvidia_hopper else [2, 4, 8]
 
