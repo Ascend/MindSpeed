@@ -104,13 +104,13 @@ class ContextParallelFeature(MindSpeedFeature):
 
         if _use_cp or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo'):
             from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
-            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import MindSpeedTEDotProductAttention
+            from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import TEDotProductAttention
 
             patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention',
                                          MindSpeedCPDotProductAttention)
             if _cp_algo in ['kvallgather_cp_algo']:
                 patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
-                                             MindSpeedTEDotProductAttention)
+                                             TEDotProductAttention)
             else:
                 patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention',
                                              MindSpeedCPDotProductAttention)

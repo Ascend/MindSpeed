@@ -2,9 +2,9 @@
 import torch.nn as nn
 
 
-class MindSpeedTELayernorm(nn.LayerNorm):
+class Layernorm(nn.LayerNorm):
     def __init__(self, hidden_size, eps=1e-5, sequence_parallel=False, zero_centered_gamma=False, **kwargs):
-        super(MindSpeedTELayernorm, self).__init__(hidden_size, eps=eps)
+        super(Layernorm, self).__init__(hidden_size, eps=eps)
         self.sequence_parallel = sequence_parallel
         self.zero_centered_gamma = zero_centered_gamma
         setattr(self.weight, 'sequence_parallel', sequence_parallel)

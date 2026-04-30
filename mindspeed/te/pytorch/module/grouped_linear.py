@@ -65,7 +65,7 @@ def expert_dist_ckpt_decorator(func):
     return wrapper
 
 
-class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
+class TEGroupedLinearGMM(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_tensor: torch.Tensor,
                 m_split=None,
@@ -102,7 +102,7 @@ class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
         return grad, None, None, None, *grad_weight
 
 
-class MindSpeedTEGroupedLinear(torch.nn.Module):
+class TEGroupedLinear(torch.nn.Module):
     def __init__(self, num_gemms: int, input_size: int, output_size: int, *, parallel_mode: Optional[str], config,
                  init_method: Callable, bias: bool, skip_bias_add: bool, is_expert: bool = False,
                  tp_comm_buffer_name: Optional[str] = None, **kwargs):
@@ -173,7 +173,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
                 else:
                     w = w.view(-1, self.config.hidden_size)
             self.total_weight_T = [w.T for w in self.total_weight]
-            output = MindSpeedTEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight,
+            output = TEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight,
                                                        *self.total_weight_T)
         else:
             if self.parallel_mode == 'column':
@@ -276,7 +276,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
 from megatron.core.process_groups_config import ProcessGroupCollection
 
 
-class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
+class TEColumnParallelGroupedLinear(TEGroupedLinear):
     """
     Wrapper for the Transformer-Engine's `GroupedLinear` layer but specialized
     to column-parallel style.
@@ -324,7 +324,7 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
 from megatron.core.process_groups_config import ProcessGroupCollection
 
 
-class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
+class TERowParallelGroupedLinear(TEGroupedLinear):
     """
     Wrapper for the Transformer-Engine's `GroupedLinear` layer but specialized
     to row-parallel style.

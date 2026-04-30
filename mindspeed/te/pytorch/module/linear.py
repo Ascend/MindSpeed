@@ -29,7 +29,7 @@ from mindspeed.te.pytorch.module.ops import get_ops, DummyHandle
 from mindspeed.te.pytorch.module.ops.comm_overlap_ops import COMM_OVERLAP_CONFIG
 
 
-class MindSpeedTELinear(torch.nn.Module):
+class TELinear(torch.nn.Module):
     def __init__(
         self,
         input_size: int,
@@ -46,7 +46,7 @@ class MindSpeedTELinear(torch.nn.Module):
         symmetric_ar_type: Optional[str] = None,
         tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
-        super(MindSpeedTELinear, self).__init__()
+        super(TELinear, self).__init__()
 
         self.te_return_bias = skip_bias_add and bias
         if parallel_mode == "duplicated":
@@ -64,7 +64,7 @@ class MindSpeedTELinear(torch.nn.Module):
         self.sequence_parallel = self.config.sequence_parallel
         self.gradient_accumulation_fusion = self.config.gradient_accumulation_fusion
         self.allreduce_dgrad = False
-        # Similar to TE, MoE is currently not supported in MindSpeedTELayerNormColumnParallelLinear.
+        # Similar to TE, MoE is currently not supported in TELayerNormColumnParallelLinear.
         if is_expert:
             raise ValueError('Transformer Engine linear layers do not yet support MoE')
 

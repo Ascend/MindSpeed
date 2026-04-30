@@ -1,5 +1,5 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2022-2026, NVIDIA CORPORATION. All rights reserved.
 
 import dataclasses
 import math
@@ -545,7 +545,7 @@ class DotProductAttention(torch.nn.Module):
         return output
 
 
-class MindSpeedTEDotProductAttention(DotProductAttention):
+class TEDotProductAttention(DotProductAttention):
     """
     Adaptor for the TE's `DotProductAttention` layer that
     has "flash attention" and "context parallel" enabled.
@@ -610,9 +610,9 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
             extra_kwargs["cp_global_ranks"] = cp_global_ranks
             extra_kwargs["cp_comm_type"] = self.config.context_parallel_algo
 
-            if getattr(MindSpeedTEDotProductAttention, "cp_stream") is None:
-                MindSpeedTEDotProductAttention.cp_stream = torch.npu.Stream(device=torch.npu.current_device())
-            extra_kwargs["cp_stream"] = MindSpeedTEDotProductAttention.cp_stream
+            if getattr(TEDotProductAttention, "cp_stream") is None:
+                TEDotProductAttention.cp_stream = torch.npu.Stream(device=torch.npu.current_device())
+            extra_kwargs["cp_stream"] = TEDotProductAttention.cp_stream
 
         # set kv_channels
         if self.config.multi_latent_attention:

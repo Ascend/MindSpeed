@@ -57,10 +57,11 @@ class MegatronBasicFeature(MindSpeedFeature):
 
         # norm patches
         from mindspeed.core.megatron_basic.megatron_basic import PTNorm
+        from mindspeed.core.transformer.custom_layers.transformer_engine import TENorm
         pm.register_patch('megatron.core.models.gpt.gpt_layer_specs.LNImpl', PTNorm)
         pm.register_patch('megatron.core.transformer.torch_norm.WrappedTorchNorm', PTNorm)
         pm.register_patch('megatron.core.transformer.transformer_block.LayerNormImpl', PTNorm)
-        pm.register_patch('megatron.core.extensions.transformer_engine.TENorm', PTNorm)
+        pm.register_patch('megatron.core.extensions.transformer_engine.TENorm', TENorm)
 
         # coalescing_manager patches
         from mindspeed.core.distributed.param_and_grad_buffer import start_param_sync, finish_param_sync, start_grad_sync, finish_grad_sync

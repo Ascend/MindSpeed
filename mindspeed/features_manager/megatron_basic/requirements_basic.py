@@ -28,7 +28,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
 
     def te_adaptation(self, pm, args):
         from mindspeed.core.megatron_basic.requirements_basic import version_wrapper, dummy_compile
-        from mindspeed.te.pytorch.module.layernorm import MindSpeedTELayernorm
+        from mindspeed.te.pytorch.module.layernorm import Layernorm
         from mindspeed.ops.triton.l2norm import l2norm
         from mindspeed.core.ssm.chunk_gated_delta_rule import torch_chunk_gated_delta_rule
         from mindspeed.core.megatron_basic.ref_impl import hadamard_transform_ref
@@ -39,7 +39,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('torch.jit.script', dummy_compile)
         # Need replace modules before import megatron
         pm.register_patch('importlib.metadata.version', version_wrapper)
-        pm.register_patch('transformer_engine.pytorch.LayerNorm', MindSpeedTELayernorm, create_dummy=True)
+        pm.register_patch('transformer_engine.pytorch.LayerNorm', Layernorm, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.LayerNormLinear', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.DotProductAttention', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.Linear', torch.nn.Module, create_dummy=True)
