@@ -242,6 +242,7 @@ def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
             create_gloo_process_groups: bool = True,
             high_priority_stream_groups: Optional[List[str]] = None,
             sharp_enabled_group: Optional[str] = None,
+            create_all_gather_group: Optional[bool] = False,
     ):
         initialize_model_parallel(
             tensor_model_parallel_size,
@@ -262,7 +263,8 @@ def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
             get_position_embedding_ranks,
             create_gloo_process_groups,
             high_priority_stream_groups,
-            sharp_enabled_group
+            sharp_enabled_group,
+            create_all_gather_group
         )
         nccl_comm_cfgs = {}
         if nccl_communicator_config_path is not None:

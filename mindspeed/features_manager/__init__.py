@@ -64,6 +64,7 @@ from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v1_
 from mindspeed.features_manager.transformer.flash_attention.fusion_attention_v2_feature import FusionAttentionV2Feature
 from mindspeed.features_manager.transformer.flash_attention.generate_mask_feature import GenerateMaskFeature
 from mindspeed.features_manager.transformer.flash_attention.reset_attention_mask_feature import ResetAttentionMaskFeature
+from mindspeed.features_manager.transformer.experimental_attention_variant.dsa import DeepSeekSparseAttention
 from mindspeed.features_manager.transformer.module_rearrange.mcore_rearrange import MegatronMcoreRearrangeFeature
 from mindspeed.features_manager.pipeline_parallel.variable_seq_length import VariableSequenceLengthFeature
 from mindspeed.features_manager.pipeline_parallel.multi_parameter import MultiParameterFeature
@@ -201,7 +202,8 @@ def add_transformer_features(features_list: List[MindSpeedFeature]):
         GenerateMaskFeature(),
         ResetAttentionMaskFeature(),
         MLAFeature(),
-        MegatronMcoreRearrangeFeature()
+        MegatronMcoreRearrangeFeature(),
+        DeepSeekSparseAttention()
     ])
 
 
