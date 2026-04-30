@@ -54,6 +54,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     packed_seq_params=None,
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
+    input_ids: Tensor = None,
     checkpoint=False
 ):
 
@@ -371,6 +372,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     packed_seq_params=None,
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
+    input_ids: Tensor = None,
     checkpoint=False
 ):
     args = get_full_args()
@@ -426,7 +428,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
                                                             False) or getattr(args, "print_expert_load", False)):
             fwd_layer.mlp.predict_expert_load(fwd_layer.mlp.token_dispatcher.num_tokens_per_expert)
         
-        probs, routing_map = router_forward(fwd_layer, detached_mlp_input)
+        probs, routing_map = router_forward(fwd_layer, detached_mlp_input, input_ids)
         if use_shared_experts:
             fwd_dispatcher.overlap_stream.wait_stream(torch.npu.current_stream())
             with torch.npu.stream(fwd_dispatcher.overlap_stream):
@@ -645,6 +647,7 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
     packed_seq_params=None,
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
+    input_ids: Tensor = None,
     checkpoint=False
 ):
     if checkpoint:

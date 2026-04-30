@@ -282,6 +282,7 @@ def transformer_layer_forward_dense(
     attention_bias=None,
     inference_params=None,
     packed_seq_params=None,
+    input_ids: Tensor = None,
     checkpoint=False
 ):
     # hidden_states: [s, b, h]
