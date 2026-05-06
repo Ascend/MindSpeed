@@ -10,8 +10,9 @@ import torch
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.utils import assert_close
-from mindspeed.lite.ops.triton.wy_fast import bwd_prepare_wy_repr
+from mindspeed.ops.triton.utils import assert_close
+from mindspeed.ops.triton.wy_fast import bwd_prepare_wy_repr
+from mindspeed.ops.triton.utils import prepare_chunk_indices
 
 
 @triton.heuristics({
@@ -142,7 +143,7 @@ def prepare_wy_repr_bwd(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     B, T, H, K, V = *k.shape, v.shape[-1]
     BT = chunk_size
-    chunk_indices = None
+    chunk_indices = prepare_chunk_indices(cu_seqlens, BT) if cu_seqlens is not None else None
     NT = triton.cdiv(T, BT) if cu_seqlens is None else len(chunk_indices)
     CONST_TILING = 32
     BK = min(max(triton.next_power_of_2(K), 16), CONST_TILING)
@@ -177,18 +178,19 @@ def prepare_wy_repr_bwd(
     return dk, dv, dbeta, dg
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'D', 'chunk_size'),
+    ('B', 'T', 'H', 'D', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-D{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-            (1, 1024, 32, 128, 16),
-            (1, 4096, 32, 128, 16),
+            (1, 1024, 32, 128, 16, None),
+            (1, 4096, 32, 128, 16, None),
+            (1, 4096, 32, 128, 16, [0, 1024, 2168, 3087, 4096]),
+            (2, 4096, 32, 128, 16, None),
         ]
     ]
 )
-def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
+def test_prepare_wy_repr_bwd(B, T, H, D, chunk_size, cu_seqlens):
 
     device = "npu:0"
     device_dtype = torch.float32
@@ -200,6 +202,8 @@ def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
     g = torch.randn((B, T, H), device=device, dtype=device_dtype)
     dw = torch.randn((B, T, H, D), device=device, dtype=device_dtype)
     du = torch.randn((B, T, H, D), device=device, dtype=device_dtype)
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to(device)
 
     ref_dk, ref_dv, ref_dbeta, ref_dg = prepare_wy_repr_bwd(
         k=k,
@@ -209,7 +213,7 @@ def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
         dw=dw,
         du=du,
         g=g,
-        cu_seqlens=None,
+        cu_seqlens=cu_seqlens,
         chunk_size=chunk_size,
     )
     
@@ -221,10 +225,14 @@ def test_recompute_w_u_fwd(B, T, H, D, chunk_size):
         dw=dw,
         du=du,
         g=g,
-        cu_seqlens=None,
+        cu_seqlens=cu_seqlens,
         chunk_size=chunk_size,
     )
 
+    print("dk diff:", torch.max(torch.abs(ref_dk - dk)))
+    print("dv diff:", torch.max(torch.abs(ref_dv - dv)))
+    print("dbeta diff:", torch.max(torch.abs(ref_dbeta - dbeta)))
+    print("dg diff:", torch.max(torch.abs(ref_dg - dg)))
     assert_close('dk', ref_dk, dk, 0.001)
     assert_close('dv', ref_dv, dv, 0.001)
     assert_close('dbeta', ref_dbeta, dbeta, 0.001)

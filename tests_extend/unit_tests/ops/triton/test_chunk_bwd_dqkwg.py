@@ -10,8 +10,8 @@ import torch
 import triton
 import triton.language as tl
 
-from mindspeed.lite.ops.triton.utils import prepare_chunk_indices, exp, check_shared_mem, assert_close
-from mindspeed.lite.ops.triton.chunk_o import bwd_chunk_dqkwg
+from mindspeed.ops.triton.utils import prepare_chunk_indices, exp, check_shared_mem, assert_close
+from mindspeed.ops.triton.chunk_o import bwd_chunk_dqkwg
 
 
 @triton.heuristics({
@@ -255,21 +255,26 @@ def ref_chunk_bwd_dqkwg(
     return dq, dk, dw, dg
 
 
-@pytest.mark.skip(reason='Hanged to be fixed')
 @pytest.mark.parametrize(
-    ('B', 'T', 'H', 'D', 'hidden_size', 'scale', 'chunk_size'),
+    ('B', 'T', 'H', 'D', 'hidden_size', 'scale', 'chunk_size', 'cu_seqlens'),
     [
-        pytest.param(*test, id="B{}-T{}-H{}-D{}-hidden_size{}-scale{}-chunk_size{}".format(*test))
+        pytest.param(*test, id="B{}-T{}-H{}-D{}-hidden_size{}-scale{}-chunk_size{}-cu_seqlens{}".format(*test))
         for test in [
-            (1, 1024, 32, 128, 2048, 0.5, 16),
-            (1, 4096, 32, 128, 2048, 0.5, 16),
+        (1, 2048, 32, 128, 2048, 0.5, 16, [0, 1024, 1164, 2048]),
+        (1, 1024, 32, 128, 2048, 0.5, 16, None),
+        (1, 2048, 32, 128, 2048, 0.5, 16, None),
+        (2, 2048, 32, 128, 2048, 0.5, 16, None),
         ]
     ]
 )
-def test_chunk_bwd_dqkwg(B, T, H, D, hidden_size, scale, chunk_size):
-
+def test_chunk_bwd_dqkwg(B, T, H, D, hidden_size, scale, chunk_size, cu_seqlens):
     device = "npu:0"
     device_dtype = torch.float32
+    torch.manual_seed(42)
+    torch.npu.manual_seed(42)
+
+    if cu_seqlens is not None:
+        cu_seqlens = torch.LongTensor(cu_seqlens).to(device)
 
     q = torch.rand((B, T, H, D), device=device, dtype=device_dtype)
     k = torch.rand((B, T, H, D), device=device, dtype=device_dtype)
@@ -291,10 +296,11 @@ def test_chunk_bwd_dqkwg(B, T, H, D, hidden_size, scale, chunk_size):
         dh=dh,
         dv=dv,
         w=w,
+        cu_seqlens=cu_seqlens,
         scale=scale,
         chunk_size=chunk_size
     )
-    
+
     dq, dk, dw, dg = bwd_chunk_dqkwg(
         q=q,
         k=k,
@@ -305,10 +311,15 @@ def test_chunk_bwd_dqkwg(B, T, H, D, hidden_size, scale, chunk_size):
         dh=dh,
         dv=dv,
         w=w,
+        cu_seqlens=cu_seqlens,
         scale=scale,
         chunk_size=chunk_size
     )
 
+    print("dq diff:", torch.max(torch.abs(ref_dq - dq)))
+    print("dk diff:", torch.max(torch.abs(ref_dk - dk)))
+    print("dw diff:", torch.max(torch.abs(ref_dw - dw)))
+    print("dg diff:", torch.max(torch.abs(ref_dg - dg)))
     assert_close('dq', ref_dq, dq, 0.001)
     assert_close('dk', ref_dk, dk, 0.001)
     assert_close('dw', ref_dw, dw, 0.001)
