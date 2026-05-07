@@ -97,11 +97,11 @@ def npu_apply_fused_adamw_v2(var, grad, m, v, max_grad_norm, step, lr, beta1, be
 
 ## 输入
 
-- `var`：必选输入，数据类型为tensor(float32)或tensor(float16)或tensor(float16)，表示模型参数。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
-- `grad`：必选输入，数据类型为tensor(float32)或tensor(float16)或tensor(float16)，表示模型参数的梯度。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
+- `var`：必选输入，数据类型为tensor(float32)或tensor(float16)或tensor(bfloat16)，表示模型参数。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
+- `grad`：必选输入，数据类型为tensor(float32)或tensor(float16)或tensor(bfloat16)，表示模型参数的梯度。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
 - `m`：必选输入，数据类型必须与var完全一致，表示一阶矩动量。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
 - `v`：必选输入，数据类型必须与var完全一致，表示二阶矩动量。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
-- `max_grad_norm`：该参数在amsgrad为True时为必选输入，在amsgrad为False时为可选输入，数据类型为tensor(float32)或tensor(float16)或tensor(float16)，表示训练过程中最大的二阶矩动量。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
+- `max_grad_norm`：该参数在amsgrad为True时为必选输入，在amsgrad为False时为可选输入，数据类型为tensor(float32)或tensor(float16)或tensor(bfloat16)，表示训练过程中最大的二阶矩动量。接受任意shape，但需保持`var, grad, m, v, max_grad_norm`shape相同。
 - `step`：必选输入，数据类型为tensor(int64)，shape：(1,)，表示当前为第几步。
 - `lr`：可选属性，数据类型为float32，默认值：1e-3。表示学习率。
 - `beta1`：可选属性，数据类型为float32，默认值：0.9。表示一阶矩动量的衰减率。

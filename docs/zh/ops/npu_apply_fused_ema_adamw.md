@@ -20,8 +20,8 @@ def npu_apply_fused_ema_adamw(grad, var, m, v, s, step, lr, ema_decay,
     v_ = beta2 * v + (1 - beta2) * grad_ * grad_
     next_m = m_ / beta1_correction
     next_v = v_ / beta2_correction
-    demon = torch.pow(next_v, 0.5) + eps
-    update = next_m / demon + weight_decay * var * mode
+    denom = torch.pow(next_v, 0.5) + eps
+    update = next_m / denom + weight_decay * var * mode
     var_ = var - lr * update
     s_ = ema_decay * s + (1 - ema_decay) * var_
     return var_, m_, v_, s_       

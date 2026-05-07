@@ -510,12 +510,12 @@ DATA_ARGS="
     --split 949,50,1 \
 "
 
-OUTPUT_ARGS=(
+OUTPUT_ARGS="
     --log-interval 100
     --save-interval 100
     --eval-interval 1000 
     --eval-iters 10
-)
+"
 
 torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $GPT_ARGS \

@@ -14,7 +14,7 @@ def npu_alltoall_allgather_bmm(
     act_type: Optional[str] = "None",
     need_allgather_out: Optional[bool] = False,
     need_activation_feature: Optional[bool] = False
-) -> (Tensor, Tensor, Tensor):
+) -> Tuple[Tensor, Tensor, Tensor]:
 
 ```
 

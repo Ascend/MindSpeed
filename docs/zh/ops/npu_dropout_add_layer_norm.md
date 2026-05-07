@@ -13,7 +13,7 @@ def npu_dropout_add_layer_norm(x0,
                                layerscale=None,
                                prenorm=False,
                                residual_in_fp32=False,
-                               return_dropout_mask=False)
+                               return_dropout_mask=False):
 
 # 计算逻辑
 # norm_result = RmsNorm(Dropout(x0 * rowscale * layerscale) + residual)   
@@ -27,7 +27,7 @@ def npu_dropout_add_rms_norm(x0,
                              layerscale=None,
                              prenorm=False,
                              residual_in_fp32=False,
-                             return_dropout_mask=False)                 
+                             return_dropout_mask=False):         
 ```
 
 输入：
