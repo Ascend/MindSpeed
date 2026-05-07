@@ -55,7 +55,8 @@ class GmmExpertsImpl:
         gemm_fusion = self.config.gemm_gradient_accumulation_fusion
 
         quant_w4a16_enable = False
-        if hasattr(self.config, 'qat_scheme') and self.config.qat_scheme == "w4a16-mxfp4":
+        scheme = getattr(self.config, 'qat_scheme', None)
+        if scheme == "w4a16-mxfp4" or scheme == "w4a16-mxfp4-moe-only":
             quant_w4a16_enable = True
             fakequant_func = W4A16FakeQuantization.apply
 
@@ -86,7 +87,7 @@ class GmmExpertsImpl:
                 fc2_output = quant_gmm_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
                 if quant_w4a16_enable:
-                    w2 = self.weight2.view(-1, self.config.hidden_size)
+                    w2 = self.weight2.view(self.num_local_experts * self.config.hidden_size, -1)
                     w2 = fakequant_func(w2, [1, 32], False).reshape(self.num_local_experts, -1, self.config.hidden_size)
                 fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
                                         gemm_fusion=gemm_fusion, original_weight=self.weight2)
