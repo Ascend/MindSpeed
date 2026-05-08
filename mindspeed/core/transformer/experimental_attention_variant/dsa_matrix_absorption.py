@@ -44,8 +44,6 @@ from megatron.core.transformer.multi_latent_attention import (
     MLASelfAttentionSubmodules,
 )
 from megatron.core.transformer.multi_latent_attention import MultiLatentAttention
-from megatron.training import get_args
-
 
 try:
     from megatron.core.extensions.transformer_engine import (
@@ -59,6 +57,7 @@ except ImportError:
     TEColumnParallelLinear, TELinear, Linear, set_save_original_input = None, None, None, None
     HAVE_TE = False
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd_in_complex
 
 

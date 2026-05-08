@@ -8,12 +8,12 @@ from torch import Tensor
 from functools import wraps
 
 from megatron.core.models.common.embeddings.rotary_pos_embedding import _rotate_half
-from megatron.training import get_args
 from megatron.core import parallel_state
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_block import TransformerBlock
 from megatron.core.inference_params import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.utils import get_position_ids, generate_rearrange_idx_tensor
 from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
 

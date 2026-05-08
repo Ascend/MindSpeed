@@ -13,7 +13,6 @@ try:
 except ImportError:
     HAVE_EINOPS = False
 
-from megatron.training import get_args
 from megatron.core.transformer.experimental_attention_variant.dsa import (
     DSAIndexerLossLoggingHelper,
     unfused_dsa_fn,
@@ -29,6 +28,7 @@ from megatron.core.tensor_parallel.mappings import (
 )
 from megatron.core.transformer.enums import AttnMaskType
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.experimental_attention_variant.dsa_kvallgather_context_parallel import (
     fused_lightning_indexer_kvallgather,
     fused_sparse_lightning_indexer_kl_loss_kvallgather,
