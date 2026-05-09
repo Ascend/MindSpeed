@@ -187,7 +187,7 @@ def fused_dsa_attn_forward(
             DSAIndexerLossLoggingHelper.save_loss_to_tracker(
                 loss=indexer_loss,
                 layer_number=self.layer_number,
-                num_layers=self.config.num_layers,
+                num_layers=self.config.num_layers + self.config.mtp_num_layers if self.config.mtp_num_layers else self.config.num_layers,
             )
         # Attach loss to output
         output = DSAIndexerLossAutoScaler.apply(output, indexer_loss)
