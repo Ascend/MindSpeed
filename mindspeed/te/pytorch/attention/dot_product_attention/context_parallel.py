@@ -1,7 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Any
 
 import torch
 from einops import rearrange
@@ -9,6 +9,10 @@ from einops import rearrange
 from .kvallgather_context_parallel import (
     AttnFuncWithCPAndKVAllGatherForSBHD,
     AttnFuncWithCPAndKVAllGatherForTHD,
+)
+from .hamilton_context_parallel import (
+    AttnFuncWithCPAndKVA2AForSBHD,
+    AttnFuncWithCPAndKVA2AForTHD
 )
 
 from .ulysses_context_parallel import AttnFuncWithCPAndQKVOA2A
@@ -171,12 +175,106 @@ class KVAllGatherCPStrategy(BaseCPStrategy):
             raise ValueError(f"Unsupported qkv_format: {qkv_format}")
 
 
+class HamiltonCPStrategy(BaseCPStrategy):
+    """
+    Hamilton context parallel attention. Instead of utilizing a ring topology in Ring Attention, this implementation
+    can fully utilize all of the physical network paths existing in modern supernodes. This is done by splitting
+    local KV data into multiple chunks, each transmitting on a distinct ring cycle.
+
+    For more details, please refer to `HamiltonAttention <https://arxiv.org/pdf/2509.26541>`_.
+    """
+
+    def __init__(self,
+                 softmax_scale: float,
+                 attention_dropout: float = 0.0,
+                 attention_type: str = "self",
+                 deterministic: bool = False,
+                 path_num: int = 0,
+                 out_mapping: Any = None,
+                 in_mapping: Any = None,
+                 permute_index: Any = None,
+                 restore_index: Any = None
+                 ):
+        super().__init__(softmax_scale, attention_dropout, attention_type, deterministic)
+        self.ha_comm_para = {
+            'path_num': path_num,
+            'out_mapping': out_mapping,
+            'in_mapping': in_mapping,
+            'permute_index': permute_index,
+            'restore_index': restore_index
+        }
+
+    def forward(
+            self,
+            query_layer,
+            key_layer,
+            value_layer,
+            attention_mask,
+            qkv_format,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            attn_mask_type,
+            max_seqlen_q,
+            max_seqlen_kv,
+            cp_group,
+            cp_global_ranks,
+            **kwargs
+    ):
+        # Prepare tensors based on format
+        if qkv_format == 'sbhd':
+            # transform the qkv format into 3 dimensions
+            query_layer, key_layer, value_layer, n_head = prepare_sbhd_format(
+                query_layer, key_layer, value_layer
+            )
+
+            return AttnFuncWithCPAndKVA2AForSBHD.apply(
+                query_layer,
+                key_layer,
+                value_layer,
+                n_head,
+                attention_mask,
+                qkv_format,
+                attn_mask_type,
+                self.attention_dropout,
+                self.softmax_scale,
+                self.deterministic,
+                cp_group,
+                self.ha_comm_para
+            )
+
+        elif qkv_format == 'thd':
+            n_head, cu_seqlens_q, cu_seqlens_kv = prepare_thd_format(
+                query_layer, cu_seqlens_q, cu_seqlens_kv
+            )
+
+            return AttnFuncWithCPAndKVA2AForTHD.apply(
+                query_layer,
+                key_layer,
+                value_layer,
+                n_head,
+                attention_mask,
+                qkv_format,
+                attn_mask_type,
+                self.attention_dropout,
+                self.softmax_scale,
+                self.deterministic,
+                cp_group,
+                cu_seqlens_q,
+                cu_seqlens_kv,
+                self.ha_comm_para
+            )
+
+        else:
+            raise ValueError(f"Unsupported qkv_format: {qkv_format}")
+
+
 class CPStrategyFactory:
     """Factory for creating Context Parallelism strategies"""
     
     _STRATEGY_MAP = {
         "kvallgather_cp_algo": KVAllGatherCPStrategy,
         "ulysses_cp_algo": UlyssesCPStrategy,
+        "hamilton_cp_algo": HamiltonCPStrategy
     }
     
     @staticmethod
