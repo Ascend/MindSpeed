@@ -442,7 +442,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
                     state[f"group_{group_id}"] = this_group_state
 
-            return state
+            return state if self.data_parallel_group.rank() == 0 else None
 
         # Data parallelism variables.
         assert self.data_parallel_group_gloo is not None
@@ -546,7 +546,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                 dtype_state[dtype] = world_tensors
             state[gbuf_idx] = dtype_state
 
-        return state
+        return state if data_parallel_rank == 0 else None
 
     def _copy_model_params_to_main_params(self, state_dict=None):
         """

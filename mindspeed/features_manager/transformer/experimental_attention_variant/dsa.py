@@ -56,9 +56,10 @@ class DeepSeekSparseAttention(MindSpeedFeature):
             pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.compute_dsa_indexer_loss', compute_dsa_indexer_loss)
             pm.register_patch('megatron.core.models.gpt.experimental_attention_variant_module_specs.get_dsa_module_spec_for_backend', get_dsa_module_spec_for_backend)
 
-        from mindspeed.core.transformer.experimental_attention_variant.dsa_fused import forward_with_scores, fused_dsa_attn_forward
-        pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer.forward_with_scores', forward_with_scores)
-        pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAttention.forward', fused_dsa_attn_forward)
+        if args.use_fused_sparse_flash_attention:
+            from mindspeed.core.transformer.experimental_attention_variant.dsa_fused import forward_with_scores, fused_dsa_attn_forward
+            pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer.forward_with_scores', forward_with_scores)
+            pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAttention.forward', fused_dsa_attn_forward)
         if args.apply_rope_in_complex:
             from mindspeed.core.transformer.experimental_attention_variant.dsa_matrix_naive import apply_rope_in_complex
             pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer._apply_rope', apply_rope_in_complex)
