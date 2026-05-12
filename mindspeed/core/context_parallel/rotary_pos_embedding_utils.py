@@ -14,6 +14,10 @@ from mindspeed.core.context_parallel.utils import get_remapped_seq_order
 
 def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim, cp_group):
     args = get_args()
+    # verl can drive MindSpeed through Hydra without populating every Megatron CLI data flag.
+    # Treat missing reset_position_ids as the canonical False default so CP rotary slicing
+    # keeps working for RL batches that do not use EOD-based position resets.
+    reset_position_ids = getattr(args, 'reset_position_ids', False)
 
     cp_expanded_by_2d_tp = args.tp_y > 1
     if args.context_parallel_algo == 'megatron_cp_algo':
@@ -21,7 +25,7 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim, cp_group):
             pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
         elif cp_expanded_by_2d_tp:
             pos_emb = _get_pos_emb_on_this_tp_y_cp_rank_in_megatron_cp(pos_emb, seq_dim)
-        elif args.reset_position_ids and args.attention_mask_type == 'causal':
+        elif reset_position_ids and args.attention_mask_type == 'causal':
             return pos_emb
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_megatron_cp(pos_emb, seq_dim)
@@ -40,7 +44,7 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim, cp_group):
     elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
         pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emb, seq_dim)
     elif args.context_parallel_algo == 'kvallgather_cp_algo':
-        if args.reset_position_ids:
+        if reset_position_ids:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_ulysses_cp(pos_emb, seq_dim)
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_megatron_cp(pos_emb, seq_dim)

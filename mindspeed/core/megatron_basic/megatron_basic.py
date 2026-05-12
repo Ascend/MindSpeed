@@ -329,7 +329,9 @@ def dist_optim_load_state_dict(self, state_dict):
             if sharding_type != "fully_sharded_model_space":
                 raise AssertionError("Only fully sharded model space is supported")
         logger.info(f'Loading distributed optimizer sharded state of type {sharding_type}')
-        if sharding_type == 'dp_zero_gather_scatter':
+        if sharding_type == 'dp_reshardable':
+            self.load_parameter_state_from_dp_reshardable(param_state)
+        elif sharding_type == 'dp_zero_gather_scatter':
             self.load_parameter_state_from_dp_zero(param_state)
         elif sharding_type == 'fully_sharded_bucket_space':
             self.load_parameter_state_from_fs_bucket_space(param_state)
@@ -337,7 +339,41 @@ def dist_optim_load_state_dict(self, state_dict):
             self.load_parameter_state_from_fs_model_space(param_state)
         else:
             raise NotImplementedError(f'Unknown sharding_type: {sharding_type}')
-        
+
+
+def load_parameter_state_from_dp_reshardable(self, state_dict):
+    """Loads the parameter state from dp_reshardable format.
+
+    Inverse of the `get_parameter_state_dp_reshardable` method.
+    """
+    if state_dict is not None and "per_bucket_numel_unpadded" in state_dict:
+        per_bucket_numel_unpadded_in_checkpoint = state_dict["per_bucket_numel_unpadded"]
+        assert self.per_bucket_numel_unpadded == per_bucket_numel_unpadded_in_checkpoint, (
+            f"Number of unpadded elements in each bucket need to be the same in current run "
+            f"({self.per_bucket_numel_unpadded}) and checkpoint "
+            f"({per_bucket_numel_unpadded_in_checkpoint})"
+        )
+
+    for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
+        assert len(gbuf_range_maps) == 1, "single dtype supported, for now."
+        for dtype, gbuf_range_map_for_all_buckets in gbuf_range_maps.items():
+            for bucket_idx, gbuf_range_map in enumerate(gbuf_range_map_for_all_buckets):
+                bucket_state = state_dict[gbuf_idx][dtype][bucket_idx]
+                bucket_state = [
+                    bucket_state_elem
+                    for bucket_state_elem in bucket_state
+                    if not bucket_state_elem.get('padding', False)
+                ]
+
+                assert len(bucket_state) == len(gbuf_range_map["param_map"]), (
+                    len(bucket_state),
+                    len(gbuf_range_map["param_map"]),
+                )
+                for src_tensors, (model_param, param_range_map) in zip(
+                    bucket_state, gbuf_range_map["param_map"].items()
+                ):
+                    self._set_main_param_and_optimizer_states(model_param, src_tensors)
+
 
 def _synchronize_steps(self):
     """

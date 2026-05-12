@@ -13,4 +13,3 @@ class GroupedMatmulFeature(MindSpeedFeature):
                                      grouped_gemm_is_available)
         patch_manager.register_patch('megatron.core.transformer.moe.grouped_gemm_util.assert_grouped_gemm_is_available',
                                      assert_grouped_gemm_is_available)
-        patch_manager.register_patch('torch.cuda.get_device_capability', get_device_capability)

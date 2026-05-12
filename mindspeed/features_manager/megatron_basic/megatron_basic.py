@@ -38,6 +38,11 @@ class MegatronBasicFeature(MindSpeedFeature):
             only_mcore = True
 
         self.register_mcore_basic_patches(patch_manager, args)
+
+        import importlib.util
+        if importlib.util.find_spec('megatron.bridge'):
+            self.register_megatron_bridge_patches(patch_manager, args)
+
         if not only_mcore:
             self.register_non_mcore_basic_patches(patch_manager, args)
 
@@ -109,3 +114,23 @@ class MegatronBasicFeature(MindSpeedFeature):
         pm.register_patch('megatron.training.utils.get_device_arch_version', get_device_arch_version)
 
 
+    def register_megatron_bridge_patches(self, pm, args):
+        pm.register_patch('megatron.core.ssm.mamba_hybrid_layer_allocation.get_hybrid_total_layer_count', create_dummy=True)
+        # # verl checkpoint patch: handle non-JSON-serializable config objects (e.g., Qwen3_5MoeVisionConfig)
+        # Automatically pads visual_pos_masks and deepstack_visual_embeds when shape[-1]
+        # is not divisible by split_size (CP * TP) for Qwen3VL vision model
+        from mindspeed.core.megatron_bridge_fix import split_deepstack_embs_wrapper
+        pm.register_patch(
+            'megatron.bridge.models.qwen_vl.modelling_qwen3_vl.utils.split_deepstack_embs',
+            split_deepstack_embs_wrapper,
+            force_patch=True
+        )
+
+        # Qwen VL model init patch: remove CP assertion restriction
+        # Automatically enables calculate_per_token_loss when CP > 1 to pass the assertion
+        from mindspeed.core.megatron_bridge_fix import qwen3vl_model_init_wrapper
+        pm.register_patch(
+            'megatron.bridge.models.qwen_vl.modelling_qwen3_vl.model.Qwen3VLModel.__init__',
+            qwen3vl_model_init_wrapper,
+            force_patch=True
+        )
