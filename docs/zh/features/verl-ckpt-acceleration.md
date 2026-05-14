@@ -20,4 +20,4 @@
 ## 使用效果
 
 通过上述方式显著提高了verl+megatron后端load和save ckpt的效率，在qwen3-30b-dapo 16卡 * 2机场景下实测效果如下：
-![verl-ckpt-acceleration.png](verl-ckpt-acceleration.png)
+![verl-ckpt-acceleration.png](../figures/verl-ckpt-acceleration.png)

@@ -1,33 +1,33 @@
-# How to run the ops?
+# 如何运行算子
 
-## previous installation
+## 前置安装
 
 + CANN
 + CANN-NNAL(Ascend-Transformer-Boost)
 + torch_npu
 
-## compile and install
+## 编译和安装
 
-### 1. set the environment variables
+### 1. 设置环境变量
 
- ```shell
-# Default path, change it if needed.
+```shell
+# 默认路径，请按需修改。
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
- ```
+```
 
-#### if use Ascend-Transformer-Boost
+#### 如果使用 Ascend-Transformer-Boost
 
- ```shell
-# Default path, change it if needed.
-source /usr/local/Ascend/nnal/atb/set_env.sh 
- ```
+```shell
+# 默认路径，请按需修改。
+source /usr/local/Ascend/nnal/atb/set_env.sh
+```
 
-### 2. include header files
+### 2. 包含头文件
 
-+ newest torch_npu
-+ newest cann
++ 最新版本的 torch_npu
++ 最新版本的 cann
 
-### 3. install scripts
+### 3. 安装脚本
 
 ```shell
 python3 setup.py build
