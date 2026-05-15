@@ -8,19 +8,19 @@ from torch import Tensor
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.fp8_utils import get_fp8_context
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import NoopTransformerLayer
+from mindspeed.te.pytorch.fp8.checkpoint import activation_recompute_forward
+from mindspeed.te.pytorch.fp8.fp8 import fp8_autocast
+from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
 from mindspeed.core.transformer.moe.moe_feature import (
-    parallel_state, InferenceParams,
+    InferenceParams,
     tensor_parallel,
     PackedSeqParams,
     make_viewless_tensor,
     all_gather_last_dim_from_tensor_parallel_region,
-    scatter_to_sequence_parallel_region
+    scatter_to_sequence_parallel_region,
 )
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.utils import detach_tensor
-from .modules.utils import (
-    NoopLayerGraph, LayerGraph, is_p2p_comm_needed,
-    p2p_comm_helper, P2PCommOutput, P2PCommParams
-)
+from .modules.utils import NoopLayerGraph, LayerGraph, is_p2p_comm_needed, p2p_comm_helper, P2PCommOutput, P2PCommParams
 from .overlap_funcs import (
     transformer_layer_forward_moe,
     transformer_layer_forward_dense,
@@ -31,15 +31,44 @@ from .overlap_funcs import (
     transformer_layer_forward_moe_backward_moe_overlaping,
     transformer_layer_forward_dense_backward_dense_overlaping,
     transformer_layer_forward_moe_backward_dense_overlaping,
-    transformer_layer_forward_dense_backward_moe_overlaping
+    transformer_layer_forward_dense_backward_moe_overlaping,
 )
+
+
+def _record_fp8_recompute_state(layer_graph):
+    layer_graph.fp8_autocast_state = FP8GlobalStateManager.get_fp8_autocast_state()
+    layer_graph.fp8_activation_recompute_enabled = layer_graph.checkpointed
+
+
+def _get_fp8_recompute_context(layer_graph):
+    fp8_state = getattr(layer_graph, 'fp8_autocast_state', None)
+    if fp8_state is None or not fp8_state[0]:
+        return nullcontext()
+
+    enabled, fp8_recipe, calibrating, fp8_group, _, fp8_graph = fp8_state
+    return fp8_autocast(
+        enabled=enabled,
+        fp8_recipe=fp8_recipe,
+        fp8_group=fp8_group,
+        calibrating=calibrating,
+        _graph=fp8_graph,
+    )
+
+
+def _get_activation_recompute_context(layer_graph, recompute_phase):
+    if not getattr(layer_graph, 'fp8_activation_recompute_enabled', False):
+        return nullcontext()
+    return activation_recompute_forward(
+        activation_recompute=True,
+        recompute_phase=recompute_phase,
+    )
 
 
 class bwd_synchronize_check(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_tensor):
         return input_tensor
-    
+
     @staticmethod
     def backward(ctx, grad):
         torch.cuda.synchronize()
@@ -50,47 +79,67 @@ def transformer_layer_forward(*args, **kwargs):
     self = args[0]
     if kwargs['checkpoint']:
         checkpoint_context = torch.no_grad()
+        activation_recompute_context = activation_recompute_forward(activation_recompute=True, recompute_phase=False)
     else:
         checkpoint_context = nullcontext()
+        activation_recompute_context = nullcontext()
 
-    with checkpoint_context:
+    with checkpoint_context, activation_recompute_context:
         layer_forward_func = None
         if isinstance(self, NoopTransformerLayer):
             layer_forward_func = transformer_layer_forward_noop
         elif hasattr(self.mlp, 'hot_experts'):
-            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwd import \
-                transformer_layer_forward_balanced_moe
+            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwd import (
+                transformer_layer_forward_balanced_moe,
+            )
+
             layer_forward_func = transformer_layer_forward_balanced_moe
         elif hasattr(self.mlp, 'experts'):
             layer_forward_func = transformer_layer_forward_moe
         else:
             layer_forward_func = transformer_layer_forward_dense
 
-        return layer_forward_func(*args, **kwargs)
+        out = layer_forward_func(*args, **kwargs)
+
+    if len(out) > 2 and kwargs['checkpoint']:
+        _record_fp8_recompute_state(out[2])
+    return out
 
 
 def transformer_layer_backward(
     layer_output_grad,
     layer_graph,
-):  
+):
     args = get_args()
     if layer_graph.checkpointed:
         with torch.enable_grad():
             if layer_graph.layer.layer_number > 1:
                 layer_graph.layer_input = detach_tensor(layer_graph.layer_input)
-            _, _, restored_layer_graph = transformer_layer_forward(
-                layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
-            )
+            with (
+                _get_activation_recompute_context(layer_graph, recompute_phase=True),
+                _get_fp8_recompute_context(layer_graph),
+            ):
+                _, _, restored_layer_graph = transformer_layer_forward(
+                    layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
+                )
             if getattr(args, 'enable_mhc', False):
-                restored_layer_graph.mlp_mhc_post_graph = (restored_layer_graph.mlp_mhc_post_graph[0], layer_graph.mlp_mhc_post_graph[1])
+                restored_layer_graph.mlp_mhc_post_graph = (
+                    restored_layer_graph.mlp_mhc_post_graph[0],
+                    layer_graph.mlp_mhc_post_graph[1],
+                )
             else:
-                restored_layer_graph.unperm2_graph = (restored_layer_graph.unperm2_graph[0], layer_graph.unperm2_graph[1])
+                restored_layer_graph.unperm2_graph = (
+                    restored_layer_graph.unperm2_graph[0],
+                    layer_graph.unperm2_graph[1],
+                )
             layer_graph = restored_layer_graph
     if isinstance(layer_graph, NoopLayerGraph):
         return transformer_layer_backward_noop(layer_output_grad, layer_graph)
     elif layer_graph.is_moe_layer:
-        from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.bwd import \
-            transformer_layer_backward_balanced_moe
+        from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.bwd import (
+            transformer_layer_backward_balanced_moe,
+        )
+
         if hasattr(layer_graph.layer.mlp, 'hot_experts'):
             return transformer_layer_backward_balanced_moe(layer_output_grad, layer_graph)
         else:
@@ -100,7 +149,6 @@ def transformer_layer_backward(
 
 
 def should_run_fb_overlap(fwd_layer, bwd_layer_graph: LayerGraph = None):
-    flag = True
     fwd_is_moe = (not isinstance(fwd_layer, NoopTransformerLayer)) and hasattr(fwd_layer.mlp, 'experts')
     bwd_is_moe = (bwd_layer_graph is not None) and bwd_layer_graph.is_moe_layer
 
@@ -126,25 +174,59 @@ def transformer_layer_forward_backward_overlaping(
     pp_comm_params: P2PCommParams = None,
     bwd_pp_comm_params: P2PCommParams = None,
     input_ids: Tensor = None,
-    checkpoint=False
+    checkpoint=False,
 ):
-    if isinstance(fwd_layer, NoopTransformerLayer) or bwd_layer_graph is None or isinstance(bwd_layer_graph, NoopLayerGraph):
+    if (
+        isinstance(fwd_layer, NoopTransformerLayer)
+        or bwd_layer_graph is None
+        or isinstance(bwd_layer_graph, NoopLayerGraph)
+    ):
         # no f&w overlaping
         if bwd_layer_graph is None:
             out = transformer_layer_forward(
-                fwd_layer, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids=input_ids, checkpoint=checkpoint
+                fwd_layer,
+                hidden_states,
+                attention_mask,
+                context,
+                context_mask,
+                rotary_pos_emb,
+                rotary_pos_cos,
+                rotary_pos_sin,
+                attention_bias,
+                inference_params,
+                packed_seq_params,
+                input_ids=input_ids,
+                checkpoint=checkpoint,
             )
             if len(out) > 2 and checkpoint:
                 out[2].record_layer_inputs(
-                    attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                    rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
+                    attention_mask,
+                    context,
+                    context_mask,
+                    rotary_pos_emb,
+                    rotary_pos_cos,
+                    rotary_pos_sin,
+                    attention_bias,
+                    inference_params,
+                    packed_seq_params,
+                    input_ids,
                 )
             return out
         else:
             output, context, graph = transformer_layer_forward(
-                fwd_layer, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids=input_ids, checkpoint=checkpoint
+                fwd_layer,
+                hidden_states,
+                attention_mask,
+                context,
+                context_mask,
+                rotary_pos_emb,
+                rotary_pos_cos,
+                rotary_pos_sin,
+                attention_bias,
+                inference_params,
+                packed_seq_params,
+                input_ids=input_ids,
+                checkpoint=checkpoint,
             )
             # handle fwd p2p communication
             next_iter_input_tensor, fwd_p2p_handles = None, None
@@ -161,12 +243,30 @@ def transformer_layer_forward_backward_overlaping(
 
             if checkpoint:
                 graph.record_layer_inputs(
-                    attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                    rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
+                    attention_mask,
+                    context,
+                    context_mask,
+                    rotary_pos_emb,
+                    rotary_pos_cos,
+                    rotary_pos_sin,
+                    attention_bias,
+                    inference_params,
+                    packed_seq_params,
+                    input_ids,
                 )
-            return (output, context, graph,
-                    (bwd_input_grad, None),
-                    P2PCommOutput(next_iter_input_tensor, next_iter_output_tensor_grad, fwd_p2p_handles, bwd_p2p_handles, bwd_input_grad))
+            return (
+                output,
+                context,
+                graph,
+                (bwd_input_grad, None),
+                P2PCommOutput(
+                    next_iter_input_tensor,
+                    next_iter_output_tensor_grad,
+                    fwd_p2p_handles,
+                    bwd_p2p_handles,
+                    bwd_input_grad,
+                ),
+            )
 
     else:
         fb_overlap_func = None
@@ -179,21 +279,27 @@ def transformer_layer_forward_backward_overlaping(
         if fwd_is_dense and not bwd_is_moe:
             fb_overlap_func = transformer_layer_forward_dense_backward_dense_overlaping
         elif fwd_is_balanced_moe and not bwd_is_moe:
-            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \
-                transformer_layer_forward_balanced_moe_backward_dense_overlaping
+            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import (
+                transformer_layer_forward_balanced_moe_backward_dense_overlaping,
+            )
+
             fb_overlap_func = transformer_layer_forward_balanced_moe_backward_dense_overlaping
         elif fwd_is_moe and not bwd_is_moe:
             fb_overlap_func = transformer_layer_forward_moe_backward_dense_overlaping
         elif fwd_is_dense and bwd_is_moe:
             if bwd_is_balanced_moe:
-                from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \
-                    transformer_layer_forward_dense_backward_balanced_moe_overlaping
+                from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import (
+                    transformer_layer_forward_dense_backward_balanced_moe_overlaping,
+                )
+
                 fb_overlap_func = transformer_layer_forward_dense_backward_balanced_moe_overlaping
             else:
                 fb_overlap_func = transformer_layer_forward_dense_backward_moe_overlaping
         elif fwd_is_balanced_moe and bwd_is_moe:
-            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import \
-                transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
+            from mindspeed.core.transformer.moe.moe_feature.balanced_moe.overlap_funcs.fwdbwd import (
+                transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping,
+            )
+
             fb_overlap_func = transformer_layer_forward_balanced_moe_backward_balanced_moe_overlaping
         elif fwd_is_moe and bwd_is_moe:
             fb_overlap_func = transformer_layer_forward_moe_backward_moe_overlaping
@@ -203,26 +309,54 @@ def transformer_layer_forward_backward_overlaping(
         if bwd_layer_graph.checkpointed:
             if bwd_layer_graph.layer.layer_number > 1:
                 bwd_layer_graph.layer_input = detach_tensor(bwd_layer_graph.layer_input)
-            _, _, bwd_layer_graph = transformer_layer_forward(
-                bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
-            )
+            with (
+                _get_activation_recompute_context(bwd_layer_graph, recompute_phase=True),
+                _get_fp8_recompute_context(bwd_layer_graph),
+            ):
+                _, _, bwd_layer_graph = transformer_layer_forward(
+                    bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
+                )
 
         out = fb_overlap_func(
-            fwd_layer, hidden_states, attention_mask, bwd_layer_output_grad, bwd_layer_graph, bwd_unperm_a2a_handle,
-            next_bwd_layer_graph, context, context_mask, rotary_pos_emb, rotary_pos_cos, rotary_pos_sin, attention_bias,
-            inference_params, packed_seq_params, pp_comm_params, bwd_pp_comm_params, input_ids=input_ids, checkpoint=checkpoint
+            fwd_layer,
+            hidden_states,
+            attention_mask,
+            bwd_layer_output_grad,
+            bwd_layer_graph,
+            bwd_unperm_a2a_handle,
+            next_bwd_layer_graph,
+            context,
+            context_mask,
+            rotary_pos_emb,
+            rotary_pos_cos,
+            rotary_pos_sin,
+            attention_bias,
+            inference_params,
+            packed_seq_params,
+            pp_comm_params,
+            bwd_pp_comm_params,
+            input_ids=input_ids,
+            checkpoint=checkpoint,
         )
 
         if checkpoint:
             out[2].record_layer_inputs(
-                attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
+                attention_mask,
+                context,
+                context_mask,
+                rotary_pos_emb,
+                rotary_pos_cos,
+                rotary_pos_sin,
+                attention_bias,
+                inference_params,
+                packed_seq_params,
+                input_ids,
             )
 
         return out
 
 
-def hc_repeat(x: torch.Tensor, enable_mhc=False, hc_mult=1, *args, **kwargs):
+def hc_repeat(x: torch.Tensor, enable_mhc=False, hc_mult=1):
     if enable_mhc:
         # x:[s, b, h]
         return x.unsqueeze(2).repeat(1, 1, hc_mult, 1)
@@ -246,7 +380,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     sequence_len_offset: Tensor = None,
     input_ids: Tensor = None,
     pre_process: Tensor = None,
-    post_process: Tensor = None
+    post_process: Tensor = None,
 ):
     """
     Perform the forward pass through the MTP layer with moe_fb_overlap.
@@ -276,7 +410,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
         Union[Tensor, Tuple[Tensor, Tensor]]: The output hidden states tensor of shape
         [s, b, h], and optionally the updated context tensor if cross-attention is used.
     """
-    assert context is None, f"multi token prediction + cross attention is not yet supported."
+    assert context is None, "multi token prediction + cross attention is not yet supported."
     hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
 
     if self.config.sequence_parallel:
@@ -292,27 +426,19 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     # MTP-layer only has one transformer layer.
     # With fb overlap, the transformer layer is MTPTransformerLayer.
     with rng_context, fp8_context:
-
         # recompute settings.
-        checkpoint = False
         if self.config.recompute_granularity == 'full' and self.training:
             if self.config.recompute_method == 'block':
                 recompute_skip_num_layers = 0
                 if self.config.fp8 and not hidden_states.requires_grad:
                     recompute_skip_num_layers += 1
-                checkpoint = True
             if self.config.recompute_method == 'uniform':
                 assert self.config.recompute_num_layers == 1
-                checkpoint = True
 
         decoder_input = self.enorm(decoder_input)
-        decoder_input = make_viewless_tensor(
-            inp=decoder_input, requires_grad=True, keep_graph=True
-        )
+        decoder_input = make_viewless_tensor(inp=decoder_input, requires_grad=True, keep_graph=True)
         hidden_states = self.hnorm(hidden_states)
-        hidden_states = make_viewless_tensor(
-            inp=hidden_states, requires_grad=True, keep_graph=True
-        )
+        hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
         # At the (k - 1)-th MTP module, concatenates the i-th tocken's hidden_states
         # and the (i + K)-th tocken's embedding, and combine them with linear projection.
         hidden_states = torch.cat((decoder_input, hidden_states), -1)
@@ -322,7 +448,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
         # For sequence parallel, scatter after linear_fc and before transformer layer.
         if self.sequence_parallel:
             hidden_states = scatter_to_sequence_parallel_region(hidden_states)
-        
+
         args = get_args()
         if pre_process:
             hidden_states = hc_repeat(hidden_states, getattr(args, 'enable_mhc', False), getattr(args, 'hc_mult', 1))
@@ -343,7 +469,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
             input_ids,
             self.hc_head,
             pre_process,
-            post_process
+            post_process,
         )
         if post_process:
             hidden_states = self.hc_head(hidden_states, mhc_stage='head')
@@ -354,7 +480,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     # deallocate_output_tensor() throwing an error, so a viewless tensor is
     # created to prevent this.
     hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
-    
+
     return hidden_states
 
 
@@ -362,27 +488,28 @@ class MTPTransformerLayer(torch.autograd.Function):
     '''
     A transformer layer with MindSpeedFbOverlapMoELayer in MTP block.
     '''
+
     @staticmethod
-    def forward(ctx,
-            layer,
-            mtp_config,
-            hidden_states,
-            attention_mask,
-            context,
-            context_mask,
-            rotary_pos_emb,
-            rotary_pos_cos,
-            rotary_pos_sin,
-            attention_bias,
-            inference_params,
-            packed_seq_params,
-            checkpoint=False,
-            input_ids=None,
-            hc_head=None,
-            pre_process: Tensor = None,
-            post_process: Tensor = None
+    def forward(
+        ctx,
+        layer,
+        mtp_config,
+        hidden_states,
+        attention_mask,
+        context,
+        context_mask,
+        rotary_pos_emb,
+        rotary_pos_cos,
+        rotary_pos_sin,
+        attention_bias,
+        inference_params,
+        packed_seq_params,
+        checkpoint=False,
+        input_ids=None,
+        hc_head=None,
+        pre_process: Tensor = None,
+        post_process: Tensor = None,
     ):
-        args = get_args()
         hidden_states = bwd_synchronize_check.apply(hidden_states)
 
         if checkpoint:
@@ -401,32 +528,60 @@ class MTPTransformerLayer(torch.autograd.Function):
 
         with torch.enable_grad():
             hidden_states.requires_grad = True
-            output, context, graph = layer_forward_func(layer,
-                                                        hidden_states,
-                                                        attention_mask,
-                                                        context,
-                                                        context_mask,
-                                                        rotary_pos_emb,
-                                                        rotary_pos_cos,
-                                                        rotary_pos_sin,
-                                                        attention_bias,
-                                                        inference_params,
-                                                        packed_seq_params,
-                                                        input_ids,
-                                                        checkpoint)
+            output, context, graph = layer_forward_func(
+                layer,
+                hidden_states,
+                attention_mask,
+                context,
+                context_mask,
+                rotary_pos_emb,
+                rotary_pos_cos,
+                rotary_pos_sin,
+                attention_bias,
+                inference_params,
+                packed_seq_params,
+                input_ids,
+                checkpoint,
+            )
 
-        #Record MTP-layer input for backward recompute.
+        # Record MTP-layer input for backward recompute.
         if checkpoint:
             graph.record_layer_inputs(
-                attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos,
-                rotary_pos_sin, attention_bias, inference_params, packed_seq_params, input_ids
+                attention_mask,
+                context,
+                context_mask,
+                rotary_pos_emb,
+                rotary_pos_cos,
+                rotary_pos_sin,
+                attention_bias,
+                inference_params,
+                packed_seq_params,
+                input_ids,
             )
         output = bwd_synchronize_check.apply(output)
         ctx.graph = graph
         return output, context, graph
-    
+
     @staticmethod
     def backward(ctx, layer_output_grad, context, layer_graph):
         layer_graph = ctx.graph
         layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
-        return None, None, layer_graph.layer_input.grad, None, None, None, None, None, None, None, None, None, None, None, None, None, None
+        return (
+            None,
+            None,
+            layer_graph.layer_input.grad,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
