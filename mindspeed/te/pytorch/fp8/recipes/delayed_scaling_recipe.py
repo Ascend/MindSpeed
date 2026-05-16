@@ -39,7 +39,7 @@ class DelayedScalingRecipe(Recipe):
             key,
             torch_npu.npu_quantize,
             allow_reuse=False,
-            scale=scale,
+            scales=scale,
             zero_points=None,
             dtype=self.quant_dtype,
             axis=-1,
