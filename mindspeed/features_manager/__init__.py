@@ -8,6 +8,7 @@ from mindspeed.features_manager.context_parallel.adaptive_context_parallel impor
 from mindspeed.features_manager.context_parallel.context_parallel_feature import ContextParallelFeature
 from mindspeed.features_manager.context_parallel.context_parallel_kv_cache import ContextParallelKvCacheFeature
 from mindspeed.features_manager.context_parallel.ulysses_context_parallel import UlyssesContextParallelFeature
+from mindspeed.features_manager.context_parallel.gated_delta_net import GDNFeature
 from mindspeed.features_manager.data_parallel.async_log_allreduce import AsyncLogAllreduceFeature
 from mindspeed.features_manager.functional.profile import ProfileFeature
 from mindspeed.features_manager.functional.profiler_default import ProfilerDefaultFeature
@@ -160,7 +161,8 @@ def add_context_parallel_features(features_list: List[MindSpeedFeature]):
         ContextParallelFeature(),
         UlyssesContextParallelFeature(),
         ContextParallelKvCacheFeature(),
-        AdaptiveContextParallelFeature()
+        AdaptiveContextParallelFeature(),
+        GDNFeature()
     ])
 
 

@@ -32,6 +32,7 @@ from megatron.core.transformer.utils import (
 )
 from megatron.core.utils import deprecate_inference_params, nvtx_range_pop, nvtx_range_push
 from megatron.core.ssm.gated_delta_net import GatedDeltaNetSubmodules, _split_tensor_factory
+from mindspeed.args_utils import get_full_args as get_args
 
 try:
     from fla.modules.l2norm import l2norm
@@ -48,6 +49,14 @@ try:
 except ImportError:
     causal_conv1d = None
     causal_conv1d_update = None
+
+
+def naive_l2norm(x: torch.FloatTensor, dim: int = -1, eps: float = 1e-6):
+    """This function is intended to align with the l2norm implementation in the FLA library."""
+    original_dtype = x.dtype
+    inv_norm = torch.rsqrt((x * x).sum(dim=dim, keepdim=True) + eps)
+    # Counteract verl's autocast promotion (bf16 -> fp32) by restoring original dtype
+    return (x * inv_norm).to(original_dtype)
 
 
 class GatedDeltaNet(MegatronModule):
@@ -453,7 +462,11 @@ class GatedDeltaNet(MegatronModule):
 
         # Apply L2 norm to query and key
         if self.use_qk_l2norm:
-            query_key = l2norm(query_key.contiguous())
+            args = get_args()
+            if args.use_naive_l2norm:
+                query_key = naive_l2norm(query_key.contiguous())
+            else:
+                query_key = l2norm(query_key.contiguous())
 
         # Split query and key
         split_size = self.qk_dim_local_tp // self.key_head_dim // self.cp_size
