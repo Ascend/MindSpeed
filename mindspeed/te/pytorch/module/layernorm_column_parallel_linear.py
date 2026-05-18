@@ -54,26 +54,26 @@ def load_state_dict_post_hook(weight_keys):
         full_keys = [k for k in incompatible_keys.missing_keys if any(w in k for w in weight_keys)]
         for k in full_keys:
             incompatible_keys.missing_keys.remove(k)
+
     return hook
 
 
 class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
     def __init__(
-            self,
-            input_size: int,
-            output_size: int,
-            *,
-            config,
-            init_method: Callable,
-            gather_output: bool,
-            bias: bool,
-            skip_bias_add: bool,
-            is_expert: bool = False,
-            skip_weight_param_allocation: bool = False,
-            tp_comm_buffer_name: Optional[str] = None,
+        self,
+        input_size: int,
+        output_size: int,
+        *,
+        config,
+        init_method: Callable,
+        gather_output: bool,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool = False,
+        skip_weight_param_allocation: bool = False,
+        tp_comm_buffer_name: Optional[str] = None,
     ):
-
-        super(MindSpeedTELayerNormColumnParallelLinear, self).__init__()
+        super().__init__()
         self.config = config
         self.input_size = input_size
         self.output_size = output_size
@@ -85,6 +85,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         self.parallel_mode = 'column'
         self.fp8_meta = FP8Metadata()
         self.is_recompute_norm = False
+        self.norm_ckpt = None
 
         # MindSpeedTELayerNormColumnParallelLinear check.
         if gather_output:
@@ -95,9 +96,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
             raise ValueError('Transformer Engine linear layers do not yet support MoE')
 
         if skip_weight_param_allocation:
-            raise ValueError(
-                'Transformer Engine linear layers do not support skip_weight_param_allocation'
-            )
+            raise ValueError('Transformer Engine linear layers do not support skip_weight_param_allocation')
 
         # ColumnParallelLine init spec.
         if is_expert:
@@ -112,20 +111,14 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
 
         self.output_size_per_partition = divide(output_size, tp_size)
 
-        self.allreduce_dgrad = (
-            tp_size > 1 and not self.sequence_parallel
-        )
+        self.allreduce_dgrad = tp_size > 1 and not self.sequence_parallel
         if self.allreduce_dgrad and self.sequence_parallel:
-            raise RuntimeError(
-                "`allreduce_dgrad` and `sequence_parallel` cannot be enabled at the same time."
-            )
+            raise RuntimeError("`allreduce_dgrad` and `sequence_parallel` cannot be enabled at the same time.")
 
         # Because skip_weight_param_allocation is not supported in TE, always do weight initialize.
         if config.use_cpu_initialization:
             self.weight = torch.nn.Parameter(
-                torch.empty(
-                    self.output_size_per_partition, self.input_size, dtype=config.params_dtype
-                )
+                torch.empty(self.output_size_per_partition, self.input_size, dtype=config.params_dtype)
             )
             if config.perform_initialization:
                 self.master_weight = _initialize_affine_weight_cpu(
@@ -161,9 +154,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
 
         if bias:
             if config.use_cpu_initialization:
-                self.bias = torch.nn.Parameter(
-                    torch.empty(self.output_size_per_partition, dtype=config.params_dtype)
-                )
+                self.bias = torch.nn.Parameter(torch.empty(self.output_size_per_partition, dtype=config.params_dtype))
             else:
                 self.bias = torch.nn.Parameter(
                     torch.empty(
@@ -173,7 +164,7 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                     )
                 )
             # stride=1 in this case.
-            set_tensor_model_parallel_attributes(self.bias, True, 0, 1) 
+            set_tensor_model_parallel_attributes(self.bias, True, 0, 1)
             if config.perform_initialization:
                 # Always initialize bias to zero.
                 with torch.no_grad():
@@ -195,39 +186,37 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
         # Norm init spec.
         if self.config.normalization not in ['LayerNorm', 'RMSNorm']:
             raise AssertionError('Unsupported normalization type {}!'.format(self.config.normalization))
-    
+
         layer_norm_weight = torch.nn.Parameter(
             torch.ones(self.input_size, device='npu', dtype=self.config.params_dtype)
         )
-        self.register_parameter(
-            "layer_norm_weight", layer_norm_weight
-        )
+        self.register_parameter("layer_norm_weight", layer_norm_weight)
         setattr(self.layer_norm_weight, 'sequence_parallel', self.sequence_parallel)
 
+        self.register_parameter("layer_norm_bias", None)
         if self.config.normalization != 'RMSNorm':
             layer_norm_bias = torch.nn.Parameter(
-                torch.ones(self.input_size, device='npu', dtype=self.config.params_dtype)
+                torch.zeros(self.input_size, device='npu', dtype=self.config.params_dtype)
             )
-            self.register_parameter(
-                "layer_norm_bias", layer_norm_bias
-            )
-            setattr(self.layer_norm_bias, 'sequence_parallel', self.sequence_parallel) 
-        else:
-            self.layer_norm_bias = None
+            setattr(layer_norm_bias, 'sequence_parallel', self.sequence_parallel)
+            self.layer_norm_bias = layer_norm_bias
         self.te_return_bias = self.skip_bias_add and bias
 
     def _layernorm(self, inp):
-        return F.layer_norm(inp, [self.layer_norm_weight.numel()],
-                            weight=self.layer_norm_weight,
-                            bias=self.layer_norm_bias,
-                            eps=self.config.layernorm_epsilon
-                            )
-        
+        return F.layer_norm(
+            inp,
+            [self.layer_norm_weight.numel()],
+            weight=self.layer_norm_weight,
+            bias=self.layer_norm_bias,
+            eps=self.config.layernorm_epsilon,
+        )
+
     def _rmsnorm(self, inp):
         if self.config.use_fused_rmsnorm:
             return torch_npu.npu_rms_norm(inp, self.layer_norm_weight, epsilon=self.config.layernorm_epsilon)[0]
-        return (inp * torch.rsqrt(inp.pow(2).mean(-1, keepdim=True) + self.config.layernorm_epsilon)) \
-                * self.layer_norm_weight
+        return (
+            inp * torch.rsqrt(inp.pow(2).mean(-1, keepdim=True) + self.config.layernorm_epsilon)
+        ) * self.layer_norm_weight
 
     def enable_recompute_norm(self, norm_ckpt):
         self.is_recompute_norm = True
@@ -251,30 +240,25 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
 
         bias = self.bias if not self.skip_bias_add else None
 
-        if (
-            self.allreduce_dgrad
-            or self.sequence_parallel
-        ):
+        if self.allreduce_dgrad or self.sequence_parallel:
             input_parallel = norm_output
         else:
             input_parallel = copy_to_tensor_model_parallel_region(norm_output)
 
         if self.config.fp8:
             from mindspeed.te.pytorch.module.linear import ColumnParallelSeq, ColumnParallelNoSeq
+
             if self.sequence_parallel:
                 output_parallel = ColumnParallelSeq.apply(input_parallel, self.weight, bias, self.fp8_meta)
             else:
                 output_parallel = ColumnParallelNoSeq.apply(input_parallel, self.weight, bias, self.fp8_meta)
         elif self.config.use_ascend_mc2:
-            from mindspeed.core.tensor_parallel.mc2_feature.linear_function import ColumnSeqParallelLinearFunction \
-                as MC2ColumnSeqParallelLinearFunction
+            from mindspeed.core.tensor_parallel.mc2_feature.linear_function import (
+                ColumnSeqParallelLinearFunction as MC2ColumnSeqParallelLinearFunction,
+            )
+
             output_parallel = MC2ColumnSeqParallelLinearFunction.apply(
-                input_parallel,
-                self.weight,
-                bias,
-                self.parallel_group,
-                True,
-                self.gradient_accumulation_fusion
+                input_parallel, self.weight, bias, self.parallel_group, True, self.gradient_accumulation_fusion
             )
         else:
             output_parallel = self._linear_forward_impl(
@@ -284,14 +268,10 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
                 gradient_accumulation_fusion=self.gradient_accumulation_fusion,
                 allreduce_dgrad=self.allreduce_dgrad,
                 sequence_parallel=self.sequence_parallel,
-                grad_output_buffer=(
-                    self.grad_output_buffer if self.config.defer_embedding_wgrad_compute else None
-                ),
+                grad_output_buffer=(self.grad_output_buffer if self.config.defer_embedding_wgrad_compute else None),
                 wgrad_deferral_limit=(
-                    self.config.wgrad_deferral_limit
-                    if self.config.defer_embedding_wgrad_compute
-                    else None
-                )
+                    self.config.wgrad_deferral_limit if self.config.defer_embedding_wgrad_compute else None
+                ),
             )
 
         bias = self.bias if self.te_return_bias else None
@@ -301,7 +281,6 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
         """Sharding along axis 0, bias sharded"""
         from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+
         state_dict = self.state_dict(prefix='', keep_vars=True)
-        return make_sharded_tensors_for_checkpoint(
-            state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
-        )
+        return make_sharded_tensors_for_checkpoint(state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets)
