@@ -1,12 +1,11 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 from functools import wraps
 
-import torch
 import torch_npu
 
-from megatron.training import get_args
 from megatron.training.utils import print_rank_0
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.hccl_buffer.hccl_adaptive_func import parse_hccl_op_mode_string, _HCCL_OP_MODE
 
 
@@ -34,4 +33,5 @@ def hccl_op_mode_set_wrapper(initialize_model_parallel):
             print_rank_0(f"hccl_op_mode_set: {_HCCL_OP_MODE}")
 
         return initialize_model_parallel(*args, **kwargs)
+
     return wrapper

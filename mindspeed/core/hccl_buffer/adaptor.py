@@ -1,13 +1,16 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 from functools import wraps
 
-import torch
 import torch_npu
 
-from megatron.training import get_args
 from megatron.training.utils import print_rank_0
 
-from mindspeed.core.hccl_buffer.hccl_adaptive_func import hccl_buffer_auto_adaptive, parse_hccl_buffer_string, _HCCL_GROUP_BUFFER
+from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.core.hccl_buffer.hccl_adaptive_func import (
+    hccl_buffer_auto_adaptive,
+    parse_hccl_buffer_string,
+    _HCCL_GROUP_BUFFER,
+)
 
 
 def get_nccl_options_wrapper(get_nccl_options):
@@ -21,6 +24,7 @@ def get_nccl_options_wrapper(get_nccl_options):
                 options.hccl_config = {"hccl_buffer_size": _HCCL_GROUP_BUFFER[pg_name]}
                 return options
         return get_nccl_options(pg_name, nccl_comm_cfgs)
+
     return wrapper
 
 
@@ -35,6 +39,7 @@ def hccl_buffer_adaptive_wrapper(initialize_model_parallel):
             print_rank_0(f"hccl_group_buffer_adaptive: {_HCCL_GROUP_BUFFER}")
 
         return initialize_model_parallel(*args, **kwargs)
+
     return wrapper
 
 
@@ -48,4 +53,5 @@ def hccl_buffer_set_wrapper(initialize_model_parallel):
             print_rank_0(f"hccl_group_buffer_set: {_HCCL_GROUP_BUFFER}")
 
         return initialize_model_parallel(*args, **kwargs)
+
     return wrapper
