@@ -47,6 +47,8 @@ tme = "tme"
 dout = "dout"
 Pn = "Pn"
 arange = "arange"
+# transformer-engine
+te = "te"
 
 [type.py]
 extend-glob = []
