@@ -34,4 +34,5 @@
 
 ## 使用限制
 
-梯度量化压缩`--quant-grads`不支持GEMM梯度累加融合`--gemm-gradient-accumulation-fusion`。需要使能`--no-gradient-accumulation-fusion`来关闭梯度累加融合
+1. 梯度量化压缩`--quant-grads`不支持GEMM梯度累加融合`--gemm-gradient-accumulation-fusion`。需要使能`--no-gradient-accumulation-fusion`来关闭梯度累加融合
+2. 梯度量化压缩`--quant-grads`及动量量化压缩`--quant-states`不支持`--swap-optimizer`。若要使用低精度优化器，需要关闭`--swap-optimizer`特性

@@ -6,7 +6,6 @@ _QUANT_STATE_CHOICES = ('fp8', 'hif8', 'mxfp8')
 
 
 class LowPrecisionOptimizerFeature(MindSpeedFeature):
-
     def __init__(self):
         super().__init__('low-precision-optimizer', optimization_level=0)
 
@@ -22,7 +21,6 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
         quant_states_enabled = bool(quant_states)
         quant_grads_requested = getattr(args, 'quant_grads', False)
         use_quant = quant_states_enabled or quant_grads_requested
-
 
         if use_quant:
             args.use_quant_optimizer = True
@@ -51,28 +49,35 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        option_strings = {
-            opt
-            for action in parser._actions
-            for opt in action.option_strings
-        }
+        option_strings = {opt for action in parser._actions for opt in action.option_strings}
         if '--quant-states' not in option_strings:
-            group.add_argument('--quant-states', choices=_QUANT_STATE_CHOICES, default=None,
-                               help='Select quantization format for optimizer states (default: disabled).')
+            group.add_argument(
+                '--quant-states',
+                choices=_QUANT_STATE_CHOICES,
+                default=None,
+                help='Select quantization format for optimizer states (default: disabled).',
+            )
         if '--quant-grads' not in option_strings:
-            group.add_argument('--quant-grads', action='store_true',
-                               help='Enable gradient quantization; dtype inferred from main_grads or defaults to fp16.')
+            group.add_argument(
+                '--quant-grads',
+                action='store_true',
+                help='Enable gradient quantization; dtype inferred from main_grads or defaults to fp16.',
+            )
 
     def validate_args(self, args):
         self._normalize_flags(args)
-        if (
-            getattr(args, "quant_grads", False)
-            and getattr(args, "gradient_accumulation_fusion", False)
-        ):
+        if getattr(args, "quant_grads", False) and getattr(args, "gradient_accumulation_fusion", False):
             raise AssertionError(
                 "quant_grads is incompatible with "
                 "gradient_accumulation_fusion. Please use "
                 "--no-gradient-accumulation-fusion or turn off --quant-grads."
+            )
+        if getattr(args, 'swap_optimizer', False) and (
+            getattr(args, 'quant_grads', False) or getattr(args, 'quant_states', False)
+        ):
+            raise AssertionError(
+                "--quant-states/--quant-grads are incompatible with --swap-optimizer."
+                "To use --quant-states/--quant-grads, please turn off --swap-optimizer."
             )
 
     def register_patches(self, patch_manager, args):
@@ -83,7 +88,7 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
 
         quant_grads_enabled = bool(getattr(args, 'quant_grads', False))
         patch_specs = []
-        
+
         import mindspeed.core.optimizer.low_precision.quant_optimizer_hooks as optimizer_hooks
         import mindspeed.core.optimizer.low_precision.quant_distributed_hooks as distributed_hooks
         from mindspeed.core.optimizer.low_precision import quant_grad_clip as grad_clip
@@ -130,7 +135,6 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                     optimizer_hooks.get_optimizer_builder_wrapper,
                     True,
                 ),
-
                 (
                     'megatron.core.distributed.param_and_grad_buffer._ParamAndGradBucketGroup.start_grad_sync',
                     param_and_grad_buffer.quant_grad_start_grad_sync_wrapper,
