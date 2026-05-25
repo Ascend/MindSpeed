@@ -123,7 +123,8 @@ def dot_product_attention_init_wrapper(fn):
         attention_type: str,
         attention_dropout: float = None,
         softmax_scale: float = None,
-        cp_comm_type: str = None
+        cp_comm_type: str = None,
+        pg_collection=None
     ):
 
         fn(
