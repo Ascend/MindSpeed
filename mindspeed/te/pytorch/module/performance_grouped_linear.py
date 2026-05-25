@@ -1,5 +1,6 @@
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
+# pylint: disable=duplicate-code
 from typing import Optional, Callable
 
 import torch
@@ -15,20 +16,46 @@ from megatron.core.parallel_state import (
     get_expert_tensor_parallel_group,
     get_expert_tensor_parallel_world_size,
     get_tensor_model_parallel_group,
-    get_tensor_model_parallel_world_size
+    get_tensor_model_parallel_world_size,
 )
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.moe.experts import expert_dist_ckpt_decorator
 from megatron.core.transformer.utils import sharded_state_dict_default, make_sharded_tensors_for_checkpoint
-from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.core.transformer.moe.grouped_matmul_util import MXFP8GMMFunction
+
+
+def _get_partition_dim(parallel_mode):
+    if parallel_mode == "column":
+        return 0
+    if parallel_mode == "row":
+        return 1
+    return -1
+
+
+def _set_explicit_expert_comm_attrs(param, partition_dim):
+    # Match Megatron's TE grouped wrapper: keep expert grouped weights out of
+    # tensor-parallel duplicate filtering, but retain partition metadata.
+    setattr(param, "tensor_model_parallel", False)
+    setattr(param, "partition_dim", partition_dim)
+    setattr(param, "partition_stride", 1)
 
 
 class MindSpeedTEPerformanceGroupedLinear(torch.nn.Module):
-    def __init__(self, num_gemms: int, input_size: int, output_size: int, *, parallel_mode: Optional[str], config,
-                 init_method: Callable, bias: bool, skip_bias_add: bool, is_expert: bool = False,
-                 tp_comm_buffer_name: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        num_gemms: int,
+        input_size: int,
+        output_size: int,
+        *,
+        parallel_mode: Optional[str],
+        config,
+        init_method: Callable,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool = False,
+        tp_comm_buffer_name: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__()
         self.num_gemms = num_gemms
         self.config = config
@@ -37,7 +64,7 @@ class MindSpeedTEPerformanceGroupedLinear(torch.nn.Module):
         self.use_bias = bias
         self.output_size = output_size
         self.input_size = input_size
-        self.partition_dim = 1 if parallel_mode == "column" else 0
+        self.partition_dim = _get_partition_dim(parallel_mode)
         self.parallel_mode = parallel_mode
 
         if is_expert:
@@ -67,34 +94,37 @@ class MindSpeedTEPerformanceGroupedLinear(torch.nn.Module):
         # use a singele 3D Parameter to hold all expert weights:[num_gemms, out_size, in_size]
         self.weight = Parameter(
             torch.empty(
-                self.num_gemms, 
-                self.output_size, 
+                self.num_gemms,
+                self.output_size,
                 self.input_size,
                 device=torch.device('cpu') if self.config.use_cpu_initialization else torch.npu.current_device(),
-                dtype=config.params_dtype)
+                dtype=config.params_dtype,
+            )
         )
 
         if self.config.perform_initialization:
             if self.config.use_cpu_initialization:
                 _initialize_affine_weight_cpu(
-                    self.weight, 
-                    output_size, 
+                    self.weight,
+                    output_size,
                     input_size,
                     self.output_size if parallel_mode == "column" else self.input_size,
                     partition_dim=self.partition_dim,
                     init_method=init_method,
                     stride=self.num_gemms,
                     rank=torch.distributed.get_rank(tp_group),
-                    world_size=tp_size
+                    world_size=tp_size,
                 )
             else:
                 _initialize_affine_weight_gpu(
-                    self.weight, 
-                    init_method, 
+                    self.weight,
+                    init_method,
                     partition_dim=self.partition_dim,
-                    stride=self.num_gemms, 
-                    is_expert=is_expert
+                    stride=self.num_gemms,
+                    is_expert=is_expert,
                 )
+        if self.explicit_expert_comm and parallel_mode in ("column", "row"):
+            _set_explicit_expert_comm_attrs(self.weight, self.partition_dim)
 
         for param in self.parameters():
             setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
@@ -105,12 +135,11 @@ class MindSpeedTEPerformanceGroupedLinear(torch.nn.Module):
         else:
             weight = self.weight.view(self.num_gemms, -1, self.config.hidden_size)
         from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
+
         output = get_gmm_op_cls().gmm_apply(x, weight, None, m_splits, self.weight)
         return output, None
 
-    def _sharded_state_dict_grouped(
-            self, tp_axis_map, prefix='', sharded_offsets=(), metadata=None
-    ):
+    def _sharded_state_dict_grouped(self, tp_axis_map, prefix='', sharded_offsets=(), metadata=None):
         """
         prefix should be module_name to make keys identical to sequetial ones.
         """
@@ -152,9 +181,7 @@ class MindSpeedTEPerformanceGroupedLinear(torch.nn.Module):
         return sharded_state_dict
 
     @expert_dist_ckpt_decorator
-    def sharded_state_dict(
-            self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[dict] = None
-    ):
+    def sharded_state_dict(self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[dict] = None):
         """
         Maps local expert to global experts.
         The sharded state dict is interchangable with SequentialMLP's.
@@ -163,12 +190,8 @@ class MindSpeedTEPerformanceGroupedLinear(torch.nn.Module):
         for name, module in self._modules.items():
             sub_sd = sharded_state_dict_default(module, f'{name}.', sharded_offsets, metadata)
             if name == 'linear_fc1' and self.config.gated_linear_unit:
-                num_global_experts = (
-                        parallel_state.get_expert_model_parallel_world_size() * self.num_local_experts
-                )
-                local_expert_indices_offset = (
-                        parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
-                )
+                num_global_experts = parallel_state.get_expert_model_parallel_world_size() * self.num_local_experts
+                local_expert_indices_offset = parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
                 ep_axis = len(sharded_offsets)
                 for i in range(self.num_local_experts):
                     new_sharded_offsets = (
@@ -191,17 +214,17 @@ class MindSpeedTEPerformanceColumnParallelGroupedLinear(MindSpeedTEPerformanceGr
     """
 
     def __init__(
-            self,
-            num_gemms: int,
-            input_size: int,
-            output_size: int,
-            *,
-            config,
-            init_method: Callable,
-            bias: bool,
-            skip_bias_add: bool,
-            is_expert: bool,
-            tp_comm_buffer_name: Optional[str] = None,
+        self,
+        num_gemms: int,
+        input_size: int,
+        output_size: int,
+        *,
+        config,
+        init_method: Callable,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool,
+        tp_comm_buffer_name: Optional[str] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -224,9 +247,7 @@ class MindSpeedTEPerformanceColumnParallelGroupedLinear(MindSpeedTEPerformanceGr
         tp_axis_map = {}
         for gemm_idx in range(self.num_gemms):
             tp_axis_map.update({f'{gemm_idx}.weight': 0, f'{gemm_idx}.bias': 0})
-        return super()._sharded_state_dict_grouped(
-            tp_axis_map, prefix, sharded_offsets, metadata
-        )
+        return super()._sharded_state_dict_grouped(tp_axis_map, prefix, sharded_offsets, metadata)
 
 
 class MindSpeedTEPerformanceRowParallelGroupedLinear(MindSpeedTEPerformanceGroupedLinear):
@@ -236,17 +257,17 @@ class MindSpeedTEPerformanceRowParallelGroupedLinear(MindSpeedTEPerformanceGroup
     """
 
     def __init__(
-            self,
-            num_gemms: int,
-            input_size: int,
-            output_size: int,
-            *,
-            config,
-            init_method: Callable,
-            bias: bool,
-            skip_bias_add: bool,
-            is_expert: bool,
-            tp_comm_buffer_name: Optional[str] = None,
+        self,
+        num_gemms: int,
+        input_size: int,
+        output_size: int,
+        *,
+        config,
+        init_method: Callable,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool,
+        tp_comm_buffer_name: Optional[str] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -267,6 +288,4 @@ class MindSpeedTEPerformanceRowParallelGroupedLinear(MindSpeedTEPerformanceGroup
         Assume sharded_offsets[-1] is the expert parallel offset.
         """
         tp_axis_map = {f'{gemm_idx}.weight': 1 for gemm_idx in range(self.num_gemms)}
-        return super()._sharded_state_dict_grouped(
-            tp_axis_map, prefix, sharded_offsets, metadata
-        )
+        return super()._sharded_state_dict_grouped(tp_axis_map, prefix, sharded_offsets, metadata)

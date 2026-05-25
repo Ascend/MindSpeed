@@ -1,5 +1,6 @@
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+# pylint: disable=keyword-arg-before-vararg,attribute-defined-outside-init,duplicate-code
 from typing import Optional, Callable
 
 import torch
@@ -17,7 +18,7 @@ from megatron.core.parallel_state import (
     get_expert_tensor_parallel_group,
     get_expert_tensor_parallel_world_size,
     get_tensor_model_parallel_group,
-    get_tensor_model_parallel_world_size
+    get_tensor_model_parallel_world_size,
 )
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
@@ -27,14 +28,27 @@ from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.grouped_matmul_util import MXFP8GMMFunction
 
 
+def _get_partition_dim(parallel_mode):
+    if parallel_mode == "column":
+        return 0
+    if parallel_mode == "row":
+        return 1
+    return -1
+
+
+def _set_explicit_expert_comm_attrs(param, partition_dim):
+    # Match Megatron's TE grouped wrapper: keep expert grouped weights out of
+    # tensor-parallel duplicate filtering, but retain partition metadata.
+    setattr(param, "tensor_model_parallel", False)
+    setattr(param, "partition_dim", partition_dim)
+    setattr(param, "partition_stride", 1)
+
+
 class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_tensor: torch.Tensor,
-                m_split=None,
-                group_list_type=None,
-                ori_weight=None,
-                *weight_input_T) -> torch.Tensor:
-        
+    def forward(
+        ctx, input_tensor: torch.Tensor, m_split=None, group_list_type=None, ori_weight=None, *weight_input_T
+    ) -> torch.Tensor:
         # Due to ascend gmm kernal k split limitations, we need a tensor m_split, not a tensor List.
         # Also can be solved in token_dispatcher.
         if not isinstance(m_split, torch.Tensor):
@@ -43,34 +57,50 @@ class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
             ctx.group_list = m_split
         weight_T = weight_input_T
         ctx.group_list_type = group_list_type
-        fwd_output = torch_npu.npu_grouped_matmul([input_tensor], weight_T, bias=None, group_list=ctx.group_list,
-                                                  split_item=2, group_type=0, group_list_type=ctx.group_list_type)[0]
+        fwd_output = torch_npu.npu_grouped_matmul(
+            [input_tensor],
+            weight_T,
+            bias=None,
+            group_list=ctx.group_list,
+            split_item=2,
+            group_type=0,
+            group_list_type=ctx.group_list_type,
+        )[0]
         ctx.save_for_backward(input_tensor, *ori_weight)
         return fwd_output
 
-    @staticmethod  
+    @staticmethod
     def backward(ctx, grad_output):
-
         group_list = ctx.group_list
         inp = ctx.saved_tensors[0]
         weight = ctx.saved_tensors[1:]
         group_list_type = ctx.group_list_type
-        grad = torch_npu.npu_grouped_matmul([grad_output], weight, bias=None, group_list=group_list,
-                                            split_item=2, group_type=0, group_list_type=group_list_type)[0]
+        grad = torch_npu.npu_grouped_matmul(
+            [grad_output],
+            weight,
+            bias=None,
+            group_list=group_list,
+            split_item=2,
+            group_type=0,
+            group_list_type=group_list_type,
+        )[0]
         # K spilt gmm.
-        grad_weight = torch_npu.npu_grouped_matmul([inp.T], [grad_output], bias=None, group_list=group_list,
-                                    split_item=3, group_type=2, group_list_type=group_list_type)[0]
-        
+        grad_weight = torch_npu.npu_grouped_matmul(
+            [inp.T],
+            [grad_output],
+            bias=None,
+            group_list=group_list,
+            split_item=3,
+            group_type=2,
+            group_list_type=group_list_type,
+        )[0]
+
         return grad, None, None, None, *grad_weight
 
 
 class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
     @classmethod
-    def forward(cls, ctx, input_tensor: torch.Tensor,
-                m_split=None,
-                reuse_identity=None,
-                *weight_views) -> torch.Tensor:
-
+    def forward(cls, ctx, input_tensor: torch.Tensor, m_split=None, reuse_identity=None, *weight_views) -> torch.Tensor:
         if not isinstance(m_split, torch.Tensor):
             m_split = torch.tensor(m_split, device='npu', dtype=torch.int64)
         ctx.group_list = torch.cumsum(m_split, dim=0)
@@ -89,9 +119,21 @@ class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
 
 
 class MindSpeedTEGroupedLinear(torch.nn.Module):
-    def __init__(self, num_gemms: int, input_size: int, output_size: int, *, parallel_mode: Optional[str], config,
-                 init_method: Callable, bias: bool, skip_bias_add: bool, is_expert: bool = False,
-                 tp_comm_buffer_name: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        num_gemms: int,
+        input_size: int,
+        output_size: int,
+        *,
+        parallel_mode: Optional[str],
+        config,
+        init_method: Callable,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool = False,
+        tp_comm_buffer_name: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__()
         self.num_gemms = num_gemms
         self.config = config
@@ -100,7 +142,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         self.use_bias = bias
         self.output_size = output_size
         self.input_size = input_size
-        self.partition_dim = 1 if parallel_mode == "column" else 0
+        self.partition_dim = _get_partition_dim(parallel_mode)
         self.parallel_mode = parallel_mode
 
         if is_expert:
@@ -130,21 +172,34 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         self.total_weight = []
 
         for i in range(self.num_gemms):
-            expert_weight = Parameter(torch.empty(self.output_size, self.input_size,
-                                                  device=torch.device('cpu') if self.config.use_cpu_initialization else torch.npu.current_device(),
-                                                  dtype=config.params_dtype))
+            expert_weight = Parameter(
+                torch.empty(
+                    self.output_size,
+                    self.input_size,
+                    device=torch.device('cpu') if self.config.use_cpu_initialization else torch.npu.current_device(),
+                    dtype=config.params_dtype,
+                )
+            )
             self.register_parameter('weight{}'.format(i), expert_weight)
             if self.config.perform_initialization:
                 if self.config.use_cpu_initialization:
-                    _initialize_affine_weight_cpu(expert_weight, output_size, input_size,
-                                                  self.output_size if parallel_mode == "column" else self.input_size,
-                                                  partition_dim=self.partition_dim,
-                                                  init_method=init_method,
-                                                  stride=1,
-                                                  rank=torch.distributed.get_rank(tp_group),
-                                                  world_size=tp_size)
+                    _initialize_affine_weight_cpu(
+                        expert_weight,
+                        output_size,
+                        input_size,
+                        self.output_size if parallel_mode == "column" else self.input_size,
+                        partition_dim=self.partition_dim,
+                        init_method=init_method,
+                        stride=1,
+                        rank=torch.distributed.get_rank(tp_group),
+                        world_size=tp_size,
+                    )
                 else:
-                    _initialize_affine_weight_gpu(expert_weight, init_method, partition_dim=self.partition_dim, stride=1, is_expert=is_expert)
+                    _initialize_affine_weight_gpu(
+                        expert_weight, init_method, partition_dim=self.partition_dim, stride=1, is_expert=is_expert
+                    )
+            if self.explicit_expert_comm and parallel_mode in ("column", "row"):
+                _set_explicit_expert_comm_attrs(expert_weight, self.partition_dim)
             self.total_weight.append(expert_weight)
 
         for param in self.parameters():
@@ -154,26 +209,17 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         args = get_args()
         if not getattr(args, "fp8", False) or getattr(args, "fp8_recipe", False) != Fp8Recipe.mxfp8:
             group_list_type = 1
-            for w in self.total_weight:
-                if self.parallel_mode == 'column':
-                    w = w.view(self.config.hidden_size, -1)
-                else:
-                    w = w.view(-1, self.config.hidden_size)
-            self.total_weight_T = [w.T for w in self.total_weight]
-            output = MindSpeedTEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight,
-                                                       *self.total_weight_T)
+            self.total_weight_T = [w.T.contiguous() for w in self.total_weight]
+            output = MindSpeedTEGroupedLinearGMM.apply(
+                x, m_splits, group_list_type, self.total_weight, *self.total_weight_T
+            )
         else:
             output = MindSpeedTEGroupedLinearMXFP8GMM.apply(
-                x,
-                m_splits,
-                self.total_weight,
-                *[w.T for w in self.total_weight]
+                x, m_splits, self.total_weight, *[w.T.contiguous() for w in self.total_weight]
             )
         return output, None
 
-    def _sharded_state_dict_grouped(
-            self, tp_axis_map, prefix='', sharded_offsets=(), metadata=None
-    ):
+    def _sharded_state_dict_grouped(self, tp_axis_map, prefix='', sharded_offsets=(), metadata=None):
         """
         prefix should be module_name to make keys identical to sequetial ones.
         """
@@ -205,9 +251,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         # Adjust replica ids - replication along DP modulo EP
         for k, sh_ten in sharded_state_dict.items():
             replica_id = sh_ten.replica_id
-            assert (
-                    len(replica_id) == 3
-            ), f'Expected replica_id for {k} to be in (PP, TP, DP) format, got: {replica_id}'
+            assert len(replica_id) == 3, f'Expected replica_id for {k} to be in (PP, TP, DP) format, got: {replica_id}'
             if getattr(sh_ten, "is_data_parallel_fully_shard", False):
                 edp_replica_id = 0
             else:
@@ -216,9 +260,7 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         return sharded_state_dict
 
     @expert_dist_ckpt_decorator
-    def sharded_state_dict(
-            self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[dict] = None
-    ):
+    def sharded_state_dict(self, prefix: str = '', sharded_offsets: tuple = (), metadata: Optional[dict] = None):
         """
         Maps local expert to global experts.
         The sharded state dict is interchangable with SequentialMLP's.
@@ -227,12 +269,8 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
         for name, module in self._modules.items():
             sub_sd = sharded_state_dict_default(module, f'{name}.', sharded_offsets, metadata)
             if name == 'linear_fc1' and self.config.gated_linear_unit:
-                num_global_experts = (
-                        parallel_state.get_expert_model_parallel_world_size() * self.num_local_experts
-                )
-                local_expert_indices_offset = (
-                        parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
-                )
+                num_global_experts = parallel_state.get_expert_model_parallel_world_size() * self.num_local_experts
+                local_expert_indices_offset = parallel_state.get_expert_model_parallel_rank() * self.num_local_experts
                 ep_axis = len(sharded_offsets)
                 for i in range(self.num_local_experts):
                     new_sharded_offsets = (
@@ -255,17 +293,17 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
     """
 
     def __init__(
-            self,
-            num_gemms: int,
-            input_size: int,
-            output_size: int,
-            *,
-            config,
-            init_method: Callable,
-            bias: bool,
-            skip_bias_add: bool,
-            is_expert: bool,
-            tp_comm_buffer_name: Optional[str] = None,
+        self,
+        num_gemms: int,
+        input_size: int,
+        output_size: int,
+        *,
+        config,
+        init_method: Callable,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool,
+        tp_comm_buffer_name: Optional[str] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -288,9 +326,7 @@ class MindSpeedTEColumnParallelGroupedLinear(MindSpeedTEGroupedLinear):
         tp_axis_map = {}
         for gemm_idx in range(self.num_gemms):
             tp_axis_map.update({f'{gemm_idx}.weight': 0, f'{gemm_idx}.bias': 0})
-        return super()._sharded_state_dict_grouped(
-            tp_axis_map, prefix, sharded_offsets, metadata
-        )
+        return super()._sharded_state_dict_grouped(tp_axis_map, prefix, sharded_offsets, metadata)
 
 
 class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
@@ -300,17 +336,17 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
     """
 
     def __init__(
-            self,
-            num_gemms: int,
-            input_size: int,
-            output_size: int,
-            *,
-            config,
-            init_method: Callable,
-            bias: bool,
-            skip_bias_add: bool,
-            is_expert: bool,
-            tp_comm_buffer_name: Optional[str] = None,
+        self,
+        num_gemms: int,
+        input_size: int,
+        output_size: int,
+        *,
+        config,
+        init_method: Callable,
+        bias: bool,
+        skip_bias_add: bool,
+        is_expert: bool,
+        tp_comm_buffer_name: Optional[str] = None,
     ):
         super().__init__(
             num_gemms=num_gemms,
@@ -331,9 +367,7 @@ class MindSpeedTERowParallelGroupedLinear(MindSpeedTEGroupedLinear):
         Assume sharded_offsets[-1] is the expert parallel offset.
         """
         tp_axis_map = {f'{gemm_idx}.weight': 1 for gemm_idx in range(self.num_gemms)}
-        return super()._sharded_state_dict_grouped(
-            tp_axis_map, prefix, sharded_offsets, metadata
-        )
+        return super()._sharded_state_dict_grouped(tp_axis_map, prefix, sharded_offsets, metadata)
 
 
 def mindspeed_groupedmlp_weighted_bias_swiglu_impl(x, bias, probs, fp8_input_store=False):
@@ -341,6 +375,7 @@ def mindspeed_groupedmlp_weighted_bias_swiglu_impl(x, bias, probs, fp8_input_sto
     Use ascend fused_swiglu instead weighted_bias_swiglu_impl for better performance.
     """
     from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
+
     if bias is not None:
         raise NotImplementedError("Bias is not support for weighted swiglu fusion.")
     dtype = x.dtype
