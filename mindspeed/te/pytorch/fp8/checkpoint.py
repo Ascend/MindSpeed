@@ -1,3 +1,6 @@
+# Copyright c) 2022-2025 NVIDIA CORPORATION AFFILIATES.
+# Copyright c) 2024-2025 Advanced Micro Devices Inc.
+
 import warnings
 from contextlib import AbstractContextManager, ContextDecorator
 from typing import List, Callable, Tuple, Dict, Any, Union
@@ -29,13 +32,9 @@ class activation_recompute_forward(AbstractContextManager, ContextDecorator):
         _FP8_ACTIVATION_RECOMPUTE_PHASE = self.recompute_phase
 
         if self.activation_recompute and not self.recompute_phase:
-            activation_recompute_forward._is_first_fp8_module.append(
-                FP8GlobalStateManager.IS_FIRST_FP8_MODULE
-            )
+            activation_recompute_forward._is_first_fp8_module.append(FP8GlobalStateManager.IS_FIRST_FP8_MODULE)
         if self.activation_recompute and self.recompute_phase:
-            FP8GlobalStateManager.IS_FIRST_FP8_MODULE = (
-                activation_recompute_forward._is_first_fp8_module.pop(0)
-            )
+            FP8GlobalStateManager.IS_FIRST_FP8_MODULE = activation_recompute_forward._is_first_fp8_module.pop(0)
 
     def __exit__(self, *exc_details):
         global _FP8_ACTIVATION_RECOMPUTE_ENABLED, _FP8_ACTIVATION_RECOMPUTE_PHASE
@@ -105,7 +104,7 @@ def checkpoint(
             dictionary of string keys for keyword arguments to :attr:`function`.
     """
     # Pop out te.distributed.checkpoint() arguments
-    global _USE_REENTRANT_ACTIVATION_RECOMPUTE
+    global _USE_REENTRANT_ACTIVATION_RECOMPUTE  # pylint: disable=global-variable-undefined
     _USE_REENTRANT_ACTIVATION_RECOMPUTE = kwargs.pop("use_reentrant", True)
     distribute_saved_activations = kwargs.pop("distribute_saved_activations", False)
     tp_group = kwargs.pop("tp_group", None)
@@ -114,7 +113,7 @@ def checkpoint(
     # Ensure backward compatibility.
     if (
         len(args) > 3
-        and isinstance(args[0], bool)
+        and (isinstance(args[0], bool) or args[0] is None)
         and callable(args[1])
         and isinstance(args[2], None | torch.distributed.ProcessGroup)
     ):
@@ -125,7 +124,7 @@ def checkpoint(
             DeprecationWarning,
             stacklevel=2,
         )
-        distribute_saved_activations = args[0]
+        distribute_saved_activations = args[0] if args[0] is not None else distribute_saved_activations
         get_rng_state_tracker = args[1]
         tp_group = args[2]
         args = args[3:]
@@ -177,10 +176,11 @@ def checkpoint(
     fp8_recipe = FP8GlobalStateManager.get_fp8_recipe() if fp8 else None
 
     def recompute_fn(*args, **kwargs):
-        with torch.autograd.enable_grad(), (
-            te_recompute_ctx
-        ), user_recompute_ctx, fp8_autocast(
-            enabled=fp8, fp8_recipe=fp8_recipe
+        with (
+            torch.autograd.enable_grad(),
+            te_recompute_ctx,
+            user_recompute_ctx,
+            fp8_autocast(enabled=fp8, fp8_recipe=fp8_recipe),
         ):
             function(*args, **kwargs)
 
@@ -221,7 +221,8 @@ class _CheckpointFunction(torch.autograd.Function):
         *args: Tuple[torch.Tensor, ...],
     ) -> Tuple[torch.Tensor, ...]:
         """Call forward function while saving state to be able to
-        redo the computation later."""
+        redo the computation later.
+        """
         ctx.run_function = run_function
         ctx.distribute_saved_activations = distribute_saved_activations
 
@@ -267,18 +268,13 @@ class _CheckpointFunction(torch.autograd.Function):
         return outputs
 
     @staticmethod
-    def backward(
-        ctx, *args: Tuple[Union[torch.Tensor, None], ...]
-    ) -> Tuple[Union[torch.Tensor, None], ...]:
+    def backward(ctx, *args: Tuple[Union[torch.Tensor, None], ...]) -> Tuple[Union[torch.Tensor, None], ...]:
         """Call backward function with activation recomputation."""
         if not torch.autograd._is_checkpoint_valid():
-            raise RuntimeError(
-                "Checkpointing is not compatible with .grad(), please use .backward() if possible"
-            )
+            raise RuntimeError("Checkpointing is not compatible with .grad(), please use .backward() if possible")
         from mindspeed.core.tensor_parallel.random import _set_cuda_rng_state
-        inputs = tuple(
-            t if t is not None else arg for (t, arg) in zip(ctx.saved_tensors, ctx.inputs)
-        )
+
+        inputs = tuple(t if t is not None else arg for (t, arg) in zip(ctx.saved_tensors, ctx.inputs))
 
         get_rng_state_tracker = ctx.get_rng_state_tracker
 
@@ -302,10 +298,11 @@ class _CheckpointFunction(torch.autograd.Function):
 
         # Compute the forward pass.
         detached_inputs = detach_variable(inputs)
-        with torch.enable_grad(), ctx.recompute_ctx, activation_recompute_forward(
-            activation_recompute=True, recompute_phase=True
-        ), fp8_autocast(
-            enabled=ctx.fp8, fp8_recipe=ctx.fp8_recipe
+        with (
+            torch.enable_grad(),
+            ctx.recompute_ctx,
+            activation_recompute_forward(activation_recompute=True, recompute_phase=True),
+            fp8_autocast(enabled=ctx.fp8, fp8_recipe=ctx.fp8_recipe),
         ):
             outputs = ctx.run_function(*detached_inputs, **ctx.kwargs)
 
@@ -325,17 +322,13 @@ class _CheckpointFunction(torch.autograd.Function):
                 outputs_with_grad.append(output)
                 args_with_grad.append(args[i])
         if len(outputs_with_grad) == 0:
-            raise RuntimeError(
-                "none of output has requires_grad=True, this checkpoint() is not necessary"
-            )
+            raise RuntimeError("none of output has requires_grad=True, this checkpoint() is not necessary")
 
         # backward does not require entering autocast context because
         # backward implementations already retrieve fp8 recipe and
         # enablement from stored ctx.
         torch.autograd.backward(outputs_with_grad, args_with_grad)
-        grads = tuple(
-            inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs
-        )
+        grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in detached_inputs)
         return (None, None, None, None, None, None) + grads
 
 
@@ -369,6 +362,7 @@ class _CheckpointFrame:
     def restore_rng_states(self, forward=True):
         """Restore fwd/bwd RNG states that were previously cached into the frame."""
         from mindspeed.core.tensor_parallel.random import _set_cuda_rng_state
+
         if forward:
             rng_states = self.fwd_rng_states
         else:
@@ -380,9 +374,7 @@ class _CheckpointFrame:
             self.get_rng_state_tracker().set_states(rng_states[2])
 
 
-class _recomputation_hook(
-    torch.autograd.graph.saved_tensors_hooks
-):  # pylint: disable=too-few-public-methods
+class _recomputation_hook(torch.autograd.graph.saved_tensors_hooks):  # pylint: disable=too-few-public-methods
     """torch.autograd hook for packing/unpacking tensors during the activation recompute phase."""
 
     def __init__(self, frame):
@@ -404,9 +396,7 @@ class _recomputation_hook(
         super().__init__(pack_hook, unpack_hook)
 
 
-class _checkpoint_hook(
-    torch.autograd.graph.saved_tensors_hooks
-):  # pylint: disable=too-few-public-methods
+class _checkpoint_hook(torch.autograd.graph.saved_tensors_hooks):  # pylint: disable=too-few-public-methods
     """torch.autograd hook for packing/unpacking tensors during the checkpointed forward pass."""
 
     def __init__(self, frame, args, kwargs):
