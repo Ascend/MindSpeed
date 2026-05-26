@@ -2,7 +2,7 @@
 
 ## 系统安全加固
 
-- 用户可在运行系统配置时开启 ASLR（级别2）以提高系统安全性，保护系统随机化开启。  
+- 用户可在运行系统配置时开启 ASLR（级别2）以提高系统安全性，保护系统随机化开启。
 可参考以下方式进行配置：
 
   ```bash
@@ -30,7 +30,7 @@
 | 程序文件目录                      |   550（r-xr-x---）            |
 | 配置文件                          |  640（rw-r-----）             |
 | 配置文件目录                      |   750（rwxr-x---）            |
-| 日志文件（记录完毕或者已经归档）        |  440（r--r-----）             | 
+| 日志文件（记录完毕或者已经归档）        |  440（r--r-----）             |
 | 日志文件（正在记录）                |    640（rw-r-----）           |
 | 日志文件目录                      |   750（rwxr-x---）            |
 | Debug文件                         |  640（rw-r-----）         |
@@ -51,7 +51,7 @@
 
 - 建议用户结合运行环境资源状况编写对应训练脚本。若训练脚本与资源状况不匹配，如数据集加载内存大小超出内存容量限制、训练脚本在本地生成数据超过磁盘空间大小等情况，可能引发错误并导致进程意外退出。
 - MindSpeed 在运行异常时会退出进程并打印报错信息，建议根据报错提示定位具体错误原因，包括设定算子同步执行、查看 CANN 日志、解析生成的 Core Dump 文件等方式。
-- MindSpeed在运行中可能会调用torch.load函数，torch.load在2.6以下版本默认参数weight_only=False，存在潜在安全风险（CVE-2025-32434）。建议使用2.6.0版本的pytorch。
+- MindSpeed在运行中可能会调用torch.load函数，torch.load在2.6以下版本默认参数weight_only=False，存在潜在安全风险（CVE-2025-32434）。建议使用2.6.0版本的PyTorch。
 - 使用MindSpeed运行过程中可能会执行模型的加载与保存操作，需要特别注意的是，其底层实现可能使用 Python pickle模块进行部分文件的序列化/反序列化操作，该模块存在固有的安全风险。
 
 ## 公网地址声明
@@ -84,6 +84,7 @@
 |  开源引入  |                              <https://github.com/pytorch/pytorch/pull/40762>                               |                   mindspeed/moe/utils.py                   |                    <https://github.com/pytorch/pytorch/pull/40762>                      |              _AllToAll自动反向参考              |
 |  开源引入  |                           <https://github.com/NVIDIA/Megatron-LM>                            |          mindspeed/optimizer/distrib_optimizer.py          |      <https://github.com/NVIDIA/Megatron-LM/blob/main/docs/user-guide/features/dist_optimizer.md>      | distributed_optimizer_zero3_init文档字符串参数说明 |
 |  开源引入  |                           <https://github.com/InternLM/InternEvo>                            | mindspeed/docs/zh/features/ring-attention-context-parallel.md |                           <https://arxiv.org/pdf/2406.18485>                   |    ring-attention-context-parallel说明文档    |
+|  开源引入  |                           <https://github.com/sail-sg/zero-bubble-pipeline-parallelism>                            |   mindspeed/docs/zh/features/nanopipe-pipeline-parallel.md    |                           <https://arxiv.org/abs/2401.10241>                   |      nanopipe-pipeline-parallel说明文档       |
 |  开源引入  |                           <https://github.com/iclr24-3434/AMPipe.git>                            |             mindspeed/docs/zh/features/ampipe.md              |                           <https://openreview.net/pdf?id=yLgr02IsXY>                   |                ampipe说明文档                 |
 |  开源引入  |                           <https://gitcode.com/Ascend/pytorch>                            |       mindspeed/docs/zh/features/adaptive-recompute.md        |                           <https://www.hiascend.com/document/detail/zh/Pytorch/710/comref/Envvariables/Envir_012.html>                   |     环境变量`PYTORCH_NPU_ALLOC_CONF`说明文档      |
 |  开源引入  |                           <https://github.com/deepseek-ai/DeepSeek-MoE>                            |         mindspeed/docs/zh/features/shared-experts.md          |                           <https://arxiv.org/pdf/2401.06066>                   |                 共享专家说明文档                  |
@@ -103,12 +104,12 @@
 
 ## 通信安全加固
 
-[通信安全加固说明](https://gitcode.com/Ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA
+[通信安全加固说明](https://gitcode.com/Ascend/pytorch/blob/v2.7.1-26.0.0/docs/zh/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E5%AE%89%E5%85%A8%E5%8A%A0%E5%9B%BA
 )
 
 ## 通信矩阵
 
-[通信矩阵说明](https://gitcode.com/Ascend/pytorch/blob/master/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E7%9F%A9%E9%98%B5%E4%BF%A1%E6%81%AF)
+[通信矩阵说明](https://gitcode.com/Ascend/pytorch/blob/v2.7.1-26.0.0/docs/zh/SECURITYNOTE.md#%E9%80%9A%E4%BF%A1%E7%9F%A9%E9%98%B5)
 
 ### 特殊场景
 
