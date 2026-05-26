@@ -67,6 +67,7 @@ disable = [
   "too-many-instance-attributes",
   "too-few-public-methods",
   "too-many-public-methods",
+  "duplicate-code",
 
   # 所有未使用变量/参数警告
   "unused-argument",

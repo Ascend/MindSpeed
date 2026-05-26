@@ -1,12 +1,10 @@
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 import queue
+
 import torch
 import torch_npu
 
-from megatron.core.parallel_state import (
-    get_tensor_model_parallel_group,
-    get_tensor_model_parallel_world_size
-)
+from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
 from megatron.training import get_args
 from mindspeed.ops.gmm import GMMFunction
 
@@ -74,23 +72,26 @@ class WeightGradStore:
                 total_input = input_
             return [total_input, grad_output, weight, sequence_parallel, in_row], handle
         else:
-            raise Exception("All Gather empty queue.")
+            raise Exception("All Gather empty queue.")  # pylint: disable=broad-exception-raised
 
     @classmethod
     def overlap_matmul(cls, grad_store_cache):
         total_input, grad_output, weight, sequence_parallel, in_row = grad_store_cache
         args = get_args()
         if hasattr(weight, 'gmm_weight'):
-            inputs, group_list, group_list_type, weight_shape = total_input
-            from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
+            ctx, inputs, group_list, group_list_type, weight_shape = total_input
+            from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls  # pylint: disable=cyclic-import
+
             gmm_cls = get_gmm_op_cls()
             if get_args().gemm_gradient_accumulation_fusion and not getattr(weight, 'is_hot_experts', False):
                 gmm_cls.gmm_add_impl(inputs, grad_output, group_list, weight, weight_shape)
             else:
                 if args.fp8 and args.use_gmm_fp8:
-                    grad_weight = gmm_cls.op_dw(inputs, grad_output, group_list, group_list_type)[0]
+                    grad_weight = (gmm_cls.op_dw(ctx, inputs, grad_output, group_list, group_list_type))[0]
                 else:
-                    grad_weight = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_output], [], group_list, 2, 0)[0]
+                    grad_weight = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_output], [], group_list, 2, 0)[
+                        0
+                    ]
                 if not getattr(weight, 'is_hot_experts', False):
                     weight.main_grad.data.add_(grad_weight.view(-1, weight.shape[-1]))
             inputs.untyped_storage().resize_(0)
@@ -102,22 +103,15 @@ class WeightGradStore:
                 grad_output = grad_output.contiguous()
                 sb = grad_output.shape[0] * grad_output.shape[1]
                 # Convert the tensor shapes to 2D for execution compatibility
-                grad_output = grad_output.view(
-                    sb, grad_output.shape[2]
-                )
-                total_input = total_input.view(
-                    sb, total_input.shape[2]
-                )
+                grad_output = grad_output.view(sb, grad_output.shape[2])
+                total_input = total_input.view(sb, total_input.shape[2])
             if get_args().gradient_accumulation_fusion:
                 import fused_weight_gradient_mlp_cuda
+
                 if weight.main_grad.dtype == torch.float32:
-                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
-                        total_input, grad_output, weight.main_grad
-                    )
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(total_input, grad_output, weight.main_grad)
                 elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
-                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
-                        total_input, grad_output, weight.main_grad
-                    )
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(total_input, grad_output, weight.main_grad)
                 else:
                     raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
             else:

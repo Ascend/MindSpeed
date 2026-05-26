@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from megatron.training import get_args
 
-from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.utils import TensorSwapManager, make_wait_swap_in_hook
+from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.utils import TensorSwapManager
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
@@ -19,7 +19,7 @@ from .weight_grad_store import WeightGradStore
 def get_gmm_weight_grad(inputs, grad_out, group_list, group_list_data_type, weight_param, weight_tensor):
     if WeightGradStore.is_decoupleBlock:
         WeightGradStore.put(
-            [inputs, group_list, group_list_data_type, weight_tensor.shape],
+            [None, inputs, group_list, group_list_data_type, weight_tensor.shape],
             grad_out,
             weight_param,
             sequence_parallel=False,
@@ -59,8 +59,9 @@ def get_gmm_weight_grad(inputs, grad_out, group_list, group_list_data_type, weig
             else:
                 grad_weights = None
         else:
-            grad_weights = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_out], [], group_list, 2,
-                                                              group_list_data_type)[0]
+            grad_weights = GMMFunction.builder.load().npu_gmm(
+                [inputs.t()], [grad_out], [], group_list, 2, group_list_data_type
+            )[0]
 
     return grad_weights
 
@@ -81,10 +82,8 @@ class GroupedMatmulWithWeightGradDetach(torch.autograd.Function):
         inputs, weight_tensor, group_list = ctx.saved_tensors
         weight_param = ctx.weight_param
         weight_tensor = rearrange(weight_tensor, 'n h f -> n f h')
-        grad_inputs = \
-            GMMFunction.builder.load().npu_gmm([grad_out], [weight_tensor], [], group_list, 0, 0)[0]
-        grad_weights = get_gmm_weight_grad(inputs, grad_out, group_list, 0, weight_param,
-                                           weight_tensor)
+        grad_inputs = GMMFunction.builder.load().npu_gmm([grad_out], [weight_tensor], [], group_list, 0, 0)[0]
+        grad_weights = get_gmm_weight_grad(inputs, grad_out, group_list, 0, weight_param, weight_tensor)
 
         return grad_inputs, grad_weights, None, None, None
 
@@ -99,13 +98,12 @@ def npu_gmm_with_detach(inputs, weight_tensor, weight_param, bias=None, group_li
 class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
     # GMM Class for FB Overlap
     def __init__(self, *args, **kwargs):
-
-        super(MindSpeedFbOverlapGmmExperts, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.weight1.gmm_weight = True
         self.weight2.gmm_weight = True
         self.layer_number = None
         if self.config.gated_linear_unit:
-            assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu.'
+            assert self.config.activation_func == F.silu, 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
 
     def forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs=None):
@@ -116,8 +114,7 @@ class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
         def act_func(fc1_output, permuted_probs):
             fc2_input = self.activation_func(fc1_output)
             if permuted_probs is not None:
-                fc2_input = (fc2_input * permuted_probs.unsqueeze(-1)) \
-                    .type(fc2_input.dtype)
+                fc2_input = (fc2_input * permuted_probs.unsqueeze(-1)).type(fc2_input.dtype)
             return fc2_input
 
         fc1_swap_manager = None
@@ -128,8 +125,9 @@ class MindSpeedFbOverlapGmmExperts(MegatronGroupedMLP):
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
             w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 
-            fc1_output = npu_gmm_with_detach(permuted_local_hidden_states, w1, self.weight1, bias=None,
-                                             group_list=group_list)
+            fc1_output = npu_gmm_with_detach(
+                permuted_local_hidden_states, w1, self.weight1, bias=None, group_list=group_list
+            )
             if is_recompute_activation:
                 act_ckpt = CheckpointWithoutOutput()
                 fc2_input = act_ckpt.checkpoint(act_func, False, fc1_output, permuted_probs)
