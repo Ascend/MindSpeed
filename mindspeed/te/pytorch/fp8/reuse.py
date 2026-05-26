@@ -69,10 +69,7 @@ def _tensor_key_name(tensor_key: Any) -> str:
 def _is_weight_reuse_enabled(tensor_key: Any) -> bool:
     from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
 
-    return (
-        _tensor_key_name(tensor_key) == "weight"
-        and FP8GlobalStateManager.is_weight_quantization_reuse_enabled()
-    )
+    return _tensor_key_name(tensor_key) == "weight" and FP8GlobalStateManager.is_weight_quantization_reuse_enabled()
 
 
 def _get_reuse_base_tensor(tensor: torch.Tensor) -> torch.Tensor:
@@ -82,7 +79,6 @@ def _get_reuse_base_tensor(tensor: torch.Tensor) -> torch.Tensor:
 def _is_stable_weight_tensor(tensor: torch.Tensor) -> bool:
     base_tensor = _get_reuse_base_tensor(tensor)
     return bool(getattr(base_tensor, "is_leaf", False) and getattr(base_tensor, "grad_fn", None) is None)
-
 
 
 def _get_storage_ptr_for_reuse_key(base_tensor: torch.Tensor) -> int:
@@ -108,24 +104,24 @@ def generate_weight_reuse_key(
     reuse_identity: Any = None,
     kwargs: dict[str, Any] = None,
 ) -> CacheKey:
-
     if reuse_identity is not None:
         return (
             op_name,
             _get_rank_fast(),
-            id(_get_reuse_base_tensor(reuse_identity)) if isinstance(reuse_identity, torch.Tensor) else id(reuse_identity),
+            id(_get_reuse_base_tensor(reuse_identity))
+            if isinstance(reuse_identity, torch.Tensor)
+            else id(reuse_identity),
             _make_kwargs_signature(kwargs),
         )
     base_tensor = _get_reuse_base_tensor(tensor)
 
     return (
         op_name,
-        _get_rank_fast(),        
+        _get_rank_fast(),
         _get_storage_ptr_for_reuse_key(base_tensor),
         tensor.storage_offset(),
         tensor.numel(),
         _make_kwargs_signature(kwargs),
-
     )
 
 
@@ -162,9 +158,11 @@ def reuse_or_quantize(
         return cached
 
     result = quantizer(tensor, **kwargs)
-    #当前只支持MXFP8场景的释放； 4对应的是双轴量化4个结果：weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale 
-    if isinstance(result, tuple) and len(result) == 4:
-        release_bf16_weight_after_quantization(tensor, tensor_key)    
+
+    # 当前支持MXFP8场景的释放；4对应的是双轴量化4个结果：weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale
+    # 同时支持MXFP8-32x32场景的释放；3对应的是轴对称量化的3个结果
+    if isinstance(result, tuple) and (len(result) == 4 or len(result) == 3):
+        release_bf16_weight_after_quantization(tensor, tensor_key)
     _WEIGHT_REUSE_POOL[cache_key] = result
     _WEIGHT_REUSE_MISSES += 1
     return result
@@ -184,11 +182,7 @@ def _iter_cached_tensors(value: Any):
 
 
 def _supports_bf16_weight_release(tensor: torch.Tensor, tensor_key: Any) -> bool:
-    return (
-        _is_weight_reuse_enabled(tensor_key)
-        and _supports_weight_reuse(tensor)
-        and tensor.dtype == torch.bfloat16
-    )
+    return _is_weight_reuse_enabled(tensor_key) and _supports_weight_reuse(tensor) and tensor.dtype == torch.bfloat16
 
 
 def release_bf16_weight_after_quantization(tensor: torch.Tensor, tensor_key: Any) -> None:
@@ -223,7 +217,6 @@ def restore_bf16_weight_storage() -> None:
 
 
 def clear_weight_quantization_reuse_cache(release_storage: bool = False) -> None:
-
     """Release cached quantized tensors at the optimizer step boundary."""
     global _WEIGHT_REUSE_HITS, _WEIGHT_REUSE_MISSES
 
@@ -255,6 +248,5 @@ def optimizer_step_reuse_cleanup_wrapper(step: Callable[..., Any]) -> Callable[.
         clear_weight_quantization_reuse_cache()
         restore_bf16_weight_storage()
         return step(*args, **kwargs)
-
 
     return wrapper

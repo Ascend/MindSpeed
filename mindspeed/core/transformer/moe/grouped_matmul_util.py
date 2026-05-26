@@ -24,6 +24,8 @@ def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
         return None
     if args.fp8_recipe == Fp8Recipe.mxfp8:
         return MXFP8GMMFunction
+    elif args.fp8_recipe == Fp8Recipe.mxfp8_32x32:
+        return MXFP832x32GMMFunction
     elif args.fp8_recipe in [Fp8Recipe.tensorwise, Fp8Recipe.delayed]:
         return TensorwiseGMMFunction
     # Blockwise FP8 is not implemented here yet, so fall back to the high-precision path.
@@ -358,4 +360,35 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             output_dtype=x.dtype,
             group_list_type=group_list_type,
             **qdtype.gmm_kwargs,
+        )
+
+
+class MXFP832x32GMMFunction(MXFP8GMMFunction):
+    @classmethod
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None, reuse_identity=None):
+        qdtype = get_quant_dtype()
+        x_mxfp8, x_scale = torch_npu.npu_dynamic_mx_quant(x, axis=-1, dst_type=qdtype.x)
+        weight_col_mxfp8, weight_col_scale, weight_row_scale = reuse_or_quantize(
+            weight,
+            TensorKey.weight,
+            torch_npu.npu_dynamic_block_mx_quant,
+            op_name="npu_dynamic_block_mx_quant",
+            reuse_identity=reuse_identity,
+            dst_type=qdtype.w,
+        )
+        weight_row_mxfp8 = weight_col_mxfp8
+        ctx.w_quant = (weight_col_mxfp8, weight_col_scale)
+        return torch_npu.npu_grouped_matmul(
+            [x_mxfp8],
+            [weight_row_mxfp8],
+            bias=bias,
+            scale=[weight_row_scale],
+            per_token_scale=[x_scale],
+            group_list=group_list,
+            group_type=0,
+            output_dtype=x.dtype,
+            group_list_type=group_list_type,
+            scale_dtype=torch_npu.float8_e8m0fnu,
+            per_token_scale_dtype=torch_npu.float8_e8m0fnu,
+            split_item=3,
         )

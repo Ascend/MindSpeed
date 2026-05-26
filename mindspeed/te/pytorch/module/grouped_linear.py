@@ -25,7 +25,7 @@ from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.moe.experts import expert_dist_ckpt_decorator
 from megatron.core.transformer.utils import sharded_state_dict_default, make_sharded_tensors_for_checkpoint
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.core.transformer.moe.grouped_matmul_util import MXFP8GMMFunction
+from mindspeed.core.transformer.moe.grouped_matmul_util import MXFP8GMMFunction, MXFP832x32GMMFunction
 
 
 def _get_partition_dim(parallel_mode):
@@ -98,24 +98,42 @@ class MindSpeedTEGroupedLinearGMM(torch.autograd.Function):
         return grad, None, None, None, *grad_weight
 
 
+def _grouped_linear_forward(cls, ctx, input_tensor, m_split, reuse_identity, *weight_views):
+    if not isinstance(m_split, torch.Tensor):
+        m_split = torch.tensor(m_split, device='npu', dtype=torch.int64)
+    ctx.group_list = torch.cumsum(m_split, dim=0)
+    weight = torch.stack(weight_views, dim=0)
+    fwd_output = cls.op_forward(ctx, input_tensor, weight, ctx.group_list, reuse_identity=reuse_identity)[0]
+    ctx.save_for_backward(input_tensor, weight)
+    return fwd_output
+
+
+def _grouped_linear_backward(cls, ctx, grad_outputs):
+    group_list = ctx.group_list
+    inp, weight = ctx.saved_tensors
+    grad = cls.op_dx(ctx, grad_outputs, weight, group_list)[0]
+    grad_weight = cls.op_dw(ctx, inp, grad_outputs, group_list)[0]
+    return grad, None, None, *grad_weight
+
+
 class MindSpeedTEGroupedLinearMXFP8GMM(MXFP8GMMFunction):
     @classmethod
-    def forward(cls, ctx, input_tensor: torch.Tensor, m_split=None, reuse_identity=None, *weight_views) -> torch.Tensor:
-        if not isinstance(m_split, torch.Tensor):
-            m_split = torch.tensor(m_split, device='npu', dtype=torch.int64)
-        ctx.group_list = torch.cumsum(m_split, dim=0)
-        weight = torch.stack(weight_views, dim=0)
-        fwd_output = cls.op_forward(ctx, input_tensor, weight, ctx.group_list, reuse_identity=reuse_identity)[0]
-        ctx.save_for_backward(input_tensor, weight)
-        return fwd_output
+    def forward(cls, ctx, input_tensor: torch.Tensor, m_split=None, reuse_identity=None, *weight_views) -> torch.Tensor:  # pylint: disable=W0221 arguments-differ
+        return _grouped_linear_forward(cls, ctx, input_tensor, m_split, reuse_identity, *weight_views)
 
     @classmethod
-    def backward(cls, ctx, grad_output):
-        group_list = ctx.group_list
-        inp, weight = ctx.saved_tensors
-        grad = cls.op_dx(ctx, grad_output, weight, group_list)[0]
-        grad_weight = cls.op_dw(inp, grad_output, group_list)[0]
-        return grad, None, None, *grad_weight
+    def backward(cls, ctx, grad_outputs):
+        return _grouped_linear_backward(cls, ctx, grad_outputs)
+
+
+class MindSpeedTEGroupedLinearMXFP832x32GMM(MXFP832x32GMMFunction):
+    @classmethod
+    def forward(cls, ctx, input_tensor: torch.Tensor, m_split=None, reuse_identity=None, *weight_views) -> torch.Tensor:  # pylint: disable=W0221 arguments-differ
+        return _grouped_linear_forward(cls, ctx, input_tensor, m_split, reuse_identity, *weight_views)
+
+    @classmethod
+    def backward(cls, ctx, grad_outputs):
+        return _grouped_linear_backward(cls, ctx, grad_outputs)
 
 
 class MindSpeedTEGroupedLinear(torch.nn.Module):
@@ -207,14 +225,21 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
 
     def forward(self, x, m_splits):
         args = get_args()
-        if not getattr(args, "fp8", False) or getattr(args, "fp8_recipe", False) != Fp8Recipe.mxfp8:
+        if not getattr(args, "fp8", False) or getattr(args, "fp8_recipe", False) not in (
+            Fp8Recipe.mxfp8,
+            Fp8Recipe.mxfp8_32x32,
+        ):
             group_list_type = 1
             self.total_weight_T = [w.T.contiguous() for w in self.total_weight]
             output = MindSpeedTEGroupedLinearGMM.apply(
                 x, m_splits, group_list_type, self.total_weight, *self.total_weight_T
             )
-        else:
+        elif getattr(args, "fp8_recipe", False) == Fp8Recipe.mxfp8:
             output = MindSpeedTEGroupedLinearMXFP8GMM.apply(
+                x, m_splits, self.total_weight, *[w.T.contiguous() for w in self.total_weight]
+            )
+        else:
+            output = MindSpeedTEGroupedLinearMXFP832x32GMM.apply(
                 x, m_splits, self.total_weight, *[w.T.contiguous() for w in self.total_weight]
             )
         return output, None

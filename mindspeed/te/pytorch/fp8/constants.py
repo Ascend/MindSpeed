@@ -42,11 +42,7 @@ class _FormatConfig(NamedTuple):
 class Format(Enum):
     E4M3 = _FormatConfig()
     HYBRID = _FormatConfig(grads=FormatEnum.E5M2)
-    HIF8 = _FormatConfig(
-        inputs=FormatEnum.HIF8_15,
-        weight=FormatEnum.HIF8_15,
-        grads=FormatEnum.HIF8_224
-    )
+    HIF8 = _FormatConfig(inputs=FormatEnum.HIF8_15, weight=FormatEnum.HIF8_15, grads=FormatEnum.HIF8_224)
 
     @classmethod
     def from_config_fp8(cls, key: str):
@@ -57,6 +53,7 @@ class Fp8Recipe(str, Enum):
     delayed = 'delayed'
     tensorwise = 'tensorwise'
     mxfp8 = 'mxfp8'
+    mxfp8_32x32 = 'mxfp8-32x32'
     blockwise = 'blockwise'
 
 
@@ -88,6 +85,7 @@ MATMUL_WISE_MAP_NORMAL = {
 
 def get_matmul_wise_by_tensor_key(tensor, key):
     from mindspeed.te.pytorch.fp8 import is_fp8_tensor_2d
+
     matmul_wise = MATMUL_WISE_MAP if is_fp8_tensor_2d(tensor) else MATMUL_WISE_MAP_NORMAL
     return matmul_wise[key]
 
@@ -100,7 +98,4 @@ def amax_compute_most_recent(amax: torch.Tensor, amax_history, last_history_inde
     amax.copy_(amax_history[last_history_index], non_blocking=True)
 
 
-AMAX_COMPUTE_MAP = {
-    'max': amax_compute_max,
-    "most_recent": amax_compute_most_recent
-}
+AMAX_COMPUTE_MAP = {'max': amax_compute_max, "most_recent": amax_compute_most_recent}

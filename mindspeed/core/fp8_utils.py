@@ -13,9 +13,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.extensions.transformer_engine import TEDelayedScaling
 
 
-def quantize_param_shard(
-    model_params, main_params, start_offsets, data_parallel_group, fsdp_shard_model_params=None
-):
+def quantize_param_shard(model_params, main_params, start_offsets, data_parallel_group, fsdp_shard_model_params=None):
     """Cast shard fp32 main params to fp8 model params."""
 
     warnings.warn("Currently, it is not supported to Cast shard fp32 main params to fp8 model params")
@@ -36,12 +34,8 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
         We return nullcontext() when: a) not using fp8 to train, b) layer_no is a layer
         that needs to be trained in bf16.
     """
-    num_bf16_layers_at_start = (
-        config.num_layers_at_start_in_bf16 if config.first_last_layers_bf16 else 0
-    )
-    num_bf16_layers_at_end = (
-        config.num_layers_at_end_in_bf16 if config.first_last_layers_bf16 else 0
-    )
+    num_bf16_layers_at_start = config.num_layers_at_start_in_bf16 if config.first_last_layers_bf16 else 0
+    num_bf16_layers_at_end = config.num_layers_at_end_in_bf16 if config.first_last_layers_bf16 else 0
     # Since layer_no is a global layer index, additional checks on whether
     # we are in the first or last pipeline-parallel rank are not needed.
     is_first_layer = layer_no < num_bf16_layers_at_start
@@ -58,7 +52,8 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
     else:
         from transformer_engine.common.recipe import Float8CurrentScaling, MXFP8BlockScaling, Format
         from transformer_engine.pytorch import fp8_autocast, fp8_model_init
-        from mindspeed.te.pytorch.fp8.recipes import Float8BlockScaling
+        from mindspeed.te.pytorch.fp8.recipes import Float8BlockScaling, MXFP832x32BlockScaling
+
         if config.fp8 == "e4m3":
             fp8_format = Format.E4M3
         elif config.fp8 == "hybrid":
@@ -76,21 +71,16 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
                 override_linear_precision=(False, False, not config.fp8_wgrad),
             )
         elif config.fp8_recipe == Fp8Recipe.tensorwise:
-            fp8_recipe = Float8CurrentScaling(
-                fp8_format=fp8_format
-            )
+            fp8_recipe = Float8CurrentScaling(fp8_format=fp8_format)
         elif config.fp8_recipe == Fp8Recipe.mxfp8:
-            fp8_recipe = MXFP8BlockScaling(
-                fp8_format=fp8_format
-            )
+            fp8_recipe = MXFP8BlockScaling(fp8_format=fp8_format)
+        elif config.fp8_recipe == Fp8Recipe.mxfp8_32x32:
+            fp8_recipe = MXFP832x32BlockScaling(fp8_format=fp8_format)
         elif config.fp8_recipe == Fp8Recipe.blockwise:
-            fp8_recipe = Float8BlockScaling(
-                fp8_format=fp8_format
-            )
+            fp8_recipe = Float8BlockScaling(fp8_format=fp8_format)
         else:
             raise ValueError(
-                "Float8CurrentScaling, MXFP8BlockScaling and DelayedScaling are "
-                "the only supported FP8 recipes."
+                "Float8CurrentScaling, MXFP8BlockScaling and DelayedScaling are the only supported FP8 recipes."
             )
         fp8_group = None
         if parallel_state.model_parallel_is_initialized():
@@ -99,31 +89,25 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
             )
 
         if not is_init:
-            fp8_context = fp8_autocast(
-                enabled=True, fp8_recipe=fp8_recipe, fp8_group=fp8_group
-            )
+            fp8_context = fp8_autocast(enabled=True, fp8_recipe=fp8_recipe, fp8_group=fp8_group)
         else:
             import inspect
 
             context_args = {"enabled": True}
             # Check if fp8_model_init supports setting recipe
-            if "recipe" in (
-                inspect.signature(fp8_model_init).parameters
-            ):
+            if "recipe" in (inspect.signature(fp8_model_init).parameters):
                 context_args["recipe"] = fp8_recipe
             # Check if fp8_model_init supports preserve_high_precision_init_val
-            if "preserve_high_precision_init_val" in (
-                inspect.signature(fp8_model_init).parameters
-            ):
+            if "preserve_high_precision_init_val" in (inspect.signature(fp8_model_init).parameters):
                 context_args["preserve_high_precision_init_val"] = True
             fp8_context = fp8_model_init(**context_args)
 
         # First / last layer in bf16 isn't supported with delayed scaling since it
         # requires entering/exiting fp8 context per layer, causing incorrect amax
         # reduction behavior.
-        assert not (
-            config.first_last_layers_bf16 and isinstance(fp8_recipe, TEDelayedScaling)
-        ), "Delayed scaling does not support first / last layer in BF16."
+        assert not (config.first_last_layers_bf16 and isinstance(fp8_recipe, TEDelayedScaling)), (
+            "Delayed scaling does not support first / last layer in BF16."
+        )
 
     return fp8_context
 

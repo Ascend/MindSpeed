@@ -11,10 +11,14 @@ from megatron.core.parallel_state import (
     get_expert_tensor_parallel_world_size,
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_rank,
-    get_tensor_model_parallel_world_size, get_expert_tensor_and_model_parallel_group,
+    get_tensor_model_parallel_world_size,
+    get_expert_tensor_and_model_parallel_group,
 )
-from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu, \
-    set_tensor_model_parallel_attributes
+from megatron.core.tensor_parallel.layers import (
+    _initialize_affine_weight_cpu,
+    _initialize_affine_weight_gpu,
+    set_tensor_model_parallel_attributes,
+)
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import divide
 from mindspeed.args_utils import get_full_args as get_args
@@ -49,7 +53,7 @@ class TEColumnParallelLinear(torch.nn.Module):
         if gather_output:
             raise ValueError('Transformer Engine linear layers do not support gather_output = True')
 
-        super(TEColumnParallelLinear, self).__init__()
+        super().__init__()
         self.fp8_meta = FP8Metadata()
 
         # Keep input parameters
@@ -82,9 +86,7 @@ class TEColumnParallelLinear(torch.nn.Module):
         if not skip_weight_param_allocation:
             if config.use_cpu_initialization:
                 self.weight = Parameter(
-                    torch.empty(
-                        self.output_size_per_partition, self.input_size, dtype=config.params_dtype
-                    )
+                    torch.empty(self.output_size_per_partition, self.input_size, dtype=config.params_dtype)
                 )
                 if config.perform_initialization:
                     self.master_weight = _initialize_affine_weight_cpu(
@@ -123,9 +125,7 @@ class TEColumnParallelLinear(torch.nn.Module):
 
         if bias:
             if config.use_cpu_initialization:
-                self.bias = Parameter(
-                    torch.empty(self.output_size_per_partition, dtype=config.params_dtype)
-                )
+                self.bias = Parameter(torch.empty(self.output_size_per_partition, dtype=config.params_dtype))
             else:
                 self.bias = Parameter(
                     torch.empty(
@@ -148,17 +148,14 @@ class TEColumnParallelLinear(torch.nn.Module):
 
         # Hook adding a default empty _extra_state for state dict
         self._register_load_state_dict_pre_hook(
-            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(
-                f'{prefix}_extra_state'
-            )
+            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(f'{prefix}_extra_state')
         )
 
     def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None):
         if weight is None:
             if self.weight is None:
                 raise RuntimeError(
-                    "weight was not supplied to ColumnParallelLinear forward"
-                    "and skip_weight_param_allocation is True."
+                    "weight was not supplied to ColumnParallelLinear forward and skip_weight_param_allocation is True."
                 )
             weight = self.weight
         else:
@@ -166,13 +163,13 @@ class TEColumnParallelLinear(torch.nn.Module):
             expected_shape = (self.output_size_per_partition, self.input_size)
             if weight.shape != expected_shape:
                 raise RuntimeError(
-                    f"supplied weight's shape is {tuple(weight.shape)},"
-                    f"not {expected_shape} as expected"
+                    f"supplied weight's shape is {tuple(weight.shape)}, not {expected_shape} as expected"
                 )
 
         bias = self.bias if not self.skip_bias_add else None
         if self.explicit_expert_comm and self.fp8_meta.fp8_enable:
             from mindspeed.te.pytorch.fp8.recipes import matmul_fp8
+
             output = matmul_fp8(input_, weight)
         elif self.explicit_expert_comm:
             output = input_.matmul(weight.t())
@@ -185,17 +182,15 @@ class TEColumnParallelLinear(torch.nn.Module):
         return output, output_bias
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
-        """ Sharding along axis 0, bias sharded """
+        """Sharding along axis 0, bias sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
-        return make_sharded_tensors_for_checkpoint(
-            state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
-        )
+        return make_sharded_tensors_for_checkpoint(state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets)
 
     def set_extra_state(self, state: Any):
-        """ Extra state is ignored """
+        """Extra state is ignored"""
 
     def get_extra_state(self) -> None:
-        """ Keep compatibility with TE state dict. """
+        """Keep compatibility with TE state dict."""
         return None
 
 
@@ -208,9 +203,9 @@ class ColumnParallelSeq(torch.autograd.Function):
         ctx.total_input = None
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
 
-        output_parallel, total_input, weight_fp8 = get_ops().allgather_matmul(input_, weight, None,
-                                                                              fp8_meta, MatmulKey.forward,
-                                                                              ctx.fp8_enable)
+        output_parallel, total_input, weight_fp8 = get_ops().allgather_matmul(
+            input_, weight, None, fp8_meta, MatmulKey.forward, ctx.fp8_enable
+        )
         if COMM_OVERLAP_CONFIG.save_allgather_input:
             ctx.total_input = total_input
 
@@ -241,15 +236,16 @@ class ColumnParallelSeq(torch.autograd.Function):
         else:
             grad_input, grad_output, _ = fp8_matmul(grad_output, weight, fp8_meta, MatmulKey.dx)
             # After enabling FP8, total_input is saved here instead of input_ due to lack of FP8 communication
-            sub_grad_input = torch.empty(input_size, dtype=total_input.dtype, device=total_input.device,
-                                         requires_grad=False)
+            sub_grad_input = torch.empty(
+                input_size, dtype=total_input.dtype, device=total_input.device, requires_grad=False
+            )
 
-        reduce_scatter_handle = torch.distributed._reduce_scatter_base(sub_grad_input, grad_input, group=tp_group,
-                                                                       async_op=True)
+        reduce_scatter_handle = torch.distributed._reduce_scatter_base(
+            sub_grad_input, grad_input, group=tp_group, async_op=True
+        )
 
         all_gather_handle.wait()
-        grad_weight, grad_bias = calculate_grad(ctx, total_input, weight_param, grad_output,
-                                                ori_grad)
+        grad_weight, grad_bias = calculate_grad(ctx, total_input, weight_param, grad_output, ori_grad)
 
         reduce_scatter_handle.wait()
         return sub_grad_input, grad_weight, grad_bias, None
@@ -314,11 +310,9 @@ class TERowParallelLinear(torch.nn.Module):
         keep_master_weight_for_test: bool = False,
     ):
         if not input_is_parallel:
-            raise ValueError(
-                "Transformer Engine linear layers do not support input_is_parallel = False"
-            )
+            raise ValueError("Transformer Engine linear layers do not support input_is_parallel = False")
 
-        super(TERowParallelLinear, self).__init__()
+        super().__init__()
         self.fp8_meta = FP8Metadata()
 
         # Keep input parameters
@@ -347,9 +341,7 @@ class TERowParallelLinear(torch.nn.Module):
 
         if config.use_cpu_initialization:
             self.weight = Parameter(
-                torch.empty(
-                    self.output_size, self.input_size_per_partition, dtype=config.params_dtype
-                )
+                torch.empty(self.output_size, self.input_size_per_partition, dtype=config.params_dtype)
             )
             if config.perform_initialization:
                 self.master_weight = _initialize_affine_weight_cpu(
@@ -407,14 +399,13 @@ class TERowParallelLinear(torch.nn.Module):
 
         # Hook adding a default empty _extra_state for state dict
         self._register_load_state_dict_pre_hook(
-            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(
-                f'{prefix}_extra_state'
-            )
+            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(f'{prefix}_extra_state')
         )
 
     def forward(self, input_: torch.Tensor):
         if self.explicit_expert_comm and self.fp8_meta.fp8_enable:
             from mindspeed.te.pytorch.fp8.recipes import matmul_fp8
+
             output = matmul_fp8(input_, self.weight)
         elif self.explicit_expert_comm:
             output = input_.matmul(self.weight.t())
@@ -432,17 +423,15 @@ class TERowParallelLinear(torch.nn.Module):
         return output, output_bias
 
     def sharded_state_dict(self, prefix='', sharded_offsets=(), metadata=None):
-        """ Sharding along axis 1, bias not sharded """
+        """Sharding along axis 1, bias not sharded"""
         state_dict = self.state_dict(prefix='', keep_vars=True)
-        return make_sharded_tensors_for_checkpoint(
-            state_dict, prefix, {'weight': 1}, sharded_offsets
-        )
+        return make_sharded_tensors_for_checkpoint(state_dict, prefix, {'weight': 1}, sharded_offsets)
 
     def set_extra_state(self, state: Any):
-        """ Extra state is ignored """
+        """Extra state is ignored"""
 
     def get_extra_state(self) -> None:
-        """ Keep compatibility with TE state dict. """
+        """Keep compatibility with TE state dict."""
         return None
 
 
@@ -480,8 +469,9 @@ class RowParallelNoSeq(torch.autograd.Function):
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
         ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
 
-        output_, _input, _weight = get_ops().matmul_all_reduce(input_, weight, bias, fp8_meta,
-                                                               MatmulKey.forward, ctx.fp8_enable)
+        output_, _input, _weight = get_ops().matmul_all_reduce(
+            input_, weight, bias, fp8_meta, MatmulKey.forward, ctx.fp8_enable
+        )
         BackwardStateStorage.save(ctx, _input, _weight, weight)
         return output_
 
@@ -501,19 +491,15 @@ class RowParallelNoSeq(torch.autograd.Function):
 def async_gather_along_first_dim(input_, group, world_size):
     dim_size = list(input_.size())
     dim_size[0] = dim_size[0] * world_size
-    output_ = torch.empty(
-        dim_size, dtype=input_.dtype, device=torch.npu.current_device(), requires_grad=False
-    )
-    work = torch.distributed._all_gather_base(
-        output_, input_.contiguous(), group=group, async_op=True
-    )
+    output_ = torch.empty(dim_size, dtype=input_.dtype, device=torch.npu.current_device(), requires_grad=False)
+    work = torch.distributed._all_gather_base(output_, input_.contiguous(), group=group, async_op=True)
     return work, output_
 
 
 class BackwardStateStorage:
     """
     Manages state storage from forward to backward pass in Autograd Functions.
-    
+
     Handles three modes:
     1. FP8 mode: Store quantized input/weight and original weight parameter
     2. Gradient Accumulation Fusion mode: Save input only, store weight as attribute
@@ -521,8 +507,7 @@ class BackwardStateStorage:
     """
 
     @staticmethod
-    def save(ctx, input_: torch.Tensor,
-             weight: torch.Tensor, weight_param: Optional[torch.Tensor] = None) -> None:
+    def save(ctx, input_: torch.Tensor, weight: torch.Tensor, weight_param: Optional[torch.Tensor] = None) -> None:
         """Save input and weight from forward pass for backward pass."""
         if ctx.fp8_enable:
             # FP8 mode: quantized tensors don't need grad tracking, store as attributes
@@ -551,8 +536,9 @@ class BackwardStateStorage:
             return input_, weight, ctx.weight_param
 
 
-def _calculate_grad_weight(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
-                           grad: torch.Tensor) -> Optional[torch.Tensor]:
+def _calculate_grad_weight(
+    ctx, inp: torch.Tensor, weight_param: torch.Tensor, grad: torch.Tensor
+) -> Optional[torch.Tensor]:
     """Calculate gradient of weight."""
     grad, total_input = reshape_to_2D(grad), reshape_to_2D(inp)
 
@@ -563,8 +549,11 @@ def _calculate_grad_weight(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
         )
 
     if ctx.fp8_enable:
-        from mindspeed.te.pytorch.fp8.recipes import MXFP8BlockScaling
-        if ctx.gradient_accumulation_fusion and isinstance(ctx.fp8_meta.fp8_recipe, MXFP8BlockScaling):
+        from mindspeed.te.pytorch.fp8.recipes import MXFP8BlockScaling, MXFP832x32BlockScaling
+
+        if ctx.gradient_accumulation_fusion and isinstance(
+            ctx.fp8_meta.fp8_recipe, (MXFP8BlockScaling, MXFP832x32BlockScaling)
+        ):
             fp8_matmul_add(weight_param.main_grad, grad, total_input, ctx.fp8_meta)
             return _create_grad_weight_placeholder(weight_param)
         else:
@@ -572,6 +561,7 @@ def _calculate_grad_weight(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
             return grad_weight
     elif ctx.gradient_accumulation_fusion:
         from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
+
         npu_matmul_add_fp32(total_input, grad, weight_param.main_grad)
         return _create_grad_weight_placeholder(weight_param)
     else:
@@ -589,10 +579,10 @@ def _calculate_grad_bias(ctx, grad: torch.Tensor, ori_grad: torch.Tensor) -> Opt
 
 def _create_grad_weight_placeholder(weight: torch.Tensor) -> Optional[torch.Tensor]:
     """
-        # When overlap_grad_reduce is True, need to ensure that backward hooks
-        # are all run on the main backprop thread to prevent deadlocks. Setup
-        # dummy grad_weight tensor to prevent backward hooks from being run
-        # in a background thread.
+    # When overlap_grad_reduce is True, need to ensure that backward hooks
+    # are all run on the main backprop thread to prevent deadlocks. Setup
+    # dummy grad_weight tensor to prevent backward hooks from being run
+    # in a background thread.
     """
     if not hasattr(weight, 'grad_added_to_main_grad'):
         return None
@@ -615,18 +605,19 @@ def _create_grad_weight_placeholder(weight: torch.Tensor) -> Optional[torch.Tens
     return grad_weight
 
 
-def calculate_grad(ctx, inp: torch.Tensor, weight_param: torch.Tensor,
-                   grad: torch.Tensor, ori_grad: torch.Tensor) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+def calculate_grad(
+    ctx, inp: torch.Tensor, weight_param: torch.Tensor, grad: torch.Tensor, ori_grad: torch.Tensor
+) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
     Calculate gradients of weight and bias.
-    
+
     Args:
         ctx: Autograd context
         inp: Input tensor (may be FP8 quantized)
         weight_param: Original weight parameter (for gradient accumulation)
         grad: Output gradient (may be FP8 quantized)
         ori_grad: Original output gradient (for bias calculation)
-    
+
     Returns:
         (grad_weight, grad_bias)
     """

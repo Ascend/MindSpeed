@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class Float8Tensor:
-
     def __init__(
         self,
         data: torch.Tensor,
@@ -68,20 +67,22 @@ class Float8Tensor:
     def get_quant_data(self):
         return self.data, self.fp8_scale
 
-    def quant_matmul(self, other: 'Float8Tensor', is_rowwise: tuple[bool, bool]):
+    def quant_matmul(self, other: 'Float8Tensor', is_rowwise: tuple[bool, bool], key: MatmulKey):
         x1 = self.t() if is_rowwise[0] else self
         x2 = other.t() if is_rowwise[1] else other
         qdtype = get_quant_dtype()
-        output = torch_npu.npu_quant_matmul(x1.data, x2.data, x2.fp8_scale,
-                                            pertoken_scale=x1.fp8_scale,
-                                            output_dtype=x1.dtype, **qdtype.mm_kwargs)
+        output = torch_npu.npu_quant_matmul(
+            x1.data, x2.data, x2.fp8_scale, pertoken_scale=x1.fp8_scale, output_dtype=x1.dtype, **qdtype.mm_kwargs
+        )
         # te cpu compare
         args = get_args()
         if args.te_comparison_with_cpu:
             from mindspeed.te.pytorch.fp8 import te_online_comparison_cpu
+
             te_online_comparison_cpu(x1, x2, output)
         if args.te_comparison_with_bf16:
             from mindspeed.te.pytorch.fp8 import te_online_comparison_bf16
+
             te_online_comparison_bf16(x1, x2, output)
         return output
 
@@ -93,16 +94,16 @@ class Float8Tensor:
         # x1 scale 因为是单标量tensor 与之前allgather输出 tensor相同 可以省一次allgather
         hcomm_name = get_hccl_comm_name(fp8_meta.tp_group, fp8_meta.tp_rank)
         output, gather_out, _ = torch_npu.npu_all_gather_quant_mm(
-            x1, x2, hcomm_name, fp8_meta.tp_world_size,
-            bias=bias, x1_scale=self.fp8_scale, x2_scale=other.fp8_scale,
-            y_dtype=self.dtype
+            x1,
+            x2,
+            hcomm_name,
+            fp8_meta.tp_world_size,
+            bias=bias,
+            x1_scale=self.fp8_scale,
+            x2_scale=other.fp8_scale,
+            y_dtype=self.dtype,
         )
-        gather_out = Float8Tensor(
-            gather_out,
-            self.fp8_dtype,
-            x1_scale,
-            self.dtype
-        )
+        gather_out = Float8Tensor(gather_out, self.fp8_dtype, x1_scale, self.dtype)
         return output.view(-1, self.shape[1], output.shape[1]), gather_out
 
     def matmul_reduce_scatter(self, other: 'Float8Tensor', bias, fp8_meta: FP8Metadata, key: MatmulKey):
@@ -112,10 +113,14 @@ class Float8Tensor:
 
         hcomm_name = get_hccl_comm_name(fp8_meta.tp_group, fp8_meta.tp_rank)
         output, _ = torch_npu.npu_quant_mm_reduce_scatter(
-            x1, x2, hcomm_name, fp8_meta.tp_world_size,
+            x1,
+            x2,
+            hcomm_name,
+            fp8_meta.tp_world_size,
             bias=bias,
             reduce_op='sum',
-            x1_scale=self.fp8_scale, x2_scale=other.fp8_scale,
+            x1_scale=self.fp8_scale,
+            x2_scale=other.fp8_scale,
             **get_quant_dtype().mm_kwargs,
             y_dtype=self.dtype,
         )
@@ -151,18 +156,12 @@ class Float8Tensor2D:
     def set_col_data(self, data, scale, t=False):
         if data is None:
             return
-        self.col_tensor = QuantTensorMeta(
-            data.T if t else data,
-            scale.transpose(0, 1) if t else scale
-        )
+        self.col_tensor = QuantTensorMeta(data.T if t else data, scale.transpose(0, 1) if t else scale)
 
     def set_row_data(self, data, scale, t=False):
         if data is None:
             return
-        self.row_tensor = QuantTensorMeta(
-            data.T if t else data,
-            scale.transpose(0, 1) if t else scale
-        )
+        self.row_tensor = QuantTensorMeta(data.T if t else data, scale.transpose(0, 1) if t else scale)
 
     def get_quant_data(self, is_rowwise=False):
         return self.row_tensor if is_rowwise else self.col_tensor
@@ -170,7 +169,7 @@ class Float8Tensor2D:
     def t(self):
         raise ValueError(f'{self.__class__.__name__} not support transpose')
 
-    def quant_matmul(self, other: 'Float8Tensor2D', is_rowwise):
+    def quant_matmul(self, other: 'Float8Tensor2D', is_rowwise, key: MatmulKey):
         raise NotImplementedError()
 
     def restore_reshape(self, other: 'Float8Tensor2D', output: torch.Tensor):
@@ -178,8 +177,17 @@ class Float8Tensor2D:
             return output
         return output.reshape(*self.origin_shape[:-1], *output.shape[1:])
 
-    def release(self, data: torch.Tensor, scale: torch.Tensor) -> None:
+    def release(self, data: torch.Tensor, scale: torch.Tensor, matmul_key: MatmulKey = None) -> None:
         if self.key == TensorKey.weight and FP8GlobalStateManager.is_weight_quantization_reuse_configured():
+            return
+        from mindspeed.te.pytorch.fp8.recipes import MXFP832x32BlockScaling
+
+        if (
+            self.key == TensorKey.weight
+            and matmul_key == MatmulKey.forward
+            and isinstance(FP8GlobalStateManager.get_fp8_recipe(), MXFP832x32BlockScaling)
+        ):
+            scale.untyped_storage().resize_(0)
             return
         data.untyped_storage().resize_(0)
         scale.untyped_storage().resize_(0)
@@ -187,9 +195,11 @@ class Float8Tensor2D:
 
 def te_cast_comparison(fp8_format, tensor, quant_tensor):
     from mindspeed.te.pytorch.fp8 import cast_to_fp8_cpu
+
     if fp8_format.dtype not in [torch.float8_e4m3fn, torch.float8_e5m2]:
         raise ValueError(
-            f"TE online comparison only supports e4m3 and e5m2 formats, but fp8_dtype is {fp8_format.dtype}")
+            f"TE online comparison only supports e4m3 and e5m2 formats, but fp8_dtype is {fp8_format.dtype}"
+        )
     tensor_cpu = tensor.cpu()
     quant_tensor_cpu = cast_to_fp8_cpu(tensor_cpu, fp8_format)
 
@@ -200,7 +210,7 @@ def te_cast_comparison(fp8_format, tensor, quant_tensor):
     max_rel_error = torch.max(rel_error)
 
     logger.info("The error of cast to fp8: ")
-    logger.info(f"[{quant_tensor.device}] Max Absolute Error: {max_abs_error.item()}")
-    logger.info(f"[{quant_tensor.device}] Max Relative Error: {max_rel_error.item()}")
+    logger.info("[%s] Max Absolute Error: %s", quant_tensor.device, max_abs_error.item())
+    logger.info("[%s] Max Relative Error: %s", quant_tensor.device, max_rel_error.item())
     if max_rel_error > 0.0:
         raise ValueError(f"The error of cast exceeds tolerance: {max_rel_error.item()}")

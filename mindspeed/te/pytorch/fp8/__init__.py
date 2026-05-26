@@ -10,6 +10,8 @@ from mindspeed.te.pytorch.module_typing import FP8Metadata, FP8Tensor
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["is_fp8_tensor_2d"]
+
 
 def fp8_matmul(
     inputs: FP8Tensor,
@@ -32,16 +34,12 @@ def fp8_matmul(
     if not is_fp8_tensor(weight):
         weight = fp8_meta.quantization(key[1], weight, rowwise=rowwise)
     # quant matmul
-    output = inputs.quant_matmul(weight, get_matmul_wise_by_tensor_key(inputs, key))
+    output = inputs.quant_matmul(weight, get_matmul_wise_by_tensor_key(inputs, key), key)
     return output, inputs, weight
 
 
 def fp8_matmul_add(
-    main_grad: torch.Tensor,
-    inputs: FP8Tensor,
-    weight: FP8Tensor,
-    fp8_meta: FP8Metadata,
-    key: MatmulKey = MatmulKey.dw
+    main_grad: torch.Tensor, inputs: FP8Tensor, weight: FP8Tensor, fp8_meta: FP8Metadata, key: MatmulKey = MatmulKey.dw
 ):
     if not is_fp8_tensor(inputs):
         inputs = fp8_meta.quantization(key[0], inputs, rowwise=True)
@@ -54,22 +52,12 @@ def fp8_matmul_add(
 def te_online_comparison_cpu(inputs, weight, output):
     if inputs.fp8_dtype not in [torch.float8_e4m3fn, torch.float8_e5m2]:
         raise ValueError(
-            f"TE online comparison only supports e4m3 and e5m2 formats, "
-            f"but fp8_dtype is {inputs.fp8_dtype}")
+            f"TE online comparison only supports e4m3 and e5m2 formats, but fp8_dtype is {inputs.fp8_dtype}"
+        )
 
     # convert Float8Tensor to Float8TensorCPU
-    weight_cpu = Float8TensorCpu(
-        torch.tensor([]),
-        torch.float8_e4m3fn,
-        None,
-        torch.float32
-    )
-    input_cpu = Float8TensorCpu(
-        torch.tensor([]),
-        torch.float8_e4m3fn,
-        None,
-        torch.float32
-    )
+    weight_cpu = Float8TensorCpu(torch.tensor([]), torch.float8_e4m3fn, None, torch.float32)
+    input_cpu = Float8TensorCpu(torch.tensor([]), torch.float8_e4m3fn, None, torch.float32)
     weight_cpu.from_float8tensor(weight)
     input_cpu.from_float8tensor(inputs)
 
@@ -80,9 +68,9 @@ def te_online_comparison_cpu(inputs, weight, output):
     max_abs_error = torch.max(abs_error)
     max_rel_error = torch.max(rel_error)
 
-    logger.info(f"The error of quant_matmul: ")
-    logger.info(f"[{output.device}] Max Absolute Error: {max_abs_error.item()}")
-    logger.info(f"[{output.device}] Max Relative Error: {max_rel_error.item()}")
+    logger.info("The error of quant_matmul: ")
+    logger.info("[%s] Max Absolute Error: %s", output.device, max_abs_error.item())
+    logger.info("[%s] Max Relative Error: %s", output.device, max_rel_error.item())
     if max_rel_error > 0.001:
         raise ValueError(f"The error of quant_matmul exceeds tolerance: {max_rel_error.item()}")
 
@@ -96,9 +84,9 @@ def te_online_comparison_bf16(inputs, weight, output):
     rel_error = abs_error / torch.abs(bf16_output)
     max_abs_error = torch.max(abs_error)
     max_rel_error = torch.max(rel_error)
-    logger.info(f"The error of quant_matmul: ")
-    logger.info(f"[{output.device}] Max Absolute Error: {max_abs_error.item()}")
-    logger.info(f"[{output.device}] Max Relative Error: {max_rel_error.item()}")
+    logger.info("The error of quant_matmul: ")
+    logger.info("[%s] Max Absolute Error: %s", output.device, max_abs_error.item())
+    logger.info("[%s] Max Relative Error: %s", output.device, max_rel_error.item())
     if max_rel_error > 0.001:
         raise ValueError(f"The error of quant_matmul exceeds tolerance: {max_rel_error.item()}")
 
@@ -106,20 +94,12 @@ def te_online_comparison_bf16(inputs, weight, output):
 def te_online_comparison_mxfp8_cpu(inputs, weight, transpose, output):
     if inputs.fp8_dtype not in [torch.float8_e4m3fn, torch.float8_e5m2]:
         raise ValueError(
-            f"TE online comparison only supports e4m3 and e5m2 formats, "
-            f"but fp8_dtype is {inputs.fp8_dtype}")
+            f"TE online comparison only supports e4m3 and e5m2 formats, but fp8_dtype is {inputs.fp8_dtype}"
+        )
 
     # convert Float8Tensor to MXFP8TensorCpu
-    weight_cpu = MXFP8TensorCpu(
-        torch.float8_e4m3fn,
-        torch.Size(),
-        torch.float32
-    )
-    input_cpu = MXFP8TensorCpu(
-        torch.float8_e4m3fn,
-        torch.Size(),
-        torch.float32
-    )
+    weight_cpu = MXFP8TensorCpu(torch.float8_e4m3fn, torch.Size(), torch.float32)
+    input_cpu = MXFP8TensorCpu(torch.float8_e4m3fn, torch.Size(), torch.float32)
     weight_cpu.from_MXFP8Tensor(weight)
     input_cpu.from_MXFP8Tensor(inputs)
 
@@ -130,9 +110,9 @@ def te_online_comparison_mxfp8_cpu(inputs, weight, transpose, output):
     max_abs_error = torch.max(abs_error)
     max_rel_error = torch.max(rel_error)
 
-    logger.info(f"The error of quant_matmul: ")
-    logger.info(f"[{output.device}] Max Absolute Error: {max_abs_error.item()}")
-    logger.info(f"[{output.device}] Max Relative Error: {max_rel_error.item()}")
+    logger.info("The error of quant_matmul: ")
+    logger.info("[%s] Max Absolute Error: %s", output.device, max_abs_error.item())
+    logger.info("[%s] Max Relative Error: %s", output.device, max_rel_error.item())
     if max_rel_error > 0.001:
         raise ValueError(f"The error of quant_matmul exceeds tolerance: {max_rel_error.item()}")
 
@@ -157,11 +137,7 @@ def padding_bf16_scale(mxfp8_tensor, scale_tensor):
 
     # Align shapes: crop or discard excess elements from x_scale_bf16 and weight_mxfp8_bf16
     if scale_bf16.shape[padding_dim] > mxfp8_tensor.shape[padding_dim]:
-        scale_bf16 = scale_bf16.narrow(
-            dim=padding_dim,
-            start=0,
-            length=mxfp8_tensor.shape[padding_dim]
-        )
+        scale_bf16 = scale_bf16.narrow(dim=padding_dim, start=0, length=mxfp8_tensor.shape[padding_dim])
 
     return scale_bf16
 
@@ -184,9 +160,9 @@ def te_online_comparison_mxfp8_bf16(inputs, weight, transpose, output):
     rel_error = abs_error / torch.abs(bf16_output)
     max_abs_error = torch.max(abs_error)
     max_rel_error = torch.max(rel_error)
-    logger.info(f"The error of quant_matmul: ")
-    logger.info(f"[{output.device}] Max Absolute Error: {max_abs_error.item()}")
-    logger.info(f"[{output.device}] Max Relative Error: {max_rel_error.item()}")
+    logger.info("The error of quant_matmul: ")
+    logger.info("[%s] Max Absolute Error: %s", output.device, max_abs_error.item())
+    logger.info("[%s] Max Relative Error: %s", output.device, max_rel_error.item())
     if max_rel_error > 0.001:
         raise ValueError(f"The error of quant_matmul exceeds tolerance: {max_rel_error.item()}")
 
