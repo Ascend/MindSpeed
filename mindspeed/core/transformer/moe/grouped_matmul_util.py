@@ -1,9 +1,8 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-from typing import Type
-
 import torch
 import torch_npu
 from einops import rearrange
+from typing import Type
 
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
@@ -290,7 +289,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             dst_type=qdtype.x,
             quant_mode='pertensor',
         )
-        x_scale = x_scale.expand(len(group_list))
+        x_scale = x_scale.expand(g_size)
         w_quant, w_scale = reuse_or_quantize(
             weight.view(g_size, -1),
             TensorKey.weight,
@@ -319,16 +318,8 @@ class TensorwiseGMMFunction(BaseGMMFunction):
     @classmethod
     def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
-        grad_quant, grad_scale = torch_npu.npu_dynamic_quant(
-            grad.view(ctx.g_size, -1),
-            dst_type=qdtype.grads,
-            quant_mode='pertensor',
-        )
-        grad_scale = grad_scale.expand(len(group_list))
-        grad_quant = grad_quant.view(grad.shape)
-
+        grad_quant, grad_scale = cls.quant_grad(ctx, grad, ctx.g_size, qdtype.grads)
         w_quant, w_scale = ctx.saved_weight
-        ctx.saved_grads = (grad_quant, grad_scale)
         return torch_npu.npu_grouped_matmul(
             [grad_quant],
             [rearrange(w_quant, 'n h f -> n f h')],
@@ -347,7 +338,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
     def op_dw(cls, ctx, x, grad, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         x_quant, x_scale = ctx.saved_x
-        grad_quant, grad_scale = ctx.saved_grads
+        grad_quant, grad_scale = cls.quant_grad(ctx, grad, ctx.g_size, qdtype.grads)
         return torch_npu.npu_grouped_matmul(
             [x_quant.t()],
             [grad_quant],
@@ -361,6 +352,20 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             group_list_type=group_list_type,
             **qdtype.gmm_kwargs,
         )
+
+    @classmethod
+    def quant_grad(cls, ctx, grad, g_size, dst_type):
+        if hasattr(ctx, "saved_grads"):
+            return ctx.saved_grads
+        grad_quant, grad_scale = torch_npu.npu_dynamic_quant(
+            grad.view(g_size, -1),
+            dst_type=dst_type,
+            quant_mode='pertensor',
+        )
+        grad_scale = grad_scale.expand(g_size)
+        grad_quant = grad_quant.view(grad.shape)
+        ctx.saved_grads = (grad_quant, grad_scale)
+        return grad_quant, grad_scale
 
 
 class MXFP832x32GMMFunction(MXFP8GMMFunction):

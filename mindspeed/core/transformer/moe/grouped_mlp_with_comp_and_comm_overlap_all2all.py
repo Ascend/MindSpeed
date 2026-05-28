@@ -126,7 +126,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
             if get_args().gemm_gradient_accumulation_fusion:
                 grad_weights2 = gmm_cls.op_gmm_add(mm2_inputs, weights2, grad_outs, group_list, original_weight2)
             else:
-                grad_weights2 = gmm_cls.op_dw(ctx.gmm_ctx_1, mm2_inputs, grad_outs, group_list)[0]
+                grad_weights2 = gmm_cls.op_dw(ctx.gmm_ctx_2, mm2_inputs, grad_outs, group_list)[0]
         else:
             grad_weights2 = torch.matmul(mm2_inputs.t(), grad_outs)
 
