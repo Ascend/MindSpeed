@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from scipy.linalg import hadamard
 
+from megatron.core.models.common.embeddings import apply_rotary_pos_emb
 from mindspeed.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd_in_complex
 
 
@@ -56,4 +57,24 @@ def apply_rope_in_complex(self, x: torch.Tensor, rotary_pos_emb: torch.Tensor, m
     )
     x_pe = apply_rotary_pos_emb_bshd_in_complex(x_pe, rotary_pos_emb, rotary_interleaved=True)
     x = torch.cat([x_pe, x_nope], dim=-1)
+    return x
+
+
+def apply_rope(self, x: torch.Tensor, rotary_pos_emb: torch.Tensor, mscale: float):
+    """Apply RoPE to the input tensor."""
+    # x_pe   [seqlen, batch, *, qk_pos_emb_head_dim]
+    # x_nope [seqlen, batch, *, index_head_dim - qk_pos_emb_head_dim]
+    x_pe, x_nope = torch.split(
+        x, [self.qk_pos_emb_head_dim, self.index_head_dim - self.qk_pos_emb_head_dim], dim=-1
+        )
+    x_pe = apply_rotary_pos_emb(
+        x_pe,
+        rotary_pos_emb,
+        config=self.config,
+        cu_seqlens=None,
+        mscale=mscale,
+        cp_group=self.pg_collection.cp,
+    )
+    # [seqlen, batch, *, index_head_dim]
+    x = torch.cat([x_nope, x_pe], dim=-1)
     return x

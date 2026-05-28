@@ -63,6 +63,9 @@ class DeepSeekSparseAttention(MindSpeedFeature):
         if args.apply_rope_in_complex:
             from mindspeed.core.transformer.experimental_attention_variant.dsa_matrix_naive import apply_rope_in_complex
             pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer._apply_rope', apply_rope_in_complex)
+        else:
+            from mindspeed.core.transformer.experimental_attention_variant.dsa_matrix_naive import apply_rope
+            pm.register_patch('megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer._apply_rope', apply_rope)
 
         if int(getattr(args, 'context_parallel_size', 1)) > 1 and getattr(args, 'context_parallel_algo', 'megatron_cp_algo') == 'kvallgather_cp_algo':
             from mindspeed.core.transformer.experimental_attention_variant.dsa_kvallgather_context_parallel import transformer_config_post_init_wrapper
