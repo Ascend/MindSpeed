@@ -42,7 +42,7 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
             patch_manager.register_patch('megatron.core.models.gpt.gpt_model.GPTModel.forward', gpt_forward_wrapper)
 
             patch_manager.register_patch('megatron.core.transformer.attention.Attention.forward', attention_forward)
-            if getattr(args, 'multi_latent_attention', None):
+            if getattr(args, 'multi_latent_attention', None) and not getattr(args, 'use_dsa_absorb', None):
                 patch_manager.register_patch(
                     'megatron.core.transformer.multi_latent_attention.MLASelfAttention',
                     MindSpeedMLASelfAttention)
@@ -50,6 +50,16 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
             patch_manager.register_patch(
                 'megatron.core.models.common.embeddings.rotary_pos_embedding._apply_rotary_pos_emb_thd',
                 apply_rotary_pos_emb_thd)
+
+            # DSA passes a plain Tensor as cu_seqlens (not packed_seq_params),
+            # so it needs a different RoPE implementation that derives position_ids
+            # from the Tensor values instead of accessing .position_ids attribute.
+            if getattr(args, 'use_dsa_absorb', None):
+                from mindspeed.core.transformer.flash_attention.reset_attention_mask.adaptor import (
+                    dsa_apply_rotary_pos_emb_thd)
+                patch_manager.register_patch(
+                    'megatron.core.models.common.embeddings.rope_utils._apply_rotary_pos_emb_thd',
+                    dsa_apply_rotary_pos_emb_thd)
 
             patch_manager.register_patch(
                 'megatron.core.models.common.embeddings.rotary_pos_embedding.RotaryEmbedding.forward', rotary_forward)

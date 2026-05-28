@@ -86,7 +86,7 @@ def batch_index(seq1d, seq_len):
     return [[elem - i * seq_len for elem in seq] for i, seq in enumerate(seq_batch)]
 
 
-def get_batch_on_this_cp_rank(batch):
+def get_batch_on_this_cp_rank(batch, mtp_on_this_rank: bool = False):
     """ Slice batch input along sequence dimension into multiple chunks,
         which are parallelized across GPUs in a context parallel group.
     """
@@ -415,7 +415,7 @@ def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
     return batch
 
 
-def get_batch_on_this_tp_rank(data_iterator):
+def get_batch_on_this_tp_rank(data_iterator, mtp_on_this_rank: bool = False):
     args = get_args()
 
     if mpu.get_tensor_model_parallel_rank() == 0:

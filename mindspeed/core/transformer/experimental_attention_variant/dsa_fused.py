@@ -70,9 +70,16 @@ def fused_dsa_attn_forward(
 
     args = get_args()
 
-    sq, b, np, hn = query.size()
-    skv = key.size(0)
-    hnv = value.size(3)
+    use_tnd = packed_seq_params is not None
+    if use_tnd:
+        sq, np, hn = query.size()
+        b = 1
+        skv = key.size(0)
+        hnv = value.size(2)
+    else:
+        sq, b, np, hn = query.size()
+        skv = key.size(0)
+        hnv = value.size(3)
 
     # Detach x and qr to prevent gradients of indexer from flowing back to the main model.
     x = x.detach()
@@ -92,14 +99,12 @@ def fused_dsa_attn_forward(
             if attn_mask_type != AttnMaskType.causal:
                 raise RuntimeError(f"Only causal mask is supported for now, but got attn_mask_type={attn_mask_type}")
             # Generate upper triangular mask with -inf above diagonal, 0 elsewhere
-            # torch.triu with diagonal=1 creates upper triangular matrix (excluding main diagonal)
-            # shape float_mask [sq, skv]
             float_mask = torch.triu(
                 torch.full((sq, skv), float('-inf'), dtype=torch.float32, device=x.device),
                 diagonal=1,
             )
         else:
-            if attention_mask.shape != (b, 1, sq, skv):
+            if not use_tnd and attention_mask.shape != (b, 1, sq, skv):
                 raise ValueError(f"Expected attention_mask shape {(b, 1, sq, skv)}, but got {attention_mask.shape}")
             # shape [b, 1, sq, skv] -> [b, sq, skv]
             mask = attention_mask.squeeze()
@@ -129,8 +134,10 @@ def fused_dsa_attn_forward(
                 query_rope,
                 key_rope,
                 self.softmax_scale,
-                cp_group = cp_group,
-                cp_stream = cp_stream
+                cp_group=cp_group,
+                cp_stream=cp_stream,
+                layout='TND' if use_tnd else 'BSND',
+                packed_seq_params=packed_seq_params,
             )
         else:
             output, softmax_max, softmax_sum = fused_npu_sparse_flash_attention(
@@ -140,9 +147,12 @@ def fused_dsa_attn_forward(
                 topk_indices,
                 query_rope,
                 key_rope,
-                self.softmax_scale
+                self.softmax_scale,
+                packed_seq_params=packed_seq_params
             )
     else:
+        if use_tnd:
+            raise RuntimeError("unfused_dsa_fn does not support TND format. Use --use-fused-sparse-flash-attention.")
         output = unfused_dsa_fn(query, key, value, topk_indices, self.softmax_scale)
 
     # ===================================
@@ -221,8 +231,7 @@ def forward_with_scores(
 
     args = get_args()
 
-    if packed_seq_params is not None:
-        raise RuntimeError("Packed sequence is not supported for DSAttention")
+    use_tnd = packed_seq_params is not None
 
     # =========================================
     # Prepare RoPE params
@@ -232,12 +241,12 @@ def forward_with_scores(
     )
     if self.config.rope_type == "rope":
         rotary_pos_emb = self.rotary_pos_emb(
-            rotary_seq_len, packed_seq=False
+            rotary_seq_len, packed_seq=use_tnd
         )
         mscale = 1.0
     else:
         rotary_pos_emb, mscale = self.rotary_pos_emb(
-            rotary_seq_len, packed_seq=False
+            rotary_seq_len, packed_seq=use_tnd
         )
 
     # =========================================
@@ -250,29 +259,64 @@ def forward_with_scores(
     # =========================================
     # Get sequence length and batch size
     # =========================================
-    seqlen, bsz, _ = x.size()
+    if use_tnd:
+        # x (hidden_states) is [S, B, H]. Flatten to [T, H] where T = S * B.
+        seqlen, bsz, hsz = x.size()
+        x = x.reshape(seqlen * bsz, hsz)  # [S, B, H] → [T, H]
+        seqlen = seqlen * bsz
+        bsz = 1
+    else:
+        seqlen, bsz, _ = x.size()
 
     # =========================================
     # q linear and apply rope to q
     # =========================================
-    # [seqlen, batch, q_lora_rank] -> [seqlen, batch, index_n_heads * index_head_dim]
     q, _ = self.linear_wq_b(qr)
-    # shape q [seqlen, batch, index_n_heads * index_head_dim]
-    #   -> [seqlen, batch, index_n_heads, index_head_dim]
-    q = q.reshape(seqlen, bsz, self.index_n_heads, self.index_head_dim)
-    q = self._apply_rope(q, rotary_pos_emb, mscale)
+    if use_tnd:
+        # TND: [T, index_n_heads * index_head_dim] -> [T, index_n_heads, index_head_dim]
+        q = q.reshape(seqlen, self.index_n_heads, self.index_head_dim)
+        # Apply rope with cu_seqlens for correct position embeddings at document boundaries.
+        # Split into nope and rope components, apply rope with cu_seqlens, concatenate back
+        # WITHOUT the rope dim — so the indexer's _apply_rope becomes a no-op.
+        nope_dim = self.index_head_dim - self.qk_pos_emb_head_dim
+        q_nope, q_pe = torch.split(q, [nope_dim, self.qk_pos_emb_head_dim], dim=-1)
+        from megatron.core.models.common.embeddings import apply_rotary_pos_emb
+        cu_seqlens = packed_seq_params.cu_seqlens_q
+        if getattr(args, 'apply_rope_in_complex', False):
+            from mindspeed.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd_in_complex
+            q_pe = apply_rotary_pos_emb_bshd_in_complex(q_pe, rotary_pos_emb, rotary_interleaved=False)
+        else:
+            q_pe = apply_rotary_pos_emb(q_pe, rotary_pos_emb, config=self.config, cu_seqlens=cu_seqlens, mscale=mscale)
+        q = torch.cat([q_nope, q_pe], dim=-1)
+    else:
+        # [seqlen, batch, q_lora_rank] -> [seqlen, batch, index_n_heads, index_head_dim]
+        q = q.reshape(seqlen, bsz, self.index_n_heads, self.index_head_dim)
+        q = self._apply_rope(q, rotary_pos_emb, mscale)
 
     # =========================================
     # k linear and apply rope to k
     # =========================================
-    # [seqlen, batch, hidden_size] -> [seqlen, batch, index_head_dim]
     k, _ = self.linear_wk(x)
     k = self.k_norm(k)
-    # [seqlen, batch, index_head_dim] -> [seqlen, batch, 1, index_head_dim]
-    k = k.reshape(seqlen, bsz, 1, self.index_head_dim)
-    k = self._apply_rope(k, rotary_pos_emb, mscale)
+    if use_tnd:
+        k = k.reshape(seqlen, 1, self.index_head_dim)
+        nope_dim = self.index_head_dim - self.qk_pos_emb_head_dim
+        k_nope, k_pe = torch.split(k, [nope_dim, self.qk_pos_emb_head_dim], dim=-1)
+        cu_seqlens = packed_seq_params.cu_seqlens_kv
+        if getattr(args, 'apply_rope_in_complex', False):
+            k_pe = apply_rotary_pos_emb_bshd_in_complex(k_pe, rotary_pos_emb, rotary_interleaved=False)
+        else:
+            k_pe = apply_rotary_pos_emb(k_pe, rotary_pos_emb, config=self.config, cu_seqlens=cu_seqlens, mscale=mscale)
+        k = torch.cat([k_nope, k_pe], dim=-1)
+    else:
+        # [seqlen, batch, index_head_dim] -> [seqlen, batch, 1, index_head_dim]
+        k = k.reshape(seqlen, bsz, 1, self.index_head_dim)
+        k = self._apply_rope(k, rotary_pos_emb, mscale)
     if not use_fused_lightning_indexer:
-        k = k.reshape(seqlen, bsz, self.index_head_dim)
+        if use_tnd:
+            k = k.reshape(seqlen, self.index_head_dim)
+        else:
+            k = k.reshape(seqlen, bsz, self.index_head_dim)
     # =========================================
     # Rotate activation
     # =========================================
@@ -282,9 +326,13 @@ def forward_with_scores(
     # =========================================
     # Compute index scores
     # =========================================
-    # [seqlen, batch, hidden_size] -> [seqlen, batch, index_n_heads]
     weights, _ = self.linear_weights_proj(x)
     weights = weights * (self.index_n_heads**-0.5) * self.softmax_scale
+
+    actual_seq_qlen = packed_seq_params.cu_seqlens_q.to(torch.int32) if use_tnd else None
+    actual_seq_klen = packed_seq_params.cu_seqlens_kv.to(torch.int32) if use_tnd else None
+    layout = 'TND' if use_tnd else 'BSND'
+
     if use_fused_lightning_indexer:
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
             cp_group = self.pg_collection.cp
@@ -295,10 +343,11 @@ def forward_with_scores(
                 k,
                 weights,
                 self.index_topk,
-                actual_seq_qlen=None if packed_seq_params is None else packed_seq_params.cu_seqlens_q,
-                actual_seq_klen=None if packed_seq_params is None else packed_seq_params.cu_seqlens_kv,
-                layout_query='BSND',
-                layout_key='BSND',
+                actual_seq_qlen=actual_seq_qlen,
+                actual_seq_klen=actual_seq_klen,
+                layout_query=layout,
+                layout_key=layout,
+                layout=layout,
                 cp_group=cp_group,
                 cp_stream=cp_stream
             )
@@ -308,14 +357,14 @@ def forward_with_scores(
                 k,
                 weights,
                 self.index_topk,
-                actual_seq_qlen=None if packed_seq_params is None else packed_seq_params.cu_seqlens_q,
-                actual_seq_klen=None if packed_seq_params is None else packed_seq_params.cu_seqlens_kv,
-                layout_query='BSND',
-                layout_key='BSND',
+                actual_seq_qlen=actual_seq_qlen,
+                actual_seq_klen=actual_seq_klen,
+                layout_query=layout,
+                layout_key=layout,
             )
         return topk_indices, q, k, weights
     else:
-        # Index scores [batch, seqlen, seqlen]
+        # Index scores [batch, seqlen, seqlen] or [T, T] for TND
         index_scores = self._compute_index_scores(q, weights, k)
         if mask is not None:
             if mask.dtype != index_scores.dtype:
@@ -326,7 +375,7 @@ def forward_with_scores(
         # Select top-k indices
         # =========================================
         topk_k = min(self.index_topk, seqlen)
-        # shape topk_indices [batch, seqlen, index_topk]
+        # shape topk_indices [batch, seqlen, index_topk] or [T, index_topk] for TND
         topk_indices = index_scores.topk(topk_k, dim=-1)[1]
 
         return index_scores, topk_indices
@@ -342,9 +391,16 @@ def fused_lightning_indexer(q: torch.Tensor,
                             layout_query='BSND',
                             layout_key='BSND',
                             ):
-    q = rearrange(q, 's b h d -> b s h d').to(torch.bfloat16)
-    k = rearrange(k, 's b h d -> b s h d').to(torch.bfloat16)
-    weights = rearrange(weights, 's b d -> b s d').to(torch.bfloat16)
+    is_tnd = layout_query == 'TND'
+    if is_tnd:
+        # TND: [T, N, D] — no rearrange needed
+        q = q.to(torch.bfloat16)
+        k = k.to(torch.bfloat16)
+        weights = weights.to(torch.bfloat16)
+    else:
+        q = rearrange(q, 's b h d -> b s h d').to(torch.bfloat16)
+        k = rearrange(k, 's b h d -> b s h d').to(torch.bfloat16)
+        weights = rearrange(weights, 's b d -> b s d').to(torch.bfloat16)
 
     topk_indices, topk_score = torch_npu.npu_lightning_indexer(
         q,
@@ -363,41 +419,54 @@ def fused_lightning_indexer(q: torch.Tensor,
     return topk_indices, topk_score
 
 
-def fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope, key_rope, softmax_scale):
+def fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope, key_rope, softmax_scale,
+                                      packed_seq_params=None):
     # ===================================
     # Run sparse attention kernel
     # ===================================
-    # use fused sparse_flash_attention
-    query, key, value = [
-        rearrange(x, 's b n d -> b s n d')
-        for x in [query, key, value]
-    ]
+    is_tnd = packed_seq_params is not None
 
-    topk_indices = topk_indices.unsqueeze(2)
+    if is_tnd:
+        # TND: tensors are [T, N, D], no rearrange needed
+        actual_seq_qlen = packed_seq_params.cu_seqlens_q.to(torch.int32)
+        actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.to(torch.int32)
+        layout = 'TND'
+    else:
+        query, key, value = [
+            rearrange(x, 's b n d -> b s n d')
+            for x in [query, key, value]
+        ]
+        query_rope = rearrange(query_rope, 's b h d -> b s h d')
+        key_rope = rearrange(key_rope, 's b h d -> b s h d')
+        layout = 'BSND'
 
-    query_rope = rearrange(query_rope, 's b h d -> b s h d')
-    key_rope = rearrange(key_rope, 's b h d -> b s h d')
+        batch_size = query.shape[0]
+        seq_len = query.shape[1]
+        actual_seq_qlen = torch.full((batch_size,), seq_len, dtype=torch.int32, device=query.device)
+        actual_seq_kvlen = actual_seq_qlen
 
-    actual_seq_len = torch.tensor([query.shape[1]], dtype=torch.int32, device=query.device)
+    if not is_tnd:
+        topk_indices = topk_indices.unsqueeze(2)
 
     output, softmax_max, softmax_sum, *_ = torch_npu.npu_sparse_flash_attention(
         query, key, value,
         sparse_indices=topk_indices.to(torch.int32),
         block_table=None,
-        actual_seq_lengths_query=actual_seq_len,
-        actual_seq_lengths_kv=actual_seq_len,
+        actual_seq_lengths_query=actual_seq_qlen,
+        actual_seq_lengths_kv=actual_seq_kvlen,
         query_rope=query_rope,
         key_rope=key_rope,
         scale_value=softmax_scale,
         sparse_block_size=1,
-        layout_query='BSND',
-        layout_kv='BSND',
+        layout_query=layout,
+        layout_kv=layout,
         sparse_mode=3,
         attention_mode=2,
         return_softmax_lse=True,
     )
 
-    output = rearrange(output, 'b s h d -> s b h d')
+    if not is_tnd:
+        output = rearrange(output, 'b s h d -> s b h d')
 
     return output, softmax_max, softmax_sum
 
@@ -445,10 +514,15 @@ def fused_compute_dsa_indexer_kl_loss(
 
     args = get_args()
 
+    use_tnd = packed_seq_params is not None
+    actual_seq_qlen = packed_seq_params.cu_seqlens_q.to(torch.int32) if use_tnd else None
+    actual_seq_klen = packed_seq_params.cu_seqlens_kv.to(torch.int32) if use_tnd else None
+    layout = 'TND' if use_tnd else 'BSND'
+
     if tensor_model_parallel_size > 1:
         tp_group = mpu.get_tensor_model_parallel_group()
-        total_query = allgather_head_dim(query, tensor_model_parallel_size, tp_group)
-        total_query_rope = allgather_head_dim(q_pos_emb, tensor_model_parallel_size, tp_group)
+        total_query = allgather_head_dim(query, tensor_model_parallel_size, tp_group, layout=layout)
+        total_query_rope = allgather_head_dim(q_pos_emb, tensor_model_parallel_size, tp_group, layout=layout)
 
         softmax_max = gather_from_tensor_model_parallel_region(softmax_max)
         softmax_sum = gather_from_tensor_model_parallel_region(softmax_sum)
@@ -472,9 +546,9 @@ def fused_compute_dsa_indexer_kl_loss(
             scale_value=softmax_scale,
             query_rope=total_query_rope,
             key_rope=k_pos_emb,
-            actual_seq_qlen=None,
-            actual_seq_klen=None,
-            layout='BSND',
+            actual_seq_qlen=actual_seq_qlen,
+            actual_seq_klen=actual_seq_klen,
+            layout=layout,
             cp_group=cp_group,
             cp_stream=cp_stream,
         )
@@ -491,9 +565,9 @@ def fused_compute_dsa_indexer_kl_loss(
             scale_value=softmax_scale,
             query_rope=total_query_rope,
             key_rope=k_pos_emb,
-            actual_seq_qlen=None,
-            actual_seq_klen=None,
-            layout='BSND',
+            actual_seq_qlen=actual_seq_qlen,
+            actual_seq_klen=actual_seq_klen,
+            layout=layout,
         )
 
     indexer_loss = loss * loss_coeff
@@ -522,16 +596,21 @@ def fused_sparse_lightning_indexer_kl_loss(
 ):
     """NPU Sparse Lightning Indexer KL Divergence Loss Function"""
 
-    query, key, query_index, key_index, weights = [
-        x.transpose(0, 1)
-        for x in [query, key, query_index, key_index, weights]
-    ]
+    is_tnd = layout == 'TND'
+    if is_tnd:
+        # TND: tensors are [T, N, D] or [T, D], no B dimension to transpose
+        sq = query.shape[0]
+    else:
+        query, key, query_index, key_index, weights = [
+            x.transpose(0, 1)
+            for x in [query, key, query_index, key_index, weights]
+        ]
+        if query_rope is not None:
+            query_rope, key_rope = [x.transpose(0, 1) for x in [query_rope, key_rope]]
+        sq = query.shape[1]
 
-    topk_indices = topk_indices.unsqueeze(2)
-    if query_rope is not None:
-        query_rope, key_rope = [x.transpose(0, 1) for x in [query_rope, key_rope]]
-
-    sq = query.shape[1]
+    if not is_tnd:
+        topk_indices = topk_indices.unsqueeze(2)
     loss = LILossTrain.apply(query, key, query_index, key_index, weights, topk_indices, softmax_max, softmax_sum,
                              scale_value, query_rope, key_rope, actual_seq_qlen, actual_seq_klen, layout, sparse_mode,
                              pre_tokens, next_tokens, )

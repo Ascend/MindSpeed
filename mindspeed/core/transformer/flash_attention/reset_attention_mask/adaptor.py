@@ -680,6 +680,36 @@ def apply_rotary_pos_emb_thd(
     return apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved, multi_latent_attention, mscale)
 
 
+def dsa_apply_rotary_pos_emb_thd(
+        t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False,
+        multi_latent_attention: bool = False, mscale: float = 1.0, cp_group=None
+) -> Tensor:
+    """DSA-specific RoPE for `thd` format.
+
+    Unlike the standard MLA path which passes packed_seq_params as cu_seqlens
+    (with .position_ids attribute), DSA passes a plain Tensor of cumulative
+    sequence lengths. This function derives position IDs from the Tensor values.
+
+    Args:
+        t (Tensor): Input tensor of shape [T, H, D]
+        cu_seqlens (Tensor): Plain Tensor of cumulative sequence lengths, e.g. [0, 1024, 2048]
+        freqs (Tensor): Rotary positional embedding of shape [max_s, 1, 1, d]
+    """
+    if cu_seqlens.numel() <= 1:
+        position_ids = torch.arange(t.size(0), device=t.device, dtype=torch.long)
+    else:
+        seg_starts = cu_seqlens[:-1].tolist()
+        seg_ends = cu_seqlens[1:].tolist()
+        position_ids = torch.cat([
+            torch.arange(end - start, device=t.device, dtype=torch.long)
+            for start, end in zip(seg_starts, seg_ends)
+        ])
+    freqs = freqs[position_ids]
+
+    output = apply_rotary_pos_emb_bshd(t.unsqueeze(1), freqs, rotary_interleaved, multi_latent_attention, mscale)
+    return output.squeeze(1)
+
+
 def Eod_get_rotary_seq_len(
         self,
         inference_context: BaseInferenceContext,

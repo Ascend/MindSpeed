@@ -577,15 +577,21 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
                 )
 
         # Multiply by up v if absorbing
-        core_attn_out = core_attn_out.view(core_attn_out.size(0), core_attn_out.size(1), self.num_attention_heads_per_partition, -1)
+        is_tnd = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
         v_weight = self.linear_v_up_proj.weight
         W_UV = v_weight.view(self.num_attention_heads_per_partition, self.config.v_head_dim, -1)
         W_UV_T = W_UV.permute(0, 2, 1).contiguous()
-        core_attn_out = torch.einsum("sbhc,hcv->sbhv", core_attn_out, W_UV_T)
-        core_attn_out = core_attn_out.contiguous()
 
-        # Flatten back: [seq, batch, num_heads * v_head_dim]
-        core_attn_out = core_attn_out.view(core_attn_out.size(0), core_attn_out.size(1), -1)
+        if is_tnd:
+            # TND: core_attn_out is [T, N, D] — no batch dim to reshape
+            # einsum: [T, N, v_head_dim] x [N, v_head_dim, hidden] -> [T, N, hidden]
+            core_attn_out = torch.einsum("thc,hcv->thv", core_attn_out, W_UV_T)
+        else:
+            core_attn_out = core_attn_out.view(core_attn_out.size(0), core_attn_out.size(1), self.num_attention_heads_per_partition, -1)
+            core_attn_out = torch.einsum("sbhc,hcv->sbhv", core_attn_out, W_UV_T)
+            # Flatten back: [seq, batch, num_heads * v_head_dim]
+            core_attn_out = core_attn_out.view(core_attn_out.size(0), core_attn_out.size(1), -1)
+        core_attn_out = core_attn_out.contiguous()
 
         if packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
             # reshape to same output shape as unpacked case
@@ -809,7 +815,9 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             # Compute query components. Multiply by up k if absorbing
             kv_nope_weight = self.linear_k_up_proj.weight
             W_UK = kv_nope_weight.view(self.num_attention_heads_per_partition, self.config.qk_head_dim, -1)
-            q_no_pe = torch.einsum("sbhd,hdk->sbhk", q_no_pe, W_UK)
+            # TND: q_no_pe is 3D [T, N, qk_head_dim]; BSND: 4D [S, B, N, qk_head_dim]
+            einsum_pattern = "thd,hdk->thk" if q_no_pe.ndim == 3 else "sbhd,hdk->sbhk"
+            q_no_pe = torch.einsum(einsum_pattern, q_no_pe, W_UK)
             # shape query [num_tokens, n, (qk_head_dim + v_head_dim)]
             query = torch.cat([q_no_pe, q_pos_emb], dim=-1)
 
