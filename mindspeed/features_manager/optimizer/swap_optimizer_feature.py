@@ -27,8 +27,8 @@ class SwapOptimizerFeature(MindSpeedFeature):
             raise ValueError("Only support swap-optimizer when using distributed optimizer")
 
     def register_patches(self, patch_manager, args):
-        if args.swap_optimizer:
-            if 'adam' in args.optimizer:
+        if getattr(args, self.feature_name, None):
+            if 'adam' in getattr(args, 'optimizer', 'adam'):
                 from mindspeed.core.optimizer.swap_optimizer.swap_optimizer import (
                     SwapDistributedOptimizer,
                     swap_adamw_step,
@@ -38,7 +38,7 @@ class SwapOptimizerFeature(MindSpeedFeature):
                     'megatron.core.optimizer.distrib_optimizer.DistributedOptimizer', SwapDistributedOptimizer
                 )
                 patch_manager.register_patch('mindspeed.core.optimizer.adamw.AdamW.step', swap_adamw_step)
-            elif 'muon' in args.optimizer:
+            elif 'muon' in getattr(args, 'optimizer', 'adam'):
                 from mindspeed.core.optimizer.swap_muon.swap_muon import (
                     swap_layer_wise_distributed_optimizer_init_wrapper,
                     swap_muon_step,
