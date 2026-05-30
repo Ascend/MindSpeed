@@ -16,13 +16,14 @@ class CurrentScalingRecipe(Recipe):
             return tensor
         if is_fp8_tensor(tensor):  # if dtype is fp8
             return tensor
+        dst_type_max = self.fp8_format.max if self.quant_dtype == torch_npu.hifloat8 else 0
         quant_tensor, scale = self.run_quantizer(
             tensor,
             key,
             torch_npu.npu_dynamic_quant,
             dst_type=self.quant_dtype,
             quant_mode='pertensor',
-            dst_type_max=self.fp8_format.max,
+            dst_type_max=dst_type_max,
         )
         return Float8Tensor(quant_tensor, self.quant_dtype, scale, dtype=tensor.dtype)
 
@@ -36,8 +37,9 @@ class TensorwiseMatMul(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, weight, need_grad=True):
         qdtype = get_quant_dtype()
+        dst_type_max = FormatEnum.HIF8_15.value.max if qdtype.x == torch_npu.hifloat8 else 0
         x_quant, x_scale = torch_npu.npu_dynamic_quant(
-            view_as_n_dim(x), dst_type=qdtype.x, quant_mode='pertensor', dst_type_max=FormatEnum.HIF8_15.value.max
+            view_as_n_dim(x), dst_type=qdtype.x, quant_mode='pertensor', dst_type_max=dst_type_max
         )
         w_quant, w_scale = reuse_or_quantize(
             weight,
@@ -45,7 +47,7 @@ class TensorwiseMatMul(torch.autograd.Function):
             torch_npu.npu_dynamic_quant,
             dst_type=qdtype.w,
             quant_mode='pertensor',
-            dst_type_max=FormatEnum.HIF8_15.value.max,
+            dst_type_max=dst_type_max,
         )
 
         output = torch_npu.npu_quant_matmul(
@@ -62,11 +64,12 @@ class TensorwiseMatMul(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grads: torch.Tensor):
         qdtype = get_quant_dtype()
+        dst_type_max = FormatEnum.HIF8_224.value.max if qdtype.x == torch_npu.hifloat8 else 0
         grads_quant, grads_scale = torch_npu.npu_dynamic_quant(
             view_as_n_dim(grads),
             dst_type=qdtype.grads,
             quant_mode='pertensor',
-            dst_type_max=FormatEnum.HIF8_224.value.max,
+            dst_type_max=dst_type_max,
         )
         x_quant, x_scale, w_quant, w_scale = ctx.x_quant, ctx.x_scale, ctx.w_quant, ctx.w_scale
         dx = torch_npu.npu_quant_matmul(

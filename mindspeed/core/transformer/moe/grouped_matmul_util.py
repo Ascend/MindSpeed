@@ -284,8 +284,9 @@ class TensorwiseGMMFunction(BaseGMMFunction):
     def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         g_size = len(group_list)
+        dst_type_max = FormatEnum.HIF8_15.value.max if qdtype == torch_npu.hifloat8 else 0
         x_quant, x_scale = torch_npu.npu_dynamic_quant(
-            x.view(g_size, -1), dst_type=qdtype.x, quant_mode='pertensor', dst_type_max=FormatEnum.HIF8_15.value.max
+            x.view(g_size, -1), dst_type=qdtype.x, quant_mode='pertensor', dst_type_max=dst_type_max
         )
         x_scale = x_scale.expand(g_size)
         w_quant, w_scale = reuse_or_quantize(
@@ -293,7 +294,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             TensorKey.weight,
             torch_npu.npu_dynamic_quant,
             dst_type=qdtype.w,
-            dst_type_max=FormatEnum.HIF8_15.value.max,
+            dst_type_max=dst_type_max,
         )
         x_quant = x_quant.view(x.shape)
         w_quant = w_quant.view(weight.shape)
@@ -356,8 +357,9 @@ class TensorwiseGMMFunction(BaseGMMFunction):
     def quant_grad(cls, ctx, grad, g_size, dst_type):
         if hasattr(ctx, "saved_grads"):
             return ctx.saved_grads
+        dst_type_max = FormatEnum.HIF8_224.value.max if dst_type == torch_npu.hifloat8 else 0
         grad_quant, grad_scale = torch_npu.npu_dynamic_quant(
-            grad.view(g_size, -1), dst_type=dst_type, quant_mode='pertensor', dst_type_max=FormatEnum.HIF8_224.value.max
+            grad.view(g_size, -1), dst_type=dst_type, quant_mode='pertensor', dst_type_max=dst_type_max
         )
         grad_scale = grad_scale.expand(g_size)
         grad_quant = grad_quant.view(grad.shape)
