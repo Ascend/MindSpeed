@@ -25,9 +25,14 @@ class ScaleMeta:
         elif qtype == "hif8_224":
             self.fp8_max = 224
             self.qtype = 3
-        elif qtype == "mxfp8":
+        elif qtype == "mxfp8_e4m3":
             self.fp8_max = None
             self.qtype = 4
+            self.momentum_type = 1
+        elif qtype == "mxfp8_e5m2":
+            self.fp8_max = None
+            self.qtype = 4
+            self.momentum_type = 2
         elif qtype == "fp16":
             self.fp8_max = 65503
             self.qtype = 5
@@ -50,24 +55,33 @@ class ScaleMeta:
         else:
             self.scale = None
             self.scale_inv = None
-        self.block_size = 32 if qtype == "mxfp8" and block_size is None else block_size
+        self.block_size = 32 if qtype.startswith("mxfp8") and block_size is None else block_size
         self._mxfp8_converted = False
 
     def quantization(self, fp32_tensor: torch.Tensor):
         if self.qtype == 4:
-            quant_tensor, sf = torch_npu.npu_dynamic_mx_quant(
-                fp32_tensor.to(torch.bfloat16), block_size=self.block_size, dst_type=torch.float8_e4m3fn
-            )
+            if self.momentum_type == 1:
+                quant_tensor, sf = torch_npu.npu_dynamic_mx_quant(
+                    fp32_tensor.to(torch.bfloat16),
+                    block_size=self.block_size,
+                    dst_type=torch.float8_e4m3fn,
+                    scale_alg=0,
+                )
+            elif self.momentum_type == 2:
+                quant_tensor, sf = torch_npu.npu_dynamic_mx_quant(
+                    fp32_tensor.to(torch.bfloat16), block_size=self.block_size, dst_type=torch.float8_e5m2, scale_alg=0
+                )
+            else:
+                raise AssertionError('mxfp8 quantization only supports 2 momentum types.')
+
             sf_fp32 = sf.to(torch.float32)
 
-            rounded_codes = torch.clamp(torch.round(sf_fp32), min=0.0, max=254.0)
-            scale_from_codes = torch.pow(2.0, rounded_codes - 127.0)
-            scale_from_codes = torch.clamp(scale_from_codes, min=1e-8)
+            scale_from_codes = torch.pow(2.0, sf_fp32 - 127.0)
             best_scale = 1.0 / scale_from_codes
             best_scale_inv = scale_from_codes
 
-            self.scale = best_scale.view(-1).to(torch.float32)
-            self.scale_inv = best_scale_inv.view(-1).to(torch.float32)
+            self.scale = best_scale.view(-1)
+            self.scale_inv = best_scale_inv.view(-1)
             self._mxfp8_converted = True  # already decoded/selected
         else:
             amax_value = self.compute_amax(fp32_tensor)
@@ -161,21 +175,27 @@ class ScaleMeta:
             self.scale_inv = self.scale_inv.to(device)
 
 
+def f_signed_power(x: torch.Tensor, alpha: float = 1.0) -> torch.Tensor:
+    """Calculate the signed power of the input tensor"""
+    if alpha == 1.0:
+        return x.clone()
+
+    abs_pow = x.abs().pow_(alpha)
+
+    return torch.where(x >= 0, abs_pow, -abs_pow)
+
+
 def cal_hcf(x, y):
     """calculate the highest common factor"""
-    if x > y:
-        smaller = y
-    else:
-        smaller = x
-    for i in range(1, smaller + 1):
-        if ((x % i == 0) and (y % i == 0)):
-            res = i
-    return res
+    return math.gcd(x, y)
 
 
 def _dequantize_tensor(tensor: torch.Tensor) -> torch.Tensor:
     if hasattr(tensor, "meta") and tensor.meta is not None:
-        return tensor.meta.dequantization(tensor.data)
+        dequant_tensor = tensor.meta.dequantization(tensor.data)
+        if tensor.meta.qtype == 4:
+            dequant_tensor = f_signed_power(dequant_tensor.data, alpha=0.5)  # apply k-scaling
+        return dequant_tensor
     if tensor.dtype != torch.float32:
         return tensor.to(torch.float32)
     return tensor
@@ -183,6 +203,8 @@ def _dequantize_tensor(tensor: torch.Tensor) -> torch.Tensor:
 
 def _requantize_tensor(storage_tensor: torch.Tensor, tensor_fp32: torch.Tensor):
     if hasattr(storage_tensor, "meta") and storage_tensor.meta is not None:
+        if storage_tensor.meta.qtype == 4:
+            tensor_fp32 = f_signed_power(tensor_fp32.data, alpha=2.0)  # apply inverse k-scaling
         storage_tensor.data.copy_(storage_tensor.meta.quantization(tensor_fp32.data))
     else:
         if storage_tensor.dtype != tensor_fp32.dtype:
@@ -192,20 +214,20 @@ def _requantize_tensor(storage_tensor: torch.Tensor, tensor_fp32: torch.Tensor):
 
 
 def adamw(
-        params: List[Tensor],
-        grads: List[Tensor],
-        exp_avgs: List[Tensor],
-        exp_avg_sqs: List[Tensor],
-        max_exp_avg_sqs: List[Tensor],
-        step_tensor: Tensor,
-        *,
-        amsgrad: bool,
-        beta1: float,
-        beta2: float,
-        lr: float,
-        weight_decay: float,
-        eps: float,
-        maximize: bool,
+    params: List[Tensor],
+    grads: List[Tensor],
+    exp_avgs: List[Tensor],
+    exp_avg_sqs: List[Tensor],
+    max_exp_avg_sqs: List[Tensor],
+    step_tensor: Tensor,
+    *,
+    amsgrad: bool,
+    beta1: float,
+    beta2: float,
+    lr: float,
+    weight_decay: float,
+    eps: float,
+    maximize: bool,
 ):
     for i, param in enumerate(params):
         grad_tensor = grads[i]
@@ -244,20 +266,20 @@ def adamw(
 
 class FusedTorchAdamW(TorchAdamW):
     def __init__(
-            self,
-            params,
-            lr: Union[float, Tensor] = 1e-3,
-            betas: Tuple[float, float] = (0.9, 0.999),
-            eps: float = 1e-8,
-            weight_decay: float = 1e-2,
-            amsgrad: bool = False,
-            *,
-            maximize: bool = False,
-            foreach: Optional[bool] = None,
-            capturable: bool = False,
-            differentiable: bool = False,
-            fused: Optional[bool] = None,
-            **kwargs,
+        self,
+        params,
+        lr: Union[float, Tensor] = 1e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+        amsgrad: bool = False,
+        *,
+        maximize: bool = False,
+        foreach: Optional[bool] = None,
+        capturable: bool = False,
+        differentiable: bool = False,
+        fused: Optional[bool] = None,
+        **kwargs,
     ):
         super().__init__(
             params,
@@ -282,26 +304,26 @@ class AdamW(Optimizer):
     }
 
     def __init__(
-            self,
-            params,
-            lr: Union[float, Tensor] = 1e-3,
-            betas: Tuple[float, float] = (0.9, 0.999),
-            eps: float = 1e-8,
-            weight_decay: float = 1e-2,
-            amsgrad: bool = False,
-            *,
-            maximize: bool = False,
-            **kwargs,
+        self,
+        params,
+        lr: Union[float, Tensor] = 1e-3,
+        betas: Tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+        amsgrad: bool = False,
+        *,
+        maximize: bool = False,
+        **kwargs,
     ):
-        if not 0.0 <= lr:
+        if 0.0 > lr:
             raise ValueError(f"Invalid learning rate: {lr}")
-        if not 0.0 <= eps:
+        if 0.0 > eps:
             raise ValueError(f"Invalid epsilon value: {eps}")
         if not 0.0 <= betas[0] < 1.0:
             raise ValueError(f"Invalid beta parameter at index 0: {betas[0]}")
         if not 0.0 <= betas[1] < 1.0:
             raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
-        if not 0.0 <= weight_decay:
+        if 0.0 > weight_decay:
             raise ValueError(f"Invalid weight_decay value: {weight_decay}")
         defaults = dict(
             lr=lr,
@@ -331,7 +353,7 @@ class AdamW(Optimizer):
 
     def _get_state_tensor(self, state: torch.Tensor, qtype: str):
         if qtype != "fp32":
-            if qtype == "mxfp8":
+            if qtype.startswith("mxfp8"):
                 block_size = 32
             else:
                 block_size = cal_hcf(state.numel(), 128)
@@ -348,7 +370,7 @@ class AdamW(Optimizer):
         if self.args.quant_states == "hif8":
             return "hif8_15", "hif8_224"
         if self.args.quant_states == "mxfp8":
-            return "mxfp8", "mxfp8"
+            return "mxfp8_e4m3", "mxfp8_e5m2"
         if self.args.quant_states == "fp16":
             return "fp16", "fp16"
         return "fp32", "fp32"
@@ -371,8 +393,9 @@ class AdamW(Optimizer):
             raise ValueError("loaded state dict contains a parameter group that doesn't match optimizer")
 
         id_map = dict(
-            zip(chain.from_iterable(g['params'] for g in saved_groups),
-                chain.from_iterable(g['params'] for g in groups))
+            zip(
+                chain.from_iterable(g['params'] for g in saved_groups), chain.from_iterable(g['params'] for g in groups)
+            )
         )
 
         def _cast(param, value, param_id=None, param_groups=None, key=None):
@@ -394,14 +417,10 @@ class AdamW(Optimizer):
                 return value_device
             if isinstance(value, dict):
                 return {
-                    k: _cast(param, v, param_id=param_id, param_groups=param_groups, key=k)
-                    for k, v in value.items()
+                    k: _cast(param, v, param_id=param_id, param_groups=param_groups, key=k) for k, v in value.items()
                 }
             if isinstance(value, Iterable):
-                return type(value)(
-                    _cast(param, v, param_id=param_id, param_groups=param_groups)
-                    for v in value
-                )
+                return type(value)(_cast(param, v, param_id=param_id, param_groups=param_groups) for v in value)
             return value
 
         state = defaultdict(dict)
@@ -431,7 +450,6 @@ class AdamW(Optimizer):
 
         for group in self.param_groups:
             model_params = []
-            master_params = []
             grads = []
             exp_avgs = []
             exp_avg_sqs = []
@@ -473,10 +491,12 @@ class AdamW(Optimizer):
                     exp_avg_qtype, exp_avg_sq_qtype = self._get_state_qtype(p)
                     # Exponential moving average of gradient values
                     state['exp_avg'] = self._get_state_tensor(
-                        torch.zeros_like(p, memory_format=torch.preserve_format), exp_avg_qtype)
+                        torch.zeros_like(p, memory_format=torch.preserve_format), exp_avg_qtype
+                    )
                     # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = self._get_state_tensor(
-                        torch.zeros_like(p, memory_format=torch.preserve_format), exp_avg_sq_qtype)
+                        torch.zeros_like(p, memory_format=torch.preserve_format), exp_avg_sq_qtype
+                    )
                     if amsgrad:
                         # Maintains max of all exp. moving avg. of sq. grad. values
                         state['max_exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
