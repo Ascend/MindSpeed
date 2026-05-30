@@ -65,6 +65,7 @@ repos:
           "--config=pre-commit/pyproject.toml",
           "--quiet",
         ]
+        additional_dependencies: ["bandit[toml]"]
 
   # typos
   - repo: https://gitcode.com/gh_mirrors/ty/typos

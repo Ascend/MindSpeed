@@ -1,6 +1,5 @@
 # Copyright (c) 2025, Huawei Technologies.
 # All rights reserved.
-import os
 import torch
 import torch.nn.functional as F
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
@@ -9,6 +8,7 @@ from mindspeed.core.transformer.moe.moe_feature import grouped_gemm_util as gg
 from mindspeed.model.transformer import should_recompute_activation
 
 from mindspeed.core.qat.w4a16_fake_quantization import W4A16FakeQuantization
+from mindspeed.core.qat.w8a16_fake_quantization import W8A16FakeQuantization
 
 
 class GmmExpertsImpl:
@@ -32,10 +32,18 @@ class GmmExpertsImpl:
         self.layer_number = None
         self.weight1 = None
         self.weight2 = None
+        self.activation_checkpoint_manager = None
         super().__init__(num_local_experts, config)
         if self.config.gated_linear_unit:
-            assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu.'
+            assert self.config.activation_func == F.silu, 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
+
+        def activation_func_with_probs(x, probs):
+            dtype = x.dtype
+            res = self.activation_func(x) * probs
+            return res.to(dtype)
+
+        self.activation_func_with_probs = activation_func_with_probs
 
     def forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs=None):
         """Forward of GroupedMLP
@@ -48,64 +56,97 @@ class GmmExpertsImpl:
         Return:
             output (torch.Tensor): The output of the local experts.
         """
-        is_recompute_activation = should_recompute_activation(
-            self.layer_number) and not self.config.moe_alltoall_overlap_comm and not \
-                                      self.config.moe_allgather_overlap_comm
+        is_recompute_activation = (
+            should_recompute_activation(self.layer_number)
+            and not self.config.moe_alltoall_overlap_comm
+            and not self.config.moe_allgather_overlap_comm
+        )
 
         gemm_fusion = self.config.gemm_gradient_accumulation_fusion
 
         quant_w4a16_enable = False
+        quant_w8a16_enable = False
+        quant_qat_enable = False
+        fakequant_func = None
         scheme = getattr(self.config, 'qat_scheme', None)
-        if scheme == "w4a16-mxfp4" or scheme == "w4a16-mxfp4-moe-only":
+        if scheme in ("w4a16-mxfp4", "w4a16-mxfp4-moe-only"):
             quant_w4a16_enable = True
+            quant_qat_enable = True
             fakequant_func = W4A16FakeQuantization.apply
+        elif scheme in ("w8a16-mxfp8", "w8a16-mxfp8-moe-only"):
+            quant_w8a16_enable = True
+            quant_qat_enable = True
+            fakequant_func = W8A16FakeQuantization.apply
 
         if permuted_local_hidden_states.nelement() != 0:
             from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
+
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
             w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
             quant_gmm_func = get_gmm_quant_func()
             if quant_gmm_func:
-                fc1_output = quant_gmm_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1)
+                fc1_output = quant_gmm_func.gmm_apply(
+                    permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1
+                )
             else:
-                if quant_w4a16_enable:
+                if quant_qat_enable:
                     w1 = self.weight1.view(-1, self.config.hidden_size)
                     w1 = fakequant_func(w1, [1, 32], False).reshape(self.num_local_experts, self.config.hidden_size, -1)
                 fc1_output = gg.ops.gmm(
-                    permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
-                    original_weight=self.weight1
+                    permuted_local_hidden_states,
+                    w1,
+                    tokens_per_expert,
+                    trans_b=False,
+                    gemm_fusion=gemm_fusion,
+                    original_weight=self.weight1,
                 )
             if not is_recompute_activation:
                 intermediate_parallel = self.activation_func_with_probs(fc1_output, permuted_probs.unsqueeze(-1))
             else:
                 self.activation_checkpoint_manager = CheckpointWithoutOutput()
-                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func_with_probs,
-                                                                                      False,
-                                                                                      fc1_output,
-                                                                                      permuted_probs.unsqueeze(-1))
+                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(
+                    self.activation_func_with_probs, False, fc1_output, permuted_probs.unsqueeze(-1)
+                )
             if quant_gmm_func:
                 fc2_output = quant_gmm_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
-                if quant_w4a16_enable:
+                if quant_qat_enable:
                     w2 = self.weight2.view(self.num_local_experts * self.config.hidden_size, -1)
                     w2 = fakequant_func(w2, [1, 32], False).reshape(self.num_local_experts, -1, self.config.hidden_size)
-                fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
-                                        gemm_fusion=gemm_fusion, original_weight=self.weight2)
+                fc2_output = gg.ops.gmm(
+                    intermediate_parallel,
+                    w2,
+                    tokens_per_expert,
+                    trans_b=False,
+                    gemm_fusion=gemm_fusion,
+                    original_weight=self.weight2,
+                )
         else:
             assert torch.count_nonzero(tokens_per_expert) == 0
             w1 = self.weight1.view(self.config.hidden_size, -1)
             w2 = self.weight2.view(-1, self.config.hidden_size)
             if quant_w4a16_enable:
-                w2 = fakequant_func(self.weight1.view(-1, self.config.hidden_size), [1, 32], False).reshape(self.config.hidden_size, -1)
-                w2 = fakequant_func(self.weight2.view(-1, self.config.hidden_size), [1, 32], False).reshape(-1, self.config.hidden_size)
+                w1 = fakequant_func(self.weight1.view(-1, self.config.hidden_size), [1, 32], False).reshape(
+                    self.config.hidden_size, -1
+                )
+                w2 = fakequant_func(self.weight2.view(-1, self.config.hidden_size), [1, 32], False).reshape(
+                    -1, self.config.hidden_size
+                )
+            elif quant_w8a16_enable:
+                w1 = fakequant_func(self.weight1.view(-1, self.config.hidden_size), [1, 32], False).reshape(
+                    self.config.hidden_size, -1
+                )
+                w2 = fakequant_func(self.weight2.view(-1, self.config.hidden_size), [1, 32], False).reshape(
+                    -1, self.config.hidden_size
+                )
             h = torch.matmul(permuted_local_hidden_states, w1)
             if not is_recompute_activation:
                 intermediate_parallel = self.activation_func_with_probs(h, permuted_probs.unsqueeze(-1))
             else:
                 self.activation_checkpoint_manager = CheckpointWithoutOutput()
-                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func_with_probs,
-                                                                                      False,
-                                                                                      h, permuted_probs.unsqueeze(-1))
+                intermediate_parallel = self.activation_checkpoint_manager.checkpoint(
+                    self.activation_func_with_probs, False, h, permuted_probs.unsqueeze(-1)
+                )
             h = torch.matmul(intermediate_parallel, w2)
             fc2_output = h
 

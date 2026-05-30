@@ -10,13 +10,19 @@
 
 ## 使用方法
 
-分别支持以下两种模式中开启MXFP4低精量化功能，需在训练脚本中加入以下配置：
+分别支持以下模式开启低精量化功能，需在训练脚本中加入以下配置：
 
 1.所有线性层使用开启MXFP4低精量化功能：
 `--qat-scheme w4a16-mxfp4`
 
 2.仅在MOE层使用开启MXFP4低精量化功能：
 `--qat-scheme w4a16-mxfp4-moe-only`
+
+3.所有线性层使用开启MXFP8低精量化功能：
+`--qat-scheme w8a16-mxfp8`
+
+4.仅在MOE层使用开启MXFP8低精量化功能：
+`--qat-scheme w8a16-mxfp8-moe-only`
 
 ### 注意
 
