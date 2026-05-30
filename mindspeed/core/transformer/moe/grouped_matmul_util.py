@@ -8,7 +8,7 @@ from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from mindspeed.ops.npu_matmul_add import is_a5
-from mindspeed.te.pytorch.fp8.constants import Fp8Recipe, TensorKey
+from mindspeed.te.pytorch.fp8.constants import FormatEnum, Fp8Recipe, TensorKey
 from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.utils import get_quant_dtype
 
@@ -285,9 +285,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
         qdtype = get_quant_dtype()
         g_size = len(group_list)
         x_quant, x_scale = torch_npu.npu_dynamic_quant(
-            x.view(g_size, -1),
-            dst_type=qdtype.x,
-            quant_mode='pertensor',
+            x.view(g_size, -1), dst_type=qdtype.x, quant_mode='pertensor', dst_type_max=FormatEnum.HIF8_15.value.max
         )
         x_scale = x_scale.expand(g_size)
         w_quant, w_scale = reuse_or_quantize(
@@ -295,6 +293,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             TensorKey.weight,
             torch_npu.npu_dynamic_quant,
             dst_type=qdtype.w,
+            dst_type_max=FormatEnum.HIF8_15.value.max,
         )
         x_quant = x_quant.view(x.shape)
         w_quant = w_quant.view(weight.shape)
@@ -358,9 +357,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
         if hasattr(ctx, "saved_grads"):
             return ctx.saved_grads
         grad_quant, grad_scale = torch_npu.npu_dynamic_quant(
-            grad.view(g_size, -1),
-            dst_type=dst_type,
-            quant_mode='pertensor',
+            grad.view(g_size, -1), dst_type=dst_type, quant_mode='pertensor', dst_type_max=FormatEnum.HIF8_224.value.max
         )
         grad_scale = grad_scale.expand(g_size)
         grad_quant = grad_quant.view(grad.shape)
