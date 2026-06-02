@@ -28,6 +28,7 @@ from mindspeed.features_manager.megatron_basic.transformer_engine_basic import T
 from mindspeed.features_manager.optimizer.muon_optimizer_feature import MuonOptimizerFeature
 from mindspeed.features_manager.qat.qat_quant_engine import QATQuantEngineFeature
 from mindspeed.features_manager.pipeline_parallel import NoopLayersFeature
+from mindspeed.features_manager.pipeline_parallel import PipelineModelParallelLayoutFeature
 from mindspeed.features_manager.pipeline_parallel.optimize_p2p_comm import OptimizeP2PCommFeature
 from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import (
     RiPipeSchedulesBubbleFeature,
@@ -208,6 +209,7 @@ def add_pipeline_parallel_features(features_list: List[MindSpeedFeature]):
             VariableSequenceLengthFeature(),
             MultiParameterFeature(),
             OptimizeSendRecvCommFeature(),
+            PipelineModelParallelLayoutFeature(),
             UnalignedPipelineFeature(),
             DualpipeVFeature(),
         ]

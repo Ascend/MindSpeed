@@ -1,7 +1,6 @@
-
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
-from argparse import ArgumentParser, Namespace
+from argparse import Namespace
 
 from mindspeed.features_manager.feature import MindSpeedFeature
 from mindspeed.patch_utils import is_megatron_training_available, MindSpeedPatchesManager
@@ -17,7 +16,6 @@ class OptimizeP2PCommFeature(MindSpeedFeature):
     ):
         super().__init__(feature_name, optimization_level)
 
-
     def register_patches(
         self,
         patch_manager: MindSpeedPatchesManager,
@@ -30,8 +28,11 @@ class OptimizeP2PCommFeature(MindSpeedFeature):
 
         if getattr(args, self.feature_name, None) and int(args.pipeline_model_parallel_size) >= 2:
             if (
-                getattr(args, "num_layers_per_virtual_pipeline_stage", None)
-                is None  # noqa
+                getattr(args, "num_layers_per_virtual_pipeline_stage", None) is None  # noqa
+                and not (
+                    getattr(args, "pipeline_model_parallel_layout", None) is not None
+                    and getattr(args, "virtual_pipeline_model_parallel_size", None) is not None
+                )
             ):
                 megatron_training_available = is_megatron_training_available()
                 if megatron_training_available:
@@ -39,4 +40,3 @@ class OptimizeP2PCommFeature(MindSpeedFeature):
                         "megatron.training.arguments.core_transformer_config_from_args",  # noqa
                         core_transformer_config_from_args_wrapper,
                     )
-

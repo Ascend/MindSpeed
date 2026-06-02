@@ -450,8 +450,12 @@ def dualpipev_fb_overlap_mtp_layer_forward(
             hidden_states = scatter_to_sequence_parallel_region(hidden_states)
 
         args = get_args()
+        enable_mhc = getattr(args, 'enable_mhc', False)
+        hc_head = getattr(self, 'hc_head', None)
+        if enable_mhc and hc_head is None:
+            raise AttributeError('enable_mhc requires MultiTokenPredictionLayer.hc_head.')
         if pre_process:
-            hidden_states = hc_repeat(hidden_states, getattr(args, 'enable_mhc', False), getattr(args, 'hc_mult', 1))
+            hidden_states = hc_repeat(hidden_states, enable_mhc, getattr(args, 'hc_mult', 1))
         hidden_states, _, _ = MTPTransformerLayer.apply(
             self.transformer_layer,
             self.config,
@@ -467,12 +471,12 @@ def dualpipev_fb_overlap_mtp_layer_forward(
             packed_seq_params,
             False,
             input_ids,
-            self.hc_head,
+            hc_head,
             pre_process,
             post_process,
         )
-        if post_process:
-            hidden_states = self.hc_head(hidden_states, mhc_stage='head')
+        if post_process and hc_head is not None:
+            hidden_states = hc_head(hidden_states, mhc_stage='head')
     # Layer norm before shared head layer.
     if self.final_layernorm is not None:
         hidden_states = self.final_layernorm(hidden_states)
