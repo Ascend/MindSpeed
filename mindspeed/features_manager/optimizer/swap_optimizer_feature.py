@@ -24,7 +24,9 @@ class SwapOptimizerFeature(MindSpeedFeature):
             and not getattr(args, "use_distributed_optimizer", None)
             and not getattr(args, "use_layer_wise_distributed_optimizer", None)
         ):
-            raise ValueError("Only support swap-optimizer when using distributed optimizer")
+            raise ValueError(
+                "Swap-optimizer only support use_distributed_optimizer/use_layer_wise_distributed_optimizer"
+            )
 
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):

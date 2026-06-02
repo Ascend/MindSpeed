@@ -16,7 +16,9 @@ This module provides:
   are swapped to CPU at init time and prefetched back during ``step()``.
 """
 
+import inspect
 import types
+from copy import deepcopy
 from functools import wraps
 from typing import Any, List
 
@@ -251,12 +253,115 @@ def swap_layer_wise_distributed_optimizer_init_wrapper(fn):
             if isinstance(optimizer.optimizer, OrthogonalizedOptimizer):
                 SwapOptimizerMixin.swap_init(optimizer)
                 optimizer._copy_main_params_to_model_params = types.MethodType(dummy_function, optimizer)
+                optimizer._copy_model_params_to_main_params = types.MethodType(
+                    _copy_model_params_to_main_params_with_swap, optimizer
+                )
+                optimizer.state_dict = types.MethodType(state_dict_swap_wrapper(optimizer.state_dict), optimizer)
+                optimizer.load_state_dict = types.MethodType(
+                    load_state_dict_swap_wrapper(optimizer.load_state_dict), optimizer
+                )
 
     return wrapper
 
 
 def dummy_function(*args: Any, **kwargs: Any):
     pass
+
+
+def _copy_model_params_to_main_params_with_swap(self):
+    for model_group, main_group in zip(self.float16_groups, self.fp32_from_float16_groups):
+        for model_param, main_param in zip(model_group, main_group):
+            # Swap in
+            cpu_states = SwapOptimizerMixin._param_to_cpu_states.get(main_param)
+            if cpu_states is not None and main_param.storage().size() == 0:
+                SwapOptimizerMixin._swap_tensors_to_device(main_param)
+                SwapOptimizerMixin._wait_swap_to_device(main_param)
+
+            # copy
+            main_param.data.copy_(model_param.data)
+
+            # Swap out
+            if cpu_states is not None:
+                SwapOptimizerMixin._swap_tensors_to_host(main_param)
+
+    torch.cuda.synchronize()  # wait swap out events
+
+
+def state_dict_swap_wrapper(fn):
+    """Wrap an optimizer's ``state_dict()`` so that swapped-out tensors
+    are temporarily swapped back to device before the state is read,
+    then swapped out again afterwards.
+
+    Usage::
+
+        optimizer.state_dict = state_dict_swap_wrapper(optimizer.state_dict)
+    """
+
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        # Swap in all tracked params to device so state_dict can read them
+        swapped_params = []
+        for param in SwapOptimizerMixin._param_to_cpu_states:
+            if param.storage().size() == 0:
+                SwapOptimizerMixin._swap_tensors_to_device(param)
+                swapped_params.append(param)
+
+        # Wait for all swap-in operations to complete
+        for param in swapped_params:
+            SwapOptimizerMixin._wait_swap_to_device(param)
+
+        # Call the original state_dict
+        result = fn(self, *args, **kwargs)
+        result = deepcopy(result)
+
+        # Swap out: release back to CPU
+        for param in swapped_params:
+            SwapOptimizerMixin._swap_tensors_to_host(param)
+
+        torch.cuda.synchronize()
+        return result
+
+    return wrapper
+
+
+def load_state_dict_swap_wrapper(fn):
+    """Wrap an optimizer's ``load_state_dict()`` so that swapped-out
+    tensors are temporarily swapped back to device before the state is
+    loaded, then swapped out again afterwards (which also updates the
+    CPU mirrors with the newly loaded values).
+
+    Usage::
+
+        optimizer.load_state_dict = load_state_dict_swap_wrapper(optimizer.load_state_dict)
+    """
+
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        # Swap in all tracked params to device so load_state_dict can write into them
+        swapped_params = []
+        for param in SwapOptimizerMixin._param_to_cpu_states:
+            if param.storage().size() == 0:
+                SwapOptimizerMixin._swap_tensors_to_device(param)
+                swapped_params.append(param)
+
+        # Wait for all swap-in operations to complete
+        for param in swapped_params:
+            SwapOptimizerMixin._wait_swap_to_device(param)
+
+        # Call the original load_state_dict
+        if hasattr(fn, "__self__") or inspect.ismethod(fn):
+            result = fn(*args, **kwargs)
+        else:
+            result = fn(self, *args, **kwargs)
+
+        # Swap out: copy updated values back to CPU mirrors and free device storage
+        for param in swapped_params:
+            SwapOptimizerMixin._swap_tensors_to_host(param)
+
+        torch.cuda.synchronize()
+        return result
+
+    return wrapper
 
 
 @torch.no_grad()
