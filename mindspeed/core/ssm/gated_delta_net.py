@@ -195,6 +195,7 @@ class GatedDeltaNet(MegatronModule):
         setattr(self.A_log, "tensor_model_parallel", True)
         
         if self.config.deterministic_mode:
+            from mindspeed.core.ssm.chunk_gated_delta_rule import torch_chunk_gated_delta_rule
             self.gated_delta_rule = torch_chunk_gated_delta_rule
         else:
             self.gated_delta_rule = chunk_gated_delta_rule
@@ -288,8 +289,34 @@ class GatedDeltaNet(MegatronModule):
             raise NotImplementedError("GDN does not support inference for now.")
 
         if packed_seq_params is not None:
-            # TODO: support packed sequence
-            raise NotImplementedError("GDN does not support packed sequence for now.")
+            assert batch == 1, "Packed sequence expects batch dimension to be 1"
+            assert (
+                not self.config.deterministic_mode
+            ), "Packed sequence does not support deterministic mode."
+
+            if packed_seq_params.cu_seqlens_q_padded is not None:
+                cu_seqlens_q = packed_seq_params.cu_seqlens_q_padded
+            else:
+                cu_seqlens_q = packed_seq_params.cu_seqlens_q
+            if packed_seq_params.cu_seqlens_kv_padded is not None:
+                cu_seqlens_kv = packed_seq_params.cu_seqlens_kv_padded
+            else:
+                cu_seqlens_kv = packed_seq_params.cu_seqlens_kv
+            if cu_seqlens_q[0] != 0:
+                cu_seqlens_q = torch.cat([torch.zeros(1, dtype=cu_seqlens_q.dtype, device=cu_seqlens_q.device), cu_seqlens_q])
+                cu_seqlens_kv = torch.cat([torch.zeros(1, dtype=cu_seqlens_kv.dtype, device=cu_seqlens_kv.device), cu_seqlens_kv])
+            assert torch.equal(cu_seqlens_q, cu_seqlens_kv), (
+                "Currently only support cu_seqlens_q equals to cu_seqlens_kv, "
+                f"but got {cu_seqlens_q=} and {cu_seqlens_kv=}"
+            )
+            num_packed_seqs = cu_seqlens_q.shape[0] - 1
+            assert num_packed_seqs > 0, (
+                "Number of packed sequences must be greater than 0, "
+                f"but got {cu_seqlens_q=} and {cu_seqlens_kv=}"
+            )
+        else:
+            cu_seqlens_q = None
+            cu_seqlens_kv = None
 
         # Input projection
         nvtx_range_push(suffix="in_proj")
@@ -297,20 +324,41 @@ class GatedDeltaNet(MegatronModule):
         nvtx_range_pop(suffix="in_proj")
 
         # CP All to All: CP to HP
-        qkvzba = tensor_a2a_cp2hp(
-            qkvzba,
-            seq_dim=0,
-            head_dim=-1,
-            cp_group=self.pg_collection.cp,
-            split_sections=[
-                self.qk_dim_local_tp,
-                self.qk_dim_local_tp,
-                self.v_dim_local_tp,
-                self.v_dim_local_tp,
-                self.num_value_heads // self.tp_size,
-                self.num_value_heads // self.tp_size,
-            ],
-        )
+        if packed_seq_params is not None:
+            unpacked_qkvzba = _unpack_sequence(qkvzba, cu_seqlens_q // self.cp_size, dim=0)
+            outputs = []
+            for qkvzba_i in unpacked_qkvzba:
+                qkvzba_i = tensor_a2a_cp2hp(
+                    qkvzba_i,
+                    seq_dim=0,
+                    head_dim=-1,
+                    cp_group=self.pg_collection.cp,
+                    split_sections=[
+                        self.qk_dim_local_tp,
+                        self.qk_dim_local_tp,
+                        self.v_dim_local_tp,
+                        self.v_dim_local_tp,
+                        self.num_value_heads // self.tp_size,
+                        self.num_value_heads // self.tp_size,
+                    ],
+                )
+                outputs.append(qkvzba_i)
+            qkvzba = torch.cat(outputs, dim=0)
+        else:
+            qkvzba = tensor_a2a_cp2hp(
+                qkvzba,
+                seq_dim=0,
+                head_dim=-1,
+                cp_group=self.pg_collection.cp,
+                split_sections=[
+                    self.qk_dim_local_tp,
+                    self.qk_dim_local_tp,
+                    self.v_dim_local_tp,
+                    self.v_dim_local_tp,
+                    self.num_value_heads // self.tp_size,
+                    self.num_value_heads // self.tp_size,
+                ],
+            )
 
         # Transpose: s b x --> b s x
         # From sbhd to bshd format
@@ -377,6 +425,7 @@ class GatedDeltaNet(MegatronModule):
                 activation=self.activation,
                 initial_state=None,
                 output_final_state=False,
+                cu_seqlens=cu_seqlens_q,
             )
         nvtx_range_pop(suffix="conv1d")
 
@@ -406,11 +455,14 @@ class GatedDeltaNet(MegatronModule):
             initial_state=None,
             output_final_state=False,
             use_qk_l2norm_in_kernel=False,
+            cu_seqlens=cu_seqlens_q,
         )
         nvtx_range_pop(suffix="gated_delta_rule")
 
         # RMSNorm
         nvtx_range_push(suffix="gated_norm")
+        if core_attn_out.shape[1] < gate.shape[1]:
+            core_attn_out = F.pad(core_attn_out, (0, 0, 0, 0, 0, gate.shape[1] - core_attn_out.shape[1]))
         norm_out = self._apply_gated_norm(core_attn_out, gate)
         nvtx_range_pop(suffix="gated_norm")
 
@@ -420,9 +472,19 @@ class GatedDeltaNet(MegatronModule):
         norm_out = norm_out.transpose(0, 1).contiguous()
 
         # CP all to all: HP to CP
-        norm_out = tensor_a2a_hp2cp(
-            norm_out, seq_dim=0, head_dim=-1, cp_group=self.pg_collection.cp
-        )
+        if packed_seq_params is not None:
+            unpacked_norm_out = _unpack_sequence(norm_out, cu_seqlens_q, dim=0)
+            outputs = []
+            for norm_out_i in unpacked_norm_out:
+                norm_out_i = tensor_a2a_hp2cp(
+                    norm_out_i, seq_dim=0, head_dim=-1, cp_group=self.pg_collection.cp
+                )
+                outputs.append(norm_out_i)
+            norm_out = torch.cat(outputs, dim=0)
+        else:
+            norm_out = tensor_a2a_hp2cp(
+                norm_out, seq_dim=0, head_dim=-1, cp_group=self.pg_collection.cp
+            )
 
         # Output projection
         nvtx_range_push(suffix="out_proj")
@@ -594,6 +656,17 @@ class GatedDeltaNet(MegatronModule):
     def _backward_out_proj(self):
         """Computes weight gradients of output projection layer."""
         self.out_proj.backward_dw()
+
+
+def _unpack_sequence(x, cu_seqlens, dim=1):
+    unpacked_x = []
+    num_seqs = cu_seqlens.shape[0] - 1
+    for i in range(num_seqs):
+        idx_start = 0 if i == 0 else cu_seqlens[i].item()
+        idx_end = cu_seqlens[i + 1].item()
+        chunked_index = [slice(None)] * dim + [slice(idx_start, idx_end)]
+        unpacked_x.append(x[tuple(chunked_index)])
+    return unpacked_x
 
 
 ####################

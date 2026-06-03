@@ -207,7 +207,7 @@ class TELayerNormColumnParallelLinear(torch.nn.Module):
 
         if self.config.normalization != 'RMSNorm':
             layer_norm_bias = torch.nn.Parameter(
-                torch.ones(self.input_size, device='npu', dtype=self.config.params_dtype)
+                torch.zeros(self.input_size, device='npu', dtype=self.config.params_dtype)
             )
             self.register_parameter(
                 "layer_norm_bias", layer_norm_bias
