@@ -42,7 +42,7 @@
 ### 1. 使用通过Python脚本使能的计算通信并行特性
 
 ```shell
---use-ascend-coc 
+--use-ascend-coc
 --coc-parallel-num 2 # 或者4，或者8
 ```
 
@@ -83,4 +83,7 @@ ATB安装方法：
 ## 注意事项
 
 暂不兼容 --use-ascend-mc2 特性 。
+
 当前暂未适配MoE模型。
+
+Atlas A2 训练系列产品 / Atlas A3 训练系列产品支持此特性，而 Ascend 950 系列产品不支持此特性。

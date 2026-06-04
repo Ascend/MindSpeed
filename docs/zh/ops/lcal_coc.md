@@ -1,5 +1,9 @@
 # LCAL_COC对外接口
 
+## 注意事项
+
+Atlas A2 训练系列产品 / Atlas A3 训练系列产品支持此接口，而 Ascend 950 系列产品不支持此接口。
+
 ## matmul_all_reduce接口
 
 ```python
