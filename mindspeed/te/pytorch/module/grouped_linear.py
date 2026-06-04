@@ -102,16 +102,20 @@ def _grouped_linear_forward(cls, ctx, input_tensor, m_split, reuse_identity, *we
     if not isinstance(m_split, torch.Tensor):
         m_split = torch.tensor(m_split, device='npu', dtype=torch.int64)
     ctx.group_list = torch.cumsum(m_split, dim=0)
-    weight = torch.stack(weight_views, dim=0)
-    fwd_output = cls.op_forward(ctx, input_tensor, weight, ctx.group_list, reuse_identity=reuse_identity)[0]
-    ctx.save_for_backward(input_tensor, weight)
+
+    def lazy_stack_weight():
+        return torch.stack(weight_views, dim=0)
+
+    fwd_output = cls.op_forward(ctx, input_tensor, lazy_stack_weight, ctx.group_list, reuse_identity=reuse_identity)[0]
+    ctx.save_for_backward(input_tensor)
     return fwd_output
 
 
 def _grouped_linear_backward(cls, ctx, grad_outputs):
     group_list = ctx.group_list
-    inp, weight = ctx.saved_tensors
-    grad = cls.op_dx(ctx, grad_outputs, weight, group_list)[0]
+    inp = ctx.saved_tensors[0]
+    # quantized weight is saved in MXFP8GMMFunction/MXFP832x32GMMFunction, so None is given
+    grad = cls.op_dx(ctx, grad_outputs, None, group_list)[0]
     grad_weight = cls.op_dw(ctx, inp, grad_outputs, group_list)[0]
     return grad, None, None, *grad_weight
 

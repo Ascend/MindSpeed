@@ -22,6 +22,11 @@ _CACHE_MISS = object()
 _WEIGHT_REUSE_HITS = 0
 _WEIGHT_REUSE_MISSES = 0
 _CACHED_RANK: int | None = None
+_RELEASABLE_QUANT_OPS = {
+    "npu_dynamic_block_mx_quant",
+    "npu_dynamic_mx_quant_with_dual_axis",
+}
+_WEIGHT_RELEASE_ENABLED = True
 
 
 def _get_rank_fast() -> int:
@@ -142,6 +147,8 @@ def reuse_or_quantize(
         or not _is_weight_reuse_enabled(tensor_key)
         or not _supports_weight_reuse(tensor, reuse_identity)
     ):
+        if isinstance(tensor, Callable):  # for delayed ops, like stack
+            tensor = tensor()
         return quantizer(tensor, **kwargs)
 
     quantizer_name = op_name or getattr(quantizer, "__name__", quantizer.__class__.__name__)
@@ -157,11 +164,13 @@ def reuse_or_quantize(
         _WEIGHT_REUSE_HITS += 1
         return cached
 
+    if isinstance(tensor, Callable):  # for delayed ops, like stack
+        tensor = tensor()
     result = quantizer(tensor, **kwargs)
 
     # 当前支持MXFP8场景的释放；4对应的是双轴量化4个结果：weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale
     # 同时支持MXFP8-32x32场景的释放；3对应的是轴对称量化的3个结果
-    if isinstance(result, tuple) and (len(result) == 4 or len(result) == 3):
+    if _WEIGHT_RELEASE_ENABLED and op_name in _RELEASABLE_QUANT_OPS:
         release_bf16_weight_after_quantization(tensor, tensor_key)
     _WEIGHT_REUSE_POOL[cache_key] = result
     _WEIGHT_REUSE_MISSES += 1
@@ -245,8 +254,13 @@ def optimizer_step_reuse_cleanup_wrapper(step: Callable[..., Any]) -> Callable[.
 
     @wraps(step)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        clear_weight_quantization_reuse_cache()
+        clear_weight_quantization_reuse_cache(release_storage=True)
         restore_bf16_weight_storage()
         return step(*args, **kwargs)
 
     return wrapper
+
+
+def set_weight_release_enabled(enabled: bool):
+    global _WEIGHT_RELEASE_ENABLED
+    _WEIGHT_RELEASE_ENABLED = enabled
