@@ -1,37 +1,34 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2024-2026. All rights reserved.
-import sys
-from typing import Union, List, Tuple
 import math
 import pytest
 import torch
-import torch_npu
 import torch.distributed as dist
-from mindspeed import megatron_adaptor
+import torch_npu
+from mindspeed import megatron_adaptor  # noqa: F401
 from mindspeed.te.pytorch.attention.dot_product_attention.context_parallel import HamiltonCPStrategy
-from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from tests_extend.commons import set_random_seed, initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
 
+pytestmark = pytest.mark.slow
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 
 def get_data_on_this_cp_rank(data, cp_size, cp_rank, dim=0):
-    """ Slice data along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a context parallel group.
-        Dispatch data in a striped way for load-balance.
+    """Slice data along sequence dimension into multiple chunks,
+    which are parallelized across GPUs in a context parallel group.
+    Dispatch data in a striped way for load-balance.
     """
-    data = data.view(*data.shape[0:dim], 2 * cp_size, data.shape[dim] // (2 * cp_size), *data.shape[dim + 1:])
+    data = data.view(*data.shape[0:dim], 2 * cp_size, data.shape[dim] // (2 * cp_size), *data.shape[dim + 1 :])
     index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device=data.device)
     data = data.index_select(dim, index)
-    data = data.view(*data.shape[0:dim], -1, *data.shape[dim + 2:])
+    data = data.view(*data.shape[0:dim], -1, *data.shape[dim + 2 :])
     return data
 
 
 def get_data_on_all_cp_ranks(data, cp_size, dim=0):
-    """ Combine data along sequence dimension from multiple chunks.
-    """
-    data = data.view(*data.shape[0:dim], 2 * cp_size, -1, *data.shape[dim + 1:])
+    """Combine data along sequence dimension from multiple chunks."""
+    data = data.view(*data.shape[0:dim], 2 * cp_size, -1, *data.shape[dim + 1 :])
     index = [[i, 2 * cp_size - i - 1] for i in range(cp_size)]
     index = torch.tensor(index).flatten().to(data.device)
     index = index[:, None, None, None].repeat(1, *data.shape[1:])
@@ -42,9 +39,8 @@ def get_data_on_all_cp_ranks(data, cp_size, dim=0):
 
 
 def get_data_on_all_cp_ranks_sbhd(data, cp_size, dim=0):
-    """ Combine data along sequence dimension from multiple chunks.
-    """
-    data = data.view(*data.shape[0:dim], 2 * cp_size, -1, *data.shape[dim + 1:])
+    """Combine data along sequence dimension from multiple chunks."""
+    data = data.view(*data.shape[0:dim], 2 * cp_size, -1, *data.shape[dim + 1 :])
     index = [[i, 2 * cp_size - i - 1] for i in range(cp_size)]
     index = torch.tensor(index).flatten().to(data.device)
     index_shape = [len(index)] + [1] * (len(data.shape) - 1)
@@ -57,6 +53,7 @@ def get_data_on_all_cp_ranks_sbhd(data, cp_size, dim=0):
 
 def run_hamattn_context_parallel_bsh_te(cp_size, bs, seq_len, dtype, cp_args):
     from megatron.core import mpu
+
     initialize_model_parallel(context_parallel_size=cp_size)
     set_random_seed(1234)
 
@@ -71,20 +68,24 @@ def run_hamattn_context_parallel_bsh_te(cp_size, bs, seq_len, dtype, cp_args):
     q_ref = q.view(s, b, n * d)
     k_ref = k.view(s, b, n * d)
     v_ref = v.view(s, b, n * d)
-    pse = None
     attn_mask = None
 
-    out_ref = torch_npu.npu_fusion_attention( \
-        q_ref, k_ref, v_ref, n, 'SBH', \
-        pse=None, \
-        padding_mask=None, \
-        atten_mask=attn_mask, \
-        scale=scale, \
-        pre_tockens=seq_len, \
-        next_tockens=0, \
-        keep_prob=1., \
-        inner_precise=0, \
-        sparse_mode=3 if attn_mask is not None else 0)[0]
+    out_ref = torch_npu.npu_fusion_attention(
+        q_ref,
+        k_ref,
+        v_ref,
+        n,
+        'SBH',
+        pse=None,
+        padding_mask=None,
+        atten_mask=attn_mask,
+        scale=scale,
+        pre_tockens=seq_len,
+        next_tockens=0,
+        keep_prob=1.0,
+        inner_precise=0,
+        sparse_mode=3 if attn_mask is not None else 0,
+    )[0]
     out_ref.backward(dout)
 
     q_ = get_data_on_this_cp_rank(q.clone().detach(), cp_size, rank)
@@ -96,16 +97,19 @@ def run_hamattn_context_parallel_bsh_te(cp_size, bs, seq_len, dtype, cp_args):
         x.requires_grad = True
 
     path_num = 4
-    in_mapping_list = [[-1, 1, -1, -1, -1, 2, 3, 0],
+    in_mapping_list = [
+        [-1, 1, -1, -1, -1, 2, 3, 0],
         [0, -1, -1, -1, 3, 1, -1, 2],
         [-1, 3, -1, 2, 1, 0, -1, -1],
         [-1, 2, -1, -1, 0, 3, 1, -1],
         [2, -1, 0, 3, -1, -1, -1, 1],
         [3, 0, 1, -1, -1, -1, 2, -1],
         [1, -1, 2, 0, -1, -1, -1, 3],
-        [-1, -1, 3, 1, 2, -1, 0, -1]]
+        [-1, -1, 3, 1, 2, -1, 0, -1],
+    ]
 
     import numpy as np
+
     out_mapping_list = np.array(in_mapping_list).T.tolist()
     hamilton = HamiltonCPStrategy(
         softmax_scale=scale,
@@ -116,23 +120,24 @@ def run_hamattn_context_parallel_bsh_te(cp_size, bs, seq_len, dtype, cp_args):
         in_mapping=in_mapping_list,
         out_mapping=out_mapping_list,
         permute_index=None,
-        restore_index=None)
+        restore_index=None,
+    )
 
     cp_group = mpu.get_context_parallel_group()
     out_ = hamilton(
-            query_layer=q_,
-            key_layer=k_,
-            value_layer=v_,
-            attention_mask=attn_mask,
-            qkv_format="sbhd",
-            cu_seqlens_q=None,
-            cu_seqlens_kv=None,
-            attn_mask_type="full",
-            max_seqlen_q=None,
-            max_seqlen_kv=None,
-            cp_group=cp_group,
-            cp_global_ranks=None
-            )
+        query_layer=q_,
+        key_layer=k_,
+        value_layer=v_,
+        attention_mask=attn_mask,
+        qkv_format="sbhd",
+        cu_seqlens_q=None,
+        cu_seqlens_kv=None,
+        attn_mask_type="full",
+        max_seqlen_q=None,
+        max_seqlen_kv=None,
+        cp_group=cp_group,
+        cp_global_ranks=None,
+    )
     out_.backward(dout_)
 
     # Gather outputs from all CP ranks
@@ -169,7 +174,6 @@ def get_permute_and_restore_index(seq_lens, seq_dim, path_num, target_device):
     global RESTORE_INDEX_TENSOR
     if PERMUTE_INDEX_TENSOR is None:
         seq_num = len(seq_lens)
-        total_seq_len = sum(seq_lens)
         target_indices = []
         for p in range(path_num):
             for s in range(seq_num):
@@ -182,7 +186,6 @@ def get_permute_and_restore_index(seq_lens, seq_dim, path_num, target_device):
         restore_indices = torch.zeros_like(permute_indices)
         for i, idx in enumerate(permute_indices):
             restore_indices[idx] = i
-
 
         PERMUTE_INDEX_TENSOR = permute_indices
         RESTORE_INDEX_TENSOR = restore_indices
@@ -217,12 +220,12 @@ def get_data_on_this_cp_rank_tnd_te(data, actual_seq_len, cp_size, cp_rank, dim=
 
 def run_hamattn_cp_tnd_te(cp_size, cu_seq_len, dtype):
     from megatron.core import mpu
+
     initialize_model_parallel(context_parallel_size=cp_size)
     set_random_seed(1234)
 
     rank = dist.get_rank()
     b, n, s, d = 1, 2, cu_seq_len[-1], 64
-    h = n * d
     t = b * s
     scale = 1.0 / math.sqrt(d)
 
@@ -231,20 +234,23 @@ def run_hamattn_cp_tnd_te(cp_size, cu_seq_len, dtype):
     v = torch.randn(t, n, d, dtype=dtype, device='npu', requires_grad=True)
     dout = torch.randn(t, n, d, dtype=dtype, device='npu', requires_grad=True)
 
-    pse = None
     attn_mask = None
-    out_ref = torch_npu.npu_fusion_attention( \
-        q, k, v, n, 'TND', \
-        pse=None, \
-        padding_mask=None, \
-        atten_mask=attn_mask, \
-        scale=scale, \
-        pre_tockens=s, \
-        next_tockens=0, \
-        keep_prob=1., \
-        actual_seq_qlen=cu_seq_len, \
-        actual_seq_kvlen=cu_seq_len, \
-        sparse_mode=3 if attn_mask is not None else 0
+    out_ref = torch_npu.npu_fusion_attention(
+        q,
+        k,
+        v,
+        n,
+        'TND',
+        pse=None,
+        padding_mask=None,
+        atten_mask=attn_mask,
+        scale=scale,
+        pre_tockens=s,
+        next_tockens=0,
+        keep_prob=1.0,
+        actual_seq_qlen=cu_seq_len,
+        actual_seq_kvlen=cu_seq_len,
+        sparse_mode=3 if attn_mask is not None else 0,
     )[0]
     out_ref.backward(dout)
 
@@ -259,15 +265,18 @@ def run_hamattn_cp_tnd_te(cp_size, cu_seq_len, dtype):
     if cp_size != 8:
         raise AssertionError(f"Current testcase only suits for cp_size=8, but got cp_size={cp_size}")
     path_num = 4
-    in_mapping_list = [[-1, 1, -1, -1, -1, 2, 3, 0],
-                       [0, -1, -1, -1, 3, 1, -1, 2],
-                       [-1, 3, -1, 2, 1, 0, -1, -1],
-                       [-1, 2, -1, -1, 0, 3, 1, -1],
-                       [2, -1, 0, 3, -1, -1, -1, 1],
-                       [3, 0, 1, -1, -1, -1, 2, -1],
-                       [1, -1, 2, 0, -1, -1, -1, 3],
-                       [-1, -1, 3, 1, 2, -1, 0, -1]]
+    in_mapping_list = [
+        [-1, 1, -1, -1, -1, 2, 3, 0],
+        [0, -1, -1, -1, 3, 1, -1, 2],
+        [-1, 3, -1, 2, 1, 0, -1, -1],
+        [-1, 2, -1, -1, 0, 3, 1, -1],
+        [2, -1, 0, 3, -1, -1, -1, 1],
+        [3, 0, 1, -1, -1, -1, 2, -1],
+        [1, -1, 2, 0, -1, -1, -1, 3],
+        [-1, -1, 3, 1, 2, -1, 0, -1],
+    ]
     import numpy as np
+
     out_mapping_list = np.array(in_mapping_list).T.tolist()
 
     actual_seq_len = [0] * len(cu_seq_len)
@@ -287,7 +296,7 @@ def run_hamattn_cp_tnd_te(cp_size, cu_seq_len, dtype):
         in_mapping=in_mapping_list,
         out_mapping=out_mapping_list,
         permute_index=permute_index,
-        restore_index=restore_index
+        restore_index=restore_index,
     )
     cp_group = mpu.get_context_parallel_group()
     out_ = hamilton(
@@ -302,7 +311,7 @@ def run_hamattn_cp_tnd_te(cp_size, cu_seq_len, dtype):
         max_seqlen_q=None,
         max_seqlen_kv=None,
         cp_group=cp_group,
-        cp_global_ranks=None
+        cp_global_ranks=None,
     )
     out_.backward(dout_)
 

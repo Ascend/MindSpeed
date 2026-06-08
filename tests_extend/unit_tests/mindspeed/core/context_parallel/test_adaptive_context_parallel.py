@@ -1,88 +1,111 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+# ruff: noqa: E402
 import sys
+
 # Setting sys.argv is mainly to ensure that --context-parallel-size is not None, so that the code block (which will be executed
 # after determining that context-parallel-size is not None) will be executed in megatron_adaptor.
 original_argv = sys.argv.copy()
 sys.argv = [
     sys.argv[0],
-    '--context-parallel-algo', 'hybrid_adaptive_cp_algo',
-    '--context-parallel-size', '2',
-    '--num-layers', '24',
-    '--hidden-size', '8',
-    '--ffn-hidden-size', '8',
-    '--num-attention-heads', '8',
-    '--tokenizer-type', 'Llama2Tokenizer',
-    '--tokenizer-model', '/home/dataset/model/llama-2-7b-hf/tokenizer.model',
-    '--seq-length', '128',
-    '--max-position-embeddings', '128',
-    '--micro-batch-size', '1',
-    '--global-batch-size', '8',
-    '--lr-warmup-fraction', '0.01',
+    '--context-parallel-algo',
+    'hybrid_adaptive_cp_algo',
+    '--context-parallel-size',
+    '2',
+    '--num-layers',
+    '24',
+    '--hidden-size',
+    '8',
+    '--ffn-hidden-size',
+    '8',
+    '--num-attention-heads',
+    '8',
+    '--tokenizer-type',
+    'Llama2Tokenizer',
+    '--tokenizer-model',
+    '/home/dataset/model/llama-2-7b-hf/tokenizer.model',
+    '--seq-length',
+    '128',
+    '--max-position-embeddings',
+    '128',
+    '--micro-batch-size',
+    '1',
+    '--global-batch-size',
+    '8',
+    '--lr-warmup-fraction',
+    '0.01',
     '--bf16',
     '--data-path',
     '/home/dataset/llama2/alpaca_text_document',
-    '--seed', '1234',
+    '--seed',
+    '1234',
 ]
 import math
+import numpy as np
 import pytest
 import torch
-import torch_npu
-import numpy as np
 import torch.distributed as dist
-from mindspeed import megatron_adaptor
-from tests_extend.commons import set_random_seed, initialize_model_parallel
-from megatron.training.global_vars import set_args
+import torch_npu
+
+from mindspeed import megatron_adaptor  # noqa: F401
+from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import (
+    adaptive_attn_context_parallel,
+)
+from mindspeed.core.context_parallel.model_parallel_utils import (
+    get_context_parallel_group_for_send_recv_overlap,
+    initialize_context_parallel_group_for_hybrid_cp,
+    get_context_parallel_for_hybrid_ulysses_world_size,
+    get_context_parallel_for_hybrid_ring_world_size,
+    get_context_parallel_for_hybrid_ulysses_rank,
+    get_context_parallel_for_hybrid_ring_rank,
+    get_context_parallel_group_for_hybrid_ring,
+    get_context_parallel_for_hybrid_ring_global_ranks,
+    get_context_parallel_group_for_hybrid_ulysses,
+)
+from mindspeed.core.context_parallel.utils import (
+    set_scheduling_info,
+    get_scheduling_info,
+    clear_global_info,
+    AdaptiveCpOps,
+    set_remapped_seq_order,
+)
 from megatron.training.arguments import parse_args
+from megatron.training.global_vars import set_args
+from tests_extend.commons import initialize_model_parallel, set_random_seed
 from tests_extend.unit_tests.common import DistributedTest
-from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
-from mindspeed.core.context_parallel.model_parallel_utils import (get_context_parallel_group_for_send_recv_overlap,
-                                           initialize_context_parallel_group_for_hybrid_cp,
-                                           get_context_parallel_for_hybrid_ulysses_world_size,
-                                           get_context_parallel_for_hybrid_ring_world_size,
-                                           get_context_parallel_for_hybrid_ulysses_rank,
-                                           get_context_parallel_for_hybrid_ring_rank,
-                                           get_context_parallel_group_for_hybrid_ring,
-                                           get_context_parallel_for_hybrid_ring_global_ranks,
-                                           get_context_parallel_group_for_hybrid_ulysses)
-from mindspeed.core.context_parallel.utils import (set_scheduling_info, 
-                                                   get_scheduling_info, 
-                                                   clear_global_info,
-                                                   AdaptiveCpOps,
-                                                   set_remapped_seq_order)
 
 sys.argv = original_argv
+pytestmark = pytest.mark.slow
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 
 def get_data_on_this_cp_rank(data, remapped_seq_order, cp_size, cp_rank, dim=0):
-    """ Slice data along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a context parallel group.
-        Dispatch data in a striped way for load-balance.
-    """ 
+    """Slice data along sequence dimension into multiple chunks,
+    which are parallelized across GPUs in a context parallel group.
+    Dispatch data in a striped way for load-balance.
+    """
     per = data.shape[dim] // cp_size
-    index = torch.tensor(remapped_seq_order[cp_rank * per:(cp_rank + 1) * per], device=data.device, dtype=torch.int)
+    index = torch.tensor(remapped_seq_order[cp_rank * per : (cp_rank + 1) * per], device=data.device, dtype=torch.int)
     data = data.index_select(dim, index)
     return data
 
 
 def get_data_on_this_cp_rank_hybrid(data, remapped_seq_order, adap_size, adap_rank, dim=0):
-    """ Slice data along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a context parallel group.
-        Dispatch data in a striped way for load-balance.
-    """ 
+    """Slice data along sequence dimension into multiple chunks,
+    which are parallelized across GPUs in a context parallel group.
+    Dispatch data in a striped way for load-balance.
+    """
     ulys_size = get_context_parallel_for_hybrid_ulysses_world_size()
     ulys_rank = get_context_parallel_for_hybrid_ulysses_rank()
     per = data.shape[dim] // adap_size // ulys_size
     which_per = adap_rank * ulys_size + ulys_rank
-    index = torch.tensor(remapped_seq_order[which_per * per:(which_per + 1) * per], device=data.device).long()
+    index = torch.tensor(remapped_seq_order[which_per * per : (which_per + 1) * per], device=data.device).long()
     data = data.index_select(dim, index)
     return data
 
 
 def get_data_on_all_cp_ranks(data, remapped_seq_order, cp_size, dim=0):
-    """ Combine data along sequence dimension from multiple chunks.
-    """
+    """Combine data along sequence dimension from multiple chunks."""
     index = torch.tensor(remapped_seq_order, device=data.device, dtype=torch.int)
     out = data.index_select(dim, index)
     return out
@@ -95,7 +118,7 @@ def generate_swa_mask(seq_len, cp_size, band_width, band_height):
     assert band_height <= (seq_len // cp_size) * (cp_size - 2)
     swa_mask = np.ones((seq_len, seq_len), dtype=bool)
     for i in range(seq_len):
-        swa_mask[i][max(i - band_height, 0): min(i + band_width, seq_len)] = 0
+        swa_mask[i][max(i - band_height, 0) : min(i + band_width, seq_len)] = 0
     return swa_mask
 
 
@@ -124,22 +147,27 @@ def run_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
     v = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
     dout = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
 
-    out = torch_npu.npu_fusion_attention( \
-        q, k, v, n, 'SBH', \
-        pse=None, \
-        padding_mask=None, \
-        atten_mask=attn_mask, \
-        scale=scale, \
-        pre_tockens=k.shape[0], \
-        next_tockens=k.shape[0], \
-        keep_prob=1., \
-        inner_precise=0, \
-        sparse_mode=0
+    out = torch_npu.npu_fusion_attention(
+        q,
+        k,
+        v,
+        n,
+        'SBH',
+        pse=None,
+        padding_mask=None,
+        atten_mask=attn_mask,
+        scale=scale,
+        pre_tockens=k.shape[0],
+        next_tockens=k.shape[0],
+        keep_prob=1.0,
+        inner_precise=0,
+        sparse_mode=0,
     )[0]
     out.backward(dout)
 
     clear_global_info()
     import megatron
+
     cp_global_ranks = range(0, cp_size, 1)
     cp_group = torch.distributed.new_group(
         cp_global_ranks, pg_options=megatron.core.parallel_state.get_nccl_options('cp2', {})
@@ -195,6 +223,7 @@ def run_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
 
 def run_hybrid_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
     from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import _SeqAllToAll
+
     args = parse_args(None, True)
     args.seq_length = seq_len
     args.attention_mask_type = 'general'
@@ -221,17 +250,21 @@ def run_hybrid_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
     v = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
     dout = torch.randn(s, b, n * d, dtype=dtype, device='npu', requires_grad=True)
 
-    out = torch_npu.npu_fusion_attention( \
-        q, k, v, n, 'SBH', \
-        pse=None, \
-        padding_mask=None, \
-        atten_mask=attn_mask, \
-        scale=scale, \
-        pre_tockens=k.shape[0], \
-        next_tockens=k.shape[0], \
-        keep_prob=1., \
-        inner_precise=0, \
-        sparse_mode=0
+    out = torch_npu.npu_fusion_attention(
+        q,
+        k,
+        v,
+        n,
+        'SBH',
+        pse=None,
+        padding_mask=None,
+        atten_mask=attn_mask,
+        scale=scale,
+        pre_tockens=k.shape[0],
+        next_tockens=k.shape[0],
+        keep_prob=1.0,
+        inner_precise=0,
+        sparse_mode=0,
     )[0]
     out.backward(dout)
 
@@ -250,7 +283,7 @@ def run_hybrid_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
     dout_ = get_data_on_this_cp_rank_hybrid(dout.clone().detach(), remapped_seq_order, adap_size, adap_rank)
     for x in [q_, k_, v_]:
         x.requires_grad = True
-    
+
     cp_para = dict()
     cp_para['causal'] = args.attention_mask_type == 'causal'
     cp_para['cp_group'] = get_context_parallel_group_for_hybrid_ring()
@@ -262,7 +295,9 @@ def run_hybrid_adaptive_cp(cp_size, bs, seq_len, dtype, cp_args):
     _q_ = _SeqAllToAll.apply(get_context_parallel_group_for_hybrid_ulysses(), q_, 2, 0)
     _k_ = _SeqAllToAll.apply(get_context_parallel_group_for_hybrid_ulysses(), k_, 2, 0)
     _v_ = _SeqAllToAll.apply(get_context_parallel_group_for_hybrid_ulysses(), v_, 2, 0)
-    out_ = adaptive_attn_context_parallel(_q_, _k_, _v_, n // get_context_parallel_for_hybrid_ulysses_world_size(), cp_para, scale, mask_list, dropout_p=0)
+    out_ = adaptive_attn_context_parallel(
+        _q_, _k_, _v_, n // get_context_parallel_for_hybrid_ulysses_world_size(), cp_para, scale, mask_list, dropout_p=0
+    )
     out_ = _SeqAllToAll.apply(get_context_parallel_group_for_hybrid_ulysses(), out_, 0, 2)
     out_.backward(dout_)
 
@@ -296,7 +331,7 @@ class TestAdaptiveCP(DistributedTest):
     world_size = 8
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.parametrize("cp_args", ['causal', 'swa'])
+    @pytest.mark.parametrize("cp_args", [pytest.param('causal', marks=pytest.mark.slow), 'swa'])
     def test_adaptive_context_parallel_seq8192_bs1_bf16(self, cp_args):
         run_adaptive_cp(self.world_size, 1, 8192, torch.bfloat16, cp_args)
 

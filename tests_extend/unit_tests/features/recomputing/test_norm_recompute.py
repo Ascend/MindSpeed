@@ -1,8 +1,10 @@
 import types
+import pytest
 import torch
-from mindspeed import megatron_adaptor
 
-from tests_extend.commons import set_random_seed, initialize_model_parallel
+# pylint: disable=ungrouped-imports
+from mindspeed import megatron_adaptor  # noqa: F401
+from tests_extend.commons import initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
 
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -13,6 +15,8 @@ from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from mindspeed.core.memory.recompute.norm.adaptor import mindspeed_norm_recompute_forward
 from mindspeed.model.transformer import set_attention_mask
+
+pytestmark = pytest.mark.slow
 
 
 class TestNormRecompute(DistributedTest):
@@ -62,8 +66,8 @@ class TestNormRecompute(DistributedTest):
 
         out_ref = transformer_block_ref(hidden_states=hidden_states_ref, attention_mask=attention_mask)
         out_test = transformer_block_test(hidden_states=hidden_states_test, attention_mask=attention_mask)
-        assert(torch.allclose(out_ref, out_test))
+        assert torch.allclose(out_ref, out_test)
 
         out_ref.backward(torch.ones_like(out_ref))
         out_test.backward(torch.ones_like(out_ref))
-        assert(torch.allclose(hidden_states_ref.grad, hidden_states_test.grad))
+        assert torch.allclose(hidden_states_ref.grad, hidden_states_test.grad)

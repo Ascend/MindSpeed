@@ -1,16 +1,19 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+# ruff: noqa: E402
 from copy import deepcopy
 import sys
 import pytest
 import torch
 import torch_npu
+
 sys.argv.append("--use-fused-rotary-pos-emb")
-from mindspeed import megatron_adaptor
+from mindspeed import megatron_adaptor  # noqa: F401
 from tests_extend.unit_tests.common import DistributedTest
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
+
 sys.argv.remove("--use-fused-rotary-pos-emb")
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -26,7 +29,13 @@ class TestNpuFusedRotaryEmbedding(DistributedTest):
     world_size = 1
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize(
+        'dtype',
+        [
+            pytest.param(torch.float16, marks=pytest.mark.slow),
+            torch.bfloat16,
+        ],
+    )
     def test_npu_fused_rotary_pos_embedding(self, dtype):
         t_ori = torch.rand(2, 2, 5, 128).npu().to(dtype)
         freqs_ori = torch.rand(1, 2, 1, 128).npu().to(dtype)

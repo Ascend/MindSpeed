@@ -1,5 +1,5 @@
+import pytest
 import torch
-from mindspeed import megatron_adaptor
 import torch_npu
 
 from mindspeed.core.memory.swap_attention.adaptor import AdaptiveRecomputeSwap
@@ -10,6 +10,8 @@ from megatron.training.arguments import parse_args
 from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.commons import initialize_model_parallel
 
+pytestmark = pytest.mark.slow
+
 
 class AdaptiveRecomputePolicy(AdaptiveRecomputeSwap):
     # swap_attention
@@ -17,8 +19,11 @@ class AdaptiveRecomputePolicy(AdaptiveRecomputeSwap):
         super().__init__()
         initialize_model_parallel(1, 1)
         self.pp_rank = 0
-        pm.register_patch('megatron.core.parallel_state.get_pipeline_model_parallel_rank',
-                          self.get_pipeline_model_parallel_rank_patch, True)
+        pm.register_patch(
+            'megatron.core.parallel_state.get_pipeline_model_parallel_rank',
+            self.get_pipeline_model_parallel_rank_patch,
+            True,
+        )
         pm.apply_patches()
 
     def get_pipeline_model_parallel_rank_patch(self):
@@ -75,11 +80,13 @@ class TestSwapAttention(DistributedTest):
         args.reduce_recompute_for_last_chunk = None
         set_args(args)
         arp = AdaptiveRecomputePolicy()
-        self.check_result(arp,
-                          [['0', '1', '2', '3', '4', '5', '6', '7']],
-                          [['0', '1', '2', '3', '4', '5', '6', '7']],
-                          [['0', '1', '2', '3']],
-                          [])
+        self.check_result(
+            arp,
+            [['0', '1', '2', '3', '4', '5', '6', '7']],
+            [['0', '1', '2', '3', '4', '5', '6', '7']],
+            [['0', '1', '2', '3']],
+            [],
+        )
 
     def test_swap_attention_cal_prefetch_list_enable_pp(self):
         args = parse_args(None, True)
@@ -89,18 +96,10 @@ class TestSwapAttention(DistributedTest):
         set_args(args)
         arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
-        self.check_result(arp,
-                          [['0', '1', '2', '3']],
-                          [['0', '1', '2', '3']],
-                          [['0', '1', '2', '3']],
-                          [])
+        self.check_result(arp, [['0', '1', '2', '3']], [['0', '1', '2', '3']], [['0', '1', '2', '3']], [])
 
         arp.pp_rank = 1
-        self.check_result(arp,
-                          [['0', '1', '2', '3']],
-                          [['0', '1', '2', '3']],
-                          [['0', '1', '2', '3']],
-                          [])
+        self.check_result(arp, [['0', '1', '2', '3']], [['0', '1', '2', '3']], [['0', '1', '2', '3']], [])
 
     def test_swap_attention_cal_prefetch_list_enable_pp_enable_noop_layers(self):
         args = parse_args(None, True)
@@ -111,18 +110,10 @@ class TestSwapAttention(DistributedTest):
         set_args(args)
         arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
-        self.check_result(arp,
-                          [['', '1', '2', '3']],
-                          [['', '1', '2', '3']],
-                          [['', '1', '2', '3']],
-                          [0])
+        self.check_result(arp, [['', '1', '2', '3']], [['', '1', '2', '3']], [['', '1', '2', '3']], [0])
 
         arp.pp_rank = 1
-        self.check_result(arp,
-                          [['0', '1', '2', '']],
-                          [['0', '1', '2', '']],
-                          [['0', '1', '2', '']],
-                          [7])
+        self.check_result(arp, [['0', '1', '2', '']], [['0', '1', '2', '']], [['0', '1', '2', '']], [7])
 
     def test_swap_attention_cal_prefetch_list_enable_vpp_enable_noop_layers(self):
         args = parse_args(None, True)
@@ -136,34 +127,26 @@ class TestSwapAttention(DistributedTest):
         set_args(args)
         arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
-        self.check_result(arp,
-                          [[''], ['0'], ['0'], ['0']],
-                          [[''], ['0'], ['0'], ['0']],
-                          [[''], ['0'], ['0'], ['0']],
-                          [0])
+        self.check_result(
+            arp, [[''], ['0'], ['0'], ['0']], [[''], ['0'], ['0'], ['0']], [[''], ['0'], ['0'], ['0']], [0]
+        )
 
         arp.pp_rank = 1
-        self.check_result(arp,
-                          [['0'], ['0'], ['0'], ['']],
-                          [['0'], ['0'], ['0'], ['']],
-                          [['0'], ['0'], ['0'], ['']],
-                          [7])
+        self.check_result(
+            arp, [['0'], ['0'], ['0'], ['']], [['0'], ['0'], ['0'], ['']], [['0'], ['0'], ['0'], ['']], [7]
+        )
 
         args.enable_recompute_layers_per_pp_rank = False
         args.recompute_num_layers = 1
         arp.pp_rank = 0
-        self.check_result(arp,
-                          [[''], ['0'], ['0'], ['0']],
-                          [[''], ['0'], ['0'], ['0']],
-                          [[''], ['0'], ['0'], ['0']],
-                          [0])
+        self.check_result(
+            arp, [[''], ['0'], ['0'], ['0']], [[''], ['0'], ['0'], ['0']], [[''], ['0'], ['0'], ['0']], [0]
+        )
 
         arp.pp_rank = 1
-        self.check_result(arp,
-                          [['0'], ['0'], ['0'], ['']],
-                          [['0'], ['0'], ['0'], ['']],
-                          [['0'], ['0'], ['0'], ['']],
-                          [7])
+        self.check_result(
+            arp, [['0'], ['0'], ['0'], ['']], [['0'], ['0'], ['0'], ['']], [['0'], ['0'], ['0'], ['']], [7]
+        )
 
     def test_swap_attention_cal_prefetch_list_enable_vpp_enable_multiple_noop_layers(self):
         args = parse_args(None, True)
@@ -177,18 +160,10 @@ class TestSwapAttention(DistributedTest):
         set_args(args)
         arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
-        self.check_result(arp,
-                          [['', ''], ['0', '1']],
-                          [['', ''], ['0', '1']],
-                          [['', ''], ['0', '1']],
-                          [0, 1])
+        self.check_result(arp, [['', ''], ['0', '1']], [['', ''], ['0', '1']], [['', ''], ['0', '1']], [0, 1])
 
         arp.pp_rank = 1
-        self.check_result(arp,
-                          [['0', '1'], ['', '']],
-                          [['0', '1'], ['', '']],
-                          [['0', '1'], ['', '']],
-                          [6, 7])
+        self.check_result(arp, [['0', '1'], ['', '']], [['0', '1'], ['', '']], [['0', '1'], ['', '']], [6, 7])
 
     def test_swap_attention_cal_prefetch_list_enable_vpp_enable_multiple_noop_layers_with_inter_layer(self):
         args = parse_args(None, True)
@@ -205,15 +180,7 @@ class TestSwapAttention(DistributedTest):
         set_args(args)
         arp = AdaptiveRecomputePolicy()
         arp.pp_rank = 0
-        self.check_result(arp,
-                          [['', '1'], ['0', '1']],
-                          [['', '1'], ['0', '1']],
-                          [['', '1'], ['0', '1']],
-                          [0])
+        self.check_result(arp, [['', '1'], ['0', '1']], [['', '1'], ['0', '1']], [['', '1'], ['0', '1']], [0])
 
         arp.pp_rank = 3
-        self.check_result(arp,
-                          [['0', ''], ['0', '1']],
-                          [['0', ''], ['0', '1']],
-                          [['0', ''], ['0', '1']],
-                          [7])
+        self.check_result(arp, [['0', ''], ['0', '1']], [['0', ''], ['0', '1']], [['0', ''], ['0', '1']], [7])

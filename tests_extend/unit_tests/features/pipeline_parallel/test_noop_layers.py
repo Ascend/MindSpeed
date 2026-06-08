@@ -1,37 +1,14 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2025 All rights reserved.
+# pylint: disable=attribute-defined-outside-init,redefined-outer-name,unsubscriptable-object
 import os
-import sys
 from argparse import Namespace
 
 import torch
-import torch_npu
 import pytest
 from pytest_mock import MockFixture
 
 from mindspeed.megatron_adaptor import repatch
-
-from megatron.core.transformer import TransformerConfig
-from megatron.core.transformer.enums import ModelType
-from megatron.core.parallel_state import destroy_model_parallel
-from megatron.core import mpu
-from megatron.core import parallel_state
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec
-from megatron.core.transformer.transformer_block import TransformerBlock
-from megatron.core.transformer.moe.moe_utils import (
-    save_to_aux_losses_tracker,
-    clear_aux_losses_tracker,
-)
-
-from megatron.training import get_args
-from megatron.training.arguments import parse_args, validate_args
-from megatron.training.global_vars import set_args
-from megatron.training.training import num_floating_point_operations
-from megatron.training.initialize import (
-    _initialize_distributed,
-    _set_random_seed,
-)
-
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import (
     origin_flop_calculator,
     mindspeed_calc_flop,
@@ -48,10 +25,28 @@ from mindspeed.core.transformer.transformer_block import _get_layer_offset
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import (
     NoopTransformerLayer,
 )
-
+from megatron.core import parallel_state
+from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec
+from megatron.core.parallel_state import destroy_model_parallel
+from megatron.core.transformer import TransformerConfig
+from megatron.core.transformer.enums import ModelType
+from megatron.core.transformer.moe.moe_utils import (
+    save_to_aux_losses_tracker,
+    clear_aux_losses_tracker,
+)
+from megatron.core.transformer.transformer_block import TransformerBlock
+from megatron.training import get_args
+from megatron.training.arguments import parse_args, validate_args
+from megatron.training.global_vars import set_args
+from megatron.training.initialize import (
+    _initialize_distributed,
+    _set_random_seed,
+)
+from megatron.training.training import num_floating_point_operations
 from tests_extend.unit_tests.common import DistributedTest
 
 
+pytestmark = pytest.mark.slow
 os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
 _ARGS = None
@@ -176,7 +171,6 @@ class TestNoopLayer(DistributedTest):
             repatch(vars(args))
         _ARGS = args
 
-
     def initialize_distributed(self):
         args = get_args()
         destroy_model_parallel()
@@ -205,10 +199,7 @@ class TestNoopLayer(DistributedTest):
             offset = _get_layer_offset(args)
             global_num_layers = i + offset + 1
 
-            if (
-                isinstance(args.noop_layers, set)
-                and global_num_layers - 1 in args.noop_layers
-            ):
+            if isinstance(args.noop_layers, set) and global_num_layers - 1 in args.noop_layers:
                 assert isinstance(layer, NoopTransformerLayer)
             else:
                 assert not isinstance(layer, NoopTransformerLayer)
@@ -219,9 +210,7 @@ class TestNoopLayer(DistributedTest):
     )
     @pytest.mark.parametrize("num_layers", [10])
     @pytest.mark.parametrize("noop_layers", ["0,2,15,6,8"])
-    def test_invalid_noop_layers_out_of_range(
-        self, tp_pp_vp_stage, num_layers, noop_layers
-    ):
+    def test_invalid_noop_layers_out_of_range(self, tp_pp_vp_stage, num_layers, noop_layers):
         with pytest.raises(AssertionError) as context:
             self.set_args(tp_pp_vp_stage, num_layers, noop_layers)
         assert (
@@ -236,9 +225,7 @@ class TestNoopLayer(DistributedTest):
     )
     @pytest.mark.parametrize("num_layers", [4])
     @pytest.mark.parametrize("noop_layers", ["0,1,1,3"])
-    def test_moe_metrics_with_noop_layers(
-        self, tp_pp_vp_stage, num_layers, noop_layers
-    ):
+    def test_moe_metrics_with_noop_layers(self, tp_pp_vp_stage, num_layers, noop_layers):
         self.set_args(tp_pp_vp_stage, num_layers, noop_layers)
         self.initialize_distributed()
         self.init_transformer_block()
@@ -247,10 +234,7 @@ class TestNoopLayer(DistributedTest):
         name = "load_balancing_loss"
 
         for layer_number in range(1, num_layers + 1):
-            if (
-                isinstance(args.noop_layers, set)
-                and layer_number - 1 in args.noop_layers
-            ) or args.noop_layers is None:
+            if (isinstance(args.noop_layers, set) and layer_number - 1 in args.noop_layers) or args.noop_layers is None:
                 save_to_aux_losses_tracker(
                     name,
                     loss,
@@ -269,9 +253,7 @@ class TestNoopLayer(DistributedTest):
     )
     @pytest.mark.parametrize("num_layers", [4])
     @pytest.mark.parametrize("noop_layers", [None])
-    def test_moe_metrics_without_noop_layers(
-        self, tp_pp_vp_stage, num_layers, noop_layers
-    ):
+    def test_moe_metrics_without_noop_layers(self, tp_pp_vp_stage, num_layers, noop_layers):
         self.set_args(tp_pp_vp_stage, num_layers, noop_layers)
         self.initialize_distributed()
         self.init_transformer_block()
@@ -280,10 +262,7 @@ class TestNoopLayer(DistributedTest):
         name = "load_balancing_loss"
 
         for layer_number in range(1, num_layers + 1):
-            if (
-                isinstance(args.noop_layers, set)
-                and layer_number - 1 in args.noop_layers
-            ) or args.noop_layers is None:
+            if (isinstance(args.noop_layers, set) and layer_number - 1 in args.noop_layers) or args.noop_layers is None:
                 save_to_aux_losses_tracker(
                     name,
                     loss,
@@ -303,9 +282,7 @@ class TestNoopLayer(DistributedTest):
     )
     @pytest.mark.parametrize("num_layers", [4])
     @pytest.mark.parametrize("noop_layers", ["0,3"])
-    def test_moe_metrics_megatron_original_with_noop_layers(
-        self, tp_pp_vp_stage, num_layers, noop_layers
-    ):
+    def test_moe_metrics_megatron_original_with_noop_layers(self, tp_pp_vp_stage, num_layers, noop_layers):
         self.set_args(tp_pp_vp_stage, num_layers, noop_layers)
         self.initialize_distributed()
         self.init_transformer_block()
@@ -314,10 +291,7 @@ class TestNoopLayer(DistributedTest):
         name = "load_balancing_loss"
 
         for layer_number in range(1, num_layers + 1):
-            if (
-                isinstance(args.noop_layers, set)
-                and layer_number - 1 in args.noop_layers
-            ) or args.noop_layers is None:
+            if (isinstance(args.noop_layers, set) and layer_number - 1 in args.noop_layers) or args.noop_layers is None:
                 save_to_aux_losses_tracker(
                     name,
                     loss,
@@ -339,9 +313,7 @@ class TestNoopLayer(DistributedTest):
     )
     @pytest.mark.parametrize("num_layers", [4])
     @pytest.mark.parametrize("noop_layers", [None])
-    def test_moe_metrics_megatron_original_without_noop_layers(
-        self, tp_pp_vp_stage, num_layers, noop_layers
-    ):
+    def test_moe_metrics_megatron_original_without_noop_layers(self, tp_pp_vp_stage, num_layers, noop_layers):
         self.set_args(tp_pp_vp_stage, num_layers, noop_layers)
         self.initialize_distributed()
         self.init_transformer_block()
@@ -350,10 +322,7 @@ class TestNoopLayer(DistributedTest):
         name = "load_balancing_loss"
 
         for layer_number in range(1, num_layers + 1):
-            if (
-                isinstance(args.noop_layers, set)
-                and layer_number - 1 in args.noop_layers
-            ) or args.noop_layers is None:
+            if (isinstance(args.noop_layers, set) and layer_number - 1 in args.noop_layers) or args.noop_layers is None:
                 save_to_aux_losses_tracker(
                     name,
                     loss,
@@ -373,9 +342,7 @@ class TestNoopLayer(DistributedTest):
             (4, {1, 2}, 184817811456.0, 114152177664.0),
         ],
     )
-    def test_cacl_flop_adaptor(
-        self, num_layers, noop_layers, megatron_expected, mindspeed_expected
-    ):
+    def test_cacl_flop_adaptor(self, num_layers, noop_layers, megatron_expected, mindspeed_expected):
         args = Namespace()
         args.num_layers = num_layers
         args.noop_layers = noop_layers
@@ -416,7 +383,6 @@ class TestNoopLayer(DistributedTest):
         ],
     )
     def test_cacl_flop(self, args, batch_size, expected):
-
         def func(x, y):
             return x
 
@@ -455,7 +421,6 @@ class TestNoopLayer(DistributedTest):
 
 
 def test_track_mode_metrics_impl(mocker: MockFixture):
-
     def mocker_func(*args, **kwarg):
         return None
 
@@ -491,7 +456,6 @@ def test_track_mode_metrics_impl(mocker: MockFixture):
 
 
 def test_build_layers_impl(mocker: MockFixture):
-
     class MockTransformer:
         def __init__(self):
             self.config = Namespace(noop_layers={1, 2})
@@ -506,7 +470,10 @@ def test_build_layers_impl(mocker: MockFixture):
 
     transformer = MockTransformer()
     noop_transformer = NoopTransformerLayer
-    build_module = lambda x, **kwargs: x
+
+    def build_module(x, **kwargs):
+        return x
+
     mocker.patch(
         "mindspeed.core.pipeline_parallel.noop_layers.transformer._get_layer_offset",
         return_value=0,

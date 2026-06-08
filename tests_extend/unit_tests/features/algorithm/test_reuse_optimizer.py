@@ -1,16 +1,12 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 from functools import partial
-from time import sleep
-import os
 import copy
 import itertools
-from unittest import mock
 
 import pytest
 import torch
-import torch_npu
-from mindspeed import megatron_adaptor
 
+from mindspeed import megatron_adaptor  # noqa: F401
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.models.gpt import GPTModel
@@ -33,7 +29,14 @@ def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_k
     default_config_kwargs = dict(num_layers=8, hidden_size=512, num_attention_heads=32, use_cpu_initialization=True)
     default_config_kwargs.update(**config_kwargs)
     transformer_config = TransformerConfig(**default_config_kwargs)
-    model = GPTModel(config=transformer_config, transformer_layer_spec=get_gpt_layer_local_spec(), vocab_size=1024, max_sequence_length=64, pre_process=pre_process, post_process=post_process)
+    model = GPTModel(
+        config=transformer_config,
+        transformer_layer_spec=get_gpt_layer_local_spec(),
+        vocab_size=1024,
+        max_sequence_length=64,
+        pre_process=pre_process,
+        post_process=post_process,
+    )
 
     model.bfloat16()
     with torch.no_grad():
@@ -57,10 +60,12 @@ def init_mock_args(args, use_distributed_optimizer=False, reuse_fp32_param=False
 def setup_model_and_optimizer(seed, use_distributed_optimizer=False):
     model = get_model(partial(initialize_gpt_model, seed=seed, bf16=True))
     set_random_seed(seed)
-    config = OptimizerConfig(lr=1e-4, bf16=True, params_dtype=torch.bfloat16, use_distributed_optimizer=use_distributed_optimizer)
+    config = OptimizerConfig(
+        lr=1e-4, bf16=True, params_dtype=torch.bfloat16, use_distributed_optimizer=use_distributed_optimizer
+    )
     config.timers = Timers()
     optimizer = get_megatron_optimizer(config, model)
-   
+
     for group in optimizer.optimizer.param_groups:
         for p in group['params']:
             if len(optimizer.optimizer.state[p]) == 0:
@@ -82,7 +87,14 @@ class TestDistributedOptimizer(DistributedTest):
     world_size = 8
 
     @pytest.mark.parametrize("is_deterministic", [False])
-    @pytest.mark.parametrize("tp_pp", [(4, 1), (2, 2), (8, 1)])
+    @pytest.mark.parametrize(
+        "tp_pp",
+        [
+            pytest.param((4, 1), marks=pytest.mark.slow),
+            (2, 2),
+            pytest.param((8, 1), marks=pytest.mark.slow),
+        ],
+    )
     def test_reuse_float16_params_optimizer(self, tp_pp, is_deterministic):
         args = parse_args(None, True)
         args.npu_deterministic = is_deterministic
@@ -114,11 +126,17 @@ class TestDistributedOptimizer(DistributedTest):
             else:
                 assert torch.allclose(p.data, reuse_p.data, rtol=0.005, atol=0.005)
 
-
     @pytest.mark.parametrize("is_deterministic", [False])
-    @pytest.mark.parametrize("overlap_grad_reduce", [True, False])
-    @pytest.mark.parametrize("overlap_param_gather", [True, False])
-    @pytest.mark.parametrize("tp_pp", [(4, 1), (2, 2), (8, 1)])
+    @pytest.mark.parametrize("overlap_grad_reduce", [pytest.param(True, marks=pytest.mark.slow), False])
+    @pytest.mark.parametrize("overlap_param_gather", [pytest.param(True, marks=pytest.mark.slow), False])
+    @pytest.mark.parametrize(
+        "tp_pp",
+        [
+            pytest.param((4, 1), marks=pytest.mark.slow),
+            (2, 2),
+            pytest.param((8, 1), marks=pytest.mark.slow),
+        ],
+    )
     def test_reuse_distributed_optimizer(self, tp_pp, is_deterministic, overlap_grad_reduce, overlap_param_gather):
         args = parse_args(None, True)
         args.npu_deterministic = is_deterministic

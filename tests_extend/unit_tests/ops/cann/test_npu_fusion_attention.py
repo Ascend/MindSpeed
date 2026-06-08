@@ -5,11 +5,12 @@ import torch_npu
 from tests_extend.unit_tests.common import DistributedTest
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 
+pytestmark = pytest.mark.slow
+
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 
 class TestNPUFusionAttention(DistributedTest):
-
     def supported_op_exec(self, query, key, value):
         return torch_npu.npu_fusion_attention(query, key, value, head_num=32, input_layout="BSH", scale=0.08838)
 
@@ -31,6 +32,7 @@ class TestNPUFusionAttention(DistributedTest):
         k_npu = self.trans_BNSD2BSH(key).npu()
         v_npu = self.trans_BNSD2BSH(value).npu()
         output = self.supported_op_exec(q_npu, k_npu, v_npu)
-        attention_score, softmax_max, softmax_sum, softmax_out, seed, offset, numels = self.custom_op_exec(q_npu, k_npu,
-                                                                                                           v_npu)
+        attention_score, softmax_max, softmax_sum, softmax_out, seed, offset, numels = self.custom_op_exec(
+            q_npu, k_npu, v_npu
+        )
         assert torch.allclose(output[0], attention_score, rtol=0.001, atol=0.001)

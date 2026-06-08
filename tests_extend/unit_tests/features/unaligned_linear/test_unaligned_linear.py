@@ -1,17 +1,20 @@
 import pytest
 import torch
-import torch_npu
-from mindspeed import megatron_adaptor
 
+from mindspeed import megatron_adaptor  # noqa: F401
+from mindspeed.core.tensor_parallel.unaligned_layers.adaptor import (
+    UnalignedColumnParallelLinearAdaptor,
+    UnalignedRowParallelLinearAdaptor,
+)
 from megatron.core import parallel_state
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
-from mindspeed.core.tensor_parallel.unaligned_layers.adaptor import UnalignedColumnParallelLinearAdaptor, \
-    UnalignedRowParallelLinearAdaptor
 from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.commons import initialize_model_parallel
 from tests_extend.commons import set_random_seed
+
+pytestmark = pytest.mark.slow
 
 
 def set_unaligned_linear_args(args):
@@ -31,12 +34,14 @@ class TestUnalignedLinear(DistributedTest):
         args = parse_args(None, True)
         set_unaligned_linear_args(args)
         set_args(args)
-        transformer_config = TransformerConfig(num_layers=1,
-                                               tensor_model_parallel_size=1,
-                                               sequence_parallel=False,
-                                               hidden_size=160,
-                                               num_attention_heads=18,
-                                               use_cpu_initialization=True)
+        transformer_config = TransformerConfig(
+            num_layers=1,
+            tensor_model_parallel_size=1,
+            sequence_parallel=False,
+            hidden_size=160,
+            num_attention_heads=18,
+            use_cpu_initialization=True,
+        )
         transformer_config.sequence_parallel = args.sequence_parallel
         transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
         transformer_config.gradient_accumulation_fusion = False
@@ -44,15 +49,21 @@ class TestUnalignedLinear(DistributedTest):
         set_random_seed(args.seed)
         input_size = transformer_config.hidden_size
         output_size = transformer_config.hidden_size
-        linear_layer = UnalignedColumnParallelLinearAdaptor(input_size,
-                                                            output_size,
-                                                            keep_master_weight_for_test=True,
-                                                            init_method=transformer_config.init_method,
-                                                            config=transformer_config).half().npu()
+        linear_layer = (
+            UnalignedColumnParallelLinearAdaptor(
+                input_size,
+                output_size,
+                keep_master_weight_for_test=True,
+                init_method=transformer_config.init_method,
+                config=transformer_config,
+            )
+            .half()
+            .npu()
+        )
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
-        loss_weight = torch.rand([args.seq_len,
-                                  transformer_config.hidden_size // args.tensor_model_parallel_size]
-                                 ).half().npu()
+        loss_weight = (
+            torch.rand([args.seq_len, transformer_config.hidden_size // args.tensor_model_parallel_size]).half().npu()
+        )
         input_ = torch.rand(args.batch_size, args.seq_len, input_size).half().npu()
         output = linear_layer(input_)
         gather_list = [torch.zeros(input_.shape).half().npu() for _ in range(self.world_size)]
@@ -74,12 +85,14 @@ class TestUnalignedLinear(DistributedTest):
         args = parse_args(None, True)
         set_unaligned_linear_args(args)
         set_args(args)
-        transformer_config = TransformerConfig(num_layers=1,
-                                               tensor_model_parallel_size=1,
-                                               sequence_parallel=False,
-                                               hidden_size=160,
-                                               num_attention_heads=18,
-                                               use_cpu_initialization=True)
+        transformer_config = TransformerConfig(
+            num_layers=1,
+            tensor_model_parallel_size=1,
+            sequence_parallel=False,
+            hidden_size=160,
+            num_attention_heads=18,
+            use_cpu_initialization=True,
+        )
         transformer_config.sequence_parallel = args.sequence_parallel
         transformer_config.tensor_model_parallel_size = args.tensor_model_parallel_size
         transformer_config.gradient_accumulation_fusion = False
@@ -87,17 +100,25 @@ class TestUnalignedLinear(DistributedTest):
         set_random_seed(args.seed)
         input_size = transformer_config.hidden_size
         output_size = transformer_config.hidden_size
-        linear_layer = UnalignedRowParallelLinearAdaptor(input_size,
-                                                         output_size,
-                                                         keep_master_weight_for_test=True,
-                                                         bias=True, input_is_parallel=True,
-                                                         skip_bias_add=False,
-                                                         init_method=transformer_config.init_method,
-                                                         config=transformer_config).half().npu()
+        linear_layer = (
+            UnalignedRowParallelLinearAdaptor(
+                input_size,
+                output_size,
+                keep_master_weight_for_test=True,
+                bias=True,
+                input_is_parallel=True,
+                skip_bias_add=False,
+                init_method=transformer_config.init_method,
+                config=transformer_config,
+            )
+            .half()
+            .npu()
+        )
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         loss_weight = torch.rand([args.seq_len, output_size]).half().npu()
-        input_ = torch.rand(args.batch_size, args.seq_len,
-                            transformer_config.hidden_size // args.tensor_model_parallel_size)
+        input_ = torch.rand(
+            args.batch_size, args.seq_len, transformer_config.hidden_size // args.tensor_model_parallel_size
+        )
         input_ = input_.half().npu()
         output = linear_layer(input_)
         loss = torch.mul(output[0], loss_weight).sum()

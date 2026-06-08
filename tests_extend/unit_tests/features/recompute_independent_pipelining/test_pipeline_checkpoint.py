@@ -3,12 +3,14 @@ from unittest import mock
 import torch
 from torch import nn
 import pytest
-from mindspeed import megatron_adaptor
+from mindspeed import megatron_adaptor  # noqa: F401
 
 from megatron.core.tensor_parallel import checkpoint
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from tests_extend.unit_tests.common import DistributedTest
+
+pytestmark = pytest.mark.slow
 
 
 class RiPipeSchedulesFeatureTset:
@@ -18,16 +20,23 @@ class RiPipeSchedulesFeatureTset:
             return
         from mindspeed.core.tensor_parallel.random import checkpoint_wrapper
         from mindspeed.core.memory.common import linear_forward_main_grad_wrapper, linear_backward_main_grad_wrapper
+
         patch_manager.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
         from mindspeed.core.pipeline_parallel.ripipe_schedules import get_forward_backward_func_ripipe_patch
-        patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
-                                     get_forward_backward_func_ripipe_patch, force_patch=True)
+
+        patch_manager.register_patch(
+            'megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
+            get_forward_backward_func_ripipe_patch,
+            force_patch=True,
+        )
         patch_manager.register_patch(
             'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
-            linear_forward_main_grad_wrapper)
+            linear_forward_main_grad_wrapper,
+        )
         patch_manager.register_patch(
             'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
-            linear_backward_main_grad_wrapper)
+            linear_backward_main_grad_wrapper,
+        )
 
     def ripipe_schedule_patch(self):
         args = parse_args(None, True)
@@ -35,6 +44,7 @@ class RiPipeSchedulesFeatureTset:
         args.recompute_in_bubble = True
 
         from mindspeed.patch_utils import MindSpeedPatchesManager as pm
+
         self.ripipe_register_patches(pm, args)
         pm.apply_patches()
 
@@ -83,7 +93,6 @@ class TestCheckpointFunction(DistributedTest):
             output.sum().backward()
             assert mock_forward.call_count == 1
 
-
     def test_new_checkpoint_function(self):
         with mock.patch('mindspeed.core.tensor_parallel.random.get_pipeline_checkpoint_manager') as get_ckpt_manager:
             get_ckpt_manager.return_value = DummyCheckpointManager(open_ri_pipe=True, enable_recompute=True)
@@ -105,10 +114,11 @@ class TestCheckpointFunction(DistributedTest):
             expected_output.sum().backward()
             assert torch.allclose(input_grad, input_data.grad)
 
-
     def test_independent_recompute(self):
         with mock.patch('mindspeed.core.tensor_parallel.random.get_pipeline_checkpoint_manager') as get_ckpt_manager:
-            ckpt_manager = DummyCheckpointManager(open_ri_pipe=True, enable_independent_recompute=True, enable_recompute=True)
+            ckpt_manager = DummyCheckpointManager(
+                open_ri_pipe=True, enable_independent_recompute=True, enable_recompute=True
+            )
             get_ckpt_manager.return_value = ckpt_manager
             mock_forward = mock.Mock(wraps=self.forward)
             input_data = torch.randn(3, 4, requires_grad=True)

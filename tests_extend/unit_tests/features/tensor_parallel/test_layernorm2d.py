@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+# ruff: noqa: E402
 import os
 import sys
 
 sys.argv.append("--tp-2d")
-from mindspeed import megatron_adaptor
 
 import pytest
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from torch import nn
 
 from megatron.core.parallel_state import destroy_model_parallel, initialize_model_parallel
 from megatron.core import tensor_parallel
@@ -29,14 +28,20 @@ from megatron.core.tensor_parallel import mappings
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 
-from mindspeed.core.tensor_parallel.comm_autograd_function import auto_grad_scatter_along_first_dim, \
-    auto_grad_scatter_along_last_dim, auto_grad_sync_gather_along_first_dim, auto_grad_sync_gather_along_last_dim
+from mindspeed.core.tensor_parallel.comm_autograd_function import (
+    auto_grad_scatter_along_first_dim,
+    auto_grad_scatter_along_last_dim,
+    auto_grad_sync_gather_along_first_dim,
+    auto_grad_sync_gather_along_last_dim,
+)
 from mindspeed.core.tensor_parallel.comm_utils import sync_reduce_scatter_along_first_dim
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPXCollectiveComm, TPYCollectiveComm
 
 from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.commons import set_random_seed
+
+pytestmark = pytest.mark.slow
 
 os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 # Setting sys.argv is mainly to ensure that --tp-2d is not None,
@@ -50,7 +55,7 @@ sys.argv.remove('--tp-2d')
 # a simple model containing LayerNorm
 class SimpleModel(nn.Module):
     def __init__(self, norm_size):
-        super(SimpleModel, self).__init__()
+        super().__init__()
         self.layer_norm = nn.LayerNorm(normalized_shape=norm_size)
 
     def forward(self, x):
@@ -67,7 +72,9 @@ class _OnlyAllGatherFromTensorParallelRegion(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_):
-        return mappings._gather_along_last_dim(input_,)
+        return mappings._gather_along_last_dim(
+            input_,
+        )
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -80,7 +87,7 @@ def only_all_gather_last_dim_from_tensor_parallel_region(input_):
 
 class SimpleDistModel(nn.Module):
     def __init__(self, norm_size):
-        super(SimpleDistModel, self).__init__()
+        super().__init__()
         last_dim_split_comm_intf = TPYCollectiveComm()
         self.layer_norm = LayerNorm2D(norm_size, last_dim_split_comm_intf=last_dim_split_comm_intf)
 
@@ -108,7 +115,6 @@ class TestLayernorm2dRsFirstDim(DistributedTest):
 
         # loss function and optimizer
         criterion = nn.MSELoss()
-        optimizer = optim.SGD(model.parameters(), lr=0.01)
         # forward, predict
         if dist_schedule:
             # s,b,E -> s/x,b,h/y
@@ -145,11 +151,16 @@ class TestLayernorm2dRsFirstDim(DistributedTest):
             tensor_model_parallel_size=tp,
             pipeline_model_parallel_size=pp,
             virtual_pipeline_model_parallel_size=None,
-            pipeline_model_parallel_split_rank=None)
+            pipeline_model_parallel_split_rank=None,
+        )
         # 2d layer_norm
-        output_2d, weight_grad_2d, bias_grad_2d = self.get_layernorm_grad(dist_schedule=1, h=h, input_x=input_x, targets=targets)
+        output_2d, weight_grad_2d, bias_grad_2d = self.get_layernorm_grad(
+            dist_schedule=1, h=h, input_x=input_x, targets=targets
+        )
         # 1d layer_norm
-        output_1d, weight_grad_1d, bias_grad_1d = self.get_layernorm_grad(dist_schedule=0, h=h, input_x=input_x, targets=targets)
+        output_1d, weight_grad_1d, bias_grad_1d = self.get_layernorm_grad(
+            dist_schedule=0, h=h, input_x=input_x, targets=targets
+        )
         assert torch.allclose(output_2d, output_1d, rtol=self.diff_value, atol=self.diff_value)
         weight_grad_1d = tensor_parallel.scatter_to_tensor_model_parallel_region(weight_grad_1d)
         bias_grad_1d = tensor_parallel.scatter_to_tensor_model_parallel_region(bias_grad_1d)

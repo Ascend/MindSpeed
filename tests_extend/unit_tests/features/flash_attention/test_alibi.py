@@ -2,12 +2,12 @@ import pytest
 import torch
 import torch_npu
 
-from mindspeed import megatron_adaptor
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from megatron.core.transformer.transformer_config import TransformerConfig
-
 from mindspeed.core.transformer.flash_attention.alibi.adaptor import MindSpeedDotProductAttention
+
+pytestmark = pytest.mark.slow
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
@@ -19,11 +19,7 @@ def run_fusion_attn_with_pse_alibi(bs, seq_len, dtype):
     set_args(args)
 
     config = TransformerConfig(
-        num_layers=2,
-        hidden_size=32,
-        num_attention_heads=4,
-        attention_dropout=0.0,
-        params_dtype=dtype
+        num_layers=2, hidden_size=32, num_attention_heads=4, attention_dropout=0.0, params_dtype=dtype
     )
 
     # extra arguments mindspeed needed
@@ -37,10 +33,7 @@ def run_fusion_attn_with_pse_alibi(bs, seq_len, dtype):
     config.next_tockens = 0
 
     attn = MindSpeedDotProductAttention(
-        config=config,
-        layer_number=1,
-        attn_mask_type=AttnMaskType.causal,
-        attention_type='self'
+        config=config, layer_number=1, attn_mask_type=AttnMaskType.causal, attention_type='self'
     )
 
     # attn.pse should exist and not be None
@@ -58,17 +51,12 @@ def run_fusion_attn_with_pse_alibi(bs, seq_len, dtype):
 
 
 class TestAlibi:
-
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
     def test_alibi(self, mocker):
         mock_world_size = mocker.patch(
-            "megatron.core.parallel_state.get_tensor_model_parallel_world_size",
-            return_value=1
+            "megatron.core.parallel_state.get_tensor_model_parallel_world_size", return_value=1
         )
-        mock_rank = mocker.patch(
-            "megatron.core.parallel_state.get_tensor_model_parallel_rank",
-            return_value=0
-        )
+        mock_rank = mocker.patch("megatron.core.parallel_state.get_tensor_model_parallel_rank", return_value=0)
         run_fusion_attn_with_pse_alibi(2, 256, torch.bfloat16)
         mock_world_size.assert_called()
         mock_rank.assert_called_once()

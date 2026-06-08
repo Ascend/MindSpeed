@@ -1,7 +1,5 @@
 import pytest
 import torch
-import torch_npu
-from mindspeed import megatron_adaptor
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -9,6 +7,8 @@ from mindspeed.core.tensor_parallel.coc_feature.adaptor import MindSpeedCoCColum
 from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.commons import initialize_model_parallel
 from tests_extend.commons import set_random_seed
+
+pytestmark = pytest.mark.slow
 
 
 def set_coc_args(args):
@@ -33,10 +33,9 @@ class TestCoC(DistributedTest):
         args = parse_args(None, True)
         args = set_coc_args(args)
         set_args(args)
-        transformer_config = TransformerConfig(num_layers=1,
-                                               hidden_size=12,
-                                               num_attention_heads=8,
-                                               use_cpu_initialization=True)
+        transformer_config = TransformerConfig(
+            num_layers=1, hidden_size=12, num_attention_heads=8, use_cpu_initialization=True
+        )
 
         # ----------COC SETTING----------
         transformer_config.coc_mode = 2
@@ -50,11 +49,17 @@ class TestCoC(DistributedTest):
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.output_size_coeff * args.tensor_model_parallel_size
-        linear_layer = MindSpeedCoCColumnParallelLinear(input_size,
-                                                        output_size,
-                                                        keep_master_weight_for_test=True,
-                                                        init_method=transformer_config.init_method,
-                                                        config=transformer_config).half().npu()
+        linear_layer = (
+            MindSpeedCoCColumnParallelLinear(
+                input_size,
+                output_size,
+                keep_master_weight_for_test=True,
+                init_method=transformer_config.init_method,
+                config=transformer_config,
+            )
+            .half()
+            .npu()
+        )
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         loss_weight = torch.rand([args.seq_len, args.output_size_coeff]).half().npu()
         input_ = torch.rand(args.batch_size, args.seq_len, input_size, requires_grad=True).half().npu()
@@ -78,10 +83,9 @@ class TestCoC(DistributedTest):
         args = parse_args(None, True)
         args = set_coc_args(args)
         set_args(args)
-        transformer_config = TransformerConfig(num_layers=1,
-                                               hidden_size=12,
-                                               num_attention_heads=8,
-                                               use_cpu_initialization=True)
+        transformer_config = TransformerConfig(
+            num_layers=1, hidden_size=12, num_attention_heads=8, use_cpu_initialization=True
+        )
 
         # ----------COC SETTING----------
         transformer_config.coc_mode = 2
@@ -95,11 +99,17 @@ class TestCoC(DistributedTest):
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.output_size_coeff * args.tensor_model_parallel_size
-        linear_layer = MindSpeedCoCColumnParallelLinear(input_size,
-                                                        output_size,
-                                                        keep_master_weight_for_test=True,
-                                                        init_method=transformer_config.init_method,
-                                                        config=transformer_config).half().npu()
+        linear_layer = (
+            MindSpeedCoCColumnParallelLinear(
+                input_size,
+                output_size,
+                keep_master_weight_for_test=True,
+                init_method=transformer_config.init_method,
+                config=transformer_config,
+            )
+            .half()
+            .npu()
+        )
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         loss_weight = torch.rand([args.seq_len, args.output_size_coeff]).half().npu()
         input_ = torch.rand(args.batch_size, args.seq_len, input_size, requires_grad=True).half().npu()
@@ -123,10 +133,9 @@ class TestCoC(DistributedTest):
         args = parse_args(None, True)
         args = set_coc_args(args)
         set_args(args)
-        transformer_config = TransformerConfig(num_layers=1,
-                                               hidden_size=12,
-                                               num_attention_heads=8,
-                                               use_cpu_initialization=True)
+        transformer_config = TransformerConfig(
+            num_layers=1, hidden_size=12, num_attention_heads=8, use_cpu_initialization=True
+        )
 
         # ----------COC SETTING----------
         transformer_config.coc_mode = 2
@@ -140,11 +149,17 @@ class TestCoC(DistributedTest):
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.output_size_coeff * args.tensor_model_parallel_size
-        linear_layer = MindSpeedCoCColumnParallelLinear(input_size,
-                                                        output_size,
-                                                        keep_master_weight_for_test=True,
-                                                        init_method=transformer_config.init_method,
-                                                        config=transformer_config).half().npu()
+        linear_layer = (
+            MindSpeedCoCColumnParallelLinear(
+                input_size,
+                output_size,
+                keep_master_weight_for_test=True,
+                init_method=transformer_config.init_method,
+                config=transformer_config,
+            )
+            .half()
+            .npu()
+        )
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         loss_weight = torch.rand([args.seq_len, args.output_size_coeff]).half().npu()
         input_ = torch.rand(args.batch_size, args.seq_len, input_size, requires_grad=True).half().npu()
@@ -166,10 +181,9 @@ class TestCoC(DistributedTest):
         args = parse_args(None, True)
         args = set_coc_args(args)
         set_args(args)
-        transformer_config = TransformerConfig(num_layers=1,
-                                               hidden_size=12,
-                                               num_attention_heads=8,
-                                               use_cpu_initialization=True)
+        transformer_config = TransformerConfig(
+            num_layers=1, hidden_size=12, num_attention_heads=8, use_cpu_initialization=True
+        )
 
         # ----------COC SETTING----------
         transformer_config.coc_mode = 2
@@ -183,11 +197,17 @@ class TestCoC(DistributedTest):
         set_random_seed(args.seed)
         input_size = args.input_size_coeff * args.tensor_model_parallel_size
         output_size = args.output_size_coeff * args.tensor_model_parallel_size
-        linear_layer = MindSpeedCoCColumnParallelLinear(input_size,
-                                                        output_size,
-                                                        keep_master_weight_for_test=True,
-                                                        init_method=transformer_config.init_method,
-                                                        config=transformer_config).half().npu()
+        linear_layer = (
+            MindSpeedCoCColumnParallelLinear(
+                input_size,
+                output_size,
+                keep_master_weight_for_test=True,
+                init_method=transformer_config.init_method,
+                config=transformer_config,
+            )
+            .half()
+            .npu()
+        )
         setattr(linear_layer.weight, 'main_grad', linear_layer.weight.clone())
         loss_weight = torch.rand([args.seq_len, args.output_size_coeff]).half().npu()
         input_ = torch.rand(args.batch_size, args.seq_len, input_size, requires_grad=True).half().npu()

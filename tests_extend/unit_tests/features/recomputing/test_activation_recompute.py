@@ -1,6 +1,6 @@
-import types
+import pytest
 import torch
-from mindspeed import megatron_adaptor
+from mindspeed import megatron_adaptor  # noqa: F401
 from mindspeed.model.transformer import set_attention_mask
 from mindspeed.features_manager.recompute.activation_function import RecomputeActivationFeature
 from mindspeed.patch_utils import MindSpeedPatchesManager as pm
@@ -14,6 +14,8 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
 
 from tests_extend.commons import initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
+
+pytestmark = pytest.mark.slow
 
 
 class ActRecomputeFeatureTset:
@@ -35,7 +37,10 @@ class ActRecomputeFeatureTset:
     @staticmethod
     def del_recompute_register_patch(patch_manager):
         patch_manager.register_patch('megatron.core.transformer.mlp.MLP.forward', MLP.forward, force_patch=True)
-        patch_manager.remove_wrappers('megatron.core.transformer.transformer_layer.TransformerLayer.__init__', 'parallel_transformer_layer_init_wrapper')
+        patch_manager.remove_wrappers(
+            'megatron.core.transformer.transformer_layer.TransformerLayer.__init__',
+            'parallel_transformer_layer_init_wrapper',
+        )
         patch_manager.apply_patches()
 
 
@@ -85,8 +90,8 @@ class TestActivationRecompute(DistributedTest):
         out_ref, _ = transformer_block_ref(hidden_states=hidden_states_ref)
         out_test, _ = transformer_block_test(hidden_states=hidden_states_test)
 
-        assert(torch.allclose(out_ref, out_test))
+        assert torch.allclose(out_ref, out_test)
 
         out_ref.backward(torch.ones_like(out_ref))
         out_test.backward(torch.ones_like(out_ref))
-        assert(torch.allclose(hidden_states_ref.grad, hidden_states_test.grad))
+        assert torch.allclose(hidden_states_ref.grad, hidden_states_test.grad)

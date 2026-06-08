@@ -4,10 +4,10 @@ import pytest
 import torch
 import torch_npu
 
-from mindspeed import megatron_adaptor
+from mindspeed import megatron_adaptor  # noqa: F401
+from mindspeed.core.context_parallel.utils import forward_update
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
-from mindspeed.core.context_parallel.utils import forward_update
 from tests_extend.unit_tests.common import TOL_MAPPING
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
@@ -36,14 +36,20 @@ def run_one_case(batch_size, head_num, seq_size, head_dim, data_type):
 
     args = create_test_args(False)
     set_args(args)
-    attn_out, softmax_max, softmax_sum = forward_update(prev_attn_out, prev_softmax_max, prev_softmax_sum,
-                                                        cur_attn_out, cur_softmax_max, cur_softmax_sum)
+    attn_out, softmax_max, softmax_sum = forward_update(
+        prev_attn_out, prev_softmax_max, prev_softmax_sum, cur_attn_out, cur_softmax_max, cur_softmax_sum
+    )
 
     args = create_test_args(True)
     set_args(args)
     attn_out_fused, softmax_max_fused, softmax_sum_fused = forward_update(
-        prev_attn_out_fused, prev_softmax_max_fused, prev_softmax_sum_fused,
-        cur_attn_out_fused, cur_softmax_max_fused, cur_softmax_sum_fused)
+        prev_attn_out_fused,
+        prev_softmax_max_fused,
+        prev_softmax_sum_fused,
+        cur_attn_out_fused,
+        cur_softmax_max_fused,
+        cur_softmax_sum_fused,
+    )
 
     tols = TOL_MAPPING.get(data_type)
     assert torch.allclose(softmax_max.npu(), softmax_max_fused, **tols)
@@ -51,10 +57,24 @@ def run_one_case(batch_size, head_num, seq_size, head_dim, data_type):
     assert torch.allclose(attn_out.npu(), attn_out_fused, **tols)
 
 
-class TestNpuFusedRingAttentionUpdate():
-
-    @pytest.mark.parametrize("bs_hn_seq_hd", [(1, 64, 8192, 128), (1, 32, 8192, 128), (1, 32, 65536, 128), (1, 32, 32768, 128)])
-    @pytest.mark.parametrize('dtype', [torch.bfloat16, torch.float, torch.float16])
+class TestNpuFusedRingAttentionUpdate:
+    @pytest.mark.parametrize(
+        "bs_hn_seq_hd",
+        [
+            pytest.param((1, 64, 8192, 128), marks=pytest.mark.slow),
+            (1, 32, 8192, 128),
+            pytest.param((1, 32, 65536, 128), marks=pytest.mark.slow),
+            pytest.param((1, 32, 32768, 128), marks=pytest.mark.slow),
+        ],
+    )
+    @pytest.mark.parametrize(
+        'dtype',
+        [
+            torch.bfloat16,
+            pytest.param(torch.float, marks=pytest.mark.slow),
+            pytest.param(torch.float16, marks=pytest.mark.slow),
+        ],
+    )
     def test_npu_fused_ring_attention_update(self, bs_hn_seq_hd, dtype):
         """
         mixtral： B = 1, N = 32, S = 8192, D = 128

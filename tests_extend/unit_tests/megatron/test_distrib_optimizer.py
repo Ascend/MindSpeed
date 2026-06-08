@@ -2,20 +2,18 @@ import dataclasses
 import copy
 import pytest
 import torch
-import torch_npu
-import mindspeed.megatron_adaptor
-from apex.optimizers import FusedAdam as Adam
 
 from tests_extend.commons import set_random_seed, initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.transformer import TransformerConfig, MegatronModule
-from megatron.core.parallel_state import get_data_parallel_group
 from megatron.training.global_vars import set_args, get_args, get_timers, _set_timers
 from megatron.training.arguments import parse_args
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
 from megatron.core.utils import get_model_config
+
+pytestmark = pytest.mark.slow
 
 
 class Model(MegatronModule):
@@ -27,27 +25,33 @@ class Model(MegatronModule):
         return self.linear(x)
 
 
-def step_optimizer(model, use_distributed: bool, seed: int = None, 
-                              no_wd_decay_cond=None,
-                              scale_lr_cond=None,
-                              lr_mult=1.0):
+def step_optimizer(
+    model, use_distributed: bool, seed: int = None, no_wd_decay_cond=None, scale_lr_cond=None, lr_mult=1.0
+):
     set_random_seed(seed)
     args = get_args()
     config = get_model_config(model[0])
     ddp_config = DistributedDataParallelConfig(
-            grad_reduce_in_fp32=args.accumulate_allreduce_grads_in_fp32,
-            overlap_grad_reduce=args.overlap_grad_reduce,
-            use_distributed_optimizer=args.use_distributed_optimizer,
-            check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
-            bucket_size=args.ddp_bucket_size,
-            average_in_collective=args.ddp_average_in_collective)
-    model = torch.nn.ModuleList([DDP(config,
-                 ddp_config,
-                 model_chunk,
-                 # Turn off bucketing for model_chunk 2 onwards, since communication for these
-                 # model chunks is overlapped with compute anyway.
-                 disable_bucketing=(model_chunk_idx > 0))
-             for (model_chunk_idx, model_chunk) in enumerate(model)])
+        grad_reduce_in_fp32=args.accumulate_allreduce_grads_in_fp32,
+        overlap_grad_reduce=args.overlap_grad_reduce,
+        use_distributed_optimizer=args.use_distributed_optimizer,
+        check_for_nan_in_grad=args.check_for_nan_in_loss_and_grad,
+        bucket_size=args.ddp_bucket_size,
+        average_in_collective=args.ddp_average_in_collective,
+    )
+    model = torch.nn.ModuleList(
+        [
+            DDP(
+                config,
+                ddp_config,
+                model_chunk,
+                # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                # model chunks is overlapped with compute anyway.
+                disable_bucketing=(model_chunk_idx > 0),
+            )
+            for (model_chunk_idx, model_chunk) in enumerate(model)
+        ]
+    )
 
     # Params initialization
     for p in model.parameters():
@@ -63,10 +67,9 @@ def step_optimizer(model, use_distributed: bool, seed: int = None,
     kwargs['main_params_dtype'] = torch.float32
     kwargs['exp_avg_dtype'] = torch.float32
     kwargs['exp_avg_sq_dtype'] = torch.float32
-    onfig = OptimizerConfig(**kwargs)
-    config.timers = get_timers()
-    optimizer = get_megatron_optimizer(config, model, no_wd_decay_cond,
-                                       scale_lr_cond, lr_mult)
+    optimizer_config = OptimizerConfig(**kwargs)
+    optimizer_config.timers = get_timers()
+    optimizer = get_megatron_optimizer(optimizer_config, model, no_wd_decay_cond, scale_lr_cond, lr_mult)
 
     for _ in range(500):
         # Force optimizer state initialization
@@ -108,4 +111,3 @@ class TestDistributedOptimizer(DistributedTest):
 
         for p, dist_p in zip(params, dist_params):
             assert torch.allclose(p.data, dist_p.data)
-

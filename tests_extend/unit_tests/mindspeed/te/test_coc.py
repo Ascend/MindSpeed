@@ -1,23 +1,23 @@
 import pytest
 
 import torch
-import torch_npu
 
 from torch.nn.parameter import Parameter
-import mindspeed.megatron_adaptor
-from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
-from megatron.training.arguments import parse_args, core_transformer_config_from_args
-from megatron.training.global_vars import set_args
-from megatron.training.initialize import _set_random_seed
-
+from mindspeed import megatron_adaptor  # noqa: F401
 from mindspeed.te.pytorch.fp8 import MatmulKey
 from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
 from mindspeed.te.pytorch.module.linear import TEColumnParallelLinear, TERowParallelLinear
 from mindspeed.te.pytorch.module.ops.default_ops import DefaultOps
 from mindspeed.te.pytorch.module.ops.mc2_ops import Mc2Ops
+from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+from megatron.training.arguments import parse_args, core_transformer_config_from_args
+from megatron.training.global_vars import set_args
+from megatron.training.initialize import _set_random_seed
 from tests_extend.commons import initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.unit_tests.utils import multi_compare
+
+pytestmark = pytest.mark.slow
 
 
 class TestAllgatherMatmul(DistributedTest):
@@ -76,13 +76,9 @@ class TestMatmulReduceScatter(DistributedTest):
         output_mc2, _, _ = Mc2Ops.matmul_reduce_scatter(x.npu(), w.npu(), None, fp8_meta, MatmulKey.forward)
         output_default = output_default.view(-1).cpu()
         output_mc2 = output_mc2.view(-1).cpu()
-        assert multi_compare(
-            output_mc2,
-            output_baseline,
-            output_default,
-            f"{torch.npu.current_device()}",
-            "l0"
-        ) != "FAIL"
+        assert (
+            multi_compare(output_mc2, output_baseline, output_default, f"{torch.npu.current_device()}", "l0") != "FAIL"
+        )
 
     def reduce_scatter(self, x, w):
         output_ = torch.matmul(x, w.t())
@@ -117,13 +113,9 @@ class TestMatmulAllReduce(DistributedTest):
         output_mc2, _, _ = Mc2Ops.matmul_all_reduce(x.npu(), w.npu(), None, fp8_meta)
         output_default = output_default.view(-1).cpu()
         output_mc2 = output_mc2.view(-1).cpu()
-        assert multi_compare(
-            output_mc2,
-            output_baseline,
-            output_default,
-            f"{torch.npu.current_device()}",
-            "l0"
-        ) != "FAIL"
+        assert (
+            multi_compare(output_mc2, output_baseline, output_default, f"{torch.npu.current_device()}", "l0") != "FAIL"
+        )
 
     def matmul_all_reduce(self, x, w):
         output = torch.matmul(x, w.t())
@@ -136,9 +128,7 @@ class TestTEColumnParallel(DistributedTest):
     world_size = 8
 
     @pytest.mark.parametrize("use_ascend_mc2", [True, False])
-    @pytest.mark.parametrize("limit_args", [
-        (torch.bfloat16, 0.005, 0.005)
-    ])
+    @pytest.mark.parametrize("limit_args", [(torch.bfloat16, 0.005, 0.005)])
     def test_te_column_parallel(self, use_ascend_mc2, limit_args):
         batch_size = 1
         seq_size = 4096
@@ -201,9 +191,7 @@ class TestTEColumnParallelNoSeq(DistributedTest):
     world_size = 8
 
     @pytest.mark.parametrize("use_ascend_mc2", [False])
-    @pytest.mark.parametrize("limit_args", [
-        (torch.bfloat16, 0.005, 0.005)
-    ])
+    @pytest.mark.parametrize("limit_args", [(torch.bfloat16, 0.005, 0.005)])
     def test_te_column_parallel_no_seq(self, use_ascend_mc2, limit_args):
         batch_size = 1
         seq_size = 4096
@@ -266,9 +254,7 @@ class TestTERowParallel(DistributedTest):
     world_size = 8
 
     @pytest.mark.parametrize("use_ascend_mc2", [True, False])
-    @pytest.mark.parametrize("limit_args", [
-        (torch.bfloat16, 0.005, 0.005)
-    ])
+    @pytest.mark.parametrize("limit_args", [(torch.bfloat16, 0.005, 0.005)])
     def test_te_row_parallel(self, use_ascend_mc2, limit_args):
         batch_size = 1
         seq_size = 4096
@@ -335,9 +321,7 @@ class TestTERowParallelNoSeq(DistributedTest):
     world_size = 8
 
     @pytest.mark.parametrize("use_ascend_mc2", [False])
-    @pytest.mark.parametrize("limit_args", [
-        (torch.bfloat16, 0.005, 0.005)
-    ])
+    @pytest.mark.parametrize("limit_args", [(torch.bfloat16, 0.005, 0.005)])
     def test_te_row_parallel_no_seq(self, use_ascend_mc2, limit_args):
         batch_size = 1
         seq_size = 4096

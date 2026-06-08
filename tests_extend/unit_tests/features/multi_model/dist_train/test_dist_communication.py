@@ -2,17 +2,24 @@
 from typing import Tuple, List
 import pytest
 import torch
-from mindspeed import megatron_adaptor
 import torch.distributed
+from mindspeed import megatron_adaptor  # noqa: F401
 import mindspeed.core.multi_modal.dist_train.dist_communication as comm
 from mindspeed.core.multi_modal.dist_train.dist_train_config import _set_config, _clear_dist_config
-from mindspeed.core.multi_modal.dist_train.dist_parallel_state import initialize_model_parallel, reset_global_group_and_ranks
+from mindspeed.core.multi_modal.dist_train.dist_parallel_state import (
+    initialize_model_parallel,
+    reset_global_group_and_ranks,
+)
 from mindspeed.core.multi_modal.dist_train.dist_ranks_match import clear_model_comm_ranks
 from tests_extend.commons import set_random_seed
 from tests_extend.unit_tests.common import DistributedTest
-from tests_extend.unit_tests.features.multi_model.dist_train.dist_train_config_utils import get_single_config, make_whole_config
+from tests_extend.unit_tests.features.multi_model.dist_train.dist_train_config_utils import (
+    get_single_config,
+    make_whole_config,
+)
 
 
+pytestmark = pytest.mark.slow
 TENSOR_SYNC_TOOL = comm.TensorSyncTool()
 COLLECTED_DTYPES = TENSOR_SYNC_TOOL.type_to_int
 
@@ -40,8 +47,9 @@ class TestDistCommunicationTensorSyncTool:
         tensor = torch.empty((1, 2), requires_grad=requires_grad)
         header = TENSOR_SYNC_TOOL.encode_tensor_header(tensor)
         _, _, requires_grad_ = TENSOR_SYNC_TOOL.decode_tensor_header(header)
-        assert requires_grad_ == tensor.requires_grad, \
+        assert requires_grad_ == tensor.requires_grad, (
             f'`{requires_grad_=}` and `{tensor.requires_grad}` should be equal'
+        )
 
 
 class TestDistCommunicationWithDistributed(DistributedTest):
@@ -135,17 +143,23 @@ class TestDistCommunicationWithDistributed(DistributedTest):
                 assert torch.isclose(t1, t2).all().item(), 'An incorrect tensor list is received.'
 
     def _get_manual_tensor_list(self, dst_size):
-        all_dtype_list = ([self.dtypes[0], self.dtypes[1], self.dtypes[2]],
-                          [self.dtypes[2], self.dtypes[1], self.dtypes[0]],
-                          [self.dtypes[2], self.dtypes[0], self.dtypes[1]],)
-        all_shape_list = ([(1,), (2,), (3,)],
-                          [(3,), (2,), (1,)],
-                          [(1,), (3,), (2,)],)
+        all_dtype_list = (
+            [self.dtypes[0], self.dtypes[1], self.dtypes[2]],
+            [self.dtypes[2], self.dtypes[1], self.dtypes[0]],
+            [self.dtypes[2], self.dtypes[0], self.dtypes[1]],
+        )
+        all_shape_list = (
+            [(1,), (2,), (3,)],
+            [(3,), (2,), (1,)],
+            [(1,), (3,), (2,)],
+        )
         if not (len(all_dtype_list) == len(all_shape_list) >= self.world_size - dst_size):
             raise ValueError('This method does not support src_world_size greater than 3.')
         device = torch.npu.current_device()
-        tensor_list = [[torch.rand(shape, dtype=dtype, device=device) for shape, dtype in zip(shape_list, dtype_list)]
-                       for shape_list, dtype_list in zip(all_shape_list, all_dtype_list)]
+        tensor_list = [
+            [torch.rand(shape, dtype=dtype, device=device) for shape, dtype in zip(shape_list, dtype_list)]
+            for shape_list, dtype_list in zip(all_shape_list, all_dtype_list)
+        ]
         return tensor_list, all_dtype_list, all_shape_list
 
     @pytest.mark.skipif(skip_flag, reason='Some data types may not be supported by the device')
@@ -160,12 +174,15 @@ class TestDistCommunicationWithDistributed(DistributedTest):
         if rank in src:
             comm.send_tensor_list(tensor_list[rank], dst)
         elif rank in dst:
-            recv_tensor_list = [[tensor_list_[i] for tensor_list_ in tensor_list[:len(src)]]
-                                for i in range(len(all_dtype_list[0]))]
+            recv_tensor_list = [
+                [tensor_list_[i] for tensor_list_ in tensor_list[: len(src)]] for i in range(len(all_dtype_list[0]))
+            ]
             recv_tensor_list_ = comm.recv_tensor_list(src)
-            assert all(torch.isclose(tensor_list[i], tensor_list_[i]).all().item() for i in range(len(src))
-                       for tensor_list, tensor_list_ in zip(recv_tensor_list, recv_tensor_list_)), \
-                'An incorrect tensor list is received.'
+            assert all(
+                torch.isclose(tensor_list[i], tensor_list_[i]).all().item()
+                for i in range(len(src))
+                for tensor_list, tensor_list_ in zip(recv_tensor_list, recv_tensor_list_)
+            ), 'An incorrect tensor list is received.'
 
     @staticmethod
     def _clear_dist_train_global_arguments():
@@ -182,8 +199,7 @@ class TestDistCommunicationWithDistributed(DistributedTest):
 
         # Need init config because `send_recv_tensor_list` will call `get_global_pipeline_parallel_rank`
         self._clear_dist_train_global_arguments()
-        config_list = [get_single_config('vit', 0, len(src)),
-                       get_single_config('gpt', 1, len(dst))]
+        config_list = [get_single_config('vit', 0, len(src)), get_single_config('gpt', 1, len(dst))]
         _set_config(make_whole_config(config_list))
         initialize_model_parallel()
 
@@ -194,8 +210,9 @@ class TestDistCommunicationWithDistributed(DistributedTest):
             send_tensor_list = tensor_list[rank]
             comm.send_recv_tensor_list(send_tensor_list, False, dst)
         elif rank in dst:
-            recv_tensor_list_ans = [[tensor_list_[i] for tensor_list_ in tensor_list[:len(src)]]
-                                    for i in range(len(all_dtype_list[0]))]
+            recv_tensor_list_ans = [
+                [tensor_list_[i] for tensor_list_ in tensor_list[: len(src)]] for i in range(len(all_dtype_list[0]))
+            ]
             recv_tensor_list = comm.send_recv_tensor_list(None, True, src)
             assert isinstance(recv_tensor_list, list), 'A list should be received'
             assert len(recv_tensor_list) == len(recv_tensor_list_ans), 'The length of the list is incorrect'
@@ -205,8 +222,10 @@ class TestDistCommunicationWithDistributed(DistributedTest):
 
     def _test_generate_send_recv_ops(self, is_fwd_only_pair, ans_ops):
         self._clear_dist_train_global_arguments()
-        config_list = [get_single_config('vit', 0, 2, pp_size=2, forward_only=is_fwd_only_pair[0]),
-                       get_single_config('gpt', 1, 2, pp_size=2, forward_only=is_fwd_only_pair[1])]
+        config_list = [
+            get_single_config('vit', 0, 2, pp_size=2, forward_only=is_fwd_only_pair[0]),
+            get_single_config('gpt', 1, 2, pp_size=2, forward_only=is_fwd_only_pair[1]),
+        ]
         _set_config(make_whole_config(config_list))
         initialize_model_parallel()
 
@@ -217,8 +236,12 @@ class TestDistCommunicationWithDistributed(DistributedTest):
     @staticmethod
     def _make_ops(ops_value):
         rank = torch.distributed.get_rank()
-        ops = {'send_forward': ops_value[rank][0], 'send_backward': ops_value[rank][1],
-               'recv_forward': ops_value[rank][2], 'recv_backward': ops_value[rank][3]}
+        ops = {
+            'send_forward': ops_value[rank][0],
+            'send_backward': ops_value[rank][1],
+            'recv_forward': ops_value[rank][2],
+            'recv_backward': ops_value[rank][3],
+        }
         return ops
 
     def test_generate_send_recv_ops_is_fwd_only_true_true(self):
@@ -233,28 +256,44 @@ class TestDistCommunicationWithDistributed(DistributedTest):
         # recv_backward:     | False       | \ | False        | False       | \ | False       |
 
         is_fwd_only_pair = (True, True)
-        ans = ((False, False, False, False), (True, False, False, False),
-               (False, False, True, False), (False, False, False, False))
+        ans = (
+            (False, False, False, False),
+            (True, False, False, False),
+            (False, False, True, False),
+            (False, False, False, False),
+        )
         ans = self._make_ops(ans)
         self._test_generate_send_recv_ops(is_fwd_only_pair, ans)
 
     def test_generate_send_recv_ops_is_fwd_only_true_false(self):
         is_fwd_only_pair = (True, False)
-        ans = ((False, False, False, False), (True, False, False, False),
-               (False, False, True, False), (False, False, False, False))
+        ans = (
+            (False, False, False, False),
+            (True, False, False, False),
+            (False, False, True, False),
+            (False, False, False, False),
+        )
         ans = self._make_ops(ans)
         self._test_generate_send_recv_ops(is_fwd_only_pair, ans)
 
     def test_generate_send_recv_ops_is_fwd_only_false_true(self):
         is_fwd_only_pair = (False, True)
-        ans = ((False, False, False, False), (True, False, False, False),
-               (False, False, True, False), (False, False, False, False))
+        ans = (
+            (False, False, False, False),
+            (True, False, False, False),
+            (False, False, True, False),
+            (False, False, False, False),
+        )
         ans = self._make_ops(ans)
         self._test_generate_send_recv_ops(is_fwd_only_pair, ans)
 
     def test_generate_send_recv_ops_is_fwd_only_false_false(self):
         is_fwd_only_pair = (False, False)
-        ans = ((False, False, False, False), (True, False, False, True),
-               (False, True, True, False), (False, False, False, False))
+        ans = (
+            (False, False, False, False),
+            (True, False, False, True),
+            (False, True, True, False),
+            (False, False, False, False),
+        )
         ans = self._make_ops(ans)
         self._test_generate_send_recv_ops(is_fwd_only_pair, ans)

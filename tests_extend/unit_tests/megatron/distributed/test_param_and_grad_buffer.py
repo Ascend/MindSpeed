@@ -1,20 +1,22 @@
+# Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
+
 import contextlib
 import math
 from typing import Optional
 
 import pytest
 import torch
-import torch_npu
-import mindspeed.megatron_adaptor
 
-from megatron.core import parallel_state
 import megatron.core.parallel_state as Utils
-from tests_extend.unit_tests.common import DistributedTest
-from megatron.training.global_vars import set_args
-from megatron.training.arguments import parse_args
-from megatron.core.distributed import DistributedDataParallel, DistributedDataParallelConfig
-from megatron.core.distributed.param_and_grad_buffer import partition_buckets
+from megatron.core.distributed import (
+    DistributedDataParallel,
+    DistributedDataParallelConfig,
+)
 from megatron.core.transformer import TransformerConfig
+from megatron.training.arguments import parse_args
+from megatron.training.global_vars import set_args
+from tests_extend.unit_tests.common import DistributedTest
 
 
 class TestModel(torch.nn.Module):
@@ -27,9 +29,7 @@ class TestModel(torch.nn.Module):
         shared_embedding: bool = False,
     ):
         super().__init__()
-        self.layers = torch.nn.ModuleList(
-            [torch.nn.Linear(input_dim, output_dim, bias) for _ in range(num_layers)]
-        )
+        self.layers = torch.nn.ModuleList([torch.nn.Linear(input_dim, output_dim, bias) for _ in range(num_layers)])
         if shared_embedding:
             self.layers[-1].weight.shared_embedding = True
 
@@ -81,20 +81,27 @@ class TestParamAndGradBuffer(DistributedTest):
     args.hidden_size = 1024
     set_args(args)
 
-    @pytest.mark.parametrize("bucket_size", [None, 9050, 20000])
-    @pytest.mark.parametrize("use_distributed_optimizer", [False, True])
-    @pytest.mark.parametrize("bias", [False, True])
-    @pytest.mark.parametrize("shared_embedding", [False, True])
+    @pytest.mark.parametrize(
+        "bucket_size",
+        [
+            None,
+            pytest.param(9050, marks=pytest.mark.slow),
+            pytest.param(20000, marks=pytest.mark.slow),
+        ],
+    )
+    @pytest.mark.parametrize("use_distributed_optimizer", [False, pytest.param(True, marks=pytest.mark.slow)])
+    @pytest.mark.parametrize("bias", [False, pytest.param(True, marks=pytest.mark.slow)])
+    @pytest.mark.parametrize("shared_embedding", [False, pytest.param(True, marks=pytest.mark.slow)])
     def test_bucket_sizes(
         self, bucket_size: Optional[int], use_distributed_optimizer: bool, bias: bool, shared_embedding: bool
     ):
         Utils.destroy_model_parallel()
         Utils.initialize_model_parallel()
-    
+
         if shared_embedding and bias:
             # Don't bother running shared_embedding + bias since gold values are trickier to compute.
             return
-    
+
         input_dim = 95
         output_dim = 95
         num_layers = 10
@@ -109,24 +116,24 @@ class TestParamAndGradBuffer(DistributedTest):
             overlap_grad_reduce=True,
             average_in_collective=False,
         )
-    
+
         actual_numel_in_each_bucket = [bucket.numel_unpadded for bucket in param_and_grad_buffer.buckets]
         actual_numel_padded_in_each_bucket = [bucket.grad_data.numel() for bucket in param_and_grad_buffer.buckets]
-    
+
         def _pad_if_needed(numel_unpadded, divisor):
             if use_distributed_optimizer:
                 return math.ceil(numel_unpadded / divisor) * divisor
             return numel_unpadded
-    
+
         def _pad_bucket_if_needed(numel_unpadded):
             # Want 128-byte alignment for distributed optimizer.
-            divisor = math.lcm(parallel_state.get_data_parallel_world_size(), 128)
+            divisor = math.lcm(Utils.get_data_parallel_world_size(), 128)
             return _pad_if_needed(numel_unpadded, divisor)
-    
+
         def _pad_param_if_needed(numel_unpadded):
             # Want 64-byte alignment for params.
             return _pad_if_needed(numel_unpadded, 64)
-    
+
         if bucket_size is None:
             # If bucket_size is infinite (None), number of buckets should be 1.
             if shared_embedding and use_distributed_optimizer:
@@ -159,36 +166,29 @@ class TestParamAndGradBuffer(DistributedTest):
             if numel_in_last_bucket > 0:
                 numel_in_each_bucket.append(numel_in_last_bucket)
                 numel_padded_in_each_bucket.append(_pad_bucket_if_needed(numel_in_last_bucket))
-    
-            assert len(param_and_grad_buffer.buckets) == len(
-                numel_in_each_bucket
-            ), f"Buckets don't match (got {actual_numel_in_each_bucket} but should be {numel_in_each_bucket})"
+
+            assert len(param_and_grad_buffer.buckets) == len(numel_in_each_bucket), (
+                f"Buckets don't match (got {actual_numel_in_each_bucket} but should be {numel_in_each_bucket})"
+            )
             assert actual_numel_in_each_bucket == numel_in_each_bucket, (
                 f"Number of parameters in each bucket should be {numel_in_each_bucket}, "
                 f"but is {actual_numel_in_each_bucket}"
             )
             if use_distributed_optimizer:
-                assert all(
-                    [
-                        x % parallel_state.get_data_parallel_world_size() == 0
-                        for x in actual_numel_padded_in_each_bucket
-                    ]
-                ), (
-                    f"Size of each padded bucket should be divisible by "
-                    f"{parallel_state.get_data_parallel_world_size()}"
+                assert all(x % Utils.get_data_parallel_world_size() == 0 for x in actual_numel_padded_in_each_bucket), (
+                    f"Size of each padded bucket should be divisible by {Utils.get_data_parallel_world_size()}"
                 )
             assert actual_numel_padded_in_each_bucket == numel_padded_in_each_bucket, (
                 f"Number of parameters in each padded bucket should be {numel_padded_in_each_bucket}, "
                 f"but is {actual_numel_padded_in_each_bucket}"
             )
-    
+
         Utils.destroy_model_parallel()
-    
-    
-    @pytest.mark.parametrize("use_distributed_optimizer", [False, True])
-    @pytest.mark.parametrize("overlap_grad_reduce", [False, True])
-    @pytest.mark.parametrize("average_in_collective", [False, True])
-    @pytest.mark.parametrize("num_distributed_optimizer_instances", [1, 2])
+
+    @pytest.mark.parametrize("use_distributed_optimizer", [False, pytest.param(True, marks=pytest.mark.slow)])
+    @pytest.mark.parametrize("overlap_grad_reduce", [False, pytest.param(True, marks=pytest.mark.slow)])
+    @pytest.mark.parametrize("average_in_collective", [False, pytest.param(True, marks=pytest.mark.slow)])
+    @pytest.mark.parametrize("num_distributed_optimizer_instances", [1, pytest.param(2, marks=pytest.mark.slow)])
     # @pytest.mark.flaky
     def test_grad_sync(
         self,
@@ -198,13 +198,11 @@ class TestParamAndGradBuffer(DistributedTest):
         num_distributed_optimizer_instances: int,
     ):
         Utils.destroy_model_parallel()
-        Utils.initialize_model_parallel(
-            num_distributed_optimizer_instances=num_distributed_optimizer_instances
-        )
+        Utils.initialize_model_parallel(num_distributed_optimizer_instances=num_distributed_optimizer_instances)
         # Skip test if num_distributed_optimizer_instances > 1 and not using distributed optimizer
         if num_distributed_optimizer_instances > 1 and not use_distributed_optimizer:
             pytest.skip("Multiple optimizer instances require distributed optimizer to be enabled")
-    
+
         input_dim = 100
         output_dim = 100
         num_layers = 10
@@ -225,7 +223,7 @@ class TestParamAndGradBuffer(DistributedTest):
             for param in bucket_group.params:
                 assert param not in param_to_bucket_group
                 param_to_bucket_group[param] = bucket_group
-    
+
         param_and_grad_buffer.grad_data.data.fill_(1.0)
         expected_grad_data_value_after_collective = 1
         # under the following conditions, the data in param_and_grad_buffer.grad_data[0] equals to 1/DP
@@ -235,13 +233,10 @@ class TestParamAndGradBuffer(DistributedTest):
         if (
             use_distributed_optimizer
             and (not average_in_collective)
-            and parallel_state.get_data_parallel_rank(
-                with_context_parallel=True, partial_data_parallel=True
-            )
-            != 0
+            and Utils.get_data_parallel_rank(with_context_parallel=True, partial_data_parallel=True) != 0
         ):
-            expected_grad_data_value_after_collective /= parallel_state.get_data_parallel_world_size()
-    
+            expected_grad_data_value_after_collective /= Utils.get_data_parallel_world_size()
+
         params = list(model.parameters())
         for i, param in enumerate(params):
             assert param in param_to_bucket_group
@@ -250,14 +245,10 @@ class TestParamAndGradBuffer(DistributedTest):
                 contextlib.nullcontext() if overlap_grad_reduce else pytest.raises(AssertionError)
             )
             finish_grad_sync_context = contextlib.nullcontext()
-            if (
-                i < (len(params) - 1)
-                and overlap_grad_reduce
-                and num_distributed_optimizer_instances == 1
-            ):
+            if i < (len(params) - 1) and overlap_grad_reduce and num_distributed_optimizer_instances == 1:
                 # Can't finish grad sync until all params have been registered ready.
                 finish_grad_sync_context = pytest.raises(AssertionError)
-    
+
             with register_grad_sync_context:
                 bucket_group.register_grad_ready(param)
             with finish_grad_sync_context:
@@ -265,14 +256,14 @@ class TestParamAndGradBuffer(DistributedTest):
                 # params in the model have registered their grad above.
                 # When overlap_grad_reduce is False, the collective is forced through.
                 bucket_group.finish_grad_sync()
-    
+
             expected_grad_data_value = expected_grad_data_value_after_collective
             if overlap_grad_reduce and i < (len(params) - 1):
                 expected_grad_data_value = 1
             assert param_and_grad_buffer.grad_data[0] == expected_grad_data_value
-    
+
             if not overlap_grad_reduce:
                 # Reset grad_data for subsequent collectives.
                 param_and_grad_buffer.grad_data.data.fill_(1.0)
-    
+
         Utils.destroy_model_parallel()

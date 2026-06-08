@@ -1,19 +1,21 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 from copy import deepcopy
+import pytest
 import torch
 from torch import nn, optim
 
+from mindspeed.multi_modal.conv3d.conv3d_depth_parallel import Conv3DSequenceParallel
 from tests_extend.unit_tests.common import DistributedTest
 
-from mindspeed.multi_modal.conv3d.conv3d_depth_parallel import Conv3DSequenceParallel
+pytestmark = pytest.mark.slow
 
 torch.manual_seed(1234)
 
 
 class TestConv3dModel(nn.Module):
     def __init__(self, conv1, conv2, conv3):
-        super(TestConv3dModel, self).__init__()
+        super().__init__()
         self.conv1 = conv1
         self.conv2 = conv2
         self.conv3 = conv3
@@ -39,19 +41,67 @@ class TestConv3dDepthParallel(DistributedTest):
         group_ranks = list(range(self.world_size))
         group = torch.distributed.new_group(group_ranks)
 
-        conv1 = Conv3DSequenceParallel(pg=group, in_channels=8, out_channels=4, kernel_size=(3, 3, 3),
-                                       stride=(4, 4, 4), param_async=True, sp_size=1, dtype=torch.bfloat16)
-        conv2 = Conv3DSequenceParallel(pg=group, in_channels=4, out_channels=2, kernel_size=(3, 3, 3),
-                                       stride=(4, 4, 4), param_async=True, sp_size=1, dtype=torch.bfloat16)
-        conv3 = Conv3DSequenceParallel(pg=group, in_channels=2, out_channels=1, kernel_size=(3, 3, 3),
-                                       stride=(4, 4, 4), param_async=True, sp_size=1, dtype=torch.bfloat16)
+        conv1 = Conv3DSequenceParallel(
+            pg=group,
+            in_channels=8,
+            out_channels=4,
+            kernel_size=(3, 3, 3),
+            stride=(4, 4, 4),
+            param_async=True,
+            sp_size=1,
+            dtype=torch.bfloat16,
+        )
+        conv2 = Conv3DSequenceParallel(
+            pg=group,
+            in_channels=4,
+            out_channels=2,
+            kernel_size=(3, 3, 3),
+            stride=(4, 4, 4),
+            param_async=True,
+            sp_size=1,
+            dtype=torch.bfloat16,
+        )
+        conv3 = Conv3DSequenceParallel(
+            pg=group,
+            in_channels=2,
+            out_channels=1,
+            kernel_size=(3, 3, 3),
+            stride=(4, 4, 4),
+            param_async=True,
+            sp_size=1,
+            dtype=torch.bfloat16,
+        )
 
-        conv1_clone = Conv3DSequenceParallel(pg=group, in_channels=8, out_channels=4, kernel_size=(3, 3, 3),
-                                             stride=(4, 4, 4), param_async=True, sp_size=4, dtype=torch.bfloat16)
-        conv2_clone = Conv3DSequenceParallel(pg=group, in_channels=4, out_channels=2, kernel_size=(3, 3, 3),
-                                             stride=(4, 4, 4), param_async=True, sp_size=4, dtype=torch.bfloat16)
-        conv3_clone = Conv3DSequenceParallel(pg=group, in_channels=2, out_channels=1, kernel_size=(3, 3, 3),
-                                             stride=(4, 4, 4), param_async=True, sp_size=4, dtype=torch.bfloat16)
+        conv1_clone = Conv3DSequenceParallel(
+            pg=group,
+            in_channels=8,
+            out_channels=4,
+            kernel_size=(3, 3, 3),
+            stride=(4, 4, 4),
+            param_async=True,
+            sp_size=4,
+            dtype=torch.bfloat16,
+        )
+        conv2_clone = Conv3DSequenceParallel(
+            pg=group,
+            in_channels=4,
+            out_channels=2,
+            kernel_size=(3, 3, 3),
+            stride=(4, 4, 4),
+            param_async=True,
+            sp_size=4,
+            dtype=torch.bfloat16,
+        )
+        conv3_clone = Conv3DSequenceParallel(
+            pg=group,
+            in_channels=2,
+            out_channels=1,
+            kernel_size=(3, 3, 3),
+            stride=(4, 4, 4),
+            param_async=True,
+            sp_size=4,
+            dtype=torch.bfloat16,
+        )
 
         conv1_clone.conv3d = deepcopy(conv1.conv3d)
         conv2_clone.conv3d = deepcopy(conv2.conv3d)
@@ -92,11 +142,11 @@ class TestConv3dDepthParallel(DistributedTest):
             loss2_lst.append(float(loss2))
 
         if torch.distributed.get_rank() == 0:
-            with open('conv3d_without_sp.log', 'a') as f:
+            with open('conv3d_without_sp.log', 'a', encoding='utf-8') as f:
                 for item in loss1_lst:
                     f.write('loss: ' + str(item) + '\n')
 
-            with open('conv3d_with_sp.log', 'a') as f:
+            with open('conv3d_with_sp.log', 'a', encoding='utf-8') as f:
                 for item in loss2_lst:
                     f.write('loss: ' + str(item) + '\n')
 

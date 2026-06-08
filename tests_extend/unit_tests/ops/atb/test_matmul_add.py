@@ -1,11 +1,12 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import pytest
 import torch
-import torch_npu
 from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
 
+pytestmark = pytest.mark.slow
 
-class TestMatmulAdd():
+
+class TestMatmulAdd:
     def test_matmul_add(self):
         for _ in range(10):
             x = torch.rand((4096, 8192), dtype=torch.float16).npu()

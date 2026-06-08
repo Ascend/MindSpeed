@@ -15,6 +15,34 @@ def pytest_configure(config):
     config.option.durations = 0
     config.option.durations_min = 1
     config.option.verbose = True
+    config.addinivalue_line("markers", "slow: tests excluded from the default CI gate")
+
+
+def _is_slow_context_mapping_case(item):
+    path = str(getattr(item, "path", item.fspath)).replace("\\", "/")
+    if not path.endswith("mindspeed/core/context_parallel/test_mapping.py"):
+        return False
+
+    params = getattr(getattr(item, "callspec", None), "params", {})
+    if params.get("gather_scatter_idx") not in (None, (2, 0)):
+        return True
+    if params.get("input_shape") not in (None, [32, 64, 32]):
+        return True
+    if params.get("dim") not in (None, 0):
+        return True
+    return "bfloat16" in str(params.get("dtype"))
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-all"):
+        return
+
+    skip_slow = pytest.mark.skip(reason="slow test; pass --run-all to execute")
+    for item in items:
+        if _is_slow_context_mapping_case(item):
+            item.add_marker(pytest.mark.slow)
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
 
 
 # Override of pytest "runtest" for DistributedTest class
@@ -60,10 +88,10 @@ if MINDSPORE_TESTS_DIR not in sys.path:
 
 
 def pytest_addoption(parser):
+    parser.addoption("--ai-framework", action="store", default=None, help="Specify AI framework, e.g., mindspore")
     parser.addoption(
-        "--ai-framework",
-        action="store",
-        default=None,
-        help="Specify AI framework, e.g., mindspore"
+        "--run-all",
+        action="store_true",
+        default=False,
+        help="Run the complete unit test suite, including tests marked as slow",
     )
-

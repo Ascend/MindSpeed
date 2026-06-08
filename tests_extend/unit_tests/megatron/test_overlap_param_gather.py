@@ -1,14 +1,12 @@
 import copy
 import pytest
 import torch
-import mindspeed.megatron_adaptor
 from apex.optimizers import FusedAdam as Adam
 
-from types import SimpleNamespace
 from megatron.core import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.transformer import TransformerConfig, MegatronModule
-from megatron.training.global_vars import set_args, get_timers, set_global_variables
+from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 from megatron.core.timers import DummyTimer
 from megatron.core.optimizer import (
@@ -19,6 +17,8 @@ from megatron.core.optimizer import (
 from megatron.core import mpu
 from tests_extend.commons import set_random_seed, initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
+
+pytestmark = pytest.mark.slow
 
 
 class Model(MegatronModule):
@@ -99,7 +99,7 @@ def step_optimizer(model, optimizer_config, ddp_config, seed: int = None):
         data_parallel_group=mpu.get_data_parallel_group(with_context_parallel=True),
         data_parallel_group_gloo=mpu.get_data_parallel_group_gloo(with_context_parallel=True),
         data_parallel_group_idx=model_parallel_rank,
-        distributed_optimizer_instance_id=0
+        distributed_optimizer_instance_id=0,
     )
 
     for _ in range(500):
@@ -127,12 +127,7 @@ class TestOverlapParamGather(DistributedTest):
         initialize_model_parallel(1, 1)
 
         config = TransformerConfig(
-            num_layers=2,
-            hidden_size=8,
-            num_attention_heads=4,
-            use_cpu_initialization=True,
-            fp16=fp16,
-            bf16=bf16
+            num_layers=2, hidden_size=8, num_attention_heads=4, use_cpu_initialization=True, fp16=fp16, bf16=bf16
         )
         model = [Model(config)]
 

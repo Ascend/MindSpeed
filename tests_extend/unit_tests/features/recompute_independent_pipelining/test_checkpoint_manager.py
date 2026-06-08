@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch import nn
-from mindspeed import megatron_adaptor
+from mindspeed import megatron_adaptor  # noqa: F401
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 from megatron.core.tensor_parallel import checkpoint
@@ -9,6 +9,8 @@ from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
 
 from tests_extend.unit_tests.common import DistributedTest
+
+pytestmark = pytest.mark.slow
 
 
 def checkpointed_forward(function, *args):
@@ -22,16 +24,23 @@ class RiPipeSchedulesFeatureTset:
             return
         from mindspeed.core.tensor_parallel.random import checkpoint_wrapper
         from mindspeed.core.memory.common import linear_forward_main_grad_wrapper, linear_backward_main_grad_wrapper
+
         patch_manager.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
         from mindspeed.core.pipeline_parallel.ripipe_schedules import get_forward_backward_func_ripipe_patch
-        patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
-                                     get_forward_backward_func_ripipe_patch, force_patch=True)
+
+        patch_manager.register_patch(
+            'megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
+            get_forward_backward_func_ripipe_patch,
+            force_patch=True,
+        )
         patch_manager.register_patch(
             'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
-            linear_forward_main_grad_wrapper)
+            linear_forward_main_grad_wrapper,
+        )
         patch_manager.register_patch(
             'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
-            linear_backward_main_grad_wrapper)
+            linear_backward_main_grad_wrapper,
+        )
 
     def ripipe_schedule_patch(self):
         args = parse_args(None, True)
@@ -39,6 +48,7 @@ class RiPipeSchedulesFeatureTset:
         args.recompute_in_bubble = True
 
         from mindspeed.patch_utils import MindSpeedPatchesManager as pm
+
         self.ripipe_register_patches(pm, args)
         pm.apply_patches()
 

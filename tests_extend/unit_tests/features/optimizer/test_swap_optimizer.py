@@ -1,17 +1,13 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 from functools import partial
-from time import sleep
-import os
 import copy
 import itertools
-from unittest import mock
 
 import pytest
 import torch
-import torch_npu
-from mindspeed import megatron_adaptor
 
+from mindspeed import megatron_adaptor  # noqa: F401
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.models.gpt import GPTModel
@@ -34,8 +30,14 @@ def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_k
     default_config_kwargs = dict(num_layers=8, hidden_size=512, num_attention_heads=32, use_cpu_initialization=True)
     default_config_kwargs.update(**config_kwargs)
     transformer_config = TransformerConfig(**default_config_kwargs)
-    model = GPTModel(config=transformer_config, transformer_layer_spec=get_gpt_layer_local_spec(), vocab_size=1024,
-                     max_sequence_length=64, pre_process=pre_process, post_process=post_process)
+    model = GPTModel(
+        config=transformer_config,
+        transformer_layer_spec=get_gpt_layer_local_spec(),
+        vocab_size=1024,
+        max_sequence_length=64,
+        pre_process=pre_process,
+        post_process=post_process,
+    )
 
     model.bfloat16()
     with torch.no_grad():
@@ -59,8 +61,9 @@ def init_mock_args(args, use_distributed_optimizer=False, swap_optimizer=False):
 def setup_model_and_optimizer(seed, use_distributed_optimizer=False):
     model = get_model(partial(initialize_gpt_model, seed=seed, bf16=True))
     set_random_seed(seed)
-    config = OptimizerConfig(lr=1e-4, bf16=True, params_dtype=torch.bfloat16,
-                             use_distributed_optimizer=use_distributed_optimizer)
+    config = OptimizerConfig(
+        lr=1e-4, bf16=True, params_dtype=torch.bfloat16, use_distributed_optimizer=use_distributed_optimizer
+    )
     config.timers = Timers()
     optimizer = get_megatron_optimizer(config, model)
 
@@ -85,9 +88,16 @@ class TestDistributedOptimizer(DistributedTest):
     world_size = 8
 
     @pytest.mark.parametrize("is_deterministic", [False])
-    @pytest.mark.parametrize("overlap_grad_reduce", [True, False])
-    @pytest.mark.parametrize("overlap_param_gather", [True, False])
-    @pytest.mark.parametrize("tp_pp", [(4, 1), (2, 2), (8, 1)])
+    @pytest.mark.parametrize("overlap_grad_reduce", [pytest.param(True, marks=pytest.mark.slow), False])
+    @pytest.mark.parametrize("overlap_param_gather", [pytest.param(True, marks=pytest.mark.slow), False])
+    @pytest.mark.parametrize(
+        "tp_pp",
+        [
+            pytest.param((4, 1), marks=pytest.mark.slow),
+            (2, 2),
+            pytest.param((8, 1), marks=pytest.mark.slow),
+        ],
+    )
     def test_swap_optimizer(self, tp_pp, is_deterministic, overlap_grad_reduce, overlap_param_gather):
         args = parse_args(None, True)
         args.npu_deterministic = is_deterministic
@@ -96,7 +106,7 @@ class TestDistributedOptimizer(DistributedTest):
         set_args(args)
 
         # truth
-        ret = init_mock_args(args, use_distributed_optimizer=True)
+        init_mock_args(args, use_distributed_optimizer=True)
         initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
         _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
         for _ in range(10):
@@ -111,7 +121,7 @@ class TestDistributedOptimizer(DistributedTest):
         truth_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups)))
 
         # swap_optimizer
-        ret = init_mock_args(args, use_distributed_optimizer=True, swap_optimizer=True)
+        init_mock_args(args, use_distributed_optimizer=True, swap_optimizer=True)
         initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
         _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
         for _ in range(10):
@@ -123,7 +133,9 @@ class TestDistributedOptimizer(DistributedTest):
                 for model_chunk in optimizer.model_chunks:
                     model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
-        swap_optimizer_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups)))
+        swap_optimizer_params = copy.deepcopy(
+            list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups))
+        )
 
         for p, swap_optimizer_p in zip(truth_params, swap_optimizer_params):
             if is_deterministic:
