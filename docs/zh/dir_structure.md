@@ -102,14 +102,6 @@ MindSpeed/
 │   │   ├── memory/                      # 内存，提供 Lite 版本的内存管理
 │   │   ├── ops/                         # 算子，提供 Lite 版本的算子实现
 │   │   └── utils/                       # 工具，提供 Lite 版本的工具函数
-│   ├── mindspore/                       # MindSpore 框架适配，提供 MindSpore 框架支持
-│   │   ├── mindspore_adapter.py         # MindSpore 适配器，实现 MindSpore 框架的适配
-│   │   ├── core/                        # 核心模块，提供 MindSpore 核心功能
-│   │   ├── model/                       # 模型，提供 MindSpore 模型实现
-│   │   ├── ops/                         # 算子，提供 MindSpore 算子实现
-│   │   ├── optimizer/                   # 优化器，提供 MindSpore 优化器实现
-│   │   ├── op_builder/                  # 算子构建器，提供 MindSpore 算子构建功能
-│   │   └── third_party/                 # 第三方库，集成第三方 MindSpore 库
 │   ├── model/                           # 模型定义，提供通用模型定义和接口
 │   ├── moe/                             # MoE 专家混合，提供混合专家模型实现
 │   ├── multi_modal/                     # 多模态支持，提供多模态模型训练支持
