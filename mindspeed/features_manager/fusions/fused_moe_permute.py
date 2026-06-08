@@ -81,24 +81,32 @@ class FusedMoEPermuteFeature(MindSpeedFeature):
             # megatron unpermute interface must be replaced.
             patch_manager.register_patch('megatron.core.transformer.moe.moe_utils.unpermute', unpermute)
 
-            warnings.warn("Currently, fused_sort_chunks_by_index is not supported")
-            patch_manager.register_patch('megatron.core.transformer.moe.moe_utils.sort_chunks_by_idxs',
-                                         sort_chunks_by_idxs_wrapper)
+            try:
+                from mindspeed.ops.triton.sort_chunks_by_idx import moe_sort_chunks_by_index, \
+                    moe_sort_chunks_by_index_with_probs
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.fused_sort_chunks_by_index',
+                                  moe_sort_chunks_by_index)
+                patch_manager.register_patch('megatron.core.extensions.transformer_engine.fused_sort_chunks_by_index_with_probs',
+                                  moe_sort_chunks_by_index_with_probs)
+            except ImportError as e:
+                warnings.warn("Currently, fused_sort_chunks_by_index is not supported")
+                patch_manager.register_patch('megatron.core.transformer.moe.moe_utils.sort_chunks_by_idxs',
+                                             sort_chunks_by_idxs_wrapper)
 
-            if getattr(args, "moe_token_dispatcher_type", None) == "alltoall":
-                from mindspeed.core.fusions.fused_moe_permute import (
-                    moe_alltoall_token_dispatcher_init_wrapper, maybe_dtoh_and_synchronize, preprocess_sync_wrapper)
+                if getattr(args, "moe_token_dispatcher_type", None) == "alltoall":
+                    from mindspeed.core.fusions.fused_moe_permute import (
+                        moe_alltoall_token_dispatcher_init_wrapper, maybe_dtoh_and_synchronize, preprocess_sync_wrapper)
 
-                # Since fused_sort_chunks_by_index is not currently supported, when self.num_local_experts > 1,
-                # move self.num_global_tokens_per_local_expert to cpu
-                patch_manager.register_patch(
-                    'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher._maybe_dtoh_and_synchronize',
-                    maybe_dtoh_and_synchronize)
-                patch_manager.register_patch(
-                    'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess',
-                    preprocess_sync_wrapper)
+                    # Since fused_sort_chunks_by_index is not currently supported, when self.num_local_experts > 1,
+                    # move self.num_global_tokens_per_local_expert to cpu
+                    patch_manager.register_patch(
+                        'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher._maybe_dtoh_and_synchronize',
+                        maybe_dtoh_and_synchronize)
+                    patch_manager.register_patch(
+                        'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.preprocess',
+                        preprocess_sync_wrapper)
 
-                # Since fused_sort_chunks_by_index is not currently supported, set self.permute_idx_device to None
-                patch_manager.register_patch(
-                    'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.__init__',
-                    moe_alltoall_token_dispatcher_init_wrapper)
+                    # Since fused_sort_chunks_by_index is not currently supported, set self.permute_idx_device to None
+                    patch_manager.register_patch(
+                        'megatron.core.transformer.moe.token_dispatcher.MoEAlltoAllTokenDispatcher.__init__',
+                        moe_alltoall_token_dispatcher_init_wrapper)
