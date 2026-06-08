@@ -370,7 +370,7 @@ def broadcast_dynamic(item):
     return item
 
 
-def get_batch_on_this_tp_rank(data_iterator):
+def get_batch_on_this_tp_rank(data_iterator, mtp_on_this_rank: bool = False):
     from megatron.training import get_args
     args = get_args()
 

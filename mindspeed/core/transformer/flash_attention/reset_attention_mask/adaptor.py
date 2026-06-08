@@ -659,7 +659,7 @@ def get_ring_degree():
 
 def apply_rotary_pos_emb_thd(
         t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False,
-        multi_latent_attention: bool = False, mscale: float = 1.0
+        multi_latent_attention: bool = False, mscale: float = 1.0, cp_group=None
 ) -> Tensor:
     """A baseline implementation of applying RoPE for `thd` format.
 
@@ -749,7 +749,7 @@ def Eod_get_rotary_seq_len(
     return rotary_seq_len
 
 
-def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False) -> Tensor:
+def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False, cp_group=None) -> Tensor:
     """Forward pass of RoPE embedding.
 
     Args:

@@ -98,6 +98,8 @@ from mindspeed.features_manager.ai_framework.ms_patch_feature import MindSporePa
 
 from mindspeed.features_manager.auto_settings.auto_settings_feature import AutoSettingsFeature
 from mindspeed.features_manager.bridge_adaptor.pack_feature import BridgePackFeature
+from mindspeed.features_manager.batch_invariant.batch_invariant import BatchInvariantFeature
+
 
 FEATURES_LIST = [
     # Functional features
@@ -313,7 +315,13 @@ def add_auto_settings_feature(features_list: List[MindSpeedFeature]):
 
 def add_bridge_feature(features_list: List[MindSpeedFeature]):
     features_list.extend([
-        BridgePackFeature()
+        BridgePackFeature(),
+    ])
+
+    
+def add_batch_invariant_feature(features_list: List[MindSpeedFeature]):
+    features_list.extend([
+        BatchInvariantFeature(),
     ])
 
 
@@ -344,6 +352,7 @@ def create_features_list():
     add_ai_framework_feature(features_list)
     add_auto_settings_feature(features_list)
     add_bridge_feature(features_list)
+    add_batch_invariant_feature(features_list)
     return features_list
 
 
