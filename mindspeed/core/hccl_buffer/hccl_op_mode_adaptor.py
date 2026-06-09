@@ -3,8 +3,6 @@ from functools import wraps
 
 import torch_npu
 
-from megatron.training.utils import print_rank_0
-
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.hccl_buffer.hccl_adaptive_func import parse_hccl_op_mode_string, _HCCL_OP_MODE
 
@@ -30,7 +28,6 @@ def hccl_op_mode_set_wrapper(initialize_model_parallel):
         config = get_args()
         if config.hccl_op_mode is not None:
             parse_hccl_op_mode_string(config.hccl_op_mode)
-            print_rank_0(f"hccl_op_mode_set: {_HCCL_OP_MODE}")
 
         return initialize_model_parallel(*args, **kwargs)
 
