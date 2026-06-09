@@ -84,3 +84,14 @@ class BatchInvariantFeature(MindSpeedFeature):
                 "megatron.core.transformer.transformer_config.TransformerConfig.__post_init__",
                 transformer_config_batch_invariant_mode_wrapper,
             )
+
+            from mindspeed.core.batch_invariant.batch_invariant import enable_batch_invariant_mode, disable_batch_invariant_mode
+
+            patch_manager.register_patch(
+                "megatron.core.transformer.custom_layers.batch_invariant_kernels.enable_batch_invariant_mode",
+                enable_batch_invariant_mode,
+            )
+            patch_manager.register_patch(
+                "megatron.core.transformer.custom_layers.batch_invariant_kernels.disable_batch_invariant_mode",
+                disable_batch_invariant_mode,
+            )
