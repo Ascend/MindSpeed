@@ -7,7 +7,7 @@ from typing import Type
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
-from mindspeed.ops.npu_matmul_add import is_a5
+from mindspeed.ops.npu_matmul_add import NPUVersion, check_npu_version
 from mindspeed.te.pytorch.fp8.constants import FormatEnum, Fp8Recipe, TensorKey
 from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.utils import get_quant_dtype
@@ -138,7 +138,7 @@ class BaseGMMFunction(torch.autograd.Function):
 class BF16GMMFunction(BaseGMMFunction):
     @classmethod
     def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
-        if not is_a5():
+        if not check_npu_version(NPUVersion.A5):
             from mindspeed.ops.gmm import GMMFunction
 
             return GMMFunction.builder.load().npu_gmm([x], [weight], bias or [], group_list, 0, 0)
@@ -153,7 +153,7 @@ class BF16GMMFunction(BaseGMMFunction):
             weight = rearrange(weight, 'n h f -> n f h')
         else:
             weight = weight.t()
-        if not is_a5():
+        if not check_npu_version(NPUVersion.A5):
             from mindspeed.ops.gmm import GMMFunction
 
             return GMMFunction.builder.load().npu_gmm([grad], [weight], bias or [], group_list, 0, 0)
@@ -169,7 +169,7 @@ class BF16GMMFunction(BaseGMMFunction):
 
     @classmethod
     def op_dw(cls, ctx, x, grad, group_list, group_list_type=0, bias=None):
-        if not is_a5():
+        if not check_npu_version(NPUVersion.A5):
             from mindspeed.ops.gmm import GMMFunction
 
             return GMMFunction.builder.load().npu_gmm([x.t()], [grad], bias or [], group_list, 2, 0)
@@ -300,6 +300,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
         ctx.saved_x = (x_quant, x_scale)
         ctx.saved_weight = (w_quant, w_scale)
         ctx.g_size = g_size
+
         return torch_npu.npu_grouped_matmul(
             [x_quant],
             [w_quant],

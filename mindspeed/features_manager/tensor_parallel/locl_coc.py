@@ -21,9 +21,9 @@ class CoCFeature(MindSpeedFeature):
         if args.use_ascend_coc:
             if hasattr(args, 'use_ascend_mc2') and args.use_ascend_mc2:
                 raise AssertionError('--mc2 and coc can not be used together')
-            from mindspeed.ops.npu_matmul_add import is_a5
+            from mindspeed.ops.npu_matmul_add import check_npu_version, NPUVersion
 
-            if is_a5():
+            if check_npu_version(NPUVersion.A5):
                 raise AssertionError('COC feature is not supported on Ascend 950.')
 
     def register_patches(self, patch_manager, args):
