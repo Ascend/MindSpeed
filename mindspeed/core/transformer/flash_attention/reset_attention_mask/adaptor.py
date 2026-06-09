@@ -602,6 +602,22 @@ def gpt_forward_wrapper(fn):
             cu_seqlens_kv=actual_seq_len
         )
 
+        # When megatron_cp_algo with cp_size > 1 is in use, ``actual_seq_len``
+        # has been divided by ``get_ring_degree()`` (== cp_size) in the data
+        # path so that other consumers see a CP-local view. GDN (and any other
+        # consumer that needs the *global* HP-view cu_seqlens) requires the
+        # un-divided cumulative lengths. Stash that view in ``cu_seqlens_*_padded``
+        # so callers that opt in can use it without affecting ``cu_seqlens_q``
+        # itself (the dense attention path keeps the CP-local view it already
+        # has). For all other CP algos this is a no-op.
+        _g_args = get_global_args()
+        _cp = getattr(_g_args, 'context_parallel_size', 1)
+        _algo = getattr(_g_args, 'context_parallel_algo', None)
+        if _cp > 1 and _algo == 'megatron_cp_algo':
+            global_cu_seqlens = actual_seq_len * _cp
+            packed_seq_params.cu_seqlens_q_padded = global_cu_seqlens
+            packed_seq_params.cu_seqlens_kv_padded = global_cu_seqlens
+
         actual_seq_len_list = actual_seq_len.tolist()
         max_actual_seq_len = actual_seq_len_list[0]
         for i in range(1, len(actual_seq_len_list)):

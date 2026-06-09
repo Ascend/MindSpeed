@@ -59,13 +59,15 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('fla.modules.l2norm.l2norm', l2norm, create_dummy=True)
         try:
             import fla_npu
-            from mindspeed.core.ssm.flash_gated_delta_rule import flash_gated_delta_rule
+            from mindspeed.core.ssm.ops.flash_gated_delta_rule import flash_gated_delta_rule
             pm.register_patch('fla.ops.gated_delta_rule.chunk_gated_delta_rule', flash_gated_delta_rule, create_dummy=True)
+            from mindspeed.core.ssm.ops.npu_causal_conv1d import causal_conv1d
+            pm.register_patch('fla.modules.convolution.causal_conv1d', causal_conv1d, create_dummy=True)
         except ImportError:
             import warnings
-            warnings.warn("fla_npu is not installed. use torch_chunk_gated_delta_rule instead.")
-            from mindspeed.core.ssm.chunk_gated_delta_rule import torch_chunk_gated_delta_rule
-            pm.register_patch('fla.ops.gated_delta_rule.chunk_gated_delta_rule', torch_chunk_gated_delta_rule, create_dummy=True)
+            warnings.warn("fla_npu is not installed. use chunk_gated_delta_rule instead.")
+            from mindspeed.core.ssm.chunk_gated_delta_rule import chunk_gated_delta_rule
+            pm.register_patch('fla.ops.gated_delta_rule.chunk_gated_delta_rule', chunk_gated_delta_rule, create_dummy=True)
         pm.register_patch('fast_hadamard_transform.hadamard_transform', hadamard_transform_ref, create_dummy=True)
 
     def apex_adaptation(self, pm, args):

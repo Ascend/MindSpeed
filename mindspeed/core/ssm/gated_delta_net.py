@@ -35,20 +35,16 @@ from megatron.core.ssm.gated_delta_net import GatedDeltaNetSubmodules, _split_te
 from mindspeed.args_utils import get_full_args as get_args
 
 try:
+    from fla.modules.convolution import causal_conv1d
     from fla.modules.l2norm import l2norm
     from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 
     HAVE_FLA = True
 except ImportError:
+    causal_conv1d = None
     chunk_gated_delta_rule = None
 
     HAVE_FLA = False
-
-try:
-    from causal_conv1d import causal_conv1d
-except ImportError:
-    causal_conv1d = None
-    causal_conv1d_update = None
 
 
 def naive_l2norm(x: torch.FloatTensor, dim: int = -1, eps: float = 1e-6):
@@ -77,6 +73,7 @@ class GatedDeltaNet(MegatronModule):
         use_qk_l2norm: bool = True,
         A_init_range: Tuple[float, float] = (1, 16),
         pg_collection: ProcessGroupCollection = None,
+        name: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -288,34 +285,45 @@ class GatedDeltaNet(MegatronModule):
             # TODO: support inference
             raise NotImplementedError("GDN does not support inference for now.")
 
-        if packed_seq_params is not None:
+        if not HAVE_FLA and packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
+            raise RuntimeError(
+                "THD (packed sequence) scenario only supports FLA fused operators, "
+                "but FLA is not available. Please install the flash-linear-attention package."
+            )
+
+        if packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
             assert batch == 1, "Packed sequence expects batch dimension to be 1"
             assert (
                 not self.config.deterministic_mode
             ), "Packed sequence does not support deterministic mode."
 
-            if packed_seq_params.cu_seqlens_q_padded is not None:
-                cu_seqlens_q = packed_seq_params.cu_seqlens_q_padded
-            else:
-                cu_seqlens_q = packed_seq_params.cu_seqlens_q
-            if packed_seq_params.cu_seqlens_kv_padded is not None:
-                cu_seqlens_kv = packed_seq_params.cu_seqlens_kv_padded
-            else:
-                cu_seqlens_kv = packed_seq_params.cu_seqlens_kv
-            if cu_seqlens_q[0] != 0:
-                cu_seqlens_q = torch.cat([torch.zeros(1, dtype=cu_seqlens_q.dtype, device=cu_seqlens_q.device), cu_seqlens_q])
-                cu_seqlens_kv = torch.cat([torch.zeros(1, dtype=cu_seqlens_kv.dtype, device=cu_seqlens_kv.device), cu_seqlens_kv])
+            # Resolve cu_seqlens with alignment padding handling.
+            cu_seqlens_q, cu_seqlens_q_list = self._resolve_cu_seqlens(
+                packed_seq_params.cu_seqlens_q_padded,
+                packed_seq_params.cu_seqlens_q,
+                seq_len,
+                "cu_seqlens_q",
+                cp_size=self.cp_size,
+            )
+            cu_seqlens_kv, _ = self._resolve_cu_seqlens(
+                packed_seq_params.cu_seqlens_kv_padded,
+                packed_seq_params.cu_seqlens_kv,
+                seq_len,
+                "cu_seqlens_kv",
+                cp_size=self.cp_size,
+            )
             assert torch.equal(cu_seqlens_q, cu_seqlens_kv), (
                 "Currently only support cu_seqlens_q equals to cu_seqlens_kv, "
-                f"but got {cu_seqlens_q=} and {cu_seqlens_kv=}"
+                f"but got cu_seqlens_q={cu_seqlens_q} and cu_seqlens_kv={cu_seqlens_kv}"
             )
             num_packed_seqs = cu_seqlens_q.shape[0] - 1
             assert num_packed_seqs > 0, (
                 "Number of packed sequences must be greater than 0, "
-                f"but got {cu_seqlens_q=} and {cu_seqlens_kv=}"
+                f"but got cu_seqlens_q={cu_seqlens_q} and cu_seqlens_kv={cu_seqlens_kv}"
             )
         else:
             cu_seqlens_q = None
+            cu_seqlens_q_list = None
             cu_seqlens_kv = None
 
         # Input projection
@@ -324,7 +332,7 @@ class GatedDeltaNet(MegatronModule):
         nvtx_range_pop(suffix="in_proj")
 
         # CP All to All: CP to HP
-        if packed_seq_params is not None:
+        if packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
             unpacked_qkvzba = _unpack_sequence(qkvzba, cu_seqlens_q // self.cp_size, dim=0)
             outputs = []
             for qkvzba_i in unpacked_qkvzba:
@@ -341,9 +349,18 @@ class GatedDeltaNet(MegatronModule):
                         self.num_value_heads // self.tp_size,
                         self.num_value_heads // self.tp_size,
                     ],
+                    undo_attention_load_balancing=False,
                 )
                 outputs.append(qkvzba_i)
             qkvzba = torch.cat(outputs, dim=0)
+            # Per-segment zigzag undo (Megatron CP packs each segment with
+            # zigzag load balancing across CP ranks). After cp->hp a2a, each
+            # segment is laid out as [zigzag chunks] and must be permuted into
+            # natural order before the recurrent gated_delta_rule runs over it.
+            qkvzba = _undo_load_balancing_per_segment(
+                qkvzba, cu_seqlens_q, cp_size=self.cp_size, seq_dim=0,
+                cu_seqlens_list=cu_seqlens_q_list,
+            )
         else:
             qkvzba = tensor_a2a_cp2hp(
                 qkvzba,
@@ -403,7 +420,7 @@ class GatedDeltaNet(MegatronModule):
             if self.conv_bias
             else None
         )
-        if (causal_conv1d is None) or self.config.deterministic_mode:
+        if causal_conv1d is None or self.config.deterministic_mode:
             qkv = qkv.transpose(1, 2).contiguous()  # b, s, d -> b, d, s
             conv_out = F.conv1d(
                 input=qkv,  # Torch-native only accept [b, d, s] format input
@@ -417,7 +434,7 @@ class GatedDeltaNet(MegatronModule):
             qkv = self.act_fn(conv_out[..., :seq_len])
             qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
         else:
-            assert self.activation in ["silu", "swish"]
+            assert self.activation in [None, "silu", "swish"]
             qkv, _ = causal_conv1d(
                 x=qkv,  # FLA conv1d accepts [b, s, d] format input
                 weight=conv1d_weight.squeeze(1),  # d, 1, w -> d, w
@@ -426,6 +443,7 @@ class GatedDeltaNet(MegatronModule):
                 initial_state=None,
                 output_final_state=False,
                 cu_seqlens=cu_seqlens_q,
+                cu_seqlens_list=cu_seqlens_q_list,
             )
         nvtx_range_pop(suffix="conv1d")
 
@@ -456,6 +474,7 @@ class GatedDeltaNet(MegatronModule):
             output_final_state=False,
             use_qk_l2norm_in_kernel=False,
             cu_seqlens=cu_seqlens_q,
+            cu_seqlens_list=cu_seqlens_q_list,
         )
         nvtx_range_pop(suffix="gated_delta_rule")
 
@@ -472,12 +491,20 @@ class GatedDeltaNet(MegatronModule):
         norm_out = norm_out.transpose(0, 1).contiguous()
 
         # CP all to all: HP to CP
-        if packed_seq_params is not None:
+        if packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
+            # Per-segment zigzag redo: undo above brought each segment into
+            # natural order, so before the hp->cp a2a we have to restore the
+            # zigzag layout that the downstream code expects.
+            norm_out = _redo_load_balancing_per_segment(
+                norm_out, cu_seqlens_q, cp_size=self.cp_size, seq_dim=0,
+                cu_seqlens_list=cu_seqlens_q_list,
+            )
             unpacked_norm_out = _unpack_sequence(norm_out, cu_seqlens_q, dim=0)
             outputs = []
             for norm_out_i in unpacked_norm_out:
                 norm_out_i = tensor_a2a_hp2cp(
-                    norm_out_i, seq_dim=0, head_dim=-1, cp_group=self.pg_collection.cp
+                    norm_out_i, seq_dim=0, head_dim=-1, cp_group=self.pg_collection.cp,
+                    redo_attention_load_balancing=False,
                 )
                 outputs.append(norm_out_i)
             norm_out = torch.cat(outputs, dim=0)
@@ -559,6 +586,81 @@ class GatedDeltaNet(MegatronModule):
         g = -A_log_local_cp.exp() * F.softplus(alpha.float() + dt_bias_local_cp)  # In fp32
         beta = beta.sigmoid()
         return g, beta
+
+    def _resolve_cu_seqlens(
+        self, cu_seqlens_padded, cu_seqlens_actual, total_seq_len, name, cp_size: int = 1
+    ):
+        """Resolve cu_seqlens for packed sequence all-to-all.
+
+        Preferred contract (produced by
+        ``mindspeed.core.ssm.packed_seq_utils.preprocess_packed_seqs`` /
+        ``build_packed_seq_params``):
+
+        * ``cu_seqlens_padded`` is preferred; ``cu_seqlens_actual`` is the
+          fallback when the caller did not pre-compute the aligned version.
+        * The chosen tensor starts with ``0`` and ends with ``total_seq_len``.
+        * Every per-segment length is divisible by ``cp_size``.
+
+        Compatibility fall-backs (kept for upstream callers that still feed
+        the raw ``actual_seq_len`` tensor without a leading zero, e.g. the
+        ``gpt_forward_wrapper`` in ``mindspeed.core.models.gpt.gpt_model`` and
+        ``mindspeed.core.transformer.flash_attention.reset_attention_mask``):
+
+        * If the first element is non-zero, we either prepend ``0`` (when the
+          last element already equals ``total_seq_len``) or subtract the
+          first-element offset (when ``last - first == total_seq_len``). This
+          mirrors the historical behaviour and avoids breaking existing
+          training scripts that still rely on the unaligned input layout.
+
+        The divisibility check is still mandatory because GDN's downstream
+        all-to-all + chunked kernels cannot recover from a non-aligned split.
+        """
+        cu_seqlens = cu_seqlens_padded if cu_seqlens_padded is not None else cu_seqlens_actual
+        cu_seqlens = cu_seqlens.reshape(-1)
+
+        # Compatibility path: normalise a non-zero leading element so legacy
+        # data pipelines that store cumulative seqlens *without* a leading 0
+        # keep working. We need an .item() here to decide the branch, but it
+        # is the only D2H on the fast path and is unavoidable when the input
+        # layout itself is ambiguous.
+        if cu_seqlens.numel() > 0 and int(cu_seqlens[0].item()) != 0:
+            total_cu = int(cu_seqlens[-1].item())
+            if total_cu == total_seq_len:
+                cu_seqlens = torch.cat(
+                    [
+                        torch.zeros(
+                            1, dtype=cu_seqlens.dtype, device=cu_seqlens.device
+                        ),
+                        cu_seqlens,
+                    ]
+                )
+            elif total_cu - int(cu_seqlens[0].item()) == total_seq_len:
+                cu_seqlens = cu_seqlens - cu_seqlens[0]
+
+        # Validation runs on device; only on failure do we materialise scalars
+        # to build a descriptive error message.
+        seq_lengths = cu_seqlens[1:] - cu_seqlens[:-1]
+        last_matches_total = cu_seqlens[-1].eq(total_seq_len)
+        all_divisible = (seq_lengths % cp_size).eq(0).all()
+        ok = last_matches_total & all_divisible
+
+        if not bool(ok):
+            last = int(cu_seqlens[-1].item())
+            if last != total_seq_len:
+                raise ValueError(
+                    f"GDN: {name}[-1]={last} does not match "
+                    f"total_sequence_length={total_seq_len}. "
+                    f"({cu_seqlens_padded=}, {cu_seqlens_actual=})."
+                )
+            raise ValueError(
+                f"All per-sequence lengths in {name} must be divisible by "
+                f"cp_size={cp_size}, but got lengths: {seq_lengths.tolist()}. "
+            )
+
+        # Single D2H: downstream functions receive the list form to avoid
+        # redundant .cpu().tolist() in causal_conv1d / flash_gated_delta_rule.
+        cu_seqlens_list = cu_seqlens.tolist()
+        return cu_seqlens, cu_seqlens_list
 
     def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None, tp_group=None):
         """Provide a sharded state dictionary for distributed checkpointing."""
@@ -669,6 +771,122 @@ def _unpack_sequence(x, cu_seqlens, dim=1):
     return unpacked_x
 
 
+def _undo_load_balancing_per_segment(
+    tensor: torch.Tensor, cu_seqlens: torch.Tensor, cp_size: int, seq_dim: int = 0,
+    cu_seqlens_list: Optional[List[int]] = None
+) -> torch.Tensor:
+    """Convert zigzag layout to natural order, segment by segment.
+
+    The per-segment zigzag layout that Megatron CP produces concatenates
+    ``2*cp_size`` chunks per segment with order
+    ``[c0, c_{2c-1}, c1, c_{2c-2}, ..., c_{c-1}, c_c]`` (cp_size=2 gives
+    ``[c0, c3, c1, c2]``).  This function reorders each segment back to
+    ``[c0, c1, c2, c3]`` so that the gated_delta_rule recurrent kernel sees
+    the natural causal order.
+
+    ``cu_seqlens`` here must be the *global* (HP) cumulative segment
+    boundaries -- the same value that GDN feeds to ``gated_delta_rule``.
+    Each segment length is required to be a multiple of ``2 * cp_size``.
+
+    When ``cu_seqlens_list`` is provided, it is used directly instead of
+    per-element ``.item()`` calls on ``cu_seqlens``, avoiding D2H transfers.
+    """
+    if cp_size == 1:
+        return tensor
+
+    if seq_dim != 0:
+        raise NotImplementedError(
+            f"_undo_load_balancing_per_segment only supports seq_dim==0, got {seq_dim}"
+        )
+
+    num_chunks_div_2 = cp_size
+    num_chunks = num_chunks_div_2 * 2
+
+    num_seqs = cu_seqlens.shape[0] - 1
+    if num_seqs <= 0:
+        return tensor
+
+    reordered = []
+    for i in range(num_seqs):
+        if cu_seqlens_list is not None:
+            start = cu_seqlens_list[i]
+            end = cu_seqlens_list[i + 1]
+        else:
+            start = 0 if i == 0 else int(cu_seqlens[i].item())
+            end = int(cu_seqlens[i + 1].item())
+        seg = tensor[start:end]
+        if seg.size(0) == 0:
+            reordered.append(seg)
+            continue
+        if seg.size(0) % num_chunks != 0:
+            raise ValueError(
+                f"GDN: segment {i} length {seg.size(0)} is not divisible by "
+                f"2 * cp_size = {num_chunks}; rebuild cu_seqlens with aligned "
+                f"per-sequence lengths before enabling packed sequence GDN."
+            )
+        chunks = torch.chunk(seg, chunks=num_chunks, dim=0)
+        order = [2 * j for j in range(num_chunks_div_2)] + [
+            num_chunks - 2 * j - 1 for j in range(num_chunks_div_2)
+        ]
+        reordered.append(torch.cat([chunks[j] for j in order], dim=0))
+
+    return torch.cat(reordered, dim=0)
+
+
+def _redo_load_balancing_per_segment(
+    tensor: torch.Tensor, cu_seqlens: torch.Tensor, cp_size: int, seq_dim: int = 0,
+    cu_seqlens_list: Optional[List[int]] = None
+) -> torch.Tensor:
+    """Inverse of :func:`_undo_load_balancing_per_segment`.
+
+    Converts a per-segment natural order ``[c0, c1, c2, c3]`` back into the
+    zigzag layout ``[c0, c3, c1, c2]`` (cp_size=2).
+
+    When ``cu_seqlens_list`` is provided, it is used directly instead of
+    per-element ``.item()`` calls on ``cu_seqlens``, avoiding D2H transfers.
+    """
+    if cp_size == 1:
+        return tensor
+
+    if seq_dim != 0:
+        raise NotImplementedError(
+            f"_redo_load_balancing_per_segment only supports seq_dim==0, got {seq_dim}"
+        )
+
+    num_chunks_div_2 = cp_size
+    num_chunks = num_chunks_div_2 * 2
+
+    num_seqs = cu_seqlens.shape[0] - 1
+    if num_seqs <= 0:
+        return tensor
+
+    reordered = []
+    for i in range(num_seqs):
+        if cu_seqlens_list is not None:
+            start = cu_seqlens_list[i]
+            end = cu_seqlens_list[i + 1]
+        else:
+            start = 0 if i == 0 else int(cu_seqlens[i].item())
+            end = int(cu_seqlens[i + 1].item())
+        seg = tensor[start:end]
+        if seg.size(0) == 0:
+            reordered.append(seg)
+            continue
+        if seg.size(0) % num_chunks != 0:
+            raise ValueError(
+                f"GDN: segment {i} length {seg.size(0)} is not divisible by "
+                f"2 * cp_size = {num_chunks}; rebuild cu_seqlens with aligned "
+                f"per-sequence lengths before enabling packed sequence GDN."
+            )
+        chunks = torch.chunk(seg, chunks=num_chunks, dim=0)
+        order = [None] * num_chunks
+        order[::2] = range(num_chunks_div_2)
+        order[1::2] = reversed(range(num_chunks_div_2, num_chunks))
+        reordered.append(torch.cat([chunks[j] for j in order], dim=0))
+
+    return torch.cat(reordered, dim=0)
+
+
 ####################
 # Context parallel utilities
 ####################
@@ -713,7 +931,7 @@ def get_parameter_local_cp(
     slices = [slice(None)] * param.dim()
     dim_size = param.size(dim=dim)
     slices[dim] = slice(cp_rank * dim_size // cp_size, (cp_rank + 1) * dim_size // cp_size)
-    param = param[slices]
+    param = param[tuple(slices)]
     return param
 
 
@@ -749,13 +967,15 @@ def tensor_a2a_cp2hp(
         return tensor
 
     # Limitations of mamba_context_parallel._all_to_all_cp2hp.
-    assert seq_dim == 0, f"tensor_a2a_cp2hp only supports seq_dim == 0 for now, but got {seq_dim=}"
+    assert seq_dim == 0, (
+        f"tensor_a2a_cp2hp only supports seq_dim == 0 for now, but got seq_dim={seq_dim}"
+    )
     assert (
         head_dim == -1 or head_dim == 2
-    ), f"tensor_a2a_cp2hp only supports head_dim == -1 or 2 for now, but got {head_dim=}"
+    ), f"tensor_a2a_cp2hp only supports head_dim == -1 or 2 for now, but got head_dim={head_dim}"
     assert (
         tensor.dim() == 3
-    ), f"tensor_a2a_cp2hp only supports 3-d input tensor for now, but got {tensor.dim()=}"
+    ), f"tensor_a2a_cp2hp only supports 3-d input tensor for now, but got tensor.dim()={tensor.dim()}"
 
     # Split first if needed.
     if split_sections is not None:
@@ -812,13 +1032,19 @@ def tensor_a2a_hp2cp(
         return tensor
 
     # Limitations of mamba_context_parallel._all_to_all_hp2cp.
-    assert seq_dim == 0, f"tensor_a2a_cp2hp only supports seq_dim == 0 for now, but got {seq_dim=}"
+    assert seq_dim == 0, (
+        f"tensor_a2a_hp2cp only supports seq_dim == 0 for now, but got seq_dim={seq_dim}"
+    )
     assert (
         head_dim == -1 or head_dim == 2
-    ), f"tensor_a2a_cp2hp only supports head_dim == -1 or 2 for now, but got {head_dim=}"
+    ), (
+        f"tensor_a2a_hp2cp only supports head_dim == -1 or 2 for now, but got head_dim={head_dim}"
+    )
     assert (
         tensor.dim() == 3
-    ), f"tensor_a2a_cp2hp only supports 3-d input tensor for now, but got {tensor.dim()=}"
+    ), (
+        f"tensor_a2a_hp2cp only supports 3-d input tensor for now, but got tensor.dim()={tensor.dim()}"
+    )
 
     # Redo attention load balancing first if needed.
     if redo_attention_load_balancing:

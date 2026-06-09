@@ -25,8 +25,14 @@ class GDNFeature(MindSpeedFeature):
         _cp_algo = getattr(args, 'context_parallel_algo', 'megatron_cp_algo')
         _cp_expanded_by_2d_tp = getattr(args, 'tp_2d', False) and getattr(args, 'tp_y', 1) > 1
         _use_nave_l2norm = getattr(args, 'use_naive_l2norm', False)
+        _use_eod_pack = getattr(args, 'reset_position_ids', False) and getattr(args, 'reset_attention_mask', False)
 
-        use_core_gdn = _use_cp or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo') or _use_nave_l2norm
+        use_core_gdn = (
+            _use_cp
+            or _use_eod_pack
+            or (_cp_expanded_by_2d_tp and _cp_algo == 'megatron_cp_algo')
+            or _use_nave_l2norm
+        )
         if use_core_gdn:
             # gdn feature
             from mindspeed.core.ssm.gated_delta_net import GatedDeltaNet

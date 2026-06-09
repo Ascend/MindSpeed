@@ -36,7 +36,7 @@ except ImportError:
 try:
     from mindspeed.core.ssm.chunk_gated_delta_rule import chunk_gated_delta_rule, torch_chunk_gated_delta_rule
     HAVE_CHUNK_GATED_DELTA_RULE = True
-except Exception:
+except ImportError:
     chunk_gated_delta_rule = None
     torch_chunk_gated_delta_rule = None
     HAVE_CHUNK_GATED_DELTA_RULE = False
@@ -55,6 +55,15 @@ try:
     HAVE_CAUSAL_CONV1D = True
 except ImportError:
     HAVE_CAUSAL_CONV1D = False
+
+try:
+    import fla_npu  # noqa: F401
+    from mindspeed.core.ssm.ops.npu_causal_conv1d import causal_conv1d as npu_causal_conv1d
+
+    HAVE_NPU_CAUSAL_CONV1D = True
+except ImportError:
+    npu_causal_conv1d = None
+    HAVE_NPU_CAUSAL_CONV1D = False
 
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.torch_norm import WrappedTorchNorm
@@ -86,6 +95,34 @@ def initialize_test_environment():
     from tests_extend.commons import initialize_model_parallel
 
     initialize_model_parallel(tensor_model_parallel_size=1, context_parallel_size=1)
+
+
+def small_causal_conv1d(qkv, conv1d_weight, conv1d_bias, activation):
+    seq_len = qkv.shape[1]
+    qkv = qkv.transpose(1, 2).contiguous()
+    conv_out = F.conv1d(
+        input=qkv,
+        weight=conv1d_weight,
+        bias=conv1d_bias,
+        stride=1,
+        padding=conv1d_weight.shape[-1] - 1,
+        dilation=1,
+        groups=conv1d_weight.shape[0],
+    )
+    conv_out = conv_out[..., :seq_len]
+    if activation in ("silu", "swish"):
+        conv_out = F.silu(conv_out)
+    elif activation is not None:
+        raise NotImplementedError("activation must be None, silu, or swish")
+    return conv_out.transpose(1, 2).contiguous()
+
+
+def small_causal_conv1d_packed(qkv, conv1d_weight, conv1d_bias, activation, cu_seqlens):
+    outputs = []
+    cu_seqlens = cu_seqlens.detach().cpu().tolist()
+    for start, end in zip(cu_seqlens, cu_seqlens[1:]):
+        outputs.append(small_causal_conv1d(qkv[:, start:end, :], conv1d_weight, conv1d_bias, activation))
+    return torch.cat(outputs, dim=1)
 
 
 @pytest.mark.skipif(not HAVE_GATED_DELTA_NET, reason="GatedDeltaNet not available")
@@ -133,6 +170,192 @@ class TestUnpackSequence:
         assert len(result) == 2
         assert result[0].shape == (0, 2)
         assert result[1].shape == (0, 2)
+
+
+class TestNpuCausalConv1dNonPackedEquivalence:
+    @pytest.mark.skipif(not HAVE_NPU_CAUSAL_CONV1D, reason="npu_causal_conv1d not available")
+    @pytest.mark.skipif(not HAVE_TORCH_NPU or not torch.npu.is_available(), reason="NPU not available")
+    @pytest.mark.parametrize("activation", [None, "silu", "swish"])
+    @pytest.mark.parametrize(
+        "batch, seq_len, dim, width",
+        [
+            (1, 8, 16, 2),
+            (2, 16, 16, 3),
+            (4, 8, 32, 4),
+        ],
+    )
+    def test_non_packed_small_op_matches_fused_op(self, activation, batch, seq_len, dim, width):
+        torch.manual_seed(42)
+        torch.npu.manual_seed(42)
+        qkv = (torch.randn(batch, seq_len, dim, dtype=torch.float16, device="npu") * 0.1).contiguous()
+        conv1d_weight = (
+            torch.randn(dim, 1, width, dtype=torch.float16, device="npu") * 0.1
+        ).contiguous()
+        conv1d_bias = (torch.randn(dim, dtype=torch.float16, device="npu") * 0.1).contiguous()
+
+        small_out = small_causal_conv1d(qkv, conv1d_weight, conv1d_bias, activation)
+        fused_out, final_state = npu_causal_conv1d(
+            x=qkv,
+            weight=conv1d_weight.squeeze(1),
+            bias=conv1d_bias,
+            activation=activation,
+            initial_state=None,
+            output_final_state=False,
+            cu_seqlens=None,
+        )
+
+        assert final_state is None
+        torch.testing.assert_close(small_out.float(), fused_out.float(), atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.skipif(not HAVE_NPU_CAUSAL_CONV1D, reason="npu_causal_conv1d not available")
+    @pytest.mark.skipif(not HAVE_TORCH_NPU or not torch.npu.is_available(), reason="NPU not available")
+    @pytest.mark.parametrize("activation", [None, "silu", "swish"])
+    @pytest.mark.parametrize("with_bias", [False, True])
+    def test_non_packed_backward_matches_small_op(self, activation, with_bias):
+        torch.manual_seed(42)
+        torch.npu.manual_seed(42)
+        batch, seq_len, dim, width = 2, 16, 16, 4
+        qkv = (
+            torch.randn(batch, seq_len, dim, dtype=torch.float16, device="npu") * 0.1
+        ).contiguous().requires_grad_()
+        conv1d_weight = (
+            torch.randn(dim, 1, width, dtype=torch.float16, device="npu") * 0.1
+        ).contiguous().requires_grad_()
+        conv1d_bias = None
+        if with_bias:
+            conv1d_bias = (
+                torch.randn(dim, dtype=torch.float16, device="npu") * 0.1
+            ).contiguous().requires_grad_()
+
+        qkv_ref = qkv.detach().clone().requires_grad_()
+        weight_ref = conv1d_weight.detach().clone().requires_grad_()
+        bias_ref = None
+        if with_bias:
+            bias_ref = conv1d_bias.detach().clone().requires_grad_()
+
+        fused_out, final_state = npu_causal_conv1d(
+            x=qkv,
+            weight=conv1d_weight.squeeze(1),
+            bias=conv1d_bias,
+            activation=activation,
+            initial_state=None,
+            output_final_state=False,
+            cu_seqlens=None,
+        )
+        small_out = small_causal_conv1d(qkv_ref, weight_ref, bias_ref, activation)
+
+        assert final_state is None
+        torch.testing.assert_close(small_out.float(), fused_out.float(), atol=1e-4, rtol=1e-4)
+
+        grad_out = torch.randn_like(fused_out)
+        fused_out.backward(grad_out)
+        small_out.backward(grad_out)
+
+        torch.testing.assert_close(qkv.grad.float(), qkv_ref.grad.float(), atol=5e-3, rtol=5e-3)
+        torch.testing.assert_close(
+            conv1d_weight.grad.float(), weight_ref.grad.float(), atol=5e-3, rtol=5e-3
+        )
+        if with_bias:
+            torch.testing.assert_close(
+                conv1d_bias.grad.float(), bias_ref.grad.float(), atol=5e-3, rtol=5e-3
+            )
+
+    @pytest.mark.skipif(not HAVE_NPU_CAUSAL_CONV1D, reason="npu_causal_conv1d not available")
+    @pytest.mark.skipif(not HAVE_TORCH_NPU or not torch.npu.is_available(), reason="NPU not available")
+    @pytest.mark.parametrize("activation", [None, "silu", "swish"])
+    @pytest.mark.parametrize("with_bias", [False, True])
+    def test_packed_backward_matches_segmented_small_op(self, activation, with_bias):
+        torch.manual_seed(42)
+        torch.npu.manual_seed(42)
+        batch, total_seq_len, dim, width = 1, 20, 16, 4
+        cu_seqlens = torch.IntTensor([0, 5, 13, total_seq_len]).npu()
+        qkv = (
+            torch.randn(batch, total_seq_len, dim, dtype=torch.float16, device="npu") * 0.1
+        ).contiguous().requires_grad_()
+        conv1d_weight = (
+            torch.randn(dim, 1, width, dtype=torch.float16, device="npu") * 0.1
+        ).contiguous().requires_grad_()
+        conv1d_bias = None
+        if with_bias:
+            conv1d_bias = (
+                torch.randn(dim, dtype=torch.float16, device="npu") * 0.1
+            ).contiguous().requires_grad_()
+
+        qkv_ref = qkv.detach().clone().requires_grad_()
+        weight_ref = conv1d_weight.detach().clone().requires_grad_()
+        bias_ref = None
+        if with_bias:
+            bias_ref = conv1d_bias.detach().clone().requires_grad_()
+
+        fused_out, final_state = npu_causal_conv1d(
+            x=qkv,
+            weight=conv1d_weight.squeeze(1),
+            bias=conv1d_bias,
+            activation=activation,
+            initial_state=None,
+            output_final_state=False,
+            cu_seqlens=cu_seqlens,
+        )
+        small_out = small_causal_conv1d_packed(
+            qkv_ref, weight_ref, bias_ref, activation, cu_seqlens
+        )
+
+        assert final_state is None
+        torch.testing.assert_close(small_out.float(), fused_out.float(), atol=1e-4, rtol=1e-4)
+
+        grad_out = torch.randn_like(fused_out)
+        fused_out.backward(grad_out)
+        small_out.backward(grad_out)
+
+        torch.testing.assert_close(qkv.grad.float(), qkv_ref.grad.float(), atol=5e-3, rtol=5e-3)
+        torch.testing.assert_close(
+            conv1d_weight.grad.float(), weight_ref.grad.float(), atol=5e-3, rtol=5e-3
+        )
+        if with_bias:
+            torch.testing.assert_close(
+                conv1d_bias.grad.float(), bias_ref.grad.float(), atol=5e-3, rtol=5e-3
+            )
+
+    @pytest.mark.skipif(not HAVE_NPU_CAUSAL_CONV1D, reason="npu_causal_conv1d not available")
+    @pytest.mark.skipif(not HAVE_TORCH_NPU or not torch.npu.is_available(), reason="NPU not available")
+    @pytest.mark.parametrize("activation", [None, "silu", "swish"])
+    def test_packed_backward_merged_matches_segmented(self, activation):
+        # Verify the merged zero-padded conv backward path matches the per-segment reference.
+        torch.manual_seed(42)
+        torch.npu.manual_seed(42)
+        batch, total_seq_len, dim, width = 1, 64, 32, 4
+        cu_seqlens = torch.IntTensor([0, 8, 20, 35, 50, total_seq_len]).npu()
+        qkv = (
+            torch.randn(batch, total_seq_len, dim, dtype=torch.float16, device="npu") * 0.1
+        ).contiguous().requires_grad_()
+        conv1d_weight = (
+            torch.randn(dim, 1, width, dtype=torch.float16, device="npu") * 0.1
+        ).contiguous().requires_grad_()
+
+        qkv_ref = qkv.detach().clone().requires_grad_()
+        weight_ref = conv1d_weight.detach().clone().requires_grad_()
+
+        fused_out, _ = npu_causal_conv1d(
+            x=qkv,
+            weight=conv1d_weight.squeeze(1),
+            bias=None,
+            activation=activation,
+            initial_state=None,
+            output_final_state=False,
+            cu_seqlens=cu_seqlens,
+        )
+        small_out = small_causal_conv1d_packed(qkv_ref, weight_ref, None, activation, cu_seqlens)
+
+        torch.testing.assert_close(small_out.float(), fused_out.float(), atol=1e-4, rtol=1e-4)
+
+        grad_out = torch.randn_like(fused_out)
+        fused_out.backward(grad_out)
+        small_out.backward(grad_out)
+
+        torch.testing.assert_close(qkv.grad.float(), qkv_ref.grad.float(), atol=5e-3, rtol=5e-3)
+        torch.testing.assert_close(
+            conv1d_weight.grad.float(), weight_ref.grad.float(), atol=5e-3, rtol=5e-3
+        )
 
 
 class TestTorchChunkGatedDeltaRuleCuSeqlens:
