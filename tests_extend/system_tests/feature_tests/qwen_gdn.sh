@@ -69,6 +69,7 @@ GPT_ARGS="
     --num-layers 8 \
     --hidden-size 4096 \
     --ffn-hidden-size 14336 \
+    --swiglu \
     --num-attention-heads 64 \
     --seq-length ${SEQ_LEN} \
     --max-position-embeddings ${SEQ_LEN} \
