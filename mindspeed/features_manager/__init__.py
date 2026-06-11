@@ -110,6 +110,8 @@ from mindspeed.features_manager.ckpt_acceleration.ckpt_acceleration import CkptA
 
 from mindspeed.features_manager.qos.qos_feature import QosFeature
 
+from mindspeed.features_manager.ttp.ttp_feature import TTPFeature
+
 FEATURES_LIST = [
     # Functional features
     ProfilerDefaultFeature(),
@@ -358,6 +360,10 @@ def add_qat_features(features_list: List[MindSpeedFeature]):
     )
 
 
+def add_ttp_feature(features_list: List[MindSpeedFeature]):
+    features_list.append(TTPFeature())
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -388,6 +394,7 @@ def create_features_list():
     add_ckpt_acceleration_feature(features_list)
     add_aiqos_feature(features_list)
     add_qat_features(features_list)
+    add_ttp_feature(features_list)
     return features_list
 
 
