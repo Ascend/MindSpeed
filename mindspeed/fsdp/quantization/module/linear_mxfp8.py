@@ -20,17 +20,34 @@ from mindspeed.fsdp.quantization.core.pre_quant_weight import PreQuantWeight
 from mindspeed.fsdp.parallel_engine_config import QuantizeConfig
 
 
+def process_quant_result_fn(weight, dst_type, config):
+    if config.recipe_name == "mxfp8":
+        weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+            weight,
+            dst_type=dst_type,
+        )
+    elif config.recipe_name == "mxfp8-32x32":
+        weight_fwd, weight_scale_fwd, weight_scale_bwd = torch_npu.npu_dynamic_block_mx_quant(
+            weight,
+            dst_type=dst_type,
+        )
+        weight_bwd = weight_fwd
+    else:
+        raise ValueError(f"Unsupported recipe_name: {config.recipe_name}")
+    return weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd
+
+
 @torch._dynamo.allow_in_graph
 class matmul_with_hp_or_lp_weight(torch.autograd.Function):
     @staticmethod
     def forward(
-            ctx,
-            x: torch.Tensor,
-            weight: Union[PostQuantWeight | torch.Tensor],
-            config: QuantizeConfig,
-            grad_enabled: bool,
-            bias: torch.Tensor = None,
-            name: str = None,
+        ctx,
+        x: torch.Tensor,
+        weight: Union[PostQuantWeight | torch.Tensor],
+        config: QuantizeConfig,
+        grad_enabled: bool,
+        bias: torch.Tensor = None,
+        name: str = None,
     ):
         orig_shape = x.shape
 
@@ -53,15 +70,17 @@ class matmul_with_hp_or_lp_weight(torch.autograd.Function):
             ctx.weight = weight
             ctx.weight_dtype = weight._orig_dtype
         elif grad_enabled:
-            weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
-                weight,
+            weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd = process_quant_result_fn(
+                weight=weight,
                 dst_type=config.get_key_dtype("weight"),
+                config=config,
             )
             ctx.weight = [weight_bwd, weight_scale_bwd]
             ctx.weight_dtype = weight.dtype
         else:
-            weight_fwd, weight_scale_fwd = torch_npu.npu_dynamic_mx_quant(weight, axis=-1,
-                                                                          dst_type=config.get_key_dtype("weight"))
+            weight_fwd, weight_scale_fwd = torch_npu.npu_dynamic_mx_quant(
+                weight, axis=-1, dst_type=config.get_key_dtype("weight")
+            )
             ctx.weight = None
             ctx.weight_dtype = weight.dtype
 
@@ -145,12 +164,12 @@ class matmul_with_hp_or_lp_weight(torch.autograd.Function):
 
 
 def mx_quant_linear(
-        x: torch.Tensor,
-        weight: torch.Tensor,
-        config: QuantizeConfig = None,
-        grad_enabled: bool = True,
-        bias: Optional[torch.Tensor] = None,
-        name: Optional[str] = None,
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    config: QuantizeConfig = None,
+    grad_enabled: bool = True,
+    bias: Optional[torch.Tensor] = None,
+    name: Optional[str] = None,
 ) -> torch.Tensor:
     """
     Performs forward and backward passes for a quantized linear layer,
@@ -172,6 +191,19 @@ def mx_quant_linear(
     return matmul_with_hp_or_lp_weight.apply(x, weight, config, grad_enabled, bias, name)
 
 
+def weight_quant(weight, dst_type, config):
+    if config.recipe_name == "mxfp8":
+        weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+            weight, dst_type=dst_type
+        )
+    elif config.recipe_name == "mxfp8-32x32":
+        weight_fwd, weight_scale_fwd, weight_scale_bwd = torch_npu.npu_dynamic_block_mx_quant(weight, dst_type=dst_type)
+        weight_bwd = weight_fwd
+    else:
+        raise ValueError(f"Unsupported recipe_name: {config.recipe_name}")
+    return weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd
+
+
 class MXLinear(torch.nn.Linear):
     config: QuantizeConfig
 
@@ -180,17 +212,21 @@ class MXLinear(torch.nn.Linear):
         super().__init__(*args, **kwargs)
         self.config = config
 
+        self._name = None
+        self.weight = self.weight
+        self.bias = self.bias
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if torch.is_autocast_enabled():
             x = x.to(torch.get_autocast_dtype())
 
         output = mx_quant_linear(
-            x,
-            self.weight,
-            self.config,
-            torch.is_grad_enabled(),
-            None,
-            self._name,
+            x=x,
+            weight=self.weight,
+            config=self.config,
+            grad_enabled=torch.is_grad_enabled(),
+            bias=None,
+            name=self._name,
         )
 
         if self.bias is not None:
@@ -204,14 +240,11 @@ class MXLinear(torch.nn.Linear):
 
     @classmethod
     def from_float(
-            cls,
-            mod: torch.nn.Linear,
-            config: Optional[QuantizeConfig] = None,
-            name: Optional[str] = None,
+        cls,
+        mod: torch.nn.Linear,
+        config: Optional[QuantizeConfig] = None,
+        name: Optional[str] = None,
     ):
-        if config is None:
-            config = QuantizeConfig(recipe_name="mxfp8")
-
         if config.enable_fsdp_low_precision_all_gather:
             with torch.device("meta"):
                 new_mod = cls(
@@ -226,7 +259,7 @@ class MXLinear(torch.nn.Linear):
             new_mod.weight = torch.nn.Parameter(
                 PreQuantWeight(
                     new_mod.weight,
-                    partial(torch_npu.npu_dynamic_mx_quant_with_dual_axis, dst_type=config.get_key_dtype("weight")),
+                    partial(weight_quant, dst_type=config.get_key_dtype("weight"), config=config),
                     config,
                     mod.weight.dtype,
                     name=name,

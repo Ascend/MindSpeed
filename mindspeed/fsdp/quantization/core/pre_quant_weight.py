@@ -40,9 +40,7 @@ def _get_module_fsdp_state(module):
                     closest_parent_fsdp_mod = fsdp_mod
                     min_nodes_in_parent = len(all_submodules)
         if closest_parent_fsdp_mod is None:
-            raise RuntimeError(
-                "Module is not FSDP-wrapped and does not have any FSDP-wrapped parent modules."
-            )
+            raise RuntimeError("Module is not FSDP-wrapped and does not have any FSDP-wrapped parent modules.")
         fsdp_state = closest_parent_fsdp_mod._get_fsdp_state()
         module._cached_parent_fsdp_state = fsdp_state
     return fsdp_state
@@ -65,19 +63,18 @@ _ops_to_preserve_subclass = {
 
 
 class PreQuantWeight(torch.Tensor):
-
     @staticmethod
     def __new__(
-            cls,
-            tensor: torch.Tensor,
-            quantizer: Callable,
-            config: Optional[Any] = None,
-            dtype: Optional[torch.dtype] = None,
-            name: Optional[str] = None,
-            **kwargs,
+        cls,
+        tensor: torch.Tensor,
+        quantizer: Callable,
+        config: Optional[Any] = None,
+        dtype: Optional[torch.dtype] = None,
+        name: Optional[str] = None,
+        **kwargs,
     ):
         if "_tensor" in kwargs:
-            tensor = kwargs["_tensor"]
+            tensor = kwargs.get("_tensor")
 
         if tensor is None:
             return torch.Tensor._make_wrapper_subclass(cls, torch.Size([0]))
@@ -94,13 +91,13 @@ class PreQuantWeight(torch.Tensor):
         )
 
     def __init__(
-            self,
-            tensor: torch.Tensor,
-            quantizer: Callable[[torch.Tensor], Any],
-            config: Optional[Any] = None,
-            dtype: Optional[torch.dtype] = None,
-            name: Optional[str] = None,
-            **kwargs,
+        self,
+        tensor: torch.Tensor,
+        quantizer: Callable[[torch.Tensor], Any],
+        config: Optional[Any] = None,
+        dtype: Optional[torch.dtype] = None,
+        name: Optional[str] = None,
+        **kwargs,
     ):
         self._tensor = tensor.contiguous()
         self.config = config
@@ -133,13 +130,12 @@ class PreQuantWeight(torch.Tensor):
                 quantizer = t._quantizer
             return t._tensor
 
-        args, kwargs = pytree.tree_map_only(
-            PreQuantWeight, unwrap, (args, kwargs or {})
-        )
+        args, kwargs = pytree.tree_map_only(PreQuantWeight, unwrap, (args, kwargs or {}))
         out = func(*args, **kwargs)
         if func not in _ops_to_preserve_subclass:
             warnings.warn(
-                f"PreQuantWeight type is not preserved for Operator {func}, enable_fsdp_low_precision_all_gather is disabled")
+                f"PreQuantWeight type is not preserved for Operator {func}, enable_fsdp_low_precision_all_gather is disabled"
+            )
             return out
         return pytree.tree_map_only(
             torch.Tensor,
@@ -163,7 +159,7 @@ class PreQuantWeight(torch.Tensor):
         )
 
     def __repr__(self):
-        return "PreQuantWeight(" f"tensor={self._tensor}, config={self.config}, dtype={self._dtype}"
+        return f"PreQuantWeight(tensor={self._tensor}, config={self.config}, dtype={self._dtype}"
 
     def fsdp_pre_all_gather(self, mesh, orig_size, contiguous_orig_stride, module, mp_policy):
         """Functions FSDP2 calls before all-gather of the
@@ -227,7 +223,10 @@ class PreQuantWeight(torch.Tensor):
 
         training_state = fsdp_state._fsdp_param_group._training_state
 
-        if reshard_after_forward and self.config.fsdp_low_precision_all_gather_mode != "all":
+        if self.config.recipe_name == "mxfp8-32x32":
+            fwd_usage = bwd_usage = True
+            sharded_tensors = (weight_fwd,) if world_size == 1 else (weight_fwd, scale_fwd, scale_bwd)
+        elif reshard_after_forward and self.config.fsdp_low_precision_all_gather_mode != "all":
             is_backward_pass = training_state == TrainingState.PRE_BACKWARD
             # Allgather only the necessary tensors based on forward/backward pass
             fwd_usage = not is_backward_pass
@@ -241,43 +240,57 @@ class PreQuantWeight(torch.Tensor):
         else:
             fwd_usage = bwd_usage = True
 
-            sharded_tensors = (weight_fwd, weight_bwd) if world_size == 1 else (weight_fwd, scale_fwd, weight_bwd,
-                                                                                scale_bwd)
+            sharded_tensors = (
+                (weight_fwd, weight_bwd) if world_size == 1 else (weight_fwd, scale_fwd, weight_bwd, scale_bwd)
+            )
 
         metadata = (fwd_usage, bwd_usage, scale_fwd, scale_bwd)
         return sharded_tensors, metadata
 
     def fsdp_post_all_gather(
-            self,
-            all_gather_outputs: Tuple[torch.Tensor, ...],
-            metadata: Any,
-            param_dtype: torch.dtype,
-            *,
-            out: Optional[torch.Tensor] = None,
+        self,
+        all_gather_outputs: Tuple[torch.Tensor, ...],
+        metadata: Any,
+        param_dtype: torch.dtype,
+        *,
+        out: Optional[torch.Tensor] = None,
     ):
         fwd_usage, bwd_usage, local_scale_fwd, local_scale_bwd = metadata
 
         weight_fwd, scale_fwd = None, None
         weight_bwd, scale_bwd = None, None
 
-        num_expected_weights = int(fwd_usage) + int(bwd_usage)
-
-        if len(all_gather_outputs) == num_expected_weights:
-            weight_fwd = all_gather_outputs[0] if fwd_usage else None
-            scale_fwd = local_scale_fwd if fwd_usage else None
-
-            weight_bwd = all_gather_outputs[-1] if bwd_usage else None
-            scale_bwd = local_scale_bwd if bwd_usage else None
-
-        elif len(all_gather_outputs) == num_expected_weights * 2:
-            weight_fwd = all_gather_outputs[0] if fwd_usage else None
-            scale_fwd = all_gather_outputs[1] if fwd_usage else None
-
-            weight_bwd = all_gather_outputs[-2] if bwd_usage else None
-            scale_bwd = all_gather_outputs[-1] if bwd_usage else None
+        if self.config.recipe_name == "mxfp8-32x32":
+            if len(all_gather_outputs) == 1:
+                weight_fwd = weight_bwd = all_gather_outputs[0]
+                scale_fwd = local_scale_fwd
+                scale_bwd = local_scale_bwd
+            elif len(all_gather_outputs) == 3:
+                weight_fwd = weight_bwd = all_gather_outputs[0]
+                scale_fwd = all_gather_outputs[1]
+                scale_bwd = all_gather_outputs[-1]
+            else:
+                raise ValueError(f"Unexpected gather outputs length for mxfp8-32x32 quant: {len(all_gather_outputs)}")
 
         else:
-            raise ValueError(f"Unexpected gather outputs length: {len(all_gather_outputs)}")
+            num_expected_weights = int(fwd_usage) + int(bwd_usage)
+
+            if len(all_gather_outputs) == num_expected_weights:
+                weight_fwd = all_gather_outputs[0] if fwd_usage else None
+                scale_fwd = local_scale_fwd if fwd_usage else None
+
+                weight_bwd = all_gather_outputs[-1] if bwd_usage else None
+                scale_bwd = local_scale_bwd if bwd_usage else None
+
+            elif len(all_gather_outputs) == num_expected_weights * 2:
+                weight_fwd = all_gather_outputs[0] if fwd_usage else None
+                scale_fwd = all_gather_outputs[1] if fwd_usage else None
+
+                weight_bwd = all_gather_outputs[-2] if bwd_usage else None
+                scale_bwd = all_gather_outputs[-1] if bwd_usage else None
+
+            else:
+                raise ValueError(f"Unexpected gather outputs length: {len(all_gather_outputs)}")
 
         if out is not None:
             if isinstance(out, DTensor):

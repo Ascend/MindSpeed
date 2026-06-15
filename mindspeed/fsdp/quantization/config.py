@@ -33,19 +33,33 @@ class ScalingGranularityEnum(Enum):
 @dataclass
 class ScalingGranularity:
     """
-    Quantization granularity
+    Configuration for quantization granularity and its associated block size.
+
+    This class defines the scaling granularity used during model quantization
+    and automatically validates the block size constraints for specific quantization
+    types (such as MX format) post-initialization.
+
+    Args:
+        stype (ScalingGranularityEnum): The type of scaling granularity (e.g., MX).
+        block_size (Optional[List[int]]): The dimensions of the scaling block,
+            structured as: `[token_dim_block_size, input_dim_block_size, output_dim_block_size]`.
+            Should be `None` for granularities like per-tensor that do not use blocking.
+            Defaults to None.
+
+    Raises:
+        ValueError: If `stype` is `ScalingGranularityEnum.MX` and `block_size`
+            is not one of the supported configurations (`[1, 1, 32]` or `[1, 32, 32]`).
     """
 
     stype: ScalingGranularityEnum
-    block_size: Optional[List[int]]  # [token_dim_block_size, input_dim_block_size, output_dim_block_size]
+    block_size: Optional[List[int]] = None
 
     def __post_init__(self):
         if self.stype == ScalingGranularityEnum.MX:
-            if self.block_size is None:
-                self.block_size = [1, 1, 32]
-            elif self.block_size != [1, 1, 32]:
+            if self.block_size not in ([1, 1, 32], [1, 32, 32]):
                 raise ValueError(
-                    f"Invalid block size: {self.block_size} for MX, [1, 1, 32] is the only supported block size for MX")
+                    f"Invalid block size: {self.block_size} for MX. Only [1, 1, 32] and [1, 32, 32] are the supported block sizes for MX."
+                )
 
 
 @dataclass
@@ -87,8 +101,10 @@ class QuantRecipe:
                     scaling_strategy = ScalingStrategyEnum(scaling_strategy)
 
                     if "-" in scaling_granularity:
-                        scaling_granularity, block_size = scaling_granularity.split("-")[0], scaling_granularity.split(
-                            "-")[1:]
+                        scaling_granularity, block_size = (
+                            scaling_granularity.split("-")[0],
+                            scaling_granularity.split("-")[1:],
+                        )
                         if len(block_size) != 3:
                             raise ValueError(f"Invalid block size: {block_size}")
 
@@ -167,6 +183,18 @@ def register_mxfp8_recipe():
     return QuantRecipe(
         scaling_strategy=ScalingStrategyEnum.DYNAMIC,
         scaling_granularity=ScalingGranularity(ScalingGranularityEnum.MX, [1, 1, 32]),
+        inputs_dtype=_dtype_mapping["E4M3"],
+        weight_dtype=_dtype_mapping["E4M3"],
+        grads_dtype=_dtype_mapping["E4M3"],
+    )
+
+
+@recipe_register("mxfp8-32x32")
+def register_mxfp8_32x32_recipe():
+    """Register a MXFP8-32x32 recipe to the recipes dictionary."""
+    return QuantRecipe(
+        scaling_strategy=ScalingStrategyEnum.DYNAMIC,
+        scaling_granularity=ScalingGranularity(ScalingGranularityEnum.MX, [1, 32, 32]),
         inputs_dtype=_dtype_mapping["E4M3"],
         weight_dtype=_dtype_mapping["E4M3"],
         grads_dtype=_dtype_mapping["E4M3"],

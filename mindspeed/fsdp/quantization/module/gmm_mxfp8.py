@@ -13,23 +13,32 @@ from mindspeed.fsdp.quantization.core.pre_quant_weight import PreQuantWeight
 from mindspeed.ops.npu_moe_token_permute import npu_moe_token_permute
 from mindspeed.ops.npu_moe_token_unpermute import npu_moe_token_unpermute
 from mindspeed.fsdp.quantization.core.post_quant_weight import PostQuantWeight
+from mindspeed.fsdp.quantization.module.linear_mxfp8 import process_quant_result_fn
 
 
 @torch._dynamo.allow_in_graph
 class gmm_with_hp_or_lp_weight(torch.autograd.Function):
-
     @classmethod
     def gmm_apply(cls, x, weight, bias, tokens_per_expert, config, grad_enabled, to_shape, ori_weight=None):
-
         if isinstance(tokens_per_expert, list):
             tokens_per_expert = torch.tensor(tokens_per_expert, device="npu", dtype=torch.int64)
         group_list = torch.cumsum(tokens_per_expert, dim=0)
         return cls.apply(x, weight, bias, group_list, grad_enabled, config, to_shape, ori_weight, 0)
 
     @classmethod
-    def forward(cls, ctx, x, weight, bias, group_list, grad_enabled, config: QuantizeConfig, to_shape, ori_weight=None,
-                group_list_type=0):
-
+    def forward(
+        cls,
+        ctx,
+        x,
+        weight,
+        bias,
+        group_list,
+        grad_enabled,
+        config: QuantizeConfig,
+        to_shape,
+        ori_weight=None,
+        group_list_type=0,
+    ):
         def get_quantized_weight(weight, grad_enabled, config):
             ctx.weight_bwd, ctx.weight_scale_bwd = None, None
 
@@ -43,14 +52,15 @@ class gmm_with_hp_or_lp_weight(torch.autograd.Function):
                 weight = weight.to(torch.bfloat16)
 
             if grad_enabled:
-                ctx.weight_bwd, ctx.weight_scale_bwd, weight_fwd, weight_scale_fwd = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
-                    weight,
+                ctx.weight_bwd, ctx.weight_scale_bwd, weight_fwd, weight_scale_fwd = process_quant_result_fn(
+                    weight=weight,
                     dst_type=config.get_key_dtype("weight"),
+                    config=config,
                 )
-
             else:
-                weight_fwd, weight_scale_fwd = torch_npu.npu_dynamic_mx_quant(weight, axis=-2,
-                                                                              dst_type=config.get_key_dtype("weight"))
+                weight_fwd, weight_scale_fwd = torch_npu.npu_dynamic_mx_quant(
+                    weight, axis=-2, dst_type=config.get_key_dtype("weight")
+                )
             return weight_fwd, weight_scale_fwd
 
         if isinstance(group_list, torch.Tensor):
@@ -108,8 +118,9 @@ class gmm_with_hp_or_lp_weight(torch.autograd.Function):
         if ctx.bias is not None:
             grad_bias = grad_outputs.reshape(-1, grad_outputs.shape[-1]).sum(dim=0)
 
-        grad_mxfp8, grad_scale = torch_npu.npu_dynamic_mx_quant(grad_outputs, axis=-1,
-                                                                dst_type=ctx.config.get_key_dtype("grads"))
+        grad_mxfp8, grad_scale = torch_npu.npu_dynamic_mx_quant(
+            grad_outputs, axis=-1, dst_type=ctx.config.get_key_dtype("grads")
+        )
         grad_x = torch_npu.npu_grouped_matmul(
             [grad_mxfp8],
             [rearrange(weight_bwd, "n h f -> n f h")],
@@ -124,12 +135,15 @@ class gmm_with_hp_or_lp_weight(torch.autograd.Function):
             split_item=3,
         )[0]
 
-        x_mxfp8, x_scale = torch_npu.npu_grouped_dynamic_mx_quant(x, group_list.to(torch.int32), round_mode="rint",
-                                                                  dst_type=ctx.config.get_key_dtype("inputs"),
-                                                                  blocksize=32)
+        x_mxfp8, x_scale = torch_npu.npu_grouped_dynamic_mx_quant(
+            x, group_list.to(torch.int32), round_mode="rint", dst_type=ctx.config.get_key_dtype("inputs"), blocksize=32
+        )
         grad_mxfp8, grad_scale = torch_npu.npu_grouped_dynamic_mx_quant(
-            grad_outputs, group_list.to(torch.int32), round_mode="rint", dst_type=ctx.config.get_key_dtype("grads"),
-            blocksize=32
+            grad_outputs,
+            group_list.to(torch.int32),
+            round_mode="rint",
+            dst_type=ctx.config.get_key_dtype("grads"),
+            blocksize=32,
         )
 
         grad_weights = torch_npu.npu_grouped_matmul(
@@ -150,14 +164,14 @@ class gmm_with_hp_or_lp_weight(torch.autograd.Function):
 
 
 def mx_quant_group_gemm(
-        x: torch.Tensor,
-        weight: torch.Tensor,
-        bias: Optional[torch.Tensor] = None,
-        tokens_per_expert: Union[List[int], torch.Tensor] = None,
-        grad_enabled: bool = True,
-        config: QuantizeConfig = None,
-        to_shape: list = None,
-        ori_weight: torch.Tensor = None,
+    x: torch.Tensor,
+    weight: torch.Tensor,
+    bias: Optional[torch.Tensor] = None,
+    tokens_per_expert: Union[List[int], torch.Tensor] = None,
+    grad_enabled: bool = True,
+    config: QuantizeConfig = None,
+    to_shape: list = None,
+    ori_weight: torch.Tensor = None,
 ) -> torch.Tensor:
     """
     Performs group-wise quantized GEMM (General Matrix Multiplication)
@@ -188,8 +202,29 @@ def mx_quant_group_gemm(
         config=config,
         grad_enabled=grad_enabled,
         to_shape=to_shape,
-        ori_weight=ori_weight
+        ori_weight=ori_weight,
     )
+
+
+def weight_quant(weight, dst_type, new_shape, config):
+    # To maintain consistency with non-low-precision all-gather,
+    # reshape the weight to new_shape before quantization.
+    original_shape = weight.shape
+    weight = weight.reshape(new_shape)
+
+    if config.recipe_name == "mxfp8":
+        weight_bwd, weight_scale_bwd, weight_fwd, weight_scale_fwd = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+            weight, dst_type=dst_type
+        )
+    elif config.recipe_name == "mxfp8-32x32":
+        weight_bwd, weight_scale_bwd, weight_scale_fwd = torch_npu.npu_dynamic_block_mx_quant(weight, dst_type=dst_type)
+        weight_fwd = weight_bwd
+    else:
+        raise ValueError(f"Unsupported recipe_name: {config.recipe_name}")
+    weight_fwd = weight_fwd.reshape(original_shape)
+    weight_bwd = weight_bwd.reshape(original_shape)
+
+    return weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd
 
 
 class MXFP8GMM(torch.nn.Module):
@@ -200,6 +235,10 @@ class MXFP8GMM(torch.nn.Module):
         self.hidden_dim = kwargs.pop("hidden_size", None)
         self.intermediate_size = kwargs.pop("moe_intermediate_size", None)
         self.act_fn = kwargs.pop("act_fn", None)
+
+        self.gate_up_proj = None
+        self.down_proj = None
+        self._name = None
 
     def forward(self, hidden_states, routing_weights=None, selected_experts=None):
         # permute
@@ -234,7 +273,6 @@ class MXFP8GMM(torch.nn.Module):
         return output
 
     def ep_forward(self, hidden_states, tokens_per_expert):
-
         gate_up_proj = self.gate_up_proj.to_local()
         down_proj = self.down_proj.to_local()
 
@@ -265,14 +303,11 @@ class MXFP8GMM(torch.nn.Module):
 
     @classmethod
     def from_float(
-            cls,
-            mod: torch.nn.Module,
-            config: Optional[QuantizeConfig] = None,
-            name: Optional[str] = None,
+        cls,
+        mod: torch.nn.Module,
+        config: Optional[QuantizeConfig] = None,
+        name: Optional[str] = None,
     ):
-        if config is None:
-            config = QuantizeConfig(recipe_name="mxfp8")
-
         if config.enable_fsdp_low_precision_all_gather:
             with torch.device("meta"):
                 new_mod = cls(
@@ -288,8 +323,12 @@ class MXFP8GMM(torch.nn.Module):
             new_mod.gate_up_proj = torch.nn.Parameter(
                 PreQuantWeight(
                     new_mod.gate_up_proj,
-                    partial(weight_quant, dst_type=config.get_key_dtype("weight"),
-                            new_shape=(-1, mod.hidden_dim, mod.intermediate_size * 2)),
+                    partial(
+                        weight_quant,
+                        dst_type=config.get_key_dtype("weight"),
+                        new_shape=(-1, mod.hidden_dim, mod.intermediate_size * 2),
+                        config=config,
+                    ),
                     config,
                     mod.gate_up_proj.dtype,
                     name=name,
@@ -300,8 +339,12 @@ class MXFP8GMM(torch.nn.Module):
             new_mod.down_proj = torch.nn.Parameter(
                 PreQuantWeight(
                     new_mod.down_proj,
-                    partial(weight_quant, dst_type=config.get_key_dtype("weight"),
-                            new_shape=(-1, mod.intermediate_size, mod.hidden_dim)),
+                    partial(
+                        weight_quant,
+                        dst_type=config.get_key_dtype("weight"),
+                        new_shape=(-1, mod.intermediate_size, mod.hidden_dim),
+                        config=config,
+                    ),
                     config,
                     mod.down_proj.dtype,
                     name=name,
@@ -316,17 +359,3 @@ class MXFP8GMM(torch.nn.Module):
         mod.config = config
         mod._name = name
         return mod
-
-
-def weight_quant(weight, dst_type, new_shape):
-    # To maintain consistency with non-low-precision all-gather,
-    # reshape the weight to new_shape before quantization.
-    original_shape = weight.shape
-    weight = weight.reshape(new_shape)
-
-    weight_bwd, weight_scale_bwd, weight_fwd, weight_scale_fwd = torch_npu.npu_dynamic_mx_quant_with_dual_axis(weight,
-                                                                                                               dst_type=dst_type)
-
-    weight_fwd = weight_fwd.reshape(original_shape)
-    weight_bwd = weight_bwd.reshape(original_shape)
-    return weight_fwd, weight_scale_fwd, weight_bwd, weight_scale_bwd
