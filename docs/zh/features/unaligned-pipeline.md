@@ -23,8 +23,8 @@
 ## 使用方法
 
 在模型参数中添加 --pipeline-num-transformer-layers 参数，使用二维矩阵来表示PP层和VPP层中transformer layer的层数，横轴坐标表示pp rank，纵轴坐标表示vpp rank。
-假设：pipeline_num_transformer_layers = [[0,1],[1,1]*4,[1,0]]，pp_rank = 0， vpp_rank = 1，则pipeline_num_transformer_layers[pp_rank][vpp_rank]中只有1层layer。
-假设没有设置VPP，则可以设置为pipeline_num_transformer_layers = [[1],[2]*4,[1]]，如果pp_rank = 1，则pipeline_num_transformer_layers[pp_rank]有2层layer。
+假设：pipeline_num_transformer_layers = [[0,1],[1,1]*4,[1,0]]，pp_rank = 0， vpp_rank = 1，则pipeline_num_transformer_layers\[pp_rank\]\[vpp_rank\]中只有1层layer。
+假设没有设置VPP，则可以设置为pipeline_num_transformer_layers = [[1],[2]*4,[1]]，如果pp_rank = 1，则pipeline_num_transformer_layers\[pp_rank\]有2层layer。
 
 **注意事项：**
 

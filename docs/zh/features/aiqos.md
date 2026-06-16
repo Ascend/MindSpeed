@@ -73,7 +73,9 @@
 &#12288;&#12288; 参数说明（set_h2d_qos）：set_h2d_qos用于调整H2D流量的qos值，qos值参数与灵衢交换网络配套，支持低优先级和中优先级，对应的灵衢网络qos值为2, 4。mpamid取值为0-31，bitmap默认值为[0x1, 0, 0, 0]，表示H2D流量所在的流量通道。  
 
 ### 4.2 so编译方法
+
 &#12288;&#12288; 进入mindspeed/ops/csrc/qos目录下，手动编译pybind11，修改目录下CMakeLists.txt中pybind11_install_dir为pybind11安装目录，执行如下命令,会在output目录下生成SO：
+
  ```shell
 mkdir build
 cd build
@@ -82,6 +84,7 @@ make -j
  ```
 
 ### 4.3 so使用实例
+
 ```python
 import aiQos
 
@@ -165,12 +168,9 @@ fusion_qos()
 set_h2d_qos('low', 20)
 ```
 
-
-
-
 ## 5 使用场景与版本配套
 
-AI QoS特性支持Atlas 800T A3超节点服务器及Atlas 900 A3 SuperPoD集群，需以下软件版本配套：   
+AI QoS特性支持Atlas 800T A3超节点服务器及Atlas 900 A3 SuperPoD集群，需以下软件版本配套：
 
 | 软件        | 配套版本                          |
 | :---------- | :-------------------------------- |
