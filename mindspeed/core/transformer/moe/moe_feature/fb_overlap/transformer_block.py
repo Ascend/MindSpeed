@@ -291,7 +291,9 @@ def transformer_block_forward_backward_overlaping(
             inference_params,
             input_ids,
         )
-    bwd_block_graphs = list(bwd_block_graphs)
+
+    if not isinstance(bwd_block_graphs, list):
+        bwd_block_graphs = list(bwd_block_graphs)
     unbalanced_block_graphs = len(bwd_block_graphs) != len(self.layers)
     pp_comm_output = P2PCommOutput()
 
