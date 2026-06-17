@@ -35,16 +35,20 @@ from megatron.core.ssm.gated_delta_net import GatedDeltaNetSubmodules, _split_te
 from mindspeed.args_utils import get_full_args as get_args
 
 try:
-    from fla.modules.convolution import causal_conv1d
     from fla.modules.l2norm import l2norm
     from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 
     HAVE_FLA = True
 except ImportError:
-    causal_conv1d = None
     chunk_gated_delta_rule = None
 
     HAVE_FLA = False
+
+try:
+    import fla_npu
+    from fla.modules.convolution import causal_conv1d
+except ImportError:
+    causal_conv1d = None
 
 
 def naive_l2norm(x: torch.FloatTensor, dim: int = -1, eps: float = 1e-6):
@@ -285,7 +289,7 @@ class GatedDeltaNet(MegatronModule):
             # TODO: support inference
             raise NotImplementedError("GDN does not support inference for now.")
 
-        if not HAVE_FLA and packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
+        if causal_conv1d is None and packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
             raise RuntimeError(
                 "THD (packed sequence) scenario only supports FLA fused operators, "
                 "but FLA is not available. Please install the flash-linear-attention package."
@@ -443,7 +447,6 @@ class GatedDeltaNet(MegatronModule):
                 initial_state=None,
                 output_final_state=False,
                 cu_seqlens=cu_seqlens_q,
-                cu_seqlens_list=cu_seqlens_q_list,
             )
         nvtx_range_pop(suffix="conv1d")
 
@@ -474,7 +477,6 @@ class GatedDeltaNet(MegatronModule):
             output_final_state=False,
             use_qk_l2norm_in_kernel=False,
             cu_seqlens=cu_seqlens_q,
-            cu_seqlens_list=cu_seqlens_q_list,
         )
         nvtx_range_pop(suffix="gated_delta_rule")
 

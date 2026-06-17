@@ -39,58 +39,6 @@ def prepare_chunk_indices(cu_seqlens: List[int], chunk_size: int) -> List[int]:
     return indices
 
 
-def _normalize_cu_seqlens(cu_seqlens: torch.Tensor, total_tokens: int):
-    """Normalize cu_seqlens tensor and return both tensor and list forms.
-
-    Performs a single D2H transfer. The returned list can be threaded through
-    downstream functions to avoid redundant .cpu().tolist() calls.
-
-    Returns:
-        (cu_seqlens_tensor, cu_seqlens_list)
-    """
-    cu_seqlens_list = cu_seqlens.detach().cpu().reshape(-1).tolist()
-    cu_seqlens_list = [int(offset) for offset in cu_seqlens_list]
-    if not cu_seqlens_list:
-        raise ValueError("Packed gated delta rule expects non-empty cu_seqlens")
-
-    if cu_seqlens_list[0] != 0:
-        if cu_seqlens_list[-1] == total_tokens:
-            cu_seqlens_list = [0] + cu_seqlens_list
-        elif cu_seqlens_list[-1] - cu_seqlens_list[0] == total_tokens:
-            base_offset = cu_seqlens_list[0]
-            cu_seqlens_list = [offset - base_offset for offset in cu_seqlens_list]
-
-    if len(cu_seqlens_list) < 2:
-        raise ValueError(
-            "Packed gated delta rule expects cu_seqlens to contain at least "
-            f"start and end offsets, but got {cu_seqlens_list}"
-        )
-    if cu_seqlens_list[0] != 0:
-        raise ValueError(f"cu_seqlens must start from 0, but got {cu_seqlens_list}")
-    if cu_seqlens_list[-1] != total_tokens:
-        raise ValueError(
-            "Packed gated delta rule cu_seqlens must match the current packed input length, "
-            f"but got cu_seqlens[-1]={cu_seqlens_list[-1]} and total_tokens={total_tokens}"
-        )
-    if any(curr <= prev for prev, curr in zip(cu_seqlens_list, cu_seqlens_list[1:])):
-        raise ValueError(f"cu_seqlens must be strictly increasing, but got {cu_seqlens_list}")
-
-    cu_seqlens_tensor = torch.tensor(cu_seqlens_list, dtype=cu_seqlens.dtype, device=cu_seqlens.device)
-    return cu_seqlens_tensor, cu_seqlens_list
-
-
-def _resolve_cu_seqlens_list(
-    cu_seqlens_list: Optional[List[int]],
-    cu_seqlens: Optional[torch.Tensor],
-) -> Optional[List[int]]:
-    """Get cu_seqlens as a Python list, using cached list or single D2H fallback."""
-    if cu_seqlens_list is not None:
-        return cu_seqlens_list
-    if cu_seqlens is None:
-        return None
-    return [int(v) for v in cu_seqlens.detach().cpu().reshape(-1).tolist()]
-
-
 def flash_chunk_gated_delta_rule_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -101,7 +49,6 @@ def flash_chunk_gated_delta_rule_fwd(
     initial_state: torch.Tensor,
     output_final_state: bool,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    cu_seqlens_list: Optional[List[int]] = None,
     chunk_size: int = 64,
 ):
     g = chunk_local_cumsum(g, chunk_size=chunk_size, cu_seqlens=cu_seqlens, head_first=False)
@@ -118,7 +65,7 @@ def flash_chunk_gated_delta_rule_fwd(
     A = A.transpose(1, 2).contiguous()
     beta = beta.transpose(1, 2).contiguous().float()
 
-    cu_seqlens1 = _resolve_cu_seqlens_list(cu_seqlens_list, cu_seqlens)
+    cu_seqlens1 = cu_seqlens.detach().cpu().reshape(-1).tolist() if cu_seqlens is not None else None
     if cu_seqlens1 is not None:
         chunk_indices = prepare_chunk_indices(cu_seqlens1, chunk_size)
     else:
@@ -162,7 +109,6 @@ def flash_chunk_gated_delta_rule_bwd(
     do: torch.Tensor,
     dht: torch.Tensor,
     cu_seqlens: Optional[torch.LongTensor] = None,
-    cu_seqlens_list: Optional[List[int]] = None,
     chunk_size: int = 64,
 ):
     q = q.transpose(1, 2).contiguous()
@@ -172,7 +118,7 @@ def flash_chunk_gated_delta_rule_bwd(
     beta = beta.transpose(1, 2).contiguous().float()
     do = do.transpose(1, 2).contiguous()
 
-    cu_seqlens1 = _resolve_cu_seqlens_list(cu_seqlens_list, cu_seqlens)
+    cu_seqlens1 = cu_seqlens.detach().cpu().reshape(-1).tolist() if cu_seqlens is not None else None
     if cu_seqlens1 is not None:
         chunk_indices = prepare_chunk_indices(cu_seqlens1, chunk_size)
     else:
@@ -281,11 +227,7 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
         cu_seqlens: Optional[torch.LongTensor] = None,
         use_qk_l2norm_in_kernel: bool = False,
         chunk_size: int = 64,
-        cu_seqlens_list: Optional[List[int]] = None,
     ):
-        if cu_seqlens is not None and cu_seqlens_list is None:
-            cu_seqlens, cu_seqlens_list = _normalize_cu_seqlens(cu_seqlens, q.shape[1])
-
         if use_qk_l2norm_in_kernel:
             q, q_rstd = l2norm_fwd(q)
             k, k_rstd = l2norm_fwd(k)
@@ -302,14 +244,12 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
             initial_state=initial_state,
             output_final_state=output_final_state,
             cu_seqlens=cu_seqlens,
-            cu_seqlens_list=cu_seqlens_list,
             chunk_size=chunk_size,
         )
         ctx.save_for_backward(q, q_rstd, k, k_rstd, v, g, beta, A, initial_state, cu_seqlens)
         ctx.scale = scale
         ctx.use_qk_l2norm_in_kernel = use_qk_l2norm_in_kernel
         ctx.chunk_size = chunk_size
-        ctx.cu_seqlens_list = cu_seqlens_list
         return o.to(q.dtype), final_state
 
     @staticmethod
@@ -329,13 +269,12 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
             do=do,
             dht=dht,
             cu_seqlens=cu_seqlens,
-            cu_seqlens_list=ctx.cu_seqlens_list,
             chunk_size=ctx.chunk_size,
         )
         if ctx.use_qk_l2norm_in_kernel:
             dq = l2norm_bwd(q, q_rstd, dq)
             dk = l2norm_bwd(k, k_rstd, dk)
-        return dq.to(q), dk.to(k), dv.to(v), dg.to(g), db.to(beta), None, dh0, None, None, None, None, None
+        return dq.to(q), dk.to(k), dv.to(v), dg.to(g), db.to(beta), None, dh0, None, None, None, None
 
 
 @torch.compiler.disable
@@ -352,7 +291,6 @@ def flash_gated_delta_rule(
     cu_seqlens: Optional[torch.LongTensor] = None,
     chunk_size: int = 64,
     head_first: bool = False,
-    cu_seqlens_list: Optional[List[int]] = None,
 ):
     r"""
     Args:
@@ -383,11 +321,7 @@ def flash_gated_delta_rule(
         head_first (Optional[bool]):
             Whether the inputs are in the head-first format. Default: `False`.
             This argument has been deprecated.
-        cu_seqlens_list (Optional[List[int]]):
-            Pre-computed Python list form of ``cu_seqlens`` to avoid redundant D2H transfer.
-            When provided together with ``cu_seqlens``, the normalization step is skipped.
-
-    Returns:
+        Returns:
         o (torch.Tensor):
             Outputs of shape `[B, T, H, V]`.
         final_state (torch.Tensor):
@@ -456,18 +390,18 @@ def flash_gated_delta_rule(
                 f"The batch size is expected to be 1 rather than {q.shape[0]} when using `cu_seqlens`."
                 f"Please flatten variable-length inputs before processing."
             )
-        if cu_seqlens_list is None:
-            cu_seqlens, cu_seqlens_list = _normalize_cu_seqlens(cu_seqlens, q.shape[1])
-        if initial_state is not None and initial_state.shape[0] != len(cu_seqlens_list) - 1:
+        cu_seqlens = cu_seqlens.reshape(-1)
+        num_seqs = cu_seqlens.shape[0] - 1
+        if initial_state is not None and initial_state.shape[0] != num_seqs:
             raise ValueError(
                 f"The number of initial states is expected to be equal to the number of input sequences, "
-                f"i.e., {len(cu_seqlens_list) - 1} rather than {initial_state.shape[0]}."
+                f"i.e., {num_seqs} rather than {initial_state.shape[0]}."
             )
 
     if scale is None:
         scale = k.shape[-1] ** -0.5
     o, final_state = ChunkGatedDeltaRuleFunction.apply(
         q, k, v, g, beta, scale, initial_state, output_final_state,
-        cu_seqlens, use_qk_l2norm_in_kernel, chunk_size, cu_seqlens_list,
+        cu_seqlens, use_qk_l2norm_in_kernel, chunk_size,
     )
     return o, final_state

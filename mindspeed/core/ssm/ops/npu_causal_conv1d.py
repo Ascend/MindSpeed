@@ -109,37 +109,6 @@ def _torch_causal_conv1d(
     return torch.cat(outputs, dim=1)
 
 
-def _normalize_query_start_loc(cu_seqlens: torch.Tensor, total_tokens: int):
-    query_start_loc = cu_seqlens.detach().cpu().reshape(-1).tolist()
-    query_start_loc = [int(offset) for offset in query_start_loc]
-    if not query_start_loc:
-        raise ValueError("Packed causal_conv1d expects non-empty cu_seqlens")
-
-    if query_start_loc[0] != 0:
-        if query_start_loc[-1] == total_tokens:
-            query_start_loc = [0] + query_start_loc
-        elif query_start_loc[-1] - query_start_loc[0] == total_tokens:
-            base_offset = query_start_loc[0]
-            query_start_loc = [offset - base_offset for offset in query_start_loc]
-
-    if len(query_start_loc) < 2:
-        raise ValueError(
-            "Packed causal_conv1d expects cu_seqlens to contain at least "
-            f"start and end offsets, but got {query_start_loc}"
-        )
-
-    if query_start_loc[0] != 0:
-        raise ValueError(f"query_start_loc must start from 0, but got {query_start_loc}")
-    if query_start_loc[-1] != total_tokens:
-        raise ValueError(
-            "Packed causal_conv1d cu_seqlens must match the current packed input length, "
-            f"but got query_start_loc[-1]={query_start_loc[-1]} and total_tokens={total_tokens}"
-        )
-    if any(curr <= prev for prev, curr in zip(query_start_loc, query_start_loc[1:])):
-        raise ValueError(f"query_start_loc must be strictly increasing, but got {query_start_loc}")
-    return query_start_loc
-
-
 class _NpuCausalConv1dFunction(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -231,7 +200,6 @@ def causal_conv1d(
     output_final_state: bool = False,
     cu_seqlens: Optional[torch.Tensor] = None,
     activation: Optional[str] = "silu",
-    cu_seqlens_list: Optional[list[int]] = None,
 ):
     """FLA-compatible wrapper for the NPU causal conv1d custom op.
 
@@ -273,10 +241,7 @@ def causal_conv1d(
         raise ValueError("Packed causal_conv1d with cu_seqlens expects batch dimension to be 1")
 
     x_packed = x.squeeze(0).contiguous()
-    if cu_seqlens_list is not None:
-        query_start_loc = cu_seqlens_list
-    else:
-        query_start_loc = _normalize_query_start_loc(cu_seqlens, x_packed.shape[0])
+    query_start_loc = cu_seqlens.reshape(-1).tolist()
     num_seqs = len(query_start_loc) - 1
     if initial_state is None and not output_final_state and torch.is_grad_enabled():
         out = _NpuCausalConv1dFunction.apply(x, weight, bias, activation, query_start_loc)
