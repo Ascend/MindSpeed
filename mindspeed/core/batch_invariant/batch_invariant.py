@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
+
+import contextlib
 import importlib
 
 import torch
@@ -6,13 +9,14 @@ __all__ = [
     "disable_batch_invariant_mode",
     "enable_batch_invariant_mode",
     "is_batch_invariant_mode_enabled",
+    "set_batch_invariant_mode",
 ]
 
 _ORIGINAL_TORCH_SUM = torch.sum
 _ORIGINAL_TENSOR_SUM = torch.Tensor.sum
 
-_batch_invariant_MODE = False
-_batch_invariant_LIB = None
+_mindspeed_batch_invariant_mode = False
+_mindspeed_batch_invariant_lib = None
 
 
 def _origin_reduce_sum(x, dim=None, keepdim=False, dtype=None, out=None):
@@ -211,24 +215,24 @@ def _log_softmax_adapter(x, dim, half_to_float=False):
 
 def is_batch_invariant_mode_enabled():
     """Return True if global batch-invariant mode is currently enabled."""
-    return _batch_invariant_MODE
+    return _mindspeed_batch_invariant_mode
 
 
 def enable_batch_invariant_mode():
     """Enable global batch-invariant mode with NPU Ascend batch-invariant kernels."""
-    global _batch_invariant_MODE, _batch_invariant_LIB
-    if _batch_invariant_MODE:
+    global _mindspeed_batch_invariant_mode, _mindspeed_batch_invariant_lib
+    if _mindspeed_batch_invariant_mode:
         return
     importlib.import_module("batch_invariant_ops")
     importlib.import_module("torch_npu")
 
-    _batch_invariant_MODE = True
-    _batch_invariant_LIB = torch.library.Library("aten", "IMPL")
-    _batch_invariant_LIB.impl("aten::mm", mm_adapter, "NPU")
-    _batch_invariant_LIB.impl("aten::matmul", matmul_adapter, "NPU")
-    _batch_invariant_LIB.impl("aten::sum", reduce_sum_adapter, "NPU")
-    _batch_invariant_LIB.impl("aten::_log_softmax", _log_softmax_adapter, "NPU")
-    _batch_invariant_LIB.impl("aten::log_softmax", log_softmax_adapter, "NPU")
+    _mindspeed_batch_invariant_mode = True
+    _mindspeed_batch_invariant_lib = torch.library.Library("aten", "IMPL")
+    _mindspeed_batch_invariant_lib.impl("aten::mm", mm_adapter, "NPU")
+    _mindspeed_batch_invariant_lib.impl("aten::matmul", matmul_adapter, "NPU")
+    _mindspeed_batch_invariant_lib.impl("aten::sum", reduce_sum_adapter, "NPU")
+    _mindspeed_batch_invariant_lib.impl("aten::_log_softmax", _log_softmax_adapter, "NPU")
+    _mindspeed_batch_invariant_lib.impl("aten::log_softmax", log_softmax_adapter, "NPU")
 
     torch.sum = reduce_sum_adapter
     torch.Tensor.sum = reduce_sum_adapter
@@ -236,10 +240,28 @@ def enable_batch_invariant_mode():
 
 def disable_batch_invariant_mode():
     """Disable global batch-invariant mode and restore patched Python entry points."""
-    global _batch_invariant_MODE, _batch_invariant_LIB
-    if _batch_invariant_LIB is not None:
-        _batch_invariant_LIB._destroy()
-    _batch_invariant_MODE = False
-    _batch_invariant_LIB = None
+    global _mindspeed_batch_invariant_mode, _mindspeed_batch_invariant_lib
+    if _mindspeed_batch_invariant_lib is not None:
+        _mindspeed_batch_invariant_lib._destroy()
+    _mindspeed_batch_invariant_mode = False
+    _mindspeed_batch_invariant_lib = None
     torch.sum = _ORIGINAL_TORCH_SUM
     torch.Tensor.sum = _ORIGINAL_TENSOR_SUM
+
+
+@contextlib.contextmanager
+def set_batch_invariant_mode(enabled=True):
+    """Temporarily set MindSpeed batch-invariant mode and restore previous state."""
+    previous_enabled = is_batch_invariant_mode_enabled()
+    if enabled and not previous_enabled:
+        enable_batch_invariant_mode()
+    elif not enabled and previous_enabled:
+        disable_batch_invariant_mode()
+
+    try:
+        yield
+    finally:
+        if enabled and not previous_enabled:
+            disable_batch_invariant_mode()
+        elif not enabled and previous_enabled:
+            enable_batch_invariant_mode()

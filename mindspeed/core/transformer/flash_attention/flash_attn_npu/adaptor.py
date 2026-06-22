@@ -14,8 +14,18 @@ except ImportError:
     rearrange = None
 
 
+def _attn_mask_type_name(attn_mask_type: Optional[AttnMaskType]) -> str:
+    if attn_mask_type is None:
+        return ""
+    return getattr(attn_mask_type, "name", str(attn_mask_type)).lower()
+
+
 def _is_causal(attn_mask_type: Optional[AttnMaskType]) -> bool:
-    return attn_mask_type == AttnMaskType.causal
+    return _attn_mask_type_name(attn_mask_type) == "causal"
+
+
+def _is_no_mask(attn_mask_type: Optional[AttnMaskType]) -> bool:
+    return _attn_mask_type_name(attn_mask_type) == "no_mask"
 
 
 def _get_attn_mask_type(self, attn_mask_type: Optional[AttnMaskType]) -> Optional[AttnMaskType]:
@@ -71,10 +81,12 @@ def _validate_flash_attn_npu_attention(
     if self.config.context_parallel_size != 1:
         raise AssertionError("flash-attn-npu backend does not support context parallelism.")
 
-    if self.attention_dropout.p != 0:
+    if _get_attention_dropout_p(self) != 0:
         raise AssertionError("flash-attn-npu backend currently requires attention_dropout == 0.")
 
-    if effective_attn_mask_type not in (AttnMaskType.causal, AttnMaskType.no_mask, None):
+    if effective_attn_mask_type is not None and not (
+        _is_causal(effective_attn_mask_type) or _is_no_mask(effective_attn_mask_type)
+    ):
         raise AssertionError("flash-attn-npu backend currently only supports causal or no_mask attention.")
 
     if attention_mask is not None and not _is_causal(effective_attn_mask_type):
@@ -89,6 +101,15 @@ def _validate_flash_attn_npu_attention(
 def _get_window_size(self):
     window_size = getattr(getattr(self, "scale_mask_softmax", None), "window_size", None)
     return window_size if window_size is not None else (-1, -1)
+
+
+def _get_attention_dropout_p(self):
+    attention_dropout = getattr(self, "attention_dropout", 0.0)
+    return getattr(attention_dropout, "p", attention_dropout)
+
+
+def _get_softmax_scale(self):
+    return getattr(self, "softmax_scale", getattr(self, "scale", None))
 
 
 def _prepare_flash_attn_npu_cu_seqlens(cu_seqlens, total_tokens, name):
@@ -160,6 +181,7 @@ def dot_product_attention_flash_attn_npu_forward(
     attn_mask_type: AttnMaskType = None,
     attention_bias: Tensor = None,
     packed_seq_params: Optional[PackedSeqParams] = None,
+    num_splits: Optional[int] = None,
 ):
     """DotProductAttention.forward implementation backed by flash-attention-npu.
 
@@ -179,6 +201,7 @@ def dot_product_attention_flash_attn_npu_forward(
         attn_mask_type,
         attention_bias,
         packed_seq_params,
+        num_splits,
     )
 
 
@@ -191,7 +214,11 @@ def _dot_product_attention_flash_attn_npu_forward_impl(
     attn_mask_type: AttnMaskType = None,
     attention_bias: Tensor = None,
     packed_seq_params: Optional[PackedSeqParams] = None,
+    num_splits: Optional[int] = None,
 ):
+    # num_splits is accepted for TEDotProductAttention.forward compatibility.
+    _ = num_splits
+
     if attention_bias is not None:
         raise AssertionError("flash-attn-npu backend does not support attention_bias.")
 
@@ -214,8 +241,9 @@ def _dot_product_attention_flash_attn_npu_forward_impl(
         ) from exc
 
     causal = _is_causal(_get_attn_mask_type(self, attn_mask_type))
-    scale = self.softmax_scale
+    scale = _get_softmax_scale(self)
     window_size = _get_window_size(self)
+    dropout_p = _get_attention_dropout_p(self)
 
     if packed_seq_params is not None:
         if packed_seq_params.cu_seqlens_q is None or packed_seq_params.cu_seqlens_kv is None:
@@ -243,7 +271,7 @@ def _dot_product_attention_flash_attn_npu_forward_impl(
             cu_seqlens_kv,
             max_seqlen_q,
             max_seqlen_kv,
-            dropout_p=self.attention_dropout.p,
+            dropout_p=dropout_p,
             softmax_scale=scale,
             causal=causal,
             window_size=window_size,
@@ -262,7 +290,7 @@ def _dot_product_attention_flash_attn_npu_forward_impl(
         query,
         key,
         value,
-        dropout_p=self.attention_dropout.p,
+        dropout_p=dropout_p,
         softmax_scale=scale,
         causal=causal,
         window_size=window_size,

@@ -53,6 +53,12 @@ class BatchInvariantFeature(MindSpeedFeature):
         )
 
     def validate_args(self, args: Namespace):
+        if (
+            getattr(args, "use_batch_invariant_ops", False)
+            or getattr(args, "batch_invariant_mode", False)
+        ) and importlib.util.find_spec("batch_invariant_ops") is None:
+            raise ImportError("--use-batch-invariant-ops requires ops-batchinvariant to be installed.")
+
         if not getattr(args, "use_flash_attn_npu_batch_invariant", False):
             return
 
@@ -75,6 +81,10 @@ class BatchInvariantFeature(MindSpeedFeature):
                 "megatron.core.transformer.dot_product_attention.DotProductAttention.forward",
                 dot_product_attention_flash_attn_npu_forward,
             )
+            patch_manager.register_patch(
+                "megatron.core.extensions.transformer_engine.TEDotProductAttention.forward",
+                dot_product_attention_flash_attn_npu_forward,
+            )
 
         if (
             getattr(args, "use_flash_attn_npu_batch_invariant", False)
@@ -85,8 +95,19 @@ class BatchInvariantFeature(MindSpeedFeature):
                 transformer_config_batch_invariant_mode_wrapper,
             )
 
-            from mindspeed.core.batch_invariant.batch_invariant import enable_batch_invariant_mode, disable_batch_invariant_mode
+        if (
+            getattr(args, "use_batch_invariant_ops", False)
+            or getattr(args, "batch_invariant_mode", False)
+        ):
+            from mindspeed.core.batch_invariant.batch_invariant import (
+                disable_batch_invariant_mode,
+                enable_batch_invariant_mode,
+                is_batch_invariant_mode_enabled,
+                set_batch_invariant_mode,
+            )
 
+            # verl does not go through Megatron initialize, so MindSpeed enables the ops here.
+            enable_batch_invariant_mode()
             patch_manager.register_patch(
                 "megatron.core.transformer.custom_layers.batch_invariant_kernels.enable_batch_invariant_mode",
                 enable_batch_invariant_mode,
@@ -94,4 +115,12 @@ class BatchInvariantFeature(MindSpeedFeature):
             patch_manager.register_patch(
                 "megatron.core.transformer.custom_layers.batch_invariant_kernels.disable_batch_invariant_mode",
                 disable_batch_invariant_mode,
+            )
+            patch_manager.register_patch(
+                "megatron.core.transformer.custom_layers.batch_invariant_kernels.is_batch_invariant_mode_enabled",
+                is_batch_invariant_mode_enabled,
+            )
+            patch_manager.register_patch(
+                "megatron.core.transformer.custom_layers.batch_invariant_kernels.set_batch_invariant_mode",
+                set_batch_invariant_mode,
             )
