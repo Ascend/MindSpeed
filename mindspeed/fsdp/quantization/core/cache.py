@@ -2,8 +2,14 @@
 from typing import Callable, Any
 from collections import defaultdict
 import warnings
+import logging
+
 
 from torch import Tensor
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 cached_weight_pool = defaultdict(lambda: {})
 num_quantized = 0
@@ -19,15 +25,16 @@ def set_current_cacheable_weight(obj):
 
 
 def cached_quant(
-        x: Tensor,
-        quantizer: Callable[[Tensor], Any],
-        key: str = None,
-        **kwargs,
+    x: Tensor,
+    quantizer: Callable[[Tensor], Any],
+    key: str = None,
+    **kwargs,
 ):
-    global num_quantized, num_quant_op_reduced, optimizer_hooked
+    global num_quantized, num_quant_op_reduced
     if not optimizer_hooked:
         warnings.warn(
-            "optimizer.step is not hooked, quantizer will be called without caching, which will impair the training performance")
+            "optimizer.step is not hooked, quantizer will be called without caching, which will impair the training performance"
+        )
         return quantizer(x, **kwargs)
 
     key = id(current_weight) if key is None else key
@@ -54,8 +61,11 @@ def reset_cache_and_weight(model, optimizer):
     cached_weight_pool.clear()
 
     if print_statistics:
-        print(f"fp8_cache_quantized_weight: num_quantized={num_quantized}, num_quant_op_reduced={num_quant_op_reduced}",
-              flush=True)
+        logger.info(
+            "fp8_cache_quantized_weight: num_quantized=%d, num_quant_op_reduced=%d",
+            num_quantized,
+            num_quant_op_reduced,
+        )
         print_statistics = False
 
     num_quantized = 0
@@ -69,9 +79,9 @@ def hook_optimizer_step(model, optimizer):
 
     optimizer_step = optimizer.step
 
-    def cached_optimizer_step():
+    def cached_optimizer_step(*args, **kwargs):
         reset_cache_and_weight(model, optimizer)
-        return optimizer_step()
+        return optimizer_step(*args, **kwargs)
 
     optimizer.step = cached_optimizer_step
     optimizer_hooked = True

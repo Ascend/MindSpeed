@@ -9,20 +9,20 @@ from typing import Callable, Optional
 
 import re
 import torch
-import torch.nn as nn
+from torch import nn
 
 from mindspeed.fsdp.parallel_engine_config import QuantizeConfig
 from mindspeed.fsdp.utils.str_match import module_name_match
 
 
 def _replace_with_custom_fn_if_matches_filter(
-        model,
-        config,
-        convert_fn,
-        filter_fn,
-        cur_fqn="",
-        device=None,
-        *args,
+    model,
+    config,
+    convert_fn,
+    filter_fn,
+    *args,
+    cur_fqn="",
+    device=None,
 ) -> None:
     if filter_fn(model, cur_fqn[:-1], config):
         name = cur_fqn[:-1]
@@ -40,26 +40,22 @@ def _replace_with_custom_fn_if_matches_filter(
                 config,
                 convert_fn,
                 filter_fn,
-                f"{cur_fqn}{name}.",
-                device=device,
                 *args,
+                cur_fqn=f"{cur_fqn}{name}.",
+                device=device,
             )
             if new_child is not child and new_child is not None:
                 setattr(model, name, new_child)
-        if device is not None:
-            model.to(device=device)
         return model
 
 
 def convert_model(
-        model: nn.Module,
-        config: QuantizeConfig,
-        convert_fn: Callable[[torch.nn.Module, QuantizeConfig], torch.nn.Module],
-        filter_fn: Optional[Callable[[torch.nn.Module, str], bool]],
-        device: Optional[torch.types.Device] = None,
+    model: nn.Module,
+    config: QuantizeConfig,
+    convert_fn: Callable[[torch.nn.Module, QuantizeConfig], torch.nn.Module],
+    filter_fn: Optional[Callable[[torch.nn.Module, str], bool]],
+    device: Optional[torch.types.Device] = None,
 ):
-    saved_inv_freq = model.model.rotary_emb.inv_freq.detach().clone()
-
     try:
         _replace_with_custom_fn_if_matches_filter(
             model,
@@ -70,8 +66,6 @@ def convert_model(
         )
     except Exception as e:
         raise RuntimeError("Failed to replace model") from e
-
-    model.model.rotary_emb.inv_freq = saved_inv_freq
 
 
 def module_filter_fn(mod: nn.Module, fqn: str, config: QuantizeConfig) -> bool:
@@ -92,11 +86,7 @@ def module_filter_fn(mod: nn.Module, fqn: str, config: QuantizeConfig) -> bool:
         m = re.match(r"(.*?layers\.\d+)", fqn)
         if m is not None:
             prefix = m.group(1)
-            if module_name_match(pattern, prefix):
-                return True
-            else:
-                return False
-
+            return module_name_match(pattern, prefix)
     return False
 
 
@@ -111,9 +101,5 @@ def moe_filter_fn(mod: nn.Module, fqn: str, config) -> bool:
         m = re.match(r"(.*?layers\.\d+)", fqn)
         if m is not None:
             prefix = m.group(1)
-            if module_name_match(pattern, prefix):
-                return True
-            else:
-                return False
-
+            return module_name_match(pattern, prefix)
     return False

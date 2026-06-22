@@ -232,7 +232,7 @@ class MXFP8GMM(torch.nn.Module):
         super().__init__()
         self.config = kwargs.pop("config", None)
         self.num_experts = kwargs.pop("num_experts", None)
-        self.hidden_dim = kwargs.pop("hidden_size", None)
+        self.hidden_size = kwargs.pop("hidden_size", None)
         self.intermediate_size = kwargs.pop("moe_intermediate_size", None)
         self.act_fn = kwargs.pop("act_fn", None)
 
@@ -252,7 +252,7 @@ class MXFP8GMM(torch.nn.Module):
             tokens_per_expert=tokens_per_expert,
             config=self.config,
             grad_enabled=torch.is_grad_enabled(),
-            to_shape=[self.num_experts, self.hidden_dim, -1],
+            to_shape=[self.num_experts, self.hidden_size, -1],
             ori_weight=self.gate_up_proj,
         )
 
@@ -265,7 +265,7 @@ class MXFP8GMM(torch.nn.Module):
             tokens_per_expert=tokens_per_expert,
             config=self.config,
             grad_enabled=torch.is_grad_enabled(),
-            to_shape=[self.num_experts, -1, self.hidden_dim],
+            to_shape=[self.num_experts, -1, self.hidden_size],
             ori_weight=self.down_proj,
         )
         # unpermute
@@ -283,7 +283,7 @@ class MXFP8GMM(torch.nn.Module):
             tokens_per_expert=tokens_per_expert,
             config=self.config,
             grad_enabled=torch.is_grad_enabled(),
-            to_shape=[self.num_local_experts, self.hidden_dim, -1],
+            to_shape=[self.num_local_experts, self.hidden_size, -1],
             ori_weight=self.gate_up_proj,
         )
 
@@ -296,7 +296,7 @@ class MXFP8GMM(torch.nn.Module):
             tokens_per_expert=tokens_per_expert,
             config=self.config,
             grad_enabled=torch.is_grad_enabled(),
-            to_shape=[self.num_local_experts, -1, self.hidden_dim],
+            to_shape=[self.num_local_experts, -1, self.hidden_size],
             ori_weight=self.down_proj,
         )
         return fc2_out
@@ -308,12 +308,16 @@ class MXFP8GMM(torch.nn.Module):
         config: Optional[QuantizeConfig] = None,
         name: Optional[str] = None,
     ):
+        hidden_size = mod.hidden_size if getattr(mod, "hidden_size", None) is not None else mod.hidden_dim
+        if config is None:
+            config = QuantizeConfig(recipe_name="mxfp8")
+
         if config.enable_fsdp_low_precision_all_gather:
             with torch.device("meta"):
                 new_mod = cls(
                     config=config,
                     num_experts=mod.num_experts,
-                    hidden_size=mod.hidden_dim,
+                    hidden_size=hidden_size,
                     moe_intermediate_size=mod.intermediate_size,
                     act_fn=mod.act_fn,
                 )
@@ -326,7 +330,7 @@ class MXFP8GMM(torch.nn.Module):
                     partial(
                         weight_quant,
                         dst_type=config.get_key_dtype("weight"),
-                        new_shape=(-1, mod.hidden_dim, mod.intermediate_size * 2),
+                        new_shape=(-1, hidden_size, mod.intermediate_size * 2),
                         config=config,
                     ),
                     config,
@@ -342,7 +346,7 @@ class MXFP8GMM(torch.nn.Module):
                     partial(
                         weight_quant,
                         dst_type=config.get_key_dtype("weight"),
-                        new_shape=(-1, mod.intermediate_size, mod.hidden_dim),
+                        new_shape=(-1, mod.intermediate_size, hidden_size),
                         config=config,
                     ),
                     config,
