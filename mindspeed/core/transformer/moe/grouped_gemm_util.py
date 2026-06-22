@@ -8,7 +8,8 @@ from mindspeed.ops.npu_bmm_reduce_scatter_all_to_all import npu_bmm_reducescatte
 
 def grouped_gemm_is_available():
     try:
-        from mindspeed.ops.gmm import npu_gmm
+        from mindspeed.ops.gmm import npu_gmm  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -19,6 +20,7 @@ def assert_grouped_gemm_is_available():
         raise ImportError("from mindspeed.ops.gmm import npu_gmm failed.")
 
 
+# pylint: disable=R0801
 class Ops:
     @staticmethod
     def gmm(a, b, batch_sizes, trans_b=False, gemm_fusion=False, original_weight=None):
@@ -27,11 +29,22 @@ class Ops:
         if trans_b:
             b = b.t()
         group_list = torch.cumsum(batch_sizes, dim=0).to('npu')
-        return npu_gmm(a, b, bias=None, group_list=group_list, group_type=0, gemm_fusion=gemm_fusion, original_weight=original_weight)
+        return npu_gmm(
+            a,
+            b,
+            bias=None,
+            group_list=group_list,
+            group_type=0,
+            gemm_fusion=gemm_fusion,
+            original_weight=original_weight,
+        )
 
 
-def get_device_capability():
+def get_device_capability(device=None):
     return 9, 0
+
+
+# pylint: enable=R0801
 
 
 def get_hcomm_info_world(comm_group):
@@ -48,7 +61,6 @@ def get_hcomm_info_world(comm_group):
 class FusedAllgatherBmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, weight, bias, bmm_param):
-
         group_ep = bmm_param['group_ep']
         group_tp = bmm_param['group_tp']
         need_recompute = bmm_param['need_recompute']
@@ -61,8 +73,17 @@ class FusedAllgatherBmmFunction(torch.autograd.Function):
         ep_group_hcomm = get_hcomm_info_world(group_ep)
 
         out = npu_alltoall_allgather_bmm(
-            input_, weight, ep_group_hcomm, ep_size, tp_group_hcomm, tp_size, bias=bias, shard_type=shard_type,
-            act_type="None", need_allgather_out=True, need_activation_feature=False
+            input_,
+            weight,
+            ep_group_hcomm,
+            ep_size,
+            tp_group_hcomm,
+            tp_size,
+            bias=bias,
+            shard_type=shard_type,
+            act_type="None",
+            need_allgather_out=True,
+            need_activation_feature=False,
         )
         bmm_out = out[0]
         allgather_out = out[1]
@@ -83,7 +104,6 @@ class FusedAllgatherBmmFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-
         need_recompute = ctx.need_recompute
         bias = ctx.bias
         group_ep = ctx.group_ep
@@ -102,16 +122,31 @@ class FusedAllgatherBmmFunction(torch.autograd.Function):
 
         if need_recompute:
             out = npu_alltoall_allgather_bmm(
-                input_, weight, group_ep, ep_size, group_tp, tp_size, bias=bias, shard_type=shard_type,
-                act_type="None", need_allgather_out=True, need_activation_feature=False
+                input_,
+                weight,
+                group_ep,
+                ep_size,
+                group_tp,
+                tp_size,
+                bias=bias,
+                shard_type=shard_type,
+                act_type="None",
+                need_allgather_out=True,
+                need_activation_feature=False,
             )
             allgather_out = out[1]
 
         # b,m,k @ b,k,n -> b,m,n
         # dx: b,m,n @ (b,k,n).t() -> b,m,k
         out = npu_bmm_reducescatter_alltoall(
-            grad_output, weight.transpose(-1, -2), group_ep, ep_size, group_tp, tp_size,
-            bias=None, shard_type=shard_type
+            grad_output,
+            weight.transpose(-1, -2),
+            group_ep,
+            ep_size,
+            group_tp,
+            tp_size,
+            bias=None,
+            shard_type=shard_type,
         )
 
         # b,m,k @ b,k,n -> b,m,n
@@ -127,7 +162,6 @@ class FusedAllgatherBmmFunction(torch.autograd.Function):
 class FusedBmmReduceScatterFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, weight, bias, bmm_param):
-
         group_ep = bmm_param['group_ep']
         group_tp = bmm_param['group_tp']
         shard_type = bmm_param['shard_type']
@@ -139,8 +173,7 @@ class FusedBmmReduceScatterFunction(torch.autograd.Function):
         ep_group_hcomm = get_hcomm_info_world(group_ep)
 
         out = npu_bmm_reducescatter_alltoall(
-            input_, weight, ep_group_hcomm, ep_size, tp_group_hcomm, tp_size,
-            bias=bias, shard_type=shard_type
+            input_, weight, ep_group_hcomm, ep_size, tp_group_hcomm, tp_size, bias=bias, shard_type=shard_type
         )
 
         ctx.save_for_backward(input_, weight)
@@ -155,7 +188,6 @@ class FusedBmmReduceScatterFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-
         bias = ctx.bias
         group_ep = ctx.group_ep
         group_tp = ctx.group_tp
@@ -168,8 +200,17 @@ class FusedBmmReduceScatterFunction(torch.autograd.Function):
         # b,m,k @ b,k,n -> b,m,n
         # dx: b,m,n @ (b,k,n).t() -> b,m,k
         out = npu_alltoall_allgather_bmm(
-            grad_output, weight.transpose(-1, -2), group_ep, ep_size, group_tp, tp_size,
-            bias=bias, shard_type=shard_type, act_type="None", need_allgather_out=True, need_activation_feature=False
+            grad_output,
+            weight.transpose(-1, -2),
+            group_ep,
+            ep_size,
+            group_tp,
+            tp_size,
+            bias=bias,
+            shard_type=shard_type,
+            act_type="None",
+            need_allgather_out=True,
+            need_activation_feature=False,
         )
         bmm_out_grad = out[0]
         allgather_out_grad = out[1]
