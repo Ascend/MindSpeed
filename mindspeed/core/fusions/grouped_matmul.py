@@ -26,5 +26,5 @@ def assert_grouped_gemm_is_available():
         raise ImportError("from mindspeed.ops.gmm import npu_gmm failed.")
 
 
-def get_device_capability():
+def get_device_capability(device=None):
     return 9, 0

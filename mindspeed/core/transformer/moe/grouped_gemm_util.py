@@ -30,7 +30,7 @@ class Ops:
         return npu_gmm(a, b, bias=None, group_list=group_list, group_type=0, gemm_fusion=gemm_fusion, original_weight=original_weight)
 
 
-def get_device_capability():
+def get_device_capability(device=None):
     return 9, 0
 
 
