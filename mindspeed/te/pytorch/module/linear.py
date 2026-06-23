@@ -29,6 +29,12 @@ from mindspeed.te.pytorch.module.ops import get_ops, DummyHandle
 from mindspeed.te.pytorch.module.ops.comm_overlap_ops import COMM_OVERLAP_CONFIG
 
 
+def _set_tensor_model_parallel_attributes(tensor, is_parallel, dim, stride):
+    setattr(tensor, "tensor_model_parallel", is_parallel)
+    setattr(tensor, "partition_dim", dim)
+    setattr(tensor, "partition_stride", stride)
+
+
 class TELinear(torch.nn.Module):
     def __init__(
         self,
@@ -212,6 +218,7 @@ class TEColumnParallelLinear(torch.nn.Module):
         tp_comm_buffer_name: str = None,
         stride: int = 1,
         keep_master_weight_for_test: bool = False,
+        tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
         if gather_output:
             raise ValueError('Transformer Engine linear layers do not support gather_output = True')
@@ -308,12 +315,37 @@ class TEColumnParallelLinear(torch.nn.Module):
         self.sequence_parallel = config.sequence_parallel and world_size > 1
         self.allreduce_dgrad = world_size > 1 and not self.sequence_parallel
 
+        device = torch.cuda.current_device()
+        self.parallel_mode = "column"
+        self.use_bias = bias
+        self.reset_parameters(defer_init=device == "meta", stride=stride)
+
         # Hook adding a default empty _extra_state for state dict
         self._register_load_state_dict_pre_hook(
             lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(
                 f'{prefix}_extra_state'
             )
         )
+
+    def reset_parameters(self, defer_init: bool = False, stride: int = 1):
+        if not defer_init:
+            # Set parallelism attributes for linear weights
+            _set_tensor_model_parallel_attributes(
+                tensor=getattr(self, 'weight'),
+                is_parallel=True,
+                dim=1 if self.parallel_mode == "row" else 0,
+                stride=stride,
+            )
+            # Set parallelism attributes for linear biases
+            if self.use_bias:
+                if self.parallel_mode == "row":
+                    setattr(
+                        getattr(self, 'bias'),
+                        "sequence_parallel",
+                        self.sequence_parallel,
+                    )
+                elif self.parallel_mode == "column":
+                    _set_tensor_model_parallel_attributes(getattr(self, 'bias'), True, 0, stride)
 
     def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None):
         if weight is None:
@@ -335,7 +367,7 @@ class TEColumnParallelLinear(torch.nn.Module):
         bias = self.bias if not self.skip_bias_add else None
 
         if self.sequence_parallel:
-            output = ColumnParallelSeq.apply(input_, weight, bias, self.fp8_meta)
+            output = ColumnParallelSeq.apply(input_, weight, bias, self.fp8_meta, self.config.gradient_accumulation_fusion)
         else:
             output = ColumnParallelNoSeq.apply(input_, weight, bias, self.fp8_meta)
 
@@ -359,12 +391,12 @@ class TEColumnParallelLinear(torch.nn.Module):
 
 class ColumnParallelSeq(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_, weight, bias, fp8_meta):
+    def forward(ctx, input_, weight, bias, fp8_meta, gradient_accumulation_fusion=False):
         ctx.use_bias = bias is not None
         ctx.fp8_meta = fp8_meta
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
         ctx.total_input = None
-        ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
+        ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
 
         output_parallel, total_input, weight_fp8 = get_ops().allgather_matmul(input_, weight.t(), None,
                                                                               fp8_meta, ('inputs', 'weight'),
@@ -386,7 +418,7 @@ class ColumnParallelSeq(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        _, is_grad_weight_needed, is_grad_bias_needed, _ = ctx.needs_input_grad
+        _, is_grad_weight_needed, is_grad_bias_needed, _, _ = ctx.needs_input_grad
         fp8_meta = ctx.fp8_meta
         fp8_enable = ctx.fp8_enable
         input_size = ctx.input_size
@@ -465,7 +497,7 @@ class ColumnParallelSeq(torch.autograd.Function):
                 grad_bias = reshape_to_2D(grad_output_ori).sum(dim=0) if is_grad_bias_needed and ctx.use_bias else None
 
         reduce_scatter_handle.wait()
-        return sub_grad_input, grad_weight, grad_bias, None
+        return sub_grad_input, grad_weight, grad_bias, None, None
 
 
 class ColumnParallelNoSeq(torch.autograd.Function):
@@ -554,6 +586,7 @@ class TERowParallelLinear(torch.nn.Module):
         tp_comm_buffer_name: str = None,
         stride: int = 1,
         keep_master_weight_for_test: bool = False,
+        tp_group: Optional[torch.distributed.ProcessGroup] = None,
     ):
         if not input_is_parallel:
             raise ValueError(
@@ -643,12 +676,38 @@ class TERowParallelLinear(torch.nn.Module):
         else:
             self.register_parameter('bias', None)
 
+        device = torch.cuda.current_device()
+        self.parallel_mode = "row"
+        self.use_bias = bias
+        self.reset_parameters(defer_init=device == "meta", stride=stride)
+
         # Hook adding a default empty _extra_state for state dict
         self._register_load_state_dict_pre_hook(
             lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(
                 f'{prefix}_extra_state'
             )
         )
+
+    def reset_parameters(self, defer_init: bool = False, stride: int = 1):
+        if not defer_init:
+            # Set parallelism attributes for linear weights
+            _set_tensor_model_parallel_attributes(
+                tensor=getattr(self, 'weight'),
+                is_parallel=True,
+                dim=1 if self.parallel_mode == "row" else 0,
+                stride=stride,
+            )
+
+            # Set parallelism attributes for linear biases
+            if self.use_bias:
+                if self.parallel_mode == "row":
+                    setattr(
+                        getattr(self, 'bias'),
+                        "sequence_parallel",
+                        self.sequence_parallel,
+                    )
+                elif self.parallel_mode == "column":
+                    _set_tensor_model_parallel_attributes(getattr(self, 'bias'), True, 0, stride)
 
     def forward(self, input_: torch.Tensor):
         if self.explicit_expert_comm and self.fp8_meta.fp8_enable:
@@ -657,7 +716,7 @@ class TERowParallelLinear(torch.nn.Module):
         elif self.explicit_expert_comm:
             output = input_.matmul(self.weight.t())
         elif self.sequence_parallel:
-            output = RowParallelSeq.apply(input_, self.weight, None, self.fp8_meta)
+            output = RowParallelSeq.apply(input_, self.weight, None, self.fp8_meta, self.config.gradient_accumulation_fusion)
         else:
             output = RowParallelNoSeq.apply(input_, self.weight, None, self.fp8_meta)
 
@@ -686,11 +745,11 @@ class TERowParallelLinear(torch.nn.Module):
 
 class RowParallelSeq(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_, weight, bias, fp8_meta):
+    def forward(ctx, input_, weight, bias, fp8_meta, gradient_accumulation_fusion=False):
         ctx.use_bias = bias is not None
         ctx.fp8_meta = fp8_meta
         ctx.fp8_enable = fp8_meta.is_fp8_enable()
-        ctx.gradient_accumulation_fusion = get_args().gradient_accumulation_fusion
+        ctx.gradient_accumulation_fusion = gradient_accumulation_fusion
         output_parallel, input_fp8, weight_fp8 = get_ops().matmul_reduce_scatter(input_, weight, bias,
                                                                                  fp8_meta, ('inputs', 'weight'),
                                                                                  ctx.fp8_enable)
@@ -724,7 +783,7 @@ class RowParallelSeq(torch.autograd.Function):
                                                                 ('grads', 'weight'), fp8_enable)
         grad_weight, grad_bias = None, None
 
-        _, is_grad_weight_needed, is_grad_bias_needed, _ = ctx.needs_input_grad
+        _, is_grad_weight_needed, is_grad_bias_needed, _, _ = ctx.needs_input_grad
 
         if is_grad_weight_needed:
             grad_output = reshape_to_2D(grad_output)
@@ -763,7 +822,7 @@ class RowParallelSeq(torch.autograd.Function):
                 grad_weight = fp8_matmul(grad_output, input_, fp8_meta, ('grads', 'inputs'), (True, False))
                 grad_bias = reshape_to_2D(grad_output_ori).sum(dim=0) if is_grad_bias_needed and ctx.use_bias else None
 
-        return grad_input, grad_weight, grad_bias, None
+        return grad_input, grad_weight, grad_bias, None, None
 
 
 class RowParallelNoSeq(torch.autograd.Function):

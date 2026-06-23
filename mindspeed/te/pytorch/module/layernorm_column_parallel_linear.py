@@ -282,7 +282,7 @@ class TELayerNormColumnParallelLinear(torch.nn.Module):
         if self.config.fp8:
             from mindspeed.te.pytorch.module.linear import ColumnParallelSeq, ColumnParallelNoSeq
             if self.sequence_parallel:
-                output_parallel = ColumnParallelSeq.apply(input_parallel, self.weight, bias, self.fp8_meta)
+                output_parallel = ColumnParallelSeq.apply(input_parallel, self.weight, bias, self.fp8_meta, self.gradient_accumulation_fusion)
             else:
                 output_parallel = ColumnParallelNoSeq.apply(input_parallel, self.weight, bias, self.fp8_meta)
         elif self.config.use_ascend_mc2:

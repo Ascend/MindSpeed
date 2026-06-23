@@ -97,7 +97,7 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
         else:
             from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
                 TEDotProductAttention
-            from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+            from mindspeed.te.pytorch.module.linear import TERowParallelLinear, TEColumnParallelLinear
             from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import \
                 TELayerNormColumnParallelLinear
             from mindspeed.te.pytorch.module.grouped_linear import TEGroupedLinear, \
@@ -106,8 +106,8 @@ class TransformerEngineBasicFeature(MindSpeedFeature):
 
             if not getattr(args, 'use_ascend_mc2', False):
                 pm.register_patch('megatron.core.extensions.transformer_engine.TEColumnParallelLinear',
-                                  ColumnParallelLinear)
-                pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear', RowParallelLinear)
+                                  TEColumnParallelLinear)
+                pm.register_patch('megatron.core.extensions.transformer_engine.TERowParallelLinear', TERowParallelLinear)
             else:
                 from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2ColumnParallelLinear
                 from mindspeed.core.tensor_parallel.mc2_feature.adaptor import MindSpeedMC2RowParallelLinear
