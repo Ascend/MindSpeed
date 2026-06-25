@@ -78,6 +78,7 @@ from mindspeed.features_manager.pipeline_parallel.optimize_send_recv_comm import
 from mindspeed.features_manager.pipeline_parallel.dualpipev_feature import DualpipeVFeature
 from mindspeed.features_manager.memory.reuse_fp32_param import ReuseFP32Param
 from mindspeed.features_manager.memory.smart_swap import SmartSwapFeature
+from mindspeed.features_manager.memory.swap_layer_input import SwapLayerInputFeature
 
 from mindspeed.features_manager.dist_train.dist_train_feature import DistTrainFeature
 
@@ -301,7 +302,7 @@ def add_reuse_param_features(features_list: List[MindSpeedFeature]):
 
 
 def add_swap_manage_features(features_list: List[MindSpeedFeature]):
-    features_list.extend([SmartSwapFeature(), SwapAttentionFeature()])
+    features_list.extend([SmartSwapFeature(), SwapAttentionFeature(), SwapLayerInputFeature()])
 
 
 def add_compress_dense_features(features_list: List[MindSpeedFeature]):
