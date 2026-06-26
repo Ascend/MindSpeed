@@ -4,11 +4,14 @@ from typing import Optional
 import torch
 import torch_npu
 
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from megatron.core import parallel_state
-from megatron.core.transformer.moe.moe_utils import (reduce_aux_losses_tracker_across_ranks,
-                                                     clear_aux_losses_tracker, group_limited_topk,
-                                                     get_capacity)
+from megatron.core.transformer.moe.moe_utils import (
+    reduce_aux_losses_tracker_across_ranks,
+    clear_aux_losses_tracker,
+    group_limited_topk,
+    get_capacity,
+)
 from megatron.core.tensor_parallel.utils import divide
 
 AG_TP_HIDDEN_STATUS = None
@@ -194,7 +197,6 @@ def backward_func(func_tensor, gradinputs):
 
 
 def permute(tokens, routing_map, num_out_tokens: int = None):
-
     if routing_map.dim() == 1:
         topk = 1
     else:
@@ -215,7 +217,6 @@ def unpermute(
     probs: torch.Tensor = None,
     routing_map: torch.Tensor = None,
 ):
-
     assert sorted_indices.numel() == permuted_tokens.size(0)
     if probs is not None:
         # Unpermute and merge the tokens with their probabilities
@@ -262,9 +263,7 @@ def get_mean(tensor):
     return tensor.mean()
 
 
-def track_moe_metrics(
-    loss_scale, iteration, writer, wandb_writer=None, total_loss_dict=None, per_layer_logging=False
-):
+def track_moe_metrics(loss_scale, iteration, writer, wandb_writer=None, total_loss_dict=None, per_layer_logging=False):
     # Aux loss logging
 
     reduce_aux_losses_tracker_across_ranks()
@@ -299,10 +298,7 @@ def track_moe_metrics(
                 wandb_writer.log({f"{name}": loss_list_mean}, iteration)
                 if per_layer_logging:
                     wandb_writer.log(
-                        {
-                            f"moe/{name}_layer_{i}": loss
-                            for i, loss in enumerate(loss_list.tolist())
-                        },
+                        {f"moe/{name}_layer_{i}": loss for i, loss in enumerate(loss_list.tolist())},
                         iteration,
                     )
 
@@ -312,7 +308,7 @@ def track_moe_metrics(
 def get_grouped_expert_params(model, num_local_experts, tp_size, config):
     hidden_size = config.hidden_size
     ffn_hidden_size = config.moe_ffn_hidden_size
-    
+
     fc1_output_size = ffn_hidden_size
     if config.gated_linear_unit:
         # Project to 4h. If using swiglu double the output width
@@ -324,28 +320,28 @@ def get_grouped_expert_params(model, num_local_experts, tp_size, config):
 
     weight1_reshaped = model.weight1.view(num_local_experts, hidden_size, fc1_ffn_hidden_size_per_expert)
     weight2_reshaped = model.weight2.view(num_local_experts, fc2_ffn_hidden_size_per_expert, hidden_size)
-    
+
     group_mlp_expert_params = {}
-    
+
     for idx in range(num_local_experts):
         expert_weight1 = weight1_reshaped[idx]  # shape (hidden_size, fc1_ffn_hidden_size_per_expert)
         expert_weight2 = weight2_reshaped[idx]  # shape (fc2_ffn_hidden_size_per_expert, hidden_size)
-        
+
         total_params = expert_weight1.numel() + expert_weight2.numel()
-        
+
         group_mlp_expert_params[idx] = {
             'weight1': expert_weight1,
             'weight2': expert_weight2,
-            'total_params': total_params
+            'total_params': total_params,
         }
     return group_mlp_expert_params
-    
-    
+
+
 def get_expert_param_data(group_mlp_expert_params, params, idx):
     expert_param = group_mlp_expert_params[idx]
     offset = 0
     for weight in ['weight1', 'weight2']:
-        seg1 = params[offset: offset + expert_param[weight].numel()]
+        seg1 = params[offset : offset + expert_param[weight].numel()]
         seg1.copy_(expert_param[weight].data.flatten())
         offset += expert_param[weight].numel()
 
@@ -355,17 +351,17 @@ def set_expert_param_data(group_mlp_expert_params, params, idx):
     offset = 0
     with torch.no_grad():
         for weight in ['weight1', 'weight2']:
-            seg = params[offset: offset + expert_param[weight].numel()]
+            seg = params[offset : offset + expert_param[weight].numel()]
             expert_param[weight].copy_(seg.reshape(expert_param[weight].shape))
             expert_param[weight].grad = None
             offset += expert_param[weight].numel()
-        
-        
+
+
 def get_expert_param_dtype(experts, group_mlp_expert_params, idx):
     e = group_mlp_expert_params[idx]["weight1"].dtype
     return e
-    
-    
+
+
 def get_expert_param_size(experts, group_mlp_expert_params, idx):
     e = group_mlp_expert_params[idx]["total_params"]
     return e
@@ -454,8 +450,10 @@ def topk_softmax_with_capacity(
 
     args = get_args()
     if args.fix_router:
-        top_indices = torch.arange(top_indices.numel(), device=top_indices.device,
-                                   dtype=torch.int64).view(top_indices.shape) % logits.shape[-1]
+        top_indices = (
+            torch.arange(top_indices.numel(), device=top_indices.device, dtype=torch.int64).view(top_indices.shape)
+            % logits.shape[-1]
+        )
 
     topk_masked_gates = torch.zeros_like(logits).scatter(1, top_indices, probs)
     topk_map = torch.zeros_like(logits).int().scatter(1, top_indices, 1).bool()
@@ -472,9 +470,7 @@ def topk_softmax_with_capacity(
 
         # Maskout exceeded tokens
         if drop_policy == "probs":
-            _, capacity_indices = torch.topk(
-                topk_masked_gates, k=expert_capacity, dim=0, sorted=False
-            )
+            _, capacity_indices = torch.topk(topk_masked_gates, k=expert_capacity, dim=0, sorted=False)
             capacity_mask = torch.zeros_like(logits).scatter(0, capacity_indices, 1).bool()
         elif drop_policy == "position":
             _, capacity_indices = torch.topk(topk_map.int(), k=expert_capacity, dim=0, sorted=False)
