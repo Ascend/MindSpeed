@@ -347,3 +347,13 @@ def get_multiprocessor_count(tensor_idx: int = 0) -> int:
         return triton.runtime.driver.active.utils.get_device_properties(tensor_idx)['num_vectorcore']
     else:
         return 1
+
+
+@lru_cache
+def is_arch35():
+    try:
+        import torch_npu
+
+        return "Ascend910_95" in torch_npu.npu.get_device_name() or "Ascend950" in torch_npu.npu.get_device_name()
+    except Exception:
+        return False
