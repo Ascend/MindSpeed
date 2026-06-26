@@ -93,7 +93,15 @@ class MegatronBasicFeature(MindSpeedFeature):
         from mindspeed.core.megatron_basic.megatron_basic import preload_tensors
         pm.register_patch('megatron.core.dist_checkpointing.strategies.filesystem_async.FileSystemWriterAsync.preload_tensors', preload_tensors)
 
-        from mindspeed.core.megatron_basic.megatron_basic import _synchronize_steps
+        from mindspeed.core.megatron_basic.megatron_basic import _synchronize_steps, dist_optim_load_state_dict
+        from mindspeed.core.optimizer.distrib_optimizer import load_parameter_state as distributed_optimizer_load_parameter_state
+        from mindspeed.core.optimizer.optimizer import load_parameter_state as chained_optimizer_load_parameter_state
+        pm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.load_state_dict',
+                          dist_optim_load_state_dict)
+        pm.register_patch('megatron.core.optimizer.distrib_optimizer.DistributedOptimizer.load_parameter_state',
+                          distributed_optimizer_load_parameter_state)
+        pm.register_patch('megatron.core.optimizer.optimizer.ChainedOptimizer.load_parameter_state',
+                          chained_optimizer_load_parameter_state)
         pm.register_patch('megatron.core.optimizer.optimizer.ChainedOptimizer._synchronize_steps', _synchronize_steps)
 
     def register_non_mcore_basic_patches(self, pm, args):

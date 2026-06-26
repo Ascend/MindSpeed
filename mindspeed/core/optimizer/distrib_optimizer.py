@@ -21,6 +21,7 @@ except ImportError:
         HAVE_APEX_OR_TE = False
 
 from megatron.core.optimizer.cpu_offloading import HybridDeviceOptimizer
+from mindspeed.core.optimizer.utils import _distributed_group_rank, _to_step_int
 
 
 def state_dict(self):
@@ -54,7 +55,7 @@ def state_dict(self):
         steps = list(
             set(
                 [
-                    g["step"]
+                    _to_step_int(g["step"])
                     for g in inner_state_dict["param_groups"]
                     if len(g["params"]) > 0 and "step" in g
                 ]
@@ -84,3 +85,16 @@ def state_dict(self):
         state_dict['grad_scaler'] = self.grad_scaler.state_dict()
 
     return state_dict
+
+
+def load_parameter_state(self, filename: str, *, update_legacy_format=False):
+    """Load distributed optimizer parameter state through CPU for cross-device resume."""
+    if self.is_stub_optimizer:
+        return
+    param_state_dict = None
+    if _distributed_group_rank(self.data_parallel_group) == 0:
+        param_state_dict = torch.load(filename, map_location='cpu')
+
+    self.load_parameter_state_from_dp_zero(
+        param_state_dict, update_legacy_format=update_legacy_format
+    )

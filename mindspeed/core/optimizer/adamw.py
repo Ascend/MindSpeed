@@ -4,6 +4,21 @@ import torch_npu
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 from torch.optim.adamw import AdamW as TorchAdamW
+from mindspeed.core.optimizer.utils import _to_step_int
+
+
+def _get_step_tensor(optimizer, group):
+    device = torch.npu.current_device()
+    step_tensor_cache = getattr(optimizer, '_step_tensor_cache', None)
+    if step_tensor_cache is None:
+        step_tensor_cache = {}
+        optimizer._step_tensor_cache = step_tensor_cache
+    step_tensor = step_tensor_cache.get(id(group))
+    if step_tensor is None or step_tensor.device.index != device:
+        step_tensor = torch.empty((), dtype=torch.int64, device=device)
+        step_tensor_cache[id(group)] = step_tensor
+    step_tensor.fill_(group['step'])
+    return step_tensor
 
 
 def adamw(params: List[Tensor],
@@ -99,6 +114,11 @@ class AdamW(Optimizer):
             group.setdefault('amsgrad', False)
             group.setdefault('maximize', False)
 
+    def load_state_dict(self, state_dict):
+        result = super(AdamW, self).load_state_dict(state_dict)
+        self._step_tensor_cache = {}
+        return result
+
     @torch.no_grad()
     def step(self, closure=None):
         loss = None
@@ -118,11 +138,10 @@ class AdamW(Optimizer):
             beta1, beta2 = group['betas']
 
             if 'step' in group:
-                group['step'] += 1
-                if group['step'].is_cpu:
-                    group['step'] = group['step'].cuda()
+                group['step'] = _to_step_int(group['step']) + 1
             else:
-                group['step'] = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
+                group['step'] = 1
+            step_tensor = _get_step_tensor(self, group)
 
             for p in group['params']:
                 if p.grad is None:
@@ -155,7 +174,7 @@ class AdamW(Optimizer):
                   exp_avgs,
                   exp_avg_sqs,
                   max_exp_avg_sqs,
-                  group['step'],
+                  step_tensor,
                   amsgrad=amsgrad,
                   beta1=beta1,
                   beta2=beta2,

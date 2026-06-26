@@ -9,6 +9,7 @@ from torch import _C
 from torch_npu.npu import _lazy_call, device as device_ctx_manager
 from megatron.core.optimizer.cpu_offloading import HybridDeviceOptimizer
 from megatron.core.optimizer.distrib_optimizer import HAVE_APEX_OR_TE
+from mindspeed.core.optimizer.utils import _to_step_int
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPYCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D
@@ -276,7 +277,7 @@ def dist_optim_load_state_dict(self, state_dict):
 
     # Extract 'step', for non-Apex/TE support.
     if not HAVE_APEX_OR_TE:
-        steps = list(set([g["step"] for g in state_dict["optimizer"]["param_groups"]]))
+        steps = list(set([_to_step_int(g["step"]) for g in state_dict["optimizer"]["param_groups"]]))
         if len(steps) != 1:
             raise AssertionError(f"Expect exactly one kind of step, but detect {len(steps)} kinds of steps")
         step = torch.tensor(steps[0], dtype=torch.float)
@@ -288,7 +289,7 @@ def dist_optim_load_state_dict(self, state_dict):
         # Handle Torch AdamW special case, which, unlike FusedAdam, Torch AdamW
         # has an extra optimizer state “step”.
         steps = list(
-            set([g["step"] for g in state_dict["optimizer"]["param_groups"] if "step" in g])
+            set([_to_step_int(g["step"]) for g in state_dict["optimizer"]["param_groups"] if "step" in g])
         )
         if len(steps) != 0:
             if len(steps) != 1:
@@ -386,10 +387,7 @@ def _synchronize_steps(self):
     for optimizer in self.chained_optimizers:
         for param_group in optimizer.optimizer.param_groups:
             if len(param_group['params']) > 0 and 'step' in param_group:
-                if torch.is_tensor(param_group['step']):
-                    steps.append(param_group['step'].item())
-                else:
-                    steps.append(param_group['step'])
+                steps.append(_to_step_int(param_group['step']))
     steps = list(set(steps))
     if len(steps) > 1:
         raise AssertionError(f"steps: {steps}")
@@ -397,6 +395,8 @@ def _synchronize_steps(self):
     for optimizer in self.chained_optimizers:
         for param_group in optimizer.optimizer.param_groups:
             if len(param_group['params']) > 0 and 'step' in param_group:
-                param_group['step'] = torch.tensor(step)
+                param_group['step'] = (
+                    torch.tensor(step, dtype=torch.int64) if step is not None else None
+                )
 
     return step

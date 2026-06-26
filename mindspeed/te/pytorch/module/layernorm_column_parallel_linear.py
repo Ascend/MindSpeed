@@ -122,6 +122,36 @@ class TELayerNormColumnParallelLinear(torch.nn.Module):
                 "`allreduce_dgrad` and `sequence_parallel` cannot be enabled at the same time."
             )
 
+        if self.sequence_parallel and tp_size <= 1:
+            warnings.warn(
+                "`sequence_parallel` is set to `True`, but tensor model parallel size "
+                f"is {tp_size}. Disabling sequence parallel."
+            )
+            self.sequence_parallel = False
+
+        # Norm init spec.
+        if self.config.normalization not in ['LayerNorm', 'RMSNorm']:
+            raise AssertionError('Unsupported normalization type {}!'.format(self.config.normalization))
+
+        layer_norm_weight = torch.nn.Parameter(
+            torch.ones(self.input_size, device='npu', dtype=self.config.params_dtype)
+        )
+        self.register_parameter(
+            "layer_norm_weight", layer_norm_weight
+        )
+        setattr(self.layer_norm_weight, 'sequence_parallel', self.sequence_parallel)
+
+        if self.config.normalization != 'RMSNorm':
+            layer_norm_bias = torch.nn.Parameter(
+                torch.zeros(self.input_size, device='npu', dtype=self.config.params_dtype)
+            )
+            self.register_parameter(
+                "layer_norm_bias", layer_norm_bias
+            )
+            setattr(self.layer_norm_bias, 'sequence_parallel', self.sequence_parallel)
+        else:
+            self.layer_norm_bias = None
+
         # Because skip_weight_param_allocation is not supported in TE, always do weight initialize.
         if config.use_cpu_initialization:
             self.weight = torch.nn.Parameter(
@@ -183,38 +213,8 @@ class TELayerNormColumnParallelLinear(torch.nn.Module):
         else:
             self.register_parameter('bias', None)
 
-        if self.sequence_parallel and tp_size <= 1:
-            warnings.warn(
-                "`sequence_parallel` is set to `True`, but tensor model parallel size "
-                f"is {tp_size}. Disabling sequence parallel."
-            )
-            self.sequence_parallel = False
-
         # Forward impl settings without ascend-mc2.
         self._linear_forward_impl = linear_with_grad_accumulation_and_async_allreduce
-
-        # Norm init spec.
-        if self.config.normalization not in ['LayerNorm', 'RMSNorm']:
-            raise AssertionError('Unsupported normalization type {}!'.format(self.config.normalization))
-    
-        layer_norm_weight = torch.nn.Parameter(
-            torch.ones(self.input_size, device='npu', dtype=self.config.params_dtype)
-        )
-        self.register_parameter(
-            "layer_norm_weight", layer_norm_weight
-        )
-        setattr(self.layer_norm_weight, 'sequence_parallel', self.sequence_parallel)
-
-        if self.config.normalization != 'RMSNorm':
-            layer_norm_bias = torch.nn.Parameter(
-                torch.zeros(self.input_size, device='npu', dtype=self.config.params_dtype)
-            )
-            self.register_parameter(
-                "layer_norm_bias", layer_norm_bias
-            )
-            setattr(self.layer_norm_bias, 'sequence_parallel', self.sequence_parallel) 
-        else:
-            self.layer_norm_bias = None
 
         self.te_return_bias = self.skip_bias_add and bias
 
