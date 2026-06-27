@@ -107,7 +107,7 @@ If `npu-smi` is installed under `/usr/local/sbin/npu-smi` on the host, replace t
 
 ## License
 
-MindSpeed is released under the Apache License 2.0. See the [LICENSE](../LICENSE) file for details.
+MindSpeed is released under the Apache License 2.0. See the [LICENSE](https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE) file for details.
 
 Like all Docker images, these images may also contain other software under other licenses, such as Bash from the base distribution and any direct or indirect dependencies of the included main software.
 
