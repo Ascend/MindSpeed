@@ -1,6 +1,7 @@
 """
 创建搜索空间
 """
+
 import json
 from pathlib import Path
 from typing import List, Tuple
@@ -15,7 +16,9 @@ from mindspeed.auto_settings.config.search_config import SearchConfig
 from mindspeed.auto_settings.utils.logger import get_logger
 from mindspeed.auto_settings.utils.file_utils import check_file_size
 from mindspeed.auto_settings.utils.utils import (
-    get_tp_for_profiling, get_seq_length_for_profiling, get_num_experts_for_profiling
+    get_tp_for_profiling,
+    get_seq_length_for_profiling,
+    get_num_experts_for_profiling,
 )
 
 
@@ -35,7 +38,7 @@ class SearchSpace(metaclass=Singleton):
             self._baseline_tp = 4
 
     def generate_dynamic_mem_profiling_list(self) -> List[Tuple[SearchConfig, str]]:
-        result: List[Tuple[SearchConfig, str]] = list()
+        result: List[Tuple[SearchConfig, str]] = []
 
         configs = []
         model_config = get_model_config()
@@ -63,7 +66,7 @@ class SearchSpace(metaclass=Singleton):
         return result
 
     def generate_static_mem_profiling_list(self) -> List[Tuple[SearchConfig, str]]:
-        result: List[Tuple[SearchConfig, str]] = list()
+        result: List[Tuple[SearchConfig, str]] = []
 
         model_config = get_model_config()
         baseline_tp = get_tp_for_profiling()
@@ -84,11 +87,7 @@ class SearchSpace(metaclass=Singleton):
 
         if model_config.is_moe():
             expert2_cfg = replace(
-                pp4_cfg,
-                pipeline_model_parallel_size=1,
-                num_layers=1,
-                num_experts=2,
-                expert_model_parallel_size=1
+                pp4_cfg, pipeline_model_parallel_size=1, num_layers=1, num_experts=2, expert_model_parallel_size=1
             )
             result.append((expert2_cfg, self.EXPERT2_FILENAME))
 
@@ -97,7 +96,7 @@ class SearchSpace(metaclass=Singleton):
             tensor_model_parallel_size=baseline_tp * 2,
             pipeline_model_parallel_size=1,
             num_layers=1,
-            untie_embeddings_and_output_weights=False
+            untie_embeddings_and_output_weights=False,
         )
         result.append((tp2_cfg, self.TP2_FILENAME))
 
@@ -107,7 +106,7 @@ class SearchSpace(metaclass=Singleton):
         return result
 
     def generate_profiling_configs1(self) -> List[Tuple[SearchConfig, str]]:
-        profile_cfgs: List[Tuple[SearchConfig, str]] = list()
+        profile_cfgs: List[Tuple[SearchConfig, str]] = []
 
         self.model_config = get_model_config()
         base_seq_len = get_seq_length_for_profiling(self.model_config)
@@ -119,11 +118,11 @@ class SearchSpace(metaclass=Singleton):
 
         for cfg in cfgs:
             if "skip" in cfg.get("name", ""):
-                self.logger.debug(f"{cfg} asked to skip.")
+                self.logger.debug("%s asked to skip.", cfg)
                 continue
 
             if get_system_config().DISABLE_CP and cfg.get("cp", 1) > 1:
-                self.logger.debug(f"Not searching cp, dropped {cfg}.")
+                self.logger.debug("Not searching cp, dropped %s.", cfg)
                 continue
 
             gen_cfg = SearchConfig()
@@ -144,7 +143,7 @@ class SearchSpace(metaclass=Singleton):
 
             if "tp" not in self.model_config.parallel_switch:
                 gen_cfg.tensor_model_parallel_size = 1
-        
+
             if "cp" not in self.model_config.parallel_switch:
                 gen_cfg.context_parallel_size = 1
 
@@ -169,7 +168,7 @@ class SearchSpace(metaclass=Singleton):
                 gen_cfg.expert_model_parallel_size = cfg.get("ep", 1)
 
             if gen_cfg.seq_length // gen_cfg.cp <= 2 * 1024:
-                self.logger.debug(f"Seq per cp too small, dropped {cfg}.")
+                self.logger.debug("Seq per cp too small, dropped %s.", cfg)
                 continue
 
             gen_cfg.prepare_for_profiling()
@@ -187,22 +186,16 @@ class SearchSpace(metaclass=Singleton):
         static_list = self.generate_static_mem_profiling_list()
         dynamic_list = self.generate_dynamic_mem_profiling_list()
         from mindspeed.auto_settings.config.generate_profiling_configs import generate_profiling_configs
+
         common_list = generate_profiling_configs(get_system_config(), get_model_config())
         result = static_list + dynamic_list + common_list
         self.logger.info("profile_cfgs (tp, pp, dp, cp, ep, #layers, seq_len):")
-        self.logger.info(",".join(
-            str((cfg.tp,
-                 cfg.pp,
-                 cfg.dp,
-                 cfg.cp,
-                 cfg.ep,
-                 cfg.num_layers,
-                 cfg.seq_length))
-            for cfg, _ in result))
+        self.logger.info(
+            ",".join(str((cfg.tp, cfg.pp, cfg.dp, cfg.cp, cfg.ep, cfg.num_layers, cfg.seq_length)) for cfg, _ in result)
+        )
         return result
 
     def build_search_spaces(self) -> List[SearchConfig]:
-
         """
         Stage 1 prune is without any modeling.
         This function prunes the search space for a distributed training job based on given constraints.
@@ -224,34 +217,28 @@ class SearchSpace(metaclass=Singleton):
         num_devices = system_config.search_world_size
         device_type = system_config.device_type
 
-        valid_configs: List[SearchConfig] = list()
+        valid_configs: List[SearchConfig] = []
 
         # Iterate over all possible combinations of tp, cp, pp, dp, ep and zero
         # Prune tp based on device_type, tp = 1 or 8 only if running on 910B
-        for tp in [2 ** i for i in range(system_config.devices_per_node.bit_length())]:
-
+        for tp in [2**i for i in range(system_config.devices_per_node.bit_length())]:  # pylint: disable=too-many-nested-blocks
             for cp in range(1, num_devices // tp + 1):
-
                 if mcfg.seq_length % cp != 0:
                     continue
 
                 # Check cp long sequence based on device_type
                 if cp > 1:
-                    if ("910B" in device_type) and \
-                            ((mcfg.seq_length // cp) < 8 * 1024):
+                    if ("910B" in device_type or "A2G" in device_type) and ((mcfg.seq_length // cp) < 8 * 1024):
                         continue
-                    if ("910_93" in device_type) and \
-                            ((mcfg.seq_length // cp) < 4 * 1024):
+                    if ("910_93" in device_type) and ((mcfg.seq_length // cp) < 4 * 1024):
                         continue
 
                 for pp in range(1, num_devices // (tp * cp) + 1):
-
                     # Check if layer_number is divisible by pp
                     if mcfg.num_layers % pp != 0:
                         continue
 
                     for dp in range(1, num_devices // (tp * cp * pp) + 1):
-
                         # Check device number compatibility
                         if tp * cp * pp * dp != num_devices:
                             continue
@@ -261,7 +248,6 @@ class SearchSpace(metaclass=Singleton):
                         if mcfg.num_experts:
                             ep_search_domain = list(range(1, min(cp * dp, mcfg.num_experts) + 1))
                         for ep in ep_search_domain:
-
                             if mcfg.num_experts and ep:
                                 if (cp * dp) % ep != 0:
                                     continue
@@ -275,13 +261,10 @@ class SearchSpace(metaclass=Singleton):
                             if pp > 1:
                                 # Search domain drops the last possible value (layer_number // pp)
                                 # due to the constraint $layers_per_vpp * pp != layer_number$
-                                layers_per_vpp_search_domain += \
-                                    [x for x in range(1, mcfg.num_layers // pp)]
+                                layers_per_vpp_search_domain += list(range(1, mcfg.num_layers // pp))
                             for layers_per_vpp in layers_per_vpp_search_domain:
-
                                 # Check if $layers_per_vpp$ not None and $layers_per_vpp * pp | layer_number$
-                                if layers_per_vpp and \
-                                        mcfg.num_layers % (layers_per_vpp * pp) != 0:
+                                if layers_per_vpp and mcfg.num_layers % (layers_per_vpp * pp) != 0:
                                     continue
 
                                 for mbs in [1, 2]:

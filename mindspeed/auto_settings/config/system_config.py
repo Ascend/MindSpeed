@@ -3,7 +3,6 @@ import logging
 from dataclasses import dataclass, field
 
 import torch
-import torch.cuda as cuda
 import torch.distributed as dist
 
 from mindspeed.auto_settings.utils.logger import init_logger, get_logger
@@ -44,7 +43,7 @@ class SystemConfig:
     target_world_size: int = field(init=0)
     auto_settings_ranks: int
 
-    max_available_memory: float = field(init=0.)
+    max_available_memory: float = field(init=0.0)
 
     use_operator_model: bool = field(init=False)
 
@@ -60,9 +59,10 @@ class SystemConfig:
     gloo_group: dist.ProcessGroup = None  # type: ignore
 
     dist_train: bool = None  # type: ignore
-    mm_model: str = None # type: ignore
-    mm_data: str = None # type: ignore
-    model_name: list = field(default_factory=list) # type: ignore
+    mm_model: str = None  # type: ignore
+    mm_data: str = None  # type: ignore
+    model_name: list = field(default_factory=list)  # type: ignore
+    devices_per_node: int = field(init=0)
 
     _logger = get_logger("settings")
 
@@ -70,7 +70,8 @@ class SystemConfig:
         self.world_size = self.nnodes * self.nproc_per_node
         self.target_world_size = self.target_nnodes * self.nproc_per_node
         self.search_world_size = self.auto_settings_ranks
-        self.max_available_memory = torch.npu.get_device_properties(0).total_memory / (1024 ** 3)
+        self.devices_per_node = self.nproc_per_node
+        self.max_available_memory = torch.npu.get_device_properties(0).total_memory / (1024**3)
         self.memory_cap = mem_b_to_mb(torch.npu.get_device_properties(0).total_memory)
         self.use_operator_model = False
 
@@ -118,13 +119,12 @@ def set_system_config(args):
         log_level=log_level,
         search_dimensions=8,
         waas_enabled=False,
-        auto_settings_ranks=args.auto_settings_ranks
-
+        auto_settings_ranks=args.auto_settings_ranks,
     )
-    
+
     if hasattr(args, "mm_data") and args.mm_data:
         sys_config.mm_data = args.mm_data
-    
+
     if hasattr(args, "mm_model") and args.mm_model:
         sys_config.mm_model = args.mm_model
         if args.dist_train:
@@ -136,7 +136,6 @@ def set_system_config(args):
 
 
 def get_system_config():
-    global _SYSTEM_CONFIG
     if _SYSTEM_CONFIG is None:
         raise AssertionError('SYSTEM_CONFIG is not initialized')
     return _SYSTEM_CONFIG

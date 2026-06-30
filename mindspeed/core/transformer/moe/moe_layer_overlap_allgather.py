@@ -1,17 +1,17 @@
 import torch
 import torch_npu
 
-from megatron.core.parallel_state import (get_expert_model_parallel_group, get_expert_tensor_and_model_parallel_group, 
-                                            get_expert_tensor_and_model_parallel_world_size,
-                                            get_tensor_model_parallel_group, 
-                                            get_tensor_model_parallel_world_size)
+from megatron.core.parallel_state import get_expert_model_parallel_group, get_expert_tensor_and_model_parallel_group
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.training import get_args
 from mindspeed.core.transformer.moe.legacy_a2a_token_dispatcher import cann_version_check
-from mindspeed.core.transformer.moe.moe_utils import AG_SHARED_EXPERTS_INPUTS
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
-from mindspeed.core.transformer.moe.moe_utils import (forward_func, backward_func, set_gemm_backward_need_tensors,
-                                                      get_rs_global_hidden_states_grad_with_handle)
+from mindspeed.core.transformer.moe.moe_utils import (
+    forward_func,
+    backward_func,
+    set_gemm_backward_need_tensors,
+    get_rs_global_hidden_states_grad_with_handle,
+)
 
 
 class MoELayerOverlapAllGather(torch.autograd.Function):
@@ -28,7 +28,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         shared_experts_allgather_handle = None
 
         # router
-        (probs, routing_map), _ = forward_func(moe_layer.router, hidden_states)
+        (probs, routing_map), _ = forward_func(moe_layer.router, hidden_states)  # pylint: disable=W0632
 
         # after router, do 2 allgather
         global_routing_map_tuple = None
@@ -37,20 +37,21 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
             if isinstance(routing_map, tuple):
                 global_routing_map, gr_handle = routing_map
             else:
-                _, global_routing_map, gr_handle = async_all_gather(routing_map, get_expert_tensor_and_model_parallel_group())
+                _, global_routing_map, gr_handle = async_all_gather(
+                    routing_map, get_expert_tensor_and_model_parallel_group()
+                )
 
             global_routing_map_tuple = (global_routing_map, gr_handle)
 
-            _, global_probs, gp_handle = async_all_gather(
-                probs, get_expert_tensor_and_model_parallel_group()
-            )
+            _, global_probs, gp_handle = async_all_gather(probs, get_expert_tensor_and_model_parallel_group())
 
             global_probs_tuple = (global_probs, gp_handle)
 
         # 专家 ep group allgather hidden_states
         global_hidden_states_tuple = None
         if moe_layer.config.sequence_parallel or moe_layer.config.expert_model_parallel_size > 1:
-            if '910B' in torch_npu.npu.get_device_name():
+            device_name = torch_npu.npu.get_device_name()
+            if '910B' in device_name or 'A2G' in device_name:
                 _, global_hidden_states, ghs_handle = async_all_gather(
                     hidden_states,
                     get_expert_tensor_and_model_parallel_group(),
@@ -61,7 +62,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
                     get_expert_model_parallel_group()
                     if shared_experts_allgather_handle
                     else get_expert_tensor_and_model_parallel_group(),
-                    shared_experts_allgather_handle
+                    shared_experts_allgather_handle,
                 )
             global_hidden_states = global_hidden_states.view(-1, global_hidden_states.shape[-1])
             global_hidden_states_tuple = (global_hidden_states, ghs_handle)
@@ -73,26 +74,21 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         if args.n_shared_experts or args.moe_shared_expert_intermediate_size:
             if shared_experts_allgather_handle is not None:
                 shared_experts_allgather_handle.wait()
-            (share_experts_output), _ = forward_func(
-                moe_layer.shared_experts, hidden_states
-            )
+            (share_experts_output), _ = forward_func(moe_layer.shared_experts, hidden_states)  # pylint: disable=W0632
 
             share_experts_output = share_experts_output[0]
             rs_share_experts_output = share_experts_output
 
-        token_permutation_input = (
-            global_routing_map_tuple,
-            global_probs_tuple,
-            global_hidden_states_tuple
-        )
+        token_permutation_input = (global_routing_map_tuple, global_probs_tuple, global_hidden_states_tuple)
 
         # dispatch input
         save_tensors.append(probs)
 
         moe_layer.token_dispatcher.hidden_shape = hidden_states.shape
-        (dispatched_input, tokens_per_expert, local_map, reversed_local_input_permutation_mapping), *token_permutation_input = forward_func(
-            moe_layer.token_dispatcher.token_permutation, token_permutation_input
-        )
+        (
+            (dispatched_input, tokens_per_expert, local_map, reversed_local_input_permutation_mapping),
+            *token_permutation_input,
+        ) = forward_func(moe_layer.token_dispatcher.token_permutation, token_permutation_input)
 
         save_tensors.append(local_map)
         save_tensors.append(reversed_local_input_permutation_mapping)
@@ -135,9 +131,17 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *args):
-        (scores, local_map, reversed_local_input_permutation_mapping,
-         global_probs_detach, global_hidden_states_detach, dispatched_input,
-         input_, output, share_experts_graph) = ctx.saved_tensors
+        (
+            scores,
+            local_map,
+            reversed_local_input_permutation_mapping,
+            global_probs_detach,
+            global_hidden_states_detach,
+            dispatched_input,
+            input_,
+            output,
+            share_experts_graph,
+        ) = ctx.saved_tensors
 
         token_unpermutation_output_shape = ctx.token_unpermutation_output_shape
 
@@ -151,14 +155,18 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         if share_experts_graph is not None:
             # 反向 —— 共享专家
             share_experts_graph.backward(ag_share_experts_grad_input)
-        if '910B' in torch_npu.npu.get_device_name() or share_experts_graph is None:
+        device_name = torch_npu.npu.get_device_name()
+        if ('910B' in device_name or 'A2G' in device_name) or share_experts_graph is None:
             from mindspeed.core.transformer.moe.moe_utils import set_ag_tp_hidden_status
+
             set_ag_tp_hidden_status(input_)
 
         ag_experts_grad_input = ag_share_experts_grad_input.view(token_unpermutation_output_shape)
         ag_share_experts_grad_input = None
         # token 重排反向 function set
-        set_gemm_backward_need_tensors((dispatched_input, global_hidden_states_detach, local_map, reversed_local_input_permutation_mapping))
+        set_gemm_backward_need_tensors(
+            (dispatched_input, global_hidden_states_detach, local_map, reversed_local_input_permutation_mapping)
+        )
 
         # 反向 —— token 反重排 expert
         output.backward(ag_experts_grad_input)
@@ -174,7 +182,7 @@ class MoELayerOverlapAllGather(torch.autograd.Function):
         # 反向 —— router
         backward_func(scores, rs_global_probs_grad)
 
-        rs_global_hidden_states_grad, rs_handle = get_rs_global_hidden_states_grad_with_handle()
+        rs_global_hidden_states_grad, rs_handle = get_rs_global_hidden_states_grad_with_handle()  # pylint: disable=E0633
         rs_handle.wait()
 
         rs_global_hidden_states_grad = rs_global_hidden_states_grad.view(ctx.input_shape)

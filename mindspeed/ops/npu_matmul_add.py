@@ -42,7 +42,7 @@ def get_npu_version():
         return NPUVersion.A5
     elif "Ascend910_93" in device_name:
         return NPUVersion.A3
-    elif "Ascend910B" in device_name:
+    elif "Ascend910B" in device_name or "A2G" in device_name:
         return NPUVersion.A2
     else:
         return NPUVersion.MAX_VERSION
