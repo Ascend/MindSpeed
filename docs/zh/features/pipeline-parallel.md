@@ -14,11 +14,11 @@
 * 接力式并行：各阶段之间采用接力式的并行计算方式，即当前阶段的计算结果作为下一阶段的输入，形成连续的前向与反向计算流程。
 * 预热与冷却：在流水线并行训练开始时，需进行预热阶段，初始化计算流程；训练末尾则进行冷却阶段，确保所有阶段的计算任务得以完成。
 
-### 图1 流水线并行调度示意图
+**图1** 流水线并行调度示意图
 
 ![alt text](../figures/pipedream1F1B.png)
 
-具体细节可参考文献 [原文链接](https://arxiv.org/pdf/1806.03377)
+具体细节请参见文献[PipeDream: Fast and Efficient Pipeline Parallel DNN Training](https://arxiv.org/pdf/1806.03377)。
 
 ## 使用场景
 
@@ -31,7 +31,11 @@
 ## 使用方法
 
 启用流水线并行，需在训练脚本中加入以下参数配置：
-`--pipeline-model-parallel-size  N      # N表示流水线并行的阶段数，即参与并行训练的NPU数量`
+
+```bash
+--pipeline-model-parallel-size  N      # N表示流水线并行的阶段数，即参与并行训练的NPU数量
+```
+
 用户需根据实际需求进行配置，其缺省值为1。
 
 ## 使用效果

@@ -8,13 +8,13 @@
 
 为了解决这一问题，虚拟流水线并行技术被提出，旨在通过进一步细分计算任务，降低空泡比率，提升训练效率。
 
-虚拟流水线并行（Virtual Pipeline Parallelism，VPP）的核心在于，在不增加设备数量的前提下，将模型进一步细分为更多阶段，以增加通信量为代价，换取更低的空泡比率。在设备数量不变的情况下，分出更多的流水线阶段，以更多的通信量，换取空泡比率降低。
+虚拟流水线并行（Virtual Pipeline Parallelism，VPP）的核心在于，在不增加设备数量的前提下，将模型进一步细分为更多阶段。通过增加通信量，实现更低的空泡比率，从而提升训练效率。
 
-### 图1 虚拟流水线并行示意图
+**图1** 虚拟流水线并行示意图
 
 ![alt text](../figures/virtual-pipeline.PNG)
 
-[原文链接](https://people.eecs.berkeley.edu/~matei/papers/2021/sc_megatron_lm.pdf)
+具体细节请参见文献[Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://people.eecs.berkeley.edu/~matei/papers/2021/sc_megatron_lm.pdf)。
 
 例如，假设模型总层数为16，张量并行大小为1，流水线并行大小为4，虚拟流水线并行大小为2，则模型将被划分为4 * 2 = 8个阶段，每个阶段包含16 / 8 = 2个层。如下所示：
 
@@ -23,7 +23,7 @@
     Device 2: [5, 6] [13, 14]
     Device 3: [7, 8] [15, 16]
 
-前向的顺序为 Device 0 -> Device 1 -> Device 2 -> Device 3 -> Device 0 -> Device 1 -> Device 2 -> Device 3
+前向的顺序为 Device 0 -> Device 1 -> Device 2 -> Device 3 -> Device 0 -> Device 1 -> Device 2 -> Device 3。
 
 ## 使用场景
 
@@ -32,15 +32,17 @@
 ## 使用方法
 
 虚拟流水线并行依赖流水线并行。启用虚拟流水线并行，需在训练脚本中加入以下参数配置：
-`--num-layers-per-virtual-pipeline-stage  N     # N表示每个虚拟流水线阶段的层数`。
 
-此外，开启该特性时，要求模型总层数L % N == 0，且--pipeline-model-parallel-size大于等于2。
+```bash
+--num-layers-per-virtual-pipeline-stage  N     # N表示每个虚拟流水线阶段的层数
+```
 
-### 注意
+此外，开启该特性时，要求模型总层数L % N == 0，且--pipeline-model-parallel-size大于或等于2。
 
-1. Megatron虚拟流水线并行（VPP）对权重的分割模式具有直接影响。在保存或加载权重文件时，务必保持VPP配置参数的一致性，以确保模型权重的准确加载和系统的稳定运行。
-
-2. 使用verl框架训练时，mbridge与VPP暂不兼容，请在未开启mbridge时使用该特性。
+> [!NOTE]
+>
+> * Megatron虚拟流水线并行（VPP）对权重的分割模式具有直接影响。在保存或加载权重文件时，务必保持VPP配置参数的一致性，以确保模型权重的准确加载和系统的稳定运行。
+> * 使用verl框架训练时，mbridge与VPP暂不兼容，请在未开启mbridge时使用该特性。
 
 ## 使用效果
 

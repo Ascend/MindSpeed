@@ -14,20 +14,17 @@
 
 ## 使用方法
 
-打开`--moe-tp-extend-ep`启用该特性。
+- 开启特性：添加`--moe-tp-extend-ep`启用该功能。
+- 必选配套参数：必须同时确保开启以下两个参数。
+    - `--moe-permutation-async-comm`
+    - `--moe-grouped-gemm`，（注意：目前仅支持Grouped MLP）
+- 配置约束：需要确保`--num-experts`能被`tp * ep`整除。
 
-同时需要开启：
-
-- `--moe-permutation-async-comm`
-- `--moe-grouped-gemm`，目前仅支持Grouped MLP。
-
-同时需要确保`--num-experts`能被`tp * ep`整除。
-
-### 注意
-
-当前该特性不支持Moe Token drop and pad模式，即`--moe-expert-capacity-factor`需要为None。
-当前仅支持alltoall_seq dispatcher。
+> [!NOTE]
+>
+> - 当前该特性不支持Moe Token drop and pad模式，即`--moe-expert-capacity-factor`需要为None。
+> - 当前仅支持alltoall_seq dispatcher。
 
 ## 使用效果
 
-通过避免TP切分专家参数，提高小专家场景GMM算子效率，从而提高模型整体训练性能，在类DeepSeekV2万亿参数级别的MoE模型下，并且为细粒度小专家，性能最高提升10%以上。
+通过避免TP切分专家参数，提高小专家场景GMM算子效率，从而提高模型整体训练性能，在类DeepSeek-V2万亿参数级别的MoE模型下，并且为细粒度小专家，性能最高提升10%以上。

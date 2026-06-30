@@ -26,11 +26,11 @@
 
     新建“Megatron-LM/gpt-tokenizer”目录，并将vocab.json和merges.txt文件下载至该目录。
 
-2. 下载数据集，以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例
-
     >[!NOTE]
     >
-    >用户需要自行设置代理，以便访问或下载数据集。
+    >用户需要自行设置代理，以便访问或下载资源。如无法顺利访问HuggingFace社区下载资源，推荐前往ModelScope下载，需关注待下载文件的正确性与安全性。
+
+2. 下载数据集，以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例
 
 3. 语料格式转换
 

@@ -22,6 +22,10 @@ wget https://huggingface.co/datasets/tatsu-lab/alpaca/blob/main/data/train-00000
 cd ..
 ```
 
+>[!NOTE]
+>
+>如无法顺利访问HuggingFace社区下载资源，推荐前往ModelScope下载，需关注待下载文件的正确性与安全性。
+
 ### 数据集处理
 
 #### 预训练数据集处理方法

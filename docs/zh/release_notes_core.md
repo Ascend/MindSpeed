@@ -42,9 +42,8 @@
 
 |MindSpeed Core代码分支名称|CANN版本|Ascend Extension for PyTorch版本|Python版本|PyTorch版本|
 |--|--|--|--|--|
+|master（在研版本）|master（在研版本）|在研版本|Python3.10|2.7.1|
 |26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|
-|2.3.0_core_r0.12.1|8.5.0|7.3.0|Python3.10|2.7.1|
-|2.2.0_core_r0.12.1|8.3.RC1|7.2.0|Python3.10|2.7.1|
 
 >[!NOTE]
 >
@@ -52,11 +51,71 @@
 
 ## 版本兼容性说明
 
-|MindSpeed版本|CANN版本|Ascend Extension for PyTorch版本|
-|--|--|--|
-|26.0.0_core_r0.12.1|CANN 9.0.0<br>CANN 8.5.0<br>CANN 8.3.RC1<br>CANN 8.2.RC1<br>CANN 8.1.RC1<br>|26.0.0|
-|2.3.0_core_r0.12.1|CANN 8.5.0<br>CANN 8.3.RC1<br>CANN 8.2.RC1<br>CANN 8.1.RC1<br>CANN 8.0.0<br>|7.3.0|
-|2.2.0_core_r0.12.1|CANN 8.3.RC1<br>CANN 8.2.RC1<br>CANN 8.1.RC1<br>CANN 8.0.0<br>CANN 8.0.RC3<br>CANN 8.0.RC2|7.2.0|
+> [!NOTE]
+>
+> 本节表格中“/”表示不可配套，“Y”表示可配套。
+
+**表 2**  MindSpeed Core与Ascend Extention for PyTorch版本兼容
+
+<table style="table-layout: fixed; width: 750px">
+  <colgroup>
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">MindSpeed Core</th>
+      <th colspan="3">Ascend Extention for PyTorch版本</th>
+    </tr>
+    <tr>
+      <th>7.2.0</th>
+      <th>7.3.0</th>
+      <th>26.0.0</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>26.0.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+  </tbody>
+</table>
+
+**表 3**  MindSpeed Core与CANN版本兼容
+
+<table style="table-layout: fixed; width: 750px">
+  <colgroup>
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+    <col style="width: 150px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">MindSpeed Core</th>
+      <th colspan="3">CANN版本</th>
+    </tr>
+    <tr>
+      <th>8.3.RC1</th>
+      <th>8.5.0</th>
+      <th>9.0.0</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>26.0.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+  </tbody>
+</table>
 
 ## 版本使用注意事项
 

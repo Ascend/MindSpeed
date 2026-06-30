@@ -9,13 +9,15 @@
 数据并行 (Data Parallelism，DP) 策略通过将数据集划分为多个批次（Batch），并将其均匀分配至各个计算设备，使得每台设备仅负责处理特定批次的数据。
 
 此方案的实施需满足以下两点关键要素：
-每一台计算设备上部署的模型结构与参数保持完全一致。
-各设备处理的数据批次互不相同，确保训练过程的并行性和效率。
+
+- 每一台计算设备上部署的模型结构与参数保持完全一致。
+- 各设备处理的数据批次互不相同，确保训练过程的并行性和效率。
+
 该方案的整体思路如下：
 
 * 模型复制：在每个计算设备上存储完整的模型副本。
 * 数据分割：原始数据集被细分为若干个批次，然后均匀分配至各个计算设备，确保负载均衡。
-* 梯度同步：完成前向计算并获取局部梯度后，通过All-Reduce操作汇集所有设备的梯度，计算平均值，再将结果广播回各设备，以此维持全局参数的一致性。 
+* 梯度同步：完成前向计算并获取局部梯度后，通过All-Reduce操作汇集所有设备的梯度，计算平均值，再将结果广播回各设备，以此维持全局参数的一致性。
 
 ## 使用场景
 
@@ -31,14 +33,14 @@
 * NPU数量（World Size）：参与并行训练的所有NPU数量。
 * 模型并行数（Tensor Model Parallel Size）：模型权重的并行分割数。
 * 流水线并行数（Pipeline Model Parallel Size）：模型架构的流水线并行度。
-* 长序列并行数（Context Parallel Size）：针对长序列数据处理的并行策略。
+* 上下文并行数（Context Parallel Size）：针对长序列数据处理的并行策略。
 
-数据并行数(data_parallel_size) = world_size // (tensor_model_parallel_size *pipeline_model_parallel_size* context_parallel_size)
+数据并行数(data_parallel_size) = world_size // (tensor_model_parallel_size \* pipeline_model_parallel_size \* context_parallel_size)
 
-### 注意
-
-* 模型总层数需被流水线并行数整除。
-* global_batch_size需被data_parallel_size整除。
+> [!NOTE]
+>
+> * 模型总层数需被流水线并行数整除。
+> * global_batch_size需被data_parallel_size整除。
 
 ## 使用效果
 

@@ -1,4 +1,4 @@
-# Flash attention 
+# Flash attention
 
 ## 背景与挑战
 
@@ -8,13 +8,13 @@
 
 为了克服上述挑战，引入了Flash Attention技术。Flash Attention是一种高效的注意力机制，旨在在保持模型性能的同时，显著降低Transformer模型在处理长序列时的计算时间和内存开销。加速注意力的关键在于优化IO访存，即降低片上内存的读/写次数。
 
-Flash Attention是一种优化IO访存开销的精确注意力方法，原理如图1所示，通过Tiling切片、重计算、Kernel Fusion等方式来减少高带宽内存（片上内存）和SRAM之间的内存读/写次数。NPU侧提供了相同解决方案，该融合算子的详细接口与使用说明请参见融合算子API清单中的fusion_attention接口。
+Flash Attention是一种优化IO访存开销的精确注意力方法，原理如下图所示，通过Tiling切片、重计算、Kernel Fusion等方式来减少高带宽内存（片上内存）和SRAM之间的内存读/写次数。
 
 * Tiling切片：利用更高速的SRAM代替Memory on Chip，但SRAM的内存容量较少，无法一次性完成所有数据的完整注意力计算，因此需要进行分块计算。
 * 重计算：放弃中间结果写回，需要使用时重新计算，用计算换访存。
 * Kernel Fusion：将多个操作融合为一个操作，基于Tiling利用一个kernel完成整个计算。
 
-<p align="center"> <img src="../figures/flash_attention.png" height="280px" width="850px"></p>
+<p align="left"> <img src="../figures/flash_attention.png" height="280px" width="850px"></p>
 
 关于Flash Attention更多信息请参见[FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness](https://arxiv.org/pdf/2205.14135)。
 
@@ -25,8 +25,11 @@ Flash Attention是一种优化IO访存开销的精确注意力方法，原理如
 ## 使用方法
 
 设置如下参数即可调用该算法：
-`--use-flash-attn`
+
+```bash
+--use-flash-attn
+```
 
 ## 使用效果
 
-可以大幅提升模型训练效率并节省训练内存开销，在LLaMA2-7B模型下，性能提升约34%。
+通过使用Flash Attention，可以大幅提升模型训练效率并节省训练内存开销，在LLaMA2-7B模型下，性能提升约34%。

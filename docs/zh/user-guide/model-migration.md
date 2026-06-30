@@ -100,12 +100,14 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
  1. 在[gpt-3.5-turbo](https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main)中下载`vocab.json`和`merges.txt`放到`Megatron-LM`仓库根目录下新建的`gpt-tokenizer`目录内，并且分别重命名为`gpt2-vocab.json`和`gpt2-merges.txt`
 
     如果出现下载速度太慢或者无法访问下载的情况，
-    请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
+    请配置可用的访问国外网站的代理或者可用的HuggingFace国内源重试。
+    如无法顺利访问HuggingFace社区下载资源，推荐前往ModelScope下载，需关注待下载文件的正确性与安全性。
 
- 2. 在[huggingface](https://huggingface.co/datasets/tatsu-lab/alpaca)的网站下载Alpaca的train-00000-of-000010-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
+ 2. 在[HuggingFace](https://huggingface.co/datasets/tatsu-lab/alpaca)的网站下载Alpaca的train-00000-of-000010-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
 
     如果出现下载速度太慢或者无法访问下载的情况，
-    请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
+    请配置可用的访问国外网站的代理或者可用的HuggingFace国内源重试。
+    如无法顺利访问HuggingFace社区下载资源，推荐前往ModelScope下载，需关注待下载文件的正确性与安全性。
 
  3. 读取Alpaca数据集parquet格式的原始语料，并将其转换为JSON格式，以便后续处理。
 
@@ -233,22 +235,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
     ![iter_result](../figures/iter_result.png)
 
-    从core_r0.10.0版本开始，
-    `Megatron-LM`和`MindSpeed`大量使用高版本语法的类型注解（Type Annotations），如:
-
-    ```python
-    hierarchical_context_parallel_sizes: Optional[list[int]] = None
-    ```
-
-    因此，若出现以下报错：
-
-    ```python
-    TypeError: 'type' object is not subscriptable.
-    ```
-
-    则需升级python到3.9及以上版本。
-
-   **后续处理**
+    **后续处理**
 
     - `pretrain_single.sh`训练脚本默认配置了模型保存路径，
     如果需要进行模型加载重新训练，
@@ -256,6 +243,21 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
     - 若训练过程中提示部分CUDA接口报错，可能是部分API（算子API或者框架API）不支持引起，
     用户可进入[昇腾MindSpeed开源社区](https://gitcode.com/Ascend/MindSpeed)提出ISSUE求助。
+
+    - 从core_r0.10.0版本开始，
+    `Megatron-LM`和`MindSpeed`大量使用高版本语法的类型注解（Type Annotations），如:
+
+        ```python
+        hierarchical_context_parallel_sizes: Optional[list[int]] = None
+        ```
+
+        因此，若出现以下报错：
+
+        ```python
+        TypeError: 'type' object is not subscriptable.
+        ```
+
+        则需升级Python到3.10及以上版本。
 
 #### 多机多卡训练
 
