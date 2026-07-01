@@ -29,7 +29,14 @@
 
 请参见《版本说明》中的“[相关产品版本配套说明](../release_notes_core.md#相关产品版本配套说明)”章节，下载安装对应的软件版本。
 
-> [!NOTICE]
+> [!NOTE]
+>
+> 本文档中不同安装方式的示例命令使用了不同版本的 Python：
+>
+> - 镜像安装示例基于 Python 3.11
+> - 源码安装示例基于 Python 3.10
+>
+> 请根据您实际环境的 Python 版本选择对应的包版本。
 >
 > 安装运行程序建议使用非root用户，且建议对安装程序的目录文件做好权限管控：文件夹权限设置为750，文件权限设置为640。可以通过设置umask控制安装后文件的权限，如设置umask为0027。
 > 更多安全相关内容请参见《[安全声明](../SECURITYNOTE.md)》中各组件关于“文件权限控制”的说明。
@@ -67,6 +74,10 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
    # 确认是否成功拉取镜像
    docker image list
    ```
+
+   > [!NOTE]
+   >
+   > 此镜像基于 Python 3.11 构建。
 
 2. 创建容器
 
@@ -134,13 +145,17 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
 
    >[!NOTE]
    >
-   >如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
+   > 示例使用 Python 3.10 的 wheel 包（cp310），请根据实际环境选择对应版本。
+   >
+   > 如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
 
 3. 下载MindSpeed源码26.0.0_core_r0.12.1分支（请注意下列命令的大小写）
 
       ```shell
         git clone https://gitcode.com/Ascend/MindSpeed.git
+        cd MindSpeed
         git checkout 26.0.0_core_r0.12.1
+        cd ..
       ```
 
 4. 安装MindSpeed
@@ -151,13 +166,14 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
 
 5. 获取Megatron-LM源码切换 core_v0.12.1 版本
 
-       具体操作如下所示：
+      具体操作如下所示：
 
-        ```shell
-        git clone https://github.com/NVIDIA/Megatron-LM.git
-        cd Megatron-LM
-        git checkout core_v0.12.1
-        ```
+      ```shell
+      git clone https://github.com/NVIDIA/Megatron-LM.git
+      cd Megatron-LM
+      git checkout core_v0.12.1
+      cd ..
+      ```
 
 ## 卸载MindSpeed
 

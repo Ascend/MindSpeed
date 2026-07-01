@@ -70,7 +70,7 @@ python ./preprocess_data.py \
     --json-keys text input output
     ```
 
-- `append-eod`：该参数的作用是将文档结束标记`EOD`显示地添加到每条数据的末尾，防止模型学习无意义的关联
+- `append-eod`：该参数的作用是将文档结束标记`EOD`显式地添加到每条数据的末尾，防止模型学习无意义的关联
 - `pad-to-multiple-of`：该参数的作用是将每条数据的长度pad到pad-to-multiple-of的倍数
 
 `append-eod`和`pad-to-multiple-of`参数使能后的效果如下：

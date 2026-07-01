@@ -45,113 +45,113 @@ MindSpeed 仓库中的 Docker 挂载配置、运行脚本等存在硬编码的 `
 
 ## 使用步骤
 
-### 1. 进入仓库根目录
+1. 进入仓库根目录
 
-```bash
-cd /path/to/MindSpeed
-```
+    ```bash
+    cd /path/to/MindSpeed
+    ```
 
-### 2. 预览将要修改的内容（推荐）
+2. 预览将要修改的内容（推荐）
 
-在实际修改前，先以 `--dry-run` 模式确认变更范围：
+    在实际修改前，先以 `--dry-run` 模式确认变更范围：
 
-```bash
-python3 tools/replace_ascend_path.py --dry-run
-```
+    ```bash
+    python3 tools/replace_ascend_path.py --dry-run
+    ```
 
-输出示例：
+    输出示例：
 
-```bash
-[DRY RUN] Path replacement: /usr/local/Ascend/driver -> /usr/local/npu/driver
-Scan directory : /path/to/MindSpeed
-File types     : .md, .py, .rst, .sh, .txt + Dockerfile
-------------------------------------------------------------
-Found XXX candidate file(s), processing...
+    ```bash
+    [DRY RUN] Path replacement: /usr/local/Ascend/driver -> /usr/local/npu/driver
+    Scan directory : /path/to/MindSpeed
+    File types     : .md, .py, .rst, .sh, .txt + Dockerfile
+    ------------------------------------------------------------
+    Found XXX candidate file(s), processing...
 
-  [would replace   1] docker/Dockerfile
-  [would replace   2] docker/OVERVIEW.md
-  [would replace   2] docker/OVERVIEW.zh.md
-  ...
+    [would replace   1] docker/Dockerfile
+    [would replace   2] docker/OVERVIEW.md
+    [would replace   2] docker/OVERVIEW.zh.md
+    ...
 
-============================================================
-[DRY RUN] XXX file(s) would be modified, XXX replacement(s) total.
-          Remove --dry-run to apply changes.
-```
+    ============================================================
+    [DRY RUN] XXX file(s) would be modified, XXX replacement(s) total.
+            Remove --dry-run to apply changes.
+    ```
 
-### 3. 执行批量替换
+3. 执行批量替换
 
-确认预览无误后，执行实际替换：
+    确认预览无误后，执行实际替换：
 
-```bash
-# 默认：将 /usr/local/Ascend/driver 替换为 /usr/local/npu/driver
-python3 tools/replace_ascend_path.py
-```
+    ```bash
+    # 默认：将 /usr/local/Ascend/driver 替换为 /usr/local/npu/driver
+    python3 tools/replace_ascend_path.py
+    ```
 
-执行完毕后，脚本会输出修改的文件数和替换总次数。
+    执行完毕后，脚本会输出修改的文件数和替换总次数。
 
-### 4. 验证替换结果
+4. 验证替换结果
 
-```bash
-# 检查是否还有未替换的 driver 路径（结果应为 0）
-grep -r "/usr/local/Ascend/driver" . \
---include='*.sh' \
---include='*.md' \
---include='*.rst' \
---include='*.py' \
---include='*.txt' \
---include='Dockerfile' \
---exclude='replace_ascend_path.py' \
---exclude='replace_ascend_path_guide.md' \
---exclude-dir='.git' \
-| wc -l
-```
+    ```bash
+    # 检查是否还有未替换的 driver 路径（结果应为 0）
+    grep -r "/usr/local/Ascend/driver" . \
+    --include='*.sh' \
+    --include='*.md' \
+    --include='*.rst' \
+    --include='*.py' \
+    --include='*.txt' \
+    --include='Dockerfile' \
+    --exclude='replace_ascend_path.py' \
+    --exclude='replace_ascend_path_guide.md' \
+    --exclude-dir='.git' \
+    | wc -l
+    ```
 
 ---
 
 ## 执行后验证
 
-### 1. Driver 路径加载验证
+1. Driver 路径加载验证
 
-```bash
-# 验证新路径下的 driver 目录存在
-ls /usr/local/npu/driver/lib64/
+    ```bash
+    # 验证新路径下的 driver 目录存在
+    ls /usr/local/npu/driver/lib64/
 
-# 加载环境变量（ascend-toolkit 路径未变更，仍使用原路径）
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+    # 加载环境变量（ascend-toolkit 路径未变更，仍使用原路径）
+    source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
-# 验证环境变量生效
-echo $ASCEND_HOME_PATH
-```
+    # 验证环境变量生效
+    echo $ASCEND_HOME_PATH
+    ```
 
-### 2. 组件安装验证
+2. 组件安装验证
 
-```bash
-# 验证MindSpeed 安装成功
-python3 -c "import mindspeed; print('MindSpeed installed successfully')"
+    ```bash
+    # 验证MindSpeed 安装成功
+    python3 -c "import mindspeed; print('MindSpeed installed successfully')"
 
-# 验证 NPU 可用
-python3 -c "import torch_npu; print('NPU available:', torch_npu.npu.is_available())"
-```
+    # 验证 NPU 可用
+    python3 -c "import torch_npu; print('NPU available:', torch_npu.npu.is_available())"
+    ```
 
-### 3. 芯片信息接口验证（dcmi_get_device_chip_info）
+3. 芯片信息接口验证（dcmi_get_device_chip_info）
 
-部分版本要求 `dcmi_get_device_chip_info` 接口返回的芯片型号标识为 `A2G3` 或 `A2G4`。
+    部分版本要求 `dcmi_get_device_chip_info` 接口返回的芯片型号标识为 `A2G3` 或 `A2G4`。
 
-> 说明：MindSpeed 当前代码未直接调用该接口，此处仅作适配说明。若上层业务或运维脚本依赖该接口返回值进行芯片型号判断，需确保返回值为 `A2G3` 或 `A2G4`，否则可能影响型号相关的逻辑分支。
+    > 说明：MindSpeed 当前代码未直接调用该接口，此处仅作适配说明。若上层业务或运维脚本依赖该接口返回值进行芯片型号判断，需确保返回值为 `A2G3` 或 `A2G4`，否则可能影响型号相关的逻辑分支。
 
-验证方式请参考：
-[dcmi_get_device_chip_info接口原型](https://support.huawei.com/enterprise/zh/doc/EDOC1100568435/8739bb5a)
+    验证方式请参考：
+    [dcmi_get_device_chip_info接口原型](https://support.huawei.com/enterprise/zh/doc/EDOC1100568435/8739bb5a)
 
-### 4. 核心功能冒烟验证
+4. 核心功能冒烟验证
 
-参考对应模型的readme进行配置，验证训练流程可正常启动
+    参考对应模型的readme进行配置，验证训练流程可正常启动
 
-```bash
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+    ```bash
+    source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
-# 运行示例脚本（以具体模型为准）
-bash ./train_distributed.sh
-```
+    # 运行示例脚本（以具体模型为准）
+    bash ./train_distributed.sh
+    ```
 
 ---
 

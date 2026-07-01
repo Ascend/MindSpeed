@@ -2,7 +2,7 @@
 
 ## 背景与挑战
 
-SwiGLU（Swish-Gated Linear Unit，Swish门控线性单元激活函数）常见于在LLaMA、LLaMA2、Baichuan等大型语言模型中激活层。然而，由于PyTorch标准库中缺乏直接支持SwiGLU的算子接口，模型通常会以一系列基础算子组合的方式来实现SwiGLU功能，这种方式的执行效率并不理想。
+SwiGLU（Swish-Gated Linear Unit，Swish门控线性单元激活函数）常见于LLaMA、LLaMA2、Baichuan等大型语言模型中激活层。然而，由于PyTorch标准库中缺乏直接支持SwiGLU的算子接口，模型通常会以一系列基础算子组合的方式来实现SwiGLU功能，这种方式的执行效率并不理想。
 
 ## 解决方法
 

@@ -4,7 +4,7 @@
 
 在大规模集群下，Gloo通信存在规模限制和稳定性问题。一方面，容易出现Gloo通信组创建失败的情况；另一方面，与HCCL通信相比，Gloo通信较慢。
 
-对于Gloo通信组创建失败报错`Gloo connectFullMesh failed with ...`的问题，本质上是由于N张卡链接到主Master来完成建链，集群规模大时，Master处理能力不足，可能造成建链失败。可通过调整和网络建链相关参数进行规避（云上8k卡场景验证有效）：
+对于Gloo通信组创建失败报错`Gloo connectFullMesh failed with ...`的问题，本质上是由于N张卡链接到主节点来完成建链，集群规模大时，主节点处理能力不足，可能造成建链失败。可通过调整和网络建链相关参数进行规避（云上8k卡场景验证有效）：
 
 ```bash
 net.ipv4.tcp_max_syn_backlog = 65536
@@ -27,7 +27,7 @@ net.core.netdev_max_backlog = 65536
 
 1. 在训练脚本中加入`--disable-gloo-group`，以启用该特性。
 
-2. 在脚本中定义`--hccl-slice-size N`（可选），设置DP组保存和加载分布式优化器状态时的通信量大小。该参数的有效区间为 (0, bucket_size/dp)，其中bucket_size为分布式优化器中每个桶的大小。建议在显存允许的情况下，尽量增大该参数，以提高通信效率。
+2. 在脚本中定义`--hccl-slice-size N`（可选），设置DP组保存和加载分布式优化器状态时的通信量大小。该参数的有效区间为 `(0, bucket_size/dp]`，其中bucket_size为分布式优化器中每个桶的大小。建议在显存允许的情况下，尽量增大该参数，以提高通信效率。
 
 ## 使用效果
 
