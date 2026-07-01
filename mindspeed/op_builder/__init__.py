@@ -24,4 +24,34 @@ from .matmul_add_builder import MatmulAddOpBuilder
 from .groupmatmul_add_builder import GroupMatmulAddOpBuilder
 from .fused_ema_adamw_builder import FusedEmaAdamWOpBuilder
 from .smart_swap_builder import SmartSwapBuilder
-from .npu_sparse_lightning_indexer_grad_kl_loss_builder import NPUSparseLIGradKlLossOpBuilder
+
+
+__all__ = [
+    "FusionAttentionV2OpBuilder",
+    "AlgorithmOpBuilder",
+    "AdaptiveRecomputingPluggableAllocatorBuilder",
+    "NpuDropoutAddLayerNormOpBuilder",
+    "AtbOpBuilder",
+    "SwigluOpBuilder",
+    "LcalOpBuilder",
+    "RmsNormOpBuilder",
+    "GroupedMatMulAllReduceOpBuilder",
+    "GMMOpBuilder",
+    "GMMV2OpBuilder",
+    "QuantGMMOpBuilder",
+    "WeightQuantGMMOpBuilder",
+    "FFNOpBuilder",
+    "MatmulAllReduceAddRmsNormOpBuilder",
+    "InplaceMatmulAllReduceAddRmsNormOpBuilder",
+    "RotaryPositionEmbeddingOpBuilder",
+    "MoeTokenPermuteOpBuilder",
+    "MoeTokenUnpermuteOpBuilder",
+    "RingAttentionUpdateOpBuilder",
+    "BatchMatMulReduceScatterAlltoAllOpBuilder",
+    "AllToAllAllGatherBatchMatMulOpBuilder",
+    "AdaptiveCpOpBuilder",
+    "MatmulAddOpBuilder",
+    "GroupMatmulAddOpBuilder",
+    "FusedEmaAdamWOpBuilder",
+    "SmartSwapBuilder",
+]
