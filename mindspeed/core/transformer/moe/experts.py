@@ -12,10 +12,12 @@ from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.grouped_gemm_util import fused_alltoall_gather_bmm, fused_bmm_reducescatter_alltoall
 from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
-from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_all2all import \
-    grouped_mlp_with_comp_and_comm_overlap_all2all
-from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_allgather import \
-    grouped_mlp_with_comp_and_comm_overlap_allgather
+from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_all2all import (
+    grouped_mlp_with_comp_and_comm_overlap_all2all,
+)
+from mindspeed.core.transformer.moe.grouped_mlp_with_comp_and_comm_overlap_allgather import (
+    grouped_mlp_with_comp_and_comm_overlap_allgather,
+)
 from mindspeed.model.transformer import should_recompute_activation
 
 COMM_STREAM = None
@@ -25,8 +27,6 @@ def get_zeros_with_tp(input_):
     world_size = parallel_state.get_tensor_model_parallel_world_size()
     zeros_shape = input_.shape[:-1] + (input_.shape[-1] * world_size,)
     return torch.zeros(zeros_shape, dtype=input_.dtype, layout=input_.layout, device=input_.device)
-
-
 
 
 def sequential_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
@@ -83,14 +83,20 @@ def group_mlp_forward(self, permuted_local_hidden_states, tokens_per_expert, ctx
         w2 = self.weight2.view(-1, self.config.hidden_size)
     group_list = torch.cumsum(tokens_per_expert, dim=0)
     if get_args().moe_alltoall_overlap_comm:
-        return grouped_mlp_with_comp_and_comm_overlap_all2all(permuted_local_hidden_states, w1, w2,
-                                                              (self.weight1, self.weight2, self.activation_func,
-                                                               group_list, self.layer_number),
-                                                              ctx=ctx)
+        return grouped_mlp_with_comp_and_comm_overlap_all2all(
+            permuted_local_hidden_states,
+            w1,
+            w2,
+            (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number),
+            ctx=ctx,
+        )
     else:
-        return grouped_mlp_with_comp_and_comm_overlap_allgather(permuted_local_hidden_states, w1, w2,
-                                                                (self.weight1, self.weight2, self.activation_func,
-                                                                 group_list, self.layer_number))
+        return grouped_mlp_with_comp_and_comm_overlap_allgather(
+            permuted_local_hidden_states,
+            w1,
+            w2,
+            (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number),
+        )
 
 
 def groupedmlp_init_wrapper(fn):
@@ -98,15 +104,19 @@ def groupedmlp_init_wrapper(fn):
     def wrapper(self, *args, **kwargs):
         args_ = get_args()
         tp_size = parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE
-        # set tp size to 1 before GMM init to aviod weight sharding
+        tp_rank = parallel_state._MPU_EXPERT_TENSOR_PARALLEL_RANK
+        # Set expert TP to a single-rank group before GMM init to avoid weight sharding.
         if args_.moe_tp_extend_ep:
             parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = 1
-        fn(self, *args, **kwargs)
-        if args_.moe_tp_extend_ep:
-            parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = tp_size
+            parallel_state._MPU_EXPERT_TENSOR_PARALLEL_RANK = 0
+        try:
+            fn(self, *args, **kwargs)
+        finally:
+            if args_.moe_tp_extend_ep:
+                parallel_state._MPU_EXPERT_TENSOR_PARALLEL_WORLD_SIZE = tp_size
+                parallel_state._MPU_EXPERT_TENSOR_PARALLEL_RANK = tp_rank
         if self.config.gated_linear_unit:
-            assert (self.config.activation_func == F.silu
-                    ), 'Activation function must be silu when using fused_swiglu.'
+            assert self.config.activation_func == F.silu, 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
         self.layer_number = None
         self.set_recompute_activation_func = False
@@ -116,8 +126,11 @@ def groupedmlp_init_wrapper(fn):
 
 def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
     args = get_args()
-    is_recompute_activation = should_recompute_activation(
-        self.layer_number) and not args.moe_alltoall_overlap_comm and not args.moe_allgather_overlap_comm
+    is_recompute_activation = (
+        should_recompute_activation(self.layer_number)
+        and not args.moe_alltoall_overlap_comm
+        and not args.moe_allgather_overlap_comm
+    )
 
     gemm_fusion = args.gemm_gradient_accumulation_fusion
     tp_group = parallel_state.get_tensor_model_parallel_group()
@@ -132,27 +145,41 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
 
             if args.moe_bmm_mc2:
                 # input to alltoall_gather_bmm op input: [E*C, H/TP] -> [E, C, H/TP]
-                permuted_local_hidden_states = permuted_local_hidden_states.view(self.config.num_moe_experts,
-                                                                                 permuted_local_hidden_states.shape[
-                                                                                     0] // self.config.num_moe_experts,
-                                                                                 -1)
-                bmm_param = {'group_ep': ep_group, 'group_tp': tp_group, 'shard_type': 0,
-                             'need_recompute': False}
+                permuted_local_hidden_states = permuted_local_hidden_states.view(
+                    self.config.num_moe_experts,
+                    permuted_local_hidden_states.shape[0] // self.config.num_moe_experts,
+                    -1,
+                )
+                bmm_param = {'group_ep': ep_group, 'group_tp': tp_group, 'shard_type': 0, 'need_recompute': False}
                 fc1_output = fused_alltoall_gather_bmm(permuted_local_hidden_states, w1, None, bmm_param)
                 intermediate_parallel = self.activation_func(fc1_output)
                 fc2_output = fused_bmm_reducescatter_alltoall(intermediate_parallel, w2, None, bmm_param)
                 # revert the output shape: [E, C, H/TP] -> [E*C, H/TP]
                 fc2_output = fc2_output.view(-1, fc2_output.shape[2])
             elif gmm_quant_func:
-                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1)
+                fc1_output = gmm_quant_func.gmm_apply(
+                    permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1
+                )
                 intermediate_parallel = self.activation_func(fc1_output)
                 fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
-                fc1_output = gg.ops.gmm(permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False,
-                                        gemm_fusion=gemm_fusion, original_weight=self.weight1)
+                fc1_output = gg.ops.gmm(
+                    permuted_local_hidden_states,
+                    w1,
+                    tokens_per_expert,
+                    trans_b=False,
+                    gemm_fusion=gemm_fusion,
+                    original_weight=self.weight1,
+                )
                 intermediate_parallel = self.activation_func(fc1_output)
-                fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
-                                        gemm_fusion=gemm_fusion, original_weight=self.weight2)
+                fc2_output = gg.ops.gmm(
+                    intermediate_parallel,
+                    w2,
+                    tokens_per_expert,
+                    trans_b=False,
+                    gemm_fusion=gemm_fusion,
+                    original_weight=self.weight2,
+                )
         else:
             # No token is allocated for local experts.
             assert torch.count_nonzero(tokens_per_expert) == 0
@@ -169,29 +196,35 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
             w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
             w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 
-            bmm_param = {'group_ep': ep_group, 'group_tp': tp_group, 'shard_type': 0,
-                         'need_recompute': False}
+            bmm_param = {'group_ep': ep_group, 'group_tp': tp_group, 'shard_type': 0, 'need_recompute': False}
 
             if args.moe_bmm_mc2:
                 # input to alltoall_gather_bmm op input: [E*C, H/TP] -> [E, C, H/TP]
-                permuted_local_hidden_states = permuted_local_hidden_states.view(self.config.num_moe_experts,
-                                                                                 permuted_local_hidden_states.shape[
-                                                                                     0] // self.config.num_moe_experts,
-                                                                                 -1)
+                permuted_local_hidden_states = permuted_local_hidden_states.view(
+                    self.config.num_moe_experts,
+                    permuted_local_hidden_states.shape[0] // self.config.num_moe_experts,
+                    -1,
+                )
 
                 fc1_output = fused_alltoall_gather_bmm(permuted_local_hidden_states, w1, None, bmm_param)
             elif gmm_quant_func:
-                fc1_output = gmm_quant_func.gmm_apply(permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1)
+                fc1_output = gmm_quant_func.gmm_apply(
+                    permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1
+                )
             else:
                 fc1_output = gg.ops.gmm(
-                    permuted_local_hidden_states, w1, tokens_per_expert, trans_b=False, gemm_fusion=gemm_fusion,
-                    original_weight=self.weight1
+                    permuted_local_hidden_states,
+                    w1,
+                    tokens_per_expert,
+                    trans_b=False,
+                    gemm_fusion=gemm_fusion,
+                    original_weight=self.weight1,
                 )
 
             self.activation_checkpoint_manager = CheckpointWithoutOutput()
-            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
-                                                                                  False,
-                                                                                  fc1_output)
+            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(
+                self.activation_func, False, fc1_output
+            )
             if args.moe_bmm_mc2:
                 fc2_output = fused_bmm_reducescatter_alltoall(intermediate_parallel, w2, None, bmm_param)
                 # revert the output shape: [E, C, H/TP] -> [E*C, H/TP]
@@ -199,17 +232,21 @@ def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, pe
             elif gmm_quant_func:
                 fc2_output = gmm_quant_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
-                fc2_output = gg.ops.gmm(intermediate_parallel, w2, tokens_per_expert, trans_b=False,
-                                        gemm_fusion=gemm_fusion, original_weight=self.weight2)
+                fc2_output = gg.ops.gmm(
+                    intermediate_parallel,
+                    w2,
+                    tokens_per_expert,
+                    trans_b=False,
+                    gemm_fusion=gemm_fusion,
+                    original_weight=self.weight2,
+                )
         else:
             assert torch.count_nonzero(tokens_per_expert) == 0
             w1 = self.weight1.view(self.config.hidden_size, -1)
             w2 = self.weight2.view(-1, self.config.hidden_size)
             h = torch.matmul(permuted_local_hidden_states, w1)
             self.activation_checkpoint_manager = CheckpointWithoutOutput()
-            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func,
-                                                                                  False,
-                                                                                  h)
+            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(self.activation_func, False, h)
             h = torch.matmul(intermediate_parallel, w2)
             fc2_output = h
 
