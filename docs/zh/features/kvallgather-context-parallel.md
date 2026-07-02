@@ -22,11 +22,11 @@ KVAllGather长序列并行方案具有良好的通用性，能够灵活支持各
 
 ## 使用方法
 
-| 重要参数                                               | 参数说明                                                    |
-|----------------------------------------------------|---------------------------------------------------------|
-| --context-parallel-size [int]                      | 开启CP对应的数量，默认为1，根据用户需求配置。                                |
-| --context-parallel-algo <b>kvallgather_cp_algo</b> | 长序列并行算法选项，设置为`kvallgather_cp_algo`, 开启KVAllGather长序列并行。 |
-| --seq-length [int]                                 | 输入序列的长度。                                                |
+| 重要参数 | 参数说明 |
+| ---------------------------------------------------- | --------------------------------------------------------- |
+| --context-parallel-size [int] | 开启CP对应的数量，默认为1（不开启并行），需设置大于1才会开启并行，根据用户需求配置。 |
+| --context-parallel-algo kvallgather_cp_algo | 长序列并行算法选项，设置为`kvallgather_cp_algo`, 开启KVAllGather长序列并行。 |
+| --seq-length [int] | 输入序列的长度。 |
 
 ## 使用效果
 
@@ -35,6 +35,6 @@ KVAllGather长序列并行方案具有良好的通用性，能够灵活支持各
 ## 注意事项
 
 1. 开启KVAllGather长序列并行时需要同时设置`--transformer-impl transformer_engine`，否则特性不支持。
-2. 当前仅支持`attention-mask-type`为`causal`。
-3. 对于定长padding训练场景，采用负载均衡的序列切分方式，`--seq-length`要求能被 2 * context-parallel-size整除。 
-4. 对于EOD Reset训练场景，采用常规的序列切分方式，`--seq-length`要求能被 context-parallel-size整除。 
+2. 当前仅支持`--attention-mask-type`为`causal`。
+3. 对于定长padding训练场景，采用负载均衡的序列切分方式，`--seq-length`要求能被 2 * context-parallel-size整除。
+4. 对于EOD Reset训练场景，采用常规的序列切分方式，`--seq-length`要求能被 context-parallel-size整除。

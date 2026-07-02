@@ -22,7 +22,7 @@
 
 ## 使用方法
 
-设置`--quant-states fp8`，开启优化器动量量化，量化数据类型可选`fp8`, `hif8`, `mxfp8`
+设置`--quant-states <fp8|hif8|mxfp8>`，开启优化器动量量化，量化数据类型可选`fp8`, `hif8`, `mxfp8`
 
 设置`--quant-grads`，开启梯度量化压缩，梯度由FP32数据类型量化为FP16
 
@@ -34,5 +34,5 @@
 
 ## 使用限制
 
-1. 梯度量化压缩`--quant-grads`不支持GEMM梯度累加融合`--gemm-gradient-accumulation-fusion`。需要使能`--no-gradient-accumulation-fusion`来关闭梯度累加融合
+1. 梯度量化压缩`--quant-grads`不支持GEMM梯度累加融合`--gemm-gradient-accumulation-fusion`。需要启用`--no-gradient-accumulation-fusion`来关闭梯度累加融合
 2. 梯度量化压缩`--quant-grads`及动量量化压缩`--quant-states`不支持`--swap-optimizer`。若要使用低精度优化器，需要关闭`--swap-optimizer`特性

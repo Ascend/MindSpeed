@@ -31,10 +31,10 @@ Conv3DSequenceParallel模块接口如下：<br>
 - `out_channels`：必选输入，数据类型为int，表示输出通道数。
 - `kernel_size`：可选属性，数据类型为tuple(int,int,int)，默认值：(1, 1, 1)，表示卷积核大小。
 - `stride`：可选属性，数据类型为tuple(int,int,int)，默认值：(1, 1, 1)，表示各个维度卷积步长大小。
-- `dilation`：可选属性，数据类型为float，默认值：1.0，表示扩张率。
+- `dilation`：可选属性，数据类型为int或tuple(int,int,int)，默认值：1，表示扩张率。
 - `bias`：可选属性，数据类型为bool，默认值：True。表示是否开启偏置。
 - `param_async`：可选属性，数据类型为bool，默认值：False。表示是否开启参数异步通信。
-- `dtype`：可选属性，表示数据类型，默认值：torch.bfloat16。表示数据类型。
+- `dtype`：可选属性，数据类型为torch.dtype，默认值：torch.bfloat16，表示卷积层的数据类型。
 - `sp_size`：可选属性，数据类型为int，默认值：1。表示序列并行大小。
 
 ## 使用影响
