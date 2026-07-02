@@ -21,7 +21,6 @@ def get_batch_on_this_cp_rank_wrapper(fn):
 
 
 def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
-        
     """Abstract method implementation
 
     Args:
@@ -45,10 +44,7 @@ def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
         labels = torch.roll(text, shifts=-1, dims=0)
         labels[-1] = self._pad_token_id
 
-    if (
-        not self.masks_and_position_ids_are_cacheable
-        or not self.masks_and_position_ids_are_cached
-    ):
+    if not self.masks_and_position_ids_are_cacheable or not self.masks_and_position_ids_are_cached:
         attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
             tokens,
             self.config.tokenizer.eod,
@@ -89,25 +85,20 @@ def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
             "labels": labels,
             "attention_mask": attention_mask,
             "loss_mask": loss_mask,
-            "position_ids": position_ids
+            "position_ids": position_ids,
         }
     else:
-        return {
-            "tokens": tokens,
-            "labels": labels,
-            "loss_mask": loss_mask,
-            "position_ids": position_ids
-        }
+        return {"tokens": tokens, "labels": labels, "loss_mask": loss_mask, "position_ids": position_ids}
 
 
 def _get_ltor_masks_and_position_ids(
-        data: torch.Tensor,
-        eod_token: int,
-        reset_position_ids: bool,
-        reset_attention_mask: bool,
-        eod_mask_loss: bool,
-        create_attention_mask: bool,
-        vocab_size: int = None,
+    data: torch.Tensor,
+    eod_token: int,
+    reset_position_ids: bool,
+    reset_attention_mask: bool,
+    eod_mask_loss: bool,
+    create_attention_mask: bool,
+    vocab_size: int = None,
 ):
     """Build masks and position id for left to right model.
 
@@ -137,9 +128,7 @@ def _get_ltor_masks_and_position_ids(
     seq_length = data.numel()
 
     if create_attention_mask:
-        attention_mask = torch.tril(
-            torch.ones((seq_length, seq_length), device=data.device)
-        ).unsqueeze(0)
+        attention_mask = torch.tril(torch.ones((seq_length, seq_length), device=data.device)).unsqueeze(0)
     else:
         attention_mask = None
 
@@ -174,10 +163,10 @@ def _get_ltor_masks_and_position_ids(
             i = eod_index[j]
             # Mask attention loss.
             if reset_attention_mask and attention_mask is not None:
-                attention_mask[0, (i + 1):, : (i + 1)] = 0
+                attention_mask[0, (i + 1) :, : (i + 1)] = 0
             # Reset positions.
             if reset_position_ids:
-                position_ids[(i + 1):] -= position_ids[i] + 1
+                position_ids[(i + 1) :] -= position_ids[i] + 1
 
     if vocab_size is not None:
         # Set loss_mask and positions where data == vocab_size to 0
@@ -198,7 +187,7 @@ def _get_ltor_masks_and_position_ids(
 
 
 def collate_wrapper(fn):
-    @wraps(fn)	
+    @wraps(fn)
     def wrapper(samples):
         actual_seq_len = [elem['position_ids'][1] for elem in samples]
         samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
@@ -206,7 +195,9 @@ def collate_wrapper(fn):
         args = get_args()
         if hasattr(args, 'fix_sub_seq_length') and 0 < args.fix_sub_seq_length <= args.seq_length:
             actual_seq_len = get_actual_seq_len(args.seq_length, args.fix_sub_seq_length)
-            batch['actual_seq_len'] = actual_seq_len
+            total_seq_len = actual_seq_len[-1].item()
+            actual_seq_len_list = [actual_seq_len + i * total_seq_len for i in range(len(samples))]
+            batch['actual_seq_len'] = torch.cat(actual_seq_len_list)
 
         else:
             seq_len = actual_seq_len[0][-1]
