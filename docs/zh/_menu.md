@@ -62,6 +62,4 @@
 - [特性开发](./user-guide/feature_development.md)
 - [模型迁移](user-guide/model-migration.md)
 - [性能调优](user-guide/megatron_performance_optimization.md)
-- [FAQs]()
-  - [Data helpers overflow bug](faq/data_helpers.md)
-  - [Torch extensions卡住](faq/torch_extensions.md)
+- [FAQ](FAQ.md)
