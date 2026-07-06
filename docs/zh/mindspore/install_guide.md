@@ -62,11 +62,11 @@ source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=0 # 修改为实际安装
    >
    >如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
 
-   1. 下载MindSpeed源码26.0.0_core_r0.12.1分支（请注意下列命令的大小写）
+   1. 下载MindSpeed源码26.1.0_core_r0.12.1分支（请注意下列命令的大小写）
 
       ```shell
         git clone https://gitcode.com/Ascend/MindSpeed.git
-        git checkout 26.0.0_core_r0.12.1
+        git checkout 26.1.0_core_r0.12.1
       ```
 
    2. 安装MindSpeed
@@ -121,7 +121,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=0 # 修改为实际安装
       cd MindSpeed-Core-MS
 
       # 在MindSpeed-Core-MS目录下，获取指定版本的MindSpeed，Megatron-LM和MSAdapter源码
-      git clone https://gitcode.com/Ascend/MindSpeed.git -b 26.0.0_core_r0.12.1
+      git clone https://gitcode.com/Ascend/MindSpeed.git -b 26.1.0_core_r0.12.1
       git clone https://gitee.com/mirrors/Megatron-LM.git -b core_v0.12.1
       git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
       ```

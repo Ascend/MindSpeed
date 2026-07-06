@@ -6,7 +6,7 @@
 
 |组件|地址|
 |:---|:---|
-|MindSpeed LLM|请参见《[安全声明](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.0.0/docs/zh/SECURITYNOTE.md)》|
-|MindSpeed MM|请参考《[安全声明](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.0.0/docs/zh/SECURITYNOTE.md)》|
-|Driving SDK|请参考《[安全声明](https://gitcode.com/Ascend/DrivingSDK/blob/branch_v26.0.0/docs/zh/security/SECURITYNOTE.md)》|
-|MindSpeed Core|请参考《[安全声明](https://gitcode.com/Ascend/MindSpeed/blob/26.0.0_core_r0.12.1/docs/zh/SECURITYNOTE.md)》|
+|MindSpeed LLM|请参见《[安全声明](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.1.0/docs/zh/SECURITYNOTE.md)》|
+|MindSpeed MM|请参考《[安全声明](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.1.0/SECURITYNOTE.md)》|
+|Driving SDK|请参考《[安全声明](https://gitcode.com/Ascend/DrivingSDK/blob/branch_v26.1.0/SECURITYNOTE.md)》|
+|MindSpeed Core|请参考《[安全声明](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docs/zh/SECURITYNOTE.md)》|

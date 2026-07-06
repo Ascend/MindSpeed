@@ -11,7 +11,7 @@
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>产品版本</p>
 </th>
-<td class="cellrowborder" valign="top" width="73.75%" headers=><p>26.0.0</p>
+<td class="cellrowborder" valign="top" width="73.75%" headers=><p>26.1.0</p>
 </td>
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>版本类型</p>
@@ -21,7 +21,7 @@
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>发布时间</p>
 </th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>2026年4月</p>
+<td class="cellrowborder" valign="top" width="73.75%"><p>2026年7月</p>
 </td>
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>维护周期</p>
@@ -34,7 +34,7 @@
 
 > [!NOTE]
 >
-> 有关MindSpeed的版本维护，具体请参见[分支维护策略](https://gitcode.com/Ascend/MindSpeed/tree/26.0.0_core_r0.12.1#%E5%88%86%E6%94%AF%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5)。
+> 有关MindSpeed的版本维护，具体请参见[分支维护策略](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1#%E5%88%86%E6%94%AF%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5)。
 
 ### 相关产品版本配套说明
 
@@ -43,7 +43,7 @@
 |MindSpeed Core代码分支名称|CANN版本|Ascend Extension for PyTorch版本|Python版本|PyTorch版本|
 |--|--|--|--|--|
 |master（在研版本）|master（在研版本）|在研版本|Python3.10|2.7.1|
-|26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|
+|26.1.0_core_r0.12.1|9.0.0|26.1.0|Python3.10|2.7.1|
 
 >[!NOTE]
 >
@@ -55,7 +55,7 @@
 >
 > 本节表格中“/”表示不可配套，“Y”表示可配套。
 
-**表 2**  MindSpeed Core与Ascend Extention for PyTorch版本兼容
+**表 2**  MindSpeed Core与Ascend Extension for PyTorch版本兼容
 
 <table style="table-layout: fixed; width: 750px">
   <colgroup>
@@ -68,17 +68,17 @@
   <thead>
     <tr>
       <th rowspan="2">MindSpeed Core</th>
-      <th colspan="3">Ascend Extention for PyTorch版本</th>
+      <th colspan="3">Ascend Extension for PyTorch版本</th>
     </tr>
     <tr>
       <th>7.2.0</th>
       <th>7.3.0</th>
-      <th>26.0.0</th>
+      <th>26.1.0</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0</td>
+      <td>26.1.0</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -109,7 +109,7 @@
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0</td>
+      <td>26.1.0</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>

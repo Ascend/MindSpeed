@@ -58,17 +58,17 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
 > [!NOTE]
 >
 > - 使用镜像前，请先确认机器型号。最新镜像仅支持aarch64架构，可通过uname -a命令确认当前环境是否符合要求。
-> - 配套镜像已预装配套的CANN 9.0.0软件及Ascend Extension for PyTorch 26.0.0插件，您可根据需要选用。
+> - 配套镜像已预装配套的CANN 9.0.0软件及Ascend Extension for PyTorch 26.1.0插件，您可根据需要选用。
 > - 若您当前环境与提供的镜像不兼容，请选择[方式二：源码安装](#方式二源码安装)。
 > - master分支后续会更新新的镜像，如果需要自定义构建镜像请参见镜像概述。
 
 1. 拉取镜像
 
-   最新镜像均配套[MindSpeed Core的26.0.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.0.0_core_r0.12.1)，请按需[拉取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
+   最新镜像均配套[MindSpeed Core的26.1.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1)，请按需[拉取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
 
-   - <term>Atlas A2 训练系列产品</term>：26.0.0_core_r0.12.1-910b-openeuler24.03-py3.11-aarch64
+   - <term>Atlas A2 训练系列产品</term>：26.1.0_core_r0.12.1-910b-openeuler24.03-py3.11-aarch64 (待发布)
 
-   - <term>Atlas A3 训练系列产品</term>：26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
+   - <term>Atlas A3 训练系列产品</term>：26.1.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64 (待发布)
 
    ```bash
    # 确认是否成功拉取镜像
@@ -105,7 +105,7 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
          -v /home:/home \
          -v /data:/data \
          -v /mnt:/mnt \
-         mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
+         mindspeed-core:26.1.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
       ```
 
 3. 加载容器并确认环境状态
@@ -149,12 +149,12 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
    >
    > 如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
 
-3. 下载MindSpeed源码26.0.0_core_r0.12.1分支（请注意下列命令的大小写）
+3. 下载MindSpeed源码26.1.0_core_r0.12.1分支（请注意下列命令的大小写）
 
       ```shell
         git clone https://gitcode.com/Ascend/MindSpeed.git
         cd MindSpeed
-        git checkout 26.0.0_core_r0.12.1
+        git checkout 26.1.0_core_r0.12.1
         cd ..
       ```
 
