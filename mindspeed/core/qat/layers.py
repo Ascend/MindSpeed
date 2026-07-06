@@ -25,9 +25,11 @@ from megatron.core.utils import prepare_input_tensors_for_wgrad_compute
 from megatron.core.tensor_parallel.layers import dist_all_gather_func, dist_reduce_scatter_func
 from mindspeed.core.qat.w4a16_fake_quantization import W4A16FakeQuantization
 from mindspeed.core.qat.w8a16_fake_quantization import W8A16FakeQuantization
+from mindspeed.core.qat.w4a4_fake_quantization import W4A4FakeQuantization
 
 w4a16_fakequant_func = W4A16FakeQuantization.apply
 w8a16_fakequant_func = W8A16FakeQuantization.apply
+w4a4_fakequant_func = W4A4FakeQuantization.apply
 
 
 def _linear_with_grad_accumulation_and_async_qat_forward(
@@ -41,8 +43,11 @@ def _linear_with_grad_accumulation_and_async_qat_forward(
     grad_output_buffer,
     wgrad_deferral_limit,
     fakequant_func,
+    input_fakequant_func=None,
 ):
     quant_weight = fakequant_func(weight, [1, 32], False)
+    if input_fakequant_func is not None:
+        input = input_fakequant_func(input, [1, 32], False)
     ctx.save_for_backward(input, quant_weight)
 
     ctx.use_bias = bias is not None
@@ -227,4 +232,34 @@ def linear_with_grad_accumulation_and_async_w8a16_forward(
 
 
 def linear_with_grad_accumulation_and_async_w8a16_backward(ctx, grad_output):
+    return _linear_with_grad_accumulation_and_async_qat_backward(ctx, grad_output)
+
+
+def linear_with_grad_accumulation_and_async_w4a4_forward(
+    ctx,
+    input,
+    weight,
+    bias,
+    gradient_accumulation_fusion,
+    allreduce_dgrad,
+    sequence_parallel,
+    grad_output_buffer,
+    wgrad_deferral_limit,
+):
+    return _linear_with_grad_accumulation_and_async_qat_forward(
+        ctx,
+        input,
+        weight,
+        bias,
+        gradient_accumulation_fusion,
+        allreduce_dgrad,
+        sequence_parallel,
+        grad_output_buffer,
+        wgrad_deferral_limit,
+        w4a16_fakequant_func,
+        w4a4_fakequant_func,
+    )
+
+
+def linear_with_grad_accumulation_and_async_w4a4_backward(ctx, grad_output):
     return _linear_with_grad_accumulation_and_async_qat_backward(ctx, grad_output)
