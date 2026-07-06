@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 import warnings
 from functools import lru_cache
 
@@ -12,12 +14,11 @@ def view_as_n_dim(input_tensor, dim=2):
     if dim < 2:
         raise AssertionError("dim should be greater than or equal to 2")
     if len(input_tensor.shape) != dim:
-        return input_tensor.view(-1, *input_tensor.shape[-dim + 1:])
+        return input_tensor.view(-1, *input_tensor.shape[-dim + 1 :])
     return input_tensor
 
 
 class QuantDtype:
-
     def __init__(self, x: torch.dtype, w: torch.dtype, grads: torch.dtype):
         self.x = x
         self.w = w
@@ -52,6 +53,7 @@ def get_hccl_comm_name(group, rank):
 
 def all_gather_along_dim(input_, async_op=False, axis=0):
     from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
+
     group = get_tensor_model_parallel_group()
     world_size = get_tensor_model_parallel_world_size()
     dim_size = list(input_.size())
@@ -72,9 +74,7 @@ def gather_split_1d_tensor(tensor, tp_group=None):
     """
     tp_group = get_tensor_model_parallel_group_if_none(tp_group)
     numel_gathered = torch.numel(tensor) * tp_group.size()
-    gathered = torch.empty(
-        numel_gathered, dtype=tensor.dtype, device=torch.cuda.current_device(), requires_grad=False
-    )
+    gathered = torch.empty(numel_gathered, dtype=tensor.dtype, device=torch.cuda.current_device(), requires_grad=False)
     torch.distributed._all_gather_base(gathered, tensor, group=tp_group)
     return gathered
 
@@ -87,19 +87,14 @@ def get_tensor_model_parallel_group_if_none(tp_group, is_expert=False, check_ini
     if tp_group is None:
         if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
             warnings.warn(
-                "Warning: tp_group is None, using default tp group. "
-                "Passing tp_group will be mandatory soon",
+                "Warning: tp_group is None, using default tp group. Passing tp_group will be mandatory soon",
                 DeprecationWarning,
                 stacklevel=2,
             )
         if is_expert:
-            tp_group = parallel_state.get_expert_tensor_parallel_group(
-                check_initialized=check_initialized
-            )
+            tp_group = parallel_state.get_expert_tensor_parallel_group(check_initialized=check_initialized)
         else:
-            tp_group = parallel_state.get_tensor_model_parallel_group(
-                check_initialized=check_initialized
-            )
+            tp_group = parallel_state.get_tensor_model_parallel_group(check_initialized=check_initialized)
     return tp_group
 
 
