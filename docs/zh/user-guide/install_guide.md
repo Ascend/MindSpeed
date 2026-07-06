@@ -149,12 +149,12 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
    >
    > 如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
 
-3. 下载MindSpeed源码26.0.0_core_r0.12.1分支（请注意下列命令的大小写）
+3. 下载MindSpeed源码master分支（请注意下列命令的大小写）
 
       ```shell
         git clone https://gitcode.com/Ascend/MindSpeed.git
         cd MindSpeed
-        git checkout 26.0.0_core_r0.12.1
+        git checkout master
         cd ..
       ```
 
