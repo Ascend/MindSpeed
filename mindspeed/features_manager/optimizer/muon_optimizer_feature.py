@@ -1,3 +1,4 @@
+# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 
 """Feature gate for backporting Muon optimizer support to Megatron 0.12.x."""
