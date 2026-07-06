@@ -138,7 +138,9 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
 
       ```shell
         git clone https://gitcode.com/Ascend/MindSpeed.git
+        cd MindSpeed
         git checkout 26.0.0_core_r0.12.1
+        cd ..
       ```
 
 4. 安装MindSpeed
