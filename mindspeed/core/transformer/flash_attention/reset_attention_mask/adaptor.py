@@ -9,7 +9,7 @@ from einops import rearrange
 
 from megatron.training import get_args
 from megatron.training.global_vars import get_args as get_global_args
-from megatron.core import parallel_state
+from megatron.core import parallel_state, tensor_parallel
 from megatron.core.parallel_state import (
     get_pipeline_model_parallel_rank,
     get_pipeline_model_parallel_world_size,
@@ -21,7 +21,6 @@ from megatron.core.tensor_parallel.mappings import (
 )
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_block import TransformerBlock
-from megatron.core.inference_params import InferenceParams
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import deprecate_inference_params
@@ -30,19 +29,18 @@ from megatron.core.transformer.multi_latent_attention import MLASelfAttention
 
 from mindspeed.utils import get_position_ids, set_position_ids
 from mindspeed.core.context_parallel.get_batch_utils import get_actual_seq_len, set_actual_seq_len
-from mindspeed.core.context_parallel.rotary_pos_embedding_utils import get_pos_emb_on_this_cp_rank
 from mindspeed.core.fusions.fused_rope import apply_rotary_pos_emb_bshd, apply_rotary_pos_emb
 
 
 def _p2p_ops_eod(
-        *,
-        tensor_send_prev: Optional[torch.Tensor],
-        tensor_recv_prev: Optional[torch.Tensor],
-        tensor_send_next: Optional[torch.Tensor],
-        tensor_recv_next: Optional[torch.Tensor],
-        group: torch.distributed.ProcessGroup,
-        prev_pipeline_rank: int,
-        next_pipeline_rank: int,
+    *,
+    tensor_send_prev: Optional[torch.Tensor],
+    tensor_recv_prev: Optional[torch.Tensor],
+    tensor_send_next: Optional[torch.Tensor],
+    tensor_recv_next: Optional[torch.Tensor],
+    group: torch.distributed.ProcessGroup,
+    prev_pipeline_rank: int,
+    next_pipeline_rank: int,
 ):
     reqs = {}
     rank = get_pipeline_model_parallel_rank()
@@ -74,25 +72,33 @@ def _p2p_ops_eod(
     if rank % 2 == 0:
         if tensor_length is not None:
             send_next_req = torch.distributed.isend(
-                tensor=tensor_length, dst=next_pipeline_rank, group=group,
+                tensor=tensor_length,
+                dst=next_pipeline_rank,
+                group=group,
             )
             reqs["send_next"] = send_next_req
 
         if length_buffer is not None:
             recv_prev_req = torch.distributed.irecv(
-                tensor=length_buffer, src=prev_pipeline_rank, group=group,
+                tensor=length_buffer,
+                src=prev_pipeline_rank,
+                group=group,
             )
             reqs["recv_prev"] = recv_prev_req
     else:
         if length_buffer is not None:
             recv_prev_req = torch.distributed.irecv(
-                tensor=length_buffer, src=prev_pipeline_rank, group=group,
+                tensor=length_buffer,
+                src=prev_pipeline_rank,
+                group=group,
             )
             reqs["recv_prev"] = recv_prev_req
 
         if tensor_length is not None:
             send_next_req = torch.distributed.isend(
-                tensor=tensor_length, dst=next_pipeline_rank, group=group,
+                tensor=tensor_length,
+                dst=next_pipeline_rank,
+                group=group,
             )
             reqs["send_next"] = send_next_req
 
@@ -104,26 +110,35 @@ def _p2p_ops_eod(
     if rank % 2 == 0:
         if tensor_send_next is not None:
             req = torch.distributed.isend(
-                tensor=prev_actual_seq_len, dst=next_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=prev_actual_seq_len,
+                dst=next_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             reqs["req"] = req
 
             req = torch.distributed.isend(
-                tensor=prev_position_ids, dst=next_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=prev_position_ids,
+                dst=next_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             reqs["req"] = req
 
             send_next_req = torch.distributed.isend(
-                tensor=tensor_send_next, dst=next_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=tensor_send_next,
+                dst=next_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             reqs["send_next"] = send_next_req
 
         if tensor_recv_prev is not None:
-            actual_seq_len_buffer = torch.empty([length_buffer.item()], dtype=torch.int64,
-                                                device=torch.cuda.current_device())
+            actual_seq_len_buffer = torch.empty(
+                [length_buffer.item()], dtype=torch.int64, device=torch.cuda.current_device()
+            )
 
             req = torch.distributed.irecv(
-                tensor=actual_seq_len_buffer, src=prev_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=actual_seq_len_buffer,
+                src=prev_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             reqs["req"] = req
             set_actual_seq_len(actual_seq_len_buffer)
@@ -132,38 +147,50 @@ def _p2p_ops_eod(
             # If SP on, sequence would be divided by tp_size
             if args.sequence_parallel:
                 dynamic_seq_len *= args.tensor_model_parallel_size
-            position_ids_buffer = torch.empty((dynamic_seq_len, bsz), dtype=torch.int64,
-                                              device=torch.cuda.current_device())
+            position_ids_buffer = torch.empty(
+                (dynamic_seq_len, bsz), dtype=torch.int64, device=torch.cuda.current_device()
+            )
             req = torch.distributed.irecv(
-                tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=position_ids_buffer,
+                src=prev_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             set_position_ids(position_ids_buffer)
             reqs["req"] = req
 
             recv_prev_req = torch.distributed.irecv(
-                tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=tensor_recv_prev,
+                src=prev_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             reqs["recv_prev"] = recv_prev_req
 
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
-                tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=tensor_send_prev,
+                dst=prev_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             reqs["send_prev"] = send_prev_req
 
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
-                tensor=tensor_recv_next, src=next_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=tensor_recv_next,
+                src=next_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             reqs["recv_next"] = recv_next_req
 
     else:
         if tensor_recv_prev is not None:
-            actual_seq_len_buffer = torch.empty([length_buffer.item()], dtype=torch.int64,
-                                                device=torch.cuda.current_device())
+            actual_seq_len_buffer = torch.empty(
+                [length_buffer.item()], dtype=torch.int64, device=torch.cuda.current_device()
+            )
 
             req = torch.distributed.irecv(
-                tensor=actual_seq_len_buffer, src=prev_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=actual_seq_len_buffer,
+                src=prev_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             reqs["req"] = req
             set_actual_seq_len(actual_seq_len_buffer)
@@ -172,63 +199,78 @@ def _p2p_ops_eod(
             # If SP on, sequence would be divided by tp_size
             if args.sequence_parallel:
                 dynamic_seq_len *= args.tensor_model_parallel_size
-            position_ids_buffer = torch.empty((dynamic_seq_len, bsz), dtype=torch.int64,
-                                              device=torch.cuda.current_device())
+            position_ids_buffer = torch.empty(
+                (dynamic_seq_len, bsz), dtype=torch.int64, device=torch.cuda.current_device()
+            )
             req = torch.distributed.irecv(
-                tensor=position_ids_buffer, src=prev_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=position_ids_buffer,
+                src=prev_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             set_position_ids(position_ids_buffer)
             reqs["req"] = req
 
             recv_prev_req = torch.distributed.irecv(
-                tensor=tensor_recv_prev, src=prev_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=tensor_recv_prev,
+                src=prev_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             reqs["recv_prev"] = recv_prev_req
 
         if tensor_send_next is not None:
             req = torch.distributed.isend(
-                tensor=prev_actual_seq_len, dst=next_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=prev_actual_seq_len,
+                dst=next_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             reqs["req"] = req
 
             req = torch.distributed.isend(
-                tensor=prev_position_ids, dst=next_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=prev_position_ids,
+                dst=next_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             reqs["req"] = req
 
             send_next_req = torch.distributed.isend(
-                tensor=tensor_send_next, dst=next_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=tensor_send_next,
+                dst=next_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             reqs["send_next"] = send_next_req
 
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
-                tensor=tensor_recv_next, src=next_pipeline_rank, group=even_send_odd_recv_group,
+                tensor=tensor_recv_next,
+                src=next_pipeline_rank,
+                group=even_send_odd_recv_group,
             )
             reqs["recv_next"] = recv_next_req
 
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
-                tensor=tensor_send_prev, dst=prev_pipeline_rank, group=even_recv_odd_send_group,
+                tensor=tensor_send_prev,
+                dst=prev_pipeline_rank,
+                group=even_recv_odd_send_group,
             )
             reqs["send_prev"] = send_prev_req
     return reqs
 
 
 def attention_forward(
-        self,
-        hidden_states,
-        attention_mask,
-        key_value_states=None,
-        inference_context=None,
-        rotary_pos_emb=None,
-        rotary_pos_cos=None,
-        rotary_pos_sin=None,
-        attention_bias=None,
-        packed_seq_params=None,
-        sequence_len_offset: Optional[int] = None,
-        *,
-        inference_params=None,
+    self,
+    hidden_states,
+    attention_mask,
+    key_value_states=None,
+    inference_context=None,
+    rotary_pos_emb=None,
+    rotary_pos_cos=None,
+    rotary_pos_sin=None,
+    attention_bias=None,
+    packed_seq_params=None,
+    sequence_len_offset: Optional[int] = None,
+    *,
+    inference_params=None,
 ):
     # For self attention we just duplicate the rotary_pos_emb if it isn't already
     if rotary_pos_emb is not None and not isinstance(rotary_pos_emb, tuple):
@@ -261,14 +303,20 @@ def attention_forward(
         else:
             cu_seqlens_q = cu_seqlens_kv = None
         query = apply_rotary_pos_emb(
-            query, q_pos_emb, config=self.config, cu_seqlens=cu_seqlens_q,
+            query,
+            q_pos_emb,
+            config=self.config,
+            cu_seqlens=cu_seqlens_q,
         )
         key = apply_rotary_pos_emb(
-            key, k_pos_emb, config=self.config, cu_seqlens=cu_seqlens_kv,
+            key,
+            k_pos_emb,
+            config=self.config,
+            cu_seqlens=cu_seqlens_kv,
         )
-    
-    cp_size = int(getattr(self.config, 'context_parallel_size', 1))	 
-    cp_algo = getattr(self.config, 'context_parallel_algo', None) 
+
+    cp_size = int(getattr(self.config, 'context_parallel_size', 1))
+    cp_algo = getattr(self.config, 'context_parallel_algo', None)
     is_ulysses_algo = cp_size > 1 and cp_algo == 'ulysses_cp_algo'
     if packed_seq_params is not None and not is_ulysses_algo:
         query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
@@ -317,23 +365,21 @@ class MindSpeedMLASelfAttention(MLASelfAttention):
     """
 
     def get_query_key_value_tensors(
-            self,
-            hidden_states,
-            key_value_states=None,
-            position_ids=None,
-            packed_seq_params=None,
-            inference_context=None,
-            *,
-            inference_params=None,
+        self,
+        hidden_states,
+        key_value_states=None,
+        position_ids=None,
+        packed_seq_params=None,
+        inference_context=None,
+        *,
+        inference_params=None,
     ):
         """
         Derives `query`, `key` and `value` tensors from `hidden_states`.
         """
         # s = sequence length, b = batch size, h = hidden size, n = num attention heads
         # Attention heads [s, b, n*h]
-        assert (
-                hidden_states.ndim == 3
-        ), f"hidden_states should be 3D, [s, b, n*h], got {hidden_states.ndim}D"
+        assert hidden_states.ndim == 3, f"hidden_states should be 3D, [s, b, n*h], got {hidden_states.ndim}D"
 
         inference_context = deprecate_inference_params(inference_context, inference_params)
 
@@ -450,14 +496,10 @@ class MindSpeedMLASelfAttention(MLASelfAttention):
             k_pos_emb = torch.unsqueeze(k_pos_emb, 2)
 
             # q: [s, b, n, 128], q_pos_emb: [s, b, n, 64]
-            q_no_pe, q_pos_emb = torch.split(
-                q, [self.config.qk_head_dim, self.config.qk_pos_emb_head_dim], dim=-1
-            )
+            q_no_pe, q_pos_emb = torch.split(q, [self.config.qk_head_dim, self.config.qk_pos_emb_head_dim], dim=-1)
 
             # k_no_pe: [s, b, n, 128], value: [s, b, n, 128]
-            k_no_pe, value = torch.split(
-                kv, [self.config.qk_head_dim, self.config.v_head_dim], dim=-1
-            )
+            k_no_pe, value = torch.split(kv, [self.config.qk_head_dim, self.config.v_head_dim], dim=-1)
 
             # q_pos_emb: [s, b, n, 64], k_pos_emb:[s, b, 1, 64]
             q_pos_emb = apply_rotary_pos_emb(
@@ -493,34 +535,30 @@ class MindSpeedMLASelfAttention(MLASelfAttention):
                 qkv_up_proj_and_rope_apply, q_compressed, kv_compressed, k_pos_emb, rotary_pos_emb
             )
         else:
-            query, key, value = qkv_up_proj_and_rope_apply(
-                q_compressed, kv_compressed, k_pos_emb, rotary_pos_emb
-            )
+            query, key, value = qkv_up_proj_and_rope_apply(q_compressed, kv_compressed, k_pos_emb, rotary_pos_emb)
 
         return query, key, value
 
     def forward(
-            self,
-            hidden_states,
-            attention_mask,
-            key_value_states=None,
-            inference_context=None,
-            rotary_pos_emb=None,
-            rotary_pos_cos=None,
-            rotary_pos_sin=None,
-            attention_bias=None,
-            packed_seq_params=None,
-            position_ids=None,
-            sequence_len_offset=None,
-            *,
-            inference_params=None,
+        self,
+        hidden_states,
+        attention_mask,
+        key_value_states=None,
+        inference_context=None,
+        rotary_pos_emb=None,
+        rotary_pos_cos=None,
+        rotary_pos_sin=None,
+        attention_bias=None,
+        packed_seq_params=None,
+        position_ids=None,
+        sequence_len_offset=None,
+        *,
+        inference_params=None,
     ):
         """Forward pass for multi-latent attention"""
         assert rotary_pos_emb is None, "Rotary position embeddings should not be passed into MLA."
         assert attention_bias is None, "Attention bias should not be passed into MLA."
-        assert (
-                rotary_pos_cos is None and rotary_pos_sin is None
-        ), "MLA does not support Flash Decoding"
+        assert rotary_pos_cos is None and rotary_pos_sin is None, "MLA does not support Flash Decoding"
 
         # hidden_states: [sq, b, h]
 
@@ -549,8 +587,8 @@ class MindSpeedMLASelfAttention(MLASelfAttention):
         )
 
         bsz = query.shape[1]
-        cp_size = int(getattr(self.config, 'context_parallel_size', 1))	 
-        cp_algo = getattr(self.config, 'context_parallel_algo', None) 
+        cp_size = int(getattr(self.config, 'context_parallel_size', 1))
+        cp_algo = getattr(self.config, 'context_parallel_algo', None)
         is_ulysses_algo = cp_size > 1 and cp_algo == 'ulysses_cp_algo'
         if packed_seq_params is not None and not is_ulysses_algo:
             query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
@@ -599,11 +637,7 @@ def gpt_forward_wrapper(fn):
     def wrapper(*args, **kwargs):
         actual_seq_len = get_actual_seq_len()
 
-        packed_seq_params = PackedSeqParams(
-            qkv_format='thd',
-            cu_seqlens_q=actual_seq_len,
-            cu_seqlens_kv=actual_seq_len
-        )
+        packed_seq_params = PackedSeqParams(qkv_format='thd', cu_seqlens_q=actual_seq_len, cu_seqlens_kv=actual_seq_len)
 
         actual_seq_len_list = actual_seq_len.tolist()
         max_actual_seq_len = actual_seq_len_list[0]
@@ -661,8 +695,13 @@ def get_ring_degree():
 
 
 def apply_rotary_pos_emb_thd(
-        t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False,
-        multi_latent_attention: bool = False, mscale: float = 1.0
+    t: Tensor,
+    cu_seqlens: Tensor,
+    freqs: Tensor,
+    rotary_interleaved: bool = False,
+    multi_latent_attention: bool = False,
+    mscale: float = 1.0,
+    cp_group: torch.distributed.ProcessGroup = None,
 ) -> Tensor:
     """A baseline implementation of applying RoPE for `thd` format.
 
@@ -671,6 +710,7 @@ def apply_rotary_pos_emb_thd(
         cu_seqlens(Tensor):  Cumulative sum of sequence lengths in a batch for `t`,
         with shape [b + 1] and dtype torch.int32.
         freqs (Tensor): Rotary Positional embedding tensor freq is of shape [max_s, 1, 1, d]
+        cp_group (torch.distributed.ProcessGroup): The context parallel group (unused in this path).
 
     Returns:
         Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
@@ -684,13 +724,13 @@ def apply_rotary_pos_emb_thd(
 
 
 def Eod_get_rotary_seq_len(
-        self,
-        inference_context: BaseInferenceContext,
-        transformer: TransformerBlock,
-        transformer_input: Tensor,
-        transformer_config: TransformerConfig,
-        packed_seq_params: PackedSeqParams,
-        inference_params: Optional[BaseInferenceContext] = None,
+    self,
+    inference_context: BaseInferenceContext,
+    transformer: TransformerBlock,
+    transformer_input: Tensor,
+    transformer_config: TransformerConfig,
+    packed_seq_params: PackedSeqParams,
+    inference_params: Optional[BaseInferenceContext] = None,
 ) -> float:
     """Function to get the rotary sequence length with Eod.
 
@@ -736,10 +776,7 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = F
     if self.inv_freq.device.type == 'cpu':
         # move `inv_freq` to GPU once at the first micro-batch forward pass
         self.inv_freq = self.inv_freq.to(device=torch.cuda.current_device())
-    seq = (
-            torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
-            + offset
-    )
+    seq = torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype) + offset
 
     if self.seq_len_interpolation_factor is not None:
         seq *= 1 / self.seq_len_interpolation_factor
@@ -750,9 +787,7 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = F
     if not self.rotary_interleaved:
         emb = torch.cat((freqs, freqs), dim=-1)
     else:
-        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(
-            freqs.shape[0], -1
-        )
+        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(freqs.shape[0], -1)
     # emb [seq_length, .., dim]
     emb = emb[:, None, None, :]
 

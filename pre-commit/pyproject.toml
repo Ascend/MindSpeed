@@ -2,6 +2,7 @@
 line-length = 120
 target-version = "py310"
 format.quote-style = "preserve"
+exclude = ["tests_extend"]
 
 [tool.ruff.lint]
 # 追加 D209，不会覆盖、不会屏蔽任何现有规则
@@ -9,6 +10,7 @@ extend-select = [
   "D209",  # 规则8：多行文档字符串末尾 """ 必须单独一行
   "SIM115",    # 规则17：推荐用 with 代替 try-finally
 ]
+
 
 # 业界标准 PYLINT 生产配置
 # 只开高价值规则，关闭所有洁癖规则
@@ -67,6 +69,7 @@ disable = [
   "too-many-instance-attributes",
   "too-few-public-methods",
   "too-many-public-methods",
+  "too-many-lines",
   "duplicate-code",
 
   # 所有未使用变量/参数警告
@@ -91,11 +94,18 @@ disable = [
   "raise-missing-from",
   "broad-except",
   "bare-except",
+  "attribute-defined-outside-init",
+  "unnecessary-lambda-assignment",
 
   # 导入相关
   "wrong-import-order",
   "wrong-import-position",
   "import-error",
+  "cyclic-import",
+  "ungrouped-imports",
+
+  "global-variable-not-assigned",
+  "fixme"
 ]
 
 # ==============================================

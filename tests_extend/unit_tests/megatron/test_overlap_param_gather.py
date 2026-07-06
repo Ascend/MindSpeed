@@ -1,7 +1,7 @@
 import copy
 import pytest
 import torch
-from apex.optimizers import FusedAdam as Adam
+from transformer_engine.pytorch.optimizers import FusedAdam as Adam
 
 from megatron.core import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig

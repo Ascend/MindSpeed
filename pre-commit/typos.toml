@@ -49,6 +49,7 @@ Pn = "Pn"
 arange = "arange"
 # transformer-engine
 te = "te"
+nd = "nd"
 
 [type.py]
 extend-glob = []

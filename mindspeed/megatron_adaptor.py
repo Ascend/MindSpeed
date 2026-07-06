@@ -1,15 +1,12 @@
 """Adaptor for all megatron functions by feature granularity."""
 
 import os
-import sys
 import shutil
 from multiprocessing import Lock
 from logging import getLogger
 from pathlib import Path
 
 from torch.utils.cpp_extension import _get_build_directory
-from torch_npu.contrib import transfer_to_npu
-
 from mindspeed.args_utils import get_full_args
 from mindspeed.args_utils import get_mindspeed_args
 from mindspeed.log_config import set_log_config

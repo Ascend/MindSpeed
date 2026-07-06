@@ -8,18 +8,14 @@ from argparse import Namespace
 from typing import Optional, List, Union
 from torch import Tensor
 
-from megatron.core import InferenceParams
-from megatron.core.inference.contexts import BaseInferenceContext
-from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.parallel_state import get_moe_layer_wise_logging_tracker
+from megatron.core.transformer.moe.moe_utils import get_moe_layer_wise_logging_tracker
 from megatron.core.transformer.module import MegatronModule
-from megatron.core.transformer.moe.moe_utils import (
-    clear_aux_losses_tracker, reduce_aux_losses_tracker_across_ranks)
+from megatron.core.transformer.moe.moe_utils import clear_aux_losses_tracker, reduce_aux_losses_tracker_across_ranks
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlock
+
 try:
-    from megatron.training.training import \
-        num_floating_point_operations as origin_flop_calculator
+    from megatron.training.training import num_floating_point_operations as origin_flop_calculator
 except ImportError:
     origin_flop_calculator = None
 from mindspeed.args_utils import get_full_args as get_args
@@ -47,12 +43,7 @@ class NoopTransformerLayer(MegatronModule):
         self.layer_number = layer_number
 
     def forward(
-        self,
-        hidden_states: Tensor,
-        attention_mask: Optional[Tensor],
-        context: Optional[Tensor] = None,
-        *args,
-        **kwargs
+        self, hidden_states: Tensor, attention_mask: Optional[Tensor], *args, context: Optional[Tensor] = None, **kwargs
     ):
         """
         Perform the forward pass through the noop transformer block.
@@ -155,5 +146,5 @@ def mindspeed_track_moe_metrics(
         track_names=track_names,
         num_layers=num_layers,
         moe_layer_freq=moe_layer_freq,
-        noop_layers=args.noop_layers
+        noop_layers=args.noop_layers,
     )

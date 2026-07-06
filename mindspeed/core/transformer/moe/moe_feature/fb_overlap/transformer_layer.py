@@ -5,12 +5,13 @@ from contextlib import nullcontext
 import torch
 from torch import Tensor
 
+from transformer_engine.pytorch import fp8_autocast
+from transformer_engine.pytorch.quantization.manager import FP8GlobalStateManager
+
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.fp8_utils import get_fp8_context
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import NoopTransformerLayer
-from mindspeed.te.pytorch.fp8.checkpoint import activation_recompute_forward
-from mindspeed.te.pytorch.fp8.fp8 import fp8_autocast
-from mindspeed.te.pytorch.fp8.state_manager import FP8GlobalStateManager
+from mindspeed.core.fp8_checkpoint import activation_recompute_forward
 from mindspeed.core.transformer.moe.moe_feature import (
     InferenceParams,
     tensor_parallel,

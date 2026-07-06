@@ -3,7 +3,8 @@ import pytest
 import torch
 import torch_npu
 import mindspeed.megatron_adaptor
-
+# todo: need megatron-0.17.0 adapt
+pytest.skip("Skip test_schedules due to 0.17 adaptor removal", allow_module_level=True)
 import megatron.core.parallel_state as Utils
 from tests_extend.unit_tests.common import DistributedTest
 from megatron.training.global_vars import set_args

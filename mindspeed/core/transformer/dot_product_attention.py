@@ -18,23 +18,28 @@ from megatron.training import get_args
 from megatron.core import mpu, parallel_state
 from mindspeed.core.models.common.embeddings.rotary_pos_embedding import yarn_get_mscale
 from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import ringattn_context_parallel
-from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
+from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import (
+    ulyssesattn_context_parallel,
+)
 from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import get_cache_policy
 from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
-from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ring,
-                                           get_context_parallel_for_hybrid_ring_world_size,
-                                           get_context_parallel_for_hybrid_ring_rank,
-                                           get_context_parallel_for_hybrid_ring_global_ranks,
-                                           get_ring_ranks_for_intra_window,
-                                           get_ring_ranks_for_inter_window_kv,
-                                           get_ring_ranks_for_inter_window_dkv,
-                                           get_ring_group_for_intra_window,
-                                           get_ring_group_for_intra_window_send_recv_overlap)
+from mindspeed.core.parallel_state import (
+    get_context_parallel_group_for_hybrid_ring,
+    get_context_parallel_for_hybrid_ring_world_size,
+    get_context_parallel_for_hybrid_ring_rank,
+    get_context_parallel_for_hybrid_ring_global_ranks,
+    get_ring_ranks_for_intra_window,
+    get_ring_ranks_for_inter_window_kv,
+    get_ring_ranks_for_inter_window_dkv,
+    get_ring_group_for_intra_window,
+    get_ring_group_for_intra_window_send_recv_overlap,
+)
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.model.transformer import get_attention_mask
-from mindspeed.utils import get_actual_seq_len
-from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
+from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import (
+    adaptive_attn_context_parallel,
+)
 from mindspeed.core.context_parallel.utils import get_scheduling_info
 
 try:
@@ -51,19 +56,15 @@ def dot_product_attention_init(
     attention_type: str,
     attention_dropout: float = None,
     softmax_scale: float = None,
-    cp_comm_type: str = None
+    cp_comm_type: str = None,
 ):
     cp_size = config.context_parallel_size
     config.context_parallel_size = 1
 
     super(DotProductAttention, self).__init__(config=config)
-    assert (
-            self.config.context_parallel_size == 1
-    ), "Context parallelism is only supported by TEDotProductAttention!"
+    assert self.config.context_parallel_size == 1, "Context parallelism is only supported by TEDotProductAttention!"
 
-    assert (
-            self.config.window_size is None
-    ), "Sliding Window Attention is only supported by TEDotProductAttention!"
+    assert self.config.window_size is None, "Sliding Window Attention is only supported by TEDotProductAttention!"
 
     self.layer_number = max(1, layer_number)
     self.attn_mask_type = attn_mask_type
@@ -116,6 +117,9 @@ def dot_product_attention_init(
     self.pse = None
     self.pse_type = args.alibi_fusion_attn_type
 
+    # ulysses_comm_para is set externally by ulysses_context_parallel
+    self.ulysses_comm_para = {}
+
     if args.multi_head_latent_attention:
         self.scale_mask_softmax.scale = True
         self.hidden_size_per_partition = config.num_attention_heads * args.v_head_dim
@@ -133,15 +137,13 @@ def dot_product_attention_init(
         self.norm_factor = 1.0 / self.softmax_scale
 
     if self.pse_type is None:
-        self.pse_type = 1 # not use pse
+        self.pse_type = 1  # not use pse
     elif self.pse_type == 0:
-        alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(args.seq_length,
-                                                config.num_attention_heads,
-                                                config.params_dtype,
-                                                args.alibi_diagonal_opposite,
-                                                1024)
+        alibi = AlibiForFusionAttnSingleton.get_alibi_tensor_for_fusion_attn(
+            args.seq_length, config.num_attention_heads, config.params_dtype, args.alibi_diagonal_opposite, 1024
+        )
         self.pse = alibi
-    elif self.pse_type == 2 or self.pse_type == 3:
+    elif self.pse_type in (2, 3):
         self.pse = AlibiForFusionAttnSingleton.get_alibi_slopes_for_fusion_attn(config.num_attention_heads)
 
 
@@ -151,7 +153,10 @@ def dot_product_attention_init_wrapper(fn):
         fn(self, *args, **kwargs)
         if self.config.num_query_groups is None:
             self.config.num_query_groups = self.config.num_attention_heads
-        self.num_attention_heads_per_partition = self.config.num_attention_heads * self.num_query_groups_per_partition // self.config.num_query_groups
+        self.num_attention_heads_per_partition = (
+            self.config.num_attention_heads * self.num_query_groups_per_partition // self.config.num_query_groups
+        )
+
     return wrapper
 
 
@@ -162,21 +167,23 @@ def dot_product_attention_forward_wrapper(fn):
             if not getattr(self.config, 'is_llava', False):
                 attention_mask = get_attention_mask()
         if get_args().use_flash_attn:
-            return dot_product_attention_forward(self, query, key, value, attention_mask, attn_mask_type, attention_bias, packed_seq_params)
+            return dot_product_attention_forward(
+                self, query, key, value, attention_mask, attn_mask_type, attention_bias, packed_seq_params
+            )
         return fn(self, query, key, value, attention_mask, attn_mask_type, attention_bias, packed_seq_params)
 
     return wrapper
 
 
 def dot_product_attention_forward(
-        self,
-        query: Tensor,
-        key: Tensor,
-        value: Tensor,
-        attention_mask,
-        attn_mask_type,
-        attention_bias,
-        packed_seq_params,
+    self,
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    attention_mask,
+    attn_mask_type,
+    attention_bias,
+    packed_seq_params,
 ):
     assert attention_bias is None, "Attention bias is not supported for DotProductAttention."
 
@@ -185,7 +192,7 @@ def dot_product_attention_forward(
     seq_length, bsz, n_head = query.shape[0], query.shape[1], query.shape[2]
 
     sparse_mode = args.sparse_mode
-    
+
     if attn_mask_type == AttnMaskType.no_mask:
         sparse_mode = 0  # default mask
 
@@ -197,8 +204,11 @@ def dot_product_attention_forward(
     else:
         tp_y_cp_sz = self.config.context_parallel_size
 
-    if (self.config.context_parallel_size > 1 and args.context_parallel_algo == "ulysses_cp_algo"
-            and args.context_parallel_kv_cache_policy):
+    if (
+        self.config.context_parallel_size > 1
+        and args.context_parallel_algo == "ulysses_cp_algo"
+        and args.context_parallel_kv_cache_policy
+    ):
         self.ulysses_comm_para['cache_policy'] = get_cache_policy(
             self.layer_number, args.context_parallel_kv_cache_policy, args.context_parallel_cache_interval
         )
@@ -216,12 +226,16 @@ def dot_product_attention_forward(
 
         return output
 
-    if tp_y_cp_sz > 1 and args.context_parallel_algo in ['megatron_cp_algo', 'hybrid_cp_algo',
-                                                                         'adaptive_cp_algo', 'hybrid_adaptive_cp_algo']:
+    if tp_y_cp_sz > 1 and args.context_parallel_algo in [
+        'megatron_cp_algo',
+        'hybrid_cp_algo',
+        'adaptive_cp_algo',
+        'hybrid_adaptive_cp_algo',
+    ]:
         in_hybrid_mode = False
         if get_context_parallel_group_for_hybrid_ring(check_initialized=False) is not None:
             in_hybrid_mode = True
- 
+
         if not in_hybrid_mode:
             if cp_expanded_by_2d_tp:
                 tp_y_cp = TensorParallelYUnionCP()
@@ -239,7 +253,7 @@ def dot_product_attention_forward(
             cp_size = get_context_parallel_for_hybrid_ring_world_size()
             rank = get_context_parallel_for_hybrid_ring_rank()
             cp_global_ranks = get_context_parallel_for_hybrid_ring_global_ranks()
- 
+
         cp_para = dict()
         cp_para['megatron_cp_in_bnsd'] = self.config.megatron_cp_in_bnsd
         cp_para['causal'] = args.attention_mask_type == 'causal'
@@ -265,32 +279,41 @@ def dot_product_attention_forward(
                 cp_para['cp_outer_ranks'] = get_ring_ranks_for_inter_window_kv()
                 cp_para['cp_dkv_outer_ranks'] = get_ring_ranks_for_inter_window_dkv()
                 cp_para['cp_group_for_intra_window'] = get_ring_group_for_intra_window()
-                cp_para['cp_group_for_intra_window_send_recv_overlap'] = get_ring_group_for_intra_window_send_recv_overlap()
+                cp_para['cp_group_for_intra_window_send_recv_overlap'] = (
+                    get_ring_group_for_intra_window_send_recv_overlap()
+                )
                 cp_para['cache_policy'] = get_cache_policy(
                     self.layer_number, args.context_parallel_kv_cache_policy, args.context_parallel_cache_interval
                 )
 
-            output = ringattn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p,
-                                           packed_seq_params)
+            output = ringattn_context_parallel(
+                query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p, packed_seq_params
+            )
         else:
             cp_para['scheduling_info'] = get_scheduling_info()
-            output = adaptive_attn_context_parallel(query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p)
+            output = adaptive_attn_context_parallel(
+                query, key, value, n_head, cp_para, scale, attention_mask, self.attention_dropout.p
+            )
 
     else:
-        if packed_seq_params is not None: # TND
+        if packed_seq_params is not None:  # TND
             cp_size = mpu.get_context_parallel_world_size()
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
             actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
             query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
             shape_order = 'TND'
-        else: # SBH
+        else:  # SBH
             actual_seq_qlen = None
             actual_seq_kvlen = None
             query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
             shape_order = 'SBH'
         if args.use_fusion_attn_v2:
             output = npu_fusion_attention(
-                query, key, value, n_head, shape_order,
+                query,
+                key,
+                value,
+                n_head,
+                shape_order,
                 pse=self.pse,
                 padding_mask=None,
                 atten_mask=attention_mask,
@@ -302,11 +325,15 @@ def dot_product_attention_forward(
                 inner_precise=0,
                 sparse_mode=sparse_mode,
                 actual_seq_qlen=actual_seq_qlen,
-                actual_seq_kvlen=actual_seq_kvlen
+                actual_seq_kvlen=actual_seq_kvlen,
             )[0]
         else:
             output = torch_npu.npu_fusion_attention(
-                query, key, value, n_head, shape_order,
+                query,
+                key,
+                value,
+                n_head,
+                shape_order,
                 pse=None,
                 padding_mask=None,
                 atten_mask=attention_mask,
@@ -317,8 +344,8 @@ def dot_product_attention_forward(
                 inner_precise=0,
                 sparse_mode=sparse_mode,
                 actual_seq_qlen=actual_seq_qlen,
-                actual_seq_kvlen=actual_seq_kvlen
-                )[0]
+                actual_seq_kvlen=actual_seq_kvlen,
+            )[0]
         if packed_seq_params is not None:
             output = rearrange(output, '(b s) h d -> s b (h d)', s=seq_length, b=bsz)
     return output

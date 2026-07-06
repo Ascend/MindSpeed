@@ -13,7 +13,6 @@ from megatron.core.enums import ModelType
 from megatron.core.parallel_state import (
     get_pipeline_model_parallel_world_size,
     get_virtual_pipeline_model_parallel_world_size,
-    is_pipeline_stage_after_split,
 )
 from megatron.core.pipeline_parallel.p2p_communication import (
     recv_backward as recv_backward_,
@@ -32,6 +31,9 @@ from megatron.core.pipeline_parallel.p2p_communication import (
 )
 from megatron.core.pipeline_parallel.p2p_communication import (
     send_forward_recv_backward as send_forward_recv_backward_,
+)
+from mindspeed.core.multi_modal.dist_train.dist_parallel_state import (
+    is_pipeline_stage_after_split,
 )
 from mindspeed.core.pipeline_parallel.multiparameter_schedules import (
     forward_backward_pipelining_with_interleaving,

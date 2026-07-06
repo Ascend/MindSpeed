@@ -16,8 +16,9 @@ class MindSpeedFeature:
 
     def is_need_apply(self, args):
         """Check the feature is need to apply."""
-        return (self.optimization_level <= args.optimization_level and getattr(args, self.feature_name, None)) \
-            or self.default_patches
+        return (
+            self.optimization_level <= args.optimization_level and getattr(args, self.feature_name, None)
+        ) or self.default_patches
 
     def register_args(self, parser: ArgumentParser):
         """Register cli arguments to enable the feature."""
@@ -68,9 +69,17 @@ class MindSpeedFeature:
             raise AssertionError('{} requires {}.'.format(self.feature_name, check_args))
 
     @staticmethod
+    def _is_arg_registered(parser, option_string):
+        """Check if an argument with the given option string is already registered."""
+        for action in parser._actions:
+            if option_string in action.option_strings:
+                return True
+        return False
+
+    @staticmethod
     def add_parser_argument_choices_value(parser, argument_name, new_choice):
         """Add a new choice value to the existing choices of a parser argument."""
         for action in parser._actions:
             exist_arg = isinstance(action, argparse.Action) and argument_name in action.option_strings
             if exist_arg and action.choices is not None and new_choice not in action.choices:
-                action.choices.append(new_choice)
+                action.choices = type(action.choices)(list(action.choices) + [new_choice])

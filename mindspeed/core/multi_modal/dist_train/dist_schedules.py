@@ -9,23 +9,27 @@ import torch
 from megatron.core import mpu, dist_checkpointing
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.core.enums import ModelType
-import megatron.core.pipeline_parallel.schedules as schedules
+from megatron.core.pipeline_parallel import schedules
 from megatron.core.parallel_state import (
     get_tensor_model_parallel_world_size,
     get_pipeline_model_parallel_rank,
     get_context_parallel_world_size,
-    is_pipeline_stage_before_split,
-    get_pipeline_model_parallel_next_rank,
-    get_pipeline_model_parallel_prev_rank
 )
+from mindspeed.core.multi_modal.dist_train.dist_parallel_state import is_pipeline_stage_before_split
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.multi_modal.dist_train.dist_ranks_match import get_dst_ranks
-from mindspeed.core.multi_modal.dist_train.dist_communication import generate_send_recv_mask, send_recv_tensor_list, send_recv
+from mindspeed.core.multi_modal.dist_train.dist_communication import (
+    generate_send_recv_mask,
+    send_recv_tensor_list,
+    send_recv,
+)
 from mindspeed.core.multi_modal.dist_train.dist_train_config import (
     get_dist_model_config,
     get_all_config_size,
     is_forward_only_model,
-    is_use_multiparam_send_recv, get_all_config, get_dist_model_name
+    is_use_multiparam_send_recv,
+    get_all_config,
+    get_dist_model_name,
 )
 
 
@@ -48,7 +52,7 @@ def initialize_distributed_wrapper(_initialize_distributed):
 
 def get_checkpoint_format(checkpoint_name):
     """Get the format of an existing checkpoint."""
-    is_torch_ckpt = any([f.startswith("mp_") and "_rank_0" in f for f in os.listdir(checkpoint_name)])
+    is_torch_ckpt = any(f.startswith("mp_") and "_rank_0" in f for f in os.listdir(checkpoint_name))
     is_torch_dcp = os.path.exists(os.path.join(checkpoint_name, ".metadata"))
 
     ckpt_format = None
@@ -68,6 +72,7 @@ def get_checkpoint_name_wrapper(get_checkpoint_name):
     @wraps(get_checkpoint_name)
     def wrapper(*args, **kwargs):
         return _get_checkpoint_name(*args, **kwargs)
+
     return wrapper
 
 
@@ -80,16 +85,16 @@ def _get_checkpoint_name(checkpoints_path, iteration, release=False, **kwargs):
         common_path = os.path.join(checkpoints_path, directory)
         return common_path
 
-    pipeline_parallel = (mpu.get_pipeline_model_parallel_world_size() > 1)
+    pipeline_parallel = mpu.get_pipeline_model_parallel_world_size() > 1
     tensor_rank = mpu.get_tensor_model_parallel_rank()
     pipeline_rank = mpu.get_pipeline_model_parallel_rank()
     model_name = get_dist_model_name()
     if not pipeline_parallel:
-        common_path = os.path.join(checkpoints_path, directory,
-                                   f'mp_{model_name}_rank_{tensor_rank:02d}')
+        common_path = os.path.join(checkpoints_path, directory, f'mp_{model_name}_rank_{tensor_rank:02d}')
     else:
-        common_path = os.path.join(checkpoints_path, directory,
-                                   f'mp_{model_name}_rank_{tensor_rank:02d}_{pipeline_rank:03d}')
+        common_path = os.path.join(
+            checkpoints_path, directory, f'mp_{model_name}_rank_{tensor_rank:02d}_{pipeline_rank:03d}'
+        )
 
     return os.path.join(common_path, "model_optim_rng.pt")
 
@@ -111,6 +116,7 @@ def p2p_ops_wrapper(p2p_ops):
         if arguments.dist_train:
             return _p2p_ops(*args, **kwargs)
         return p2p_ops(*args, **kwargs)
+
     return wrapper
 
 
@@ -129,50 +135,66 @@ def _p2p_ops(
     if get_pipeline_model_parallel_rank() % 2 == 0:
         if tensor_send_next is not None:
             send_next_req = torch.distributed.isend(
-                tensor=tensor_send_next, dst=next_pipeline_rank, group=group,
+                tensor=tensor_send_next,
+                dst=next_pipeline_rank,
+                group=group,
             )
             reqs["send_next"] = send_next_req
 
         if tensor_recv_prev is not None:
             recv_prev_req = torch.distributed.irecv(
-                tensor=tensor_recv_prev, src=prev_pipeline_rank, group=group,
+                tensor=tensor_recv_prev,
+                src=prev_pipeline_rank,
+                group=group,
             )
             reqs["recv_prev"] = recv_prev_req
 
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
-                tensor=tensor_send_prev, dst=prev_pipeline_rank, group=group,
+                tensor=tensor_send_prev,
+                dst=prev_pipeline_rank,
+                group=group,
             )
             reqs["send_prev"] = send_prev_req
 
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
-                tensor=tensor_recv_next, src=next_pipeline_rank, group=group,
+                tensor=tensor_recv_next,
+                src=next_pipeline_rank,
+                group=group,
             )
             reqs["recv_next"] = recv_next_req
 
     else:
         if tensor_recv_prev is not None:
             recv_prev_req = torch.distributed.irecv(
-                tensor=tensor_recv_prev, src=prev_pipeline_rank, group=group,
+                tensor=tensor_recv_prev,
+                src=prev_pipeline_rank,
+                group=group,
             )
             reqs["recv_prev"] = recv_prev_req
 
         if tensor_send_next is not None:
             send_next_req = torch.distributed.isend(
-                tensor=tensor_send_next, dst=next_pipeline_rank, group=group,
+                tensor=tensor_send_next,
+                dst=next_pipeline_rank,
+                group=group,
             )
             reqs["send_next"] = send_next_req
 
         if tensor_recv_next is not None:
             recv_next_req = torch.distributed.irecv(
-                tensor=tensor_recv_next, src=next_pipeline_rank, group=group,
+                tensor=tensor_recv_next,
+                src=next_pipeline_rank,
+                group=group,
             )
             reqs["recv_next"] = recv_next_req
 
         if tensor_send_prev is not None:
             send_prev_req = torch.distributed.isend(
-                tensor=tensor_send_prev, dst=prev_pipeline_rank, group=group,
+                tensor=tensor_send_prev,
+                dst=prev_pipeline_rank,
+                group=group,
             )
             reqs["send_prev"] = send_prev_req
     return reqs
@@ -205,9 +227,7 @@ def get_tensor_shapes(
     if config.sequence_parallel:
         seq_length = seq_length // get_tensor_model_parallel_world_size()
         if model_type == ModelType.encoder_and_decoder:
-            decoder_seq_length = (
-                decoder_seq_length // get_tensor_model_parallel_world_size()
-            )
+            decoder_seq_length = decoder_seq_length // get_tensor_model_parallel_world_size()
 
     if model_type == ModelType.encoder_and_decoder:
         if is_pipeline_stage_before_split(rank):
@@ -220,8 +240,11 @@ def get_tensor_shapes(
         else:
             if is_use_multiparam_send_recv():
                 tensor_shapes = [
-                    {'shape': ((decoder_seq_length, micro_batch_size, config.hidden_size)), 'dtype': config.params_dtype},
-                    {'shape': ((seq_length, micro_batch_size, config.hidden_size)), 'dtype': config.params_dtype}
+                    {
+                        'shape': ((decoder_seq_length, micro_batch_size, config.hidden_size)),
+                        'dtype': config.params_dtype,
+                    },
+                    {'shape': ((seq_length, micro_batch_size, config.hidden_size)), 'dtype': config.params_dtype},
                 ]
             else:
                 tensor_shapes.append((decoder_seq_length, micro_batch_size, config.hidden_size))
@@ -259,23 +282,17 @@ def forward_backward_pipelining_without_interleaving(
         forward_only = model_config.forward_only
     if isinstance(model, list):
         if len(model) != 1:
-            raise ValueError(
-                "non-interleaved pipeline parallelism does not support model chunking"
-            )
+            raise ValueError("non-interleaved pipeline parallelism does not support model chunking")
         model = model[0]
     if isinstance(data_iterator, list):
         if len(data_iterator) != 1:
-            raise ValueError(
-                "non-pipeline-parallel schedule does not support model chunking"
-            )
+            raise ValueError("non-pipeline-parallel schedule does not support model chunking")
         data_iterator = data_iterator[0]
 
     config = get_model_config(model)
     config.deallocate_pipeline_outputs = False
     if config.overlap_p2p_comm:
-        raise ValueError(
-            "Non-interleaved pipeline parallelism does not support overlapping p2p communication"
-        )
+        raise ValueError("Non-interleaved pipeline parallelism does not support overlapping p2p communication")
 
     # Needed only when gradients are finalized in M-Core
     if config.finalize_model_grads_func is not None and not forward_only:
@@ -295,13 +312,13 @@ def forward_backward_pipelining_without_interleaving(
         nonlocal no_sync_context
         if no_sync_context is None:
             no_sync_context = no_sync_func()
-            no_sync_context.__enter__()
+            no_sync_context.__enter__()  # pylint: disable=unnecessary-dunder-call
 
     def enable_grad_sync():
         """Enable asynchronous grad reductions"""
         nonlocal no_sync_context
         if no_sync_context is not None:
-            no_sync_context.__exit__(None, None, None)
+            no_sync_context.__exit__(None, None, None)  # pylint: disable=unnecessary-dunder-call
             no_sync_context = None
 
     disable_grad_sync()
@@ -341,7 +358,6 @@ def forward_backward_pipelining_without_interleaving(
         decoder_seq_length=decoder_seq_length,
         config=config,
         encoder_decoder_xattn=False,
-
     )
 
     send_recv_ops = generate_send_recv_mask(torch.distributed.get_rank())
@@ -361,8 +377,7 @@ def forward_backward_pipelining_without_interleaving(
         # Decide to checkpoint all layers' activations of the current micro-batch
         if max_outstanding_backprops is not None:
             checkpoint_activations_microbatch = (
-                i % max_outstanding_backprops
-                >= config.num_microbatches_with_partial_activation_checkpoints
+                i % max_outstanding_backprops >= config.num_microbatches_with_partial_activation_checkpoints
             )
         else:
             checkpoint_activations_microbatch = None
@@ -417,9 +432,7 @@ def forward_backward_pipelining_without_interleaving(
             config,
             collect_non_loss_data,
             checkpoint_activations_microbatch,
-            schedules.check_first_val_step(
-                first_val_step, forward_only, (i == 0) and (num_warmup_microbatches == 0)
-            ),
+            schedules.check_first_val_step(first_val_step, forward_only, (i == 0) and (num_warmup_microbatches == 0)),
             current_microbatch=i + num_warmup_microbatches,
         )
         total_num_tokens += num_tokens.item()
@@ -431,9 +444,7 @@ def forward_backward_pipelining_without_interleaving(
                 input_tensor = recv_forward(recv_tensor_shapes, config, send_recv_ops)
 
         else:
-            output_tensor_grad = send_forward_recv_backward(
-                output_tensor, send_tensor_shapes, config, send_recv_ops
-            )
+            output_tensor_grad = send_forward_recv_backward(output_tensor, send_tensor_shapes, config, send_recv_ops)
 
             # Add input_tensor and output_tensor to end of list.
             input_tensors.append(input_tensor)
@@ -451,22 +462,17 @@ def forward_backward_pipelining_without_interleaving(
                 if config.grad_sync_func is None or rank == 0:
                     enable_grad_sync()
 
-            input_tensor_grad = _backward_step(
-                input_tensor, output_tensor, output_tensor_grad, model_type, config
-            )
+            input_tensor_grad = _backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
 
             if last_iteration:
                 input_tensor = None
                 send_backward(input_tensor_grad, recv_tensor_shapes, config, send_recv_ops)
             else:
-                input_tensor = send_backward_recv_forward(
-                    input_tensor_grad, recv_tensor_shapes, config, send_recv_ops
-                )
+                input_tensor = send_backward_recv_forward(input_tensor_grad, recv_tensor_shapes, config, send_recv_ops)
 
     # Run cooldown backward passes.
     if not forward_only:
         for i in range(num_warmup_microbatches):
-
             # Enable async grad reduction in the last backward pass
             # Note: If grad sync function is provided, only enable
             # async grad reduction in first pipeline stage. Other
@@ -481,9 +487,7 @@ def forward_backward_pipelining_without_interleaving(
 
             output_tensor_grad = recv_backward(send_tensor_shapes, config, send_recv_ops)
 
-            input_tensor_grad = _backward_step(
-                input_tensor, output_tensor, output_tensor_grad, model_type, config
-            )
+            input_tensor_grad = _backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
 
             send_backward(input_tensor_grad, recv_tensor_shapes, config, send_recv_ops)
 
@@ -494,7 +498,6 @@ def forward_backward_pipelining_without_interleaving(
                 config.grad_sync_func(model.parameters())
 
     if config.finalize_model_grads_func is not None and not forward_only:
-
         # If defer_embedding_wgrad_compute is enabled we need to do the
         # weight gradient GEMM's here.
         schedules.finish_embedding_wgrad_compute(config, embedding_module)
@@ -502,9 +505,7 @@ def forward_backward_pipelining_without_interleaving(
         # Finalize model grads (perform full grad all-reduce / reduce-scatter for
         # data parallelism, layernorm all-reduce for sequence parallelism, and
         # embedding all-reduce for pipeline parallelism).
-        config.finalize_model_grads_func(
-            [model], total_num_tokens if config.calculate_per_token_loss else None
-        )
+        config.finalize_model_grads_func([model], total_num_tokens if config.calculate_per_token_loss else None)
 
     if config.timers is not None:
         config.timers('forward-backward').stop()
@@ -515,6 +516,7 @@ def forward_backward_pipelining_without_interleaving(
 def _backward_step(*args, **kwargs):
     if is_use_multiparam_send_recv():
         from mindspeed.core.pipeline_parallel.multiparameter_schedules import backward_step
+
         return backward_step(*args, **kwargs)
 
     return schedules.backward_step(*args, **kwargs)
@@ -566,9 +568,7 @@ def send_forward_recv_backward(output_tensor, tensor_shape, config, send_recv_op
         recv_tensors = send_recv_func(output_tensor, True, get_dst_ranks())
         output_tensor_grad = post_process_for_recving(recv_tensors)
     else:
-        output_tensor_grad = schedules.send_forward_recv_backward(
-            output_tensor, tensor_shape, config
-        )
+        output_tensor_grad = schedules.send_forward_recv_backward(output_tensor, tensor_shape, config)
     return output_tensor_grad
 
 
@@ -580,9 +580,7 @@ def send_backward_recv_forward(input_tensor_grad, tensor_shapes, config, send_re
         recv_tensors = send_recv_func(input_tensor_grad, True, get_dst_ranks())
         input_tensor = post_process_for_recving(recv_tensors)
     else:
-        input_tensor = schedules.send_backward_recv_forward(
-            input_tensor_grad, tensor_shapes, config
-        )
+        input_tensor = schedules.send_backward_recv_forward(input_tensor_grad, tensor_shapes, config)
     return input_tensor
 
 

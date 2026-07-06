@@ -86,10 +86,6 @@ setuptools.setup(
     # PyPI package information.
     keywords=__keywords__,
     cmdclass={},
-    entry_points={
-        "console_scripts": [
-            "mindspeed = mindspeed.run.run:main",
-        ]
-    },
-    ext_modules=exts
+    entry_points={},
+    ext_modules=exts,
 )

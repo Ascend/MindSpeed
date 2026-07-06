@@ -150,7 +150,6 @@ class TestRMSNorm2dRsFirstDim(DistributedTest):
             tensor_model_parallel_size=tp,
             pipeline_model_parallel_size=pp,
             virtual_pipeline_model_parallel_size=None,
-            pipeline_model_parallel_split_rank=None,
         )
         # 2d rms_norm
         output_2d, weight_grad_2d = self.get_rms_norm_grad(dist_schedule=1, h=h, input_x=input_x, targets=targets)

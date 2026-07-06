@@ -1,25 +1,22 @@
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-import os
 from functools import wraps
-from typing import List, Union
 import torch
 from torch import _C
-
-from mindspeed.te.pytorch.fp8.checkpoint import activation_recompute_forward
-from torch_npu.npu import _lazy_call, device as device_ctx_manager
-from torch.utils.checkpoint import _get_autocast_kwargs
-from megatron.core.tensor_parallel.utils import gather_split_1d_tensor
-from megatron.core.tensor_parallel.random import get_cuda_rng_tracker
-from megatron.core.utils import safely_set_viewless_tensor_data
 from torch.utils.checkpoint import detach_variable
+
+from torch_npu.npu import _lazy_call, device as device_ctx_manager
+
 from megatron.core.parallel_state import (
-    get_tensor_model_parallel_group,
-    get_tensor_model_parallel_world_size,
     is_pipeline_last_stage,
     get_virtual_pipeline_model_parallel_rank,
 )
+from megatron.core.tensor_parallel.random import get_cuda_rng_tracker
+from megatron.core.tensor_parallel.utils import gather_split_1d_tensor
+from megatron.core.utils import safely_set_viewless_tensor_data
+
 from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.core.fp8_checkpoint import activation_recompute_forward
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 
@@ -50,17 +47,12 @@ def _set_cuda_rng_state(new_state, device=-1, graph_safe: bool = False):
 
 
 def checkpoint_function_backward(ctx, *args):
-    global_args = get_args()
+    _ = get_args()
     if not torch.autograd._is_checkpoint_valid():
-        raise RuntimeError(
-            "Checkpointing is not compatible with .grad(), "
-            "please use .backward() if possible"
-        )
+        raise RuntimeError("Checkpointing is not compatible with .grad(), please use .backward() if possible")
     inputs = ctx.saved_tensors
     if ctx.distribute_saved_activations:
-        safely_set_viewless_tensor_data(
-            inputs[0], gather_split_1d_tensor(inputs[0].data).view(ctx.input_0_shape)
-        )
+        safely_set_viewless_tensor_data(inputs[0], gather_split_1d_tensor(inputs[0].data).view(ctx.input_0_shape))
 
     # Store the current states.
     bwd_cpu_rng_state = torch.get_rng_state()
@@ -126,10 +118,7 @@ class CheckpointWithoutOutput:
         self.run_function = run_function
 
         if distribute_saved_activations:
-            raise RuntimeError(
-                "CheckpointFunctionWithoutOutput does not support "
-                "distribute_saved_activations"
-            )
+            raise RuntimeError("CheckpointFunctionWithoutOutput does not support distribute_saved_activations")
 
         # Copy the rng states.
         self.fwd_cpu_rng_state = torch.get_rng_state()
@@ -149,10 +138,7 @@ class CheckpointWithoutOutput:
 
     def recompute(self, _):
         if not torch.autograd._is_checkpoint_valid():
-            raise RuntimeError(
-                "Checkpointing is not compatible with .grad(), "
-                "please use .backward() if possible"
-            )
+            raise RuntimeError("Checkpointing is not compatible with .grad(), please use .backward() if possible")
 
         # Store the current states.
         cur_cpu_rng_state = torch.get_rng_state()
@@ -164,10 +150,8 @@ class CheckpointWithoutOutput:
         _set_cuda_rng_state(self.fwd_cuda_rng_state)
         get_cuda_rng_tracker().set_states(self.fwd_cuda_rng_state_tracker)
 
-        with torch.enable_grad(), activation_recompute_forward(
-            activation_recompute=True, recompute_phase=True
-        ):
-            outputs = self.run_function(*self.ctx.saved_tensors)
+        with torch.enable_grad(), activation_recompute_forward(activation_recompute=True, recompute_phase=True):
+            outputs = self.run_function(*self.ctx.saved_tensors)  # pylint: disable=access-member-before-definition
         self.run_function = None
         self.fwd_cpu_rng_state = None
         self.fwd_cuda_rng_state = None
@@ -187,7 +171,7 @@ class CheckpointWithoutOutput:
             with torch.no_grad():
                 output.untyped_storage().copy_(recomputation_output.untyped_storage())
 
-        self.ctx.outputs = outputs
+        self.ctx.outputs = outputs  # pylint: disable=access-member-before-definition
         self.outputs = None
         self.ctx = None
 
@@ -202,8 +186,9 @@ class RngStateContext:
 class CheckpointFunctionRipipe(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_function, distribute_saved_activations, *args):
-        fwd_rng_state = RngStateContext(torch.get_rng_state(), torch.cuda.get_rng_state(),
-                                        get_cuda_rng_tracker().get_states())
+        fwd_rng_state = RngStateContext(
+            torch.get_rng_state(), torch.cuda.get_rng_state(), get_cuda_rng_tracker().get_states()
+        )
         with torch.no_grad():
             outputs = run_function(*args)
 
@@ -239,10 +224,7 @@ class CheckpointFunctionRipipe(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *args):
         if not torch.autograd._is_checkpoint_valid():
-            raise RuntimeError(
-                "Checkpointing is not compatible with .grad(), "
-                "please use .backward() if possible"
-            )
+            raise RuntimeError("Checkpointing is not compatible with .grad(), please use .backward() if possible")
         if not hasattr(ctx, 'outputs'):
             if get_pipeline_checkpoint_manager().do_pre_recompute:
                 global_args = get_args()

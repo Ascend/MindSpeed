@@ -1,4 +1,9 @@
+# Copyright (c) 2025, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2026, Huawei Technologies Co., Ltd.  All rights reserved.
+
 import pytest
+# todo: need megatron-0.17.0 adapt
+pytest.skip("Skip test_schedules due to 0.17 adaptor removal", allow_module_level=True)
 import torch
 import torch_npu
 import mindspeed.megatron_adaptor

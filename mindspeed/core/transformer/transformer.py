@@ -1,28 +1,22 @@
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reversed.
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
-import enum
-import os
 from functools import wraps
 from typing import Optional
 
-from contextlib import nullcontext
 import torch
-import torch_npu
 import torch.nn.functional as F
 
-from megatron import core
 from megatron.training import get_args
-from megatron.core.num_microbatches_calculator import get_num_microbatches
-from megatron.core import tensor_parallel, parallel_state, mpu
+from megatron.core import tensor_parallel, mpu
 from megatron.core.utils import make_viewless_tensor
 from megatron.core.transformer.identity_op import IdentityOp
-from megatron.legacy.model.transformer import bias_dropout_add_fused_train, get_bias_dropout_add, bias_dropout_add_fused_inference
-from megatron.legacy.model.enums import AttnMaskType, LayerType, AttnType
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.transformer.moe.moe_utils import only_recompute_activation
-from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import MindSpeedTELayerNormColumnParallelLinear
+from transformer_engine.pytorch.module.layernorm_linear import (
+    LayerNormLinear as MindSpeedTELayerNormColumnParallelLinear,
+)
 
 
 def parallel_transformer_layer_init_wrapper(fn):
@@ -30,6 +24,7 @@ def parallel_transformer_layer_init_wrapper(fn):
     def wrapper(self, *args, **kwargs):
         from megatron.core.transformer.moe.moe_layer import MoELayer
         from megatron.core.transformer.moe.experts import GroupedMLP, SequentialMLP
+
         fn(self, *args, **kwargs)
         if self.mlp.__class__ is MoELayer:
             if self.mlp.experts.__class__ is GroupedMLP:
@@ -59,9 +54,9 @@ def parallel_transformer_checkpointed_forward_wrapper(forward_func):
     return row_parallel_forward
 
 
-def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mask,
-                                              encoder_output, enc_dec_attn_mask,
-                                              rotary_pos_emb, is_first_microbatch):
+def parallel_transformer_checkpointed_forward(
+    self, hidden_states, attention_mask, encoder_output, enc_dec_attn_mask, rotary_pos_emb, is_first_microbatch
+):
     """Forward method with activation checkpointing."""
 
     def custom(start, end):
@@ -81,22 +76,36 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
         # checkpoint the input activation of each divided chunk.
         # A method to further reduce memory usage reducing checkpoints.
         if not global_args.swap_attention:
-            l = 0
-            while l < num_layers_per_pipeline_rank:
+            layer_idx = 0
+            while layer_idx < num_layers_per_pipeline_rank:
                 hidden_states = tensor_parallel.checkpoint(
-                    custom(l, l + self.recompute_num_layers),
+                    custom(layer_idx, layer_idx + self.recompute_num_layers),
                     self.distribute_saved_activations,
-                    hidden_states, attention_mask,
-                    encoder_output, enc_dec_attn_mask,
-                    None, None, None, None, rotary_pos_emb)
+                    hidden_states,
+                    attention_mask,
+                    encoder_output,
+                    enc_dec_attn_mask,
+                    None,
+                    None,
+                    None,
+                    None,
+                    rotary_pos_emb,
+                )
 
-                l += self.recompute_num_layers
+                layer_idx += self.recompute_num_layers
         else:
-            for l in range(num_layers_per_pipeline_rank):
-                hidden_states = custom(l, l + 1)(
-                    hidden_states, attention_mask,
-                    encoder_output, enc_dec_attn_mask,
-                    None, None, None, None, rotary_pos_emb)
+            for layer_idx in range(num_layers_per_pipeline_rank):
+                hidden_states = custom(layer_idx, layer_idx + 1)(
+                    hidden_states,
+                    attention_mask,
+                    encoder_output,
+                    enc_dec_attn_mask,
+                    None,
+                    None,
+                    None,
+                    None,
+                    rotary_pos_emb,
+                )
     elif self.recompute_method == 'block':
         # Checkpoint the input activation of only a set number of individual
         # Transformer layers and skip the rest.
@@ -107,7 +116,7 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
             vpp_rank = 0
         if vpp_size is None or not global_args.enable_recompute_layers_per_pp_rank:
             vpp_size = 1
-        for l in range(self.num_layers):
+        for layer_idx in range(self.num_layers):
             # The number of layers each pipeline rank recomputes is self.recompute_num_layers.
             # If self.recompute_num_layers cannot divide exactly  the number of layers in each pp rank,
             # we try to balance the number of recomputed layers in each model chunk.
@@ -117,27 +126,42 @@ def parallel_transformer_checkpointed_forward(self, hidden_states, attention_mas
             # Stage 1: [2, 3]   [6, 7]
             # With self.recompute_num_layers = 2, we will recompute layers 0,4 for stage 0, and 2,6 for stage 1.
             # With self.recompute_num_layers = 3, we will recompute layers 0,1,4 for stage 0, and 2,3,6 for stage 1.
-            def should_recompute():
+            def should_recompute(layer_idx=layer_idx):
                 if global_args.reduce_recompute_for_last_chunk:
-                    def is_last_layer():
-                        return (l == self.num_layers - 1) and mpu.is_pipeline_last_stage()
 
-                    return ((l * vpp_size + vpp_rank) < self.recompute_num_layers) and not is_last_layer()
+                    def is_last_layer(layer_idx=layer_idx):
+                        return (layer_idx == self.num_layers - 1) and mpu.is_pipeline_last_stage()
+
+                    return ((layer_idx * vpp_size + vpp_rank) < self.recompute_num_layers) and not is_last_layer()
                 else:
-                    return (l * vpp_size + vpp_rank) < self.recompute_num_layers
+                    return (layer_idx * vpp_size + vpp_rank) < self.recompute_num_layers
 
             if should_recompute() and not global_args.swap_attention:
                 hidden_states = tensor_parallel.checkpoint(
-                    custom(l, l + 1),
+                    custom(layer_idx, layer_idx + 1),
                     self.distribute_saved_activations,
-                    hidden_states, attention_mask,
-                    encoder_output, enc_dec_attn_mask,
-                    None, None, None, None, rotary_pos_emb)
+                    hidden_states,
+                    attention_mask,
+                    encoder_output,
+                    enc_dec_attn_mask,
+                    None,
+                    None,
+                    None,
+                    None,
+                    rotary_pos_emb,
+                )
             else:
-                hidden_states = custom(l, l + 1)(
-                    hidden_states, attention_mask,
-                    encoder_output, enc_dec_attn_mask,
-                    None, None, None, None, rotary_pos_emb)
+                hidden_states = custom(layer_idx, layer_idx + 1)(
+                    hidden_states,
+                    attention_mask,
+                    encoder_output,
+                    enc_dec_attn_mask,
+                    None,
+                    None,
+                    None,
+                    None,
+                    rotary_pos_emb,
+                )
     else:
         raise ValueError("Invalid activation recompute method.")
 
@@ -152,12 +176,14 @@ def core_mlp_forward_wrapper(fn):
 
         if get_args().prof_file and not get_args().num_experts:
             from mindspeed.auto_settings.module.black.patch.hccl_operator import MOEOrMLPStartOp, MOEOrMLPEndOp
+
             args[0] = MOEOrMLPStartOp.apply(args[0])
             activation_func_1 = torch.nn.Softplus()
             args[0] = activation_func_1(args[0])
 
         self.layer_number = getattr(self, "layer_number", None)
         is_recompute_activation = should_recompute_activation(self.layer_number)
+        moe_ctx = None
         if get_args().moe_alltoall_overlap_comm and not isinstance(args[-1], torch.Tensor):
             moe_ctx = args[-1]
             args = args[:-1]
@@ -167,7 +193,7 @@ def core_mlp_forward_wrapper(fn):
             if bias is not None:
                 intermediate = intermediate + bias
             if self.config.gated_linear_unit:
-                assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
+                assert self.config.activation_func == F.silu, 'Activation function must be silu when using fused_swiglu'
                 if not hasattr(self, 'origin_activation_func'):
                     self.origin_activation_func = self.activation_func
                 self.activation_func = fused_swiglu
@@ -182,7 +208,11 @@ def core_mlp_forward_wrapper(fn):
             if hasattr(self, 'origin_activation_func'):
                 self.activation_func = self.origin_activation_func
             output, output_bias = fn(self, *args, **kwargs)
-        elif moe_zero_memory == "level1" and not get_args().moe_fb_overlap and not only_recompute_activation(self.layer_number):
+        elif (
+            moe_zero_memory == "level1"
+            and not get_args().moe_fb_overlap
+            and not only_recompute_activation(self.layer_number)
+        ):
             if self.with_shared_expert:
                 self.activation_function = activation_function
                 hidden_states = args[0]
@@ -199,10 +229,9 @@ def core_mlp_forward_wrapper(fn):
             hidden_states = args[0]
             intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)
             self.activation_checkpoint_manager = CheckpointWithoutOutput()
-            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(activation_function,
-                                                                                  False,
-                                                                                  intermediate_parallel,
-                                                                                  bias_parallel)
+            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(
+                activation_function, False, intermediate_parallel, bias_parallel
+            )
             # [s, b, h]
             output, output_bias = self.linear_fc2(intermediate_parallel)
 
@@ -221,20 +250,20 @@ def core_mlp_forward_wrapper(fn):
             output = MOEOrMLPEndOp.apply(output)
 
         return output, output_bias
+
     return wrapper
 
 
 def enable_recompute_norm_checkpoint(
-    layer,
-    norm_ckpt,
-    submodule_name: Optional[str] = None,
-    support_module_type=MindSpeedTELayerNormColumnParallelLinear
+    layer, norm_ckpt, submodule_name: Optional[str] = None, support_module_type=MindSpeedTELayerNormColumnParallelLinear
 ):
     if layer is None or norm_ckpt is None:
         raise ValueError("Please check your input!!!")
 
     if submodule_name is not None:
         target_layer = getattr(layer, submodule_name, None)
+    else:
+        target_layer = None
 
     if target_layer is None:
         raise AssertionError(
@@ -340,8 +369,6 @@ def norm_recompute_forward(
             mlp_output_with_bias, residual, self.hidden_dropout
         )
 
-    output = make_viewless_tensor(
-        inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
-    )
+    output = make_viewless_tensor(inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True)
 
     return output, context

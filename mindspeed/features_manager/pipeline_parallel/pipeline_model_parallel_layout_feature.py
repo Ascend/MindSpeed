@@ -20,20 +20,7 @@ class PipelineModelParallelLayoutFeature(MindSpeedFeature):
         super().__init__(feature_name, optimization_level)
 
     def register_args(self, parser: ArgumentParser):
-        group = parser.add_argument_group(title="pipeline-model-parallel-layout")
-        group.add_argument(
-            "--pipeline-model-parallel-layout",
-            type=str,
-            default=None,
-            help=(
-                "A string that describes a custom pipeline model parallel layout. "
-                'e.g., "E|(t|)*3,m|m||L". E, L, t, m denotes embedding, loss, transformer '
-                'decoder layer, and mtp layer, respectively. Stages are split by "|". '
-                "Replicated stages or layers can be described with multiplication. "
-                "Commas can be used cosmetically. "
-                "Default None is not using this argument to set the layout."
-            ),
-        )
+        pass
 
     def pre_validate_args(self, args: Namespace):
         if (

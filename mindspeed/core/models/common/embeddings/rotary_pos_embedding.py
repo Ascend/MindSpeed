@@ -17,31 +17,23 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from mindspeed.utils import get_position_ids, generate_rearrange_idx_tensor
 from mindspeed.ops.npu_rotary_position_embedding import npu_rotary_position_embedding
 
-from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
-                                           get_context_parallel_for_hybrid_ulysses_rank,
-                                           get_context_parallel_for_hybrid_ring_world_size,
-                                           get_context_parallel_for_hybrid_ring_rank)
+from mindspeed.core.parallel_state import (
+    get_context_parallel_for_hybrid_ulysses_world_size,
+    get_context_parallel_for_hybrid_ulysses_rank,
+    get_context_parallel_for_hybrid_ring_world_size,
+    get_context_parallel_for_hybrid_ring_rank,
+)
 from mindspeed.core.context_parallel.utils import get_remapped_seq_order
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 
 
-def yarn_find_correction_dim(
-        num_rotations, dim, base=10000, max_position_embeddings=2048
-):
-    return (dim * math.log(max_position_embeddings / (num_rotations * 2 * math.pi))) / (
-            2 * math.log(base)
-    )
+def yarn_find_correction_dim(num_rotations, dim, base=10000, max_position_embeddings=2048):
+    return (dim * math.log(max_position_embeddings / (num_rotations * 2 * math.pi))) / (2 * math.log(base))
 
 
-def yarn_find_correction_range(
-        low_rot, high_rot, dim, base=10000, max_position_embeddings=2048
-):
-    low = math.floor(
-        yarn_find_correction_dim(low_rot, dim, base, max_position_embeddings)
-    )
-    high = math.ceil(
-        yarn_find_correction_dim(high_rot, dim, base, max_position_embeddings)
-    )
+def yarn_find_correction_range(low_rot, high_rot, dim, base=10000, max_position_embeddings=2048):
+    low = math.floor(yarn_find_correction_dim(low_rot, dim, base, max_position_embeddings))
+    high = math.ceil(yarn_find_correction_dim(high_rot, dim, base, max_position_embeddings))
     return max(low, 0), min(high, dim - 1)  # Clamp values just in case
 
 
@@ -60,7 +52,13 @@ def yarn_linear_ramp_mask(min_, max_, dim):
     return ramp_func
 
 
-def apply_rotary_pos_emb_bshd(t: Tensor, freqs: Tensor, rotary_interleaved: bool = False, multi_latent_attention: bool = False, mscale: float = 1.0) -> Tensor:
+def apply_rotary_pos_emb_bshd(
+    t: Tensor,
+    freqs: Tensor,
+    rotary_interleaved: bool = False,
+    multi_latent_attention: bool = False,
+    mscale: float = 1.0,
+) -> Tensor:
     args = get_args()
     _mscale = mscale
     if hasattr(args, "rope_scaling_type") and args.rope_scaling_type == "yarn":
@@ -104,9 +102,7 @@ def apply_yarn_scaling(freqs: torch.Tensor):
         args.rope_scaling_original_max_position_embeddings,
     )
 
-    inv_freq_mask = 1.0 - yarn_linear_ramp_mask(low, high, dim // 2).to(
-        device=freqs.device, dtype=torch.float32
-    )
+    inv_freq_mask = 1.0 - yarn_linear_ramp_mask(low, high, dim // 2).to(device=freqs.device, dtype=torch.float32)
 
     inv_freq = freq_inter * (1 - inv_freq_mask) + freq_extra * inv_freq_mask
 
@@ -119,7 +115,7 @@ def rotary_embedding_init_wrapper(fn):
         _args = get_args()
         if _args.rotary_base:
             if len(args) >= 5:
-                args[4] = _args.rotary_base
+                args = args[:4] + (_args.rotary_base,) + args[5:]
             else:
                 kwargs["rotary_base"] = _args.rotary_base
         fn(self, *args, **kwargs)
@@ -143,10 +139,7 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = F
     if self.inv_freq.device.type == 'cpu':
         # move `inv_freq` to GPU once at the first micro-batch forward pass
         self.inv_freq = self.inv_freq.to(device=torch.cuda.current_device())
-    seq = (
-        torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
-        + offset
-    )
+    seq = torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype) + offset
 
     if self.seq_len_interpolation_factor is not None:
         seq *= 1 / self.seq_len_interpolation_factor
@@ -157,9 +150,7 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = F
     if not self.rotary_interleaved:
         emb = torch.cat((freqs, freqs), dim=-1)
     else:
-        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(
-            freqs.shape[0], -1
-        )
+        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(freqs.shape[0], -1)
     # emb [seq_length, .., dim]
     emb = emb[:, None, None, :]
 
@@ -168,16 +159,20 @@ def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = F
     emb = emb[position_ids.view(-1)].squeeze(1).reshape(s, b, 1, -1)
 
     if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
-        # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
+        # slice rotary_pos_emb along sequence dimension and select the partition of the current CP rank
         emb = get_pos_emb_on_this_cp_rank(emb, 0)
 
     return emb
 
 
 def apply_rotary_pos_emb_thd(
-    t: Tensor, cu_seqlens: Tensor, freqs: Tensor, rotary_interleaved: bool = False, multi_latent_attention: bool = False, mscale: float = 1.0
+    t: Tensor,
+    cu_seqlens: Tensor,
+    freqs: Tensor,
+    rotary_interleaved: bool = False,
+    multi_latent_attention: bool = False,
+    mscale: float = 1.0,
 ) -> Tensor:
-
     """A baseline implementation of applying RoPE for `thd` format.
 
     Args:
@@ -189,7 +184,7 @@ def apply_rotary_pos_emb_thd(
     Returns:
         Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
     """
-    args = get_args()
+    _ = get_args()
 
     position_ids = cu_seqlens.position_ids
     block_size, bsz = position_ids.shape
@@ -231,12 +226,8 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
 def _get_pos_emb_on_this_cp_rank_in_megatron_cp(pos_emb, seq_dim):
     cp_size = parallel_state.get_context_parallel_world_size()
     cp_rank = parallel_state.get_context_parallel_rank()
-    cp_idx = torch.tensor(
-        [cp_rank, (2 * cp_size - cp_rank - 1)], device="cpu", pin_memory=True
-    ).cuda(non_blocking=True)
-    pos_emb = pos_emb.view(
-        *pos_emb.shape[:seq_dim], 2 * cp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
-    )
+    cp_idx = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device="cpu", pin_memory=True).cuda(non_blocking=True)
+    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], 2 * cp_size, -1, *pos_emb.shape[(seq_dim + 1) :])
     pos_emb = pos_emb.index_select(seq_dim, cp_idx)
     pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
     return pos_emb
@@ -247,9 +238,7 @@ def _get_pos_emb_on_this_tp_y_cp_rank_in_megatron_cp(pos_emb, seq_dim):
     tp_y_cp_group = TensorParallelYUnionCP()
     tp_y_cp_size = tp_y_cp_group.get_parallel_group_world_size()
     # [s, 1, 1, head_dim] ---> [2*tp_y_cp_size, s/(2*tp_y_cp_size), 1, 1, head_dim]
-    pos_emb = pos_emb.view(
-        *pos_emb.shape[:seq_dim], 2 * tp_y_cp_size, -1, *pos_emb.shape[(seq_dim + 1) :]
-    )
+    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], 2 * tp_y_cp_size, -1, *pos_emb.shape[(seq_dim + 1) :])
     rearrange_idx_tensor = generate_rearrange_idx_tensor(tp_y_cp_size)
 
     # Reorder pos embedding according dataset handling.
@@ -261,7 +250,7 @@ def _get_pos_emb_on_this_tp_y_cp_rank_in_megatron_cp(pos_emb, seq_dim):
         *pos_emb.shape[0:seq_dim],
         tp_y_cp_size,
         pos_emb.shape[seq_dim] // tp_y_cp_size,
-        *pos_emb.shape[(seq_dim + 1):],
+        *pos_emb.shape[(seq_dim + 1) :],
     )
     # cur_rank_pos_emb shape: [s/cp, 1, 1, head_dim]
     tp_y_cp_rank = tp_y_cp_group.get_parallel_rank()
@@ -283,12 +272,8 @@ def _get_pos_emb_on_this_cp_rank_in_hybrid_cp(pos_emb, seq_dim):
     u_rank = get_context_parallel_for_hybrid_ulysses_rank()
     r_rank = get_context_parallel_for_hybrid_ring_rank()
 
-    cp_idx = torch.tensor(
-        [r_rank, (2 * r_size - r_rank - 1)], device="cpu", pin_memory=True
-    ).cuda(non_blocking=True)
-    pos_emb = pos_emb.view(
-        *pos_emb.shape[:seq_dim], 2 * r_size, -1, *pos_emb.shape[(seq_dim + 1) :]
-    )
+    cp_idx = torch.tensor([r_rank, (2 * r_size - r_rank - 1)], device="cpu", pin_memory=True).cuda(non_blocking=True)
+    pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], 2 * r_size, -1, *pos_emb.shape[(seq_dim + 1) :])
     pos_emb = pos_emb.index_select(seq_dim, cp_idx)
     pos_emb = pos_emb.view(*pos_emb.shape[:seq_dim], -1, *pos_emb.shape[(seq_dim + 2) :])
 
@@ -316,8 +301,9 @@ def _get_pos_emb_on_this_cp_rank_in_adaptive_cp(pos_emd, seq_dim):
     remapped_seq_order = get_remapped_seq_order()
     if remapped_seq_order is not None:
         per = pos_emd.shape[seq_dim] // cp_size
-        index = torch.tensor(remapped_seq_order[cp_rank * per:(cp_rank + 1) * per], dtype=torch.int,
-                             device=pos_emd.device)
+        index = torch.tensor(
+            remapped_seq_order[cp_rank * per : (cp_rank + 1) * per], dtype=torch.int, device=pos_emd.device
+        )
         pos_emd = pos_emd.index_select(seq_dim, index)
 
     return pos_emd
@@ -333,8 +319,9 @@ def _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emd, seq_dim):
     if remapped_seq_order is not None:
         per = pos_emd.shape[seq_dim] // adap_size // ulys_size
         which_per = adap_rank * ulys_size + ulys_rank
-        index = torch.tensor(remapped_seq_order[which_per * per:(which_per + 1) * per], dtype=torch.int,
-                             device=pos_emd.device)
+        index = torch.tensor(
+            remapped_seq_order[which_per * per : (which_per + 1) * per], dtype=torch.int, device=pos_emd.device
+        )
         pos_emd = pos_emd.index_select(seq_dim, index)
 
     return pos_emd
@@ -350,10 +337,7 @@ def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0, packed_seq
     Returns:
         Tensor: Embeddings after applying RoPE.
     """
-    seq = (
-        torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
-        + offset
-    )
+    seq = torch.arange(max_seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype) + offset
 
     if self.seq_len_interpolation_factor is not None:
         seq *= 1 / self.seq_len_interpolation_factor
@@ -364,9 +348,7 @@ def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0, packed_seq
     if not self.rotary_interleaved:
         emb = torch.cat((freqs, freqs), dim=-1)
     else:
-        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(
-            freqs.shape[0], -1
-        )
+        emb = torch.stack((freqs.view(-1, 1), freqs.view(-1, 1)), dim=-1).view(freqs.shape[0], -1)
     # emb [seq_length, .., dim]
     emb = emb[:, None, None, :]
     global_args = get_args()
@@ -376,7 +358,7 @@ def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0, packed_seq
     else:
         tp_y_cp_sz = cp
     if tp_y_cp_sz > 1 and not packed_seq:
-        # slice rotary_pos_emb along sequence dimension and select the parition of the current CP rank
+        # slice rotary_pos_emb along sequence dimension and select the partition of the current CP rank
         emb = get_pos_emb_on_this_cp_rank(emb, 0)
     return emb
 
@@ -392,7 +374,7 @@ def rotary_embedding_forward_wrapper(fn):
 def _get_pos_emb_on_this_tp_y_cp_rank_in_ulysses_cp(pos_emb, seq_dim):
     tp_y_cp_group = TensorParallelYUnionCP()
     tp_y_cp_size = tp_y_cp_group.get_parallel_group_world_size()
- 
+
     cp_rank = tp_y_cp_group.get_parallel_rank()
     pos_emb = pos_emb.chunk(tp_y_cp_size, dim=seq_dim)[cp_rank]
     return pos_emb
@@ -400,12 +382,13 @@ def _get_pos_emb_on_this_tp_y_cp_rank_in_ulysses_cp(pos_emb, seq_dim):
 
 def rotary_embedding_get_rotary_seq_len_wrapper(fn):
     @wraps(fn)
-    def wrapper(self,  *args, **kwargs):
+    def wrapper(self, *args, **kwargs):
         rotary_seq_len = fn(self, *args, **kwargs)
         global_args = get_args()
         if global_args.tp_2d:
             rotary_seq_len *= global_args.tp_x
         return rotary_seq_len
+
     return wrapper
 
 
@@ -421,7 +404,12 @@ except ImportError:
 
 
 def apply_rotary_pos_emb(
-    t: Tensor, freqs: Tensor, config: TransformerConfig, cu_seqlens: Optional[Tensor] = None, mscale: float = 1.0
+    t: Tensor,
+    freqs: Tensor,
+    config: TransformerConfig,
+    cu_seqlens: Optional[Tensor] = None,
+    mscale: float = 1.0,
+    cp_group: torch.distributed.ProcessGroup = None,
 ):
     """
     Old version for fix rotary_pos_emb in core_r0.10.0.
@@ -429,6 +417,7 @@ def apply_rotary_pos_emb(
     fused/unfused kernels, or bshd (conventional) / thd (packed seq) format
     """
     import megatron.core.models.common.embeddings.rope_utils as ru
+
     logger = logging.getLogger(__name__)
     if config.apply_rope_fusion and not HAVE_APPLY_ROPE_FUSION:
         # setting apply_rope_fusion in config to False so that subsequent queries to this config also return False
@@ -445,18 +434,20 @@ def apply_rotary_pos_emb(
         return fused_apply_rotary_pos_emb_thd(t, cu_seqlens, freqs)
     elif cu_seqlens is None:
         return ru._apply_rotary_pos_emb_bshd(
-            t, 
-            freqs, 
-            rotary_interleaved=config.rotary_interleaved,  
+            t,
+            freqs,
+            rotary_interleaved=config.rotary_interleaved,
             multi_latent_attention=config.multi_latent_attention,
-            mscale=mscale)
+            mscale=mscale,
+        )
     return ru._apply_rotary_pos_emb_thd(
-        t, 
-        cu_seqlens, 
-        freqs, 
-        rotary_interleaved=config.rotary_interleaved, 
+        t,
+        cu_seqlens,
+        freqs,
+        rotary_interleaved=config.rotary_interleaved,
         multi_latent_attention=config.multi_latent_attention,
-        mscale=mscale
+        mscale=mscale,
+        cp_group=cp_group,
     )
 
 

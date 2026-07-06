@@ -2,20 +2,23 @@
 # Copyright (c) 2024; HUAWEI CORPORATION.
 # Copyright (c) 2024; HUAWEI CORPORATION. All rights reserved.
 from transformers import AutoTokenizer
-from megatron.training.tokenizer.tokenizer import _vocab_size_with_padding
-from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
+from megatron.core.tokenizers.utils.build_tokenizer import vocab_size_with_padding
+from megatron.core.tokenizers.megatron_tokenizer import MegatronTokenizer
 
 
 def build_tokenizer_HF(args, **kwargs):
     """Pure HF tokenizer builder, to be patched when tokenizer_type=PretrainedFromHF"""
     if args.rank == 0:
-        print(' > building PretrainFromHF tokenizer. Vocab file is un-used, '
-              'loading tokenizer from pre-trained model', flush=True)
+        print(
+            ' > building PretrainFromHF tokenizer. Vocab file is un-used, loading tokenizer from pre-trained model',
+            flush=True,
+        )
 
     if args.tokenizer_name_or_path is None:
         raise ValueError("Missing tokenizer_name_or_path while building PretrainFromHF tokenizer.")
 
     from pathlib import Path
+
     if not Path(args.tokenizer_name_or_path).exists():
         raise FileNotFoundError(f"Tokenizer path not found: {args.tokenizer_name_or_path}")
 
@@ -25,20 +28,19 @@ def build_tokenizer_HF(args, **kwargs):
             raise ValueError("The token name and token value must be entered in pairs.")
 
         for i in range(0, len(args.tokenizer_kwargs), 2):
-            hf_tokenizer_kwargs[args.tokenizer_kwargs[i]] = \
-                args.tokenizer_kwargs[i + 1]
+            hf_tokenizer_kwargs[args.tokenizer_kwargs[i]] = args.tokenizer_kwargs[i + 1]
 
     tokenizer = _AutoTokenizer(
         args.tokenizer_name_or_path,
         vocab_extra_ids=args.vocab_extra_ids,
         model_max_length=args.seq_length,
         use_fast=args.tokenizer_not_use_fast,
-        **hf_tokenizer_kwargs
+        **hf_tokenizer_kwargs,
     )
 
     # Add vocab size (if not already set from a checkpoint).
     if getattr(args, "padded_vocab_size", None) is None:
-        args.padded_vocab_size = _vocab_size_with_padding(tokenizer.vocab_size, args)
+        args.padded_vocab_size = vocab_size_with_padding(tokenizer.vocab_size, args)
 
     return tokenizer
 
@@ -71,8 +73,10 @@ class _AutoTokenizer(MegatronTokenizer):
     def vocab(self):
         if not hasattr(self, '_cached_vocab'):
             self._cached_vocab = {
-                **{special_token: self.tokenizer.convert_tokens_to_ids(special_token)
-                   for special_token in self.tokenizer.additional_special_tokens},
+                **{
+                    special_token: self.tokenizer.convert_tokens_to_ids(special_token)
+                    for special_token in self.tokenizer.additional_special_tokens
+                },
                 **self.tokenizer.vocab,
             }
         return self._cached_vocab
@@ -133,7 +137,7 @@ class _AutoTokenizer(MegatronTokenizer):
 
     @property
     def additional_special_tokens_ids(self):
-        """ All the additional special tokens you may want to use (list of strings)."""
+        """All the additional special tokens you may want to use (list of strings)."""
         return self.tokenizer.additional_special_tokens_ids
 
     @staticmethod

@@ -4,19 +4,17 @@ from functools import wraps
 from typing import Optional, Tuple
 
 import torch
-import torch_npu
 from megatron.core.transformer.moe.moe_utils import maybe_move_tensor_to_cpu
 from megatron.core.transformer.moe.moe_utils import permute as megatron_permute
 from megatron.core.transformer.moe.moe_utils import unpermute as megatron_unpermute
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import sort_chunks_by_idxs
-from mindspeed.te.pytorch.permutation import MoePermuteMaskMap, MoeUnpermuteMaskMap
+from mindspeed.core.moe.permutation import MoePermuteMaskMap, MoeUnpermuteMaskMap
 from mindspeed.utils import has_triton
 
 
 def convert_tensors_to_fp32_if_needed(
-        tensor1: Optional[torch.Tensor],
-        tensor2: Optional[torch.Tensor]
+    tensor1: Optional[torch.Tensor], tensor2: Optional[torch.Tensor]
 ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.dtype]]:
     if not (isinstance(tensor1, torch.Tensor) and isinstance(tensor2, torch.Tensor)):
         return tensor1, tensor2, None
@@ -35,98 +33,98 @@ def convert_tensors_to_fp32_if_needed(
 
 
 def restore_original_dtype(
-        tensor1: Optional[torch.Tensor],
-        tensor2: Optional[torch.Tensor],
-        original_dtype: Optional[torch.dtype]
+    tensor1: Optional[torch.Tensor], tensor2: Optional[torch.Tensor], original_dtype: Optional[torch.dtype]
 ) -> Tuple[Optional[torch.Tensor], ...]:
     """Restore tensors to their original dtype if needed."""
     if original_dtype is None:
         return tensor1, tensor2
 
-    return (tensor1.to(original_dtype) if tensor1 is not None else tensor1,
-            tensor2.to(original_dtype) if tensor2 is not None else tensor2)
+    return (
+        tensor1.to(original_dtype) if tensor1 is not None else tensor1,
+        tensor2.to(original_dtype) if tensor2 is not None else tensor2,
+    )
 
 
 def permute(
-        tokens,
-        routing_map,
-        probs: Optional[torch.Tensor] = None,
-        num_out_tokens: Optional[int] = None,
-        fused: bool = False,
-        drop_and_pad: bool = False,
+    tokens,
+    routing_map,
+    probs: Optional[torch.Tensor] = None,
+    num_out_tokens: Optional[int] = None,
+    fused: bool = False,
+    drop_and_pad: bool = False,
 ) -> torch.Tensor:
     if fused:
         tokens, probs, original_dtype = convert_tensors_to_fp32_if_needed(tokens, probs)
-        permuted_input, permuted_probs, sorted_indices = (
-            MoePermuteMaskMap.apply(tokens, routing_map, probs, num_out_tokens, drop_and_pad))
+        permuted_input, permuted_probs, sorted_indices = MoePermuteMaskMap.apply(
+            tokens, routing_map, probs, num_out_tokens, drop_and_pad
+        )
         permuted_input, permuted_probs = restore_original_dtype(permuted_input, permuted_probs, original_dtype)
         return permuted_input, permuted_probs, sorted_indices
     else:
-        return megatron_permute(tokens, routing_map, probs=probs, num_out_tokens=num_out_tokens, fused=fused,
-                                drop_and_pad=drop_and_pad)
+        return megatron_permute(
+            tokens, routing_map, probs=probs, num_out_tokens=num_out_tokens, fused=fused, drop_and_pad=drop_and_pad
+        )
 
 
 def unpermute(
-        permuted_tokens: torch.Tensor,
-        sorted_indices: torch.Tensor,
-        restore_shape: torch.Size,
-        probs: torch.Tensor = None,
-        routing_map: torch.Tensor = None,
-        fused: bool = False,
-        drop_and_pad: bool = False,
+    permuted_tokens: torch.Tensor,
+    sorted_indices: torch.Tensor,
+    restore_shape: torch.Size,
+    probs: torch.Tensor = None,
+    routing_map: torch.Tensor = None,
+    fused: bool = False,
+    drop_and_pad: bool = False,
 ) -> torch.Tensor:
     if fused:
         return MoeUnpermuteMaskMap.apply(
-            permuted_tokens, sorted_indices, restore_shape, probs, routing_map, drop_and_pad)
+            permuted_tokens, sorted_indices, restore_shape, probs, routing_map, drop_and_pad
+        )
     else:
-        return megatron_unpermute(permuted_tokens, sorted_indices, restore_shape, probs=probs, routing_map=routing_map,
-                                  fused=fused, drop_and_pad=drop_and_pad)
+        return megatron_unpermute(
+            permuted_tokens,
+            sorted_indices,
+            restore_shape,
+            probs=probs,
+            routing_map=routing_map,
+            fused=fused,
+            drop_and_pad=drop_and_pad,
+        )
 
 
 def sort_chunks_by_idxs_wrapper(fn):
     @wraps(fn)
     def wrapper(
-            input: torch.Tensor,
-            split_sizes: torch.Tensor,
-            sorted_idxs: torch.Tensor,
-            probs: Optional[torch.Tensor] = None,
-            fused: bool = False,
+        input_tensor: torch.Tensor,
+        split_sizes: torch.Tensor,
+        sorted_idxs: torch.Tensor,
+        probs: Optional[torch.Tensor] = None,
+        fused: bool = False,
     ) -> torch.Tensor:
         # Currently, fused_sort_chunks_by_index is not supported
-        return fn(input, split_sizes, sorted_idxs, probs=probs, fused=False)
+        return fn(input_tensor, split_sizes, sorted_idxs, probs=probs, fused=False)
 
     return wrapper
 
 
 def moe_alltoall_token_dispatcher_init_wrapper(fn):
     @wraps(fn)
-    def wrapper(
-            self, num_local_experts, local_expert_indices, config
-    ) -> None:
+    def wrapper(self, num_local_experts, local_expert_indices, config) -> None:
         fn(self, num_local_experts, local_expert_indices, config)
         if has_triton() and self.config.moe_permute_fusion:
-            self.permute_idx_device = torch.device("npu") 
+            self.permute_idx_device = torch.device("npu")
         else:
             # Since fused_sort_chunks_by_index is not currently supported, set self.permute_idx_device to None
             self.permute_idx_device = None
-        input_chunk_idxs = torch.arange(
-            self.num_experts * self.tp_size, device=self.permute_idx_device
-        )
+        input_chunk_idxs = torch.arange(self.num_experts * self.tp_size, device=self.permute_idx_device)
         # [num_local_experts, tp_size * ep_size]. Sort the input chunks by local experts.
-        self.sort_input_by_local_experts = input_chunk_idxs.reshape(
-            -1, self.num_local_experts
-        ).T.ravel()
+        self.sort_input_by_local_experts = input_chunk_idxs.reshape(-1, self.num_local_experts).T.ravel()
         # [tp_size * ep_size, num_local_experts]. Restore the output chunks by local experts.
-        self.restore_output_by_local_experts = input_chunk_idxs.reshape(
-            self.num_local_experts, -1
-        ).T.ravel()
+        self.restore_output_by_local_experts = input_chunk_idxs.reshape(self.num_local_experts, -1).T.ravel()
 
     return wrapper
 
 
-def maybe_dtoh_and_synchronize(
-        self, point: str, tokens_per_expert: torch.Tensor = None
-) -> torch.Tensor:
+def maybe_dtoh_and_synchronize(self, point: str, tokens_per_expert: torch.Tensor = None) -> torch.Tensor:
     """
     Move all possible GPU tensors to CPU and make a synchronization at the expected point.
     """
@@ -137,7 +135,7 @@ def maybe_dtoh_and_synchronize(
             if on_side_stream:
                 self.cuda_dtoh_stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(self.cuda_dtoh_stream):
-                #With Ascend GMM， tokens_per_expert dtoh op could be cancel.
+                # With Ascend GMM， tokens_per_expert dtoh op could be cancel.
 
                 self.input_splits = maybe_move_tensor_to_cpu(
                     self.input_splits, as_numpy=True, record_stream=on_side_stream
@@ -148,9 +146,7 @@ def maybe_dtoh_and_synchronize(
                 self.output_splits_tp = maybe_move_tensor_to_cpu(
                     self.output_splits_tp, as_numpy=True, record_stream=on_side_stream
                 )
-                self.num_out_tokens = maybe_move_tensor_to_cpu(
-                    self.num_out_tokens, record_stream=on_side_stream
-                )
+                self.num_out_tokens = maybe_move_tensor_to_cpu(self.num_out_tokens, record_stream=on_side_stream)
                 # Since fused_sort_chunks_by_index is not currently supported, when self.num_local_experts > 1,
                 # move self.num_global_tokens_per_local_expert to cpu
                 if self.num_local_experts > 1:
@@ -169,11 +165,11 @@ def transformer_config_post_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self):
         # Reset moe_permute_fusion to bypass Megatron check.
-        if self.moe_token_dispatcher_type == "alltoall_seq":
+        if self.moe_token_dispatcher_type == "alltoall_seq":  # nosec B105
             ori_moe_permute_fusion = self.moe_permute_fusion
             self.moe_permute_fusion = False
         fn(self)
-        if self.moe_token_dispatcher_type == "alltoall_seq":
+        if self.moe_token_dispatcher_type == "alltoall_seq":  # nosec B105
             self.moe_permute_fusion = ori_moe_permute_fusion
             del ori_moe_permute_fusion
 
@@ -220,8 +216,13 @@ def alltoall_seq_token_permutation(
         permutated_local_input_tokens,
         permuted_probs,
         self.reversed_local_input_permutation_mapping,
-    ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens,
-                fused=self.config.moe_permute_fusion)
+    ) = permute(
+        hidden_states,
+        routing_map,
+        probs=probs,
+        num_out_tokens=self.num_out_tokens,
+        fused=self.config.moe_permute_fusion,
+    )
 
     # Perform expert parallel AlltoAll communication
     if self.cuda_sync_point == "before_ep_alltoall":
@@ -251,9 +252,7 @@ def alltoall_seq_token_permutation(
     # Perform tensor parallel AllGather on the hidden dimension to obtain the input tokens.
     # global_input_tokens: [SEQL, H/TP] -> [SEQL, H]
     if parallel_state.get_tensor_model_parallel_world_size() > 1:
-        global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
-            global_input_tokens
-        )
+        global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(global_input_tokens)
     if self.cuda_sync_point == "before_finish":
         torch.cuda.current_stream().synchronize()
 
@@ -280,9 +279,7 @@ def alltoall_seq_token_unpermutation(
     # Perform tensor parallel Reduce-Scatter
     # hidden_states: [SEQL, H] -> [SEQL, H/TP]
     if parallel_state.get_tensor_model_parallel_world_size() > 1:
-        hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(
-            hidden_states
-        )
+        hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(hidden_states)
 
     # Unpermutation 2: Unsort tokens by local expert.
     if self.num_local_experts > 1:
@@ -328,4 +325,5 @@ def preprocess_sync_wrapper(fn):
             if self.config.moe_permute_fusion:
                 self._maybe_update_cuda_sync_point("before_permutation_2")
         return num_tokens_per_local_expert
+
     return wrapper

@@ -13,7 +13,7 @@ LOG = getLogger(__name__)
 def extra_args_provider_decorator(extra_args_provider):
     """Make a extra args parser  for megatron."""
 
-    @wraps(extra_args_provider)
+    @wraps(extra_args_provider if extra_args_provider is not None else (lambda p: p))
     def wrapper(parser):
         if extra_args_provider is not None:
             parser = extra_args_provider(parser)
@@ -44,7 +44,7 @@ def validate_args_wrapper(validate_args):
         # make prev validation and copy some args.
         MindSpeedFeaturesManager.pre_validate_features_args(args)
 
-        # make megatron args validation then restore args thar are copied.
+        # make megatron args validation then restore args that are copied.
         args = validate_args(args, defaults)
 
         # make post validation after megatron validation.
@@ -54,6 +54,7 @@ def validate_args_wrapper(validate_args):
 
         # _print_args is patched, so it has three arguments.
         from megatron.training.arguments import _print_args
+
         _print_args("arguments", args, True)
 
         return args
@@ -103,7 +104,7 @@ def transformer_config_init_wrapper(fn):
         fields = []
         for key, value in unknown_config.items():
             if not hasattr(self, key):
-                fields.append((str(key), type(value), field(init=False)))
+                fields.append((str(key), type(value), field(init=False)))  # pylint: disable=invalid-field-call
         self.__class__ = make_dataclass(self.__class__.__name__, fields=fields, bases=(self.__class__,))
         for key, value in unknown_config.items():
             if not hasattr(self, key):
@@ -132,6 +133,4 @@ def transformer_config_init_subclass(cls, **kwargs):
                 value = field(default_factory=value)
             elif type(value) in mutable_types:
                 value = field(default_factory=lambda: value)
-            else:
-                value = value
             setattr(cls, key, value)

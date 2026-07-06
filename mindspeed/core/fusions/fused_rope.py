@@ -24,7 +24,6 @@ except ImportError:
     HAVE_APPLY_ROPE_FUSION = False
 
 
-
 def apply_rotary_pos_emb_bshd(
     t: Tensor,
     freqs: Tensor,
@@ -77,13 +76,14 @@ def apply_rotary_pos_emb_bshd(
 def transformer_config_post_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self):
-        #Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
+        # Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
         ori_apply_rope_fusion = self.apply_rope_fusion
         self.apply_rope_fusion = False
         fn(self)
         self.apply_rope_fusion = ori_apply_rope_fusion
-        if ((getattr(self, "multi_head_latent_attention") or getattr(self, "multi_latent_attention"))
-                and self.rope_type == "yarn"):
+        if (
+            getattr(self, "multi_head_latent_attention") or getattr(self, "multi_latent_attention")
+        ) and self.rope_type == "yarn":
             self.apply_rope_fusion = False
         del ori_apply_rope_fusion
 
@@ -91,7 +91,12 @@ def transformer_config_post_init_wrapper(fn):
 
 
 def apply_rotary_pos_emb(
-    t: Tensor, freqs: Tensor, config: TransformerConfig, cu_seqlens: Optional[Tensor] = None, mscale: float = 1.0
+    t: Tensor,
+    freqs: Tensor,
+    config: TransformerConfig,
+    cu_seqlens: Optional[Tensor] = None,
+    mscale: float = 1.0,
+    cp_group: torch.distributed.ProcessGroup = None,
 ):
     """
     Old version for fix rotary_pos_emb in core_r0.10.0.
@@ -99,6 +104,7 @@ def apply_rotary_pos_emb(
     fused/unfused kernels, or bshd (conventional) / thd (packed seq) format
     """
     import megatron.core.models.common.embeddings.rope_utils as ru
+
     logger = logging.getLogger(__name__)
     if config.apply_rope_fusion and not HAVE_APPLY_ROPE_FUSION:
         # setting apply_rope_fusion in config to False so that subsequent queries to this config also return False
@@ -119,12 +125,14 @@ def apply_rotary_pos_emb(
             freqs,
             rotary_interleaved=config.rotary_interleaved,
             multi_latent_attention=config.multi_latent_attention,
-            mscale=mscale)
+            mscale=mscale,
+        )
     return ru._apply_rotary_pos_emb_thd(
         t,
         cu_seqlens,
         freqs,
         rotary_interleaved=config.rotary_interleaved,
         multi_latent_attention=config.multi_latent_attention,
-        mscale=mscale
+        mscale=mscale,
+        cp_group=cp_group,
     )

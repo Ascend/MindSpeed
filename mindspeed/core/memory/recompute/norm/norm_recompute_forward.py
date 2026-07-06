@@ -1,6 +1,6 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional
 from torch import Tensor
 
 from megatron.core.transformer.identity_op import IdentityOp
@@ -8,20 +8,21 @@ from mindspeed.core.memory.recompute.norm import PackedSeqParams
 from mindspeed.core.memory.recompute.recompute_common import CheckpointWithoutOutput
 from mindspeed.mindspore.core.utils import make_viewless_tensor
 from mindspeed.core.memory.recompute.norm.should_recompute import should_recompute_norm
-from mindspeed.te.pytorch.module.layernorm_column_parallel_linear import MindSpeedTELayerNormColumnParallelLinear
+from transformer_engine.pytorch.module.layernorm_linear import (
+    LayerNormLinear as MindSpeedTELayerNormColumnParallelLinear,
+)
 
 
 def enable_recompute_norm_checkpoint(
-    layer,
-    norm_ckpt,
-    submodule_name: Optional[str] = None,
-    support_module_type=MindSpeedTELayerNormColumnParallelLinear
+    layer, norm_ckpt, submodule_name: Optional[str] = None, support_module_type=MindSpeedTELayerNormColumnParallelLinear
 ):
     if layer is None or norm_ckpt is None:
         raise ValueError("Please check your input!!!")
 
     if submodule_name is not None:
         target_layer = getattr(layer, submodule_name, None)
+    else:
+        target_layer = None
 
     if target_layer is None:
         raise AssertionError(
@@ -144,9 +145,7 @@ def norm_recompute_forward_impl(
     # won't result in memory savings (like the data loader, or
     # p2p_communication), it serves to document the origin of this
     # 'view' tensor.
-    output = make_viewless_tensor(
-        inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
-    )
+    output = make_viewless_tensor(inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True)
 
     # CUDA graph requires returned values to be Tensors
     if self.config.external_cuda_graph and self.training:

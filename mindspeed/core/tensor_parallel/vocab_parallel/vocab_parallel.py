@@ -20,14 +20,14 @@ import torch.nn.functional as F
 
 
 def vocab_parallel_embedding_forward_impl(
-        self,
-        input_,
-        reduce_from_tensor_model_parallel_region: Callable = None,
-        reduce_scatter_to_sequence_parallel_region: Callable = None):
-    if self.tensor_model_parallel_size > 1:
+    self,
+    input_,
+    reduce_from_tensor_model_parallel_region: Callable = None,
+    reduce_scatter_to_sequence_parallel_region: Callable = None,
+):
+    if self.tp_group.size() > 1:
         # Build the mask.
-        input_mask = (input_ < self.vocab_start_index) | \
-                     (input_ >= self.vocab_end_index)
+        input_mask = (input_ < self.vocab_start_index) | (input_ >= self.vocab_end_index)
         # Mask the input.
         masked_input = input_.clone() - self.vocab_start_index
         masked_input *= ~input_mask
@@ -43,7 +43,7 @@ def vocab_parallel_embedding_forward_impl(
         output_parallel = F.embedding(masked_input, self.weight)
 
     # Mask the output embedding.
-    if self.tensor_model_parallel_size > 1:
+    if self.tp_group.size() > 1:
         output_parallel *= ~input_mask[..., None]
     # Reduce across all the model parallel GPUs.
     if self.reduce_scatter_embeddings:
@@ -54,4 +54,3 @@ def vocab_parallel_embedding_forward_impl(
         # Reduce across all the model parallel GPUs.
         output = reduce_from_tensor_model_parallel_region(output_parallel)
     return output
-

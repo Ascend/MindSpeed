@@ -20,10 +20,7 @@ _CONTEXT_PARALLEL_GROUP_FOR_RING_INTRA_WINDOW_SEND_RECV_OVERLAP = None
 
 
 def initialize_context_parallel_group_for_send_recv_overlap(
-        tensor_model_parallel_size,
-        pipeline_model_parallel_size,
-        context_parallel_size,
-        nccl_comm_cfgs
+    tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
 ):
     if not get_args().use_cp_send_recv_overlap:
         return
@@ -34,18 +31,14 @@ def initialize_context_parallel_group_for_send_recv_overlap(
     world_size: int = torch.distributed.get_world_size()
     num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
     data_parallel_size: int = world_size // (
-            tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
+        tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
     )
     global _CONTEXT_PARALLEL_GROUP_FOR_SEND_RECV_OVERLAP
     for i in range(pipeline_model_parallel_size):
         for j in range(data_parallel_size):
-            start_rank = (
-                    i * num_pipeline_model_parallel_groups
-                    + j * tensor_model_parallel_size * context_parallel_size
-            )
+            start_rank = i * num_pipeline_model_parallel_groups + j * tensor_model_parallel_size * context_parallel_size
             end_rank = (
-                    i * num_pipeline_model_parallel_groups
-                    + (j + 1) * tensor_model_parallel_size * context_parallel_size
+                i * num_pipeline_model_parallel_groups + (j + 1) * tensor_model_parallel_size * context_parallel_size
             )
             for k in range(tensor_model_parallel_size):
                 ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
@@ -57,19 +50,18 @@ def initialize_context_parallel_group_for_send_recv_overlap(
 
 
 def initialize_context_parallel_group_for_hybrid_cp(
-        tensor_model_parallel_size,
-        pipeline_model_parallel_size,
-        context_parallel_size,
-        nccl_comm_cfgs
+    tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
 ):
-    if (not hasattr(get_args(), 'context_parallel_algo') or (get_args().context_parallel_algo != 'hybrid_cp_algo' and get_args().context_parallel_algo != 'hybrid_adaptive_cp_algo')):
+    if not hasattr(get_args(), 'context_parallel_algo') or (
+        get_args().context_parallel_algo not in ('hybrid_cp_algo', 'hybrid_adaptive_cp_algo')
+    ):
         return
 
     rank = torch.distributed.get_rank()
     world_size: int = torch.distributed.get_world_size()
     num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
     data_parallel_size: int = world_size // (
-            tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
+        tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
     )
 
     ulysses_degree = get_args().ulysses_degree_in_cp
@@ -83,13 +75,9 @@ def initialize_context_parallel_group_for_hybrid_cp(
     global _CONTEXT_PARALLEL_RANKS_FOR_HYBRID_RING
     for i in range(pipeline_model_parallel_size):
         for j in range(data_parallel_size):
-            start_rank = (
-                i * num_pipeline_model_parallel_groups
-                + j * tensor_model_parallel_size * context_parallel_size
-            )
+            start_rank = i * num_pipeline_model_parallel_groups + j * tensor_model_parallel_size * context_parallel_size
             end_rank = (
-                i * num_pipeline_model_parallel_groups
-                + (j + 1) * tensor_model_parallel_size * context_parallel_size
+                i * num_pipeline_model_parallel_groups + (j + 1) * tensor_model_parallel_size * context_parallel_size
             )
             for k in range(tensor_model_parallel_size):
                 # cp ranks
@@ -100,8 +88,7 @@ def initialize_context_parallel_group_for_hybrid_cp(
                 for m in range(ring_degree):
                     ulysses_ranks = [ranks[idx] for idx in range(m * ulysses_degree, (m + 1) * ulysses_degree)]
                     ulysses_group = torch.distributed.new_group(
-                        ulysses_ranks,
-                        pg_options=get_nccl_options('cp_ulysses', nccl_comm_cfgs)
+                        ulysses_ranks, pg_options=get_nccl_options('cp_ulysses', nccl_comm_cfgs)
                     )
                     if rank in ulysses_ranks:
                         _CONTEXT_PARALLEL_GROUP_FOR_HYBRID_ULYSSES = ulysses_group
@@ -119,10 +106,10 @@ def initialize_context_parallel_group_for_hybrid_cp(
 
 
 def initialize_context_parallel_group_for_double_ring(
-        tensor_model_parallel_size,
-        pipeline_model_parallel_size,
-        context_parallel_size,
-        nccl_comm_cfgs,
+    tensor_model_parallel_size,
+    pipeline_model_parallel_size,
+    context_parallel_size,
+    nccl_comm_cfgs,
 ):
     args = get_args()
     if args.tp_2d:
@@ -136,14 +123,10 @@ def initialize_context_parallel_group_for_double_ring(
     world_size: int = torch.distributed.get_world_size()
     num_pipeline_model_parallel_groups: int = world_size // pipeline_model_parallel_size
     data_parallel_size: int = world_size // (
-            tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
+        tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
     )
 
-    def _initialize_helper(
-            rank,
-            ring_global_ranks,
-            window_size
-    ):
+    def _initialize_helper(rank, ring_global_ranks, window_size):
         global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW
         global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_KV
         global _CONTEXT_PARALLEL_RANKS_FOR_RING_INTER_WINDOW_DKV
@@ -154,10 +137,14 @@ def initialize_context_parallel_group_for_double_ring(
         inter_size = ring_size // window_size
         for wid in range(inter_size):
             intra_ranks = [ring_global_ranks[idx] for idx in range(wid * window_size, (wid + 1) * window_size)]
-            intra_group = torch.distributed.new_group(intra_ranks, pg_options=get_nccl_options('cp_ring_intra', nccl_comm_cfgs))
+            intra_group = torch.distributed.new_group(
+                intra_ranks, pg_options=get_nccl_options('cp_ring_intra', nccl_comm_cfgs)
+            )
             intra_group_for_send_recv_overlap = None
             if args.use_cp_send_recv_overlap:
-                intra_group_for_send_recv_overlap = torch.distributed.new_group(intra_ranks, pg_options=get_nccl_options('cp_ring_intra_overlap', nccl_comm_cfgs))
+                intra_group_for_send_recv_overlap = torch.distributed.new_group(
+                    intra_ranks, pg_options=get_nccl_options('cp_ring_intra_overlap', nccl_comm_cfgs)
+                )
 
             if rank in intra_ranks:
                 _CONTEXT_PARALLEL_RANKS_FOR_RING_INTRA_WINDOW = intra_ranks
@@ -188,13 +175,9 @@ def initialize_context_parallel_group_for_double_ring(
 
     for i in range(pipeline_model_parallel_size):
         for j in range(data_parallel_size):
-            start_rank = (
-                    i * num_pipeline_model_parallel_groups
-                    + j * tensor_model_parallel_size * context_parallel_size
-            )
+            start_rank = i * num_pipeline_model_parallel_groups + j * tensor_model_parallel_size * context_parallel_size
             end_rank = (
-                    i * num_pipeline_model_parallel_groups
-                    + (j + 1) * tensor_model_parallel_size * context_parallel_size
+                i * num_pipeline_model_parallel_groups + (j + 1) * tensor_model_parallel_size * context_parallel_size
             )
             for k in range(tensor_model_parallel_size):
                 cp_ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
@@ -223,72 +206,70 @@ def get_context_parallel_group_for_send_recv_overlap(check_initialized=True):
 def initialize_model_parallel_cp_wrapper(initialize_model_parallel):
     @wraps(initialize_model_parallel)
     def wrapper(
-            tensor_model_parallel_size: int = 1,
-            pipeline_model_parallel_size: int = 1,
-            virtual_pipeline_model_parallel_size: Optional[int] = None,
-            pipeline_model_parallel_split_rank: Optional[int] = None,
-            pipeline_model_parallel_comm_backend: Optional[str] = None,
-            use_sharp: bool = False,
-            context_parallel_size: int = 1,
-            hierarchical_context_parallel_sizes: Optional[List[int]] = None,
-            expert_model_parallel_size: int = 1,
-            num_distributed_optimizer_instances: int = 1,
-            expert_tensor_parallel_size: Optional[int] = None,
-            nccl_communicator_config_path: Optional[str] = None,
-            distributed_timeout_minutes: int = 30,
-            order: str = "tp-cp-ep-dp-pp",
-            encoder_tensor_model_parallel_size: int = 0,
-            encoder_pipeline_model_parallel_size: Optional[int] = 0,
-            get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
-            get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
-            create_gloo_process_groups: bool = True
+        tensor_model_parallel_size: int = 1,
+        pipeline_model_parallel_size: int = 1,
+        virtual_pipeline_model_parallel_size: Optional[int] = None,
+        pipeline_model_parallel_comm_backend: Optional[str] = None,
+        use_sharp: bool = False,
+        context_parallel_size: int = 1,
+        hierarchical_context_parallel_sizes: Optional[List[int]] = None,
+        hybrid_context_parallel: bool = False,
+        expert_model_parallel_size: int = 1,
+        num_distributed_optimizer_instances: int = 1,
+        expert_tensor_parallel_size: Optional[int] = None,
+        nccl_communicator_config_path: Optional[str] = None,
+        distributed_timeout_minutes: int = 30,
+        order: str = "tp-cp-ep-dp-pp",
+        get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+        get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
+        create_gloo_process_groups: bool = True,
+        high_priority_stream_groups: Optional[List[str]] = None,
+        sharp_enabled_group: Optional[str] = None,
+        create_all_gather_group: Optional[bool] = False,
+        rank_offset: int = 0,
+        local_world_size: Optional[int] = None,
     ):
         initialize_model_parallel(
-            tensor_model_parallel_size,
-            pipeline_model_parallel_size,
-            virtual_pipeline_model_parallel_size,
-            pipeline_model_parallel_split_rank,
-            pipeline_model_parallel_comm_backend,
-            use_sharp,
-            context_parallel_size,
-            hierarchical_context_parallel_sizes,
-            expert_model_parallel_size,
-            num_distributed_optimizer_instances,
-            expert_tensor_parallel_size,
-            nccl_communicator_config_path,
-            distributed_timeout_minutes,
-            order,
-            encoder_tensor_model_parallel_size,
-            encoder_pipeline_model_parallel_size,
-            get_embedding_ranks,
-            get_position_embedding_ranks,
-            create_gloo_process_groups
+            tensor_model_parallel_size=tensor_model_parallel_size,
+            pipeline_model_parallel_size=pipeline_model_parallel_size,
+            virtual_pipeline_model_parallel_size=virtual_pipeline_model_parallel_size,
+            pipeline_model_parallel_comm_backend=pipeline_model_parallel_comm_backend,
+            use_sharp=use_sharp,
+            context_parallel_size=context_parallel_size,
+            hierarchical_context_parallel_sizes=hierarchical_context_parallel_sizes,
+            hybrid_context_parallel=hybrid_context_parallel,
+            expert_model_parallel_size=expert_model_parallel_size,
+            num_distributed_optimizer_instances=num_distributed_optimizer_instances,
+            expert_tensor_parallel_size=expert_tensor_parallel_size,
+            nccl_communicator_config_path=nccl_communicator_config_path,
+            distributed_timeout_minutes=distributed_timeout_minutes,
+            order=order,
+            get_embedding_ranks=get_embedding_ranks,
+            get_position_embedding_ranks=get_position_embedding_ranks,
+            create_gloo_process_groups=create_gloo_process_groups,
+            high_priority_stream_groups=high_priority_stream_groups,
+            sharp_enabled_group=sharp_enabled_group,
+            create_all_gather_group=create_all_gather_group,
+            rank_offset=rank_offset,
+            local_world_size=local_world_size,
         )
         nccl_comm_cfgs = {}
         if nccl_communicator_config_path is not None:
             import yaml
-            with open(nccl_communicator_config_path, "r") as stream:
+
+            with open(nccl_communicator_config_path, "r", encoding="utf-8") as stream:
                 nccl_comm_cfgs = yaml.safe_load(stream)
 
         initialize_context_parallel_group_for_send_recv_overlap(
-            tensor_model_parallel_size,
-            pipeline_model_parallel_size,
-            context_parallel_size,
-            nccl_comm_cfgs
+            tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
         )
 
         initialize_context_parallel_group_for_hybrid_cp(
-            tensor_model_parallel_size,
-            pipeline_model_parallel_size,
-            context_parallel_size,
-            nccl_comm_cfgs
+            tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
         )
 
         initialize_context_parallel_group_for_double_ring(
-            tensor_model_parallel_size,
-            pipeline_model_parallel_size,
-            context_parallel_size,
-            nccl_comm_cfgs
+            tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
         )
 
     return wrapper

@@ -54,9 +54,12 @@ def _compile_dependencies():
         start_time = time.time()
         print('> compiling dataset index builder ...')
         from megatron.core.datasets.utils import compile_helpers
+
         compile_helpers()
-        print('>>> done with dataset index builder. Compilation time: {:.3f} '
-              'seconds'.format(time.time() - start_time), flush=True)
+        print(
+            '>>> done with dataset index builder. Compilation time: {:.3f} seconds'.format(time.time() - start_time),
+            flush=True,
+        )
 
 
 def add_layer_norm_sp_support(config, instance):
@@ -69,10 +72,8 @@ def add_layer_norm_sp_support(config, instance):
     setattr(instance, 'persist_layer_norm', persist_layer_norm)
 
 
-
 class PTNorm:
-
-    def __new__(cls, config, hidden_size: int, eps: float = 1e-5):
+    def __new__(cls, config, hidden_size: int, eps: float = 1e-5, **kwargs):
         if config.normalization == "LayerNorm":
             if getattr(config, "tp_2d", False):
                 instance = LayerNorm2D(
@@ -84,6 +85,7 @@ class PTNorm:
                 try:
                     # using apex implementation
                     from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
+
                     instance = FusedLayerNorm(config=config, hidden_size=hidden_size, eps=eps)
                 except ImportError:
                     # using torch implementation
@@ -99,10 +101,11 @@ class PTNorm:
                 instance.use_fused_rmsnorm = False
             else:
                 from mindspeed.core.fusions.fused_rms_norm import RMSNorm
+
                 instance = RMSNorm(dim=hidden_size, eps=eps, sequence_parallel=config.sequence_parallel, config=config)
                 instance.config.use_fused_rmsnorm = True
         else:
-            raise Exception('Only LayerNorm and RMSNorm are curently supported')
+            raise ValueError('Only LayerNorm and RMSNorm are curently supported')
 
         return instance
 
@@ -120,6 +123,7 @@ def get_device_wrapper(func):
         else:
             device = func(*args, **kwargs)
         return device
+
     return wrapper
 
 
@@ -142,7 +146,8 @@ def preload_tensors(write_buckets, non_blocking=True):
     for bucket in write_buckets:
         file_name, storage_key, (bytes_data, tensor_data) = bucket
         tensor_data = [
-            (item, tensor.to("cpu", non_blocking=False) if not tensor.is_cpu else tensor.clone()) for item, tensor in tensor_data
+            (item, tensor.to("cpu", non_blocking=False) if not tensor.is_cpu else tensor.clone())
+            for item, tensor in tensor_data
         ]
         result.append((file_name, storage_key, (bytes_data, tensor_data)))
     if non_blocking:
@@ -212,9 +217,7 @@ def dist_optim_load_state_dict(self, state_dict):
             elif f"pre_{key}" in param_group:
                 key = f"pre_{key}"
             else:
-                raise ValueError(
-                    f"Key {key} (or pre_{key}) not found in param_group {param_group}."
-                )
+                raise ValueError(f"Key {key} (or pre_{key}) not found in param_group {param_group}.")
             needed_groups.append(param_group[key])
         needed_groups = tuple(needed_groups)
         return needed_groups
@@ -227,9 +230,7 @@ def dist_optim_load_state_dict(self, state_dict):
     state_dict_param_groups = []
     for inner_param_group in inner_state_dict["param_groups"]:
         needed_groups = make_needed_groups(inner_param_group)
-        state_dict_param_groups.append(
-            {**param_groups_map[needed_groups], "params": inner_param_group['params']}
-        )
+        state_dict_param_groups.append({**param_groups_map[needed_groups], "params": inner_param_group['params']})
 
     # Allocate or retrieve optimizer state (i.e., tensors).
     if len(self.optimizer.state) == 0:
@@ -245,13 +246,10 @@ def dist_optim_load_state_dict(self, state_dict):
             for gbuf_range_map_for_all_buckets in gbuf_range_maps.values():
                 for gbuf_range_map in gbuf_range_map_for_all_buckets:
                     for model_param, param_range_map in gbuf_range_map["param_map"].items():
-
                         # Get parameter ordering information (see method docstring
                         # for details).
                         group_index, group_order = self.model_param_group_index_map[model_param]
-                        state_order = inner_state_dict["param_groups"][group_index]["params"][
-                            group_order
-                        ]
+                        state_order = inner_state_dict["param_groups"][group_index]["params"][group_order]
 
                         # Allocate dummy tensors.
                         numel = len(param_range_map["gbuf_world"])
@@ -276,7 +274,7 @@ def dist_optim_load_state_dict(self, state_dict):
 
     # Extract 'step', for non-Apex/TE support.
     if not HAVE_APEX_OR_TE:
-        steps = list(set([g["step"] for g in state_dict["optimizer"]["param_groups"]]))
+        steps = list({g["step"] for g in state_dict["optimizer"]["param_groups"]})
         if len(steps) != 1:
             raise AssertionError(f"Expect exactly one kind of step, but detect {len(steps)} kinds of steps")
         step = torch.tensor(steps[0], dtype=torch.float)
@@ -287,9 +285,7 @@ def dist_optim_load_state_dict(self, state_dict):
     elif isinstance(self.optimizer, HybridDeviceOptimizer):
         # Handle Torch AdamW special case, which, unlike FusedAdam, Torch AdamW
         # has an extra optimizer state “step”.
-        steps = list(
-            set([g["step"] for g in state_dict["optimizer"]["param_groups"] if "step" in g])
-        )
+        steps = list({g["step"] for g in state_dict["optimizer"]["param_groups"] if "step" in g})
         if len(steps) != 0:
             if len(steps) != 1:
                 raise AssertionError(f"steps: {steps}")
@@ -298,16 +294,12 @@ def dist_optim_load_state_dict(self, state_dict):
                 v["step"] = step.detach().clone()
 
     # Optimizer.
-    self.optimizer.load_state_dict(
-        {"state": state_dict_state, "param_groups": state_dict_param_groups}
-    )
+    self.optimizer.load_state_dict({"state": state_dict_state, "param_groups": state_dict_param_groups})
 
     # Grad scaler.
     if 'grad_scaler' not in state_dict:
         if self.config.fp16:
-            logger.info(
-                '***WARNING*** found an old checkpoint, will not ' 'load grad scaler ...'
-            )
+            logger.info('***WARNING*** found an old checkpoint, will not load grad scaler ...')
     else:
         if self.grad_scaler:
             self.grad_scaler.load_state_dict(state_dict['grad_scaler'])
@@ -321,14 +313,14 @@ def dist_optim_load_state_dict(self, state_dict):
     if 'param_state' in state_dict:
         if 'param_state_sharding_type' not in state_dict:
             raise AssertionError(
-                f"Could not find 'param_state_sharding_type' in state_dict."
-                f"Current state_dict.key(): {state_dict.key()}")
+                f"Could not find 'param_state_sharding_type' in state_dict.Current state_dict.key(): {state_dict.key()}"
+            )
         param_state = state_dict['param_state']
         sharding_type = state_dict['param_state_sharding_type']
         if self.ddp_config.use_custom_fsdp:
             if sharding_type != "fully_sharded_model_space":
                 raise AssertionError("Only fully sharded model space is supported")
-        logger.info(f'Loading distributed optimizer sharded state of type {sharding_type}')
+        logger.info('Loading distributed optimizer sharded state of type %s', sharding_type)
         if sharding_type == 'dp_zero_gather_scatter':
             self.load_parameter_state_from_dp_zero(param_state)
         elif sharding_type == 'fully_sharded_bucket_space':

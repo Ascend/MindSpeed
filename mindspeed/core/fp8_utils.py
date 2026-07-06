@@ -50,9 +50,13 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
         # fp8 training but this layer_no should be bf16
         fp8_context = nullcontext()
     else:
-        from transformer_engine.common.recipe import Float8CurrentScaling, MXFP8BlockScaling, Format
+        from transformer_engine.common.recipe import (
+            Float8CurrentScaling,
+            MXFP8BlockScaling,
+            Float8BlockScaling,
+            Format,
+        )
         from transformer_engine.pytorch import fp8_autocast, fp8_model_init
-        from mindspeed.te.pytorch.fp8.recipes import Float8BlockScaling, MXFP832x32BlockScaling
 
         if config.fp8 == "e4m3":
             fp8_format = Format.E4M3
@@ -74,8 +78,6 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
             fp8_recipe = Float8CurrentScaling(fp8_format=fp8_format)
         elif config.fp8_recipe == Fp8Recipe.mxfp8:
             fp8_recipe = MXFP8BlockScaling(fp8_format=fp8_format)
-        elif config.fp8_recipe == Fp8Recipe.mxfp8_32x32:
-            fp8_recipe = MXFP832x32BlockScaling(fp8_format=fp8_format)
         elif config.fp8_recipe == Fp8Recipe.blockwise:
             fp8_recipe = Float8BlockScaling(fp8_format=fp8_format)
         else:

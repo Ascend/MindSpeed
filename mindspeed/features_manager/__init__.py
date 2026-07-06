@@ -15,17 +15,12 @@ from mindspeed.features_manager.functional.npu_deterministic import NPUDetermini
 from mindspeed.features_manager.functional.npu_datadump import NPUDataDumpFeature
 from mindspeed.features_manager.functional.tflops_calculate import TflopsCalculateFeature
 
-from mindspeed.features_manager.fusions.grouped_matmul import GroupedMatmulFeature
+
 from mindspeed.features_manager.fusions.fused_bias_swiglu import FusedSwigluFeature
 from mindspeed.features_manager.fusions.fused_softmax import FusedSoftmaxFeature
 from mindspeed.features_manager.fusions.fused_rope import FusedRoPEFeature
 from mindspeed.features_manager.fusions.fused_moe_permute import FusedMoEPermuteFeature
 from mindspeed.features_manager.affinity.affinity import AffinityFeature
-
-from mindspeed.features_manager.megatron_basic.requirements_basic import RequirementsBasicFeature
-from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBasicFeature
-from mindspeed.features_manager.megatron_basic.transformer_engine_basic import TransformerEngineBasicFeature
-from mindspeed.features_manager.optimizer.muon_optimizer_feature import MuonOptimizerFeature
 from mindspeed.features_manager.qat.qat_quant_engine import QATQuantEngineFeature
 from mindspeed.features_manager.pipeline_parallel import NoopLayersFeature
 from mindspeed.features_manager.pipeline_parallel import PipelineModelParallelLayoutFeature
@@ -127,16 +122,16 @@ FEATURES_LIST = [
 
 
 # this list is for reconstruction of mindspeed
-def add_megatron_basic_features(features_list: List[MindSpeedFeature]):
-    features_list.extend(
-        [RequirementsBasicFeature(), MuonOptimizerFeature(), MegatronBasicFeature(), TransformerEngineBasicFeature()]
-    )
+def add_basic_optimizer_features(features_list: List[MindSpeedFeature]):
+    from mindspeed.features_manager.optimizer.muon_optimizer_feature import MuonOptimizerFeature
+    from mindspeed.features_manager.npu_enhancement import NpuEnhancementFeature
+
+    features_list.extend([MuonOptimizerFeature(), NpuEnhancementFeature()])
 
 
 def add_fusions_features(features_list: List[MindSpeedFeature]):
     features_list.extend(
         [
-            GroupedMatmulFeature(),
             FusedSwigluFeature(),
             FusedSoftmaxFeature(),
             FusedRoPEFeature(),
@@ -366,7 +361,7 @@ def add_ttp_feature(features_list: List[MindSpeedFeature]):
 
 def create_features_list():
     features_list = []
-    add_megatron_basic_features(features_list)
+    add_basic_optimizer_features(features_list)
     add_context_parallel_features(features_list)
     add_data_parallel_features(features_list)
     add_fusions_features(features_list)

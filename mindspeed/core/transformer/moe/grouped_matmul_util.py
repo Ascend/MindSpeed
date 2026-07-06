@@ -8,9 +8,37 @@ from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from mindspeed.ops.npu_matmul_add import NPUVersion, check_npu_version
-from mindspeed.te.pytorch.fp8.constants import FormatEnum, Fp8Recipe, TensorKey
-from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
-from mindspeed.te.pytorch.utils import get_quant_dtype
+from transformer_engine.common.recipe import FormatEnum
+from megatron.core.enums import Fp8Recipe
+from functools import lru_cache
+
+
+# ---- Inlined from mindspeed/core/fp8/utils.py ----
+
+
+class QuantDtype:
+    """FP8 quantization dtype configuration for x, w, grads."""
+
+    def __init__(self, x: torch.dtype, w: torch.dtype, grads: torch.dtype):
+        self.x = x
+        self.w = w
+        self.grads = grads
+        if self.x == torch_npu.hifloat8:
+            self.mm_kwargs = {'x1_dtype': self.x, 'x2_dtype': self.w}
+            self.gmm_kwargs = {"x_dtype": self.x, "weight_dtype": self.w}
+        else:
+            self.mm_kwargs = {}
+            self.gmm_kwargs = {}
+
+
+@lru_cache
+def get_quant_dtype():
+    args = get_args()
+    if args.fp8 == 'hif8':
+        return QuantDtype(torch_npu.hifloat8, torch_npu.hifloat8, torch_npu.hifloat8)
+    elif args.fp8 == 'hybrid':
+        return QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e5m2)
+    return QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e4m3fn)
 
 
 class GmmContext:
@@ -23,8 +51,6 @@ def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
         return None
     if args.fp8_recipe == Fp8Recipe.mxfp8:
         return MXFP8GMMFunction
-    elif args.fp8_recipe == Fp8Recipe.mxfp8_32x32:
-        return MXFP832x32GMMFunction
     elif args.fp8_recipe in [Fp8Recipe.tensorwise, Fp8Recipe.delayed]:
         return TensorwiseGMMFunction
     # Blockwise FP8 is not implemented here yet, so fall back to the high-precision path.
@@ -186,16 +212,11 @@ class BF16GMMFunction(BaseGMMFunction):
 
 class MXFP8GMMFunction(BaseGMMFunction):
     @classmethod
-    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None, reuse_identity=None):
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         x_mxfp8, x_scale = torch_npu.npu_dynamic_mx_quant(x, axis=-1, dst_type=qdtype.x)
-        weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale = reuse_or_quantize(
-            weight,
-            TensorKey.weight,
-            torch_npu.npu_dynamic_mx_quant_with_dual_axis,
-            op_name="npu_dynamic_mx_quant_with_dual_axis",
-            reuse_identity=reuse_identity,
-            dst_type=qdtype.w,
+        weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale = (
+            torch_npu.npu_dynamic_mx_quant_with_dual_axis(weight, dst_type=qdtype.w)
         )
         ctx.w_quant = (weight_col_mxfp8, weight_col_scale)
         return torch_npu.npu_grouped_matmul(
@@ -289,12 +310,8 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             x, dst_type=qdtype.x, quant_mode='pertensor', dst_type_max=dst_type_max
         )
         x_scale = x_scale.expand(g_size)
-        w_quant, w_scale = reuse_or_quantize(
-            weight.view(g_size, -1),
-            TensorKey.weight,
-            torch_npu.npu_dynamic_quant,
-            dst_type=qdtype.w,
-            dst_type_max=dst_type_max,
+        w_quant, w_scale = torch_npu.npu_dynamic_quant(
+            weight.view(g_size, -1), dst_type=qdtype.w, dst_type_max=dst_type_max
         )
         w_quant = w_quant.view(weight.shape)
         ctx.saved_x = (x_quant, x_scale)
@@ -366,32 +383,14 @@ class TensorwiseGMMFunction(BaseGMMFunction):
         return grad_quant, grad_scale
 
 
-class MXFP832x32GMMFunction(MXFP8GMMFunction):
-    @classmethod
-    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None, reuse_identity=None):
-        qdtype = get_quant_dtype()
-        x_mxfp8, x_scale = torch_npu.npu_dynamic_mx_quant(x, axis=-1, dst_type=qdtype.x)
-        weight_col_mxfp8, weight_col_scale, weight_row_scale = reuse_or_quantize(
-            weight,
-            TensorKey.weight,
-            torch_npu.npu_dynamic_block_mx_quant,
-            op_name="npu_dynamic_block_mx_quant",
-            reuse_identity=reuse_identity,
-            dst_type=qdtype.w,
-        )
-        weight_row_mxfp8 = weight_col_mxfp8
-        ctx.w_quant = (weight_col_mxfp8, weight_col_scale)
-        return torch_npu.npu_grouped_matmul(
-            [x_mxfp8],
-            [weight_row_mxfp8],
-            bias=bias,
-            scale=[weight_row_scale],
-            per_token_scale=[x_scale],
-            group_list=group_list,
-            group_type=0,
-            output_dtype=x.dtype,
-            group_list_type=group_list_type,
-            scale_dtype=torch_npu.float8_e8m0fnu,
-            per_token_scale_dtype=torch_npu.float8_e8m0fnu,
-            split_item=3,
-        )
+def mindspeed_groupedmlp_weighted_bias_swiglu_impl(x, bias, probs, fp8_input_store=False):
+    """Patch of TEGroupedMLP with MindSpeed.
+    Use ascend fused_swiglu instead weighted_bias_swiglu_impl for better performance.
+    """
+    from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
+
+    if bias is not None:
+        raise NotImplementedError("Bias is not support for weighted swiglu fusion.")
+    dtype = x.dtype
+    res = fused_swiglu(x) * probs
+    return res.to(dtype)
