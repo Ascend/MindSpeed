@@ -26,7 +26,6 @@ class DelayedScalingRecipe(Recipe):
 
     def finally_step(self):
         torch.cuda.current_stream().wait_stream(DelayedScalingRecipe.MAX_STREAM)
-        self.scale.delayed_recipe_update_scale()
 
     def quantization(self, tensor, key, colwise, rowwise):
         if tensor is None:
