@@ -62,7 +62,8 @@ class ScaleData:
         self.amax_compute(self.amax, self.amax_history, self.last_history_index)
         # 这里为适配算子对原始公式进行取反
         # 原始公式 (self.fp8_max / self.amax) / (2 ** self.margin)
-        self.scale.copy_(((self.amax * (2 ** self.margin)) / self.fp8_max), non_blocking=True)
+        # 使用直接赋值代替copy_操作，创建新的tensor
+        self.scale = (self.amax * (2**self.margin)) / self.fp8_max
 
     def delayed_recipe_update_amax(self, tensor, stream):
         if self.amax_history_current_len == 0:
@@ -71,10 +72,12 @@ class ScaleData:
             amax = torch.amax(torch.abs(tensor))
             self.append_amax(amax)
             self.delayed_recipe_update_scale()
-            scale = self.scale.clone()
+            # 直接返回scale引用，避免clone操作
+            scale = self.scale
         else:
             stream.wait_stream(torch.cuda.current_stream())
-            scale = self.scale.clone()
+            # 直接返回scale引用，避免clone操作
+            scale = self.scale
 
             if self.current_interval >= self.config.config.fp8_interval:
                 self.current_interval = 1
