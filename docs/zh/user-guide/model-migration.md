@@ -102,7 +102,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     如果出现下载速度太慢或者无法访问下载的情况，
     请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
 
- 2. 在[huggingface](https://huggingface.co/datasets/tatsu-lab/alpaca)的网站下载Alpaca的train-00000-of-000010-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
+ 2. 在[HuggingFace](https://huggingface.co/datasets/tatsu-lab/alpaca)的网站下载Alpaca的train-00000-of-00001-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
 
     如果出现下载速度太慢或者无法访问下载的情况，
     请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
@@ -125,7 +125,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     ```python
     import json
     import pandas as pd
-    data_df = pd.read_parquet("train-00000-of-000010-a09b74b3ef9c3b56.parquet")
+    data_df = pd.read_parquet("train-00000-of-00001-a09b74b3ef9c3b56.parquet")
     data_df['text'] = data_df['text'].apply(lambda v: json.dumps({"text": v}))
     with open("alpaca_json.json", encoding='utf-8', mode='w') as f:
         for i, row in data_df.iterrows():
@@ -138,6 +138,8 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
  4. 在`Megatron-LM`仓库根目录下执行如下命令进行数据预处理，将步骤3生成的json格式的数据集转换成`Megatron-LM`识别的数据集格式。
 
     ```shell
+    mkdir -p ./gpt_pretrain_data
+
     python tools/preprocess_data.py \
         --input /home/datasets/Alpaca/alpaca_json.json \
         --output-prefix ./gpt_pretrain_data/alpaca \
