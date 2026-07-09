@@ -14,7 +14,7 @@ LLaMA及GPT大模型均可使用。
 
 ## 使用方法
 
-融合算子使能要求安装ATB（Ascend Transformer Boost），请参考[软件安装](../install_guide.md)完成安装。
+融合算子使能要求安装ATB（Ascend Transformer Boost），请参考[软件安装](../user-guide/install_guide.md)完成安装。
 
 去掉`--no-gradient-accumulation-fusion`即可调用Matmul_Add融合算子。
 
@@ -28,6 +28,6 @@ LLaMA及GPT大模型均可使用。
     * 小算子dtype变化过程：`bf16*bf16=fp32->bf16->fp32+fp32=fp32`
     * 融合算子dtype变化过程：`bf16*bf16=fp32+fp32=fp32`
 
-## 使用效果 
+## 使用效果
 
 在内存没有完全使用或占满的情况下，开启Matmul_Add融合算子，模型训练的性能将得到提升，在LLaMA2-7B模型下，性能增益约2%。
