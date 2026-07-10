@@ -55,8 +55,8 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 
 - 推荐方案：
 
-  - 将相关变量修改为 int64 数据类型，具体可查看[fix data helps overflow bug](https://github.com/NVIDIA/Megatron-LM/pull/598)。
-    可以在 Megatron-LM 目录下，运行`mindspeed -P`命令，自动完成修改。
+  - 将相关变量修改为int64数据类型，具体可查看[fix data helpers overflow bug](https://github.com/NVIDIA/Megatron-LM/pull/598)。
+    可以在Megatron-LM目录下，运行`mindspeed -P`命令，自动完成修改。
 
   - 删除`megatron/core/datasets/`目录下`helpers.cpython-xx-xxx-linux-gnu.so`文件。
 
@@ -96,11 +96,9 @@ Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 
 ```bash
 2024-09-18 11:14:247 iteration 427/ 5000  consumed samples: 6832 elapsed time per iteration (
-ms): 209.8 | Learning rate: 1.229919E-06 | global batch size:   16 | Lm loss: 8.567080E+00 | loss scale: 1.0 | gr
-ad norm: 35.518 | number of skipped iterations:   О | number of nan iterations: 0 
+ms): 209.8 | Learning rate: 1.229919E-06 | global batch size:   16 | Lm loss: 8.567080E+00 | loss scale: 1.0 | grad norm: 35.518 | number of skipped iterations:   О | number of nan iterations: 0 
 [2024-09-18 11:14:25] iteration 428/   5000] consumed samples: 6848 elapsed time per iteration (
-ms): 210.5 | Learning rate: 1.229826E-06 | global batch size: _ 16 | lm loss: 7.180392E+00 | loss scale: 1.0 | gr
-ad norm: 36.838 ] number of skipped iterations:   О | number of nan iterations:
+ms): 210.5 | Learning rate: 1.229826E-06 | global batch size: _ 16 | lm loss: 7.180392E+00 | loss scale: 1.0 | grad norm: 36.838 ] number of skipped iterations:   О | number of nan iterations:
 Traceback (most recent call last):
 File "pretrain_gpt.py", line 247, in <module>
 pretrain(

@@ -15,9 +15,9 @@
 ## 使用方法
 
 - 开启特性：添加`--moe-tp-extend-ep`启用该功能。
-- 必选配套参数：必须同时确保开启以下两个参数。
+- 必选配套参数：必须同时确保开启以下两个参数：
     - `--moe-permutation-async-comm`
-    - `--moe-grouped-gemm`，（注意：目前仅支持Grouped MLP）
+    - `--moe-grouped-gemm`（注意：目前仅支持Grouped MLP）
 - 配置约束：需要确保`--num-experts`能被`--tensor-model-parallel-size`与`--expert-model-parallel-size`的乘积整除。
 
 > [!NOTE]

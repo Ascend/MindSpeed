@@ -42,7 +42,7 @@
 > [!NOTE]
 >
 > - megatron原生不支持`--moe-grouped-gemm`在开启`--bf16`的场景下使用。
-> - 通过`--moe-grouped-gemm`参数使能Grouped GEMM计算时会调用npu_gmm融合算子
+> - 通过`--moe-grouped-gemm`参数开启Grouped GEMM计算时会调用npu_gmm融合算子。
 
 **算子输入输出**
 
@@ -51,15 +51,15 @@ y = npu_gmm(x, weight, bias=None, group_list=None, group_type=0, gemm_fusion=Fal
 ```
 
 - 输入：
-    - x：必选输入，为tensor，数据类型float16, bfloat16, float32
-    - weight：必选输入，为tensor，数据类型float16, bfloat16, float32
-    - bias：可选输入，为tensor，数据类型float16, float32, 默认值为None。训练场景下，仅支持bias为None
-    - group_list：可选输入，数据类型list[int64], tensor，默认值为None。
+    - x：必选输入，为tensor，数据类型float16，bfloat16，float32。
+    - weight：必选输入，为tensor，数据类型float16，bfloat16，float32。
+    - bias：可选输入，为tensor，数据类型float16，float32，默认值为None。训练场景下，仅支持bias为None。
+    - group_list：可选输入，数据类型list[int64]，tensor，默认值为None。
     - group_type：可选输入，数据类型int64，代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则group_type取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组，默认值为0。
-    - gemm_fusion:可选输入，为bool，数据类型True，False，用于反向累加梯度的时候使能GMM+ADD融合算子，默认值为False。
-    - original_weight:可选输入，为tensor，数据类型float16, bfloat16, float32，用于获取view之前的weight的main_grad用于GMM+ADD中梯度累加功能，默认值为None。
+    - gemm_fusion:可选输入，为bool，数据类型True，False，用于反向累加梯度的时候开启GMM+ADD融合算子，默认值为False。
+    - original_weight:可选输入，为tensor，数据类型float16，bfloat16，float32，用于获取view之前的weight的main_grad用于GMM+ADD中梯度累加功能，默认值为None。
 - 输出：
-    - y：必选输出，数据类型float16, bfloat16, float32
+    - y：必选输出，数据类型float16, bfloat16, float32。
 
 该算子在非量化场景仅支持以下输入输出类型的组合，若将参数指定为其他不支持类型可能会导致算子报错，影响训练效率：
 

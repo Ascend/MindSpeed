@@ -4,7 +4,7 @@
 
 **repeat_interleave并行**
 
-在 Alltoall dispatcher分支中，调用了repeat_interleave算子，此算子只使用了单个block dim在单个下发流上进行串行计算，且耗时较长，算子的输出也是在alltoall、permute和alltoallv之后才用到。
+在Alltoall dispatcher分支中，调用了repeat_interleave算子，此算子只使用了单个block dim在单个下发流上进行串行计算，且耗时较长，算子的输出也是在alltoall、permute和alltoallv之后才用到。
 
 **计算通信并行**
 
@@ -14,7 +14,7 @@
 
 **repeat_interleave并行**
 
-通过新建一条下发流，将repeat_interleave 算子调用分到新的流上，在block dim资源充足的情况下，可进行两个算子的并行计算，节省耗时。
+通过新建一条下发流，将repeat_interleave算子调用分到新的流上，在block dim资源充足的情况下，可进行两个算子的并行计算，节省耗时。
 
 **计算通信并行**
 
@@ -22,7 +22,7 @@
 
 ## 使用场景
 
-在使用 mcore MoE 的场景下，开启了`--moe-token-dispatcher-type alltoall`。
+在使用mcore MoE的场景下，开启了`--moe-token-dispatcher-type alltoall`。
 
 ## 使用方法
 

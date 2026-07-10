@@ -11,7 +11,7 @@ MoE中，存在大量的EP通信没有做通信隐藏，端到端时间占比大
 ## 使用方法
 
 - 开启特性：添加`--moe-allgather-overlap-comm`启用该功能。
-- 必选配套参数：必须同时确保开启以下三个参数。
+- 必选配套参数：必须同时确保开启以下三个参数：
     - `--moe-permutation-async-comm`
     - `--moe-token-dispatcher-type allgather`
     - `--moe-grouped-gemm`（注意：目前仅支持Grouped MLP）

@@ -72,10 +72,10 @@ $$\hat{x}_i = x'_i \cdot \gamma \quad \forall i \in \{1, 2, \dots, H\}$$
 
 其他优化参数，用于辅助高维张量并行特性进行通信隐藏，需要开启tp-2d时生效：
 
-- `--enable-overlap-ag-with-matmul`: 在linear层forward计算时，开启all-gather通信和matmul进行隐藏，以便加速
-- `--enable-overlap-matmul-with-rs`: 在linear层forward计算时，开启matmul计算和reduce-scatter通信进行隐藏，以便加速
-- `--coc-fused-kernel`: 在linear层forward计算时，开启计算通信融合算子，将matmul计算与all-gather、reduce-scatter都进行算子级融合，实现进一步加速（该特性不与前两个特性兼容，依赖ATB加速库）
-- `--enable-backward-overlap-ag-with-matmul`: 在linear层backward计算梯度时，开启all-gather通信和matmul进行隐藏，以便加速（该特性依赖ATB加速库）
+- `--enable-overlap-ag-with-matmul`: 在linear层forward计算时，开启all-gather通信和matmul进行隐藏，以便加速。
+- `--enable-overlap-matmul-with-rs`: 在linear层forward计算时，开启matmul计算和reduce-scatter通信进行隐藏，以便加速。
+- `--coc-fused-kernel`: 在linear层forward计算时，开启计算通信融合算子，将matmul计算与all-gather、reduce-scatter都进行算子级融合，实现进一步加速（该特性不与前两个特性兼容，依赖ATB加速库）。
+- `--enable-backward-overlap-ag-with-matmul`: 在linear层backward计算梯度时，开启all-gather通信和matmul进行隐藏，以便加速（该特性依赖ATB加速库）。
 
 上述3个forward计算优化参数`--enable-overlap-ag-with-matmul`、`--enable-overlap-matmul-with-rs`、`--coc-fused-kernel`只能同时开启1个。
 
