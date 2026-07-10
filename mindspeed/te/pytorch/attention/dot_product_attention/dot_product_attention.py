@@ -22,6 +22,7 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 from torch.distributed import ProcessGroup as dist_group_type
 
+from mindspeed.args_utils import get_full_args
 from mindspeed.core.transformer.flash_attention.generate_mask.generate_mask import get_attention_mask
 
 from .backend import FlashAttention
@@ -608,7 +609,9 @@ class TEDotProductAttention(DotProductAttention):
 
             extra_kwargs["cp_group"] = cp_group
             extra_kwargs["cp_global_ranks"] = cp_global_ranks
-            extra_kwargs["cp_comm_type"] = self.config.context_parallel_algo
+            # Read context_parallel_algo from global args (always up-to-date after repatch)
+            # rather than from self.config (which may be a stale snapshot from before repatch).
+            extra_kwargs["cp_comm_type"] = get_full_args().context_parallel_algo
 
             if getattr(TEDotProductAttention, "cp_stream") is None:
                 TEDotProductAttention.cp_stream = torch.npu.Stream(device=torch.npu.current_device())
