@@ -1,14 +1,11 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 from copy import deepcopy
-import pytest
 import torch
 from torch import nn, optim
 
 from mindspeed.multi_modal.conv3d.conv3d_depth_parallel import Conv3DSequenceParallel
 from tests_extend.unit_tests.common import DistributedTest
-
-pytestmark = pytest.mark.slow
 
 torch.manual_seed(1234)
 
