@@ -40,10 +40,10 @@
 
 **表 1**  MindSpeed Core软件版本配套表
 
-|MindSpeed Core代码分支名称|CANN版本|Ascend Extension for PyTorch版本|Python版本|PyTorch版本|
+|MindSpeed Core代码分支名称|CANN版本|TorchNPU版本|Python版本|PyTorch版本|
 |--|--|--|--|--|
-|master（在研版本）|master（在研版本）|在研版本|Python3.10|2.7.1|
-|26.1.0_core_r0.12.1|9.0.0|26.1.0|Python3.10|2.7.1|
+|26.1.0_core_r0.12.1|9.1.0|26.1.0|Python3.10|2.7.1|
+|26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|
 
 >[!NOTE]
 >
@@ -55,7 +55,7 @@
 >
 > 本节表格中“/”表示不可配套，“Y”表示可配套。
 
-**表 2**  MindSpeed Core与Ascend Extension for PyTorch版本兼容
+**表 2**  MindSpeed Core与TorchNPU版本兼容
 
 <table style="table-layout: fixed; width: 750px">
   <colgroup>
@@ -68,17 +68,26 @@
   <thead>
     <tr>
       <th rowspan="2">MindSpeed Core</th>
-      <th colspan="3">Ascend Extension for PyTorch版本</th>
+      <th colspan="4">TorchNPU版本</th>
     </tr>
     <tr>
       <th>7.2.0</th>
       <th>7.3.0</th>
+      <th>26.0.0</th>
       <th>26.1.0</th>
     </tr>
   </thead>
   <tbody>
     <tr>
+      <td>26.0.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>/</td>
+    </tr>
+    <tr>
       <td>26.1.0</td>
+      <td>Y</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -99,17 +108,26 @@
   <thead>
     <tr>
       <th rowspan="2">MindSpeed Core</th>
-      <th colspan="3">CANN版本</th>
+      <th colspan="4">CANN版本</th>
     </tr>
     <tr>
       <th>8.3.RC1</th>
       <th>8.5.0</th>
       <th>9.0.0</th>
+      <th>9.1.0</th>
     </tr>
   </thead>
   <tbody>
     <tr>
+      <td>26.0.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>/</td>
+    </tr>
+    <tr>
       <td>26.1.0</td>
+      <td>Y</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -125,13 +143,16 @@
 
 ### 新增特性
 
- - Atlas A3 训练产品系列支持代际AI QoS参数配置。
- - 支持KVAllgather CP并行方案。
- - FSDP后端Device解耦。
+- 新增FP8/MXFP8/HiFloat8低精格式训练支持，以及w8a16量化支持
+- 新增MXFP8-32x32量化及FSDP支持，量化后释放bf16权重优化内存
+- 新增SwapMuon及mcore muon特性，支持checkpoint保存与加载
+- 新增DeepSeek V4模型适配及自定义PP布局支持
+- 新增TE算子层Hamilton attention实现
 
 ### 删除特性
 
-无
+- 删除SFA/SFAG/SLI临时版本算子适配，相关功能通过正式算子承载。
+- 删除mindspeed/lite模块，Triton算子迁移至mindspeed/ops/triton目录。
 
 ### 接口变更说明
 
@@ -139,8 +160,10 @@
 
 ### 已解决问题
 
- - 修复ATB算子多流场景的偶现精度异常。
- - 修复TE分支Norm重计算部分场景下功能异常。
+- 修复TE分支LayerNormLinear初始化权重顺序与NVTE不一致问题，以及LayerNorm偏置未初始化为零的问题。
+- 修复GMM算子、NPU sparse_attn_sharedkv算子异常，以及l2norm批量一致性和recompute_w_u_fwd的NaN错误。
+- 修复fboverlap场景下异常内存占用问题，以及Triton算子chunk_bwd_dqkwg时间退化问题。
+- 修复VeRL场景下HCCL缓冲区错误。
 
 ### 遗留问题
 
