@@ -18,6 +18,7 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 from torch.distributed import ProcessGroup as dist_group_type
 
+from mindspeed.args_utils import get_full_args
 from mindspeed.core.transformer.flash_attention.generate_mask.generate_mask import get_attention_mask
 
 from .backend import FlashAttention
@@ -180,24 +181,18 @@ class DotProductAttention(torch.nn.Module):
         self.cp_stream = cp_stream
         self.cp_comm_type = cp_comm_type
 
-        self.hidden_size_per_attention_head_k = (
-            kv_channels if isinstance(kv_channels, int) else kv_channels[0]
-        )
-        self.hidden_size_per_attention_head_v = (
-            kv_channels if isinstance(kv_channels, int) else kv_channels[1]
-        )
+        self.hidden_size_per_attention_head_k = kv_channels if isinstance(kv_channels, int) else kv_channels[0]
+        self.hidden_size_per_attention_head_v = kv_channels if isinstance(kv_channels, int) else kv_channels[1]
 
         self.num_gqa_groups = num_attention_heads if num_gqa_groups is None else num_gqa_groups
         self.num_gqa_groups_per_partition = int(self.num_gqa_groups // self.tp_size)
 
-        assert (
-            num_attention_heads % self.num_gqa_groups == 0
-        ), "The number of attention heads must be divisible by the number of GQA groups!"
+        assert num_attention_heads % self.num_gqa_groups == 0, (
+            "The number of attention heads must be divisible by the number of GQA groups!"
+        )
 
         if softmax_scale is None:
-            softmax_scale = 1.0 / math.sqrt(
-                kv_channels if isinstance(kv_channels, int) else kv_channels[0]
-            )
+            softmax_scale = 1.0 / math.sqrt(kv_channels if isinstance(kv_channels, int) else kv_channels[0])
 
         self.deterministic = (
             not bool(int(os.getenv("NVTE_ALLOW_NONDETERMINISTIC_ALGO", "1")))
@@ -216,23 +211,22 @@ class DotProductAttention(torch.nn.Module):
         self.context_parallel = cp_size > 1
 
         if self.context_parallel:
-            self.core_attention = CPStrategyFactory.create_strategy(strategy_type=self.cp_comm_type,
-                                                                    softmax_scale=softmax_scale,
-                                                                    attention_dropout=self.attention_dropout,
-                                                                    attention_type=self.attention_type,
-                                                                    deterministic=self.deterministic,
-                                                                    )
+            self.core_attention = CPStrategyFactory.create_strategy(
+                strategy_type=self.cp_comm_type,
+                softmax_scale=softmax_scale,
+                attention_dropout=self.attention_dropout,
+                attention_type=self.attention_type,
+                deterministic=self.deterministic,
+            )
         else:
-            self.core_attention = FlashAttention(softmax_scale=softmax_scale,
-                                                 attention_dropout=self.attention_dropout,
-                                                 attention_type=self.attention_type,
-                                                 deterministic=self.deterministic,
-                                                 )
+            self.core_attention = FlashAttention(
+                softmax_scale=softmax_scale,
+                attention_dropout=self.attention_dropout,
+                attention_type=self.attention_type,
+                deterministic=self.deterministic,
+            )
 
-    def set_tensor_parallel_group(
-        self,
-        tp_group: Optional[dist_group_type]
-    ) -> None:
+    def set_tensor_parallel_group(self, tp_group: Optional[dist_group_type]) -> None:
         """
         Set the tensor parallel group for the given
         module before executing the forward pass.
@@ -285,11 +279,7 @@ class DotProductAttention(torch.nn.Module):
         self.cp_stream = cp_stream
         self.cp_comm_type = cp_comm_type
 
-    def _build_core_attention_kwargs(
-        self,
-        max_seqlen_q,
-        max_seqlen_kv
-    ) -> Dict[str, Any]:
+    def _build_core_attention_kwargs(self, max_seqlen_q, max_seqlen_kv) -> Dict[str, Any]:
         """
         Build a unified parameter dictionary based on different core_attention types.
         """
@@ -475,24 +465,22 @@ class DotProductAttention(torch.nn.Module):
             raise AssertionError("Attention bias is not supported for DotProductAttention.")
 
         # checks for q/k/v shapes
-        assert (
-            query_layer.dtype == key_layer.dtype and query_layer.dtype == value_layer.dtype
-        ), "Queries, keys and values must have the same data type!"
-        assert (
-            key_layer.shape[:-1] == value_layer.shape[:-1]
-        ), "Keys and values must have the same batch size, sequence length and number of heads!"
-        num_attention_heads = query_layer.shape[-2]
+        assert query_layer.dtype == key_layer.dtype and query_layer.dtype == value_layer.dtype, (
+            "Queries, keys and values must have the same data type!"
+        )
+        assert key_layer.shape[:-1] == value_layer.shape[:-1], (
+            "Keys and values must have the same batch size, sequence length and number of heads!"
+        )
+        num_attention_heads = query_layer.shape[-2]  # noqa: F841
         num_gqa_groups = key_layer.shape[-2]
-        assert (
-            query_layer.shape[-1] == key_layer.shape[-1]
-        ), "Queries and keys must have the same head dimension!"
+        assert query_layer.shape[-1] == key_layer.shape[-1], "Queries and keys must have the same head dimension!"
         head_dim_qk, head_dim_v = query_layer.shape[-1], value_layer.shape[-1]
-        assert (
-            head_dim_qk == self.hidden_size_per_attention_head_k
-        ), f"Keys have head_dim = {head_dim_qk}, but expected head_dim = {self.hidden_size_per_attention_head_k}!"
-        assert (
-            head_dim_v == self.hidden_size_per_attention_head_v
-        ), f"Values have head_dim = {head_dim_v}, but expected head_dim = {self.hidden_size_per_attention_head_v}!"
+        assert head_dim_qk == self.hidden_size_per_attention_head_k, (
+            f"Keys have head_dim = {head_dim_qk}, but expected head_dim = {self.hidden_size_per_attention_head_k}!"
+        )
+        assert head_dim_v == self.hidden_size_per_attention_head_v, (
+            f"Values have head_dim = {head_dim_v}, but expected head_dim = {self.hidden_size_per_attention_head_v}!"
+        )
         assert num_gqa_groups == self.num_gqa_groups_per_partition, (
             "Keys and values must have num_gqa_group ="
             f" {self.num_gqa_groups_per_partition} heads! Found {num_gqa_groups}."
@@ -511,9 +499,9 @@ class DotProductAttention(torch.nn.Module):
         ], "DotProductAttention only supports qkv_format = {'sbhd', 'thd'}!"
 
         if qkv_format == "thd":
-            assert (
-                cu_seqlens_q is not None and cu_seqlens_kv is not None
-            ), "cu_seqlens_q and cu_seqlens_kv can not be None when qkv_format = thd!"
+            assert cu_seqlens_q is not None and cu_seqlens_kv is not None, (
+                "cu_seqlens_q and cu_seqlens_kv can not be None when qkv_format = thd!"
+            )
             assert (
                 cu_seqlens_q.shape == cu_seqlens_kv.shape
                 and len(cu_seqlens_q.shape) == 1
@@ -533,7 +521,7 @@ class DotProductAttention(torch.nn.Module):
             cu_seqlens_q,
             cu_seqlens_kv,
             attn_mask_type,
-            **core_attention_kwargs
+            **core_attention_kwargs,
         )
 
         return output
@@ -548,6 +536,7 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
     tp_group and cp_group passed to MindSpeed-Lite will be None and must be set later
     via set_tensor_parallel_group() and set_context_parallel_group().
     """
+
     cp_stream = None
 
     def __init__(
@@ -576,7 +565,9 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
         if self.config.context_parallel_size > 1:
             extra_kwargs["cp_group"] = get_context_parallel_group(check_initialized=False)
             extra_kwargs["cp_global_ranks"] = get_context_parallel_global_ranks(check_initialized=False)
-            extra_kwargs["cp_comm_type"] = self.config.context_parallel_algo
+            # Read context_parallel_algo from global args (always up-to-date after repatch)
+            # rather than from self.config (which may be a stale snapshot from before repatch).
+            extra_kwargs["cp_comm_type"] = get_full_args().context_parallel_algo
 
             if getattr(MindSpeedTEDotProductAttention, "cp_stream") is None:
                 MindSpeedTEDotProductAttention.cp_stream = torch.npu.Stream(device=torch.npu.current_device())
@@ -588,23 +579,17 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
             v_channels = self.config.v_head_dim
 
         kv_channels = (
-            (k_channels, v_channels)
-            if k_channels is not None and v_channels is not None
-            else self.config.kv_channels
+            (k_channels, v_channels) if k_channels is not None and v_channels is not None else self.config.kv_channels
         )
 
         extra_kwargs['softmax_scale'] = softmax_scale
 
-        self.kept_packed_seq_params = set(
-            field.name for field in dataclasses.fields(PackedSeqParams)
-        )
+        self.kept_packed_seq_params = set(field.name for field in dataclasses.fields(PackedSeqParams))
 
         super().__init__(
             num_attention_heads=self.config.num_attention_heads,
             kv_channels=kv_channels,
-            attention_dropout=(
-                self.config.attention_dropout if attention_dropout is None else attention_dropout
-            ),
+            attention_dropout=(self.config.attention_dropout if attention_dropout is None else attention_dropout),
             attn_mask_type=self.attn_mask_type,
             sequence_parallel=self.config.sequence_parallel,
             tp_size=self.config.tensor_model_parallel_size,
@@ -613,6 +598,7 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
             **extra_kwargs,
         )
 
+    # pylint: disable=arguments-differ
     def forward(
         self,
         query: torch.Tensor,
@@ -622,12 +608,11 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
         attn_mask_type: AttnMaskType,
         attention_bias: torch.Tensor = None,
         packed_seq_params: PackedSeqParams = None,
-        ):
+    ):
         """Forward."""
-        if (
-            attention_mask is None and
-            self.attn_mask_type == AttnMaskType.causal
-        ) and not getattr(self.config, 'is_llava', False):
+        if (attention_mask is None and self.attn_mask_type == AttnMaskType.causal) and not getattr(
+            self.config, 'is_llava', False
+        ):
             self.config.sparse_mode = 2
             attention_mask = get_attention_mask(self.config)
 
