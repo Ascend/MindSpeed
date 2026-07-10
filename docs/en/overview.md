@@ -1,4 +1,4 @@
-# What Is MindSpeed
+# MindSpeed Overview
 
 MindSpeed is a high-performance acceleration library built for the Ascend platform. It consists of four major components: the MindSpeed Core affinity acceleration module, the MindSpeed LLM suite, the MindSpeed MM suite, and the MindSpeed RL suite.
 
@@ -7,6 +7,7 @@ MindSpeed delivers strong support for foundation model training with outstanding
 ## Overall Architecture
 
 **Figure 1**  MindSpeed overall architecture
+
 ![alt text](figures/01_architecture_mindspeed.png)
 
 **Table 1**  Component overview
