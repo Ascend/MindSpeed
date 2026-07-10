@@ -17,7 +17,7 @@
 2. 参数设置
     - 打开`--reset-attention-mask`选项。
     - 使用`--reset-position-ids`选项，来代表位置编码是否reset。
-    - --attention-mask-type可以指定为causal或者general，两者计算结果等价。causal为加速实现，general为基线方案
+    - --attention-mask-type可以指定为causal或者general，两者计算结果等价。causal为加速实现，general为基线方案。
 
 > [!NOTE]
 >

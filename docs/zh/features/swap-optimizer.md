@@ -23,8 +23,8 @@
 
 ## 使用方法
 
-`--swap-optimizer`：开启swap optimizer特性。
-`--swap-optimizer-times`：默认值为16，用于设置step更新阶段进行swap的次数，越小并行的越多，可减少性能劣化，但会提高显存峰值。
+- `--swap-optimizer`：开启swap optimizer特性。
+- `--swap-optimizer-times`：默认值为16，用于设置step更新阶段进行swap的次数，越小并行的越多，可减少性能劣化，但会提高显存峰值。
 
 推荐配置
 

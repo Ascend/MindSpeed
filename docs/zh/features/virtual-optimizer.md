@@ -39,8 +39,8 @@ state['exp_avg_sq'] = torch_npu.empty_with_swapped_memory(p.size(), device=p.dev
 当需要对优化器部分的显存进行Swap时，有以下几种情况：
 
 - 希望Swap掉所有的一二阶动量，则可以采用`--virtual-optimizer all`指定。
-- 希望每一个PP Stage Swap同样大小的显存（如我希望每个Stage swap掉2GB的显存），则可以采用`--virtual-optimizer 2.0`指定。
-- 希望每一个PP Stage Swap不同的显存（假设有四个PP Stage，我分别希望Swap掉 6 5 4 3GB的显存），则可以采用`--virtual-optimizer 6 5 4 3`指定。
+- 希望每一个PP Stage Swap同样大小的显存（希望每个Stage swap掉2GB的显存），则可以采用`--virtual-optimizer 2.0`指定。
+- 希望每一个PP Stage Swap不同的显存（假设有四个PP Stage，分别希望Swap掉6、5、4、3GB的显存），则可以采用`--virtual-optimizer 6 5 4 3`指定。
 
 推荐配置
 

@@ -11,7 +11,7 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 | `MindSpeedFeature` | 特性基类，定义生命周期钩子 |
 | `MindSpeedPatchesManager` | 统一管理patch注册与生效 |
 
-开发者只需继承 `MindSpeedFeature`，覆写相关方法，即可添加新特性，无需修改核心框架。
+开发者只需继承`MindSpeedFeature`，覆写相关方法，即可添加新特性，无需修改核心框架。
 
 ## 开发流程
 
@@ -33,8 +33,8 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 
     >[!NOTE]
     >
-    >- `feature_name` 使用 `async-log-allreduce`，与命令行参数 `--async-log-allreduce` 对应
-    >- `optimization_level=2` 表示这是高阶优化特性
+    >- `feature_name`使用`async-log-allreduce`，与命令行参数`--async-log-allreduce`对应。
+    >- `optimization_level=2`表示这是高阶优化特性。
 
 2. 注册命令行参数
 
@@ -49,9 +49,8 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 
     >[!NOTE]
     >
-    >- 使用 `add_argument_group` 组织相关参数
-    >- `action='store_true'` 表示这是一个开关型参数
-    >- 提供清晰的帮助文档说明用途
+    >- 使用`add_argument_group`组织相关参数。
+    >- `action='store_true'`表示这是一个开关型参数。
 
 3. 注册patch
 
@@ -68,18 +67,18 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 
     >[!NOTE]
     >
-    >- 在 `register_patches` 函数内部进行 import，而非文件顶部导入。这样可以避免循环依赖：如果在文件顶部导入  `mindspeed.core.data_parallel.async_log_allreduce`，而该模块又间接导入 `features_manager`，会导致初始化失败。 只有当 `is_need_apply(args)` 返回True时，才会执行到这段代码
-    >- 注册 patch 将 `megatron.training.training.train_step` 替换为自定义实现
+    >- 在`register_patches`函数内部进行 import，而非文件顶部导入。这样可以避免循环依赖：如果在文件顶部导入`mindspeed.core.data_parallel.async_log_allreduce`，而该模块又间接导入 `features_manager`，会导致初始化失败。只有当`is_need_apply(args)`返回True时，才会执行到这段代码。
+    >- 注册patch将`megatron.training.training.train_step`替换为自定义实现。
 
 ## 开发实践指南
 
 ### 开发实践建议
 
-1. **特性命名规范**：使用小写字母，以`-`分隔，确保与命令行参数风格一致
-2. **默认使能控制**：非原生适配特性禁止默认使能，避免影响基础功能稳定性
-3. **参数校验完整性**：充分利用`pre_validate_args`、`validate_args`、`post_validate_args`三个阶段确保参数合法性
-4. **兼容性检查**：使用`incompatible_check`和`dependency_check`确保特性组合的正确性
-5. **patch幂等性**：确保patch注册不会相互冲突，必要时使用`force_patch`参数
+- 特性命名规范：使用小写字母，以`-`分隔，确保与命令行参数风格一致。
+- 默认启用控制：非原生适配特性禁止默认启用，避免影响基础功能稳定性。
+- 参数校验完整性：充分利用`pre_validate_args`、`validate_args`、`post_validate_args`三个阶段确保参数合法性。
+- 兼容性检查：使用`incompatible_check`和`dependency_check`确保特性组合的正确性。
+- patch幂等性：确保patch注册不会相互冲突，必要时使用`force_patch`参数。
 
 ### 创建新特性的Checklist
 
@@ -106,11 +105,11 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 
 ### 常见问题
 
-- 使用pre_validate_args/post_validate_args的场景
+- 使用pre_validate_args/post_validate_args的场景。
 
-    当需要绕过第三方库的参数校验时使用。例如Megatron的校验太严格，但你需要在特定场景下放宽限制。
+    当需要绕过第三方库的参数校验时使用。例如Megatron的校验太严格，但需要在特定场景下放宽限制。
 
-- 装饰器模式和替换模式如何选择
+- 装饰器模式和替换模式如何选择？
 
     | 场景 | 推荐模式 |
     | ------ | ------ |
@@ -119,11 +118,11 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 
 - 排查patch是否生效
 
-    1. 检查 `is_need_apply(args)` 是否返回True
-    2. 确认 `register_patches` 被调用
-    3. 确认 `apply_patches()` 在正确时机被调用
-    4. 检查patch目标路径是否正确
+    1. 检查`is_need_apply(args)`是否返回True。
+    2. 确认`register_patches`被调用。
+    3. 确认`apply_patches()`在正确时机被调用。
+    4. 检查patch目标路径是否正确。
 
 ### API参考
 
-详见[API参考](./API.md)
+详见[API参考](./API.md)。
