@@ -20,7 +20,7 @@ class MoEFixRouterFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         from mindspeed.core.transformer.moe.moe_utils import topk_softmax_with_capacity
 
-        if args.fix_router or args.moe_expert_capacity_factor:
+        if args.fix_router or getattr(args, 'moe_expert_capacity_factor', None):
             patch_manager.register_patch(
                 'megatron.core.transformer.moe.moe_utils.topk_softmax_with_capacity', topk_softmax_with_capacity
             )
