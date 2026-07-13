@@ -4,8 +4,11 @@ import torch
 import torch_npu
 from megatron.training import get_args
 from megatron.core import parallel_state
-from megatron.core.transformer.moe.moe_utils import (reduce_aux_losses_tracker_across_ranks,
-                                                    clear_aux_losses_tracker, )
+from megatron.core.transformer.moe.moe_utils import (
+    reduce_aux_losses_tracker_across_ranks,
+    clear_aux_losses_tracker,
+    get_capacity,
+)
 from megatron.core.tensor_parallel.utils import divide
 
 AG_TP_HIDDEN_STATUS = None
@@ -366,3 +369,62 @@ def get_expert_param_dtype(experts, group_mlp_expert_params, idx):
 def get_expert_param_size(experts, group_mlp_expert_params, idx):
     e = group_mlp_expert_params[idx]["total_params"]
     return e
+
+
+def apply_router_token_dropping(
+    routing_probs: torch.Tensor,
+    routing_map: torch.Tensor,
+    router_topk: int,
+    capacity_factor: float,
+    drop_policy: str = "probs",
+    pad_to_capacity: bool = False,
+):
+    """Apply token dropping to top-k expert selection.
+
+    This function enforces expert capacity limits by dropping tokens that exceed
+    the capacity and optionally padding to capacity.
+
+    Args:
+        routing_probs (torch.Tensor): Tensor of shape [num_tokens, num_experts]
+            containing the routing probabilities for selected experts.
+        routing_map (torch.Tensor): Boolean tensor of shape [num_tokens, num_experts]
+            indicating which experts were selected for each token.
+        router_topk (int): Number of experts selected per token.
+        capacity_factor (float): The capacity factor of each expert.
+        drop_policy (str): Policy to drop tokens - "probs" or "position".
+        pad_to_capacity (bool): Whether to pad to capacity.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+            - final_probs: Routing probabilities after applying capacity constraints
+            - final_map: Boolean mask after applying capacity constraints
+    """
+    assert routing_probs.ndim == 2 and routing_map.ndim == 2
+    num_tokens, num_experts = routing_probs.shape
+    # Calculate expert capacity
+    expert_capacity = get_capacity(
+        num_tokens=num_tokens * router_topk,
+        num_experts=num_experts,
+        capacity_factor=capacity_factor,
+    )
+
+    # Create capacity mask based on drop policy
+    if drop_policy == "probs":
+        _, capacity_indices = torch.topk(routing_probs, k=expert_capacity, dim=0, sorted=True)
+        capacity_mask = torch.zeros_like(routing_probs).scatter(0, capacity_indices, 1).bool()
+    elif drop_policy == "position":
+        _, capacity_indices = torch.topk(routing_map.int(), k=expert_capacity, dim=0, sorted=True)
+        capacity_mask = torch.zeros_like(routing_probs).scatter(0, capacity_indices, 1).bool()
+    else:
+        raise ValueError(f"Invalid drop_policy: {drop_policy}")
+
+    # Apply capacity constraints
+    if pad_to_capacity:
+        final_map = capacity_mask
+        final_probs = routing_probs * final_map
+    else:
+        # Get exceed mask and maskout exceeded probs and indices
+        final_map = torch.logical_and(routing_map, capacity_mask)
+        final_probs = routing_probs * final_map
+
+    return final_probs, final_map
