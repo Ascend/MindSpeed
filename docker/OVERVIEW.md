@@ -69,13 +69,21 @@ bash build.sh \
   --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.2-910b-openeuler24.03-py3.11
 ```
 
-Run example:
-
-Use the `REPOSITORY:TAG` value from `docker images`, such as `mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64`.
+Pull image:
 
 ```bash
-docker run -itd \
-  --name mindspeed \
+docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
+```
+
+Run image:
+
+Use the `REPOSITORY:TAG` value from `docker images`, such as `swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64`.
+
+Before copying the startup command below, replace the `{path-to-data}` and `{path-to-weights}` placeholders with the actual paths on your host machine where data and model weights are stored. Otherwise, the container won't mount the host paths correctly after startup.
+
+```bash
+docker run -it -d \
+  --name mindspeed-core \
   --privileged \
   --network host \
   --ipc=host \
@@ -83,19 +91,17 @@ docker run -itd \
   -v /usr/local/dcmi:/usr/local/dcmi \
   -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  -v /home:/home \
-  -v /data:/data \
-  -v /mnt:/mnt \
-  mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64
+  -v {path-to-data}:/data \
+  -v {path-to-weights}:/weights \
+  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64 \
+  bin/bash
 ```
 
 Enter the running container:
 
 ```bash
-docker exec -it mindspeed /bin/bash
+docker exec -it mindspeed-core /bin/bash
 ```
-
-If `npu-smi` is installed under `/usr/local/sbin/npu-smi` on the host, replace the `npu-smi` mount path accordingly.
 
 ## Compatibility Notes
 

@@ -69,13 +69,21 @@ bash build.sh \
   --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.2-910b-openeuler24.03-py3.11
 ```
 
-运行示例：
-
-镜像名使用 `docker images` 中的 `REPOSITORY:TAG`，例如 `mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64`。
+下载镜像：
 
 ```bash
-docker run -itd \
-  --name mindspeed \
+docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
+```
+
+运行镜像：
+
+镜像名使用 `docker images` 中的 `REPOSITORY:TAG`，例如 `swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64`。
+
+复制下方启动命令前，请将参数内的`{path-to-data}`、`{path-to-weights}`两处路径，替换为宿主机真实数据、模型权重存储路径，否则容器启动后无法正确挂载宿主机路径。
+
+```bash
+docker run -it -d \
+  --name mindspeed-core \
   --privileged \
   --network host \
   --ipc=host \
@@ -83,19 +91,17 @@ docker run -itd \
   -v /usr/local/dcmi:/usr/local/dcmi \
   -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  -v /home:/home \
-  -v /data:/data \
-  -v /mnt:/mnt \
-  mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64
+  -v {path-to-data}:/data \
+  -v {path-to-weights}:/weights \
+  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64 \
+  bin/bash
 ```
 
 进入已启动容器：
 
 ```bash
-docker exec -it mindspeed /bin/bash
+docker exec -it mindspeed-core /bin/bash
 ```
-
-如果宿主机的 `npu-smi` 安装在 `/usr/local/sbin/npu-smi`，请相应替换 `npu-smi` 挂载路径。
 
 ## 兼容性说明
 
