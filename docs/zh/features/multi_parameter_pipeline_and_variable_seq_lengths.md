@@ -24,7 +24,7 @@
 > [!NOTE]
 >
 > - 用户需修改`mindspeed/features_manager/pipeline_parallel/multi_parameter.py`模块中`validate_args`函数里`args.pipeline_tensor_shapes`值与实际模型流水线阶段的张量传输一致，包括张量维度（Shape）和数据类型（Dtype）。
-> - 暂不兼容--moe-fb-overlap和dualpipev特性。
+> - 暂不兼容`--moe-fb-overlap`和dualpipev特性。
 
 启用支持多参数传递和动态形状，需要在训练脚本中加入以下参数：
 

@@ -56,4 +56,4 @@ ulysses_attention = UlyssesContextAttention(core_attention, ps.get_context_paral
 > [!NOTE]
 >
 > - 非对齐Ulysses长序列并行不支持在legacy分支使用，即不支持和`--use-legacy-models`同时开启。
-> - 非对齐Ulysses长序列并行暂不兼容Ulysses长序列并行KV缓存优化，即启动脚本设置了--context-parallel-kv-cache-policy为full或者half，系统将自动切换回使用对齐的Ulysses长序列并行机制。
+> - 非对齐Ulysses长序列并行暂不兼容Ulysses长序列并行KV缓存优化，即启动脚本设置了`--context-parallel-kv-cache-policy`为full或者half，系统将自动切换回使用对齐的Ulysses长序列并行机制。

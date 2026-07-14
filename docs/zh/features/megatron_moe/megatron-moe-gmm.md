@@ -19,7 +19,7 @@
 - EP变小导致单卡专家数量增大 & DeepSeek MoE专家数量较多等场景。
 - DeepSeek MoE finegrained expert单个专家较小 & FFN规模不大 & TP变大导致单卡切分的计算变小。
 
-- 随着FFN规模提升，计算不再细碎，单专家计算效率提升，Grouped GEMM 收益变小。
+- 随着FFN规模提升，计算不再细碎，单专家计算效率提升，Grouped GEMM收益变小。
 
     **表1** Grok模型FFN大小和性能加速对比
 
@@ -59,7 +59,7 @@ y = npu_gmm(x, weight, bias=None, group_list=None, group_type=0, gemm_fusion=Fal
     - gemm_fusion:可选输入，为bool，数据类型True，False，用于反向累加梯度的时候开启GMM+ADD融合算子，默认值为False。
     - original_weight:可选输入，为tensor，数据类型float16，bfloat16，float32，用于获取view之前的weight的main_grad用于GMM+ADD中梯度累加功能，默认值为None。
 - 输出：
-    - y：必选输出，数据类型float16, bfloat16, float32。
+    - y：必选输出，数据类型float16，bfloat16，float32。
 
 该算子在非量化场景仅支持以下输入输出类型的组合，若将参数指定为其他不支持类型可能会导致算子报错，影响训练效率：
 
