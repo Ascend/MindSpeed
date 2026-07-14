@@ -27,7 +27,7 @@
 
 > [!NOTE]
 >
-> 本特性依赖 PTA:FrameworkPTAdapter 7.0.RC1.B020 （包含该版本）之后的版本。
+> 本特性依赖 TorchNPU:FrameworkPTAdapter 7.0.RC1.B020 （包含该版本）之后的版本。
 
 ## 使用效果
 

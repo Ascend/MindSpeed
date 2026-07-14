@@ -32,7 +32,7 @@ DeepSeek-V3 训练的硬件配置:
    conda create -n test python=3.10
    conda activate test
 
-   # 安装 torch 和 torch_npu
+   # 安装 torch 和 TorchNPU
    pip install torch-2.7.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl 
    pip install torch_npu-2.7.1*-cp310-cp310-manylinux_2_28_aarch64.whl
 

@@ -19,7 +19,7 @@
 | Python | 3.11 |
 | CANN | 8.5.0 |
 | torch | 2.8.0 |
-| torch_npu | 2.8.0 |
+| TorchNPU | 2.8.0 |
 | vLLM | 0.13.0 |
 | vLLM-ascend | releases/v0.13.0 |
 | Megatron-LM | v0.12.1 |
