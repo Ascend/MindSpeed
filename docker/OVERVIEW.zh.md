@@ -41,7 +41,7 @@
 | `--base-image` | 完整 CANN 基础镜像名，优先级高于 `--base-image-version`；会原样传入 | 空 |
 | `--python-version` | CANN 基础镜像中的 Python 标签 | `3.11` |
 | `--torch-version` | PyTorch 版本 | `2.7.1` |
-| `--torch-npu-version` | torch_npu 版本 | `2.7.1` |
+| `--torch-npu-version` | TorchNPU 版本 | `2.7.1` |
 | `--mindspeed-branch` | 克隆 MindSpeed 使用的分支、标签或 ref | `master` |
 | `--megatron-branch` | checkout Megatron-LM 使用的分支、标签或 ref | `core_v0.12.1` |
 
@@ -69,13 +69,19 @@ bash build.sh \
   --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.2-910b-openeuler24.03-py3.11
 ```
 
-运行示例：
-
-镜像名使用 `docker images` 中的 `REPOSITORY:TAG`，例如 `mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64`。
+下载镜像：
 
 ```bash
-docker run -itd \
-  --name mindspeed \
+docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
+```
+
+运行镜像：
+
+复制下方启动命令前，请将参数内的`{path-to-data}`、`{path-to-weights}`两处路径，替换为宿主机真实数据、模型权重存储路径，否则容器启动后无法正确挂载宿主机路径。
+
+```bash
+docker run -it -d \
+  --name mindspeed-core \
   --privileged \
   --network host \
   --ipc=host \
@@ -83,19 +89,17 @@ docker run -itd \
   -v /usr/local/dcmi:/usr/local/dcmi \
   -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  -v /home:/home \
-  -v /data:/data \
-  -v /mnt:/mnt \
-  mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64
+  -v {path-to-data}:/data \
+  -v {path-to-weights}:/weights \
+  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64 \
+  bin/bash
 ```
 
 进入已启动容器：
 
 ```bash
-docker exec -it mindspeed /bin/bash
+docker exec -it mindspeed-core /bin/bash
 ```
-
-如果宿主机的 `npu-smi` 安装在 `/usr/local/sbin/npu-smi`，请相应替换 `npu-smi` 挂载路径。
 
 ## 兼容性说明
 
@@ -103,7 +107,7 @@ docker exec -it mindspeed /bin/bash
 - 默认基础镜像使用 CANN 9.0.0-beta.2、910b、openEuler 24.03、Python 3.11。
 - 可以通过 `docker/build.sh` 切换 Ubuntu 22.04、a3 或其他 CANN 基础镜像版本。
 - MindSpeed 克隆到 `/MindSpeed`，Megatron-LM 克隆到 `/Megatron-LM`。
-- 镜像安装 PyTorch、torch_npu、MindSpeed Core、Megatron-LM 以及 `requirements.txt` 中的 Python 依赖。
+- 镜像安装 PyTorch、TorchNPU、MindSpeed Core、Megatron-LM 以及 `requirements.txt` 中的 Python 依赖。
 
 ## 许可证
 

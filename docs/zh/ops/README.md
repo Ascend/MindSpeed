@@ -4,7 +4,7 @@
 
 + CANN
 + CANN-NNAL(Ascend-Transformer-Boost)
-+ torch_npu
++ TorchNPU
 
 ## 编译和安装
 
@@ -24,7 +24,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 ### 2. 包含头文件
 
-+ 最新版本的 torch_npu
++ 最新版本的 TorchNPU
 + 最新版本的 cann
 
 ### 3. 安装脚本

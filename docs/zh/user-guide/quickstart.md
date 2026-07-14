@@ -18,6 +18,18 @@
     import inspect
     ```
 
+> [!NOTE]
+>
+> MindSpeed Core支持<term>Ascend 950 系列产品</term>、<term>Atlas A3 训练系列产品</term>和<term>Atlas A2 训练系列产品</term>，且要求单NPU的片上内存为64GB及以上
+>
+> 当前示例脚本中`NPUS_PER_NODE=8`表示需要8个NPU，如果实际情况低于此配置，可能遇到OOM问题。
+
+开发者入门基础：
+
+- 具备基础的PyTorch使用经验
+- 具备初级的Python开发经验
+- 对Megatron-LM仓库有基本的了解
+
 ## 数据准备
 
 参考[Megatron-LM官方文档](https://github.com/NVIDIA/Megatron-LM?tab=readme-ov-file#datasets)准备训练数据。

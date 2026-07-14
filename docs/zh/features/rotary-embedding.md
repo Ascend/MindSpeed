@@ -6,7 +6,7 @@ RoPE (Rotary Positional Embedding，旋转式位置嵌入) 是一种位置编码
 
 ## 解决方案
 
-为了解决上述问题，我们引入了针对Rotary Embedding的融合优化方案。通过将RoPE操作整合为单一算子，我们显著减少了数据传输次数和临时存储需求，进而优化了模型训练的性能。这一优化由MindSpeed通过调用torch_npu侧接口实现，有效提升了RoPE在模型中的执行效率。
+为了解决上述问题，我们引入了针对Rotary Embedding的融合优化方案。通过将RoPE操作整合为单一算子，我们显著减少了数据传输次数和临时存储需求，进而优化了模型训练的性能。这一优化由MindSpeed通过调用TorchNPU侧接口实现，有效提升了RoPE在模型中的执行效率。
 
 ## 使用场景
 

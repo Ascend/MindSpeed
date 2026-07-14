@@ -41,7 +41,7 @@ Examples:
 | `--base-image` | Full CANN base image name, higher priority than `--base-image-version`; passed through unchanged | empty |
 | `--python-version` | Python tag in the CANN base image | `3.11` |
 | `--torch-version` | PyTorch version | `2.7.1` |
-| `--torch-npu-version` | torch_npu version | `2.7.1` |
+| `--torch-npu-version` | TorchNPU version | `2.7.1` |
 | `--mindspeed-branch` | MindSpeed branch/tag/ref to clone | `master` |
 | `--megatron-branch` | Megatron-LM branch/tag/ref to checkout | `core_v0.12.1` |
 
@@ -69,13 +69,21 @@ bash build.sh \
   --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-beta.2-910b-openeuler24.03-py3.11
 ```
 
-Run example:
-
-Use the `REPOSITORY:TAG` value from `docker images`, such as `mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64`.
+Pull image:
 
 ```bash
-docker run -itd \
-  --name mindspeed \
+docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
+```
+
+Run image:
+
+Use the `REPOSITORY:TAG` value from `docker images`, such as `swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64`.
+
+Before copying the startup command below, replace the `{path-to-data}` and `{path-to-weights}` placeholders with the actual paths on your host machine where data and model weights are stored. Otherwise, the container won't mount the host paths correctly after startup.
+
+```bash
+docker run -it -d \
+  --name mindspeed-core \
   --privileged \
   --network host \
   --ipc=host \
@@ -83,19 +91,17 @@ docker run -itd \
   -v /usr/local/dcmi:/usr/local/dcmi \
   -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  -v /home:/home \
-  -v /data:/data \
-  -v /mnt:/mnt \
-  mindspeed-core:master-910b-openeuler24.03-py3.11-aarch64
+  -v {path-to-data}:/data \
+  -v {path-to-weights}:/weights \
+  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:26.0.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64 \
+  bin/bash
 ```
 
 Enter the running container:
 
 ```bash
-docker exec -it mindspeed /bin/bash
+docker exec -it mindspeed-core /bin/bash
 ```
-
-If `npu-smi` is installed under `/usr/local/sbin/npu-smi` on the host, replace the `npu-smi` mount path accordingly.
 
 ## Compatibility Notes
 
@@ -103,7 +109,7 @@ If `npu-smi` is installed under `/usr/local/sbin/npu-smi` on the host, replace t
 - The default base image uses CANN 9.0.0-beta.2, 910b, openEuler 24.03, and Python 3.11.
 - You can switch to Ubuntu 22.04, a3, or a different CANN base image version through `docker/build.sh`.
 - MindSpeed is cloned to `/MindSpeed`; Megatron-LM is cloned to `/Megatron-LM`.
-- It installs PyTorch, torch_npu, MindSpeed Core, Megatron-LM, and Python dependencies from `requirements.txt`.
+- It installs PyTorch, TorchNPU, MindSpeed Core, Megatron-LM, and Python dependencies from `requirements.txt`.
 
 ## License
 

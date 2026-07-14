@@ -35,7 +35,7 @@ Llama3-8B 训练的硬件配置:
    conda create -n test python=3.8
    conda activate test
 
-   # 安装 torch 和 torch_npu
+   # 安装 torch 和 TorchNPU
    pip install torch-2.1.0-cp38-cp38m-manylinux2014_aarch64.whl
    pip install torch_npu-2.1.0*-cp38-cp38m-linux_aarch64.whl
    pip install apex-0.1_ascend*-cp38-cp38m-linux_aarch64.whl
