@@ -1,4 +1,4 @@
-# Flash attention
+# Flash Attention
 
 ## 背景与挑战
 

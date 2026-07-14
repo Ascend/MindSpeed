@@ -25,7 +25,7 @@
 >
 > * Norm重计算特性仅支持mcore分支，不支持legacy分支，即仅支持在开启`--use-mcore-models`时，通过`--recompute-norm`开启。
 > * Norm重计算兼容激活函数重计算、全重计算同时开启。
->   * 同时开启时，仅支持--recompute-method设置为block。
+>   * 同时开启时，仅支持`--recompute-method`设置为block。
 >   * 同时开启时，将按照指定的全重计算和Norm重计算的层数做各自类型的重计算，即不会有一层既做全重计算又做Norm重计算。
 > * 执行优先级是先计算全重计算层，后Norm重计算层。
 

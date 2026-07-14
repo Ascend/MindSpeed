@@ -101,14 +101,14 @@
     </tr>
     <tr>
       <td>亲和计算特性</td>
-      <td><a href="../features/flash-attention.md">Ascend flash attention</a></td>
+      <td><a href="../features/flash-attention.md">Ascend Flash Attention</a></td>
     </tr>
     <tr>
       <td rowspan="2">通信优化特性</td>
       <td><a href="../features/hccl-replace-gloo.md">Ascend Gloo存档落盘优化</a></td>
     </tr>
     <tr>
-      <td><a href="../features/tensor-parallel-2d.md">Ascend 高维张量并行</a></td>
+      <td><a href="../features/tensor-parallel-2d.md">Ascend高维张量并行</a></td>
     </tr>
     <tr>
       <td rowspan="8">Mcore MoE特性</td>
@@ -124,7 +124,7 @@
       <td><a href="../features/megatron_moe/megatron-moe-tp-extend-ep.md">Ascend Megatron MoE TP拓展EP</a></td>
     </tr>
     <tr>
-      <td><a href="../features/megatron_moe/megatron-moe-allgather-overlap-comm.md">Megatron MoE allgather dispatcher分支通信隐藏优化</a></td>
+      <td><a href="../features/megatron_moe/megatron-moe-allgather-overlap-comm.md">Megatron MoE Allgather Dispatcher分支通信隐藏优化</a></td>
     </tr>
     <tr>
       <td><a href="../features/shared-experts.md">Ascend共享专家</a></td>
@@ -153,7 +153,7 @@
       <td><a href="../features/unaligned_linear.md">Ascend非对齐线性层</a></td>
     </tr>
     <tr>
-      <td><a href="../features/unaligned-ulysses-context-parallel.md">Ascend 非对齐Ulysses长序列并行</a></td>
+      <td><a href="../features/unaligned-ulysses-context-parallel.md">Ascend非对齐Ulysses长序列并行</a></td>
     </tr>
     <tr>
       <td>其它特性</td>
