@@ -84,3 +84,25 @@ repos:
           - "--style=file"  # 读取 .clang-format 文件
           - "--verbose"
           - "-i"
+
+# -------------------------- Gitleaks 本地离线二进制扫描 --------------------------
+# 本地执行pre-commit hook前，需要先下载对应平台的gitleaks二进制文件到项目根目录
+# 临时跳过检查：SKIP=gitleaks-offline-scan git commit
+# Linux环境：（注：该OBS地址为内网地址，仅支持HTTP；建议下载后自行校验文件完整性）
+#   wget --no-host-directories -c --no-check-certificate http://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta-codecheck/gitleaks
+# Windows环境：下载后解压，将gitleaks.exe重命名为gitleaks放到项目根目录
+#   https://github.com/gitleaks/gitleaks/releases/download/v8.20.0/gitleaks_8.20.0_windows_x64.zip
+  - repo: local
+    hooks:
+      - id: gitleaks-offline-scan
+        name: Gitleaks Secret Scan(Local Binary)
+        entry: ./gitleaks
+        language: system
+        pass_filenames: true
+        args:
+          - protect
+          - --verbose
+          - --redact
+          - --config=pre-commit/.gitleaks.toml
+
+        stages: [pre-commit]
