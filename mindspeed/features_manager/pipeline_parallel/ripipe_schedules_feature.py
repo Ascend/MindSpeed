@@ -7,16 +7,20 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 
 
 class RiPipeSchedulesFeature(MindSpeedFeature):
-
     def validate_args(self, args):
         if getattr(args, "adaptive_recompute_device_size", None) is not None:
-            adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or args.adaptive_recompute_device_swap
+            adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or getattr(
+                args, 'adaptive_recompute_device_swap', False
+            )
             if adaptive_recompute_enable:
                 if args.recompute_in_advance or args.recompute_in_bubble:
                     raise AssertionError('adaptive selective recompute is not compatible with ripipe schedule.')
         self.incompatible_check(args, "optimize_send_recv_comm")
-        if (getattr(args, "ampipe_degree", None) is not None and args.ampipe_degree > 1
-                and getattr(args, self.feature_name, None)):
+        if (
+            getattr(args, "ampipe_degree", None) is not None
+            and args.ampipe_degree > 1
+            and getattr(args, self.feature_name, None)
+        ):
             raise AssertionError('{} and {} are incompatible.'.format(self.feature_name, "ampipe"))
 
     def register_patches(self, patch_manager, args):
@@ -24,27 +28,33 @@ class RiPipeSchedulesFeature(MindSpeedFeature):
             return
         from mindspeed.core.tensor_parallel.random import checkpoint_wrapper
         from mindspeed.core.memory.common import linear_forward_main_grad_wrapper, linear_backward_main_grad_wrapper
+
         patch_manager.register_patch('megatron.core.tensor_parallel.random.checkpoint', checkpoint_wrapper)
         from mindspeed.core.pipeline_parallel.ripipe_schedules import get_forward_backward_func_ripipe_patch
-        patch_manager.register_patch('megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
-                                     get_forward_backward_func_ripipe_patch)
+
+        patch_manager.register_patch(
+            'megatron.core.pipeline_parallel.schedules.get_forward_backward_func',
+            get_forward_backward_func_ripipe_patch,
+        )
         patch_manager.register_patch(
             'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
-            linear_forward_main_grad_wrapper)
+            linear_forward_main_grad_wrapper,
+        )
         patch_manager.register_patch(
             'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
-            linear_backward_main_grad_wrapper)
+            linear_backward_main_grad_wrapper,
+        )
 
 
 class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
-
     def __init__(self):
         super().__init__("recompute-in-bubble")
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        group.add_argument("--recompute-in-bubble", action="store_true",
-                           help="use bubble to do recompute to reduce memory.")
+        group.add_argument(
+            "--recompute-in-bubble", action="store_true", help="use bubble to do recompute to reduce memory."
+        )
 
     def validate_args(self, args):
         super().validate_args(args)
@@ -56,7 +66,7 @@ class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
                 expected_recompute_num_layers = args.num_layers // args.pipeline_model_parallel_size
             else:
                 expected_recompute_num_layers = args.num_layers_per_virtual_pipeline_stage
-            
+
             # Only raise error when recompute_num_layers is set and not equal to our expected value
             if args.recompute_num_layers and args.recompute_num_layers != expected_recompute_num_layers:
                 raise AssertionError('recompute_num_layers must be None or 0 when using recompute_in_bubble')
@@ -81,7 +91,7 @@ class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
                     'recompute_in_bubble does not yet support scenarios where '
                     'overlap_p2p_comm is False, as it has not been made compatible.'
                 )
-            
+
             if not getattr(args, "align_grad_reduce", True):
                 raise AssertionError(
                     'Due to compatibility limitations between nanopipe and ripipe, '
@@ -90,14 +100,14 @@ class RiPipeSchedulesBubbleFeature(RiPipeSchedulesFeature):
 
 
 class RiPipeSchedulesAdvanceFeature(RiPipeSchedulesFeature):
-
     def __init__(self):
         super().__init__("recompute-in-advance")
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        group.add_argument('--recompute-in-advance', action='store_true',
-                           help='recompute early to reduce bubble and improve training.')
+        group.add_argument(
+            '--recompute-in-advance', action='store_true', help='recompute early to reduce bubble and improve training.'
+        )
 
     def validate_args(self, args):
         super().validate_args(args)

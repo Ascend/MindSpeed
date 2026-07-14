@@ -2,27 +2,31 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import torch
-from megatron.core.transformer.moe.experts import GroupedMLP
+from megatron.core.transformer.moe.experts import TEGroupedMLP as GroupedMLP
 from megatron.core.utils import make_viewless_tensor
 from megatron.training import get_args
 
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
-from mindspeed.core.transformer.moe.moe_feature.balanced_moe.communication import _groupedmlp_hot_expert_params_broadcast
+from mindspeed.core.transformer.moe.moe_feature.balanced_moe.communication import (
+    _groupedmlp_hot_expert_params_broadcast,
+)
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.modules.moe_layer import get_shared_params_for_hot_experts
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.attention import attention_forward
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.utils import detach_tensor, LayerGraph
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs import router_forward
 
 
-def balanced_moe_grouped_mlp(local_expert_input,
-                             local_token_per_expert,
-                             local_expert_input_probs,
-                             hot_expert_input,
-                             hot_token_per_expert,
-                             hot_expert_input_probs,
-                             local_experts: GroupedMLP,
-                             hot_experts: GroupedMLP,
-                             params):
+def balanced_moe_grouped_mlp(
+    local_expert_input,
+    local_token_per_expert,
+    local_expert_input_probs,
+    hot_expert_input,
+    hot_token_per_expert,
+    hot_expert_input_probs,
+    local_experts: GroupedMLP,
+    hot_experts: GroupedMLP,
+    params,
+):
     # Execution
     hot_expert_finish_events = params[3]
     hot_expert_broadcast_handles = params[4]
@@ -51,18 +55,18 @@ def balanced_moe_grouped_mlp(local_expert_input,
 
 
 def transformer_layer_forward_balanced_moe(
-        self,
-        hidden_states,
-        attention_mask=None,
-        context=None,
-        context_mask=None,
-        rotary_pos_emb=None,
-        rotary_pos_cos=None,
-        rotary_pos_sin=None,
-        attention_bias=None,
-        inference_params=None,
-        packed_seq_params=None,
-        checkpoint=False
+    self,
+    hidden_states,
+    attention_mask=None,
+    context=None,
+    context_mask=None,
+    rotary_pos_emb=None,
+    rotary_pos_cos=None,
+    rotary_pos_sin=None,
+    attention_bias=None,
+    inference_params=None,
+    packed_seq_params=None,
+    checkpoint=False,
 ):
     get_shared_params_for_hot_experts().register_shared_weight(self.mlp.hot_experts)
 
@@ -79,7 +83,9 @@ def transformer_layer_forward_balanced_moe(
 
     # input_layernorm + AttentionForward
     hidden_states = attention_forward(
-        self, detached_layer_input, residual1,
+        self,
+        detached_layer_input,
+        residual1,
         attention_mask=attention_mask,
         inference_params=inference_params,
         rotary_pos_emb=rotary_pos_emb,
@@ -87,7 +93,7 @@ def transformer_layer_forward_balanced_moe(
         rotary_pos_sin=rotary_pos_sin,
         attention_bias=attention_bias,
         packed_seq_params=packed_seq_params,
-        recompute_norm=recomp_norm
+        recompute_norm=recomp_norm,
     )
 
     attention_out, detached_attention_out = hidden_states, detach_tensor(hidden_states, checkpoint_forward=checkpoint)
@@ -109,9 +115,9 @@ def transformer_layer_forward_balanced_moe(
         with torch.npu.stream(dispatcher.overlap_stream):
             # Shared Experts PreComm.
             self.mlp.shared_experts.pre_forward_comm(detached_mlp_input)
-            shared_fc1_input = self.mlp.shared_experts.cached_fc1_input
+            _shared_fc1_input = self.mlp.shared_experts.cached_fc1_input
     else:
-        shared_fc1_input = None
+        _shared_fc1_input = None
 
     # Router forward.
     probs, routing_map = router_forward(self, detached_mlp_input)
@@ -120,10 +126,11 @@ def transformer_layer_forward_balanced_moe(
     # Token Perm1 Forward
     dispatcher = self.mlp.token_dispatcher
     probs_detached = detach_tensor(probs, checkpoint_forward=checkpoint)
-    (perm1_local_out, perm1_remote_hot_out), (perm1_local_probs, perm1_remote_hot_probs), \
-        global_cold_local_hot_tokens_per_expert = dispatcher.token_permute1(
-        detached_mlp_input, probs_detached, routing_map
-    )
+    (
+        (perm1_local_out, perm1_remote_hot_out),
+        (perm1_local_probs, perm1_remote_hot_probs),
+        global_cold_local_hot_tokens_per_expert,
+    ) = dispatcher.token_permute1(detached_mlp_input, probs_detached, routing_map)
     if use_shared_experts:
         with torch.npu.stream(dispatcher.overlap_stream):
             # Shared Experts Forward.
@@ -136,12 +143,14 @@ def transformer_layer_forward_balanced_moe(
 
     # Async Perm A2A.
     from mindspeed.core.transformer.moe.moe_feature.balanced_moe.modules.token_dispatcher import PREMUTE_FINISH_EVENT
+
     if PREMUTE_FINISH_EVENT is not None:
         # Wait for permute1 finish.
         torch.npu.current_stream().wait_event(PREMUTE_FINISH_EVENT)
 
     (perm_a2a_out, perm_a2a_handle), (perm_prob_a2a_out, perm_prob_a2a_handle) = dispatcher.async_dispatch_comm(
-        perm1_local_out, perm1_local_probs)
+        perm1_local_out, perm1_local_probs
+    )
 
     if recomp_norm:
         self.norm_ckpt2.discard_output()
@@ -156,12 +165,13 @@ def transformer_layer_forward_balanced_moe(
     detached_perm_prob_a2a_out = detach_tensor(perm_prob_a2a_out, checkpoint_forward=checkpoint)
     # Token Perm2 Forward.
     perm_prob_a2a_handle.wait()
-    cold_local_hot_input, cold_local_hot_probs = \
-        dispatcher.token_permute2(detached_perm_a2a_out, detached_perm_prob_a2a_out)
+    cold_local_hot_input, cold_local_hot_probs = dispatcher.token_permute2(
+        detached_perm_a2a_out, detached_perm_prob_a2a_out
+    )
     perm_a2a_out.untyped_storage().resize_(0)
     remote_hot_tokens_per_expert = dispatcher.padded_num_remote_hot_tokens_npu
     hot_expert_ids = dispatcher.hot_experts.tolist()
-    all_expert_indices = dispatcher.sorted_cold_hot_experts
+    _all_expert_indices = dispatcher.sorted_cold_hot_experts
 
     # Grouped MLP Forward
     detached_cold_local_hot_input = detach_tensor(cold_local_hot_input, checkpoint_forward=checkpoint)
@@ -175,24 +185,29 @@ def transformer_layer_forward_balanced_moe(
         self.mlp.experts, self.mlp.hot_experts_list, self.mlp.hot_experts, self.mlp.params
     )
     # hostbound here
-    cold_local_hot_output, cold_local_act_ckpt_manager, \
-        remote_hot_output, remote_hot_act_ckpt_manager = balanced_moe_grouped_mlp(
-        detached_cold_local_hot_input,
-        global_cold_local_hot_tokens_per_expert,
-        detached_cold_local_hot_input_probs,
-        detached_remote_hot_input,
-        remote_hot_tokens_per_expert,
-        detached_remote_hot_input_probs,
-        self.mlp.experts,
-        self.mlp.hot_experts,
-        self.mlp.params
+    cold_local_hot_output, cold_local_act_ckpt_manager, remote_hot_output, remote_hot_act_ckpt_manager = (
+        balanced_moe_grouped_mlp(
+            detached_cold_local_hot_input,
+            global_cold_local_hot_tokens_per_expert,
+            detached_cold_local_hot_input_probs,
+            detached_remote_hot_input,
+            remote_hot_tokens_per_expert,
+            detached_remote_hot_input_probs,
+            self.mlp.experts,
+            self.mlp.hot_experts,
+            self.mlp.params,
+        )
     )
     if args.moe_zero_memory == 'level0':
         cold_local_hot_input.untyped_storage().resize_(0)
-        recompute_needed_tensors = [cold_local_hot_input, perm1_remote_hot_out, probs,
-                                    dispatcher.sorted_routing_map,
-                                    dispatcher.sumnum_cold_local_hot_tokens,
-                                    dispatcher.num_global_tokens_per_local_expert_cpu]
+        recompute_needed_tensors = [
+            cold_local_hot_input,
+            perm1_remote_hot_out,
+            probs,
+            dispatcher.sorted_routing_map,
+            dispatcher.sumnum_cold_local_hot_tokens,
+            dispatcher.num_global_tokens_per_local_expert_cpu,
+        ]
     else:
         recompute_needed_tensors = [None, None, None, None, None, None]
 
@@ -200,14 +215,11 @@ def transformer_layer_forward_balanced_moe(
     detached_remote_hot_output = detach_tensor(remote_hot_output, checkpoint_forward=checkpoint)
 
     # Token Unperm1 Forward
-    unperm1_out = dispatcher.token_unpermute1(
-        detached_cold_local_hot_output, None
-    )
+    unperm1_out = dispatcher.token_unpermute1(detached_cold_local_hot_output, None)
     cold_local_hot_output.untyped_storage().resize_(0)
 
     # Launch Token Unperm2 A2A
-    unperm_a2a_out, unperm_a2a_handle = dispatcher.async_combine_comm(
-        unperm1_out)
+    unperm_a2a_out, unperm_a2a_handle = dispatcher.async_combine_comm(unperm1_out)
     unperm_a2a_handle.wait()
     # unperm1_out tensor storage is not need by backward,
     # but backward func of unperm1_out is needed, so resize the storage but keep tensor.
@@ -245,33 +257,38 @@ def transformer_layer_forward_balanced_moe(
     # won't result in memory savings (like the data loader, or
     # p2p_communication), it serves to document the origin of this
     # 'view' tensor.
-    output = make_viewless_tensor(
-        inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
-    )
+    output = make_viewless_tensor(inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True)
 
     saved_tensors = (
         (attention_out, detached_attention_out),
         (pre_mlp_layernorm_output, detached_mlp_input),
         (probs, probs_detached),
-        ((perm1_local_out, perm1_local_probs, perm1_remote_hot_out, perm1_remote_hot_probs),
-         (detached_remote_hot_input, detached_remote_hot_input_probs)),  # perm1 graph
+        (
+            (perm1_local_out, perm1_local_probs, perm1_remote_hot_out, perm1_remote_hot_probs),
+            (detached_remote_hot_input, detached_remote_hot_input_probs),
+        ),  # perm1 graph
         (None, (detached_perm_a2a_out, detached_perm_prob_a2a_out)),
-        ((cold_local_hot_input, cold_local_hot_probs),
-         (detached_cold_local_hot_input, detached_cold_local_hot_input_probs)),  # perm2 graph
+        (
+            (cold_local_hot_input, cold_local_hot_probs),
+            (detached_cold_local_hot_input, detached_cold_local_hot_input_probs),
+        ),  # perm2 graph
         ((cold_local_hot_output, remote_hot_output), (detached_cold_local_hot_output, detached_remote_hot_output)),
         # grouped mlp graph
         (unperm1_out, None),  # unperm1 graph
         (None, detached_unperm_a2a_out),
         (output, None),  # unperm2 graph
         (share_experts_graph, detached_shared_expert_output),
-        detached_layer_input
+        detached_layer_input,
     )
 
     graph = LayerGraph(
-        saved_tensors, recompute_needed_tensors, self, checkpointed=checkpoint,
+        saved_tensors,
+        recompute_needed_tensors,
+        self,
+        checkpointed=checkpoint,
         hot_experts_list=self.mlp.hot_experts_list,
         hot_expert_inter_ep_grad_reduce_handles=self.mlp.hot_expert_inter_ep_grad_reduce_handles,
-        params=self.mlp.params
+        params=self.mlp.params,
     )
 
     graph.act_ckpt_manager = cold_local_act_ckpt_manager

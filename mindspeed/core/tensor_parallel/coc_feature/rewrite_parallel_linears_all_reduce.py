@@ -8,6 +8,7 @@ class RewriteColumnAllReduceFunction(torch.autograd.Function):
     """
     same like ColumnParallelLinear without sequence parallel, similar structure like coc for debug
     """
+
     @staticmethod
     def forward(ctx, input_, weight, bias):
         set_context(ctx, input_, weight, bias)
@@ -40,11 +41,12 @@ class RewriteRowAllReduceFunction(torch.autograd.Function):
     """
     same like RowParallelLinear without sequence parallel, similar structure like coc for debug
     """
+
     @staticmethod
     def forward(ctx, input_, weight, bias):
         set_context(ctx, input_, weight, bias)
         output_ = torch.matmul(input_, weight.t())
-        output_parallel = min_comm_config.all_reduce(output_)
+        output_parallel = min_comm_config.all_reduce(output_, group=min_comm_config.tp_group)
         if bias is not None:
             output_parallel = output_parallel + bias
         return output_parallel

@@ -19,6 +19,7 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
     its second dimension as A = [A_1, ..., A_p].
     It employs a fused ops approach to combine matmul computations with all_gather in forward.
     """
+
     def __init__(
         self,
         input_size,
@@ -37,15 +38,18 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
         is_expert: bool = False,
         tp_comm_buffer_name: str = None,  # Not used
         disable_grad_reduce: bool = False,
-
         # coc parallel arguments
-        parallel_group: Optional[torch.distributed.ProcessGroup] = None,
+        tp_group: Optional[torch.distributed.ProcessGroup] = None,
         gather_from_tensor_model_parallel_region: Callable = None,
         _initialize_affine_weight_cpu: Callable = None,
         _initialize_affine_weight_gpu: Callable = None,
         set_tensor_model_parallel_attributes: Callable = None,
         divide: Callable = None,
+        **kwargs,
     ):
+        if 'parallel_group' in kwargs:
+            raise TypeError("parallel_group is not supported; use the Megatron tp_group argument")
+
         torch.nn.Module.__init__(self)
         # Keep input parameters
         self.input_size = input_size
@@ -60,8 +64,8 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
         self.config = config
         self.disable_grad_reduce = disable_grad_reduce
 
-        world_size = torch.distributed.get_world_size(group=parallel_group)
-        rank = torch.distributed.get_rank(group=parallel_group)
+        world_size = torch.distributed.get_world_size(group=tp_group)
+        rank = torch.distributed.get_rank(group=tp_group)
 
         self.output_size_per_partition = divide(output_size, world_size)
 
@@ -72,9 +76,7 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
         if not skip_weight_param_allocation:
             if config.use_cpu_initialization:
                 self.weight = Parameter(
-                    torch.empty(
-                        self.output_size_per_partition, self.input_size, dtype=config.params_dtype
-                    )
+                    torch.empty(self.output_size_per_partition, self.input_size, dtype=config.params_dtype)
                 )
                 if config.perform_initialization:
                     self.master_weight = _initialize_affine_weight_cpu(
@@ -113,9 +115,7 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
 
         if bias:
             if config.use_cpu_initialization:
-                self.bias = Parameter(
-                    torch.empty(self.output_size_per_partition, dtype=config.params_dtype)
-                )
+                self.bias = Parameter(torch.empty(self.output_size_per_partition, dtype=config.params_dtype))
             else:
                 self.bias = Parameter(
                     torch.empty(
@@ -141,30 +141,30 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
             )
             self.sequence_parallel = False
 
-        self.allreduce_dgrad = (
-                world_size > 1 and not self.sequence_parallel and not self.disable_grad_reduce
-        )
+        self.allreduce_dgrad = world_size > 1 and not self.sequence_parallel and not self.disable_grad_reduce
 
         self.gradient_accumulation_fusion = config.gradient_accumulation_fusion
 
         if self.allreduce_dgrad and self.sequence_parallel:
-            raise RuntimeError(
-                "`allreduce_dgrad` and `sequence_parallel` cannot be enabled at the same time."
-            )
+            raise RuntimeError("`allreduce_dgrad` and `sequence_parallel` cannot be enabled at the same time.")
 
         # Hook adding a default empty _extra_state for state dict
         self._register_load_state_dict_pre_hook(
-            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(
-                f'{prefix}_extra_state'
-            )
+            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(f'{prefix}_extra_state')
         )
 
         # register some param and func to use in global
         # register once is same used in MC2RowParallelLinearImpl
         self.gather_from_tensor_model_parallel_region = gather_from_tensor_model_parallel_region
-        self.parallel_group = parallel_group
+        self.parallel_group = tp_group
 
-    def forward(self, input_: torch.Tensor, weight: Optional[torch.Tensor] = None, runtime_gather_output: Optional[bool] = None, **kwargs):
+    def forward(
+        self,
+        input_: torch.Tensor,
+        weight: Optional[torch.Tensor] = None,
+        runtime_gather_output: Optional[bool] = None,
+        **kwargs,
+    ):
         if weight is None:
             if self.weight is None:
                 raise RuntimeError(
@@ -176,10 +176,7 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
             # Check the weight passed in is the correct shape
             expected_shape = (self.output_size_per_partition, self.input_size)
             if weight.shape != expected_shape:
-                raise RuntimeError(
-                    f"supplied weight's shape is {tuple(weight.shape)},"
-                    f"not {expected_shape} as expected"
-                )
+                raise RuntimeError(f"supplied weight's shape is {tuple(weight.shape)},not {expected_shape} as expected")
 
         bias = self.bias if not self.skip_bias_add else None
 
@@ -200,7 +197,9 @@ class MC2ColumnParallelLinearImpl(torch.nn.Module):
         if gather_output:
             # All-gather across the partitions.
             assert not self.sequence_parallel
-            output = self.gather_from_tensor_model_parallel_region(output)
+            output = self.gather_from_tensor_model_parallel_region(
+                output, group=self.parallel_group
+            )
         else:
             output = output
         output_bias = self.bias if self.skip_bias_add else None

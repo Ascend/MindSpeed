@@ -23,7 +23,7 @@ class MoEGmmFeature(MindSpeedFeature):
         from mindspeed.core.transformer.moe.moe_feature.common import ascend_gmm_preprocess
 
         if args.moe_grouped_gemm:
-            patch_manager.register_patch('megatron.core.transformer.moe.experts.GroupedMLP', MindSpeedGmmExperts)
+            patch_manager.register_patch('megatron.core.transformer.moe.experts.TEGroupedMLP', MindSpeedGmmExperts)
             patch_manager.register_patch(
                 'megatron.core.transformer.moe.legacy_a2a_token_dispatcher.MoEAlltoAllSEQTokenDispatcher.preprocess',
                 ascend_gmm_preprocess,

@@ -16,7 +16,7 @@ def print_tensor_value(name, value, device_id=0):
         per = value.shape[0] // n
         slices = []
         for k in range(n):
-            v = torch.flatten(value[k * per: (k + 1) * per])
+            v = torch.flatten(value[k * per : (k + 1) * per])
             slices.append(v[:5])
         print(f"{name}, shape={value.shape}, value=\n{torch.cat(tuple(slices)).view(n, -1)}", flush=True)
 
@@ -33,9 +33,9 @@ def infer_matmul_out_shape(shape_a, shape_b):
 
 def reshape_to_2D(input_tensor):
     # Convert the tensor shapes to 2D for execution compatibility
-    input_tensor = input_tensor.reshape(input_tensor.shape[0] * input_tensor.shape[1],
-                                        input_tensor.shape[2])
-    return input_tensor
+    if input_tensor.dim() < 2:
+        raise RuntimeError("CoC matmul input must have at least 2 dimensions.")
+    return input_tensor.reshape(-1, input_tensor.shape[-1])
 
 
 def async_gather_along_first_dim(input_, group, world_size):
@@ -63,8 +63,10 @@ def shuffle_as_coc_all_gather(input_, world_size, parallel_num):
 def is_grad_needed(needs_input_grad):
     is_grad_input_needed, is_grad_weight_needed, is_grad_bias_needed = needs_input_grad
     if not is_grad_input_needed:
-        raise RuntimeError("To use COC, grad_input is necessary to compute. Check if optimizer update is turned off by \
-                           mistake.")
+        raise RuntimeError(
+            "To use COC, grad_input is necessary to compute. Check if optimizer update is turned off by \
+                           mistake."
+        )
     if not is_grad_weight_needed and is_grad_bias_needed:
         raise RuntimeError("To use COC, grad_weight must be needed if grad_bias is required.")
     return is_grad_weight_needed, is_grad_bias_needed
@@ -83,12 +85,18 @@ def get_parallel_num(m, k, n, default_parallel_num=min_comm_config.parallel_num)
 
 
 def get_output_shape(input1, input2=None, tp_world_size=1, is_gather=True):
-    check_equal(input1.dim() >= 2 and (input2 is None or input2.dim() == 2), True,
-                error_info="invalid matmul input shape for CoC")
+    check_equal(
+        input1.dim() >= 2 and (input2 is None or input2.dim() == 2),
+        True,
+        error_info="invalid matmul input shape for CoC",
+    )
     output_shape = list(input1.shape)[:-1] + list([input2.shape[-1]]) if input2 is not None else list(input1.shape)
     if not is_gather:
-        check_equal(output_shape[0] % tp_world_size == 0 and output_shape[0] >= tp_world_size, True,
-                    error_info="invalid matmul m shape for CoC")
+        check_equal(
+            output_shape[0] % tp_world_size == 0 and output_shape[0] >= tp_world_size,
+            True,
+            error_info="invalid matmul m shape for CoC",
+        )
     output_shape[0] = output_shape[0] * tp_world_size if is_gather else output_shape[0] // tp_world_size
     return output_shape
 
@@ -111,8 +119,16 @@ class CommunicationType(Enum):
 
 
 class COCParallel:
-    def __init__(self, input_data, comm_type, compute_fcn, compute_first=True, synchronize=True, weight_shape_list=None,
-                 parallel_num=min_comm_config.parallel_num):
+    def __init__(
+        self,
+        input_data,
+        comm_type,
+        compute_fcn,
+        compute_first=True,
+        synchronize=True,
+        weight_shape_list=None,
+        parallel_num=min_comm_config.parallel_num,
+    ):
         self.input_data = input_data
         self.split_num = parallel_num
         self.synchronize = synchronize
@@ -129,8 +145,12 @@ class COCParallel:
         if weight_shape_list is None:
             self.compute_output_shape_slice = list(input_data.shape)
         else:
-            check_equal(input_data.shape[-1], weight_shape_list[0], error_info="In COCParallel, input_data should be of \
-                        shape [m,k] and weight_shape_list should be [k,n]")
+            check_equal(
+                input_data.shape[-1],
+                weight_shape_list[0],
+                error_info="In COCParallel, input_data should be of \
+                        shape [m,k] and weight_shape_list should be [k,n]",
+            )
             self.compute_output_shape_slice = infer_matmul_out_shape(list(input_data.shape), weight_shape_list)
         self.output = self.allocate_output_memory()
         self.output_slice = self.output.shape[0] // self.split_num
@@ -154,15 +174,17 @@ class COCParallel:
     def allocate_output_memory(self):
         # No matter compute first or communicate first, the output shape remains the same
         output_dim_size = self.get_dim_size_after_comm(self.compute_output_shape_slice)
-        output_ = torch.empty(output_dim_size, dtype=self.input_data.dtype,
-                              device=torch.npu.current_device(), requires_grad=False)
+        output_ = torch.empty(
+            output_dim_size, dtype=self.input_data.dtype, device=torch.npu.current_device(), requires_grad=False
+        )
         return output_
 
     def allocate_communicate_memory_for_communicate_first(self):
         dim_size = list(self.input_data.shape)
         dim_size = self.get_dim_size_after_comm(dim_size)
-        comm_output = torch.empty(dim_size, dtype=self.input_data.dtype,
-                                  device=torch.npu.current_device(), requires_grad=False)
+        comm_output = torch.empty(
+            dim_size, dtype=self.input_data.dtype, device=torch.npu.current_device(), requires_grad=False
+        )
         return comm_output
 
     def run_synchronize(self):
@@ -178,10 +200,10 @@ class COCParallel:
 
     def comm_fcn(self, i, input_):
         if self.comm_type == CommunicationType.ALL_GATHER:
-            output_ = self.comm_output[i * self.comm_slice: (i + 1) * self.comm_slice]
+            output_ = self.comm_output[i * self.comm_slice : (i + 1) * self.comm_slice]
             work = torch.distributed._all_gather_base(output_, input_.contiguous(), group=self.group, async_op=True)
         elif self.comm_type == CommunicationType.REDUCE_SCATTER:
-            output_ = self.comm_output[i * self.comm_slice: (i + 1) * self.comm_slice]
+            output_ = self.comm_output[i * self.comm_slice : (i + 1) * self.comm_slice]
             work = torch.distributed._reduce_scatter_base(output_, input_.contiguous(), group=self.group, async_op=True)
         elif self.comm_type == CommunicationType.ALL_REDUCE:
             # all_reduce interface currently only supports overwriting the same address of input
@@ -192,14 +214,14 @@ class COCParallel:
         return work, output_
 
     def get_input_slice(self, i):
-        return self.input_data[i * self.input_slice: (i + 1) * self.input_slice]
+        return self.input_data[i * self.input_slice : (i + 1) * self.input_slice]
 
     def run_compute_first(self):
         compute_outputs = []
         for i in range(self.split_num):
             input_slice = self.get_input_slice(i)
             if self.comm_type == CommunicationType.ALL_REDUCE:
-                compute_output = self.output[i * self.comm_slice: (i + 1) * self.comm_slice]
+                compute_output = self.output[i * self.comm_slice : (i + 1) * self.comm_slice]
                 self.compute_fcn(input_tensor=input_slice, output_tensor=compute_output)
             else:
                 compute_output = self.compute_fcn(input_slice)
@@ -213,11 +235,15 @@ class COCParallel:
             return self.output, self.works
 
     def get_output_slice(self, i):
-        return self.output[i * self.output_slice: (i + 1) * self.output_slice]
+        return self.output[i * self.output_slice : (i + 1) * self.output_slice]
 
     def run_communicate_first(self):
-        check_equal(self.synchronize, True, error_info="In COCParallel, must synchronize before return if communicate \
-                    first")
+        check_equal(
+            self.synchronize,
+            True,
+            error_info="In COCParallel, must synchronize before return if communicate \
+                    first",
+        )
         pre_work = None
         pre_output = None
         outputs = []

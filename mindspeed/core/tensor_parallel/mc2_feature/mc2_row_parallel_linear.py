@@ -1,7 +1,6 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-import warnings
-from typing import Callable, Optional, List
+from typing import Callable, Optional
 
 import torch
 from torch.nn import Parameter
@@ -19,6 +18,7 @@ class MC2RowParallelLinearImpl(torch.nn.Module):
     along its second dimension. A = transpose([A_1 .. A_p]) X = [X_1, ..., X_p]
     It employs a fused ops to combine matmul computations with reduce_scatter in forward and all_gather in backward.
     """
+
     def __init__(
         self,
         input_size: int,
@@ -33,15 +33,18 @@ class MC2RowParallelLinearImpl(torch.nn.Module):
         keep_master_weight_for_test: bool = False,
         is_expert: bool = False,
         tp_comm_buffer_name: str = None,  # Not used
-
         # coc parallel arguments
-        parallel_group: Optional[torch.distributed.ProcessGroup] = None,
+        tp_group: Optional[torch.distributed.ProcessGroup] = None,
         _initialize_affine_weight_cpu: Callable = None,
         _initialize_affine_weight_gpu: Callable = None,
         divide: Callable = None,
         get_tensor_model_parallel_world_size: Callable = None,
         get_tensor_model_parallel_group: Callable = None,
+        **kwargs,
     ):
+        if 'parallel_group' in kwargs:
+            raise TypeError("parallel_group is not supported; use the Megatron tp_group argument")
+
         torch.nn.Module.__init__(self)
 
         # Keep input parameters
@@ -57,8 +60,8 @@ class MC2RowParallelLinearImpl(torch.nn.Module):
         if self.sequence_parallel and not self.input_is_parallel:
             raise RuntimeError("To enable `sequence_parallel`, `input_is_parallel` must be `True`")
 
-        world_size = torch.distributed.get_world_size(group=parallel_group)
-        rank = torch.distributed.get_rank(group=parallel_group)
+        world_size = torch.distributed.get_world_size(group=tp_group)
+        rank = torch.distributed.get_rank(group=tp_group)
 
         self.input_size_per_partition = divide(input_size, world_size)
 
@@ -68,9 +71,7 @@ class MC2RowParallelLinearImpl(torch.nn.Module):
         # Initialize weight.
         if config.use_cpu_initialization:
             self.weight = Parameter(
-                torch.empty(
-                    self.output_size, self.input_size_per_partition, dtype=config.params_dtype
-                )
+                torch.empty(self.output_size, self.input_size_per_partition, dtype=config.params_dtype)
             )
             if config.perform_initialization:
                 self.master_weight = _initialize_affine_weight_cpu(
@@ -128,18 +129,14 @@ class MC2RowParallelLinearImpl(torch.nn.Module):
 
         # Hook adding a default empty _extra_state for state dict
         self._register_load_state_dict_pre_hook(
-            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(
-                f'{prefix}_extra_state'
-            )
+            lambda state_dict, prefix, *args, **kwargs: state_dict.setdefault(f'{prefix}_extra_state')
         )
 
-        self.parallel_group = parallel_group
+        self.parallel_group = tp_group
 
     def forward(self, input_: torch.Tensor, **kwargs):
         if not self.weight.requires_grad:
-            output = RowSeqParallelLinearWithFrozenWeightFunction.apply(
-                input_, self.weight, None, self.parallel_group
-            )
+            output = RowSeqParallelLinearWithFrozenWeightFunction.apply(input_, self.weight, None, self.parallel_group)
         else:
             output = RowSeqParallelLinearFunction.apply(
                 input_, self.weight, None, self.parallel_group, self.gradient_accumulation_fusion

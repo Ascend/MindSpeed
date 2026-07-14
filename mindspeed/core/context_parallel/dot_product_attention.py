@@ -42,6 +42,43 @@ except ImportError:
     rearrange = None
 
 
+_ADAPTIVE_CP_ALGOS = {'adaptive_cp_algo', 'hybrid_adaptive_cp_algo'}
+
+
+def _is_mpu_pg_collection(pg_collection):
+    """Return whether ``pg_collection`` references the default MPU TP/CP groups."""
+    if pg_collection is None:
+        return True
+    return (
+        pg_collection.tp is parallel_state.get_tensor_model_parallel_group(check_initialized=False)
+        and pg_collection.cp is parallel_state.get_context_parallel_group(check_initialized=False)
+    )
+
+
+def _validate_pg_collection(config, pg_collection):
+    """Reject custom groups that Adaptive CP cannot consume consistently."""
+    if (
+        pg_collection is None
+        or config.context_parallel_size <= 1
+        or config.context_parallel_algo not in _ADAPTIVE_CP_ALGOS
+    ):
+        return
+    if not _is_mpu_pg_collection(pg_collection):
+        raise ValueError(
+            'A custom pg_collection is not supported by MindSpeed Adaptive CP: '
+            'its scheduling and hybrid subgroups are initialized from the '
+            'default MPU process groups and are not represented by '
+            'ProcessGroupCollection.'
+        )
+
+
+def _get_tensor_parallel_world_size(config, pg_collection):
+    """Use the layer TP group for Adaptive CP without changing ordinary CP."""
+    if config.context_parallel_algo in _ADAPTIVE_CP_ALGOS:
+        return torch.distributed.get_world_size(group=pg_collection.tp)
+    return parallel_state.get_tensor_model_parallel_world_size()
+
+
 class CPDotProductAttentionImpl:
     """
     Implementation of dot product attention with cp support.
@@ -58,6 +95,7 @@ class CPDotProductAttentionImpl:
         cp_comm_type: str = None,
         pg_collection=None,
     ):
+        _validate_pg_collection(config, pg_collection)
         cp_size = config.context_parallel_size
         config.context_parallel_size = 1
         self.config = config
@@ -81,7 +119,7 @@ class CPDotProductAttentionImpl:
 
         projection_size = self.config.kv_channels * self.config.num_attention_heads
         # Per attention head and per partition values.
-        world_size = parallel_state.get_tensor_model_parallel_world_size()
+        world_size = _get_tensor_parallel_world_size(self.config, self.pg_collection)
         self.hidden_size_per_partition = divide(projection_size, world_size)
         self.hidden_size_per_attention_head = divide(projection_size, config.num_attention_heads)
         self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
