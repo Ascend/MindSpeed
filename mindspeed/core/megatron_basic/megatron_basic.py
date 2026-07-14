@@ -82,15 +82,17 @@ class PTNorm:
                     last_dim_split_comm_intf=TPYCollectiveComm(),
                 )
             else:
-                try:
-                    # using apex implementation
-                    from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
+                from megatron.core.extensions.transformer_engine import _get_extra_te_kwargs
+                from transformer_engine.pytorch import LayerNorm
 
-                    instance = FusedLayerNorm(config=config, hidden_size=hidden_size, eps=eps)
-                except ImportError:
-                    # using torch implementation
-                    instance = torch.nn.LayerNorm(normalized_shape=hidden_size, eps=eps)
-                    add_layer_norm_sp_support(config, instance)
+                instance = LayerNorm(
+                    normalized_shape=hidden_size,
+                    eps=eps,
+                    sequence_parallel=config.sequence_parallel,
+                    zero_centered_gamma=config.layernorm_zero_centered_gamma,
+                    **_get_extra_te_kwargs(config),
+                )
+                add_layer_norm_sp_support(config, instance)
         elif config.normalization == "RMSNorm":
             if getattr(config, "tp_2d", False):
                 instance = RMSNorm2D(
@@ -100,10 +102,16 @@ class PTNorm:
                 )
                 instance.use_fused_rmsnorm = False
             else:
-                from mindspeed.core.fusions.fused_rms_norm import RMSNorm
+                from megatron.core.extensions.transformer_engine import _get_extra_te_kwargs
+                from transformer_engine.pytorch import RMSNorm
 
-                instance = RMSNorm(dim=hidden_size, eps=eps, sequence_parallel=config.sequence_parallel, config=config)
-                instance.config.use_fused_rmsnorm = True
+                instance = RMSNorm(
+                    normalized_shape=hidden_size,
+                    eps=eps,
+                    sequence_parallel=config.sequence_parallel,
+                    zero_centered_gamma=config.layernorm_zero_centered_gamma,
+                    **_get_extra_te_kwargs(config),
+                )
         else:
             raise ValueError('Only LayerNorm and RMSNorm are curently supported')
 

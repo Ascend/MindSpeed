@@ -948,14 +948,16 @@ def validate_args_wrapper(validate_args):
             assert not args.recompute_norm, 'uniform recomputation is not compatible with norm recomputation '
         if args.recompute_activation_function and args.recompute_granularity == "selective":
             raise AssertionError('--recompute-activation-function is not compatible with selective recomputation')
-        adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or args.adaptive_recompute_device_swap
+        adaptive_recompute_enable = args.adaptive_recompute_device_size > 0 or getattr(
+            args, 'adaptive_recompute_device_swap', False
+        )
         if args.recompute_norm and args.recompute_granularity == "selective":
             raise AssertionError('--recompute-norm is not compatible with selective recomputation')
         if args.recompute_norm and args.use_legacy_models:
             raise AssertionError('--recompute-norm is only supported with mcore models')
         if args.use_nanopipe and not args.use_legacy_models:
             raise AssertionError('--use-nanopipe is not available with mcore models')
-        if args.adaptive_recompute_device_swap and not args.use_legacy_models:
+        if getattr(args, 'adaptive_recompute_device_swap', False) and not args.use_legacy_models:
             raise AssertionError('--adaptive-recompute-device-swap is not available with mcore models')
         if adaptive_recompute_enable:
             assert args.recompute_granularity is None and args.recompute_method is None, (
@@ -1066,7 +1068,7 @@ def validate_args_wrapper(validate_args):
             assert not args.use_nanopipe, "ampipe does't supports use_nanopipe for now."
             assert not args.recompute_in_bubble, "ampipe does't supports ripipe recompute_in_bubble for now."
             assert not args.recompute_in_advance, "ampipe does't supports ripipe recompute_in_advance for now."
-            assert not args.adaptive_recompute_device_swap, (
+            assert not getattr(args, 'adaptive_recompute_device_swap', False), (
                 "ampipe does't supports ripipe recompute_in_advance for now."
             )
             if args.sequence_parallel:

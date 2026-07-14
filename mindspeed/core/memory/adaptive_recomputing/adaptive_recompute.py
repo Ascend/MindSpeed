@@ -17,8 +17,12 @@ from megatron.core import parallel_state
 
 from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import get_recompute_hook
 from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import get_swap_hook
-from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import register_recursive_apply as apply_adaptive_recompute
-from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import register_recursive_apply_prefetch as apply_prefetch_strategy
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import (
+    register_recursive_apply as apply_adaptive_recompute,
+)
+from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import (
+    register_recursive_apply_prefetch as apply_prefetch_strategy,
+)
 from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_solver import get_graph_solver, GraphSolver
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager, get_tensor_mem_size
 
@@ -78,12 +82,14 @@ class AdaptiveRecomputePolicy:
             torch.distributed.all_reduce(
                 shard_tensor,
                 op=op,
-                group=parallel_state.get_tensor_model_parallel_group(), )
+                group=parallel_state.get_tensor_model_parallel_group(),
+            )
         if parallel_state.get_data_parallel_world_size() > 1:
             torch.distributed.all_reduce(
                 shard_tensor,
                 op=op,
-                group=parallel_state.get_data_parallel_group(), )
+                group=parallel_state.get_data_parallel_group(),
+            )
         result = shard_tensor.cpu().numpy().tolist()
         del shard_tensor
         return result
@@ -95,19 +101,23 @@ class AdaptiveRecomputePolicy:
                 return True
         return False
 
-
     def is_stable_policy(self, profiling_step):
         all_args = get_args()
         # not activate swap function or remove swap manager hook
-        if not all_args.adaptive_recompute_device_swap or (profiling_step > self.remove_swap_manager_hook_step != 0):
+        if not getattr(all_args, 'adaptive_recompute_device_swap', False) or (
+            profiling_step > self.remove_swap_manager_hook_step != 0
+        ):
             return True
 
         total_swap_out_size = SwapManager().total_swap_out_size
         self.swap_size = (total_swap_out_size - self.record_swap_out_size) // self.unit_mb
         self.check_num_alloc_retries()
         num_list = [
-            int(total_swap_out_size), int(self.hccl_memory), int(self.swap_size),
-            int(self.is_find_target_device_memory), int(self.change_num_alloc_retries_times)
+            int(total_swap_out_size),
+            int(self.hccl_memory),
+            int(self.swap_size),
+            int(self.is_find_target_device_memory),
+            int(self.change_num_alloc_retries_times),
         ]
         size_tensor = self.tensor_all_reduce(num_list, torch.distributed.ReduceOp.MAX)
         total_swap_out_size = size_tensor[0]
@@ -165,8 +175,10 @@ class AdaptiveRecomputePolicy:
 
         # check non oom policy
         if self.change_num_alloc_retries_times != 0 and self.check_non_oom_times == 0:
-            print_rank_0(f"current policy may be an unstable one, try to check it once again, "
-                         f"policy device memory: {self.cur_device_memory}")
+            print_rank_0(
+                f"current policy may be an unstable one, try to check it once again, "
+                f"policy device memory: {self.cur_device_memory}"
+            )
             self.check_non_oom_times += 1
             self.change_num_alloc_retries_times = 0
             return self.cur_device_memory
@@ -197,7 +209,8 @@ class AdaptiveRecomputePolicy:
             if self.is_find_target_device_memory:
                 self.remove_swap_manager_hook_step = profiling_step + 10
                 print_rank_0(
-                    f"success to find the target value of the current round of search: {self.cur_device_memory}")
+                    f"success to find the target value of the current round of search: {self.cur_device_memory}"
+                )
                 break
             # OOM policy
             if self.is_policy_in_list(self.cur_recompute_policy, self.oom_recompute_policy_list):
@@ -214,9 +227,12 @@ class AdaptiveRecomputePolicy:
         get_graph_solver().print_list_to_policy(recompute_policy_list)
         print_rank_0(
             f"max available memory: {self.context_copy['max_device_memory']}, previous policy swap size: {swap_size}, "
-            f"next policy device memory: {self.cur_device_memory}")
-        print_rank_0(f"{get_graph_solver().without_recompute_info}\n{get_graph_solver().all_recompute_info}\n"
-                     f"{get_graph_solver().selective_recompute_info}\n{get_graph_solver().final_policy_info}")
+            f"next policy device memory: {self.cur_device_memory}"
+        )
+        print_rank_0(
+            f"{get_graph_solver().without_recompute_info}\n{get_graph_solver().all_recompute_info}\n"
+            f"{get_graph_solver().selective_recompute_info}\n{get_graph_solver().final_policy_info}"
+        )
         return self.set_tag_to_context(recompute_policy_list)
 
     def set_tag_to_context(self, recompute_policy_list):
@@ -244,7 +260,7 @@ class AdaptiveRecomputePolicy:
 
         self.change_num_alloc_retries_times += 1
         if self.change_num_alloc_retries_times > 1:
-            print_rank_0(f"[^?^?^] this is a unstable policy, try select another one.")
+            print_rank_0("[^?^?^] this is a unstable policy, try select another one.")
             self.swap_size = 1
 
     def granular_module_allocation(self, vpp_size, recompute_num_layers, cur_pp_noop_layers):
@@ -266,7 +282,9 @@ class AdaptiveRecomputePolicy:
 
         if recompute_num_layers <= vpp_size:
             recompute_list = [['0'] if i < recompute_num_layers else [''] for i in range(vpp_size)]
-            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(args, 'reduce_recompute_for_last_chunk', False):
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(
+                args, 'reduce_recompute_for_last_chunk', False
+            ):
                 recompute_list[-1] = ['']
         else:
             for chunk in range(vpp_size):
@@ -275,7 +293,9 @@ class AdaptiveRecomputePolicy:
                     if layer_id % vpp_size == chunk:
                         chunk_recompute_layer.append(f'{layer_id // vpp_size}')
                 recompute_list.append(chunk_recompute_layer)
-            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(args, 'reduce_recompute_for_last_chunk', False):
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(
+                args, 'reduce_recompute_for_last_chunk', False
+            ):
                 if recompute_list[-1][-1] == str(args.num_layers_per_virtual_pipeline_stage - 1):
                     recompute_list[-1].pop()
                     if len(recompute_list[-1]) == 0:
@@ -364,10 +384,8 @@ class AdaptiveRecompute:
 
     def __init__(self):
         # layer profiling info
-        self.context = {
-            'module': []
-        }
-        #record allowed recomputing module
+        self.context = {'module': []}
+        # record allowed recomputing module
         self.allowed_recomputing_module = []
         # profiling prefix
         self.profiling_prefix = ""
@@ -398,7 +416,7 @@ class AdaptiveRecompute:
             "all_memory": all_memory,
             "used_memory": torch.npu.memory_allocated(),
             "reserved_memory": torch.npu.memory_reserved(),
-            "max_memory_allocated": torch.npu.max_memory_allocated()
+            "max_memory_allocated": torch.npu.max_memory_allocated(),
         }
 
         return memory_info
@@ -523,8 +541,12 @@ class AdaptiveRecompute:
 
                 # profiling transformer Layers
                 if isinstance(module, torch.nn.ModuleList) and 'is_recomputing_layer' in current_ctx and first_chunk:
-                    pre_hook = model.register_forward_pre_hook(self.forward_pre_hook(ctx['prefix_name'], ctx['name'], ctx))
-                    post_hook = model.register_forward_hook(self.forward_post_hook(ctx['prefix_name'], ctx['name'], ctx))
+                    pre_hook = model.register_forward_pre_hook(
+                        self.forward_pre_hook(ctx['prefix_name'], ctx['name'], ctx)
+                    )
+                    post_hook = model.register_forward_hook(
+                        self.forward_post_hook(ctx['prefix_name'], ctx['name'], ctx)
+                    )
                     self.modules_hooks.append(pre_hook)
                     self.modules_hooks.append(post_hook)
                 elif 'is_recomputing_layer' in current_ctx and first_chunk:
@@ -556,14 +578,16 @@ class AdaptiveRecompute:
         get_recompute_hook().reset_recompute_modules()
         get_swap_hook().reset_swap_manager_modules()
         SwapManager().reset_swap_manager_tensors()
-        if (get_adaptive_recomputing_policy().check_non_oom_times == 0
-                and not get_adaptive_recomputing_policy().is_find_target_device_memory):
+        if (
+            get_adaptive_recomputing_policy().check_non_oom_times == 0
+            and not get_adaptive_recomputing_policy().is_find_target_device_memory
+        ):
             torch_npu.npu.empty_cache()
 
     def reset_all_hook_args(self):
         all_args = get_args()
         step = get_adaptive_recomputing_policy().remove_swap_manager_hook_step
-        if not all_args.adaptive_recompute_device_swap:
+        if not getattr(all_args, 'adaptive_recompute_device_swap', False):
             for hook_handle in self.modules_hooks:
                 hook_handle.remove()
             self.modules_hooks.clear()
@@ -577,8 +601,10 @@ class AdaptiveRecompute:
         if not get_adaptive_recomputing_policy().is_find_target_device_memory or self.profiling_step > step + 1:
             return
         if self.profiling_step == step + 1:
-            title = (f"===== finish to check policy, search policy memory size is: "
-                     f"{get_adaptive_recomputing_policy().cur_device_memory} =====")
+            title = (
+                f"===== finish to check policy, search policy memory size is: "
+                f"{get_adaptive_recomputing_policy().cur_device_memory} ====="
+            )
             print_rank_0(f"{title}\n{get_graph_solver().final_policy_info}\n{'=' * len(title)}")
         if self.profiling_step == step:
             get_swap_hook().reset_swap_manager_modules()
@@ -588,7 +614,6 @@ class AdaptiveRecompute:
     def prefetch_hook(self, models):
         self.reset_modules()
         all_args = get_args()
-        pp = all_args.pipeline_model_parallel_size
         vpp = all_args.virtual_pipeline_model_parallel_size if all_args.virtual_pipeline_model_parallel_size else 1
         print_rank_0("ADAPTIVE-PREFETCH: Start applying policy to the model")
         config = {
@@ -596,16 +621,19 @@ class AdaptiveRecompute:
             "pre_layer_ctx": {},
             "cur_layer_name": "module",
         }
-        prefetch_recompute_group, interval, num_prefetch, swap_noop_layers = get_adaptive_recomputing_policy().solve_prefetch_policy()
-        print(f"[DEBUG] swap_list： {prefetch_recompute_group[0]},"
-              f" prefetch_list： {prefetch_recompute_group[1]},"
-              f" recompute_list： {prefetch_recompute_group[2]}")
+        prefetch_recompute_group, interval, num_prefetch, swap_noop_layers = (
+            get_adaptive_recomputing_policy().solve_prefetch_policy()
+        )
+        print(
+            f"[DEBUG] swap_list： {prefetch_recompute_group[0]},"
+            f" prefetch_list： {prefetch_recompute_group[1]},"
+            f" recompute_list： {prefetch_recompute_group[2]}"
+        )
         for i in prefetch_recompute_group[0]:
             if not any(filter(None, i)):
                 vpp -= 1
         prefetch_args = [prefetch_recompute_group[0], vpp, interval, num_prefetch]
         apply_prefetch_strategy(config, models, self.context, prefetch_recompute_group, prefetch_args)
-
 
     def step_hook(self, models):
         torch.npu.synchronize()
@@ -642,14 +670,18 @@ class AdaptiveRecompute:
     def hook_step_func(self, step_func, models):
         def custom_step_func(*args, **kargs):
             result = step_func(*args, **kargs)
-            if (self.profiling_step > self.solve_graph_at_step and \
-                    get_adaptive_recomputing_policy().is_stable_policy(self.profiling_step)):
+            if self.profiling_step > self.solve_graph_at_step and get_adaptive_recomputing_policy().is_stable_policy(
+                self.profiling_step
+            ):
                 return result
             memory_info = self.get_memory_status()
             try:
-                hccl_memory = (memory_info["all_memory"] - memory_info["free"] - memory_info[
-                    "reserved_memory"]) // self.unit_mb
-                get_adaptive_recomputing_policy().hccl_memory = max(hccl_memory, get_adaptive_recomputing_policy().hccl_memory)
+                hccl_memory = (
+                    memory_info["all_memory"] - memory_info["free"] - memory_info["reserved_memory"]
+                ) // self.unit_mb
+                get_adaptive_recomputing_policy().hccl_memory = max(
+                    hccl_memory, get_adaptive_recomputing_policy().hccl_memory
+                )
                 self.context['used_mem'] = memory_info["used_memory"] // self.unit_mb
                 self.context['max_device_memory'] = memory_info["all_memory"] // self.unit_mb
             except KeyError:
@@ -724,24 +756,36 @@ def record_time(context, remaining_event_list):
 def is_activate_adaptive_recompute():
     all_args = get_args()
     profiling_step = 0
-    if all_args.adaptive_recompute_device_size < 0 and not all_args.adaptive_recompute_device_swap and not all_args.swap_attention:
-        print_rank_0("[ERROR] failed to activate adaptive selective recompute train, please add param: "
-                     "\"adaptive-recompute-device-swap\", or set param: \"adaptive-recompute-device-size\".")
+    if (
+        all_args.adaptive_recompute_device_size < 0
+        and not getattr(all_args, 'adaptive_recompute_device_swap', False)
+        and not all_args.swap_attention
+    ):
+        print_rank_0(
+            "[ERROR] failed to activate adaptive selective recompute train, please add param: "
+            "\"adaptive-recompute-device-swap\", or set param: \"adaptive-recompute-device-size\"."
+        )
         return False, profiling_step
     max_profiling_step = all_args.train_iters // 10
     profiling_step = all_args.adaptive_recompute_profiling_step
     if profiling_step > all_args.train_iters and not all_args.swap_attention:
-        raise AssertionError('\"adaptive-recompute-profiling-step\" cannot be greater than train_iters')
+        raise AssertionError('"adaptive-recompute-profiling-step" cannot be greater than train_iters')
     if profiling_step < 5 or profiling_step > max_profiling_step:
-        print_rank_0(f"[WARNING] consider set \"adaptive-recompute-profiling-step\" value >=5"
-                     f"and <={max_profiling_step}, or remove it.")
+        print_rank_0(
+            f"[WARNING] consider set \"adaptive-recompute-profiling-step\" value >=5"
+            f"and <={max_profiling_step}, or remove it."
+        )
     if profiling_step <= 0:
         print_rank_0("[WARNING] \"adaptive-recompute-profiling-step\" value can not <=0, will use default value 10.")
         profiling_step = 10
     print_rank_0(
         "success to activate adaptive recompute train: adaptive-recompute-device-swap={}, adaptive-recompute-device-size={}, "
-        "adaptive-recompute-profiling-step={}".format(all_args.adaptive_recompute_device_swap,
-                                                      all_args.adaptive_recompute_device_size, profiling_step))
+        "adaptive-recompute-profiling-step={}".format(
+            getattr(all_args, 'adaptive_recompute_device_swap', False),
+            all_args.adaptive_recompute_device_size,
+            profiling_step,
+        )
+    )
     return True, profiling_step
 
 
@@ -760,16 +804,22 @@ def setup_model_and_optimizer_wrapper(setup_model_and_optimizer):
             optimizer.step = recomputing.hook_step_func(optimizer.step, models)
         if isinstance(models, list):
             for index, model in enumerate(models):
-
                 recomputing.construct_context_recursive("module" + str(index), model, recomputing.context, True)
                 if not args.swap_attention:
-                    recomputing.register_recursive_hook(model, recomputing.context, recomputing.profiling_prefix,
-                                                        index == 0, index, prefetch=args.swap_attention)
+                    recomputing.register_recursive_hook(
+                        model,
+                        recomputing.context,
+                        recomputing.profiling_prefix,
+                        index == 0,
+                        index,
+                        prefetch=args.swap_attention,
+                    )
         else:
             recomputing.construct_context_recursive("module", models, recomputing.context, True)
             if not args.swap_attention:
-                recomputing.register_recursive_hook(models, recomputing.context, recomputing.profiling_prefix, \
-                                                    True, prefetch=args.swap_attention)
+                recomputing.register_recursive_hook(
+                    models, recomputing.context, recomputing.profiling_prefix, True, prefetch=args.swap_attention
+                )
         if args.swap_attention:
             recomputing.prefetch_hook(models)
         print_rank_0("ADAPTIVE-RECOMPUTE: successfully hooking module")

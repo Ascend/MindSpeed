@@ -5,17 +5,49 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 
 
 class SwapAttentionFeature(MindSpeedFeature):
-
     def __init__(self):
         super().__init__('swap-attention', 2)
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
-        group.add_argument('--swap-attention', action='store_true', default=False,
-                           help='switch to open swap-attention feature.'
-                                'The default is False.')
-        group.add_argument('--swap-modules', type=str, default="input_norm,self_attention,post_attention_norm",
-                           help='Swap modules for model. Can be used together with "--swap-attention."')
+        group.add_argument(
+            '--swap-attention',
+            action='store_true',
+            default=False,
+            help='switch to open swap-attention feature.The default is False.',
+        )
+        group.add_argument(
+            '--swap-modules',
+            type=str,
+            default="input_norm,self_attention,post_attention_norm",
+            help='Swap modules for model. Can be used together with "--swap-attention."',
+        )
+        # adaptive recompute args: these control the adaptive selective recompute
+        # strategy which interacts with swap-attention (incompatible when both enabled).
+        # They are registered here because SwapAttentionFeature owns the compatibility
+        # check in validate_args().
+        group.add_argument(
+            '--adaptive-recompute-device-size',
+            type=int,
+            default=-1,
+            help='The memory size for adaptive selective recompute strategy. '
+            'The default is -1. If this parameter > 0, '
+            'will activate adaptive selective recompute.',
+        )
+        group.add_argument(
+            '--adaptive-recompute-profiling-step',
+            type=int,
+            default=10,
+            help='The profiling step for adaptive selective recompute strategy. '
+            'The default is 10. If activate adaptive selective recompute, '
+            'will solve graph after step 10.',
+        )
+        group.add_argument(
+            '--adaptive-recompute-device-swap',
+            action='store_true',
+            default=False,
+            help='switch to open adaptive recompute feature. The default is False.',
+        )
 
     def validate_args(self, args):
         adaptive_recompute_device_size = getattr(args, 'adaptive-recompute-device-size', -1)
@@ -34,18 +66,28 @@ class SwapAttentionFeature(MindSpeedFeature):
             from megatron.legacy.model.transformer import ParallelTransformerLayer
             from megatron.core.transformer.transformer_layer import TransformerLayer
             from mindspeed.core.memory.common import transformer_block_checkpointed_forward
+
             if hasattr(args, "use_legacy_models") and not args.use_legacy_models:
                 allowed_recomputing_swap_module_wrapper(TransformerLayer)
             else:
                 allowed_recomputing_swap_module_wrapper(ParallelTransformerLayer)
             from mindspeed.core.memory.swap_attention.adaptor import setup_model_and_optimizer_wrapper
-            patch_manager.register_patch('megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper)
+
+            patch_manager.register_patch(
+                'megatron.training.training.setup_model_and_optimizer', setup_model_and_optimizer_wrapper
+            )
 
             from mindspeed.core.memory.common import linear_forward_main_grad_wrapper, linear_backward_main_grad_wrapper
-            patch_manager.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
-                                linear_forward_main_grad_wrapper)
-            patch_manager.register_patch('megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
-                                linear_backward_main_grad_wrapper)
+
+            patch_manager.register_patch(
+                'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.forward',
+                linear_forward_main_grad_wrapper,
+            )
+            patch_manager.register_patch(
+                'megatron.core.tensor_parallel.layers.LinearWithGradAccumulationAndAsyncCommunication.backward',
+                linear_backward_main_grad_wrapper,
+            )
             patch_manager.register_patch(
                 'megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
-                transformer_block_checkpointed_forward)
+                transformer_block_checkpointed_forward,
+            )

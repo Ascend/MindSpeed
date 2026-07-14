@@ -4,7 +4,7 @@
 import torch
 import torch_npu
 
-from mindspeed.optimizer.adamw import adamw
+from mindspeed.core.optimizer.adamw import adamw
 
 
 def virtual_optimizer_replace(optimizer, virtual_allocator):
@@ -28,9 +28,7 @@ def virtual_optimizer_step_impl(self, closure=None):
         grads = []
         exp_avgs = []
         exp_avg_sqs = []
-        state_sums = []
         max_exp_avg_sqs = []
-        state_steps = []
         amsgrad = group['amsgrad']
         beta1, beta2 = group['betas']
 
@@ -64,7 +62,8 @@ def virtual_optimizer_step_impl(self, closure=None):
             if amsgrad:
                 max_exp_avg_sqs.append(state['max_exp_avg_sq'])
 
-        adamw(params_with_grad,
+        adamw(
+            params_with_grad,
             grads,
             exp_avgs,
             exp_avg_sqs,
@@ -76,7 +75,8 @@ def virtual_optimizer_step_impl(self, closure=None):
             lr=group['lr'],
             weight_decay=group['weight_decay'],
             eps=group['eps'],
-            maximize=group['maximize'])
+            maximize=group['maximize'],
+        )
 
     self.virtual_allocator.print_swap_size(self.print_swap_flag)
     return loss
@@ -89,13 +89,13 @@ class VirtualAllocator:
 
         Args:
             pp_rank (int): pipeline model rank number.
-            pp_stages (int): 
-            virtual_optimizer_size (float, List[float], Optional): 
+            pp_stages (int):
+            virtual_optimizer_size (float, List[float], Optional):
         """
         self.pp_stages = pp_stages
         self.pp_rank = pp_rank
         self.virtual_optimizer_size = virtual_optimizer_size
-        self.swap_size_this_pp_rank = self.get_swap_memory_size()[self.pp_rank] * (1024 ** 3)
+        self.swap_size_this_pp_rank = self.get_swap_memory_size()[self.pp_rank] * (1024**3)
         self.actually_swap_size = 0
         self.print_flag = False
 
@@ -117,7 +117,7 @@ class VirtualAllocator:
     def init_exp(self, p: torch.Tensor):
         """
         Create exp_avg and exp_avg_sq based on input param.
-        
+
         Args:
             p (tensor): param tensor.
         """
@@ -136,7 +136,7 @@ class VirtualAllocator:
             return self.get_swap_memory(p)
         else:
             return self.get_npu_memory(p)
-    
+
     def copy2swap(self, input_: torch.Tensor):
         """
         Copy input_ to swap tensor.
@@ -150,7 +150,7 @@ class VirtualAllocator:
 
     def get_swap_memory(self, p: torch.Tensor):
         """
-        Construct tensors in virtual memory. 
+        Construct tensors in virtual memory.
 
         Args:
             p (tensor): param tensor.
@@ -169,16 +169,16 @@ class VirtualAllocator:
         except Exception as e:
             print(f"[Warning] Swap memory alloc failed: {e}")
             return self.get_npu_memory(p)
-    
+
     def get_npu_memory(self, p: torch.Tensor):
         """
-        Construct tensors in hbm memory. 
+        Construct tensors in hbm memory.
 
         Args:
             p (tensor): param tensor.
         """
         return torch.zeros_like(p, memory_format=torch.preserve_format)
-    
+
     def print_swap_size(self, print_swap_flag):
         """
         Print swap size when `print_swap_flag` is true.
@@ -187,4 +187,6 @@ class VirtualAllocator:
             print_swap_flag (bool): Whether to print the swap size.
         """
         if print_swap_flag:
-            print(f"[Swap virtual-optimizer Summary: Rank {torch.distributed.get_rank()}] Swap {self.actually_swap_size:.5f} MB")
+            print(
+                f"[Swap virtual-optimizer Summary: Rank {torch.distributed.get_rank()}] Swap {self.actually_swap_size:.5f} MB"
+            )

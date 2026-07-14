@@ -43,13 +43,26 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         # initialization optimizer states
         self.opt_states_initialization()
 
+        # Bind swap_adamw_step to the actual optimizer instance.
+        # swap_optimizer_feature.py registers a patch on 'mindspeed.core.optimizer.adamw.AdamW.step',
+        # but the actual optimizer is TE FusedAdam (TE has higher import priority than apex in NPU
+        # env, and MindSpeed's patch on apex.optimizers.FusedAdam does not take effect). The patch
+        # target mismatch leaves swap_adamw_step uncalled, so TE FusedAdam.step runs on swap-out
+        # states (storage resized to 0) and triggers c10:Error + NPU function error 507057.
+        # Binding directly on the instance avoids dependence on patch path matching.
+        self.optimizer.step = lambda closure=None, **kwargs: swap_adamw_step(self.optimizer, closure)
+
         # print swap param num and size
         swap_num = sum([key.numel() for key in self.main_param_to_model_param_map.keys()])
         self.optimizer.swap_numel = swap_num // get_args().swap_optimizer_times
         total_num = sum([sum([p.numel() for p in group['params']]) for group in self.optimizer.param_groups])
         swap_memory = swap_num * 12 / 1024 / 1024
-        print('[Rank {}] swap optimizer: {} ({} MB)/{}\n'.format(torch.cuda.current_device(), swap_num, swap_memory,
-                                                                 total_num), end='')
+        print(
+            '[Rank {}] swap optimizer: {} ({} MB)/{}\n'.format(
+                torch.cuda.current_device(), swap_num, swap_memory, total_num
+            ),
+            end='',
+        )
 
     def opt_states_initialization(self):
         for group in self.shard_fp32_from_float16_groups:
@@ -64,7 +77,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         cpu_state = self.param_to_cpu_states_map[main_param]
         self.param_to_device_states_map[main_param] = device_state
 
-        amsgrad = self.optimizer.param_to_group_map[main_param]['amsgrad']
+        amsgrad = self.optimizer.param_to_group_map[main_param].get('amsgrad', False)
 
         for key in self.state_keys:
             if key in device_state:
@@ -148,7 +161,11 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
             if param in cls.param_to_device_states_map:
                 device_state = cls.param_to_device_states_map[param]
                 for key in cls.state_keys:
-                    if key in device_state and device_state[key] is not None and device_state[key].storage().size() != 0:
+                    if (
+                        key in device_state
+                        and device_state[key] is not None
+                        and device_state[key].storage().size() != 0
+                    ):
                         cpu_state[key].copy_(device_state[key], non_blocking=True)
                         device_state[key].storage().resize_(0)
 
@@ -168,11 +185,11 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
     @classmethod
     def _build_model_and_main_param_groups(
-            cls,
-            gbuf_ranges: List[Dict],
-            param_gbuf_map: Dict[torch.nn.Parameter, Tuple],
-            opt_group_ranges: List,
-            config,
+        cls,
+        gbuf_ranges: List[Dict],
+        param_gbuf_map: Dict[torch.nn.Parameter, Tuple],
+        opt_group_ranges: List,
+        config,
     ):
         """
         Create main parameter groups needed for the optimizer step.
@@ -199,7 +216,6 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
         # Allocate (or slice) each group's param shard.
         for group_range in opt_group_ranges:
-
             # Params of this group.
             model_float16_params_this_group = []
             model_fp32_params_this_group = []
@@ -213,7 +229,6 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
             shard_fp32_from_float16_groups.append(shard_fp32_from_float16_params_this_group)
 
             for model_param in group_range["params"]:
-
                 assert model_param.requires_grad
 
                 gbuf_index, dtype, bucket_index = param_gbuf_map[model_param]
@@ -222,18 +237,11 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
                 # fp16, bf16 params.
                 if model_param.type() in ['torch.cuda.HalfTensor', 'torch.cuda.BFloat16Tensor']:
-
                     # Clone model -> main.
-                    shard_model_param = model_param.detach().view(-1)[
-                                        param_range.start: param_range.end
-                                        ]
+                    shard_model_param = model_param.detach().view(-1)[param_range.start : param_range.end]
                     shard_main_param = shard_model_param.clone().float()
-                    tensor_parallel.copy_tensor_model_parallel_attributes(
-                        shard_model_param, model_param
-                    )
-                    tensor_parallel.copy_tensor_model_parallel_attributes(
-                        shard_main_param, model_param
-                    )
+                    tensor_parallel.copy_tensor_model_parallel_attributes(shard_model_param, model_param)
+                    tensor_parallel.copy_tensor_model_parallel_attributes(shard_main_param, model_param)
                     if hasattr(model_param, 'shared'):
                         shard_model_param.shared = model_param.shared
                         shard_main_param.shared = model_param.shared
@@ -248,12 +256,10 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
 
                 # fp32 params.
                 elif model_param.type() == 'torch.cuda.FloatTensor':
-                    shard_model_param = model_param.view(-1)[param_range.start: param_range.end]
+                    shard_model_param = model_param.view(-1)[param_range.start : param_range.end]
                     model_fp32_params_this_group.append(model_param)
                     shard_fp32_params_this_group.append(shard_model_param)
-                    tensor_parallel.copy_tensor_model_parallel_attributes(
-                        shard_model_param, model_param
-                    )
+                    tensor_parallel.copy_tensor_model_parallel_attributes(shard_model_param, model_param)
                     if hasattr(model_param, 'shared'):
                         shard_model_param.shared = model_param.shared
 
@@ -304,9 +310,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         data_parallel_world_size = self.data_parallel_group_gloo.size()
         data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
         data_parallel_group_gloo = self.data_parallel_group_gloo
-        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-            self.data_parallel_group_gloo
-        )
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
 
         if data_parallel_rank == 0:
             # Do nothing if "--fp8-param-gather" is not used.
@@ -327,20 +331,14 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                     offset_in_world_tensors = 0
                     for bucket_idx, gbuf_range_map in enumerate(gbuf_range_map_for_all_buckets):
                         # Compute local DP contiguous shard's size.
-                        gbuf_world_numel = (
-                            self.buffers[gbuf_idx].buckets[bucket_idx].grad_data.numel()
-                        )
+                        gbuf_world_numel = self.buffers[gbuf_idx].buckets[bucket_idx].grad_data.numel()
                         assert gbuf_world_numel % data_parallel_world_size == 0
                         gbuf_local_numel = gbuf_world_numel // data_parallel_world_size
-                        gbuf_world_numel_unpadded = (
-                            self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
-                        )
+                        gbuf_world_numel_unpadded = self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
                         assert gbuf_world_numel_unpadded <= gbuf_world_numel
 
                         # Contiguous local shards (received from DP rank 0).
-                        recv_tensor = torch.zeros(
-                            (gbuf_local_numel,), dtype=torch.float32, device="cpu"
-                        )
+                        recv_tensor = torch.zeros((gbuf_local_numel,), dtype=torch.float32, device="cpu")
 
                         # Scatter tensor list.
                         if data_parallel_rank == 0:
@@ -359,9 +357,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                             )
                             assert world_tensor.numel() == gbuf_world_numel
                             gbuf_start_idxs = list(range(0, gbuf_world_numel, gbuf_local_numel))
-                            send_tensors = [
-                                world_tensor[i: (i + gbuf_local_numel)] for i in gbuf_start_idxs
-                            ]
+                            send_tensors = [world_tensor[i : (i + gbuf_local_numel)] for i in gbuf_start_idxs]
                         else:
                             send_tensors = None
 
@@ -379,26 +375,24 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                             gbuf_local_end = param_range_map["gbuf_local"].end
                             if model_param not in recv_tensors:
                                 recv_tensors[model_param] = {}
-                            recv_tensors[model_param][key] = recv_tensor[
-                                gbuf_local_start:gbuf_local_end
-                            ]
+                            recv_tensors[model_param][key] = recv_tensor[gbuf_local_start:gbuf_local_end]
 
                 for model_param, tensors in recv_tensors.items():
                     if self.ddp_config.use_custom_fsdp or self.config.use_precision_aware_optimizer:
                         self._set_main_param_and_optimizer_states(model_param, tensors)
                     else:
                         group_index, group_order = self.model_param_group_index_map[model_param]
-                        main_param = self.optimizer.param_groups[group_index]["params"][
-                            group_order
-                        ]
+                        main_param = self.optimizer.param_groups[group_index]["params"][group_order]
                         optim_state = self.optimizer.state[main_param]
                         dst_tensors = {"param": main_param, **optim_state}
 
                         for key in dst_tensors:
                             if dst_tensors[key] is None:
                                 continue
-                            elif dst_tensors[key].storage().size() != 0 \
-                                    or main_param not in SwapDistributedOptimizer.param_to_cpu_states_map:
+                            elif (
+                                dst_tensors[key].storage().size() != 0
+                                or main_param not in SwapDistributedOptimizer.param_to_cpu_states_map
+                            ):
                                 dst_tensors[key].copy_(tensors[key])
                             else:
                                 cpu_state = SwapDistributedOptimizer.param_to_cpu_states_map[main_param]
@@ -428,9 +422,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                         main_param = mbuf.get_item(item_id)
                         optim_state = self.optimizer.state[main_param]
                         object_list = [None] * mbuf.dp_world_size
-                        torch.distributed.all_gather_object(
-                            object_list, optim_state, group=mbuf.data_parallel_group
-                        )
+                        torch.distributed.all_gather_object(object_list, optim_state, group=mbuf.data_parallel_group)
 
                         for _, obj in enumerate(object_list):
                             for name, value in obj.items():
@@ -449,14 +441,11 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         data_parallel_world_size = self.data_parallel_group_gloo.size()
         data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
         data_parallel_group_gloo = self.data_parallel_group_gloo
-        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(
-            self.data_parallel_group_gloo
-        )
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
 
         # Collect param states.
         state = {"buckets_coalesced": True}
         for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
-
             # Iterate grad buffers (by data type).
             dtype_state = {}
             assert len(gbuf_range_maps) == 1, "single dtype supported, for now."
@@ -466,23 +455,18 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                 world_tensors = {}
                 if data_parallel_rank == 0:
                     world_tensors = {
-                        key: torch.zeros(
-                            (buffer_numel_unpadded,), dtype=torch.float32, device="cpu"
-                        )
+                        key: torch.zeros((buffer_numel_unpadded,), dtype=torch.float32, device="cpu")
                         for key in ("param", "exp_avg", "exp_avg_sq")
                     }
                     world_tensors["numel_unpadded"] = buffer_numel_unpadded
                 offset_in_world_tensors = 0
                 for bucket_idx, gbuf_range_map in enumerate(gbuf_range_map_for_all_buckets):
-
                     # Compute local DP contiguous shard's size.
                     gbuf_world_numel = self.buffers[gbuf_idx].buckets[bucket_idx].grad_data.numel()
                     assert gbuf_world_numel % data_parallel_world_size == 0
                     gbuf_local_numel = gbuf_world_numel // data_parallel_world_size
 
-                    gbuf_world_numel_unpadded = (
-                        self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
-                    )
+                    gbuf_world_numel_unpadded = self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
                     assert gbuf_world_numel_unpadded <= gbuf_world_numel
 
                     local_shards = {
@@ -504,13 +488,10 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                         gbuf_local_start = param_range_map["gbuf_local"].start
                         gbuf_local_end = param_range_map["gbuf_local"].end
                         for key in local_shards:
-                            local_shards[key][gbuf_local_start:gbuf_local_end].data.copy_(
-                                tensors[key].detach().cpu()
-                            )
+                            local_shards[key][gbuf_local_start:gbuf_local_end].data.copy_(tensors[key].detach().cpu())
 
                     # Gather contiguous shards on DP rank 0.
                     for key, send_tensor in local_shards.items():
-
                         # Gather tensor list.
                         if data_parallel_rank == 0:
                             recv_tensors = [
@@ -536,9 +517,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                             # the padding between buckets.
                             start = offset_in_world_tensors
                             end = offset_in_world_tensors + gbuf_world_numel_unpadded
-                            world_tensors[key][start:end].copy_(
-                                recv_tensors_concatenated[:gbuf_world_numel_unpadded]
-                            )
+                            world_tensors[key][start:end].copy_(recv_tensors_concatenated[:gbuf_world_numel_unpadded])
 
                     offset_in_world_tensors += gbuf_world_numel_unpadded
 
@@ -565,7 +544,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                     param_range = param_range_map["param"]
                     assert param_range.size == shard_main_param.nelement()
 
-                    shard_model_param = model_param.view(-1)[param_range.start: param_range.end]
+                    shard_model_param = model_param.view(-1)[param_range.start : param_range.end]
 
                     if shard_main_param.storage().size() != 0:
                         shard_main_param.data.copy_(shard_model_param)
@@ -607,7 +586,7 @@ def swap_adamw_step(self, closure=None):
             raise RuntimeError('AdamW does not support sparse gradients')
 
         group = self.param_to_group_map[param]
-        amsgrad = group['amsgrad']
+        amsgrad = group.get('amsgrad', False)
         beta1, beta2 = group['betas']
         state = self.state[param]
 
@@ -623,15 +602,29 @@ def swap_adamw_step(self, closure=None):
             torch.cuda.current_stream().wait_stream(SwapDistributedOptimizer.swap_to_host_stream)
             with torch.cuda.stream(SwapDistributedOptimizer.swap_to_device_stream):
                 torch.cuda.current_stream().wait_stream(SwapDistributedOptimizer.swap_to_host_stream)
-                while i < len(params_list) and (swap_count + params_list[i].numel() <= self.swap_numel or swap_count <= 0):
+                while i < len(params_list) and (
+                    swap_count + params_list[i].numel() <= self.swap_numel or swap_count <= 0
+                ):
                     SwapDistributedOptimizer.swap_tensors_to_device(params_list[i])
                     swap_count += params_list[i].numel()
                     i += 1
 
         SwapDistributedOptimizer.wait_swap_to_device_event(param)
-        npu_apply_fused_adamw_v2(param, param.grad, state['exp_avg'], state['exp_avg_sq'], state['max_exp_avg_sq'],
-                                 group['step'], group['lr'], beta1, beta2, group['weight_decay'],
-                                 group['eps'], amsgrad, group['maximize'])
+        npu_apply_fused_adamw_v2(
+            param,
+            param.grad,
+            state['exp_avg'],
+            state['exp_avg_sq'],
+            state['max_exp_avg_sq'],
+            group['step'],
+            group['lr'],
+            beta1,
+            beta2,
+            group['weight_decay'],
+            group['eps'],
+            amsgrad,
+            group.get('maximize', False),
+        )
 
         SwapDistributedOptimizer.copy_tensor_to_model_param(param)
         with torch.cuda.stream(SwapDistributedOptimizer.swap_to_host_stream):

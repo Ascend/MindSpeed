@@ -133,10 +133,8 @@ class NpuEnhancementFeature(MindSpeedFeature):
     # Patch registration (migrated from MegatronBasic + TransformerEngineBasic)
     # ================================================================
     def pre_register_patches(self, patch_manager, args):
-        """Note: Patches have been removed because they are
-        already covered by MA (MegatronAdaptor)
-        """
-        pass
+        """No pre-Megatron compatibility patches are needed."""
+        return
 
     def register_patches(self, patch_manager, args):
         # ================================================================
