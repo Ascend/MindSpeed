@@ -66,9 +66,11 @@ class GmmExpertsImpl:
 
         quant_w4a16_enable = False
         quant_w8a16_enable = False
+        quant_w4a8_enable = False
         quant_qat_enable = False
         fakequant_func = None
         scheme = getattr(self.config, 'qat_scheme', None)
+        block_size = None
         if scheme in ("w4a16-mxfp4", "w4a16-mxfp4-moe-only"):
             quant_w4a16_enable = True
             quant_qat_enable = True
@@ -77,6 +79,10 @@ class GmmExpertsImpl:
             quant_w8a16_enable = True
             quant_qat_enable = True
             fakequant_func = W8A16FakeQuantization.apply
+        elif scheme == "w4a8-moe-only":
+            block_size = getattr(self.config, 'qat_quant_block_size', 32)
+            quant_w4a8_enable = True
+            quant_qat_enable = True
 
         if permuted_local_hidden_states.nelement() != 0:
             from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_quant_func
@@ -89,17 +95,29 @@ class GmmExpertsImpl:
                     permuted_local_hidden_states, w1, None, tokens_per_expert, self.weight1
                 )
             else:
-                if quant_qat_enable:
-                    w1 = self.weight1.view(-1, self.config.hidden_size)
-                    w1 = fakequant_func(w1, [1, 32], False).reshape(self.num_local_experts, self.config.hidden_size, -1)
-                fc1_output = gg.ops.gmm(
-                    permuted_local_hidden_states,
-                    w1,
-                    tokens_per_expert,
-                    trans_b=False,
-                    gemm_fusion=gemm_fusion,
-                    original_weight=self.weight1,
-                )
+                if quant_w4a8_enable:
+                    fc1_output = gg.ops.gmm_w4a8(
+                        permuted_local_hidden_states,
+                        w1,
+                        tokens_per_expert,
+                        trans_b=False,
+                        original_weight=self.weight1,
+                        block_size=block_size,
+                    )
+                else:
+                    if quant_qat_enable:
+                        w1 = self.weight1.view(-1, self.config.hidden_size)
+                        w1 = fakequant_func(w1, [1, 32], False).reshape(
+                            self.num_local_experts, self.config.hidden_size, -1
+                        )
+                    fc1_output = gg.ops.gmm(
+                        permuted_local_hidden_states,
+                        w1,
+                        tokens_per_expert,
+                        trans_b=False,
+                        gemm_fusion=gemm_fusion,
+                        original_weight=self.weight1,
+                    )
             if not is_recompute_activation:
                 intermediate_parallel = self.activation_func_with_probs(fc1_output, permuted_probs.unsqueeze(-1))
             else:
@@ -110,17 +128,29 @@ class GmmExpertsImpl:
             if quant_gmm_func:
                 fc2_output = quant_gmm_func.gmm_apply(intermediate_parallel, w2, None, tokens_per_expert, self.weight2)
             else:
-                if quant_qat_enable:
-                    w2 = self.weight2.view(self.num_local_experts * self.config.hidden_size, -1)
-                    w2 = fakequant_func(w2, [1, 32], False).reshape(self.num_local_experts, -1, self.config.hidden_size)
-                fc2_output = gg.ops.gmm(
-                    intermediate_parallel,
-                    w2,
-                    tokens_per_expert,
-                    trans_b=False,
-                    gemm_fusion=gemm_fusion,
-                    original_weight=self.weight2,
-                )
+                if quant_w4a8_enable:
+                    fc2_output = gg.ops.gmm_w4a8(
+                        intermediate_parallel,
+                        w2,
+                        tokens_per_expert,
+                        trans_b=False,
+                        original_weight=self.weight2,
+                        block_size=block_size,
+                    )
+                else:
+                    if quant_qat_enable:
+                        w2 = self.weight2.view(self.num_local_experts * self.config.hidden_size, -1)
+                        w2 = fakequant_func(w2, [1, 32], False).reshape(
+                            self.num_local_experts, -1, self.config.hidden_size
+                        )
+                    fc2_output = gg.ops.gmm(
+                        intermediate_parallel,
+                        w2,
+                        tokens_per_expert,
+                        trans_b=False,
+                        gemm_fusion=gemm_fusion,
+                        original_weight=self.weight2,
+                    )
         else:
             assert torch.count_nonzero(tokens_per_expert) == 0
             w1 = self.weight1.view(self.config.hidden_size, -1)

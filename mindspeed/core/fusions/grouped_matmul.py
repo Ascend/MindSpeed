@@ -20,6 +20,17 @@ class Ops:
             original_weight=original_weight,
         )
 
+    @staticmethod
+    def gmm_w4a8(a, b, batch_sizes, trans_b=False, original_weight=None, block_size=32):
+        from mindspeed.ops.gmm_w4a8 import npu_gmm
+
+        if trans_b:
+            b = b.t()
+        group_list = torch.cumsum(batch_sizes, dim=0).to('npu')
+        return npu_gmm(
+            a, b, bias=None, group_list=group_list, group_type=0, original_weight=original_weight, block_size=block_size
+        )
+
 
 def grouped_gemm_is_available():
     try:

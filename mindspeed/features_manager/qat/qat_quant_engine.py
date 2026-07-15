@@ -16,12 +16,35 @@ class QATQuantEngineFeature(MindSpeedFeature):
             '--qat-scheme',
             type=str,
             default=None,
-            choices=['w4a16-mxfp4', 'w4a16-mxfp4-moe-only', 'w8a16-mxfp8', 'w8a16-mxfp8-moe-only', 'w4a4-mxfp4'],
+            choices=[
+                'w4a16-mxfp4',
+                'w4a16-mxfp4-moe-only',
+                'w8a16-mxfp8',
+                'w8a16-mxfp8-moe-only',
+                'w4a4-mxfp4',
+                'w4a8-moe-only',
+            ],
             help='Set the QAT quantization method',
+        )
+        group.add_argument(
+            '--qat-quant-block-size',
+            type=int,
+            default=None,
+            choices=[32, 128],
+            help='Set the QAT quantization block size (effective only when --qat-scheme=w4a8-moe-only)',
         )
 
     def register_patches(self, patch_manager: MindSpeedPatchesManager, args):
         scheme = getattr(args, 'qat_scheme', None)
+        if scheme == "w4a8-moe-only":
+            if getattr(args, "gemm_gradient_accumulation_fusion", False):
+                warnings.warn("gemm_gradient_accumulation_fusion is forced to False under 'w4a8-moe-only' scheme.")
+        if scheme != "w4a8-moe-only":
+            if getattr(args, 'qat_quant_block_size', None) is not None:
+                warnings.warn(
+                    f"--qat-quant-block-size is only effective when --qat-scheme='w4a8-moe-only', "
+                    f"but current scheme is '{scheme}'. The parameter will be ignored."
+                )
         if scheme in ["w4a16-mxfp4", "w8a16-mxfp8", 'w4a4-mxfp4']:
             use_optimized_linear = (
                 getattr(args, "gradient_accumulation_fusion", False)
