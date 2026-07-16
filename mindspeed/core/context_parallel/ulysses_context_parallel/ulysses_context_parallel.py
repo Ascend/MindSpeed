@@ -8,10 +8,8 @@ import torch
 import torch_npu
 from torch import Tensor
 from torch.nn import Module
-import mindspeed
 from mindspeed.core.tensor_parallel.comm_group_api import CollectiveCommIntf
 from mindspeed.core.tensor_parallel.comm_utils import sync_gather_along_first_dim, sync_reduce_scatter_along_first_dim
-from mindspeed.core.context_parallel import get_args
 from mindspeed.core.context_parallel.ulysses_context_parallel.unaligned_cp.mapping import all_to_all, cal_split_sizes
 
 
@@ -40,8 +38,9 @@ class GatherSizeCalculator(ABC):
 
 class DefaultGatherSizeCalculator(GatherSizeCalculator):
     """Default implementation where the gather size is always None. If gather_size is None, it
-       will be calculated as the product of the original size of the `gather_idx` of the input tensor and the
-       `world_size`."""
+    will be calculated as the product of the original size of the `gather_idx` of the input tensor and the
+    `world_size`."""
+
     def calculate(self, *args, **kwargs) -> Optional[int]:
         return None
 
@@ -50,8 +49,7 @@ class DynamicGatherSizeCalculator(GatherSizeCalculator):
     """Dynamic implementation that calculates gather size based on the current batch attention mask sequence length."""
 
     def calculate(self, *args: Any, **kwargs: Any) -> Optional[int]:
-        """Calculates the gather size based on the attention mask sequence length.
-        """
+        """Calculates the gather size based on the attention mask sequence length."""
         # Check if the first argument is a tensor; general masks (which type is list) do not support dynamic gather size
         if not isinstance(args[0], torch.Tensor):
             return None
@@ -85,16 +83,14 @@ def single_all_to_all(input_, scatter_idx, gather_idx, group):
     inp_shape = list(input_.shape)
     inp_shape[scatter_idx] = inp_shape[scatter_idx] // seq_world_size
     if scatter_idx < 2:
-        input_t = input_.reshape(
-            [seq_world_size, inp_shape[scatter_idx]] + \
-            inp_shape[scatter_idx + 1:]
-        ).contiguous()
+        input_t = input_.reshape([seq_world_size, inp_shape[scatter_idx]] + inp_shape[scatter_idx + 1 :]).contiguous()
     else:
         # transpose groups of heads with the seq-len parallel dimension, so that we can scatter them!
-        input_t = input_.reshape(
-            [-1, seq_world_size, inp_shape[scatter_idx]] + \
-            inp_shape[scatter_idx + 1:]
-        ).transpose(0, 1).contiguous()
+        input_t = (
+            input_.reshape([-1, seq_world_size, inp_shape[scatter_idx]] + inp_shape[scatter_idx + 1 :])
+            .transpose(0, 1)
+            .contiguous()
+        )
 
     output = torch.empty_like(input_t)
     torch.distributed.all_to_all_single(output, input_t, group=group)
@@ -105,14 +101,19 @@ def single_all_to_all(input_, scatter_idx, gather_idx, group):
         output = output.transpose(0, 1).transpose(1, 2).contiguous()
 
     return output.reshape(
-        inp_shape[: gather_idx] + [inp_shape[gather_idx] * seq_world_size, ] + inp_shape[gather_idx + 1:]).contiguous()
+        inp_shape[:gather_idx]
+        + [
+            inp_shape[gather_idx] * seq_world_size,
+        ]
+        + inp_shape[gather_idx + 1 :]
+    ).contiguous()
 
 
 class _SeqAllToAll(torch.autograd.Function):
-
     @staticmethod
-    def forward(ctx: Any, group: torch.distributed.ProcessGroup, input_: Tensor, scatter_idx: int,
-                gather_idx: int) -> Tensor:
+    def forward(
+        ctx: Any, group: torch.distributed.ProcessGroup, input_: Tensor, scatter_idx: int, gather_idx: int
+    ) -> Tensor:
         ctx.group = group
         ctx.scatter_idx = scatter_idx
         ctx.gather_idx = gather_idx
@@ -125,27 +126,26 @@ class _SeqAllToAll(torch.autograd.Function):
 
 
 class UlyssesContextAttention(torch.nn.Module):
-    """Implementation of Ulysses Context Attention mechanism.
-    """
+    """Implementation of Ulysses Context Attention mechanism."""
 
     def __init__(
-            self,
-            local_attention: Module,
-            sequence_process_group: torch.distributed.ProcessGroup,
-            scatter_idx: int = 2,
-            gather_idx: int = 0,
-            gather_size_calculator: GatherSizeCalculator = DefaultGatherSizeCalculator(),  # Injected dependency
+        self,
+        local_attention: Module,
+        sequence_process_group: torch.distributed.ProcessGroup,
+        scatter_idx: int = 2,
+        gather_idx: int = 0,
+        gather_size_calculator: GatherSizeCalculator = DefaultGatherSizeCalculator(),  # Injected dependency
     ) -> None:
         """Initialization
 
-            Args:
-                local_attention (Module): An instance of a local attention mechanism
-                sequence_process_group (ProcessGroup): A PyTorch ProcessGroup object representing the process group for context parallelism.
-                scatter_idx (int): Index specifying along which dimension the data should be scattered during all-to-all communication.
-                gather_idx (int): Index specifying along which dimension the data should be gathered during all-to-all communication.
-                gather_size_calculator (GatherSizeCalculator): A callable object responsible for calculating the gather_size,
-                 which is the total size of the all-to-all output tensor along the `gather_idx`.
-                    Defaults to DefaultGatherSizeCalculator().
+        Args:
+            local_attention (Module): An instance of a local attention mechanism
+            sequence_process_group (ProcessGroup): A PyTorch ProcessGroup object representing the process group for context parallelism.
+            scatter_idx (int): Index specifying along which dimension the data should be scattered during all-to-all communication.
+            gather_idx (int): Index specifying along which dimension the data should be gathered during all-to-all communication.
+            gather_size_calculator (GatherSizeCalculator): A callable object responsible for calculating the gather_size,
+             which is the total size of the all-to-all output tensor along the `gather_idx`.
+                Defaults to DefaultGatherSizeCalculator().
         """
         super(UlyssesContextAttention, self).__init__()
         self.local_attn = local_attention
@@ -153,11 +153,11 @@ class UlyssesContextAttention(torch.nn.Module):
             'spg': sequence_process_group,
             'scatter_idx': scatter_idx,
             'gather_idx': gather_idx,
-            'gather_size_calculator': gather_size_calculator
+            'gather_size_calculator': gather_size_calculator,
         }
 
     def forward(self, query: Tensor, key: Tensor, value: Tensor, *args: Any, **kwargs: Any) -> Tensor:
-        """ forward
+        """forward
 
         Arguments:
             query (Tensor): query input to the layer
@@ -168,54 +168,39 @@ class UlyssesContextAttention(torch.nn.Module):
         Returns:
             * output (Tensor): context output
         """
-        global_args = get_args()
-        use_custom_ulysses_backward = (
-            global_args.context_parallel_size > 1 and
-            global_args.context_parallel_algo == "ulysses_cp_algo" and
-            not global_args.use_legacy_models and
-            global_args.context_parallel_kv_cache_policy
-        )
-        if use_custom_ulysses_backward:
-            output = self.local_attn(query, key, value, *args, **kwargs)
-        else:
-            spg = self.local_attn.ulysses_comm_para.get('spg')
-            scatter_idx = self.local_attn.ulysses_comm_para.get('scatter_idx')
-            gather_idx = self.local_attn.ulysses_comm_para.get('gather_idx')
-            seq_world_size = torch.distributed.get_world_size(spg)
+        spg = self.local_attn.ulysses_comm_para.get('spg')
+        scatter_idx = self.local_attn.ulysses_comm_para.get('scatter_idx')
+        gather_idx = self.local_attn.ulysses_comm_para.get('gather_idx')
+        seq_world_size = torch.distributed.get_world_size(spg)
 
-            # Handle cases where the sequence length of keys/values needs to be adjusted to match queries.
-            if seq_world_size > key.shape[scatter_idx] and query.shape[scatter_idx] % key.shape[scatter_idx] == 0:
-                key = key.repeat_interleave(query.shape[scatter_idx] // key.shape[scatter_idx], dim=scatter_idx)
-                value = value.repeat_interleave(query.shape[scatter_idx] // value.shape[scatter_idx], dim=scatter_idx)
+        # Handle cases where the sequence length of keys/values needs to be adjusted to match queries.
+        if seq_world_size > key.shape[scatter_idx] and query.shape[scatter_idx] % key.shape[scatter_idx] == 0:
+            key = key.repeat_interleave(query.shape[scatter_idx] // key.shape[scatter_idx], dim=scatter_idx)
+            value = value.repeat_interleave(query.shape[scatter_idx] // value.shape[scatter_idx], dim=scatter_idx)
 
-            # Calculate the gather size using the injected gather size calculator
-            gather_size = self.local_attn.ulysses_comm_para.get('gather_size_calculator').calculate(*args, **kwargs)
+        # Calculate the gather size using the injected gather size calculator.
+        gather_size = self.local_attn.ulysses_comm_para.get('gather_size_calculator').calculate(*args, **kwargs)
 
-            # The gather size usually refers to the size of the output tensor in the `gather_idx` dimension after
-            # the all-to-all communication
-            # in shape : e.g.,  [s/p:h:]
-            query_layer = all_to_all(query, spg, scatter_idx, gather_idx, gather_size)
-            key_layer = all_to_all(key, spg, scatter_idx, gather_idx, gather_size)
-            value_layer = all_to_all(value, spg, scatter_idx, gather_idx, gather_size)
+        query_layer = all_to_all(query, spg, scatter_idx, gather_idx, gather_size)
+        key_layer = all_to_all(key, spg, scatter_idx, gather_idx, gather_size)
+        value_layer = all_to_all(value, spg, scatter_idx, gather_idx, gather_size)
 
-            # out shape : e.g., [s:h/p:]
-            context_layer = self.local_attn(query_layer, key_layer, value_layer, *args, **kwargs)
+        context_layer = self.local_attn(query_layer, key_layer, value_layer, *args, **kwargs)
 
-            # Reshape the context layer if necessary to align dimensions properly
-            if gather_size:
-                context_shape = context_layer.shape
-                scatter_sizes_query = cal_split_sizes(query.shape[scatter_idx], seq_world_size)
+        if gather_size:
+            context_shape = context_layer.shape
+            scatter_sizes_query = cal_split_sizes(query.shape[scatter_idx], seq_world_size)
+            context_layer = context_layer.reshape(
+                context_shape[0],
+                context_shape[1],
+                scatter_sizes_query[torch.distributed.get_rank(spg)],
+                -1,
+            ).contiguous()
 
-                # To reshape the context_layer tensor to ensure context_layer.size(gather_idx) and context_layer.size(scatter_idx)
-                # has the correct value.
-                context_layer = context_layer.reshape(context_shape[0], context_shape[1],
-                                                      scatter_sizes_query[torch.distributed.get_rank(spg)], -1).contiguous()
+        output = all_to_all(context_layer, spg, gather_idx, scatter_idx, query.size(scatter_idx))
 
-            output = all_to_all(context_layer, spg, gather_idx, scatter_idx, query.size(scatter_idx))
-
-            # Final reshape to maintain correct dimensions after all-to-all communication
-            if gather_size:
-                output = output.reshape(output.shape[0], output.shape[1], -1).contiguous()
+        if gather_size:
+            output = output.reshape(output.shape[0], output.shape[1], -1).contiguous()
 
         # out e.g., [s/p::h]
         return output
@@ -246,7 +231,7 @@ class AttnQKVReshape:
 
         # attention parameters
         packed_seq_params = self.attn_para.get('packed_seq_params')
-        seq_length, bsz, n_head, head_dim = query.shape[0], query.shape[1], query.shape[2], query.shape[3]
+        seq_length, n_head = query.shape[0], query.shape[2]
 
         self.attn_para['n_head'] = n_head
         self.attn_para['q_seq_len'] = seq_length
@@ -256,12 +241,12 @@ class AttnQKVReshape:
         self.attn_para['v_seq_len'] = value.shape[0]
 
         # reshape [s, b, h, d] to SBH([s, b, h*d]) or TND([s*b, h, d])
-        if packed_seq_params is not None: # TND
+        if packed_seq_params is not None:  # TND
             actual_seq_qlen = packed_seq_params.cu_seqlens_q.tolist()
             actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.tolist()
             query, key, value = [rearrange(x, 's b h d -> (b s) h d') for x in [query, key, value]]
             shape_order = 'TND'
-        else: # SBH
+        else:  # SBH
             actual_seq_qlen = None
             actual_seq_kvlen = None
             query, key, value = [rearrange(x, 's b h d -> s b (h d)') for x in [query, key, value]]
@@ -359,9 +344,7 @@ class RepeatAll2AllComm:
             key = key.repeat_interleave(query.shape[scatter_idx] // key.shape[scatter_idx], dim=scatter_idx)
             value = value.repeat_interleave(query.shape[scatter_idx] // value.shape[scatter_idx], dim=scatter_idx)
         elif cache_policy is not None:
-            raise AssertionError(
-                'KV Cache dose not suggest to use when key and value do not repeat'
-            )
+            raise AssertionError('KV Cache dose not suggest to use when key and value do not repeat')
 
         # all2all communication forward, [s, b, h, d] -> [s*cp, b, h//cp, d]
         query = single_all_to_all(query, scatter_idx, gather_idx, spg)
@@ -407,10 +390,10 @@ class RepeatAll2AllComm:
         # if backward repeat, [s, b, h, d] -> [s, b, h//cp, d]
         if do_repeat:
             dk = dk.view(
-                *dk.shape[:scatter_idx], dk.shape[scatter_idx] // repeat_num, repeat_num, *dk.shape[scatter_idx + 1:]
+                *dk.shape[:scatter_idx], dk.shape[scatter_idx] // repeat_num, repeat_num, *dk.shape[scatter_idx + 1 :]
             ).sum(dim=scatter_idx + 1)
             dv = dv.view(
-                *dv.shape[:scatter_idx], dv.shape[scatter_idx] // repeat_num, repeat_num, *dv.shape[scatter_idx + 1:]
+                *dv.shape[:scatter_idx], dv.shape[scatter_idx] // repeat_num, repeat_num, *dv.shape[scatter_idx + 1 :]
             ).sum(dim=scatter_idx + 1)
 
         return dq, dk, dv
@@ -631,7 +614,11 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
 
         # attention forward
         res = torch_npu.npu_fusion_attention(
-            q, k, v, n_head, shape_order,
+            q,
+            k,
+            v,
+            n_head,
+            shape_order,
             pse=None,
             padding_mask=None,
             atten_mask=attention_mask,
@@ -642,7 +629,7 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
             inner_precise=0,
             sparse_mode=sparse_mode,
             actual_seq_qlen=actual_seq_len,
-            actual_seq_kvlen=actual_seq_kvlen
+            actual_seq_kvlen=actual_seq_kvlen,
         )
 
         attn_out, softmax_max, softmax_sum = res[0], res[1], res[2]
@@ -724,7 +711,11 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
 
         # attention backward
         attn_grad_outs = torch_npu.npu_fusion_attention_grad(
-            query, key, value, dout, n_head,
+            query,
+            key,
+            value,
+            dout,
+            n_head,
             shape_order,
             pse=None,
             padding_mask=None,
@@ -738,7 +729,7 @@ class UlyssesAttnWithKVCache(torch.autograd.Function):
             sparse_mode=sparse_mode,
             keep_prob=keep_prob,
             actual_seq_qlen=actual_seq_len,
-            actual_seq_kvlen=actual_seq_kvlen
+            actual_seq_kvlen=actual_seq_kvlen,
         )
 
         dq, dk, dv = attn_grad_outs[0], attn_grad_outs[1], attn_grad_outs[2]

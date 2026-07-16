@@ -19,7 +19,6 @@ from .npu_moe_token_unpermute_builder import MoeTokenUnpermuteOpBuilder
 from .npu_ring_attention_update_builder import RingAttentionUpdateOpBuilder
 from .npu_bmm_reduce_scatter_all_to_all_builder import BatchMatMulReduceScatterAlltoAllOpBuilder
 from .npu_all_to_all_all_gather_bmm_builder import AllToAllAllGatherBatchMatMulOpBuilder
-from .adaptive_cp_builder import AdaptiveCpOpBuilder
 from .matmul_add_builder import MatmulAddOpBuilder
 from .groupmatmul_add_builder import GroupMatmulAddOpBuilder
 from .fused_ema_adamw_builder import FusedEmaAdamWOpBuilder

@@ -10,8 +10,7 @@ import torch.nn.functional as F
 
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 from megatron.core.transformer import TransformerConfig, ModuleSpec, build_module
-from megatron.core.transformer.attention import SelfAttentionSubmodules, CrossAttentionSubmodules, \
-    Attention
+from megatron.core.transformer.attention import CrossAttentionSubmodules, Attention
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core import mpu, parallel_state
 from megatron.core.utils import divide
@@ -20,10 +19,16 @@ from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
 
 from mindspeed.auto_settings.module.black.patch.hccl_operator import AttentionEndOp
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
-from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses, \
-    get_tensor_model_parallel_world_size_for_nd1_dim1
-from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPXOverlapCollectiveComm, \
-    TPYCollectiveComm, TPYOverlapCollectiveComm
+from mindspeed.core.parallel_state import (
+    get_context_parallel_group_for_hybrid_ulysses,
+    get_tensor_model_parallel_world_size_for_nd1_dim1,
+)
+from mindspeed.core.tensor_parallel.comm_group_api import (
+    TPXCollectiveComm,
+    TPXOverlapCollectiveComm,
+    TPYCollectiveComm,
+    TPYOverlapCollectiveComm,
+)
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.core.tensor_parallel.tp_2d.parallel_linear_2d import ParallelLinear2D
 
@@ -63,15 +68,13 @@ def attention_init(
     # patch for tp-2d
     world_size = args.tp_x if args.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
     # Per attention head and per partition values.
-    self.hidden_size_per_attention_head = divide(
-        self.query_projection_size, self.config.num_attention_heads
-    )
+    self.hidden_size_per_attention_head = divide(self.query_projection_size, self.config.num_attention_heads)
     self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
     self.num_query_groups_per_partition = divide(self.config.num_query_groups, world_size)
-    
+
     self.key_hidden_size = self.hidden_size_per_attention_head
     self.val_hidden_size = self.hidden_size_per_attention_head
-    
+
     self.core_attention = build_module(
         submodules.core_attention,
         config=self.config,
@@ -101,14 +104,13 @@ def attention_init(
         tp_y_cp_sz = cp * args.tp_y
     else:
         tp_y_cp_sz = cp
-    if tp_y_cp_sz > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo',
-                                                                         'hybrid_adaptive_cp_algo']:
+    if tp_y_cp_sz > 1 and args.context_parallel_algo in ['ulysses_cp_algo', 'hybrid_cp_algo']:
         if args.tp_2d:
             tp_y_cp = TensorParallelYUnionCP()
             ulysses_group = tp_y_cp.group
         else:
             ulysses_group = mpu.get_context_parallel_group()
-        if args.context_parallel_algo in ['hybrid_cp_algo', 'hybrid_adaptive_cp_algo']:
+        if args.context_parallel_algo == 'hybrid_cp_algo':
             ulysses_group = get_context_parallel_group_for_hybrid_ulysses()
         self.core_attention = UlyssesContextAttention(self.core_attention, ulysses_group)
 
@@ -119,20 +121,23 @@ def attention_init_wrapper(fn):
         fn(self, *args, **kwargs)
         if self.config.num_query_groups is None:
             self.config.num_query_groups = self.config.num_attention_heads
-        self.num_attention_heads_per_partition = self.config.num_attention_heads * self.num_query_groups_per_partition // self.config.num_query_groups
+        self.num_attention_heads_per_partition = (
+            self.config.num_attention_heads * self.num_query_groups_per_partition // self.config.num_query_groups
+        )
 
     return wrapper
 
 
 def self_attention_init_wrapper(fn):
     @wraps(fn)
-    def wrapper(self,
-                config: TransformerConfig,
-                submodules: SelfAttentionSubmodules,
-                layer_number: int,
-                attn_mask_type=AttnMaskType.padding,
-                **attention_optional_kwargs):
-
+    def wrapper(
+        self,
+        config: TransformerConfig,
+        submodules: SelfAttentionSubmodules,
+        layer_number: int,
+        attn_mask_type=AttnMaskType.padding,
+        **attention_optional_kwargs,
+    ):
         args = get_args()
         if args.overlap_param_gather:
             config.reset_attention_order = True
@@ -245,7 +250,7 @@ def self_attention_init_wrapper(fn):
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=0,
                 enable_backward_overlap_ag_with_matmul=False,
-                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu,
             )
             self.linear_proj = ParallelLinear2D(
                 self.query_projection_size,
@@ -262,7 +267,7 @@ def self_attention_init_wrapper(fn):
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1,
                 enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
-                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu,
             )
 
     return wrapper
@@ -288,6 +293,7 @@ def attention_forward_wrapper(fn):
         args = get_args()
         if args.prof_file:
             from mindspeed.auto_settings.module.black.patch.hccl_operator import AttentionStartOp
+
             hidden_states = AttentionStartOp.apply(hidden_states)
             activation_func_1 = torch.nn.Softplus()
             hidden_states = activation_func_1(hidden_states)
@@ -306,9 +312,12 @@ def attention_forward_wrapper(fn):
             q_a, compressed_kv, k_pe = torch.split(
                 mixed_x_layer,
                 [
-                    self.q_rank, self.kv_lora_rank, self.qk_rope_head_dim,
+                    self.q_rank,
+                    self.kv_lora_rank,
+                    self.qk_rope_head_dim,
                 ],
-                dim=-1)
+                dim=-1,
+            )
 
             if self.q_layernorm is None:
                 q = q_a
@@ -317,17 +326,12 @@ def attention_forward_wrapper(fn):
 
             q = q.view(q_len, bsz, self.config.num_attention_heads, -1)
 
-            q_nope, q_pe = torch.split(
-                q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1
-            )
+            q_nope, q_pe = torch.split(q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1)
 
             k_pe = k_pe.view(q_len, bsz, 1, self.qk_rope_head_dim)
             kv, _ = self.linear_kvb(self.k_layernorm(compressed_kv))
-            kv = kv.view(q_len, bsz, self.config.num_attention_heads, self.qk_nope_head_dim +
-                         self.v_head_dim)
-            k_nope, value = torch.split(
-                kv, [self.qk_nope_head_dim, self.v_head_dim], dim=-1
-            )
+            kv = kv.view(q_len, bsz, self.config.num_attention_heads, self.qk_nope_head_dim + self.v_head_dim)
+            k_nope, value = torch.split(kv, [self.qk_nope_head_dim, self.v_head_dim], dim=-1)
 
             if rotary_pos_emb is not None:
                 q_pos_emb, k_pos_emb = rotary_pos_emb
@@ -441,8 +445,7 @@ def attention_forward(
     sequence_len_offset=None,
     *,
     inference_params=None,
-    ):
-
+):
     # For self attention we just duplicate the rotary_pos_emb if it isn't already
     if rotary_pos_emb is not None and not isinstance(rotary_pos_emb, tuple):
         rotary_pos_emb = (rotary_pos_emb,) * 2
@@ -473,12 +476,17 @@ def attention_forward(
         else:
             cu_seqlens_q = cu_seqlens_kv = None
         query = apply_rotary_pos_emb(
-            query, q_pos_emb, config=self.config, cu_seqlens=cu_seqlens_q,
+            query,
+            q_pos_emb,
+            config=self.config,
+            cu_seqlens=cu_seqlens_q,
         )
         key = apply_rotary_pos_emb(
-            key, k_pos_emb, config=self.config, cu_seqlens=cu_seqlens_kv,
+            key,
+            k_pos_emb,
+            config=self.config,
+            cu_seqlens=cu_seqlens_kv,
         )
-
 
     # ==================================
     # core attention computation

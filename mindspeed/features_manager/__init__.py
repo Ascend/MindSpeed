@@ -4,9 +4,7 @@ from mindspeed.deprecate import AutoExecuteFunction
 
 from mindspeed.features_manager.feature import MindSpeedFeature
 from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
-from mindspeed.features_manager.context_parallel.adaptive_context_parallel import AdaptiveContextParallelFeature
 from mindspeed.features_manager.context_parallel.context_parallel_feature import ContextParallelFeature
-from mindspeed.features_manager.context_parallel.context_parallel_kv_cache import ContextParallelKvCacheFeature
 from mindspeed.features_manager.context_parallel.ulysses_context_parallel import UlyssesContextParallelFeature
 from mindspeed.features_manager.data_parallel.async_log_allreduce import AsyncLogAllreduceFeature
 from mindspeed.features_manager.functional.profile import ProfileFeature
@@ -176,8 +174,6 @@ def add_context_parallel_features(features_list: List[MindSpeedFeature]):
         [
             ContextParallelFeature(),
             UlyssesContextParallelFeature(),
-            ContextParallelKvCacheFeature(),
-            AdaptiveContextParallelFeature(),
         ]
     )
 

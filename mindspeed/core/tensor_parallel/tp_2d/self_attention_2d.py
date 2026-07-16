@@ -1,48 +1,26 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
-import math
-import torch
-from torch import Tensor
-import torch_npu
 from mindspeed.core.tensor_parallel.tp_2d.utils import divide
 from mindspeed.core.tensor_parallel.tp_2d.parallel_linear_2d import ParallelLinear2D
 from mindspeed.core.tensor_parallel.tp_2d.parallel_state_2d import get_tensor_model_parallel_world_size_for_nd1_dim1
-from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPXCollectiveComm, TPXOverlapCollectiveComm, \
-    TPYCollectiveComm, TPYOverlapCollectiveComm
+from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import (
+    TPXCollectiveComm,
+    TPXOverlapCollectiveComm,
+    TPYCollectiveComm,
+    TPYOverlapCollectiveComm,
+)
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
-from mindspeed.core.parallel_state import get_context_parallel_group_for_hybrid_ulysses
-from mindspeed.core.context_parallel.ring_context_parallel.context_parallel_kv_cache import get_cache_policy
-from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import ulyssesattn_context_parallel
-from mindspeed.core.context_parallel.ring_context_parallel.ring_context_parallel import ringattn_context_parallel
-from mindspeed.core.context_parallel.utils import get_scheduling_info
-from mindspeed.core.context_parallel.adaptive_context_parallel.adaptive_context_parallel import adaptive_attn_context_parallel
-from mindspeed.core.parallel_state import (get_context_parallel_group_for_hybrid_ring,
-                                           get_context_parallel_for_hybrid_ring_world_size,
-                                           get_context_parallel_for_hybrid_ring_rank,
-                                           get_context_parallel_for_hybrid_ring_global_ranks,
-                                           get_ring_ranks_for_intra_window,
-                                           get_ring_ranks_for_inter_window_kv,
-                                           get_ring_ranks_for_inter_window_dkv,
-                                           get_ring_group_for_intra_window,
-                                           get_ring_group_for_intra_window_send_recv_overlap)
-from mindspeed.ops.fusion_attention_v2 import npu_fusion_attention
 
 try:
     from einops import rearrange
 except ImportError:
     rearrange = None
-    
-    
+
+
 def self_attention_2d_init(
-    self,
-    config,
-    submodules,
-    layer_number,
-    attn_mask_type,
-    _initialize_affine_weight_gpu=None,
-    **kwargs
-    ):
+    self, config, submodules, layer_number, attn_mask_type, _initialize_affine_weight_gpu=None, **kwargs
+):
     if config.tp_2d:
         attn_heads_split_num = get_tensor_model_parallel_world_size_for_nd1_dim1()
         self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, attn_heads_split_num)
@@ -62,7 +40,7 @@ def self_attention_2d_init(
             enable_overlap_matmul_with_rs=False,
             partition_dim=0,
             enable_backward_overlap_ag_with_matmul=False,
-            _initialize_affine_weight_gpu=_initialize_affine_weight_gpu
+            _initialize_affine_weight_gpu=_initialize_affine_weight_gpu,
         )
         self.linear_proj = ParallelLinear2D(
             self.query_projection_size,
@@ -79,7 +57,7 @@ def self_attention_2d_init(
             enable_overlap_matmul_with_rs=False,
             partition_dim=1,
             enable_backward_overlap_ag_with_matmul=config.enable_backward_overlap_ag_with_matmul,
-            _initialize_affine_weight_gpu=_initialize_affine_weight_gpu
+            _initialize_affine_weight_gpu=_initialize_affine_weight_gpu,
         )
 
 
@@ -92,7 +70,7 @@ def attention_init_impl(
     attention_type,
     cp_comm_type,
     parallel_state=None,
-    build_module_func=None
+    build_module_func=None,
 ):
     self.config = config
     self.layer_number = layer_number
@@ -107,9 +85,7 @@ def attention_init_impl(
     # patch for tp-2d
     world_size = config.tp_x if config.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
     # Per attention head and per partition values.
-    self.hidden_size_per_attention_head = divide(
-        self.query_projection_size, self.config.num_attention_heads
-    )
+    self.hidden_size_per_attention_head = divide(self.query_projection_size, self.config.num_attention_heads)
     self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
     self.num_query_groups_per_partition = divide(self.config.num_query_groups, world_size)
 

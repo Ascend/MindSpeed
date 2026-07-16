@@ -7,29 +7,21 @@ import logging
 from typing import List
 import functools
 from functools import wraps
-import random
 import os
-import re
 import math
 import ast
 import torch
 import torch_npu
-import numpy as np
 from megatron.core import mpu
 from megatron.core import parallel_state
 from mindspeed.args_utils import get_full_args as get_args
 
-from mindspeed.core.parallel_state import (get_context_parallel_for_hybrid_ulysses_world_size,
-                                             get_context_parallel_for_hybrid_ulysses_rank,
-                                             get_context_parallel_for_hybrid_ring_world_size,
-                                             get_context_parallel_for_hybrid_ring_rank)
-from mindspeed.core.context_parallel.utils import (set_scheduling_info,
-                                                   set_remapped_seq_order,
-                                                   adaptive_reschedule_task,
-                                                   get_adaptive_cp_mask_list_by_user,
-                                                   get_adaptive_cp_grid_mask_by_user,
-                                                   generate_adaptive_cp_mask_list_by_user,
-                                                   generate_adaptive_cp_grid_mask_by_user)
+from mindspeed.core.parallel_state import (
+    get_context_parallel_for_hybrid_ulysses_world_size,
+    get_context_parallel_for_hybrid_ulysses_rank,
+    get_context_parallel_for_hybrid_ring_world_size,
+    get_context_parallel_for_hybrid_ring_rank,
+)
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 from mindspeed.model.transformer import set_attention_mask, get_attention_mask
 
@@ -47,7 +39,8 @@ def has_triton():
     global _HAS_TRITON
     if _HAS_TRITON is None:
         try:
-            import triton
+            import triton  # noqa: F401
+
             _HAS_TRITON = True
         except ImportError:
             _HAS_TRITON = False
@@ -60,7 +53,9 @@ def generate_rearrange_idx_tensor(tp_y_cp_size):
         rearrange_index = []
         for i in range(tp_y_cp_size):
             rearrange_index.extend([i, 2 * tp_y_cp_size - 1 - i])
-        _REARRANGE_IDX_TENSOR = torch.tensor(rearrange_index, device='cpu', pin_memory=True).to(device='npu', non_blocking=True)
+        _REARRANGE_IDX_TENSOR = torch.tensor(rearrange_index, device='cpu', pin_memory=True).to(
+            device='npu', non_blocking=True
+        )
     return _REARRANGE_IDX_TENSOR
 
 
@@ -93,7 +88,7 @@ def compute_qkv_index(seq_lens):
         kv_indices.extend(full_indices[prev_eod_pos:mid])
         q_indices.extend(full_indices[mid:eod_pos])
         prev_eod_pos = eod_pos
-    
+
     kv_index = torch.tensor(kv_indices).cuda(non_blocking=True)
     q_index = torch.tensor(q_indices).cuda(non_blocking=True)
 
@@ -105,7 +100,7 @@ def get_ring_degree():
     cp_size = args.context_parallel_size
     if cp_size == 1:
         return 1
-    
+
     if args.context_parallel_algo == 'megatron_cp_algo':
         return cp_size
     elif args.context_parallel_algo == 'ulysses_cp_algo':
@@ -134,7 +129,7 @@ def compute_actual_seq_len(seq):
     res = zero_pos.tolist()
     res.append(len(seq))
     return res
-    
+
 
 @functools.lru_cache(4096)
 def print_rank_0_once(message):
@@ -151,13 +146,13 @@ def get_batch_on_this_cp_rank_wrapper(fn):
         batch = fn(batch)
         set_position_ids(batch['position_ids'].transpose(0, 1).contiguous())
         return batch
-    
-    return wrapper 
+
+    return wrapper
 
 
 def get_batch_on_this_cp_rank(batch):
-    """ Slice batch input along sequence dimension into multiple chunks,
-        which are parallelized across GPUs in a context parallel group.
+    """Slice batch input along sequence dimension into multiple chunks,
+    which are parallelized across GPUs in a context parallel group.
     """
 
     # With causal masking, each token only attends to its prior tokens. Simply split
@@ -175,7 +170,9 @@ def get_batch_on_this_cp_rank(batch):
     if cp_size == 1:
         return batch
 
-    tp_y_cp_size = TensorParallelYUnionCP().get_parallel_group_world_size() if args.tp_2d else args.context_parallel_size
+    tp_y_cp_size = (
+        TensorParallelYUnionCP().get_parallel_group_world_size() if args.tp_2d else args.context_parallel_size
+    )
     if not tp_y_cp_size > 1:
         return batch
 
@@ -196,10 +193,6 @@ def get_batch_on_this_cp_rank(batch):
             batch = _get_batch_on_this_cp_rank_in_hybrid_cp_general(batch)
         else:
             batch = _get_batch_on_this_cp_rank_in_hybrid_cp(batch)
-    elif args.context_parallel_algo == 'adaptive_cp_algo':
-        batch = _get_batch_on_this_cp_rank_in_adaptive_cp(batch)
-    elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
-        batch = _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch)
     return batch
 
 
@@ -234,10 +227,10 @@ def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len)
         if val is not None:
             seq_dim = 1 if key != 'attention_mask' else 2
             bsz = val.shape[0]
-            val = val.view(-1, *val.shape[seq_dim + 1:])
+            val = val.view(-1, *val.shape[seq_dim + 1 :])
             val = val.index_select(0, index)
-            val = val.view(bsz, -1, *val.shape[seq_dim + 1:])
-        
+            val = val.view(bsz, -1, *val.shape[seq_dim + 1 :])
+
         batch[key] = val
 
     return batch
@@ -255,11 +248,11 @@ def _get_batch_on_this_cp_rank_in_megatron_cp(batch):
                 *val.shape[0:seq_dim],
                 2 * cp_size,
                 val.shape[seq_dim] // (2 * cp_size),
-                *val.shape[(seq_dim + 1):],
+                *val.shape[(seq_dim + 1) :],
             )
             index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device=val.device)
             val = val.index_select(seq_dim, index)
-            val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2):])
+            val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
             batch[key] = val
 
     return batch
@@ -287,7 +280,7 @@ def _get_batch_on_this_cp_rank_in_megatron_cp_general(batch):
             seq_dim = 1
             val = val.chunk(cp_size, dim=seq_dim)[cp_rank].contiguous()
             batch[key] = val
-        
+
     return batch
 
 
@@ -321,11 +314,11 @@ def _get_batch_on_this_cp_rank_in_hybrid_cp(batch):
                 *val.shape[0:seq_dim],
                 2 * r_size,
                 val.shape[seq_dim] // (2 * r_size),
-                *val.shape[(seq_dim + 1):],
+                *val.shape[(seq_dim + 1) :],
             )
             index = torch.tensor([r_rank, (2 * r_size - r_rank - 1)], device=val.device)
             val = val.index_select(seq_dim, index)
-            val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2):])
+            val = val.view(*val.shape[0:seq_dim], -1, *val.shape[(seq_dim + 2) :])
             val = val.chunk(u_size, dim=seq_dim)[u_rank].contiguous()
             batch[key] = val
 
@@ -364,7 +357,9 @@ def _get_batch_on_this_cp_rank_in_hybrid_cp_general(batch):
 
 def _broadcast(item):
     if item is not None:
-        torch.distributed.broadcast(item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group())
+        torch.distributed.broadcast(
+            item, mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group()
+        )
 
 
 def broadcast_dynamic(item):
@@ -382,8 +377,9 @@ def broadcast_dynamic(item):
     return item
 
 
-def get_batch_on_this_tp_rank(data_iterator):
+def get_batch_on_this_tp_rank(data_iterator, mtp_on_this_rank: bool = False):
     from megatron.training import get_args
+
     args = get_args()
 
     if mpu.get_tensor_model_parallel_rank() == 0:
@@ -397,10 +393,10 @@ def get_batch_on_this_tp_rank(data_iterator):
             'labels': data["labels"].cuda(non_blocking=True),
             'loss_mask': data["loss_mask"].cuda(non_blocking=True),
             'attention_mask': None if "attention_mask" not in data else data["attention_mask"].cuda(non_blocking=True),
-            'position_ids': data["position_ids"].cuda(non_blocking=True)
+            'position_ids': data["position_ids"].cuda(non_blocking=True),
         }
 
-        if args.pipeline_model_parallel_size == 1:
+        if args.pipeline_model_parallel_size == 1 or mtp_on_this_rank:
             _broadcast(batch['tokens'])
             _broadcast(batch['labels'])
             _broadcast(batch['loss_mask'])
@@ -421,7 +417,7 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         elif args.reset_attention_mask:
             _broadcast(batch['position_ids'])
-        
+
         if args.reset_attention_mask:
             actual_seq_len = broadcast_dynamic(data['actual_seq_len'])
             if args.attention_mask_type == 'causal':
@@ -429,18 +425,28 @@ def get_batch_on_this_tp_rank(data_iterator):
             set_actual_seq_len(actual_seq_len)
 
     else:
-        tokens = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        labels = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
-        loss_mask = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.float32, device=torch.cuda.current_device())
+        tokens = torch.empty(
+            (args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device()
+        )
+        labels = torch.empty(
+            (args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device()
+        )
+        loss_mask = torch.empty(
+            (args.micro_batch_size, args.seq_length), dtype=torch.float32, device=torch.cuda.current_device()
+        )
         if getattr(args, 'create_attention_mask_in_dataloader', False):
             attention_mask = torch.empty(
-                (args.micro_batch_size, 1, args.seq_length, args.seq_length), dtype=torch.bool, device=torch.cuda.current_device()
+                (args.micro_batch_size, 1, args.seq_length, args.seq_length),
+                dtype=torch.bool,
+                device=torch.cuda.current_device(),
             )
         else:
             attention_mask = None
-        position_ids = torch.empty((args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device())
+        position_ids = torch.empty(
+            (args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device()
+        )
 
-        if args.pipeline_model_parallel_size == 1:
+        if args.pipeline_model_parallel_size == 1 or mtp_on_this_rank:
             _broadcast(tokens)
             _broadcast(labels)
             _broadcast(loss_mask)
@@ -450,7 +456,7 @@ def get_batch_on_this_tp_rank(data_iterator):
         elif mpu.is_pipeline_first_stage():
             labels = None
             loss_mask = None
-         
+
             _broadcast(tokens)
             _broadcast(attention_mask)
             _broadcast(position_ids)
@@ -468,13 +474,13 @@ def get_batch_on_this_tp_rank(data_iterator):
 
         elif args.reset_attention_mask:
             _broadcast(position_ids)
- 
+
         batch = {
             'tokens': tokens,
             'labels': labels,
             'loss_mask': loss_mask,
             'attention_mask': attention_mask,
-            'position_ids': position_ids
+            'position_ids': position_ids,
         }
 
         if args.reset_attention_mask:
@@ -482,87 +488,6 @@ def get_batch_on_this_tp_rank(data_iterator):
             if args.attention_mask_type == 'causal':
                 actual_seq_len /= get_ring_degree()
             set_actual_seq_len(actual_seq_len)
-
-    return batch
-
-
-def _get_batch_on_this_cp_rank_in_adaptive_cp(batch):
-    args = get_args()
-    cp_rank = mpu.get_context_parallel_rank()
-    cp_size = mpu.get_context_parallel_world_size()
-
-    attention_mask = get_attention_mask()
-    if args.adaptive_cp_manually_set_mask_list:
-        remapped_seq_order = list(range(args.seq_length))
-        generate_adaptive_cp_grid_mask_by_user(cp_size)
-        grid_mask = get_adaptive_cp_grid_mask_by_user()
-        scheduling = adaptive_reschedule_task(grid_mask, cp_size)
-        generate_adaptive_cp_mask_list_by_user(remapped_seq_order, scheduling, cp_rank, cp_size)
-        mask_list = get_adaptive_cp_mask_list_by_user()
-    else:
-        if attention_mask is None:
-            raise AssertionError("Do not use adaptive cp with full mask")
-        if len(attention_mask.shape) != 2:
-            raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
-        from mindspeed.core.context_parallel.utils import AdaptiveCpOps
-        adaptive_cp_ops = AdaptiveCpOps()
-        remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attention_mask, cp_size)
-        mask_list = adaptive_cp_ops.get_mask_list(attention_mask, scheduling, remapped_seq_order, cp_rank, cp_size)
-
-    batch['attention_mask'] = mask_list
-    set_attention_mask(mask_list)
-    set_scheduling_info(torch.distributed.get_rank(), scheduling)
-    set_remapped_seq_order(remapped_seq_order)
-
-    for key, val in batch.items():
-        if key != 'attention_mask' and val is not None:
-            seq_dim = 1
-            per = val.shape[seq_dim] // cp_size
-            index = torch.tensor(remapped_seq_order[cp_rank * per:(cp_rank + 1) * per], device=val.device,
-                                 dtype=torch.int)
-            val = val.index_select(seq_dim, index)
-            batch[key] = val
-    return batch
-
-
-def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
-    args = get_args()
-    ulys_size = get_context_parallel_for_hybrid_ulysses_world_size()
-    adap_size = get_context_parallel_for_hybrid_ring_world_size()
-    ulys_rank = get_context_parallel_for_hybrid_ulysses_rank()
-    adap_rank = get_context_parallel_for_hybrid_ring_rank()
-
-    attention_mask = get_attention_mask()
-    if args.adaptive_cp_manually_set_mask_list:
-        remapped_seq_order = list(range(args.seq_length))
-        generate_adaptive_cp_grid_mask_by_user(adap_size)
-        grid_mask = get_adaptive_cp_grid_mask_by_user()
-        scheduling = adaptive_reschedule_task(grid_mask, adap_size)
-        generate_adaptive_cp_mask_list_by_user(remapped_seq_order, scheduling, adap_rank, adap_size)
-        mask_list = get_adaptive_cp_mask_list_by_user()
-    else:
-        if attention_mask is None:
-            raise AssertionError("Do not use adaptive cp with full mask")
-        if len(attention_mask.shape) != 2:
-            raise AssertionError("The fusion attention operator currently only support 2D attention mask.")
-        from mindspeed.core.context_parallel.utils import AdaptiveCpOps
-        adaptive_cp_ops = AdaptiveCpOps()
-        remapped_seq_order, scheduling = adaptive_cp_ops.get_adaptive_cp_info(attention_mask, adap_size)
-        mask_list = adaptive_cp_ops.get_mask_list(attention_mask, scheduling, remapped_seq_order, adap_rank, adap_size)
-
-    batch['attention_mask'] = mask_list
-    set_scheduling_info(torch.distributed.get_rank(), scheduling)
-    set_remapped_seq_order(remapped_seq_order)
-    set_attention_mask(mask_list)
-
-    for key, val in batch.items():
-        if key != 'attention_mask' and val is not None:
-            seq_dim = 1
-            per = val.shape[seq_dim] // adap_size // ulys_size
-            which_per = adap_rank * ulys_size + ulys_rank
-            index = torch.tensor(remapped_seq_order[which_per * per:(which_per + 1) * per], device=val.device)
-            val = val.index_select(seq_dim, index)
-            batch[key] = val
 
     return batch
 
@@ -586,7 +511,7 @@ def _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch):
             *val.shape[0:seq_dim],
             2 * tp_y_cp_size,
             val.shape[seq_dim] // (2 * tp_y_cp_size),
-            *val.shape[(seq_dim + 1):],
+            *val.shape[(seq_dim + 1) :],
         )
 
         val = val.index_select(seq_dim, index=rearrange_idx_tensor)
@@ -596,7 +521,7 @@ def _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch):
             *val.shape[0:seq_dim],
             cp_size,
             val.shape[seq_dim] // cp_size,
-            *val.shape[(seq_dim + 1):],
+            *val.shape[(seq_dim + 1) :],
         )
         # [b, 1, s/cp] -> [b, s/cp]
         val = val[:, cp_rank].view(b, -1)
@@ -608,9 +533,7 @@ def _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch):
 def _gather_hccl(send_tensor, recv_tensors, data_parallel_group):
     data_parallel_world_size = data_parallel_group.size()
     data_parallel_rank = torch.distributed.get_rank(data_parallel_group)
-    global_data_parallel_rank = torch.distributed.get_global_rank(data_parallel_group, data_parallel_rank)
-
-    dim1, = send_tensor.shape
+    (dim1,) = send_tensor.shape
     # hccl_slice_szie B parameters, occupying hccl_slice_szie * (dp + 1)B of NPU memory.
     stride = get_args().hccl_slice_size
     nums_gather = math.ceil(dim1 / stride)
@@ -626,17 +549,13 @@ def _gather_hccl(send_tensor, recv_tensors, data_parallel_group):
             for _ in range(data_parallel_world_size)
         ]
 
-        torch.distributed.all_gather(
-            recv_part, send_part, group=data_parallel_group
-        )
+        torch.distributed.all_gather(recv_part, send_part, group=data_parallel_group)
 
         recv_part_cpu = [x.cpu() for x in recv_part]
 
         if data_parallel_rank == 0:
             for i in range(data_parallel_world_size):
-                recv_tensors[i][start_index:end_index].copy_(
-                    recv_part_cpu[i]
-                )
+                recv_tensors[i][start_index:end_index].copy_(recv_part_cpu[i])
 
         send_part.untyped_storage().resize_(0)
         for recv in recv_part:
@@ -645,12 +564,10 @@ def _gather_hccl(send_tensor, recv_tensors, data_parallel_group):
 
 def _scatter_hccl(recv_tensor, send_tensors, source_rank, data_parallel_group):
     data_parallel_rank = torch.distributed.get_rank(data_parallel_group)
-    global_data_parallel_rank = torch.distributed.get_global_rank(data_parallel_group, data_parallel_rank)
-
-    dim1, = recv_tensor.shape
+    (dim1,) = recv_tensor.shape
     # hccl_slice_szie B parameters, occupying hccl_slice_szie * (dp + 1)B of NPU memory.
     stride = get_args().hccl_slice_size
-    
+
     nums_scatter = math.ceil(dim1 / stride)
 
     for num in range(nums_scatter):
@@ -659,20 +576,12 @@ def _scatter_hccl(recv_tensor, send_tensors, source_rank, data_parallel_group):
         end_index = min(end_index, dim1)
 
         if data_parallel_rank == 0:
-            send_part = [
-                x[start_index:end_index].npu()
-                for x in send_tensors
-            ]
+            send_part = [x[start_index:end_index].npu() for x in send_tensors]
         else:
             send_part = None
         recv_part = torch.empty((end_index - start_index,), dtype=recv_tensor.dtype, device="npu")
 
-        torch.distributed.scatter(
-            recv_part,
-            send_part,
-            source_rank,
-            data_parallel_group
-        )
+        torch.distributed.scatter(recv_part, send_part, source_rank, data_parallel_group)
 
         recv_part_cpu = recv_part.cpu()
 
@@ -691,9 +600,7 @@ def check_param_hashes_across_dp_replicas_hccl(model: List[torch.nn.Module]) -> 
     for model_chunk_id, model_chunk in enumerate(model):
         for param_name, param in model_chunk.named_parameters():
             param_hash = torch.frombuffer(
-                array.array(
-                    'B', hashlib.sha256(param.data.to("cpu").float().numpy(force=True)).digest()
-                ),
+                array.array('B', hashlib.sha256(param.data.to("cpu").float().numpy(force=True)).digest()),
                 dtype=torch.uint8,
             )
             param_hash = param_hash.clone().npu()
@@ -703,12 +610,9 @@ def check_param_hashes_across_dp_replicas_hccl(model: List[torch.nn.Module]) -> 
 
     # Collect per-parameter hashes across all ranks in DP group.
     all_param_hashes = [
-        torch.zeros_like(local_param_hashes, device="npu")
-        for _ in range(parallel_state.get_data_parallel_world_size())
+        torch.zeros_like(local_param_hashes, device="npu") for _ in range(parallel_state.get_data_parallel_world_size())
     ]
-    torch.distributed.all_gather(
-        all_param_hashes, local_param_hashes, group=parallel_state.get_data_parallel_group()
-    )
+    torch.distributed.all_gather(all_param_hashes, local_param_hashes, group=parallel_state.get_data_parallel_group())
 
     # Make sure local per-parameter hash matches DP rank 0.
     param_hashes_match = torch.equal(local_param_hashes, all_param_hashes[0])
@@ -716,16 +620,20 @@ def check_param_hashes_across_dp_replicas_hccl(model: List[torch.nn.Module]) -> 
         for i, (model_chunk_id, param_name, param) in enumerate(params):
             if not torch.equal(local_param_hashes[i], all_param_hashes[0][i]):
                 rank = torch.distributed.get_rank()
-                logger.info(
-                    f"[Rank {rank}] Hash not matching for {param_name} in model chunk {model_chunk_id}"
-                )
+                logger.info(f"[Rank {rank}] Hash not matching for {param_name} in model chunk {model_chunk_id}")
     return param_hashes_match
 
 
 def extend_seed_all(seed=1234):
-    os.environ['HCCL_DETERMINISTIC'] = 'True'  # 'HCCL_DETERMINISTIC' is a deterministic switch in ops level, set it to 'True' to enable ops level deterministic, set it to 'False' to disable ops level deterministic.
-    os.environ['CLOSE_MATMUL_K_SHIFT'] = '1'  # 'CLOSE_MATMUL_K_SHIFT' is a switch of matmul K-axis shift, set it to '1' to close matmul K-axis shift, set it to '0' to enable matmul K-axis shift.
-    os.environ['PYTHONHASHSEED'] = str(seed)  # 'PYTHONHASHSEED' refers to python hash seed, use a string of non-negative integer to specify the seed.
+    os.environ['HCCL_DETERMINISTIC'] = (
+        'True'  # 'HCCL_DETERMINISTIC' is a deterministic switch in ops level, set it to 'True' to enable ops level deterministic, set it to 'False' to disable ops level deterministic.
+    )
+    os.environ['CLOSE_MATMUL_K_SHIFT'] = (
+        '1'  # 'CLOSE_MATMUL_K_SHIFT' is a switch of matmul K-axis shift, set it to '1' to close matmul K-axis shift, set it to '0' to enable matmul K-axis shift.
+    )
+    os.environ['PYTHONHASHSEED'] = str(
+        seed
+    )  # 'PYTHONHASHSEED' refers to python hash seed, use a string of non-negative integer to specify the seed.
     torch.use_deterministic_algorithms(True)
     torch_npu.npu.manual_seed_all(seed)
     torch_npu.npu.manual_seed(seed)
@@ -733,9 +641,10 @@ def extend_seed_all(seed=1234):
 
 def batch_index(seq1d, seq_len):
     from bisect import bisect_right
+
     end_points = list(range(seq_len, seq1d[-1] + 1, seq_len))
     indexes = [0] + [bisect_right(seq1d, p) for p in end_points]
-    seq_batch = [seq1d[indexes[i]:indexes[i + 1]] for i in range(len(indexes) - 1)]
+    seq_batch = [seq1d[indexes[i] : indexes[i + 1]] for i in range(len(indexes) - 1)]
     return [[elem - i * seq_len for elem in seq] for i, seq in enumerate(seq_batch)]
 
 
@@ -748,7 +657,7 @@ def _get_dtype(dtype: str):
         'int8': torch.int8,
         'int16': torch.int16,
         'int32': torch.int32,
-        'int64': torch.int64
+        'int64': torch.int64,
     }
     if dtype not in DTYPE_MAP:
         raise ValueError(f"Unsupported dtype: {dtype}")
