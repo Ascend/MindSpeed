@@ -11,7 +11,7 @@
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>产品版本</p>
 </th>
-<td class="cellrowborder" valign="top" width="73.75%" headers=><p>26.1.0</p>
+<td class="cellrowborder" valign="top" width="73.75%" headers=><p>26.1.0_core_r0.12.1</p>
 </td>
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>版本类型</p>
@@ -57,7 +57,7 @@
 
 **表 2**  MindSpeed Core与TorchNPU版本兼容
 
-<table style="table-layout: fixed; width: 750px">
+<table style="table-layout: fixed; width: 750px ; text-align:center">
   <colgroup>
     <col style="width: 150px">
     <col style="width: 150px">
@@ -79,14 +79,14 @@
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0</td>
+      <td>26.0.0_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
       <td>/</td>
     </tr>
     <tr>
-      <td>26.1.0</td>
+      <td>26.1.0_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -97,7 +97,7 @@
 
 **表 3**  MindSpeed Core与CANN版本兼容
 
-<table style="table-layout: fixed; width: 750px">
+<table style="table-layout: fixed; width: 750px ; text-align:center">
   <colgroup>
     <col style="width: 150px">
     <col style="width: 150px">
@@ -119,14 +119,14 @@
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0</td>
+      <td>26.0.0_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
       <td>/</td>
     </tr>
     <tr>
-      <td>26.1.0</td>
+      <td>26.1.0_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -143,11 +143,11 @@
 
 ### 新增特性
 
-- 新增FP8/MXFP8/HiFloat8低精格式训练支持，以及w8a16量化支持
-- 新增MXFP8-32x32量化及FSDP支持，量化后释放bf16权重优化内存
-- 新增SwapMuon及mcore muon特性，支持checkpoint保存与加载
-- 新增DeepSeek V4模型适配及自定义PP布局支持
-- 新增TE算子层Hamilton attention实现
+- 新增FP8/MXFP8/HiFloat8低精格式训练支持，以及w8a16量化支持。
+- 新增MXFP8-32x32量化及FSDP支持，量化后释放bf16权重优化内存。
+- 新增SwapMuon及mcore muon特性，支持checkpoint保存与加载。
+- 新增DeepSeek V4模型适配及自定义PP布局支持。
+- 新增TE算子层Hamilton attention实现。
 
 ### 删除特性
 
@@ -190,7 +190,7 @@
 |文档名称|内容简介|更新说明|
 |--|--|--|
 |《[MindSpeed快速入门](../zh/user-guide/quickstart.md)》|介绍基于MindSpeed如何实现Megatron-LM在昇腾设备上的高效运行。|-|
-|《[MindSpeed安装指导](../zh/user-guide/install_guide.md)》|指导如何在NPU上基于PyTorch框架完成MindSpeed的安装，内容涵盖硬件与操作系统兼容性说明、驱动固件及CANN基础软件安装，以及两种框架下的完整安装流程，帮助用户快速搭建大模型分布式训练环境。|-|
+|《[MindSpeed安装指导](../zh/user-guide/install_guide.md)》|指导如何在NPU上基于PyTorch框架完成MindSpeed的安装，内容涵盖硬件与操作系统兼容性说明、驱动固件及CANN基础软件安装的完整安装流程，帮助用户快速搭建大模型分布式训练环境。|-|
 
 ## 病毒扫描及漏洞修补列表
 
@@ -198,9 +198,9 @@
 
 |防病毒软件名称|防病毒软件版本|病毒库版本|扫描时间|扫描结果|
 |---|---|---|---|---|
-|QiAnXin|8.0.5.5260|2026-04-01 08:00:00.0|2026-04-02|无病毒，无恶意|
-|Kaspersky|12.0.0.6672|2026-04-02 10:05:00|2026-04-02|无病毒，无恶意|
-|Bitdefender|7.5.1.200224|7.100588|2026-04-02|无病毒，无恶意|
+|QiAnXin|8.0.5.5260|2026-04-01 08:00:00.0|2026-07-06|无病毒，无恶意|
+|Kaspersky|12.0.0.6672|2026-04-02 10:05:00|2026-07-06|无病毒，无恶意|
+|Bitdefender|7.5.1.200224|7.100588|2026-07-06|无病毒，无恶意|
 
 ### 漏洞修补列表
 
