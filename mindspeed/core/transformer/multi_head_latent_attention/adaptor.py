@@ -2,21 +2,23 @@
 # Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 import math
-from typing import Union
+from typing import Optional, Union
 from functools import wraps
 
-from megatron.core import parallel_state
 from megatron.core.models.common.embeddings import (
     YarnRotaryEmbedding,
     _yarn_get_mscale,
 )
 from megatron.core.models.common.embeddings import RotaryEmbedding
-from megatron.core.transformer.attention import Attention
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import MLATransformerConfig
-from megatron.core.transformer.multi_latent_attention import MLASelfAttentionSubmodules
+from megatron.core.transformer.multi_latent_attention import (
+    MLASelfAttentionSubmodules,
+    MultiLatentAttention,
+)
+from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.utils import divide
 
 
@@ -28,15 +30,21 @@ def multi_latent_attention_init_impl(
     attn_mask_type: AttnMaskType,
     attention_type: str,
     cp_comm_type: str = None,
+    pg_collection: Optional[ProcessGroupCollection] = None,
+    pp_layer_offset: Optional[int] = None,
+    name: Optional[str] = None,
 ) -> None:
-
-    Attention.__init__(
+    super(MultiLatentAttention, self).__init__(
         self,
         config=config,
         submodules=submodules,
         layer_number=layer_number,
         attention_type=attention_type,
         attn_mask_type=attn_mask_type,
+        cp_comm_type=cp_comm_type,
+        pg_collection=pg_collection,
+        pp_layer_offset=pp_layer_offset,
+        name=name,
     )
 
     self.query_projection_size = self.config.v_head_dim * self.config.num_attention_heads
@@ -48,19 +56,20 @@ def multi_latent_attention_init_impl(
     self.val_hidden_size = self.config.v_head_dim
 
     self.recompute_up_proj = (
-        self.config.recompute_granularity == 'selective'
-        and "mla_up_proj" in self.config.recompute_modules
+        self.config.recompute_granularity == 'selective' and "mla_up_proj" in self.config.recompute_modules
     )
     self.qkv_up_checkpoint = None
 
-    mscale = _yarn_get_mscale(self.config.rotary_scaling_factor, self.config.mscale)
+    mscale = _yarn_get_mscale(self.config.rotary_scaling_factor, self.config.mscale_all_dim)
     self.softmax_scale = mscale * mscale / math.sqrt(self.q_head_dim)
+    self.cache_mla_latents = self.config.cache_mla_latents
 
     if self.config.rope_type == "rope":
         self.rotary_pos_emb = RotaryEmbedding(
             self.config.qk_pos_emb_head_dim,
             rotary_percent=self.config.rotary_percent,
             rotary_base=self.config.rotary_base,
+            cp_group=self.pg_collection.cp,
         )
     elif self.config.rope_type == "yarn":
         assert not self.config.apply_rope_fusion, "MLA Yarn RoPE does not support RoPE fusion"
@@ -68,17 +77,15 @@ def multi_latent_attention_init_impl(
             self.config.qk_pos_emb_head_dim,
             rotary_base=self.config.rotary_base,
             scaling_factor=self.config.rotary_scaling_factor,
-            original_max_position_embeddings=self.config.max_position_embeddings,
+            original_max_position_embeddings=self.config.original_max_position_embeddings,
             beta_fast=self.config.beta_fast,
             beta_slow=self.config.beta_slow,
             mscale=self.config.mscale,
             mscale_all_dim=self.config.mscale_all_dim,
+            cp_group=self.pg_collection.cp,
         )
     else:
-        raise ValueError(
-            f"Unsupported RoPE type: {self.config.rope_type}, supported types are "
-            "'rope' and 'yarn'"
-        )
+        raise ValueError(f"Unsupported RoPE type: {self.config.rope_type}, supported types are 'rope' and 'yarn'")
 
     # Megatron use TEDotProductAttention
     # we use DotProductAttention
@@ -90,6 +97,7 @@ def multi_latent_attention_init_impl(
         attention_type=self.attention_type,
         softmax_scale=self.softmax_scale,
         cp_comm_type=cp_comm_type,
+        pg_collection=self.pg_collection,
     )
 
     # Output.
@@ -104,6 +112,8 @@ def multi_latent_attention_init_impl(
         skip_bias_add=True,
         is_expert=False,
         tp_comm_buffer_name='proj',
+        tp_group=self.pg_collection.tp,
+        name=(name + '.linear_proj') if name is not None else None,
     )
 
 
@@ -117,9 +127,9 @@ def dot_product_attention_init_wrapper(fn):
         attention_type: str,
         attention_dropout: float = None,
         softmax_scale: float = None,
-        cp_comm_type: str = None
+        cp_comm_type: str = None,
+        pg_collection: Optional[ProcessGroupCollection] = None,
     ):
-
         fn(
             self,
             config,
@@ -129,6 +139,7 @@ def dot_product_attention_init_wrapper(fn):
             attention_dropout=attention_dropout,
             softmax_scale=softmax_scale,
             cp_comm_type=cp_comm_type,
+            pg_collection=pg_collection,
         )
 
         projection_size = self.config.v_head_dim * self.config.num_attention_heads

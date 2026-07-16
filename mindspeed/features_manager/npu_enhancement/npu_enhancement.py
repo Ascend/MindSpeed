@@ -185,6 +185,13 @@ class NpuEnhancementFeature(MindSpeedFeature):
                 transformer_config_post_init_wrapper,
                 force_patch=True,
             )
+            # MLATransformerConfig is a dataclass subclass with its own generated
+            # __init__, so it needs the argument-injection wrapper explicitly.
+            patch_manager.register_patch(
+                'megatron.core.transformer.transformer_config.MLATransformerConfig.__init__',
+                transformer_config_init_wrapper,
+                force_patch=True,
+            )
             logger.debug("TransformerConfig patches registered")
         except ImportError as e:
             logger.debug("TransformerConfig patches skipped: %s", e)
