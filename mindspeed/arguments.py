@@ -594,19 +594,13 @@ def validate_args_wrapper(validate_args):
     def wrapper(args, defaults=None):
         if defaults is None:
             defaults = {}
-        replace_model_type_for_deepspeed_moe = False
         if args.num_experts:
             if args.use_ascend_coc:
                 raise AssertionError('coc is not compatible with moe models')
             if args.use_ascend_mc2:
                 raise AssertionError('mc2 is not compatible with moe models')
-            if args.use_legacy_models:
-                if args.moe_model_type == 'megatron_moe':
-                    raise AssertionError('megatron_moe is not compatible with --use-legacy-models')
-                replace_model_type_for_deepspeed_moe = True
-            else:
-                if args.moe_model_type == 'deepspeed_moe':
-                    raise AssertionError('deepspeed_moe only support with --use-legacy-models')
+            if args.moe_model_type == 'deepspeed_moe':
+                raise AssertionError('deepspeed_moe is unavailable after Megatron removed legacy models')
 
         # validate optimizer
         if args.optimizer_selection == 'fused_ema_adamw':
@@ -641,12 +635,6 @@ def validate_args_wrapper(validate_args):
         if args.use_fusion_attn_v2:
             args.use_flash_attn = True
             print("[WARNING] \"use_fusion_attn_v2\" is not recommended. This feature is not officially released.")
-        if args.use_flash_attn and args.use_legacy_models:
-            if args.recompute_granularity == "selective":
-                print(
-                    "[WARNING] In legacy models, \"--recompute-activations\" is not recommended. This feature is not currently supported."
-                )
-
         # for vpp assert pp should > 2
         flag_num_layers_per_virtual_pipeline_stage = None
         flag_overlap_p2p_comm = False
@@ -656,10 +644,6 @@ def validate_args_wrapper(validate_args):
             if args.overlap_p2p_comm:
                 flag_overlap_p2p_comm = True
 
-        # skip validation for deepspeed_moe with CP
-        origin_use_legacy_models = args.use_legacy_models
-        if replace_model_type_for_deepspeed_moe:
-            args.use_legacy_models = False
         origin_context_parallel_size = args.context_parallel_size
         args.context_parallel_size = 1
         original_variable_seq_lengths = args.variable_seq_lengths
@@ -689,8 +673,6 @@ def validate_args_wrapper(validate_args):
         if args.optimize_vpp_send_recv_comm and args.num_layers_per_virtual_pipeline_stage is None:
             raise AssertionError('--optimize-vpp-send-recv-comm can only be used with pipeline with interleaving.')
 
-        if replace_model_type_for_deepspeed_moe:
-            args.use_legacy_models = origin_use_legacy_models
         if args.enable_zero3:
             print("[WARNING] zero3 currently does not support model save and load")
             if (
@@ -953,11 +935,9 @@ def validate_args_wrapper(validate_args):
         )
         if args.recompute_norm and args.recompute_granularity == "selective":
             raise AssertionError('--recompute-norm is not compatible with selective recomputation')
-        if args.recompute_norm and args.use_legacy_models:
-            raise AssertionError('--recompute-norm is only supported with mcore models')
-        if args.use_nanopipe and not args.use_legacy_models:
+        if args.use_nanopipe:
             raise AssertionError('--use-nanopipe is not available with mcore models')
-        if getattr(args, 'adaptive_recompute_device_swap', False) and not args.use_legacy_models:
+        if getattr(args, 'adaptive_recompute_device_swap', False):
             raise AssertionError('--adaptive-recompute-device-swap is not available with mcore models')
         if adaptive_recompute_enable:
             assert args.recompute_granularity is None and args.recompute_method is None, (
@@ -1119,10 +1099,6 @@ def validate_args_wrapper(validate_args):
         if args.gemm_gradient_accumulation_fusion:
             if not args.moe_grouped_gemm:
                 raise AssertionError('`--gemm-gradient-accumulation-fusion` only support with `--moe-grouped-gemm`.')
-
-        if args.use_legacy_models:
-            if args.overlap_param_gather and args.reuse_fp32_param:
-                raise AssertionError('In legacy, `overlap_param_gather` does not support `reuse_fp32_param`.')
 
         if args.fp16:
             args.gradient_accumulation_fusion = False

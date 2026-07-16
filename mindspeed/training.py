@@ -8,7 +8,8 @@ from logging import getLogger
 import torch
 
 from megatron.core import mpu
-from megatron.core.pipeline_parallel import get_forward_backward_func
+from megatron.core.optimizer.qk_clip import clip_qk
+from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.core.utils import get_model_config
 
 from megatron.training import one_logger_utils, ft_integration
@@ -59,28 +60,41 @@ def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, optimizer=Non
         ema_params[name].mul_(decay).add_(param_data, alpha=1 - decay)
 
 
-def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+def train_step(
+    forward_step_func,
+    data_iterator,
+    model,
+    optimizer,
+    opt_param_scheduler,
+    config,
+    forward_backward_func,
+    iteration=None,
+):
     """Single training step."""
     args = get_args()
     timers = get_timers()
 
-    # Set grad to zero.
-    for model_chunk in model:
-        model_chunk.zero_grad_buffer()
-    optimizer.zero_grad()
+    rerun_state_machine = get_rerun_state_machine()
+    while rerun_state_machine.should_run_forward_backward(data_iterator):
+        # Set grad to zero.
+        for model_chunk in model:
+            model_chunk.zero_grad_buffer()
+        optimizer.zero_grad()
 
-    # Forward pass.
-    forward_backward_func = get_forward_backward_func()
-    losses_reduced = forward_backward_func(
-        forward_step_func=forward_step_func,
-        data_iterator=data_iterator,
-        model=model,
-        num_microbatches=get_num_microbatches(),
-        seq_length=args.seq_length,
-        micro_batch_size=args.micro_batch_size,
-        decoder_seq_length=args.decoder_seq_length,
-        forward_only=False,
-    )
+        losses_reduced = forward_backward_func(
+            forward_step_func=forward_step_func,
+            data_iterator=data_iterator,
+            model=model,
+            num_microbatches=get_num_microbatches(),
+            seq_length=args.seq_length,
+            micro_batch_size=args.micro_batch_size,
+            decoder_seq_length=args.decoder_seq_length,
+            forward_only=False,
+        )
+
+    should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
+    if should_exit:
+        return {}, True, should_checkpoint, should_exit, exit_code, None, None, 0
 
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
@@ -94,6 +108,10 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
     # Update parameters.
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+
+    max_attention_logit = 0
+    if getattr(args, 'qk_clip', False) or getattr(args, 'log_max_attention_logit', False):
+        max_attention_logit = clip_qk(model, log_max_only=not getattr(args, 'qk_clip', False))
     timers('optimizer').stop()
 
     if args.use_ema:
@@ -137,28 +155,50 @@ def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_sch
                     numerator += val
                     denominator += 1
             loss_reduced[key] = numerator / denominator
-        return loss_reduced, skipped_iter, grad_norm, num_zeros_in_grad
-    return {}, skipped_iter, grad_norm, num_zeros_in_grad
+        return (
+            loss_reduced,
+            skipped_iter,
+            should_checkpoint,
+            should_exit,
+            exit_code,
+            grad_norm,
+            num_zeros_in_grad,
+            max_attention_logit,
+        )
+    return (
+        {},
+        skipped_iter,
+        should_checkpoint,
+        should_exit,
+        exit_code,
+        grad_norm,
+        num_zeros_in_grad,
+        max_attention_logit,
+    )
 
 
 def pretrain(
+    cfg_container,
     train_valid_test_dataset_provider,
     model_provider,
     model_type,
     forward_step_func,
     process_non_loss_data_func=None,
-    extra_args_provider=None,
-    args_defaults=None,
     get_embedding_ranks=None,
     get_position_embedding_ranks=None,
     non_loss_data_func=None,
-    # Megatron 0.17 new parameters
-    cfg_container=None,
     store=None,
     inprocess_call_wrapper=None,
+    *,
+    extra_args_provider=None,
+    args_defaults=None,
 ):
     if args_defaults is None:
         args_defaults = {}
+    if inprocess_call_wrapper is not None:
+        iteration = inprocess_call_wrapper.iteration
+        store = torch.distributed.PrefixStore(str(iteration), store)
+
     # Initalize and get arguments, timers, and Tensorboard writer.
     # Megatron 0.17: initialize_megatron no longer accepts extra_args_provider/args_defaults.
     # MindSpeed args are registered via parse_args patch (MindSpeedFeaturesManager).
@@ -189,8 +229,9 @@ def pretrain(
     args = get_args()
     timers = get_timers()
 
-    if args.log_progress:
-        append_to_progress_log("Starting job")
+    log_progress = getattr(getattr(cfg_container, 'logger', None), 'log_progress', getattr(args, 'log_progress', False))
+    if log_progress:
+        append_to_progress_log(args.save, "Starting job")
 
     # Set pytorch JIT layer fusion options and warmup JIT functions.
     set_jit_fusion_options()

@@ -15,9 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import gc
-from functools import partial, wraps
 
 import torch
 
@@ -25,11 +23,12 @@ from megatron.core import mpu
 from megatron.training import get_args
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.training import get_timers
-from megatron.core.pipeline_parallel import get_forward_backward_func
+from megatron.core.optimizer.qk_clip import clip_qk
+from megatron.core.utils import unwrap_model
 from megatron.training.utils import (
-    unwrap_model,
+    logical_and_across_model_parallel_group,
     reduce_max_stat_across_model_parallel_group,
-    logical_and_across_model_parallel_group)
+)
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training.training import cuda_graph_set_manual_hooks, cuda_graph_capture
 
@@ -57,14 +56,23 @@ def get_async_reduced_loss_value(x, key):
     handle = x[1]
     if not isinstance(handle, torch.distributed.Work):
         raise AssertionError(
-            f"when using --async-log-allreduce , type of the first input must be {torch.distributed.Work}, but got {type(handle)}.")
+            f"when using --async-log-allreduce , type of the first input must be {torch.distributed.Work}, but got {type(handle)}."
+        )
     handle.wait()
 
     return val
 
 
-def train_step(forward_step_func, data_iterator,
-               model, optimizer, opt_param_scheduler, config):
+def train_step(
+    forward_step_func,
+    data_iterator,
+    model,
+    optimizer,
+    opt_param_scheduler,
+    config,
+    forward_backward_func,
+    iteration=None,
+):
     """Single training step."""
     args = get_args()
     timers = get_timers()
@@ -89,8 +97,6 @@ def train_step(forward_step_func, data_iterator,
             model_chunk.zero_grad_buffer()
         optimizer.zero_grad()
 
-        # Forward pass.
-        forward_backward_func = get_forward_backward_func()
         losses_reduced = forward_backward_func(
             forward_step_func=forward_step_func,
             data_iterator=data_iterator,
@@ -99,10 +105,11 @@ def train_step(forward_step_func, data_iterator,
             seq_length=args.seq_length,
             micro_batch_size=args.micro_batch_size,
             decoder_seq_length=args.decoder_seq_length,
-            forward_only=False)
+            forward_only=False,
+        )
     should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
     if should_exit:
-        return {}, True, should_checkpoint, should_exit, exit_code, None, None
+        return {}, True, should_checkpoint, should_exit, exit_code, None, None, 0
 
     # Empty unused memory.
     if args.empty_unused_memory_level >= 1:
@@ -116,6 +123,9 @@ def train_step(forward_step_func, data_iterator,
     # Update parameters.
     timers('optimizer', log_level=1).start(barrier=args.barrier_with_L1_time)
     update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+    max_attention_logit = 0
+    if getattr(args, 'qk_clip', False) or getattr(args, 'log_max_attention_logit', False):
+        max_attention_logit = clip_qk(model, log_max_only=not getattr(args, 'qk_clip', False))
     timers('optimizer').stop()
 
     # when freezing sub-models we may have a mixture of successful and unsucessful ranks,
@@ -134,9 +144,7 @@ def train_step(forward_step_func, data_iterator,
 
     # Update learning rate.
     if update_successful:
-        increment = get_num_microbatches() * \
-            args.micro_batch_size * \
-            args.data_parallel_size
+        increment = get_num_microbatches() * args.micro_batch_size * args.data_parallel_size
         opt_param_scheduler.step(increment=increment)
         skipped_iter = 0
     else:
@@ -170,7 +178,7 @@ def train_step(forward_step_func, data_iterator,
                     val = x[key]
                 # there is one dict per microbatch. in new reporting, we average
                 # over the total number of tokens across the global batch.
-                if isinstance(val, tuple) or isinstance(val, list):
+                if isinstance(val, (tuple, list)):
                     numerator += val[0]
                     denominator += val[1]
                 else:
@@ -179,5 +187,23 @@ def train_step(forward_step_func, data_iterator,
                     numerator += val
                     denominator += 1
             loss_reduced[key] = numerator / denominator
-        return loss_reduced, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
-    return {}, skipped_iter, should_checkpoint, should_exit, exit_code, grad_norm, num_zeros_in_grad
+        return (
+            loss_reduced,
+            skipped_iter,
+            should_checkpoint,
+            should_exit,
+            exit_code,
+            grad_norm,
+            num_zeros_in_grad,
+            max_attention_logit,
+        )
+    return (
+        {},
+        skipped_iter,
+        should_checkpoint,
+        should_exit,
+        exit_code,
+        grad_norm,
+        num_zeros_in_grad,
+        max_attention_logit,
+    )

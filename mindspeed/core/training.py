@@ -5,6 +5,7 @@
 import os
 import gc
 import math
+import inspect
 from functools import wraps
 import torch
 import torch_npu
@@ -437,8 +438,19 @@ def pretrain_decorator(pretrain):
             settings.auto_setting_fun(argument)
             return
 
+        bound_pretrain_args = None
+        if (argument.automated_pipeline and not argument.num_layer_list) or argument.automated_pipeline_perf:
+            bound_pretrain_args = inspect.signature(pretrain).bind_partial(*args, **kwargs).arguments
+
         if argument.automated_pipeline and not argument.num_layer_list:
-            context, POLICY = autopipeline_profiling(args[1], args[2], args[3], args[0], None, argument)
+            context, POLICY = autopipeline_profiling(
+                model_provider=bound_pretrain_args['model_provider'],
+                model_type=bound_pretrain_args['model_type'],
+                forward_step_func=bound_pretrain_args['forward_step_func'],
+                train_valid_test_dataset_provider=bound_pretrain_args['train_valid_test_dataset_provider'],
+                process_non_loss_data_func=bound_pretrain_args.get('process_non_loss_data_func'),
+                args=argument,
+            )
             if context:
                 POLICY = solve_autopipeline(context)
                 parallel_state.destroy_global_memory_buffer()
@@ -460,7 +472,14 @@ def pretrain_decorator(pretrain):
                 backward_time_dict = {}
 
                 while mbs_tries < ORIGIN_MBS + 2:
-                    context = autopipelineperf_profiling(mbs_tries, args[1], args[2], args[3], args[0], None)
+                    context = autopipelineperf_profiling(
+                        mbs_tries=mbs_tries,
+                        model_provider=bound_pretrain_args['model_provider'],
+                        model_type=bound_pretrain_args['model_type'],
+                        forward_step_func=bound_pretrain_args['forward_step_func'],
+                        train_valid_test_dataset_provider=bound_pretrain_args['train_valid_test_dataset_provider'],
+                        process_non_loss_data_func=bound_pretrain_args.get('process_non_loss_data_func'),
+                    )
                     if mbs_tries == ORIGIN_MBS:
                         schedule_context = context
                         forward_time_list = all_gather_time(argument, schedule_context['fwd_time'])

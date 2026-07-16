@@ -149,7 +149,7 @@ def hccl_buffer_auto_adaptive():
     # The DP group, DP-CP group, and DP-EP group .Here, we take the default value of 200M.
 
     # Calculation of the maximum communication volume of the TP group.
-    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall_seq':
+    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall_seq':  # nosec B105
         # No MOE + No SP, AllReduce MaxComm: S/CP * B * H * 2；No MOE + SP, AllGather MaxComm: S/CP * B * H
         hccl_tp_buffer_size_mlp = 2 * math.ceil(
             seq_length / context_parallel_size * micro_batch_size * hidden_size / 1024 / 1024
@@ -228,7 +228,7 @@ def hccl_buffer_auto_adaptive():
     # Calculation of the maximum communication volume of the EP-TP group.
     # Moe of allgather, MaxComm:S/CP/TP * B * H * EP * TP
     # Moe of alltoall_seq + moe-tp-extend-ep , MaxComm:S/CP/TP * B * H * topK
-    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'allgather':
+    if moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'allgather':  # nosec B105
         if args.hccl_ep_group_buffer_adaptive_factor > 0:
             _hccl_tp_ep_buffer_size = 2 * math.ceil(
                 args.hccl_ep_group_buffer_adaptive_factor
@@ -244,7 +244,9 @@ def hccl_buffer_auto_adaptive():
             _hccl_tp_ep_buffer_size = 200
         _HCCL_GROUP_BUFFER['tp_exp'] = hccl_ep_buffer_size
     elif (
-        moe_token_dispatcher_type is not None and moe_token_dispatcher_type == 'alltoall_seq' and args.moe_tp_extend_ep
+        moe_token_dispatcher_type is not None
+        and moe_token_dispatcher_type == 'alltoall_seq'  # nosec B105
+        and args.moe_tp_extend_ep
     ):
         if args.hccl_ep_group_buffer_adaptive_factor > 0:
             _hccl_tp_ep_buffer_size = 2 * math.ceil(
@@ -397,27 +399,33 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         tensor_model_parallel_size: int = 1,
         pipeline_model_parallel_size: int = 1,
         virtual_pipeline_model_parallel_size: Optional[int] = None,
-        pipeline_model_parallel_split_rank: Optional[int] = None,
         pipeline_model_parallel_comm_backend=None,
         use_sharp: bool = False,
         context_parallel_size: int = 1,
         hierarchical_context_parallel_sizes: Optional[List[int]] = None,
+        hybrid_context_parallel: bool = False,
         expert_model_parallel_size: int = 1,
         num_distributed_optimizer_instances: int = 1,
         expert_tensor_parallel_size: Optional[int] = None,
         nccl_communicator_config_path: Optional[str] = None,
         distributed_timeout_minutes: int = 30,
         order: str = "tp-cp-ep-dp-pp",
-        encoder_tensor_model_parallel_size: Optional[int] = 0,
-        encoder_pipeline_model_parallel_size: Optional[int] = 0,
         get_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
         get_position_embedding_ranks: Optional[Callable[[List[int], Optional[int]], List[int]]] = None,
-        create_gloo_process_groups=True,
+        create_gloo_process_groups: bool = True,
+        high_priority_stream_groups: Optional[List[str]] = None,
+        sharp_enabled_group: Optional[str] = None,
+        rank_offset: int = 0,
+        local_world_size: Optional[int] = None,
     ):
         from megatron.training.utils import print_rank_0
         from megatron.training import get_args
 
         args = get_args()
+        if rank_offset != 0 or local_world_size is not None:
+            raise NotImplementedError(
+                "MindSpeed feature-owned process groups do not support rank_offset/local_world_size sub-worlds."
+            )
 
         global _HCCL_GROUP_BUFFER
         _HCCL_GROUP_BUFFER = {}
@@ -433,31 +441,33 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         if nccl_communicator_config_path is not None:
             import yaml
 
-            with open(nccl_communicator_config_path, "r") as stream:
+            with open(nccl_communicator_config_path, "r", encoding="utf-8") as stream:
                 nccl_comm_cfgs = yaml.safe_load(stream)
 
         if order == "tp-cp-ep-dp-pp":
             # Megatron doesn't allow ep & cp combination, set ep to 1 to bypass that, ep related groups will be regenerated
             initialize_model_parallel(
-                tensor_model_parallel_size,
-                pipeline_model_parallel_size,
-                virtual_pipeline_model_parallel_size,
-                pipeline_model_parallel_split_rank,
-                pipeline_model_parallel_comm_backend,
-                use_sharp,
-                context_parallel_size,
-                hierarchical_context_parallel_sizes,
-                expert_model_parallel_size,
-                num_distributed_optimizer_instances,
-                expert_tensor_parallel_size,
-                nccl_communicator_config_path,
-                distributed_timeout_minutes,
-                order,
-                encoder_tensor_model_parallel_size,
-                encoder_pipeline_model_parallel_size,
-                get_embedding_ranks,
-                get_position_embedding_ranks,
-                create_gloo_process_groups,
+                tensor_model_parallel_size=tensor_model_parallel_size,
+                pipeline_model_parallel_size=pipeline_model_parallel_size,
+                virtual_pipeline_model_parallel_size=virtual_pipeline_model_parallel_size,
+                pipeline_model_parallel_comm_backend=pipeline_model_parallel_comm_backend,
+                use_sharp=use_sharp,
+                context_parallel_size=context_parallel_size,
+                hierarchical_context_parallel_sizes=hierarchical_context_parallel_sizes,
+                hybrid_context_parallel=hybrid_context_parallel,
+                expert_model_parallel_size=expert_model_parallel_size,
+                num_distributed_optimizer_instances=num_distributed_optimizer_instances,
+                expert_tensor_parallel_size=expert_tensor_parallel_size,
+                nccl_communicator_config_path=nccl_communicator_config_path,
+                distributed_timeout_minutes=distributed_timeout_minutes,
+                order=order,
+                get_embedding_ranks=get_embedding_ranks,
+                get_position_embedding_ranks=get_position_embedding_ranks,
+                create_gloo_process_groups=create_gloo_process_groups,
+                high_priority_stream_groups=high_priority_stream_groups,
+                sharp_enabled_group=sharp_enabled_group,
+                rank_offset=rank_offset,
+                local_world_size=local_world_size,
             )
             rank = torch.distributed.get_rank()
             world_size: int = torch.distributed.get_world_size()
@@ -499,29 +509,34 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
 
         else:
             initialize_model_parallel(
-                tensor_model_parallel_size,
-                pipeline_model_parallel_size,
-                virtual_pipeline_model_parallel_size,
-                pipeline_model_parallel_split_rank,
-                pipeline_model_parallel_comm_backend,
-                use_sharp,
-                context_parallel_size,
-                hierarchical_context_parallel_sizes,
-                expert_model_parallel_size,
-                num_distributed_optimizer_instances,
-                expert_tensor_parallel_size,
-                nccl_communicator_config_path,
-                distributed_timeout_minutes,
-                order,
-                encoder_tensor_model_parallel_size,
-                encoder_pipeline_model_parallel_size,
-                get_embedding_ranks,
-                get_position_embedding_ranks,
-                create_gloo_process_groups,
+                tensor_model_parallel_size=tensor_model_parallel_size,
+                pipeline_model_parallel_size=pipeline_model_parallel_size,
+                virtual_pipeline_model_parallel_size=virtual_pipeline_model_parallel_size,
+                pipeline_model_parallel_comm_backend=pipeline_model_parallel_comm_backend,
+                use_sharp=use_sharp,
+                context_parallel_size=context_parallel_size,
+                hierarchical_context_parallel_sizes=hierarchical_context_parallel_sizes,
+                hybrid_context_parallel=hybrid_context_parallel,
+                expert_model_parallel_size=expert_model_parallel_size,
+                num_distributed_optimizer_instances=num_distributed_optimizer_instances,
+                expert_tensor_parallel_size=expert_tensor_parallel_size,
+                nccl_communicator_config_path=nccl_communicator_config_path,
+                distributed_timeout_minutes=distributed_timeout_minutes,
+                order=order,
+                get_embedding_ranks=get_embedding_ranks,
+                get_position_embedding_ranks=get_position_embedding_ranks,
+                create_gloo_process_groups=create_gloo_process_groups,
+                high_priority_stream_groups=high_priority_stream_groups,
+                sharp_enabled_group=sharp_enabled_group,
+                rank_offset=rank_offset,
+                local_world_size=local_world_size,
             )
 
         rank = torch.distributed.get_rank()
         world_size: int = torch.distributed.get_world_size()
+        data_parallel_size = world_size // (
+            tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
+        )
 
         initialize_context_parallel_group_for_send_recv_overlap(
             tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
@@ -546,8 +561,6 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             )
             if rank in ranks:
                 _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
-
-        from megatron.training import get_args
 
         args = get_args()
         nd1_dim1_sz = args.nd1_dim1_size if args.use_nd_matmul else args.tp_x
@@ -643,9 +656,9 @@ def initialize_context_parallel_group_for_hybrid_cp(
 ):
     from megatron.training import get_args
 
-    if not hasattr(get_args(), 'context_parallel_algo') or (
-        get_args().context_parallel_algo != 'hybrid_cp_algo'
-        and get_args().context_parallel_algo != 'hybrid_adaptive_cp_algo'
+    if not hasattr(get_args(), 'context_parallel_algo') or get_args().context_parallel_algo not in (
+        'hybrid_cp_algo',
+        'hybrid_adaptive_cp_algo',
     ):
         return
 

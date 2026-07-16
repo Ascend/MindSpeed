@@ -275,6 +275,8 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
         attn_mask_type=AttnMaskType.padding,
         cp_comm_type: Optional[str] = None,
         pg_collection: ProcessGroupCollection = None,
+        pp_layer_offset: Optional[int] = None,
+        name: Optional[str] = None,
     ) -> None:
         if pg_collection is None:
             pg_collection = ProcessGroupCollection.use_mpu_process_groups()
@@ -288,6 +290,8 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             attention_type="self",
             cp_comm_type=cp_comm_type,
             pg_collection=pg_collection,
+            pp_layer_offset=pp_layer_offset,
+            name=name,
         )
 
         if self.config.q_lora_rank is None:
@@ -303,6 +307,7 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
                 skip_bias_add=False,
                 is_expert=False,
                 tp_comm_buffer_name='q_proj',
+                name=(name + ".linear_q_proj") if name is not None else None,
             )
 
         else:
@@ -330,6 +335,7 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
                 tp_comm_buffer_name='q_down_proj',
                 skip_weight_param_allocation=False,
                 tp_group=(pg_collection.tp if q_down_proj_kwargs.get('parallel_mode') != 'duplicated' else None),
+                name=(name + ".linear_q_down_proj") if name is not None else None,
                 **q_down_proj_kwargs,
             )
 
@@ -345,6 +351,7 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
                 is_expert=False,
                 tp_comm_buffer_name='q_up_proj',
                 tp_group=pg_collection.tp,
+                name=(name + ".linear_q_up_proj") if name is not None else None,
             )
 
         kv_down_proj_kwargs = {}
@@ -371,6 +378,7 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             tp_comm_buffer_name='kv_down_proj',
             skip_weight_param_allocation=False,
             tp_group=(pg_collection.tp if kv_down_proj_kwargs.get('parallel_mode') != 'duplicated' else None),
+            name=(name + ".linear_kv_down_proj") if name is not None else None,
             **kv_down_proj_kwargs,
         )
 
@@ -386,6 +394,7 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             is_expert=False,
             tp_comm_buffer_name='k_up_proj',
             tp_group=pg_collection.tp,
+            name=(name + ".linear_k_up_proj") if name is not None else None,
         )
 
         self.linear_v_up_proj = build_module(
@@ -400,6 +409,7 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             is_expert=False,
             tp_comm_buffer_name='v_up_proj',
             tp_group=pg_collection.tp,
+            name=(name + ".linear_v_up_proj") if name is not None else None,
         )
 
         if self.config.q_lora_rank is not None:
