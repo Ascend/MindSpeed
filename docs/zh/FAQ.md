@@ -79,6 +79,8 @@ Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 ```
 
+> **注意**：部分场景下日志重定向可能导致上述 `Using ~/.cache/torch_extensions/...` 编译日志未被打印，此时若编译阶段进程卡住且无其他输出，可手动进入 `~/.cache/torch_extensions/py3xx_cpu` 目录查看是否有 `.lock` 文件残留，以确认问题。
+
 ### 问题根因
 
 此问题为PyTorch extension编译问题，编译开始前其中一个线程会生成`.lock`文件对编译文件夹进行锁定，其他线程会进行等待。
@@ -86,7 +88,7 @@ Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 
 ### 解决方案
 
-删除`~/.cache/torch_extensions/py38_cpu`文件夹后，重新启动程序。
+删除模型运行对应python版本的`~/.cache/torch_extensions/py3xx_cpu`文件夹后，重新启动程序。
 
 ## Megatron-LM 0.7.0版本长稳测试出现GradNorm为NaN
 
