@@ -8,20 +8,109 @@ import torch
 
 from mindspeed.utils import set_position_ids
 from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.core.context_parallel import mpu
+from mindspeed.core.context_parallel.get_batch_utils import get_actual_seq_len as get_runtime_actual_seq_len
+
+
+def _resolve_cp_comm_type(args):
+    """Resolve CP transport without requiring the optional control-plane PR."""
+    try:
+        from mindspeed.core.context_parallel.model_parallel_utils import get_resolved_cp_comm_type
+    except ImportError:
+        pass
+    else:
+        return get_resolved_cp_comm_type(args)
+
+    cp_comm_type = getattr(args, 'cp_comm_type', None)
+    if isinstance(cp_comm_type, (list, tuple)):
+        values = list(dict.fromkeys(cp_comm_type))
+        cp_comm_type = values[0] if len(values) == 1 else None
+    if cp_comm_type == 'allgather':
+        return 'all_gather'
+    if cp_comm_type is not None:
+        return cp_comm_type
+    return {
+        'megatron_cp_algo': 'p2p',
+        'ulysses_cp_algo': 'a2a',
+        'kvallgather_cp_algo': 'all_gather',
+    }.get(getattr(args, 'context_parallel_algo', None))
+
+
+def _slice_p2p_eod_batch(batch):
+    """Build TENPU RingP2P's two chunks per EOD document.
+
+    This is input-layout adaptation only. Ring communication and attention
+    execution remain in TENPU. ``actual_seq_len`` is already padded and
+    converted to rank-local endpoints by ``get_batch_utils``.
+    """
+    actual_seq_len = get_runtime_actual_seq_len()
+    if actual_seq_len is None:
+        raise AssertionError('P2P EOD batch slicing requires actual_seq_len.')
+    if actual_seq_len.dtype not in (torch.int32, torch.int64):
+        raise AssertionError('P2P EOD cumulative lengths must use an integral dtype.')
+
+    cp_size = mpu.get_context_parallel_world_size()
+    cp_rank = mpu.get_context_parallel_rank()
+    if cp_size <= 1:
+        return batch
+
+    global_endpoints = (actual_seq_len * cp_size).cpu()
+    starts = torch.cat((global_endpoints.new_zeros(1), global_endpoints[:-1]))
+    document_lengths = global_endpoints - starts
+    chunk_divisor = 2 * cp_size
+    if torch.any(torch.remainder(document_lengths, chunk_divisor) != 0):
+        raise AssertionError(
+            f'P2P EOD document lengths must be divisible by 2 * context_parallel_size={chunk_divisor}.'
+        )
+    chunk_lengths = torch.div(document_lengths, chunk_divisor, rounding_mode='floor')
+    first_starts = starts + cp_rank * chunk_lengths
+    first_ends = first_starts + chunk_lengths
+    second_starts = global_endpoints - (cp_rank + 1) * chunk_lengths
+    second_ends = global_endpoints - cp_rank * chunk_lengths
+    index = torch.cat(
+        [
+            item
+            for i in range(actual_seq_len.numel())
+            for item in (
+                torch.arange(first_starts[i], first_ends[i]),
+                torch.arange(second_starts[i], second_ends[i]),
+            )
+        ]
+    ).to(device=actual_seq_len.device)
+
+    for key, value in batch.items():
+        if key == 'attention_mask' or value is None:
+            continue
+        flattened = value.reshape(-1, *value.shape[2:])
+        batch[key] = flattened.index_select(0, index).reshape(1, -1, *value.shape[2:])
+    return batch
 
 
 def get_batch_on_this_cp_rank_wrapper(fn):
     @wraps(fn)
-    def wrapper(batch):
-        batch = fn(batch)
-        set_position_ids(batch['position_ids'].transpose(0, 1).contiguous())
+    def wrapper(*args, **kwargs):
+        args_config = get_args()
+        is_p2p_eod = (
+            getattr(args_config, 'reset_attention_mask', False)
+            and getattr(args_config, 'attention_mask_type', None) == 'causal'
+            and getattr(args_config, 'context_parallel_size', 1) > 1
+            and _resolve_cp_comm_type(args_config) == 'p2p'
+        )
+        if is_p2p_eod:
+            batch = _slice_p2p_eod_batch(args[0])
+        else:
+            # all_gather remains owned by Megatron/TENPU's native batch path.
+            batch = fn(*args, **kwargs)
+
+        position_ids = batch.get('position_ids')
+        if position_ids is not None:
+            set_position_ids(position_ids.transpose(0, 1).contiguous())
         return batch
 
     return wrapper
 
 
 def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
-        
     """Abstract method implementation
 
     Args:
@@ -45,10 +134,7 @@ def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
         labels = torch.roll(text, shifts=-1, dims=0)
         labels[-1] = self._pad_token_id
 
-    if (
-        not self.masks_and_position_ids_are_cacheable
-        or not self.masks_and_position_ids_are_cached
-    ):
+    if not self.masks_and_position_ids_are_cacheable or not self.masks_and_position_ids_are_cached:
         attention_mask, loss_mask, position_ids = _get_ltor_masks_and_position_ids(
             tokens,
             self.config.tokenizer.eod,
@@ -89,25 +175,20 @@ def eod_gptdataset_getitem(self, idx: Optional[int]) -> Dict[str, torch.Tensor]:
             "labels": labels,
             "attention_mask": attention_mask,
             "loss_mask": loss_mask,
-            "position_ids": position_ids
+            "position_ids": position_ids,
         }
     else:
-        return {
-            "tokens": tokens,
-            "labels": labels,
-            "loss_mask": loss_mask,
-            "position_ids": position_ids
-        }
+        return {"tokens": tokens, "labels": labels, "loss_mask": loss_mask, "position_ids": position_ids}
 
 
 def _get_ltor_masks_and_position_ids(
-        data: torch.Tensor,
-        eod_token: int,
-        reset_position_ids: bool,
-        reset_attention_mask: bool,
-        eod_mask_loss: bool,
-        create_attention_mask: bool,
-        vocab_size: int = None,
+    data: torch.Tensor,
+    eod_token: int,
+    reset_position_ids: bool,
+    reset_attention_mask: bool,
+    eod_mask_loss: bool,
+    create_attention_mask: bool,
+    vocab_size: int = None,
 ):
     """Build masks and position id for left to right model.
 
@@ -137,9 +218,7 @@ def _get_ltor_masks_and_position_ids(
     seq_length = data.numel()
 
     if create_attention_mask:
-        attention_mask = torch.tril(
-            torch.ones((seq_length, seq_length), device=data.device)
-        ).unsqueeze(0)
+        attention_mask = torch.tril(torch.ones((seq_length, seq_length), device=data.device)).unsqueeze(0)
     else:
         attention_mask = None
 
@@ -174,10 +253,10 @@ def _get_ltor_masks_and_position_ids(
             i = eod_index[j]
             # Mask attention loss.
             if reset_attention_mask and attention_mask is not None:
-                attention_mask[0, (i + 1):, : (i + 1)] = 0
+                attention_mask[0, (i + 1) :, : (i + 1)] = 0
             # Reset positions.
             if reset_position_ids:
-                position_ids[(i + 1):] -= position_ids[i] + 1
+                position_ids[(i + 1) :] -= position_ids[i] + 1
 
     if vocab_size is not None:
         # Set loss_mask and positions where data == vocab_size to 0
@@ -198,15 +277,17 @@ def _get_ltor_masks_and_position_ids(
 
 
 def collate_wrapper(fn):
-    @wraps(fn)	
+    @wraps(fn)
     def wrapper(samples):
         actual_seq_len = [elem['position_ids'][1] for elem in samples]
         samples = [{key: val if key != 'position_ids' else val[0] for key, val in elem.items()} for elem in samples]
         batch = fn(samples)
         args = get_args()
         if hasattr(args, 'fix_sub_seq_length') and 0 < args.fix_sub_seq_length <= args.seq_length:
-            actual_seq_len = get_actual_seq_len(args.seq_length, args.fix_sub_seq_length)
-            batch['actual_seq_len'] = actual_seq_len
+            per_sample_actual_seq_len = build_fixed_subseq_actual_seq_len(args.seq_length, args.fix_sub_seq_length)
+            batch['actual_seq_len'] = torch.cat(
+                [per_sample_actual_seq_len + sample_idx * args.seq_length for sample_idx in range(len(samples))]
+            )
 
         else:
             seq_len = actual_seq_len[0][-1]
@@ -217,7 +298,7 @@ def collate_wrapper(fn):
     return wrapper
 
 
-def get_actual_seq_len(seq_length, sub_seq_length):
+def build_fixed_subseq_actual_seq_len(seq_length, sub_seq_length):
     times = math.ceil(seq_length / sub_seq_length)
     actual_seq_len_list = [sub_seq_length * i for i in range(1, times + 1)]
     actual_seq_len_list[-1] = seq_length

@@ -23,7 +23,6 @@ from mindspeed.core.parallel_state import (
     get_context_parallel_for_hybrid_ring_world_size,
     get_context_parallel_for_hybrid_ring_rank,
 )
-from mindspeed.core.context_parallel.utils import get_remapped_seq_order
 from mindspeed.core.tensor_parallel_y_union_cp import TensorParallelYUnionCP
 
 
@@ -125,17 +124,29 @@ def rotary_embedding_init_wrapper(fn):
     return wrapper
 
 
-def rotary_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False) -> Tensor:
+def rotary_forward(
+    self,
+    max_seq_len: int,
+    offset: int = 0,
+    packed_seq: bool = False,
+    cp_group: Optional[torch.distributed.ProcessGroup] = None,
+) -> Tensor:
     """Forward pass of RoPE embedding.
 
     Args:
         max_seq_len (int): Maximum size of sequence
         offset (int, optional): _description_. Defaults to 0.
         packed_seq (bool, optional): Whether to use packed sequence. Defaults to False.
+        cp_group: Megatron CP group. EOD packed sequences do not use it directly.
 
     Returns:
         Tensor: Embeddings after applying RoPE.
     """
+    # Keep Megatron 0.17's RoPE ABI.  The EOD path is packed THD and obtains
+    # its sequence length from packed metadata, so no MindSpeed CP group is
+    # required here; accepting the argument avoids a keyword-argument failure.
+    _ = cp_group
+
     if self.inv_freq.device.type == 'cpu':
         # move `inv_freq` to GPU once at the first micro-batch forward pass
         self.inv_freq = self.inv_freq.to(device=torch.cuda.current_device())
@@ -216,10 +227,6 @@ def get_pos_emb_on_this_cp_rank(pos_emb, seq_dim):
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp_general(pos_emb, seq_dim)
         else:
             pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_cp(pos_emb, seq_dim)
-    elif args.context_parallel_algo == 'adaptive_cp_algo':
-        pos_emb = _get_pos_emb_on_this_cp_rank_in_adaptive_cp(pos_emb, seq_dim)
-    elif args.context_parallel_algo == 'hybrid_adaptive_cp_algo':
-        pos_emb = _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emb, seq_dim)
     return pos_emb
 
 
@@ -292,39 +299,6 @@ def _get_pos_emb_on_this_cp_rank_in_hybrid_cp_general(pos_emb, seq_dim):
     pos_emb = pos_emb.chunk(u_size, dim=seq_dim)[u_rank]
 
     return pos_emb
-
-
-def _get_pos_emb_on_this_cp_rank_in_adaptive_cp(pos_emd, seq_dim):
-    cp_size = parallel_state.get_context_parallel_world_size()
-    cp_rank = parallel_state.get_context_parallel_rank()
-
-    remapped_seq_order = get_remapped_seq_order()
-    if remapped_seq_order is not None:
-        per = pos_emd.shape[seq_dim] // cp_size
-        index = torch.tensor(
-            remapped_seq_order[cp_rank * per : (cp_rank + 1) * per], dtype=torch.int, device=pos_emd.device
-        )
-        pos_emd = pos_emd.index_select(seq_dim, index)
-
-    return pos_emd
-
-
-def _get_pos_emb_on_this_cp_rank_in_hybrid_adaptive_cp(pos_emd, seq_dim):
-    ulys_size = get_context_parallel_for_hybrid_ulysses_world_size()
-    adap_size = get_context_parallel_for_hybrid_ring_world_size()
-    ulys_rank = get_context_parallel_for_hybrid_ulysses_rank()
-    adap_rank = get_context_parallel_for_hybrid_ring_rank()
-
-    remapped_seq_order = get_remapped_seq_order()
-    if remapped_seq_order is not None:
-        per = pos_emd.shape[seq_dim] // adap_size // ulys_size
-        which_per = adap_rank * ulys_size + ulys_rank
-        index = torch.tensor(
-            remapped_seq_order[which_per * per : (which_per + 1) * per], dtype=torch.int, device=pos_emd.device
-        )
-        pos_emd = pos_emd.index_select(seq_dim, index)
-
-    return pos_emd
 
 
 def rotary_embedding_forward(self, max_seq_len: int, offset: int = 0, packed_seq: bool = False) -> Tensor:
