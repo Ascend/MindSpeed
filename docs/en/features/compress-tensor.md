@@ -18,7 +18,7 @@ Record the MLP execution order of the first node, and use a multi-stream asynchr
 
 - Feature 2:
 Records the execution order of the transformer layer on each device and performs lossless compression on the activations generated within the layer. The Ascend lossless compression operator is called asynchronously through a multi-stream approach to compress memory. Since this operator uses vector computing power, it can overlap with cube computation and communication, meaning the compression and decompression processes themselves cause almost no performance degradation. The specific process is shown in the following figure:
-![compress_activation](../figures/compress_activation_coloured.png)
+![compress_activation](../figures/compress_activation_coloured_en.png)
 
 - Feature 3:
 Directly calls the Ascend lossless compression operator to perform unhidden compression on the first-order and second-order momentum of the AdamW optimizer, which introduces a slight performance degradation.

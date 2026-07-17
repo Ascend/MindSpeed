@@ -42,7 +42,7 @@ The executor consists of two parts: a fine-grained hierarchical expert migration
 
 1. Expert parameter exchange is relatively simple, requiring only parameter extraction, alltoall exchange, and update operations.
 
-    <p align="center"> <img src="../figures/expert_load_balance2.png"></p>
+    <p align="center"> <img src="../figures/expert_load_balance2_en.png"></p>
 
 2. Main steps for optimizer state exchange:
 Perform the following operations on the master parameters and first/second-order momentums

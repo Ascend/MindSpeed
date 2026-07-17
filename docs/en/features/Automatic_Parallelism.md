@@ -12,7 +12,7 @@ To address this problem scenario, a multi-dimensional parallel configuration aut
 * **High-fidelity cost model modeling method based on operator uncertainty estimation**: Low-fidelity data (single operator invocation) is introduced as prior information, combined with operator full-network performance data to construct an uncertainty model for operator execution time. This is then synthesized with communication time based on the parallel strategy to obtain a probabilistic distribution model of end-to-end performance.
 * **Efficient search algorithm based on probability matching**: The Thompson Sampling method is used to explore parallel strategies, exploring high-value parallel configurations with high probability to improve exploration efficiency. It flexibly supports early stopping of exploration, enhancing ease of use.
 
-![1](../figures/auto_parallel_1.png)
+![1](../figures/auto_parallel_1_en.png)
 
 **Supported parallel configurations:**
 

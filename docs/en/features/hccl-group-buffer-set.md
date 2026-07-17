@@ -2,7 +2,7 @@
 
 ## Background and Challenges
 
-Currently, the communication domain buffer in MindSpeed can only be uniformly set through the environment variable HCCL_BUFFSIZE (default is 200M). However, the buffer sizes required by different communication domains often cannot be generalized. For details, see the [HCCL_BUFFSIZE](https://www.hiascend.com/document/detail/zh/canncommercial/81RC1/apiref/envvar/envref_07_0080.html) section in *CANN Environment Variable Reference*.
+Currently, the communication domain buffer in MindSpeed can only be uniformly set through the environment variable HCCL_BUFFSIZE (default is 200M). However, the buffer sizes required by different communication domains often cannot be generalized. For details, see the [HCCL_BUFFSIZE](https://www.hiascend.com/document/detail/en/canncommercial/81RC1/apiref/envvar/envref_07_0080.html) section in *CANN Environment Variable Reference*.
 
 ## Solution
 

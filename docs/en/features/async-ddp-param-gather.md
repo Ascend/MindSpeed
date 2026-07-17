@@ -11,12 +11,12 @@ To address this issue, we introduce a parallel execution strategy that overlaps 
 ### a. Enable only the distributed optimizer `--use-distributed-optimizer`
 
 After the forward and backward computations are completed, an independent communication phase will take place, including gradient reduce-scatter, weight computation, and weight all-gather, as shown in the figure below. After obtaining the updated weights, the system will enter the next round of forward computation.
-<p align="center"> <img src="../figures/async_ddp_param_gather_a.png" height="350px" width="880px"></p>
+<p align="center"> <img src="../figures/async_ddp_param_gather_a_en.png" height="350px" width="880px"></p>
 
 ### b. Enable both the distributed optimizer and gradient communication overlapping, `--use-distributed-optimizer` and `--overlap-grad-reduce`
 
 When enabling `--use-distributed-optimizer` and `--overlap-grad-reduce` simultaneously, the execution flow is shown in the figure below. The gradient reduce-scatter process is parallelized with the backward computation process, thereby avoiding additional reduce-scatter time and significantly improving the parallel efficiency of computation and communication, as shown in the figure below.
-<p align="center"> <img src="../figures/async_ddp_param_gather_b.png" height="350px" width="880px"></p>
+<p align="center"> <img src="../figures/async_ddp_param_gather_b_en.png" height="350px" width="880px"></p>
 
 ### c. Enable the distributed optimizer, gradient communication overlapping, and parameter aggregation overlapping, `--use-distributed-optimizer`, `--overlap-grad-reduce`, and `--overlap-param-gather`
 

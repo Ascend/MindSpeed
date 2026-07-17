@@ -13,7 +13,7 @@ Construct a `Conv3DSequenceParallel` class that splits the input feature map alo
  Construct the `Conv3DSequenceParallel` class, split the input feature map along the depth dimension of the convolution kernel, distribute it to different process groups for conv3d 3D convolution operations, and perform a gather operation on the convolution results before outputting them to downstream modules.<br>
 - **Backward process**:
  The `Conv3DSequenceParallel` class performs a split operation on the gradients obtained from downstream backward propagation, splitting the gradients along the depth dimension, distributing them to parallel 3D convolution modules for backward propagation, and then performing a gather operation on the backward gradients from the parallel 3D convolution modules before outputting them to upstream modules.
-![](../figures/conv3d_sequence_parallel.png)
+![](../figures/conv3d_sequence_parallel_en.png)
 
 ## Application Scenario
 

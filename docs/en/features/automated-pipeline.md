@@ -27,7 +27,7 @@ Under the condition that the peak training memory overhead does not exceed the m
 
 The PP automatic parallelism system is illustrated in the following figure:
 
-<p align="center"> <img src="../figures/auto_pipeline_parallel.png"></p>
+<p align="center"> <img src="../figures/auto_pipeline_parallel_en.png"></p>
 
 ## Use Scenario
 

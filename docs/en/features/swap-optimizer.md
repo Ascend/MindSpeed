@@ -16,7 +16,7 @@ To avoid impacting peak memory usage, each copied weight must be swapped to the 
 parameters are first issued for h2d operations in one batch, followed by AdamW computation and copying to model weights (bf16), and finally d2h to release memory.
 3. Since d2h and h2d are asynchronous copies, to ensure correct timing, the second round of d2h must wait for the previous round's h2d operation to complete before issuing the second round.
 
-![img.png](../figures/swap-optimizer.png)
+![img.png](../figures/swap-optimizer_en.png)
 
 ## Application Scenario
 

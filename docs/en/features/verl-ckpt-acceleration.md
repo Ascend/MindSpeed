@@ -20,4 +20,4 @@ Add the following parameter to the training script to enable ckpt load and save 
 ## Application Effects
 
 The above approach significantly improves the efficiency of loading and saving checkpoints in the verl+megatron backend. The measured results in a qwen3-30b-dapo scenario with 16 GPUs × 2 nodes are as follows:
-![verl-ckpt-acceleration.png](../figures/verl-ckpt-acceleration.png)
+![verl-ckpt-acceleration.png](../figures/verl-ckpt-acceleration_en.png)

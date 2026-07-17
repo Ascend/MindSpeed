@@ -7,7 +7,7 @@ With its outstanding performance and deeply optimized algorithm architecture, Mi
 ## Overall Architecture
 
 **Figure 1**  MindSpeed overall architecture
-![alt text](figures/01_MindSpeed_architecture.png)
+![alt text](figures/01_architecture_mindspeed.png)
 
 **Table 1** Component introduction
 
