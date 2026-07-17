@@ -96,7 +96,6 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
         from mindspeed.core.optimizer.low_precision import finalize_model_grads as quant_finalize
         from mindspeed.core.models.gpt.gpt_model import gptmodel_init_wrapper
         from mindspeed.core.tensor_parallel.layers import copy_tensor_model_parallel_attributes_wrapper
-        from mindspeed.core.optimizer.low_precision.language_model import transformer_language_model_init_wrapper
 
         patch_specs.extend(
             [
@@ -188,11 +187,6 @@ class LowPrecisionOptimizerFeature(MindSpeedFeature):
                 (
                     'megatron.core.tensor_parallel.layers.copy_tensor_model_parallel_attributes',
                     copy_tensor_model_parallel_attributes_wrapper,
-                    True,
-                ),
-                (
-                    'megatron.legacy.model.language_model.TransformerLanguageModel.__init__',
-                    transformer_language_model_init_wrapper,
                     True,
                 ),
             ]
