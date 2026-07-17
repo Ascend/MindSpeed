@@ -26,17 +26,23 @@ def _broadcast(item):
         )
 
 
-def broadcast_dynamic(item):
+def broadcast_dynamic(item, broadcast_src_rank=None, broadcast_group=None):
+    def broadcast(tensor):
+        if broadcast_src_rank is None:
+            _broadcast(tensor)
+        else:
+            torch.distributed.broadcast(tensor, broadcast_src_rank, group=broadcast_group)
+
     if item is not None:
-        item = item.npu()
+        item = item.cuda(non_blocking=True).to(dtype=torch.int64)
         item_len = torch.tensor(item.numel(), device=torch.cuda.current_device())
-        _broadcast(item_len)
-        _broadcast(item)
+        broadcast(item_len)
+        broadcast(item)
     else:
         item_len = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
-        _broadcast(item_len)
+        broadcast(item_len)
         item = torch.empty([item_len.item()], dtype=torch.int64, device=torch.cuda.current_device())
-        _broadcast(item)
+        broadcast(item)
     return item
 
 
@@ -72,96 +78,202 @@ def _prepare_p2p_eod_actual_seq_len(actual_seq_len, batch, args):
     return torch.div(padded_actual_seq_len, cp_size, rounding_mode='floor')
 
 
-def get_batch_on_this_tp_rank(data_iterator, mtp_on_this_rank: bool = False):
-    """Build the EOD batch without installing a MindSpeed CP slicing path."""
+def get_batch_on_this_tp_rank(
+    batch: dict[str, torch.Tensor],
+    is_sft: bool,
+    is_hybrid_cp: bool,
+    create_attention_mask_in_dataloader: bool,
+    broadcast_src_rank: int,
+    broadcast_group: torch.distributed.ProcessGroup,
+    cp_size: int,
+    tp_rank: int,
+    micro_batch_size: int,
+    seq_length: int,
+    mtp_on_this_rank: bool,
+    pipeline_model_parallel_size: int = 1,
+    is_pipeline_first_stage: bool = False,
+    is_pipeline_last_stage: bool = False,
+):
+    """Broadcast an already materialized 0.18 batch and retain MindSpeed EOD metadata."""
     args = get_args()
 
-    if mpu.get_tensor_model_parallel_rank() == 0:
-        data = next(data_iterator) if data_iterator is not None else None
-        batch = {
-            'tokens': data['tokens'].cuda(non_blocking=True),
-            'labels': data['labels'].cuda(non_blocking=True),
-            'loss_mask': data['loss_mask'].cuda(non_blocking=True),
-            'attention_mask': None if 'attention_mask' not in data else data['attention_mask'].cuda(non_blocking=True),
-            'position_ids': data['position_ids'].cuda(non_blocking=True),
-        }
-        if args.pipeline_model_parallel_size == 1 or mtp_on_this_rank:
-            _broadcast(batch['tokens'])
-            _broadcast(batch['labels'])
-            _broadcast(batch['loss_mask'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-        elif mpu.is_pipeline_first_stage():
-            _broadcast(batch['tokens'])
-            _broadcast(batch['attention_mask'])
-            _broadcast(batch['position_ids'])
-        elif mpu.is_pipeline_last_stage():
-            _broadcast(batch['labels'])
-            _broadcast(batch['loss_mask'])
-            _broadcast(batch['attention_mask'])
-            if args.reset_attention_mask:
-                _broadcast(batch['position_ids'])
-        elif args.reset_attention_mask:
-            _broadcast(batch['position_ids'])
-        if args.reset_attention_mask:
-            actual_seq_len = _validate_actual_seq_len(broadcast_dynamic(data['actual_seq_len']))
-            if _uses_p2p_eod_layout(args):
-                actual_seq_len = _prepare_p2p_eod_actual_seq_len(actual_seq_len, batch, args)
-            set_actual_seq_len(actual_seq_len)
+    def broadcast(item):
+        if item is not None:
+            torch.distributed.broadcast(item, broadcast_src_rank, group=broadcast_group)
+
+    def broadcast_cu_seqlens(cu_seqlens):
+        n = 0 if cu_seqlens is None else int(cu_seqlens.numel())
+        n_tensor = torch.tensor(n, dtype=torch.int64, device=torch.cuda.current_device())
+        broadcast(n_tensor)
+        if n > 0:
+            if not isinstance(cu_seqlens, torch.Tensor) or cu_seqlens.dtype != torch.int32:
+                raise AssertionError('cu_seqlens must be an int32 tensor.')
+            broadcast(cu_seqlens)
+
+    if tp_rank == 0:
+        if is_hybrid_cp:
+            hybrid_cp_seq_length = torch.tensor(
+                batch['tokens'].shape[1], dtype=torch.int32, device=torch.cuda.current_device()
+            )
+            broadcast(hybrid_cp_seq_length)
+
+        if pipeline_model_parallel_size == 1 or mtp_on_this_rank:
+            broadcast(batch['tokens'])
+            broadcast(batch['labels'])
+            broadcast(batch['loss_mask'])
+            broadcast(batch['position_ids'])
+            if is_sft or is_hybrid_cp:
+                broadcast_cu_seqlens(batch['cu_seqlens'])
+                broadcast(batch['max_seqlen'])
+                if cp_size > 1:
+                    broadcast_cu_seqlens(batch['cu_seqlens_padded'])
+            if create_attention_mask_in_dataloader:
+                broadcast(batch['attention_mask'])
+            if is_hybrid_cp:
+                broadcast(batch['local_cp_size'])
+        elif is_pipeline_first_stage:
+            batch['labels'] = None
+            batch['loss_mask'] = None
+            broadcast(batch['tokens'])
+            broadcast(batch['position_ids'])
+            if is_sft:
+                broadcast_cu_seqlens(batch['cu_seqlens'])
+                broadcast(batch['max_seqlen'])
+                if cp_size > 1:
+                    broadcast_cu_seqlens(batch['cu_seqlens_padded'])
+            if create_attention_mask_in_dataloader:
+                broadcast(batch['attention_mask'])
+        elif is_pipeline_last_stage:
+            batch['tokens'] = None
+            batch['position_ids'] = None
+            broadcast(batch['labels'])
+            broadcast(batch['loss_mask'])
+            if is_sft:
+                broadcast_cu_seqlens(batch['cu_seqlens'])
+                broadcast(batch['max_seqlen'])
+                if cp_size > 1:
+                    broadcast_cu_seqlens(batch['cu_seqlens_padded'])
+            if create_attention_mask_in_dataloader:
+                broadcast(batch['attention_mask'])
+        elif is_sft:
+            batch['tokens'] = None
+            batch['labels'] = None
+            batch['loss_mask'] = None
+            batch['position_ids'] = None
+            batch['attention_mask'] = None
+            broadcast_cu_seqlens(batch['cu_seqlens'])
+            broadcast(batch['max_seqlen'])
+            if cp_size > 1:
+                broadcast_cu_seqlens(batch['cu_seqlens_padded'])
     else:
-        tokens = torch.empty(
-            (args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device()
-        )
-        labels = torch.empty(
-            (args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device()
-        )
-        loss_mask = torch.empty(
-            (args.micro_batch_size, args.seq_length), dtype=torch.float32, device=torch.cuda.current_device()
-        )
-        attention_mask = (
-            torch.empty(
-                (args.micro_batch_size, 1, args.seq_length, args.seq_length),
+        if is_hybrid_cp:
+            hybrid_cp_seq_length = torch.tensor(0, dtype=torch.int32, device=torch.cuda.current_device())
+            broadcast(hybrid_cp_seq_length)
+            shape = (micro_batch_size, hybrid_cp_seq_length.item())
+        else:
+            shape = (micro_batch_size, seq_length)
+
+        tokens = torch.empty(shape, dtype=torch.int64, device=torch.cuda.current_device())
+        labels = torch.empty(shape, dtype=torch.int64, device=torch.cuda.current_device())
+        loss_mask = torch.empty(shape, dtype=torch.float32, device=torch.cuda.current_device())
+        position_ids = torch.empty(shape, dtype=torch.int64, device=torch.cuda.current_device())
+        cu_seqlens = None
+        cu_seqlens_padded = None
+        max_seqlen = None
+        attention_mask = None
+        local_cp_size = None
+        if is_sft or is_hybrid_cp:
+            max_seqlen = torch.empty(1, dtype=torch.int32, device=torch.cuda.current_device())
+        if create_attention_mask_in_dataloader:
+            attention_mask = torch.empty(
+                (micro_batch_size, 1, seq_length, seq_length),
                 dtype=torch.bool,
                 device=torch.cuda.current_device(),
             )
-            if getattr(args, 'create_attention_mask_in_dataloader', False)
-            else None
-        )
-        position_ids = torch.empty(
-            (args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device()
-        )
-        if args.pipeline_model_parallel_size == 1 or mtp_on_this_rank:
-            _broadcast(tokens)
-            _broadcast(labels)
-            _broadcast(loss_mask)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)
-        elif mpu.is_pipeline_first_stage():
-            labels = loss_mask = None
-            _broadcast(tokens)
-            _broadcast(attention_mask)
-            _broadcast(position_ids)
-        elif mpu.is_pipeline_last_stage():
+        if is_hybrid_cp:
+            local_cp_size = torch.empty(1, dtype=torch.int32, device=torch.cuda.current_device())
+
+        def receive_cu_seqlens():
+            n = torch.empty((), dtype=torch.int64, device=torch.cuda.current_device())
+            broadcast(n)
+            n = int(n.item())
+            if n == 0:
+                return None
+            value = torch.empty((1, n), dtype=torch.int32, device=torch.cuda.current_device())
+            broadcast(value)
+            return value
+
+        if pipeline_model_parallel_size == 1 or mtp_on_this_rank:
+            broadcast(tokens)
+            broadcast(labels)
+            broadcast(loss_mask)
+            broadcast(position_ids)
+            if is_sft or is_hybrid_cp:
+                cu_seqlens = receive_cu_seqlens()
+                broadcast(max_seqlen)
+                if cp_size > 1:
+                    cu_seqlens_padded = receive_cu_seqlens()
+            if create_attention_mask_in_dataloader:
+                broadcast(attention_mask)
+            if is_hybrid_cp:
+                broadcast(local_cp_size)
+        elif is_pipeline_first_stage:
+            labels = None
+            loss_mask = None
+            broadcast(tokens)
+            broadcast(position_ids)
+            if is_sft:
+                cu_seqlens = receive_cu_seqlens()
+                broadcast(max_seqlen)
+                if cp_size > 1:
+                    cu_seqlens_padded = receive_cu_seqlens()
+            if create_attention_mask_in_dataloader:
+                broadcast(attention_mask)
+        elif is_pipeline_last_stage:
             tokens = None
-            _broadcast(labels)
-            _broadcast(loss_mask)
-            _broadcast(attention_mask)
-            if args.reset_attention_mask:
-                _broadcast(position_ids)
-            else:
-                position_ids = None
-        elif args.reset_attention_mask:
-            _broadcast(position_ids)
+            position_ids = None
+            broadcast(labels)
+            broadcast(loss_mask)
+            if is_sft:
+                cu_seqlens = receive_cu_seqlens()
+                broadcast(max_seqlen)
+                if cp_size > 1:
+                    cu_seqlens_padded = receive_cu_seqlens()
+            if create_attention_mask_in_dataloader:
+                broadcast(attention_mask)
+        elif is_sft:
+            tokens = None
+            labels = None
+            loss_mask = None
+            position_ids = None
+            cu_seqlens = receive_cu_seqlens()
+            broadcast(max_seqlen)
+            if cp_size > 1:
+                cu_seqlens_padded = receive_cu_seqlens()
+
         batch = {
             'tokens': tokens,
             'labels': labels,
             'loss_mask': loss_mask,
-            'attention_mask': attention_mask,
             'position_ids': position_ids,
+            'attention_mask': attention_mask,
+            'cu_seqlens': cu_seqlens,
+            'cu_seqlens_padded': cu_seqlens_padded,
+            'max_seqlen': max_seqlen,
+            'local_cp_size': local_cp_size,
+            'hybrid_cp_group': None,
         }
-        if args.reset_attention_mask:
-            actual_seq_len = _validate_actual_seq_len(broadcast_dynamic(None))
-            if _uses_p2p_eod_layout(args):
-                actual_seq_len = _prepare_p2p_eod_actual_seq_len(actual_seq_len, batch, args)
-            set_actual_seq_len(actual_seq_len)
+
+    if tp_rank == 0 and batch.get('actual_seq_len') is None:
+        raise AssertionError('reset-attention-mask requires actual_seq_len in the materialized batch.')
+    actual_seq_len = broadcast_dynamic(
+        batch['actual_seq_len'] if tp_rank == 0 else None,
+        broadcast_src_rank,
+        broadcast_group,
+    )
+    actual_seq_len = _validate_actual_seq_len(actual_seq_len)
+    batch.pop('actual_seq_len', None)
+    if _uses_p2p_eod_layout(args):
+        actual_seq_len = _prepare_p2p_eod_actual_seq_len(actual_seq_len, batch, args)
+    set_actual_seq_len(actual_seq_len)
     return batch

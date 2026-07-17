@@ -1,10 +1,13 @@
 from types import SimpleNamespace
 import pytest
+RMSNorm = pytest.importorskip(
+    "megatron.legacy.model.rms_norm",
+    reason="Legacy RMSNorm patch coverage is only applicable to Megatron 0.17",
+).RMSNorm
 import torch
 from torch import nn
 import torch_npu
 from mindspeed import megatron_adaptor
-from megatron.legacy.model.rms_norm import RMSNorm
 from megatron.training.global_vars import set_args
 
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]

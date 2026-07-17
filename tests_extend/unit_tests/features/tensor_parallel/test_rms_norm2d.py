@@ -28,7 +28,6 @@ from megatron.core import tensor_parallel
 from megatron.core.tensor_parallel import mappings
 from megatron.training.global_vars import set_args
 from megatron.training.arguments import parse_args
-from megatron.legacy.model import RMSNorm
 from mindspeed.core.tensor_parallel.comm_autograd_function import (
     auto_grad_scatter_along_first_dim,
     auto_grad_scatter_along_last_dim,
@@ -56,7 +55,7 @@ sys.argv.remove('--tp-2d')
 class SimpleRMSNormModel(nn.Module):
     def __init__(self, norm_size):
         super().__init__()
-        self.rms_norm = RMSNorm(dim=norm_size)
+        self.rms_norm = nn.RMSNorm(normalized_shape=norm_size)
 
     def forward(self, x):
         output = self.rms_norm(x)

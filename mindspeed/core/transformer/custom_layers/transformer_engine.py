@@ -1,11 +1,8 @@
-import torch
-import torch_npu
-import torch.nn as nn
+from torch import nn
 
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.legacy.model.rms_norm import RMSNorm
+from mindspeed.core.fusions.fused_rms_norm import RMSNorm
 from megatron.training import get_args
-from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm
 from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D
@@ -17,7 +14,10 @@ class PTNorm:
     """
 
     def __new__(
-        cls, config: TransformerConfig, hidden_size: int, eps: float = 1e-5,
+        cls,
+        config: TransformerConfig,
+        hidden_size: int,
+        eps: float = 1e-5,
     ):
         args = get_args()
         if config.normalization == "LayerNorm":
@@ -48,6 +48,6 @@ class PTNorm:
                 )
                 instance.use_fused_rmsnorm = True
         else:
-            raise Exception('Only LayerNorm and RMSNorm are curently supported')
+            raise ValueError('Only LayerNorm and RMSNorm are curently supported')
 
         return instance

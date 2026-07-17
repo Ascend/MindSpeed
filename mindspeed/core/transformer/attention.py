@@ -12,10 +12,12 @@ from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_e
 from megatron.core.transformer import TransformerConfig, ModuleSpec, build_module
 from megatron.core.transformer.attention import CrossAttentionSubmodules, Attention
 from megatron.core.transformer.enums import AttnMaskType
-from megatron.core import mpu, parallel_state
+from megatron.core import mpu
 from megatron.core.utils import divide
 from megatron.training import get_args
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
+from megatron.core.process_groups_config import ProcessGroupCollection
+from megatron.core.utils import get_pg_size
 
 from mindspeed.auto_settings.module.black.patch.hccl_operator import AttentionEndOp
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
@@ -52,9 +54,17 @@ def attention_init(
     attn_mask_type: AttnMaskType,
     attention_type: str,
     cp_comm_type: str = None,
+    pg_collection=None,
+    pp_layer_offset=None,
+    name=None,
 ):
     super(Attention, self).__init__(config=config)
+    if pg_collection is None:
+        pg_collection = ProcessGroupCollection.use_mpu_process_groups(required_pgs=['tp', 'cp'])
     self.config = config
+    self.pg_collection = pg_collection
+    self.tp_group = pg_collection.tp
+    self._pp_layer_offset = pp_layer_offset
     self.layer_number = layer_number
     self.attn_mask_type = attn_mask_type
     self.attention_type = attention_type
@@ -66,7 +76,7 @@ def attention_init(
 
     args = get_args()
     # patch for tp-2d
-    world_size = args.tp_x if args.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
+    world_size = args.tp_x if args.tp_2d else get_pg_size(pg_collection.tp)
     # Per attention head and per partition values.
     self.hidden_size_per_attention_head = divide(self.query_projection_size, self.config.num_attention_heads)
     self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
@@ -82,6 +92,7 @@ def attention_init(
         attn_mask_type=self.attn_mask_type,
         attention_type=self.attention_type,
         cp_comm_type=cp_comm_type,
+        pg_collection=pg_collection,
     )
 
     self.checkpoint_core_attention = self.config.recompute_granularity == 'selective'
@@ -98,6 +109,8 @@ def attention_init(
         skip_bias_add=True,
         is_expert=False,
         tp_comm_buffer_name='proj',
+        tp_group=pg_collection.tp,
+        name=(name + '.linear_proj') if name is not None else None,
     )
     cp = config.context_parallel_size
     if args.tp_2d:
@@ -142,6 +155,8 @@ def self_attention_init_wrapper(fn):
         if args.overlap_param_gather:
             config.reset_attention_order = True
         fn(self, config, submodules, layer_number, attn_mask_type, **attention_optional_kwargs)
+        name = attention_optional_kwargs.get('name')
+        tp_group = self.tp_group
 
         if args.multi_head_latent_attention:
             self.use_flash_attn = args.use_flash_attn
@@ -180,6 +195,8 @@ def self_attention_init_wrapper(fn):
                     skip_bias_add=False,
                     is_expert=False,
                     tp_comm_buffer_name='qb',
+                    tp_group=tp_group,
+                    name=(name + '.linear_qb') if name is not None else None,
                 )
 
             self.linear_qkv = build_module(
@@ -193,6 +210,8 @@ def self_attention_init_wrapper(fn):
                 skip_bias_add=False,
                 is_expert=False,
                 tp_comm_buffer_name='qkv',
+                tp_group=tp_group,
+                name=(name + '.linear_qkv') if name is not None else None,
             )
 
             if submodules.k_layernorm is not None:
@@ -216,6 +235,8 @@ def self_attention_init_wrapper(fn):
                 skip_bias_add=False,
                 is_expert=False,
                 tp_comm_buffer_name='kvb',
+                tp_group=tp_group,
+                name=(name + '.linear_kvb') if name is not None else None,
             )
 
             self.linear_proj = build_module(
@@ -229,6 +250,8 @@ def self_attention_init_wrapper(fn):
                 skip_bias_add=True,
                 is_expert=False,
                 tp_comm_buffer_name='proj',
+                tp_group=tp_group,
+                name=(name + '.linear_proj') if name is not None else None,
             )
 
         if args.tp_2d:

@@ -70,9 +70,9 @@ class ResetAttentionMaskFeature(MindSpeedFeature):
             )
             patch_manager.register_patch('torch.utils.data._utils.collate.default_collate', collate_wrapper)
 
-            patch_manager.register_patch('megatron.training.utils.get_batch_on_this_tp_rank', get_batch_on_this_tp_rank)
+            patch_manager.register_patch('megatron.core.utils.get_batch_on_this_tp_rank', get_batch_on_this_tp_rank)
             patch_manager.register_patch(
-                'megatron.training.utils.get_batch_on_this_cp_rank', get_batch_on_this_cp_rank_wrapper
+                'megatron.core.utils.get_batch_on_this_cp_rank', get_batch_on_this_cp_rank_wrapper
             )
 
             patch_manager.register_patch(

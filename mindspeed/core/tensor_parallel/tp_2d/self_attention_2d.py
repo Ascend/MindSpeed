@@ -1,5 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 
+from megatron.core.utils import get_pg_size
+
 from mindspeed.core.tensor_parallel.tp_2d.utils import divide
 from mindspeed.core.tensor_parallel.tp_2d.parallel_linear_2d import ParallelLinear2D
 from mindspeed.core.tensor_parallel.tp_2d.parallel_state_2d import get_tensor_model_parallel_world_size_for_nd1_dim1
@@ -71,11 +73,15 @@ def attention_init_impl(
     cp_comm_type,
     parallel_state=None,
     build_module_func=None,
+    pg_collection=None,
+    pp_layer_offset=None,
+    name=None,
 ):
     self.config = config
     self.layer_number = layer_number
     self.attn_mask_type = attn_mask_type
     self.attention_type = attention_type
+    self._pp_layer_offset = pp_layer_offset
 
     # For normal attention without groups, num_query_groups == num_attention_heads,
     # so these two will be the same
@@ -83,7 +89,7 @@ def attention_init_impl(
     self.kv_projection_size = self.config.kv_channels * self.config.num_query_groups
 
     # patch for tp-2d
-    world_size = config.tp_x if config.tp_2d else parallel_state.get_tensor_model_parallel_world_size()
+    world_size = config.tp_x if config.tp_2d else get_pg_size(pg_collection.tp)
     # Per attention head and per partition values.
     self.hidden_size_per_attention_head = divide(self.query_projection_size, self.config.num_attention_heads)
     self.num_attention_heads_per_partition = divide(self.config.num_attention_heads, world_size)
@@ -96,6 +102,7 @@ def attention_init_impl(
         attn_mask_type=self.attn_mask_type,
         attention_type=self.attention_type,
         cp_comm_type=cp_comm_type,
+        pg_collection=pg_collection,
     )
 
     self.checkpoint_core_attention = self.config.recompute_granularity == 'selective'
@@ -112,6 +119,8 @@ def attention_init_impl(
         skip_bias_add=True,
         is_expert=False,
         tp_comm_buffer_name='proj',
+        tp_group=pg_collection.tp,
+        name=(name + ".linear_proj") if name is not None else None,
     )
 
     tp_y_cp_sz = config.tp_y * config.context_parallel_size

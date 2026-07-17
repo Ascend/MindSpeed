@@ -15,24 +15,25 @@ from megatron.core.utils import init_method_normal, scaled_init_method_normal
 from megatron.core import parallel_state
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.pipeline_parallel.schedules import (
-    forward_step, 
-    backward_step, 
+    forward_step,
+    backward_step,
     deallocate_output_tensor,
     check_first_val_step,
     clear_embedding_activation_buffer,
-    finish_embedding_wgrad_compute
+    finish_embedding_wgrad_compute,
 )
 from megatron.core.enums import ModelType
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.core.transformer.attention import Attention as MegatronAttention
 from megatron.core.transformer import build_module
+from megatron.core.process_groups_config import ProcessGroupCollection
 
 from mindspeed.core.tensor_parallel.comm_autograd_function import (
     auto_grad_scatter_along_first_dim_then_last_dim,
 )
 from mindspeed.core.tensor_parallel.comm_autograd_function import (
     auto_grad_sync_gather_along_last_dim,
-    auto_grad_sync_gather_along_first_dim
+    auto_grad_sync_gather_along_first_dim,
 )
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPXCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPYCollectiveComm
@@ -48,11 +49,12 @@ from mindspeed.core.tensor_parallel.tp_2d.parallel_state_2d import initialize_mo
 def mindspeed_self_attention_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        config = args[0] if len(args) > 1 else kwargs['config']
+        config = args[0] if len(args) > 0 else kwargs['config']
         if config.overlap_param_gather:
             config.reset_attention_order = True
         fn(self, *args, **kwargs)
         self_attention_init_impl(self, *args, _initialize_affine_weight_gpu=_initialize_affine_weight_gpu, **kwargs)
+
     return wrapper
 
 
@@ -65,8 +67,15 @@ def mindspeed_attention_init(
     attn_mask_type,
     attention_type,
     cp_comm_type=None,
-    ):
+    pg_collection=None,
+    pp_layer_offset=None,
+    name=None,
+):
     super(MegatronAttention, self).__init__(config=config)
+    if pg_collection is None:
+        pg_collection = ProcessGroupCollection.use_mpu_process_groups(required_pgs=['tp', 'cp'])
+    self.pg_collection = pg_collection
+    self.tp_group = pg_collection.tp
     return attention_init_impl(
         self,
         config,
@@ -76,7 +85,10 @@ def mindspeed_attention_init(
         attention_type,
         cp_comm_type=cp_comm_type,
         parallel_state=parallel_state,
-        build_module_func=build_module
+        build_module_func=build_module,
+        pg_collection=pg_collection,
+        pp_layer_offset=pp_layer_offset,
+        name=name,
     )
 
 
@@ -86,6 +98,7 @@ def mindspeed_initialize_model_parallel_wrapper(fn):
     def wrapper(*args, **kwargs):
         fn(*args, **kwargs)
         initialize_model_parallel_impl(*args, **kwargs, config=get_args())  # megatron api has no `config` param
+
     return wrapper
 
 
@@ -93,7 +106,9 @@ def mindspeed_initialize_model_parallel_wrapper(fn):
 class MindSpeedRotaryEmbedding2D(RotaryEmbeddingImpl, MegatronRotaryEmbedding):
     def __init__(self, *args, **kwargs):
         MegatronRotaryEmbedding.__init__(self, *args, **kwargs)
-        RotaryEmbeddingImpl.__init__(self, *args, config=get_args(), **kwargs)  # megatron api has no `config` param，no self.config
+        RotaryEmbeddingImpl.__init__(
+            self, *args, config=get_args(), **kwargs
+        )  # megatron api has no `config` param，no self.config
 
     def get_rotary_seq_len(self, *args, **kwargs):
         rotary_seq_len = MegatronRotaryEmbedding.get_rotary_seq_len(self, *args, **kwargs)
@@ -107,6 +122,7 @@ def mindspeed_mlp_init_wrapper(fn):
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
         mlp_init_2d(self, *args, _initialize_affine_weight_gpu=_initialize_affine_weight_gpu, **kwargs)
+
     return wrapper
 
 
@@ -116,7 +132,7 @@ def mindspeed_transformer_config_post_init(self):
         self,
         args=get_args(),
         init_method_normal=init_method_normal,
-        scaled_init_method_normal=scaled_init_method_normal
+        scaled_init_method_normal=scaled_init_method_normal,
     )
 
 
@@ -125,16 +141,16 @@ def mindspeed_forward_backward_pipelining_with_interleaving_tp2d(*args, **kwargs
         *args,
         parallel_state=parallel_state,
         p2p_communication=p2p_communication,
-        forward_step=forward_step, 
-        backward_step=backward_step, 
+        forward_step=forward_step,
+        backward_step=backward_step,
         model_type_enums=ModelType,
-        get_model_config=get_model_config, 
-        get_model_type=get_model_type, 
-        deallocate_output_tensor=deallocate_output_tensor, 
-        check_first_val_step=check_first_val_step, 
-        clear_embedding_activation_buffer=clear_embedding_activation_buffer, 
+        get_model_config=get_model_config,
+        get_model_type=get_model_type,
+        deallocate_output_tensor=deallocate_output_tensor,
+        check_first_val_step=check_first_val_step,
+        clear_embedding_activation_buffer=clear_embedding_activation_buffer,
         finish_embedding_wgrad_compute=finish_embedding_wgrad_compute,
-        **kwargs
+        **kwargs,
     )
 
 
@@ -146,6 +162,7 @@ def mindspeed_transformer_block_forward_wrapper(fn):
             hidden_states = auto_grad_sync_gather_along_first_dim(hidden_states, TPXCollectiveComm)
             hidden_states = auto_grad_sync_gather_along_last_dim(hidden_states, TPYCollectiveComm)
         return hidden_states
+
     return wrapper
 
 
@@ -157,9 +174,12 @@ def mindspeed_get_tensor_shapes_wrapper(fn):
         # `config` is 5th arg in megatron api
         config = kwargs['config'] if 'config' in kwargs else args[5]
         if config.tp_2d:
-            tensor_shapes = [[tensor_shape[0] // config.tp_x, tensor_shape[1], tensor_shape[2] // config.tp_y]
-                             for tensor_shape in tensor_shapes]
+            tensor_shapes = [
+                [tensor_shape[0] // config.tp_x, tensor_shape[1], tensor_shape[2] // config.tp_y]
+                for tensor_shape in tensor_shapes
+            ]
         return tensor_shapes
+
     return wrapper
 
 
@@ -172,6 +192,7 @@ def mindspeed_language_model_embedding_forward_wrapper(fn):
                 encoder_input, TPXCollectiveComm, TPYCollectiveComm
             )
         return encoder_input
+
     return wrapper
 
 
@@ -188,8 +209,7 @@ def mindspeed_allreduce_layernorm_grads_wrapper(fn):
         if layer_norm_2d_grads:
             coalesced = _flatten_dense_tensors(layer_norm_2d_grads)
             torch.distributed.all_reduce(coalesced, group=TPXCollectiveComm.get_comm_group())
-            for buf, synced in zip(
-                layer_norm_2d_grads, _unflatten_dense_tensors(coalesced, layer_norm_2d_grads)
-            ):
+            for buf, synced in zip(layer_norm_2d_grads, _unflatten_dense_tensors(coalesced, layer_norm_2d_grads)):
                 buf.copy_(synced)
+
     return wrapper

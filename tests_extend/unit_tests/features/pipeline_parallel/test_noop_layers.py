@@ -175,7 +175,7 @@ class TestNoopLayer(DistributedTest):
         args = get_args()
         destroy_model_parallel()
         # Pytorch distributed.
-        _initialize_distributed(None, None)
+        _initialize_distributed(None, None, None)
 
         # Random seeds for reproducibility.
         _set_random_seed(args.seed, args.data_parallel_random_init)

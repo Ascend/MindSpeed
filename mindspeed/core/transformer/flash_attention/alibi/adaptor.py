@@ -1,19 +1,15 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
-from typing import Optional
 
-from torch import Tensor
 from megatron.core.transformer.dot_product_attention import DotProductAttention as MegatronDotProductAttention
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.enums import AttnMaskType
-from megatron.core.packed_seq_params import PackedSeqParams
 
 from mindspeed.core.transformer.flash_attention.alibi.dot_product_attention import DotProductAttentionImpl
 
 
 class MindSpeedDotProductAttention(DotProductAttentionImpl, MegatronDotProductAttention):
-
     def __init__(
         self,
         config: TransformerConfig,
@@ -23,6 +19,7 @@ class MindSpeedDotProductAttention(DotProductAttentionImpl, MegatronDotProductAt
         attention_dropout: float = None,
         softmax_scale: float = None,
         cp_comm_type: str = None,
+        pg_collection=None,
     ):
         MegatronDotProductAttention.__init__(
             self,
@@ -32,9 +29,9 @@ class MindSpeedDotProductAttention(DotProductAttentionImpl, MegatronDotProductAt
             attention_type,
             attention_dropout,
             softmax_scale,
-            cp_comm_type
+            cp_comm_type,
+            pg_collection=pg_collection,
         )
-        
+
         # add pse
         DotProductAttentionImpl.__init__(self)
-

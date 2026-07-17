@@ -1,13 +1,15 @@
 import pytest
-# todo: need megatron-0.17.0 adapt
-pytest.skip("Skip test_schedules due to 0.17 adaptor removal", allow_module_level=True)
+_legacy_transformer = pytest.importorskip(
+    "megatron.legacy.model.transformer",
+    reason="Legacy ParallelMLP coverage is only applicable to Megatron 0.17",
+)
+ParallelMLP = _legacy_transformer.ParallelMLP
 import torch
 import torch_npu
 
 from mindspeed import megatron_adaptor  # noqa: F401
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.legacy.model.transformer import ParallelMLP
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from tests_extend.commons import initialize_model_parallel

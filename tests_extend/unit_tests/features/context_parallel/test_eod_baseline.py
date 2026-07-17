@@ -12,6 +12,25 @@ from mindspeed.features_manager.transformer.flash_attention.reset_attention_mask
 from mindspeed.utils import get_position_ids, set_position_ids
 
 
+def test_eod_batch_patches_follow_megatron_018_core_utils_entrypoints():
+    class PatchRecorder:
+        def __init__(self):
+            self.targets = []
+
+        def register_patch(self, target, *args, **kwargs):
+            self.targets.append(target)
+
+    patch_manager = PatchRecorder()
+    ResetAttentionMaskFeature().register_patches(
+        patch_manager,
+        Namespace(reset_attention_mask=True),
+    )
+
+    assert 'megatron.core.utils.get_batch_on_this_tp_rank' in patch_manager.targets
+    assert 'megatron.core.utils.get_batch_on_this_cp_rank' in patch_manager.targets
+    assert not any(target.startswith('megatron.training.utils.get_batch_on_this_') for target in patch_manager.targets)
+
+
 def test_fix_sub_sequence_collate_offsets_every_micro_batch_sample(monkeypatch):
     monkeypatch.setattr(utils, 'get_args', lambda: Namespace(seq_length=4, fix_sub_seq_length=2))
 

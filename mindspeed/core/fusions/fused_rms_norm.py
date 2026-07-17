@@ -5,12 +5,7 @@ import torch_npu
 
 
 class RMSNorm(torch.nn.Module):
-
-    def __init__(self,
-                 dim: int,
-                 eps: float = 1e-6,
-                 sequence_parallel: bool = False,
-                 config=None):
+    def __init__(self, dim: int, eps: float = 1e-6, sequence_parallel: bool = False, config=None):
         """RMS Normaliation module
 
         Args:
@@ -37,6 +32,9 @@ class RMSNorm(torch.nn.Module):
         return torch_npu.npu_rms_norm(x, self.weight, epsilon=self.eps)[0]
 
     def forward(self, x):
-        if self.config.use_fused_rmsnorm:
+        use_fused_rmsnorm = getattr(self, 'use_fused_rmsnorm', False)
+        if self.config is not None:
+            use_fused_rmsnorm = getattr(self.config, 'use_fused_rmsnorm', use_fused_rmsnorm)
+        if use_fused_rmsnorm:
             return self.fused_rmsnorm(x)
         return self.unfused_rmsnorm(x)

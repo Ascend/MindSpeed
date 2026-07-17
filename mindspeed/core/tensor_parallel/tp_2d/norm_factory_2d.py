@@ -12,36 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-from typing import List, Callable
-
-import torch
-from torch._utils import _flatten_dense_tensors
-from torch._utils import _unflatten_dense_tensors
-
-from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPXCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.group_api_2d import TPYCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D
 
 
-def get_norm_tp_2d(config):
+def get_norm_tp_2d(config, hidden_size=None, eps=None, **kwargs):
     normalization = getattr(config, 'normalization')
-    apply_layernorm_1p = getattr(config, 'apply_layernorm_1p')
+    apply_layernorm_1p = getattr(config, 'apply_layernorm_1p', False)
+    hidden_size = hidden_size if hidden_size is not None else config.hidden_size
+    eps = eps if eps is not None else config.layernorm_epsilon
     if normalization == "LayerNorm":
         return LayerNorm2D(
-            config.hidden_size,
-            eps=config.layernorm_epsilon,
+            hidden_size,
+            eps=eps,
             last_dim_split_comm_intf=TPYCollectiveComm(),
         )
     elif normalization == "RMSNorm":
         if apply_layernorm_1p:
-            raise NotImplementedError(
-                "RMSNorm does not currently support the layernorm_1p formulation."
-            )
+            raise NotImplementedError("RMSNorm does not currently support the layernorm_1p formulation.")
         return RMSNorm2D(
-            config.hidden_size,
-            eps=config.layernorm_epsilon,
+            hidden_size,
+            eps=eps,
             last_dim_split_comm_intf=TPYCollectiveComm(),
         )
     else:
-        raise Exception(f"unsupported norm type '{normalization}'.")
+        raise ValueError(f"unsupported norm type '{normalization}'.")
