@@ -1,5 +1,7 @@
+# The timestamp intentionally precedes heavyweight imports so it includes import time.
+# ruff: noqa: E402
 import time
-from functools import partial
+
 _TRAIN_START_TIME = time.time()
 import json
 import os.path
@@ -9,19 +11,17 @@ import torch
 import torch.nn
 import torch_npu
 from megatron.training import print_rank_0
-from megatron.training.arguments import parse_args
-from megatron.core.parallel_state import get_embedding_group
 from megatron.training import get_args
 from megatron.training import get_timers
 from megatron.training import training
 from megatron.training.training import print_datetime
 from megatron.core.pipeline_parallel import p2p_communication
-from megatron.core import mpu, tensor_parallel
+from megatron.core import mpu
 from megatron.training.initialize import initialize_megatron
 from megatron.training.initialize import set_jit_fusion_options
 
 
-profile_context = {"fwd_time":[], "bwd_time":[]}
+profile_context = {"fwd_time": [], "bwd_time": []}
 
 
 class AutoPipeline_Perf:
@@ -29,9 +29,7 @@ class AutoPipeline_Perf:
 
     def __init__(self, args):
         self.args = copy.deepcopy(args)
-        self.context = {
-            'module': []
-        }
+        self.context = {'module': []}
         self.modules_hooks = []
         self.profiling_step = 0
         self.stop_profiling_step = 3
@@ -57,7 +55,7 @@ class AutoPipeline_Perf:
         for arg in args:
             if isinstance(arg, torch.Tensor):
                 size += self._cal_tensor_size(arg)
-            elif isinstance(arg, tuple) or isinstance(arg, list):
+            elif isinstance(arg, (list, tuple)):
                 for t in arg:
                     if isinstance(t, torch.Tensor):
                         size += self._cal_tensor_size(t)
@@ -230,10 +228,12 @@ class AutoPipeline_Perf:
 def check_equal_model_configs(args, parsed_contents):
     model_index = 0
     for model_instance in parsed_contents:
-        if args.hidden_size == model_instance.get("model_configs", {}).get("hidden_size") \
-                and args.ffn_hidden_size == model_instance.get("model_configs", {}).get("ffn_hidden_size") \
-                and args.seq_length == model_instance.get("model_configs", {}).get("seq_length") \
-                and args.num_attention_heads == model_instance.get("model_configs", {}).get("num_attention_heads"):
+        if (
+            args.hidden_size == model_instance.get("model_configs", {}).get("hidden_size")
+            and args.ffn_hidden_size == model_instance.get("model_configs", {}).get("ffn_hidden_size")
+            and args.seq_length == model_instance.get("model_configs", {}).get("seq_length")
+            and args.num_attention_heads == model_instance.get("model_configs", {}).get("num_attention_heads")
+        ):
             return model_index
         else:
             model_index += 1
@@ -242,24 +242,32 @@ def check_equal_model_configs(args, parsed_contents):
 
 def check_equal_parallel_configs(args, parsed_content):
     for parallel_instance in parsed_content.get("optimpipeline_policy"):
-        if args.num_layers == parallel_instance.get("num_layers") \
-                and args.pipeline_model_parallel_size == parallel_instance.get("pipeline_model_parallel_size") \
-                and args.tensor_model_parallel_size == parallel_instance.get("tensor_model_parallel_size") \
-                and args.micro_batch_size == parallel_instance.get("micro_batch_size") \
-                and args.global_batch_size == parallel_instance.get("global_batch_size"):
-            return parallel_instance.get("enable_scheduler"), parallel_instance.get("optimized_mbs_list"), parallel_instance.get(
-                "pp_schedule_list"), parallel_instance.get("optimal_layers")
+        if (
+            args.num_layers == parallel_instance.get("num_layers")
+            and args.pipeline_model_parallel_size == parallel_instance.get("pipeline_model_parallel_size")
+            and args.tensor_model_parallel_size == parallel_instance.get("tensor_model_parallel_size")
+            and args.micro_batch_size == parallel_instance.get("micro_batch_size")
+            and args.global_batch_size == parallel_instance.get("global_batch_size")
+        ):
+            return (
+                parallel_instance.get("enable_scheduler"),
+                parallel_instance.get("optimized_mbs_list"),
+                parallel_instance.get("pp_schedule_list"),
+                parallel_instance.get("optimal_layers"),
+            )
     return None, None, None, None
 
 
 def check_skip_profiling(args, config_file):
     if os.path.exists(config_file):
-        with open(config_file) as config_json:
+        with open(config_file, encoding="utf-8") as config_json:
             config_contents = config_json.read()
         parsed_contents = json.loads(config_contents)
         index = check_equal_model_configs(args, parsed_contents)
         if index != -1:
-            optimized_type, optimized_mbs_list, pp_schedule_list, optimal_layers = check_equal_parallel_configs(args, parsed_contents[index])
+            optimized_type, optimized_mbs_list, pp_schedule_list, optimal_layers = check_equal_parallel_configs(
+                args, parsed_contents[index]
+            )
             if optimized_mbs_list or pp_schedule_list:
                 return True, (optimized_type, optimized_mbs_list, pp_schedule_list, optimal_layers)
     return False, (None, None, None, None)
@@ -268,11 +276,10 @@ def check_skip_profiling(args, config_file):
 def check_out_of_memory(args, context, mbs_tries):
     total_memory = torch_npu.npu.get_device_properties(0).total_memory / (1 << 20)
     per_activation_memory_allocated = context["layers"][0]["memory"] // mbs_tries
-    predict_next_max_memory_allocated = context["smi_peak_memory"] + per_activation_memory_allocated * args.pipeline_model_parallel_size + 1000
-    if predict_next_max_memory_allocated > total_memory:
-        return True
-    else:
-        return False
+    predict_next_max_memory_allocated = (
+        context["smi_peak_memory"] + per_activation_memory_allocated * args.pipeline_model_parallel_size + 1000
+    )
+    return predict_next_max_memory_allocated > total_memory
 
 
 def broadcast_skip_in_ranks(src_rank, policy):
@@ -296,18 +303,26 @@ def get_autopipeline_perf(args):
     return AutoPipeline_Perf.autopipeline_perf
 
 
-def autopipelineperf_profiling(mbs_tries, model_provider, model_type, forward_step_func, train_valid_test_dataset_provider,
-                           process_non_loss_data_func):
-    initialize_megatron(extra_args_provider=None,
-                        args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+def autopipelineperf_profiling(
+    cfg_container,
+    mbs_tries,
+    model_provider,
+    model_type,
+    forward_step_func,
+    train_valid_test_dataset_provider,
+    process_non_loss_data_func,
+):
+    args = get_args()
+    configured_tokenizer_type = cfg_container.tokenizer.tokenizer_type
+    if args.tokenizer_type is None:
+        args.tokenizer_type = configured_tokenizer_type or 'GPT2BPETokenizer'
+    initialize_megatron()
     set_jit_fusion_options()
     global _TRAIN_START_TIME
     start_time_tensor = torch.cuda.DoubleTensor([_TRAIN_START_TIME])
-    torch.distributed.all_reduce(start_time_tensor,
-                                 op=torch.distributed.ReduceOp.MIN)
+    torch.distributed.all_reduce(start_time_tensor, op=torch.distributed.ReduceOp.MIN)
     _TRAIN_START_TIME = start_time_tensor.item()
-    print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(
-        time.time() - _TRAIN_START_TIME))
+    print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(time.time() - _TRAIN_START_TIME))
     print_datetime('after megatron is initialized')
     args = get_args()
     pipelining = get_autopipeline_perf(args)
@@ -321,21 +336,30 @@ def autopipelineperf_profiling(mbs_tries, model_provider, model_type, forward_st
         valid_data_iterator = []
         for i in range(len(models)):
             mpu.set_virtual_pipeline_model_parallel_rank(i)
-            iterators = training.build_train_valid_test_data_iterators(
-                train_valid_test_dataset_provider)
+            iterators = training.build_train_valid_test_data_iterators(train_valid_test_dataset_provider)
             train_data_iterator.append(iterators[0])
             valid_data_iterator.append(iterators[1])
     else:
         train_data_iterator, valid_data_iterator, _ = training.build_train_valid_test_data_iterators(
-            train_valid_test_dataset_provider)
+            train_valid_test_dataset_provider
+        )
     if isinstance(models, list):
         for model in models:
             pipelining.register_recursive_hook("module", model, pipelining.context)
     else:
         pipelining.register_recursive_hook("module", models, pipelining.context)
     checkpointing_context = {}
-    training.train(forward_step_func, models, optimizer, lr_scheduler, train_data_iterator, valid_data_iterator,
-                   process_non_loss_data_func, config, checkpointing_context)
+    training.train(
+        forward_step_func,
+        models,
+        optimizer,
+        lr_scheduler,
+        train_data_iterator,
+        valid_data_iterator,
+        process_non_loss_data_func,
+        config,
+        checkpointing_context,
+    )
     pipelining.get_smi_peak_memory(sync=True)
     pipelining.get_smi_left_memory(sync=True)
     pipelining.get_comm_time(config, sync=True)
@@ -353,7 +377,7 @@ def autopipelineperf_profiling(mbs_tries, model_provider, model_type, forward_st
         hook_handle.remove()
     pipelining.modules_hooks.clear()
     pipelining.restore_args_for_training()
-    
+
     if hasattr(optimizer, 'chained_optimizers'):
         for op in optimizer.chained_optimizers:
             for key, value in op.optimizer.state.items():

@@ -444,6 +444,7 @@ def pretrain_decorator(pretrain):
 
         if argument.automated_pipeline and not argument.num_layer_list:
             context, POLICY = autopipeline_profiling(
+                cfg_container=bound_pretrain_args['cfg_container'],
                 model_provider=bound_pretrain_args['model_provider'],
                 model_type=bound_pretrain_args['model_type'],
                 forward_step_func=bound_pretrain_args['forward_step_func'],
@@ -473,6 +474,7 @@ def pretrain_decorator(pretrain):
 
                 while mbs_tries < ORIGIN_MBS + 2:
                     context = autopipelineperf_profiling(
+                        cfg_container=bound_pretrain_args['cfg_container'],
                         mbs_tries=mbs_tries,
                         model_provider=bound_pretrain_args['model_provider'],
                         model_type=bound_pretrain_args['model_type'],

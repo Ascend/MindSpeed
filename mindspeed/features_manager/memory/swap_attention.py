@@ -63,14 +63,10 @@ class SwapAttentionFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         if getattr(args, self.feature_name, None):
             from mindspeed.core.memory.swap_attention.adaptor import allowed_recomputing_swap_module_wrapper
-            from megatron.legacy.model.transformer import ParallelTransformerLayer
             from megatron.core.transformer.transformer_layer import TransformerLayer
             from mindspeed.core.memory.common import transformer_block_checkpointed_forward
 
-            if hasattr(args, "use_legacy_models") and not args.use_legacy_models:
-                allowed_recomputing_swap_module_wrapper(TransformerLayer)
-            else:
-                allowed_recomputing_swap_module_wrapper(ParallelTransformerLayer)
+            allowed_recomputing_swap_module_wrapper(TransformerLayer)
             from mindspeed.core.memory.swap_attention.adaptor import setup_model_and_optimizer_wrapper
 
             patch_manager.register_patch(
@@ -88,6 +84,6 @@ class SwapAttentionFeature(MindSpeedFeature):
                 linear_backward_main_grad_wrapper,
             )
             patch_manager.register_patch(
-                'megatron.core.transformer.transformer_block.TransformerBlock._checkpointed_forward',
+                'megatron.core.recompute.checkpointed_forward',
                 transformer_block_checkpointed_forward,
             )

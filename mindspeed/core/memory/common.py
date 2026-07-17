@@ -4,7 +4,7 @@ from functools import wraps
 
 from torch import Tensor
 
-from megatron.core import tensor_parallel, parallel_state, mpu
+from megatron.core import tensor_parallel, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from mindspeed.core.memory.adaptive_memory.adaptive_memory_swap_manager import SwapManager as AdaptiveMemorySwapManager
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager as AdaptiveRecomputingSwapManager
@@ -85,9 +85,15 @@ def transformer_block_checkpointed_forward(
     rotary_pos_emb: Tensor,
     attention_bias: Tensor,
     packed_seq_params: PackedSeqParams,
-    use_inner_fp8_context,
+    use_inner_quantization_context,
+    padding_mask=None,
+    extract_layer_indices=None,
+    layer_offset=0,
 ):
     """Forward method with activation checkpointing."""
+    if extract_layer_indices is None:
+        extract_layer_indices = set()
+    intermediate_hidden_states = []
 
     def custom(start: int, end: int):
         def custom_forward(
@@ -96,55 +102,82 @@ def transformer_block_checkpointed_forward(
             context,
             context_mask,
             rotary_pos_emb,
+            padding_mask=None,
         ):
-            from megatron.core.fp8_utils import get_fp8_context
             from contextlib import nullcontext
+            from megatron.core.fp4_utils import get_fp4_context
+            from megatron.core.fp8_utils import get_fp8_context
+            from megatron.core.transformer.transformer_layer import TransformerLayer
 
             for index in range(start, end):
-                layer = self._get_layer(index)
-                inner_fp8_context = (
-                    get_fp8_context(self.config, layer.layer_number - 1) if use_inner_fp8_context else nullcontext()
+                layer = self.layers[index]
+                if use_inner_quantization_context:
+                    if self.config.fp8:
+                        inner_quantization_context = get_fp8_context(self.config, layer.layer_number - 1)
+                    elif self.config.fp4:
+                        inner_quantization_context = get_fp4_context(self.config, layer.layer_number - 1)
+                    else:
+                        inner_quantization_context = nullcontext()
+                else:
+                    inner_quantization_context = nullcontext()
+
+                layer_kwargs = dict(
+                    hidden_states=hidden_states,
+                    attention_mask=attention_mask,
+                    context=context,
+                    context_mask=context_mask,
+                    rotary_pos_emb=rotary_pos_emb,
+                    attention_bias=attention_bias,
+                    inference_context=None,
+                    packed_seq_params=packed_seq_params,
+                    padding_mask=padding_mask,
                 )
-                with inner_fp8_context:
-                    hidden_states, context = layer(
-                        hidden_states=hidden_states,
-                        attention_mask=attention_mask,
-                        context=context,
-                        context_mask=context_mask,
-                        rotary_pos_emb=rotary_pos_emb,
-                        attention_bias=attention_bias,
-                        inference_params=None,
-                        packed_seq_params=packed_seq_params,
-                    )
+                with inner_quantization_context:
+                    if isinstance(layer, TransformerLayer):
+                        hidden_states, context = layer(**layer_kwargs)
+                    else:
+                        for key in ('context', 'context_mask', 'attention_bias', 'padding_mask'):
+                            layer_kwargs.pop(key, None)
+                        hidden_states = layer(**layer_kwargs)
+                        context = None
+                if isinstance(hidden_states, tuple):
+                    hidden_states = hidden_states[0]
             return hidden_states, context
 
         return custom_forward
 
     def checkpoint_handler(forward_func):
-        if self.config.fp8:
+        checkpoint_args = (hidden_states, attention_mask, context, context_mask, rotary_pos_emb, padding_mask)
+        if self.config.fp8 or self.config.fp4:
             from megatron.core.extensions.transformer_engine import te_checkpoint
 
             return te_checkpoint(
                 forward_func,
                 self.config.distribute_saved_activations,
                 tensor_parallel.random.get_cuda_rng_tracker,
-                parallel_state.get_tensor_model_parallel_group(),
-                hidden_states,
-                attention_mask,
-                context,
-                context_mask,
-                rotary_pos_emb,
+                self.pg_collection.tp,
+                *checkpoint_args,
             )
+        return tensor_parallel.checkpoint(forward_func, self.config.distribute_saved_activations, *checkpoint_args)
+
+    def run_chunk(start: int, end: int, use_checkpoint: bool):
+        nonlocal hidden_states, context
+        if use_checkpoint:
+            hidden_states, context = checkpoint_handler(custom(start, end))
         else:
-            return tensor_parallel.checkpoint(
-                forward_func,
-                self.config.distribute_saved_activations,
+            hidden_states, context = custom(start, end)(
                 hidden_states,
                 attention_mask,
                 context,
                 context_mask,
                 rotary_pos_emb,
+                padding_mask,
             )
+        if self.config.recompute_method == 'uniform':
+            if (end - 1 + layer_offset) in extract_layer_indices:
+                intermediate_hidden_states.append(hidden_states)
+        elif (start + layer_offset) in extract_layer_indices:
+            intermediate_hidden_states.append(hidden_states)
 
     # Checkpoint the input activation of only a set number of individual
     # Transformer layers and skip the rest.
@@ -156,18 +189,15 @@ def transformer_block_checkpointed_forward(
         if not getattr(self.config, 'swap_attention', False):
             layer_idx = 0
             while layer_idx < self.num_layers_per_pipeline_rank:
-                hidden_states = checkpoint_handler(custom(layer_idx, layer_idx + 1))
-
+                chunk_end = min(
+                    layer_idx + self.config.recompute_num_layers,
+                    self.num_layers_per_pipeline_rank,
+                )
+                run_chunk(layer_idx, chunk_end, True)
                 layer_idx += self.config.recompute_num_layers
         else:
             for layer_idx in range(self.num_layers_per_pipeline_rank):
-                hidden_states, context = custom(layer_idx, layer_idx + 1)(
-                    hidden_states,
-                    attention_mask,
-                    context,
-                    context_mask,
-                    rotary_pos_emb,
-                )
+                run_chunk(layer_idx, layer_idx + 1, False)
     elif self.config.recompute_method == 'block':
         vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
         vpp_size = self.config.virtual_pipeline_model_parallel_size
@@ -185,6 +215,8 @@ def transformer_block_checkpointed_forward(
             # Stage 1: [2, 3]   [6, 7]
             # With self.recompute_num_layers = 2, we will recompute layers 0,4 for stage 0, and 2,6 for stage 1.
             # With self.recompute_num_layers = 3, we will recompute layers 0,1,4 for stage 0, and 2,3,6 for stage 1.
+            # The closure is called before the loop advances, so it observes this iteration's layer index.
+            # pylint: disable=cell-var-from-loop
             def should_recompute():
                 if getattr(self.config, 'reduce_recompute_for_last_chunk', False):
 
@@ -197,15 +229,14 @@ def transformer_block_checkpointed_forward(
                 else:
                     return (layer_idx * vpp_size + vpp_rank) < self.config.recompute_num_layers
 
+            # pylint: enable=cell-var-from-loop
             if should_recompute() and not getattr(self.config, 'swap_attention', False):
-                hidden_states, context = checkpoint_handler(custom(layer_idx, layer_idx + 1))
+                run_chunk(layer_idx, layer_idx + 1, True)
             else:
-                hidden_states, context = custom(layer_idx, layer_idx + 1)(
-                    hidden_states,
-                    attention_mask,
-                    context,
-                    context_mask,
-                    rotary_pos_emb,
-                )
+                run_chunk(layer_idx, layer_idx + 1, False)
+    else:
+        raise ValueError("Invalid activation recompute method.")
 
+    if extract_layer_indices:
+        return hidden_states, intermediate_hidden_states
     return hidden_states

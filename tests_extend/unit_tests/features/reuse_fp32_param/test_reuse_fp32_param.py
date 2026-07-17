@@ -19,7 +19,7 @@ from megatron.core.tensor_parallel import model_parallel_cuda_manual_seed
 from megatron.core.timers import DummyTimer
 from megatron.core.transformer import TransformerConfig
 from megatron.training.training import get_model
-from megatron.training.utils import unwrap_model
+from megatron.core.utils import unwrap_model
 from mindspeed.features_manager.memory.reuse_fp32_param import ReuseFP32Param
 from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.commons import set_random_seed, initialize_model_parallel

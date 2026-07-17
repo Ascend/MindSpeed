@@ -1,3 +1,5 @@
+# The timestamp intentionally precedes heavyweight imports so it includes import time.
+# ruff: noqa: E402
 import time
 
 _TRAIN_START_TIME = time.time()
@@ -10,9 +12,6 @@ import torch
 import torch.nn
 import torch_npu
 from megatron.training import print_rank_0
-from megatron.training.arguments import parse_args
-from megatron.core import parallel_state
-from megatron.core.parallel_state import get_embedding_group
 from megatron.training import get_args
 from megatron.training import get_timers
 from megatron.training import training
@@ -27,9 +26,7 @@ class AutoPipeline:
 
     def __init__(self, args):
         self.args = copy.deepcopy(args)
-        self.context = {
-            'module': []
-        }
+        self.context = {'module': []}
         self.modules_hooks = []
         self.profiling_step = 0
         self.stop_profiling_step = 5
@@ -59,7 +56,7 @@ class AutoPipeline:
         for arg in args:
             if isinstance(arg, torch.Tensor):
                 size += self._cal_tensor_size(arg)
-            elif isinstance(arg, tuple) or isinstance(arg, list):
+            elif isinstance(arg, (list, tuple)):
                 for t in arg:
                     if isinstance(t, torch.Tensor):
                         size += self._cal_tensor_size(t)
@@ -152,13 +149,21 @@ class AutoPipeline:
             self.context['comm_time'] = 0.028
 
     def get_modules_params_by_stages(self, init_memory, sync: bool):
-
         if self.args.pipeline_model_parallel_size == 2:
             self.context['first_stage_embed'] = self.args.padded_vocab_size * self.args.hidden_size
             self.context['last_stage_embed'] = self.args.padded_vocab_size * self.args.hidden_size
-            attention_block = 3 * self.args.hidden_size * self.args.num_attention_heads * (
-                    self.args.hidden_size / self.args.num_attention_heads) + self.args.hidden_size * self.args.hidden_size + self.args.hidden_size + self.args.hidden_size
-            ffn_block = 3 * self.args.ffn_hidden_size * self.args.hidden_size + self.args.hidden_size + self.args.hidden_size
+            attention_block = (
+                3
+                * self.args.hidden_size
+                * self.args.num_attention_heads
+                * (self.args.hidden_size / self.args.num_attention_heads)
+                + self.args.hidden_size * self.args.hidden_size
+                + self.args.hidden_size
+                + self.args.hidden_size
+            )
+            ffn_block = (
+                3 * self.args.ffn_hidden_size * self.args.hidden_size + self.args.hidden_size + self.args.hidden_size
+            )
             per_trans_layer_param = attention_block + ffn_block
             per_trans_layer_param /= self.args.tensor_model_parallel_size
             self.context['per_trans_layer_param'] = per_trans_layer_param
@@ -212,10 +217,12 @@ class AutoPipeline:
 def check_equal_model_configs(args, parsed_contents):
     model_index = 0
     for model_instance in parsed_contents:
-        if args.hidden_size == model_instance["model_configs"]["hidden_size"] \
-                and args.ffn_hidden_size == model_instance["model_configs"]["ffn_hidden_size"] \
-                and args.seq_length == model_instance["model_configs"]["seq_length"] \
-                and args.num_attention_heads == model_instance["model_configs"]["num_attention_heads"]:
+        if (
+            args.hidden_size == model_instance["model_configs"]["hidden_size"]
+            and args.ffn_hidden_size == model_instance["model_configs"]["ffn_hidden_size"]
+            and args.seq_length == model_instance["model_configs"]["seq_length"]
+            and args.num_attention_heads == model_instance["model_configs"]["num_attention_heads"]
+        ):
             return model_index
         else:
             model_index += 1
@@ -224,24 +231,30 @@ def check_equal_model_configs(args, parsed_contents):
 
 def check_equal_parallel_configs(args, parsed_content):
     for parallel_instance in parsed_content["autopipeline_policy"]:
-        if args.num_layers == parallel_instance["num_layers"] \
-                and args.pipeline_model_parallel_size == parallel_instance["pipeline_model_parallel_size"] \
-                and args.tensor_model_parallel_size == parallel_instance["tensor_model_parallel_size"] \
-                and args.save_memory_ratio == parallel_instance["ratio"]:
-            return parallel_instance["num_layer_list"], parallel_instance["recompute_module_list"], parallel_instance[
-                "recompute_type"]
+        if (
+            args.num_layers == parallel_instance["num_layers"]
+            and args.pipeline_model_parallel_size == parallel_instance["pipeline_model_parallel_size"]
+            and args.tensor_model_parallel_size == parallel_instance["tensor_model_parallel_size"]
+            and args.save_memory_ratio == parallel_instance["ratio"]
+        ):
+            return (
+                parallel_instance["num_layer_list"],
+                parallel_instance["recompute_module_list"],
+                parallel_instance["recompute_type"],
+            )
     return None, None, None
 
 
 def check_skip_profiling(args, config_file):
     if os.path.exists(config_file):
-        with open(config_file) as config_json:
+        with open(config_file, encoding="utf-8") as config_json:
             config_contents = config_json.read()
         parsed_contents = json.loads(config_contents)
         index = check_equal_model_configs(args, parsed_contents)
         if index != -1:
-            num_layer_list, recompute_module_list, recompute_type = check_equal_parallel_configs(args,
-                                                                                                 parsed_contents[index])
+            num_layer_list, recompute_module_list, recompute_type = check_equal_parallel_configs(
+                args, parsed_contents[index]
+            )
             if num_layer_list:
                 return True, [(num_layer_list, recompute_module_list, (0, [0]), recompute_type)]
     return False, None
@@ -274,27 +287,35 @@ def initialize_cfg_from_args_wrapper(initialize_cfg_from_args):
     @wraps(initialize_cfg_from_args)
     def wrapper(*args, **kwargs):
         from mindspeed.core import training as mc_training
+
         argument = get_args()
-        disable_mc2 = argument.automated_pipeline and not mc_training.policy
+        disable_mc2 = argument.automated_pipeline and not mc_training.POLICY
         if not disable_mc2:
             initialize_cfg_from_args(*args, **kwargs)
+
     return wrapper
 
 
-def autopipeline_profiling(model_provider, model_type, forward_step_func, train_valid_test_dataset_provider,
-                           process_non_loss_data_func, args):
+def autopipeline_profiling(
+    cfg_container,
+    model_provider,
+    model_type,
+    forward_step_func,
+    train_valid_test_dataset_provider,
+    process_non_loss_data_func,
+    args,
+):
     is_skip, policy = check_skip_profiling(args, config_file="autopipeline_config.json")
     if not is_skip:
-        initialize_megatron(extra_args_provider=None,
-                            args_defaults={'tokenizer_type': 'GPT2BPETokenizer'})
+        if getattr(args, 'tokenizer_type', None) is None:
+            args.tokenizer_type = cfg_container.tokenizer.tokenizer_type or 'GPT2BPETokenizer'
+        initialize_megatron()
         set_jit_fusion_options()
         global _TRAIN_START_TIME
         start_time_tensor = torch.cuda.DoubleTensor([_TRAIN_START_TIME])
-        torch.distributed.all_reduce(start_time_tensor,
-                                     op=torch.distributed.ReduceOp.MIN)
+        torch.distributed.all_reduce(start_time_tensor, op=torch.distributed.ReduceOp.MIN)
         _TRAIN_START_TIME = start_time_tensor.item()
-        print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(
-            time.time() - _TRAIN_START_TIME))
+        print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(time.time() - _TRAIN_START_TIME))
         print_datetime('after megatron is initialized')
         args = get_args()
         pipelining = get_auto_pipeline(args)
@@ -309,13 +330,13 @@ def autopipeline_profiling(model_provider, model_type, forward_step_func, train_
             valid_data_iterator = []
             for i in range(len(models)):
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
-                iterators = training.build_train_valid_test_data_iterators(
-                    train_valid_test_dataset_provider)
+                iterators = training.build_train_valid_test_data_iterators(train_valid_test_dataset_provider)
                 train_data_iterator.append(iterators[0])
                 valid_data_iterator.append(iterators[1])
         else:
             train_data_iterator, valid_data_iterator, _ = training.build_train_valid_test_data_iterators(
-                train_valid_test_dataset_provider)
+                train_valid_test_dataset_provider
+            )
         if isinstance(models, list):
             for model in models:
                 pipelining.register_recursive_hook("module", model, pipelining.context)
@@ -324,8 +345,17 @@ def autopipeline_profiling(model_provider, model_type, forward_step_func, train_
         pipelining.get_modules_params_by_stages(init_memory, sync=True)
         set_recompute_mode(models)
         checkpointing_context = {}
-        training.train(forward_step_func, models, optimizer, lr_scheduler, train_data_iterator, valid_data_iterator,
-                       process_non_loss_data_func, config, checkpointing_context)
+        training.train(
+            forward_step_func,
+            models,
+            optimizer,
+            lr_scheduler,
+            train_data_iterator,
+            valid_data_iterator,
+            process_non_loss_data_func,
+            config,
+            checkpointing_context,
+        )
         pipelining.get_comm_time(config, sync=True)
 
         timers = get_timers()

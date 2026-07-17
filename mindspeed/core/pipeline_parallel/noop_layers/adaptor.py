@@ -87,7 +87,7 @@ def mindspeed_build_layers(transformer: TransformerBlock):
     )
 
 
-def mindspeed_calc_flop(args: Namespace, batch_size: int) -> float:
+def mindspeed_calc_flop(args: Namespace, batch_size: int, *flop_args, **flop_kwargs) -> float:
     """Adaptor to calculate floating points of operations
     by using megatron dependency.
 
@@ -99,11 +99,7 @@ def mindspeed_calc_flop(args: Namespace, batch_size: int) -> float:
         float: Total number of  floating points of operations
         by considering noop transformer layers.
     """
-    return calc_flop(
-        func=origin_flop_calculator,
-        args=args,
-        batch_size=batch_size,
-    )
+    return calc_flop(origin_flop_calculator, args, batch_size, *flop_args, **flop_kwargs)
 
 
 def mindspeed_track_moe_metrics(

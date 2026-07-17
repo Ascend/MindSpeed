@@ -19,8 +19,6 @@ class ReuseFP32Param(MindSpeedFeature):
         self.incompatible_check(args, 'enable_zero3')
         self.dependency_check(args, 'bf16')
 
-        if args.reuse_fp32_param and args.use_legacy_models and args.overlap_param_gather:
-            raise AssertionError('In legacy, `overlap_param_gather` does not support `reuse_fp32_param`.')
         if args.reuse_fp32_param and args.optimizer_selection == 'fused_ema_adamw':
             raise AssertionError('fused_ema_adamw optimizer is not compatible with reuse_fp32_param')
 
