@@ -23,7 +23,7 @@ state['exp_avg_sq'] = torch_npu.empty_with_swapped_memory(p.size(), device=p.dev
 
 下图为图示对比说明：
 
-![Alt text](../figures/virtual-optimizer.png)
+![virtual-optimizer](../figures/virtual-optimizer.png)
 
 **优势分析**
 

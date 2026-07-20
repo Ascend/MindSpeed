@@ -6,7 +6,7 @@
 
 ## 解决方案
 
-令每个DP rank只含参数的分片，在每一块权重前向前，在DP域内做All Gather，前向结束后释放得到的权重，仅保留分片。在反向前先All Gather，获得完整的权重，反向后做Reduce Scatter，对所有DP rank的梯度进行加和，同时只保留该DP rank对应的部分分片。
+令每个DP rank只含参数的分片，在每一块权重前向传播前，在DP域内做All Gather，前向结束后释放得到的权重，仅保留分片。在反向前先All Gather，获得完整的权重，反向后做Reduce Scatter，对所有DP rank的梯度进行加和，同时只保留该DP rank对应的部分分片。
 
 ## 使用场景
 
@@ -35,4 +35,4 @@
 
 > [!NOTE]
 >
-> MindSpeed适配该特性基本功能，不建议与仓内其他特性组合，使用方法请[参考脚本](../../../tests_extend/system_tests/feature_tests/custom_fsdp.sh)。
+> MindSpeed适配该特性的基本功能，不建议与仓内其他特性组合，使用方法请[参考脚本](../../../tests_extend/system_tests/feature_tests/custom_fsdp.sh)。

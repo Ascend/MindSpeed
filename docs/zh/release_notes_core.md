@@ -11,7 +11,7 @@
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>产品版本</p>
 </th>
-<td class="cellrowborder" valign="top" width="73.75%" headers=><p>26.1.0_core_r0.12.1</p>
+<td class="cellrowborder" valign="top" width="73.75%"><p>26.1.0_core_r0.12.1</p>
 </td>
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>版本类型</p>

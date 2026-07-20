@@ -20,7 +20,7 @@
 
 | 重要参数                | 参数说明         | 是否必选 | 默认值 |
 |------------------------|-----------------|---------|----------|
-| --cp-window-size [int] | 控制双层Ring Attention的内层窗口大小。值为1时使用原始算法，值大于1时使用Double Ring Attention算法，优化原始Ring Attention性能。要求cp_size必须能被该参数整除。 | 否 | 1 |
+| --cp-window-size [int] | 控制双层Ring Attention的内层窗口大小。值为1时使用原始算法，值大于1时使用Double Ring Attention算法，优化原始Ring Attention性能。要求--context-parallel-size必须能被该参数整除。 | 否 | 1 |
 
 ## 使用效果
 

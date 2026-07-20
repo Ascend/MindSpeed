@@ -59,7 +59,7 @@ ATB安装方法：
 --coc-fused-kernel # 注意：当前只支持TP=8的场景！
 ```
 
-融合算子的环境变量拥有更高优先级，即当 coc-parallel-num > 1 且 使能coc-fused-kernel时，前者不会生效。
+融合算子方式拥有更高优先级，即当同时设置`--coc-parallel-num`和`--coc-fused-kernel`时，将采用融合算子实现，`--coc-parallel-num`参数不生效。
 
 ## CFG自定义方法
 

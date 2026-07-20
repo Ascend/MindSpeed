@@ -12,7 +12,7 @@
 为了应对这些挑战，开发了一系列优化措施：
 
 - 多参数传递：开发了一套高效的通信机制，支持多种类型和格式的数据传输，并改进了反向传播算法，使得系统可以自动识别并处理来自多个输出的梯度信息。
-- 动态形状：引入对动态形状的支持，允许每个微批次中的序列保持其原始长度。这样可以通过在发送张量之前，提前通信张量的形状信息，在各个流水线阶段之间同步即将接收的数据形状，确保内存分配和预处理的准确性 。
+- 动态形状：引入对动态形状的支持，允许每个微批次中的序列保持其原始长度。这样可以通过在发送张量之前，提前通信张量的形状信息，在各个流水线阶段之间同步即将接收的数据形状，确保内存分配和预处理的准确性。
 
 ## 使用场景
 
@@ -23,7 +23,7 @@
 
 > [!NOTE]
 >
-> - 用户需修改`mindspeed/features_manager/pipeline_parallel/multi_parameter.py`模块中`validate_args`函数里`args.pipeline_tensor_shapes`值与实际模型流水线阶段的张量传输一致，包括张量维度（Shape）和数据类型（Dtype）。
+> - 用户需修改`mindspeed/features_manager/pipeline_parallel/multi_parameter.py`模块中`validate_args`函数里`args.pipeline_tensor_shapes`值，使其与实际模型流水线阶段的张量传输一致，包括张量维度（Shape）和数据类型（Dtype）。
 > - 暂不兼容`--moe-fb-overlap`和dualpipev特性。
 
 启用支持多参数传递和动态形状，需要在训练脚本中加入以下参数：

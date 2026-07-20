@@ -67,7 +67,7 @@ Llama3-8B 训练的硬件配置:
 
    4.1 准备数据集
 
-   下载 LLaMA3-8B [数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/blob/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)
+   下载 Llama-3-8b [数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/blob/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)
 
    ```shell
      # 下载数据
@@ -101,7 +101,7 @@ Llama3-8B 训练的硬件配置:
     TOKENIZER_MODEL="./model_from_hf/llama-3-8b-hf/"  #词表路径
    ```
    
-   启动 LLaMA3-8B 预训练脚本: examples/pretrain_llama3_8b_ptd.sh
+   启动 Llama-3-8b 预训练脚本: examples/pretrain_llama3_8b_ptd.sh
 
    ```shell
     bash examples/pretrain_llama3_8b_ptd.sh
@@ -111,9 +111,9 @@ Llama3-8B 训练的硬件配置:
 
 #### 吞吐
 
-LLaMA3-8B 在 **昇腾芯片** 和 **参考芯片** 上的性能对比：
+Llama-3-8b 在 **昇腾芯片** 和 **参考芯片** 上的性能对比：
 
 | 设备 |   模型   | 迭代数 | tokens吞吐 (tokens/s/p) |
 | :--: | :-------: | :----: | :---------------------: |
-| NPUs | LLaMA3-8B |  1000  |        2474         |
-| 参考 | LLaMA3-8B |  1000  |        2665          |
+| NPUs | Llama-3-8b |  1000  |        2474         |
+| 参考 | Llama-3-8b |  1000  |        2665          |

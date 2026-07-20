@@ -12,7 +12,7 @@
 
 为了方便理解，以下图为例：假设输入$X$的大小为$ s \times b \times h $，按照序列维度切分$X=[X_1^s,X_2^s]$，经过LayerNorm操作后的结果为$Y=[Y_1^s,Y_2^s]$，随后进行张量模型并行。
 
-<p align="left"> <img src="../figures/sequence-parallel.png" height="200px" width="530px" style="display:block;"> </p>
+<p align="left"> <img src="../figures/sequence-parallel.png" height="200px" width="530px" style="display:block;" alt="序列并行示意图"> </p>
 
 具体细节请参见文献[Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/pdf/2205.05198)。
 

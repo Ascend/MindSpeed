@@ -68,14 +68,14 @@ flowchart TD
 详细计算逻辑如下：
 
 **N**：代表模型该部分的参数量。
-**分母 (19N 静态显存大盘)**：包含 优化器状态与梯度 (16N) + 原始 BF16 权重 (2N) + FP8 量化缓存权重 (1N)。
-**分子 (2N 显存净收益)**：被成功切除并释放的 BF16 物理显存。
+**分母(19N 静态显存大盘)**：包含优化器状态与梯度(16N)、原始BF16权重(2N)、FP8量化缓存权重(1N)。
+**分子(2N 显存净收益)**：被成功切除并释放的 BF16 物理显存。
 
 （以下为各场景实测数据验证：）
 
 ### 5.1 Qwen3-32B 模型测试 （2 层验证）
 
-- **配置**：Dense 模型，2 层。BF16 显存收益理论 为 0.75B * 2 约为 1.5GB（由于其他不可量化参数与对齐机制，实际略大）。
+- **配置**：Dense 模型，2 层。BF16 显存收益理论为 0.75B * 2 约为 1.5GB（由于其他不可量化参数与对齐机制，实际略大）。
 
 Number of parameters in transformer block in billions:  0.75
 Number of parameters in embedding layers in billions: 1.24
@@ -86,7 +86,7 @@ Number of parameters in embedding layers in billions: 1.24
   - **显存净收益**：**1.86 GB**
 - **结果**：Loss 对齐，显存收益符合预期。
 
-### 5.2 Qwen3-32B 模型分布式测试 （4 卡 TP=4, 6 层）
+### 5.2 Qwen3-32B 模型分布式测试（4 卡 TP=4, 6 层）
 
 - **配置**：Dense 6 层，张量并行 TP=4。总参数 2.93B。BF16 显存收益理论为 2.93*2约为5.8GB
 - **实测数据**：
@@ -95,9 +95,9 @@ Number of parameters in embedding layers in billions: 1.24
   - **单卡显存净收益**：**1.4 GB** (集群总计收益 5.6 GB)。
 - **结果**：TP 切分下显存收益符合预期。
 
-### 5.3 Qwen3-30B 模型测试 （2 卡 EP=2, 2 层）
+### 5.3 Qwen3-30B 模型测试（2 卡 EP=2, 2 层）
 
-- **配置**：MoE 模型，2 层，专家并行 EP=2。单卡负责 8 个 Expert。BF16 显存收益理论 为 0.75 * 2 约为 1.5GB
+- **配置**：MoE 模型，2 层，专家并行 EP=2。单卡负责 8 个 Expert。BF16 显存收益理论为 0.75 * 2 约为 1.5GB
 - **实测数据**：
   - 优化前单卡峰值：`max_allocated: 41519.62 MB`
   - 优化后单卡峰值：`max_allocated: 40671.62 MB`

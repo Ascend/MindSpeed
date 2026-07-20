@@ -5,12 +5,12 @@
 ### 1. MindSpeed 安装
 
 按照 MindSpeed 文档，安装对应依赖。
-> <https://gitcode.com/Ascend/MindSpeed#%E5%AE%89%E8%A3%85>
+> 参见[MindSpeed安装指导](install_guide.md)
 
 ### 2. Verl 安装
 
 按照 Verl 文档，安装对应依赖：
-> <https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/get_start/quick_start.rst>
+> 参见[verl安装指导](https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/get_start/quick_start.rst)
 > 注：若使用的CANN版本高于8.3.RC1，vllm和vllm-ascend安装版本须大于等于0.9.1，0.9.1版本vllm安装可参考：<https://docs.vllm.ai/projects/vllm-ascend-cn/zh-cn/latest/installation.html>
 
 ## 使能 MindSpeed 后端

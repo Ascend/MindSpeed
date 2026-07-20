@@ -41,6 +41,6 @@
 
 > [!NOTE]
 >
-> * 使用legacy model训练时，`reuse_fp32_param`暂不支持和`--overlap-param-gather`一起使用。
-> * 使用fused_ema_adamw优化器时，不支持同时开启`reuse_fp32_param`参数。
+> * 使用legacy model训练时，`--reuse-fp32-param`暂不支持和`--overlap-param-gather`一起使用。
+> * 使用fused_ema_adamw优化器时，不支持同时开启`--reuse-fp32-param`参数。
 > * 断点续训场景下，不支持修改切分方式及卡数。

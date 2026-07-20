@@ -10,14 +10,14 @@
 
 ## 使用方法
 
-设置`--moe-grouped-gemm`: 表示开启Grouped GEMM计算。支持MoE allgather、alltoall及alltoall_seq dispatcher。
+设置`--moe-grouped-gemm`：表示开启Grouped GEMM计算。支持MoE allgather、alltoall及alltoall_seq dispatcher。
 
 ## 使用效果
 
 典型场景：
 
-- EP变小导致单卡专家数量增大 & DeepSeek MoE专家数量较多等场景。
-- DeepSeek MoE finegrained expert单个专家较小 & FFN规模不大 & TP变大导致单卡切分的计算变小。
+- EP变小导致单卡专家数量增大、DeepSeek MoE专家数量较多等场景。
+- DeepSeek MoE fine-grained expert单个专家较小、FFN规模不大、TP变大导致单卡切分的计算变小。
 
 - 随着FFN规模提升，计算不再细碎，单专家计算效率提升，Grouped GEMM收益变小。
 
@@ -56,8 +56,8 @@ y = npu_gmm(x, weight, bias=None, group_list=None, group_type=0, gemm_fusion=Fal
     - bias：可选输入，为tensor，数据类型float16，float32，默认值为None。训练场景下，仅支持bias为None。
     - group_list：可选输入，数据类型list[int64]，tensor，默认值为None。
     - group_type：可选输入，数据类型int64，代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则group_type取值-1：不分组，0：m轴分组，1：n轴分组，2：k轴分组，默认值为0。
-    - gemm_fusion:可选输入，为bool，数据类型True，False，用于反向累加梯度的时候开启GMM+ADD融合算子，默认值为False。
-    - original_weight:可选输入，为tensor，数据类型float16，bfloat16，float32，用于获取view之前的weight的main_grad用于GMM+ADD中梯度累加功能，默认值为None。
+    - gemm_fusion：可选输入，数据类型为bool，取值True/False，用于反向累加梯度的时候开启GMM+ADD融合算子，默认值为False。
+    - original_weight：可选输入，为tensor，数据类型float16，bfloat16，float32，用于获取view之前的weight的main_grad用于GMM+ADD中梯度累加功能，默认值为None。
 - 输出：
     - y：必选输出，数据类型float16，bfloat16，float32。
 

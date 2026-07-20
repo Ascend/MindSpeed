@@ -6,7 +6,7 @@
 npu_apply_fused_adamw_v2(var, grad, m, v, max_grad_norm, step, lr, beta1, beta2, weight_decay, eps, amsgrad, maximize)
 ```
 
-npu_apply_fused_adamw_v2接口用于更新adamw优化器中的var(模型参数), m(一阶矩动量), v(二阶矩动量),max_grad_norm(训练过程中最大的二阶矩动量)这四个参数。<br>
+npu_apply_fused_adamw_v2接口用于更新adamw优化器中的var(模型参数)，m(一阶矩动量)，v(二阶矩动量)，max_grad_norm(训练过程中最大的二阶矩动量)这四个参数。<br>
 
 ```python
 import math

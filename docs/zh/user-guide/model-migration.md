@@ -409,7 +409,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     TypeError: 'type' object is not subscriptable.
     ```
 
-    则需升级python到3.9及以上版本。
+    则需升级Python到3.9及以上版本。
 
     **后续处理**
 
@@ -504,7 +504,7 @@ GPT_ARGS="
     --use-checkpoint-opt_param-scheduler
 "
 
-#数据集配置
+# 数据集配置
 DATA_ARGS="
     --data-path $DATA_PATH \
     --vocab-file $VOCAB_FILE \

@@ -37,4 +37,4 @@ local_hidden_states = torch.gather(global_hidden_states, 0, self.global_local_ma
 
 ## 使用效果
 
-根据实际测试数据显示，类DeepSeek-V2十亿参数级别的MoE模型，采用上述优化措施后，端到端训练过程中的性能提升了约10%。这意味着不仅加快了模型收敛速度，同时也降低了达到相同精度水平所需的计算资源消耗。
+根据实际测试数据显示，类DeepSeek-V2的MoE模型，采用上述优化措施后，端到端训练吞吐提升约10%，相同训练步数下的墙钟时间相应缩短。

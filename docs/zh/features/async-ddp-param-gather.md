@@ -8,17 +8,17 @@
 
 为解决上述问题，引入了计算与通信任务的并行执行策略，通过流水线技术来实现计算与通信的流水掩盖，有效提升资源利用率。以下是三种方案的对比：
 
-**a. 仅启用分布式优化器，即仅打开 `--use-distributed-optimizer`**
+**a. 仅启用分布式优化器，即仅打开`--use-distributed-optimizer`**
 
 在前向与反向计算结束后，将进行独立的通信阶段，包括梯度的reduce-scatter、权重计算以及权重的all-gather，如下图所示。获取更新后的权重后，系统将进入下一轮的前向计算阶段。
 <p align="center"> <img src="../figures/async_ddp_param_gather_a.png" height="350px" width="880px" style="display:block;"></p>
 
-**b. 同时启用分布式优化器与梯度通信重叠,即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce`**
+**b. 同时启用分布式优化器与梯度通信重叠，即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce`**
 
 在打开`--use-distributed-optimizer`的同时打开`--overlap-grad-reduce`，运行流程如下图所示。对梯度的reduce-scatter过程与反向计算过程并行，从而避免了额外的reduce-scatter时间，显著提高了计算与通信的并行效率，如下图所示。
 <p align="center"> <img src="../figures/async_ddp_param_gather_b.png" height="350px" width="880px" style="display:block;"></p>
 
-**c. 启用分布式优化器、梯度通信重叠与参数聚合重叠，即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce` 和 `--overlap-param-gather`**
+**c. 启用分布式优化器、梯度通信重叠与参数聚合重叠，即打开`--use-distributed-optimizer`、`--overlap-grad-reduce`和`--overlap-param-gather`**
 
 在打开`--use-distributed-optimizer`和`--overlap-grad-reduce`的基础上进一步打开`--overlap-param-gather`，运行流程如下图所示，对权重的all-gather过程与下一轮的前向计算并行，从而节省了单独的all-gather过程。
 <p align="center"> <img src="../figures/async_ddp_param_gather_c.png" height="350px" width="880px" style="display:block;"></p>
@@ -37,7 +37,7 @@
     --overlap-param-gather
     ```
 
-2. 确保同时开启了以下两个参数:
+2. 确保同时开启了以下两个参数：
 
     ```bash
     --use-distributed-optimizer

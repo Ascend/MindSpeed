@@ -2,7 +2,7 @@
 
 ## 系统安全加固
 
-- 用户可在运行系统配置时开启 ASLR（级别2）以提高系统安全性，保护系统随机化开启。
+- 用户可在运行系统配置时开启 ASLR（级别2）以提高系统安全性，开启系统随机化保护。
 可参考以下方式进行配置：
 
   ```bash
@@ -11,7 +11,7 @@
 
 ## 运行用户建议
 
-- 基于安全性考虑，建议您在执行任何命令时，不建议使用root等管理员类型账户执行，遵循权限最小化原则。
+- 基于安全性考虑，建议您在执行任何命令时，避免使用root等管理员类型账户执行，遵循权限最小化原则。
 
 ## 文件权限控制
 
@@ -19,7 +19,7 @@
 - 建议用户对训练所需文件、训练过程中保存的文件、用户个人的隐私数据、商业资产等敏感文件做好权限控制等安全措施，例如多用户共享数据集场景下的数据集文件写权限控制等，设定的权限建议参考表1进行设置。
 - MindSpeed 中各类融合算子通过调用 PyTorch 中的 cpp_extension 特性进行编译，编译结果会默认缓存到 `~/.cache/torch_extensions` 目录下，建议用户根据自身需要，参考表1对生成文件做好权限控制。
 - 原生 Megatron-LM 以及 PyTorch 框架运行中所生成的文件权限依赖系统设定，如 Megatron-LM 生成的数据集索引文件、torch.save 接口保存的文件等。建议当前执行脚本的用户根据自身需要，对生成文件做好权限控制，设定的权限可参考表1进行设置。
-- 用户安装和使用过程需要做好权限控制，建议参考表1进行设置。如需要保存安装/卸载日志，可在安装/卸载命令后面加上参数 `--log <FILE>`， 注意对`<FILE>`文件及目录做好权限管控。
+- 用户安装和使用过程需要做好权限控制，建议参考表1进行设置。如需要保存安装/卸载日志，可在安装/卸载命令后面加上参数`--log <FILE>`，注意对`<FILE>`文件及目录做好权限管控。
 
 ### 表1 文件（夹）各场景权限管控推荐最大值
 
@@ -79,7 +79,7 @@
 |  开源引入  |                          <https://github.com/ofirpress/attention_with_linear_biases>                          |                   docs/zh/features/alibi.md                   |           <https://arxiv.org/pdf/2108.12409>                                           |                 alibi说明文档                 |
 |  开源引入  |                                    <https://github.com/NVIDIA/Megatron-LM>                                    |             docs/zh/features/sequence-parallel.md             |           <https://arxiv.org/pdf/2205.05198>                                                |           sequence-parallel说明文档           |
 |  开源引入  |                                    <https://github.com/NVIDIA/Megatron-LM>                              |             docs/zh/features/pipeline-parallel.md             |            <https://arxiv.org/pdf/1806.03377>             |           pipeline-parallel说明文档           |
-|  开源引入  |                               <https://github.com/NVIDIA/Megatron-LM/pull/598>                                |                  docs/zh/faq/data_helpers.md                  |            <https://github.com/NVIDIA/Megatron-LM/pull/598>                 |             data_helpers说明文档              |
+|  开源引入  |                               <https://github.com/NVIDIA/Megatron-LM/pull/598>                                |            docs/zh/FAQ.md#data-helpers-overflow-bug            |            <https://github.com/NVIDIA/Megatron-LM/pull/598>                 |             data_helpers说明文档              |
 |  开源引入  |                              <https://pytorch.org/docs/stable/distributed.html>                               |              mindspeed/core/parallel_state.py              |                       <https://pytorch.org/docs/stable/distributed.html>                       |         torch.distributed相关接口注意事项         |
 |  开源引入  |                              <https://github.com/pytorch/pytorch/pull/40762>                               |                   mindspeed/moe/utils.py                   |                    <https://github.com/pytorch/pytorch/pull/40762>                      |              _AllToAll自动反向参考              |
 |  开源引入  |                           <https://github.com/NVIDIA/Megatron-LM>                            |          mindspeed/optimizer/distrib_optimizer.py          |      <https://github.com/NVIDIA/Megatron-LM/blob/main/docs/user-guide/features/dist_optimizer.md>      | distributed_optimizer_zero3_init文档字符串参数说明 |
@@ -117,7 +117,7 @@
 |-------------------------------------| ------------------------------------------------ | ---------- | ---------- |
 | 用户下载并使用HuggingFace的开源数据集            | 调用`load_dataset`函数，并填写目标开源数据集路径 | 随机端口     | 数据集可能包含敏感或不合法内容，导致合规问题。数据集中可能存在质量问题，如标签错误或数据偏差，影响数据预处理。|
 | 用户通过nltk.download下载语料库            | 用户在代码内部使用nltk.download来实现语料库的下载 | 随机端口     | 文件来源若不可信，在文件加载时可能存在反序列化漏洞，导致文件被篡改。|
-| 用户通过nltk.load加载数据            | 用户在代码内部使用nltk.load来实现语料库数据的加载 | 随机端口     | 底层可能调用pickle模块，存在反序列化漏洞，若数据来源不可信，存在潜在安全风险 |
+| 用户通过nltk.load加载数据            | 用户在代码内部使用nltk.load加载语料库数据 | 随机端口     | 底层可能调用pickle模块，存在反序列化漏洞，若数据来源不可信，存在潜在安全风险 |
 | 使用`from_pretrained`信任特定代码，使用相关模型的实现 | 调用`from_pretrained`函数，设置`trust_remote_code=True` | 随机端口   | 如果trust_remote_code=True，下载的代码可能包含恶意逻辑或后门，威胁系统安全。但同时已设置local_files_only=True，程序仅会运行本地的文件来规避风险。   |
 | 调用auto_settings进行训练任务时，新增端口           | torchrun拉起训练端口 auto_settings通过此端口指定MindSpeed拉起特定配置采集Profiling信息 | [1024, 65535]内 |业务需要，无风险     |
 | 使用MindSpeed master分支进行训练任务时，新增48个端口           | MindSpeed 调用 Megatron 原生函数 `mpu.initialize_model_parallel` 来初始化模型并行组，并通过使用 PyTorch 分布式训练相关的 API 来启动任意任务。| [1024,65535]内  | 网络配置错误可能引发端口冲突或连接问题，影响训练效率。       |

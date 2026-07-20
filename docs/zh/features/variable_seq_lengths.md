@@ -30,7 +30,7 @@
 
 ```bash
 # 开启流水线并行, PP >= 2
---pipeline-model-parallel-size ${PP} \
+--pipeline-model-parallel-size ${PP}
 # 开启PP支持动态形状
 --variable-seq-lengths
 ```
