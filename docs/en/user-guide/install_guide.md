@@ -20,9 +20,9 @@ This document explains how to quickly install MindSpeed Core, the LLM training a
 >
 > The "√" in the table indicates support, and "x" indicates no support.
 
-- For the OSs supported by each hardware product in physical machine deployment scenarios, see the [Compatibility Query Assistant](https://www.hiascend.com/hardware/compatibility).
+<!-- - For the OSs supported by each hardware product in physical machine deployment scenarios, see the [Compatibility Query Assistant](https://www.hiascend.com/hardware/compatibility).
 
-- For the OSs supported by each hardware product in VM and container deployment scenarios, see the "OS Compatibility" section in [CANN Software Installation](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/softwareinst/instg/instg_0000.html) for the community edition.
+- For the OSs supported by each hardware product in VM and container deployment scenarios, see the "OS Compatibility" section in [CANN Software Installation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/softwareinst/instg/instg_0000.html) for the community edition. -->
 
 ## Preparation Before Installation
 
@@ -106,7 +106,7 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
 
 1. Install CANN.
 
-   Install the matching NPU driver firmware and CANN software, including Toolkit, ops, and NNAL, and configure the CANN environment variables. For details, see  [CANN Software Installation](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/softwareinst/instg/instg_0000.html) for the community edition.
+   Install the matching NPU driver firmware and CANN software, including Toolkit, ops, and NNAL, and configure the CANN environment variables. For details, see  [CANN Software Installation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/softwareinst/instg/instg_0000.html) for the community edition.
 
    The CANN software provides a script that sets process-level environment variables. Before you run service code on an NPU in training or inference scenarios, source this script. Otherwise, the service code cannot run.
 
@@ -119,7 +119,7 @@ chmod +x Ascend-hdk-<chip_type>-npu-firmware_<version>.run
 
 2. Install PyTorch and `torch_npu`.
 
-   See [Install PyTorch](https://www.hiascend.com/document/detail/zh/Pytorch/2600/configandinstg/instg/docs/zh/installation_guide/installation_via_binary_package.md) to obtain the matching PyTorch and `torch_npu` packages.
+   See [Installing PyTorch](https://www.hiascend.com/document/detail/en/Pytorch/2600/configandinstg/instg/docs/en/installation_guide/installation_via_binary_package.md) to obtain the matching PyTorch and `torch_npu` packages.
    Use the following installation commands:
 
    ```shell

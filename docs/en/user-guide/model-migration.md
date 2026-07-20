@@ -43,7 +43,7 @@ This manual provides an end-to-end guide for the Megatron-LM model migration. Fo
 
 The main process for model migration based on Megatron-LM is as follows.
 
-![procedure](../figures/model-migration-procedure.png)
+![procedure](../figures/model-migration-procedure_en.png)
 
 ## Model Selection
 

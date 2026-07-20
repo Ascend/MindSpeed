@@ -22,7 +22,7 @@ The detailed logic of the numerical transformation is shown in the following fig
 
 ### Figure 2 Numerical transformation logic
 
-<p align="center"> <img src="../figures/reuse_fp32_param_b.png" height="400px" width="750px"></p>
+<p align="center"> <img src="../figures/reuse_fp32_param_b_en.png" height="400px" width="750px"></p>
 
 ## Application Scenario
 

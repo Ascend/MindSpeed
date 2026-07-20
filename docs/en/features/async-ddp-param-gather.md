@@ -21,7 +21,7 @@ When enabling `--use-distributed-optimizer` and `--overlap-grad-reduce` simultan
 ### c. Enable the distributed optimizer, gradient communication overlapping, and parameter aggregation overlapping, `--use-distributed-optimizer`, `--overlap-grad-reduce`, and `--overlap-param-gather`
 
 With `--use-distributed-optimizer` and `--overlap-grad-reduce` enabled, further enabling `--overlap-param-gather` results in the execution flow shown below. The all-gather process for weights is parallelized with the forward computation of the next iteration, thereby saving the time of a separate all-gather process.
-<p align="center"> <img src="../figures/async_ddp_param_gather_c.png" height="350px" width="880px"></p>
+<p align="center"> <img src="../figures/async_ddp_param_gather_c_en.png" height="350px" width="880px"></p>
 
 A comparison of the above flows reveals that after enabling --overlap-param-gather, communication and computation are fully parallelized, greatly improving computation-communication parallel efficiency and thus enhancing model training efficiency.
 

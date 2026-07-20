@@ -14,7 +14,7 @@ Quantize and compress the data stored in the optimizer to low precision respecti
 2. Quantize gradients to half-precision FP16, reducing gradient memory usage.
 3. Adapt the existing parameter copy reuse algorithm to reduce parameter copy memory usage.
 
-![Low Precision Optimizer Diagram](../figures/low_precision_optimizer.png)
+![Low Precision Optimizer Diagram](../figures/low_precision_optimizer_en.png)
 
 Before the optimizer updates parameters, the quantized data must first be dequantized to FP32 to ensure computational accuracy. After the update is complete, it is quantized back to low precision. The computation workflow is shown in the following diagram:
 

@@ -152,4 +152,4 @@ python pretrain_gpt.py \
 
 ## Usage Effects
 
-![2](../figures/auto_parallel_2.png)
+![2](../figures/auto_parallel_2_en.png)

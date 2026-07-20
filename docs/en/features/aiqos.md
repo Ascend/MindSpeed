@@ -4,7 +4,7 @@
 
 For AI large model training, hybrid parallel methods are commonly used for distributed training. Taking the MoE large model as an example, a hybrid parallel strategy combining TP (Tensor Parallel), EP (Expert Parallel), DP (Data Parallel), and PP (Pipeline Parallel) is adopted. Traffic from the parallel strategy undergoes NPU-to-NPU (D2D) communication within the super node through the UB network.
 Under different model sharding and model configurations, various types of traffic conflicts exist within the super node, including conflicts between D2D (such as TP and EP) traffic, as well as between H2D traffic (such as Swap) and D2D traffic. As shown in Figure 1, incast network conflicts occur at the UB Switch, causing network congestion and affecting overall communication performance.
-![image](../figures/aiqos1.png)
+![image](../figures/aiqos1_en.png)
 <div align="center">
 
 Figure 1 Traffic conflicts of different traffic types
@@ -18,7 +18,7 @@ When different types of traffic conflict, virtual channels (VLs) can be used at 
 
 2. Differentiated scheduling between different traffic types
 
-![image](../figures/aiqos2.png)
+![image](../figures/aiqos2_en.png)
 
 <div align="center">
 Figure 2 A typical QoS scheduling method — SP scheduling
@@ -41,7 +41,7 @@ This feature provides two enablement methods:
 Note: Due to underlying capabilities, H2D traffic only supports channel-level overall QoS priority and does not yet support operator-level QoS priority. That is, it only supports QoS priority differentiation between H2D traffic and other traffic such as D2D, and does not support QoS priority differentiation between different operators within H2D traffic.
 The overall solution architecture is shown in Figure 3:
 
-![image](../figures/aiqos3.png)
+![image](../figures/aiqos3_en.png)
 <div align="center">
 Figure 3 AI QoS differentiated scheduling solution architecture
 </div>
