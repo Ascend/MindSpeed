@@ -27,6 +27,7 @@ from mindspeed.features_manager.megatron_basic.megatron_basic import MegatronBas
 from mindspeed.features_manager.megatron_basic.transformer_engine_basic import TransformerEngineBasicFeature
 from mindspeed.features_manager.optimizer.muon_optimizer_feature import MuonOptimizerFeature
 from mindspeed.features_manager.qat.qat_quant_engine import QATQuantEngineFeature
+from mindspeed.features_manager.qad.qad_quant_engine import QADQuantEngineFeature
 from mindspeed.features_manager.pipeline_parallel import NoopLayersFeature
 from mindspeed.features_manager.pipeline_parallel import PipelineModelParallelLayoutFeature
 from mindspeed.features_manager.pipeline_parallel.optimize_p2p_comm import OptimizeP2PCommFeature
@@ -365,6 +366,14 @@ def add_ttp_feature(features_list: List[MindSpeedFeature]):
     features_list.append(TTPFeature())
 
 
+def add_qad_features(features_list: List[MindSpeedFeature]):
+    features_list.extend(
+        [
+            QADQuantEngineFeature(),
+        ]
+    )
+
+
 def create_features_list():
     features_list = []
     add_megatron_basic_features(features_list)
@@ -396,6 +405,7 @@ def create_features_list():
     add_aiqos_feature(features_list)
     add_qat_features(features_list)
     add_ttp_feature(features_list)
+    add_qad_features(features_list)
     return features_list
 
 
