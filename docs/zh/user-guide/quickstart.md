@@ -99,7 +99,7 @@
     |`--tokenizer-type`|tokenizer类型|
     |`--vocab-file`|tokenizer文件|
     |`--merge-file`|tokenizer文件|
-    |`--append-eod`|添加<-eod>结尾token|
+    |`--append-eod`|添加\<eod>结尾token|
     |`--log-interval`|log迭代数|
     |`--workers`|并行数|
 

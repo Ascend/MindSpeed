@@ -38,7 +38,7 @@
 
 > [!NOTE]
 >
-> * 同时配置`--recompute-activations` 、`--recompute-granularity full`时，选择性重计算生效。
+> * 同时配置`--recompute-activations`、`--recompute-granularity full`时，选择性重计算优先级更高。
 > * 当脚本配置了`--recompute-method block`、`--recompute-granularity full`、`--num-layers-per-virtual-pipeline-stage N`参数时，用户可以通过`--recompute-num-layers N`参数来配置每个vpp stage做多少层重计算，参数`--enable-recompute-layers-per-pp-rank`可用于修改此情况下`--recompute-num-layers N`参数的语义，新的语义表示无视vpp，按每个pp stage来配置重计算层数。
 > * 在legacy分支下，开启`--use-flash-attn`将无法使用选择性重计算。
 

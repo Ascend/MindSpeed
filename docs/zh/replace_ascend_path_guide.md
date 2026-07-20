@@ -144,7 +144,7 @@ MindSpeed 仓库中的 Docker 挂载配置、运行脚本等存在硬编码的 `
 
 4. 核心功能冒烟验证
 
-    参考对应模型的readme进行配置，验证训练流程可正常启动
+    参考对应模型的README进行配置，验证训练流程可正常启动
 
     ```bash
     source /usr/local/Ascend/ascend-toolkit/set_env.sh

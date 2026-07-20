@@ -6,8 +6,8 @@
 
 ## 解决方案
 
-与传统KV cache不同，MLA并不直接存储完整的key和value矩阵，而是通过一个压缩隐向量来表示key和value，借助低秩压缩技术降低KV cache。在训练中，query也会进行低秩压缩以降低激活值内存。下图对比了MLA与MHA、Grouped-Query Attention （GQA）、Multi-Query Attention（MQA）在工作机制上的区别。
-![multi-head-latent-attention.png](../figures/multi-head-latent-attention.png)
+与传统KV cache不同，MLA并不直接存储完整的key和value矩阵，而是通过一个压缩隐向量来表示key和value，借助低秩压缩技术降低KV cache。在训练中，query也会进行低秩压缩以降低激活值内存。下图对比了MLA与MHA、Grouped-Query Attention（GQA）、Multi-Query Attention（MQA）在工作机制上的区别。
+![MHA/GQA/MQA/MLA对比](../figures/multi-head-latent-attention.png)
 
 更多关于MLA的细节请参见原文[DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model](https://arxiv.org/abs/2405.04434)。
 
@@ -35,4 +35,4 @@ MLA解决了标准Transformer模型的内存瓶颈，可作为一种通用的模
 
 ## 使用效果
 
-与传统MHA相比，MLA可以显著降低KV缓存占用，同时又具有恢复key和value矩阵中全部信息的能力，特征表达能力优于其他KV cache方法（例如GQA，MQA等），保证了模型的性能。
+与传统MHA相比，MLA可以显著降低KV缓存占用，同时又具有恢复key和value矩阵中全部信息的能力，特征表达能力优于其他KV cache方法（例如GQA、MQA等），保证了模型的性能。

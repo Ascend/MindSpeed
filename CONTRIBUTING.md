@@ -1,6 +1,6 @@
 # 开发者贡献指南
 
-欢迎您参与 MindSpeed 项目的开发！本指南旨在帮助您了解如何为项目做出贡献，包括开发流程、代码规范、测试要求等。
+欢迎参与MindSpeed项目的开发！本指南旨在帮助开发者了解如何为项目做出贡献，包括开发流程、代码规范、测试要求等。
 
 ---
 
@@ -10,12 +10,12 @@
 
 在开始开发新特性前，请遵循以下流程：
 
-1. **提交 issue**：在 GitCode 上提交 issue，描述您想要实现的特性或修复的问题。
+1. **提交 issue**：在 GitCode 上提交 issue，描述想要实现的特性或修复的问题。
 2. **方案评审**：
    - 华为员工：请在 WeLink 搜索 `MindSpeed-Core PR检视群` 进行方案评审
    - 社区贡献者：通过 issue 进行公开讨论
-3. **方案设计**：编写软件方案设计文档，使用类图、序列图等软件工程语言描述整体方案和修改点，设计规范请参考[MindSpeed Core设计文档](https://gitcode.com/Ascend/MindSpeed/wiki/MindSpeedCore%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3.md)。
-4. **阅读开发规范**：仔细阅读本文档，遵守开发规范，不给自己挖坑，方便后续的维护。
+3. **方案设计**：编写软件方案设计文档，使用类图、序列图等软件工程语言描述整体方案和修改点，设计规范请参考 [MindSpeed Core设计文档](https://gitcode.com/Ascend/MindSpeed/wiki/MindSpeedCore%E8%AE%BE%E8%AE%A1%E6%96%87%E6%A1%A3.md)。
+4. **阅读开发规范**：仔细阅读本文档，遵守开发规范，避免引入技术债务，便于后续维护。
 
 ### 1.2 开发流程
 
@@ -29,7 +29,7 @@
 
 ### 2.1 特性注册
 
-- 新增特性需通过继承 `MindSpeedFeature` 类进行注册，详细说明请参考[特性开发文档](docs/zh/user-guide/feature_development.md)
+- 新增特性需通过继承 `MindSpeedFeature` 类进行注册，详细说明请参考 [特性开发文档](docs/zh/user-guide/feature_development.md)
 - 在 `mindspeed/features_manager/` 目录下按照特性维度创建文件夹
 - 特性文件应独立，功能内聚
 
@@ -125,7 +125,7 @@
 
 ### 5.4 代码检查
 
-- 遵守编程规范，Code check 屏蔽需逐行检查，禁止批量无脑申请屏蔽
+- 遵守编程规范，Code check 屏蔽需逐行检查，禁止批量随意申请屏蔽
 - 大于 500 行的提交，需要进行代码串讲与评审
 - 严格把关质量，勿犯低级错误，发现问题请尽快解决
 
@@ -166,7 +166,7 @@
 
 ---
 
-感谢您的贡献！MindSpeed 的发展离不开每一位开发者的努力。
+感谢开发者们的贡献！MindSpeed的发展离不开每一位开发者的努力。
 
 ---
 

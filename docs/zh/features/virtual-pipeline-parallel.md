@@ -12,7 +12,7 @@
 
 **图1** 虚拟流水线并行示意图
 
-![alt text](../figures/virtual-pipeline.PNG)
+![虚拟流水线并行示意图](../figures/virtual-pipeline.PNG)
 
 具体细节请参见文献[Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://people.eecs.berkeley.edu/~matei/papers/2021/sc_megatron_lm.pdf)。
 

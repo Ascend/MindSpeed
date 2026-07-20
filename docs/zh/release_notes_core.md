@@ -11,7 +11,7 @@
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>产品版本</p>
 </th>
-<td class="cellrowborder" valign="top" width="73.75%" headers=><p>26.1.0_core_r0.12.1</p>
+<td class="cellrowborder" valign="top" width="73.75%"><p>26.1.0_core_r0.12.1</p>
 </td>
 </tr>
 <tr><th class="firstcol" valign="top" width="26.25%"><p>版本类型</p>
@@ -197,8 +197,6 @@
 
 ### 病毒扫描结果
 
-|防病毒软件名称|防病毒软件版本|病毒库版本|扫描时间|扫描结果|
-|---|---|---|---|---|
 |防病毒软件名称|防病毒软件版本|病毒库版本|扫描时间|扫描结果|
 |---|---|---|---|---|
 |QiAnXin|8.0.5.5260|2026-04-01 08:00:00.0|2026-07-06|无病毒，无恶意|

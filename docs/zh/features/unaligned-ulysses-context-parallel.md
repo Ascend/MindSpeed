@@ -24,7 +24,7 @@
 
 为了利用“非对齐Ulysses”功能，用户可以根据业务需求传入基于`GatherSizeCalculator`基类的自定义Calculator，或者直接使用预定义的`DynamicGatherSizeCalculator`。以下是基本步骤：
 
-1. 启动脚本中配置长序列并行大小大于1`--context-parallel-size [int]`。 同时配置`--context-parallel-algo ulysses_cp_algo`。
+1. 启动脚本中配置长序列并行大小大于1，例如`--context-parallel-size [int]`。同时配置`--context-parallel-algo ulysses_cp_algo`。
 2. 创建一个继承自`GatherSizeCalculator`的自定义计算器类，并实现`calculate()`方法。在初始化`UlyssesContextAttention`对象时，通过构造函数参数传入自定义的`gather_size_calculator`实例。
 3. 如果不需要复杂的自定义逻辑，可以直接使用`DynamicGatherSizeCalculator`，它会自动根据当前批次的注意力掩码序列长度计算gather size。
 

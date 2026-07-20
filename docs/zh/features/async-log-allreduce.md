@@ -32,7 +32,7 @@ Async Log Allreduce 特性通过以下方式解决上述挑战：
 ## 使用方法
 
 1. 在启动bash脚本中添加参数`--async-log-allreduce`
-2. 替换`pretrain_gpt.pt`中 loss_func函数为
+2. 替换`pretrain_gpt.py`中 loss_func函数为
 
 ```python
 def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):

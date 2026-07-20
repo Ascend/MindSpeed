@@ -8,7 +8,7 @@
 
 新增swap-attention功能，利用设备内存和CPU内存来存放激活值，在梯度反传的同时从CPU内存预取激活值来减少重计算，充分利用H2D高带宽的优势以网补存、以网强算，提升MFU，加速大模型的训练。
 
-![输入图片说明](../figures/swap_attention.png)
+![swap_attention总体流程](../figures/swap_attention.png)
 
 ## 使用场景
 
@@ -28,13 +28,13 @@
 
 开启后，将对每一层的attention层的激活值进行预取，提高计算效率。
 
-![输入图片说明](../figures/swap_attention1.png)
+![swap_attention预取](../figures/swap_attention1.png)
 
 **开启预取功能并且指定重计算层数：`--swap-attention`和`--recompute-num-layers [int]`**
 
 开启后，将对每一层的attention层的激活值进行预取，同时，对前[int]层的全连接层进行重计算。
 
-![输入图片说明](../figures/swap_attention2.png)
+![swap_attention预取+重计算](../figures/swap_attention2.png)
 
 ## 使用效果
 

@@ -4,14 +4,14 @@
 
 在大规模集群下，Gloo通信存在规模限制和稳定性问题。一方面，容易出现Gloo通信组创建失败的情况；另一方面，与HCCL通信相比，Gloo通信较慢。
 
-对于Gloo通信组创建失败报错`Gloo connectFullMesh failed with ...`的问题，本质上是由于N张卡链接到主节点来完成建链，集群规模大时，主节点处理能力不足，可能造成建链失败。可通过调整和网络建链相关参数进行规避（云上8k卡场景验证有效）：
+对于Gloo通信组创建失败报错`Gloo connectFullMesh failed with ...`的问题，本质上是由于N张卡连接到主节点来完成建链，集群规模大时，主节点处理能力不足，可能造成建链失败。可通过调整和网络建链相关参数进行规避（云上8k卡场景验证有效）：
 
-```bash
+```text
 net.ipv4.tcp_max_syn_backlog = 65536
 net.core.netdev_max_backlog = 65536
 ```
 
-此外，MindSpeed设计了Gloo通信优化方案使用HCCL通信替代Gloo。
+此外，MindSpeed设计了Gloo通信优化方案，使用HCCL通信替代Gloo。
 
 ## 解决方案
 
@@ -41,4 +41,4 @@ net.core.netdev_max_backlog = 65536
 
 **显存增量分析**
 
-开启该特性后，显存的增加量为 `hccl-slice-size * (2 * dp + 1) * 4B`。
+开启该特性后，显存的增加量为 `hccl-slice-size * (2 * dp + 1) * 4Byte`。

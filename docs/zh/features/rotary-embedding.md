@@ -15,11 +15,11 @@ RoPE (Rotary Positional Embedding，旋转式位置嵌入) 是一种位置编码
 ## 使用方法
 
 * 确保模型配置中已设定以下参数：
-`--position-embedding-type  rope`
+`--position-embedding-type rope`
 
 * 同时，启用RoPE融合算子需设置如下参数：
 `--use-fused-rotary-pos-emb`
 
 ## 使用效果
 
-通过运用融合优化的RoPE算子，模型训练的性能将得到提升，同时有效降低了内存消耗和计算成本，在LLaMA2-7B模型下，性能提升约1%。
+通过运用融合优化的RoPE算子，模型训练的性能将得到提升，同时有效降低了内存消耗和计算成本，在Llama-2-7b模型下，性能提升约1%。

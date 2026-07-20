@@ -30,7 +30,7 @@ MoE场景下使用：`--moe-model-type megatron_moe`。
 
 > [!NOTE]
 >
-> * 开启共享专家需要在mcore模式下，即没有设置`--use-legacy-models`。
+> * 开启共享专家需要在`mcore`模式下，即没有设置`--use-legacy-models`。
 > * 共享专家中间隐藏层大小的配置命令与路由专家相同：`--ffn-hidden-size [int]`。
 
 ## 使用效果

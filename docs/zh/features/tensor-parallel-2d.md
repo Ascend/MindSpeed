@@ -2,7 +2,7 @@
 
 ## 背景与挑战
 
-大模型训练时，张量并行（TP）将模型参数切分到多个设备上以减少其内存的占用，在训练过程中为了更新参数梯度信息等，需要引入AllReduce通信。当集群规模较大时，如果设置TP域很大时，其通信开销会变得很大，使得训练效率降低。
+大模型训练时，张量并行（TP）将模型参数切分到多个设备上以减少其内存的占用，在训练过程中为了更新参数梯度信息等，需要引入AllReduce通信。当集群规模较大时，如果TP域设置得很大，其通信开销会变得很大，使得训练效率降低。
 
 ## 解决方案
 
@@ -12,11 +12,11 @@
 
 给定TP域大小，通过建立多通信域，在原Megatron（ColumnParallelLinear、RowParallelLinear）增加了一维的切分维度。将原tp通信域进行分解为两个子通信域tp_x和tp_y，需要满足`tp = tp_x * tp_y`。以MLP层为例，其实现过程如下：
 
-![img](../figures/tensor-parallel-2d.png)
+![2D张量并行MLP层实现](../figures/tensor-parallel-2d.png)
 
 **分布式normalization**
 
-在transformer网络中，normalization会将每一层神经元的输入都转换成均值方差都一样的，加快其收敛。在MLP和attention层分别进行2D张量并行时，其输入和输出都分别在first-dim和last-dim做了tp_x和tp_y的切分，如果继续使用原LayerNorm或者RMSNorm需要先将input进行沿first-dim进行all-gather(x)和沿last-dim进行all-gather(y)操作，才能保证input数据的完整性。为了提升这部分的性能，采用了分布式normalization。其处理流程如下：
+在transformer网络中，normalization会将每一层神经元的输入都转换成均值方差都一样的数据，加快其收敛。在MLP和attention层分别进行2D张量并行时，其输入和输出都分别在first-dim和last-dim做了tp_x和tp_y的切分。如果继续使用原LayerNorm或者RMSNorm，需要先将input沿first-dim进行all-gather(x)和沿last-dim进行all-gather(y)操作，才能保证input数据的完整性。为了提升这部分的性能，采用了分布式normalization。其处理流程如下：
 
 1. 计算输入的总和
 首先，计算输入张量$\mathbf{x}$ 在最后一个维度上的总和：
@@ -42,15 +42,17 @@ $$s_x^{\text{global}} = \text{AllReduce}\left( s_x \right) = \sum_{p=1}^{P} \sum
 然后，中心化输入：
 $$x'_i = x_i - \mu \quad \forall i \in \{1, 2, \dots, H\}$$
 
-6. 计算总和的平方
-计算全局总和的平方：
-$$e_x'^2 = \left( e_x^{\text{global}} \right)^2$$
+6. 计算均值的平方
+计算全局均值的平方：
+$$
+e_x'^2 = \left( \frac{e_x^{\text{global}}}{H} \right)^2
+$$
 
 7. 计算归一化因子
-计算归一化因子 $\gamma$，用于标准化输入数据。公式如下：$$\gamma = \frac{1}{\sqrt{ \left( \frac{s_x^{\text{global}}}{H} \right) - e_x'^2 + \epsilon }}$$
+计算归一化因子 $\gamma$，用于标准化输入数据。公式如下：$$\gamma = \frac{1}{\sqrt{ \left( \frac{s_x^{\text{global}}}{H} \right) - \left( \frac{e_x^{\text{global}}}{H} \right)^2 + \epsilon }}$$
 这里：
     - $\frac{s_x^{\text{global}}}{H}$ 是全局平方和的平均值。
-    - $e_x'^2$ 是全局总和的平方。
+    - $\left( \frac{e_x^{\text{global}}}{H} \right)^2$ 是全局均值的平方。
     - $\epsilon$ 是一个小常数，防止分母为零，增加数值稳定性。
 
 8. 标准化输入数据
@@ -68,7 +70,7 @@ $$\hat{x}_i = x'_i \cdot \gamma \quad \forall i \in \{1, 2, \dots, H\}$$
 
 ## 使用方法
 
-在训练脚本的参数列表中加入 `--tp-2d`，开启2D张量并行，`--tp-x N1`和`--tp-y N2`分别设置其x轴、y轴的切分大小，其中需满足`tp = N1 * N2`(N1 > 1, N2 > 1)。
+在训练脚本的参数列表中加入 `--tp-2d`，开启2D张量并行，`--tp-x N1`和`--tp-y N2`分别设置其x轴、y轴的切分大小，其中需满足`tp = N1 * N2` (N1 > 1, N2 > 1)。
 
 其他优化参数，用于辅助高维张量并行特性进行通信隐藏，需要开启tp-2d时生效：
 
@@ -85,6 +87,6 @@ $$\hat{x}_i = x'_i \cdot \gamma \quad \forall i \in \{1, 2, \dots, H\}$$
 
 ## 使用效果
 
-在llama3-405B模型训练时，tp=16情况下，开启2D张量并行，tp_x=8，tp_y=2，相比原Megatron 1D张量并行性能提升5%+。
+在Llama-3-405B模型训练时，tp=16情况下，开启2D张量并行，tp_x=8，tp_y=2，相比原Megatron 1D张量并行性能提升5%+。
 开启coc-fused-kernel和enable-backward-overlap-ag-with-matmul通信计算融合优化后，进一步提升性能5%+。
 其他场景下，由于计算效率和通信组的划分差异，需根据tp_x和tp_y实际调优情况进行配置，部分配置不能保证效率提升。

@@ -40,7 +40,7 @@ mv ../MindSpeed/tools/data_handler.py .
 mkdir ./dataset
 
 python ./preprocess_data.py \
-    --input ./dataset/train-00000-of-00042-d964455e17e96d5a.parquet \
+    --input ./dataset/train-00000-of-00001-a09b74b3ef9c3b56.parquet \
     --tokenizer-name-or-path ./model_from_hf/llama-2-7b-hf \
     --tokenizer-type PretrainedFromHF \
     --handler-name GeneralPretrainHandler \
@@ -54,8 +54,8 @@ python ./preprocess_data.py \
 
 #### 参数说明
 
-- `input`：可以直接输入到数据集目录或具体文件，如果是目录，则处理全部文件, 支持`.parquet`，`.csv`，`.json`，`.jsonl`，`.txt`，`.arrow`格式， 同一个文件夹下的数据格式需要保持一致。
-- `handler-name`：当前预训练默认使用 `GeneralPretrainHandler`，支持的是预训练数据风格，提取数据的`text`列，格式如下：
+- `input`：可以直接输入到数据集目录或具体文件，如果是目录，则处理全部文件，支持`.parquet`，`.csv`，`.json`，`.jsonl`，`.txt`，`.arrow`格式，同一个文件夹下的数据格式需要保持一致。
+- `handler-name`：当前预训练默认使用`GeneralPretrainHandler`，支持的是预训练数据风格，提取数据的`text`列，格式如下：
 
     ```shell
     [

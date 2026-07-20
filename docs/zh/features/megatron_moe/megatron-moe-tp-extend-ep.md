@@ -22,7 +22,7 @@
 
 > [!NOTE]
 >
-> - 当前该特性不支持Moe Token drop and pad模式，即`--moe-expert-capacity-factor`需要为None。
+> - 当前该特性不支持MoE Token drop and pad模式，即`--moe-expert-capacity-factor`需要为None。
 > - 当前仅支持alltoall_seq dispatcher。
 
 ## 使用效果
