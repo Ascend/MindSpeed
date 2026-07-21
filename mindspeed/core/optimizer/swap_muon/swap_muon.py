@@ -67,6 +67,13 @@ class SwapOptimizerMixin:
     # main-param -> model-param mapping
     _main_param_to_model_param: dict = {}
 
+    # Counter for how many optimizers have completed step in current iteration
+    _step_count: int = 0
+    # Total number of swap optimizers (incremented in swap_init)
+    _total_optimizer_count: int = 0
+    # Cached swap_optimizer_times from args (set in swap_init)
+    _swap_optimizer_times: int = 0
+
     # ------------------------------------------------------------------
     # Stream management
     # ------------------------------------------------------------------
@@ -90,6 +97,7 @@ class SwapOptimizerMixin:
         param groups populated and optimizer states allocated).
         """
         cls._ensure_streams()
+        cls._total_optimizer_count += 1
 
         model_data, main_data = [], []
         for model_group, main_group in zip(optimizer.float16_groups, optimizer.fp32_from_float16_groups):
@@ -133,12 +141,15 @@ class SwapOptimizerMixin:
                 if key in state and state[key] is not None:
                     state[key].storage().resize_(0)
 
+        # Cache swap_optimizer_times from args
+        if cls._total_optimizer_count == 1:
+            args = get_args()
+            cls._swap_optimizer_times = getattr(args, "swap_optimizer_times", 16)
+
         # Compute swap batch size
         if cls._swap_numel == 0:
-            args = get_args()
-            swap_times = getattr(args, "swap_optimizer_times", 16)
             total = sum(p.numel() for p in main_data)
-            cls._swap_numel = max(1, total // swap_times)
+            cls._swap_numel = total if cls._swap_optimizer_times == 0 else max(1, total // cls._swap_optimizer_times)
 
     # ------------------------------------------------------------------
     # Low-level swap primitives
@@ -174,7 +185,7 @@ class SwapOptimizerMixin:
             cls._swap_to_device_events[param] = None
 
     @classmethod
-    def _swap_tensors_to_host(cls, param):
+    def _swap_tensors_to_host(cls, param, deferred=False):
         """Async copy param + state tensors from GPU to CPU."""
         cpu = cls._param_to_cpu_states.get(param)
         if cpu is None:
@@ -182,6 +193,8 @@ class SwapOptimizerMixin:
 
         if param.storage().size() != 0:
             cpu["param"].copy_(param, non_blocking=True)
+            if deferred:
+                param.record_stream(cls._swap_to_host_stream)
             param.storage().resize_(0)
 
         state = cls._state_map.get(param)
@@ -191,6 +204,8 @@ class SwapOptimizerMixin:
                 if t is None or t.storage().size() == 0:
                     continue
                 cpu[key].copy_(t, non_blocking=True)
+                if deferred:
+                    t.record_stream(cls._swap_to_host_stream)
                 t.storage().resize_(0)
 
         cls._swap_to_host_events[param] = torch.cuda.current_stream().record_event()
@@ -219,9 +234,14 @@ class SwapOptimizerMixin:
 
         Returns (new_idx, new_swap_count).
         """
-        torch.cuda.current_stream().wait_stream(cls._swap_to_host_stream)
-        with torch.cuda.stream(cls._swap_to_device_stream):
+        deferred = cls._swap_optimizer_times == 0
+        # When not in deferred mode, or first optimizer in this iteration,
+        # must sync to prevent cross-step memory corruption.
+        if not deferred or cls._step_count == 0:
             torch.cuda.current_stream().wait_stream(cls._swap_to_host_stream)
+        with torch.cuda.stream(cls._swap_to_device_stream):
+            if not deferred or cls._step_count == 0:
+                torch.cuda.current_stream().wait_stream(cls._swap_to_host_stream)
             while idx < len(params_list) and (
                 swap_count + params_list[idx].numel() <= cls._swap_numel or swap_count <= 0
             ):
@@ -236,12 +256,12 @@ class SwapOptimizerMixin:
         cls._wait_swap_to_device(param)
 
     @classmethod
-    def swap_copy_back_and_release(cls, param):
+    def swap_copy_back_and_release(cls, param, deferred=False):
         """Copy updated param back to model param, then async swap to CPU."""
         cls._copy_param_to_model(param)
         with torch.cuda.stream(cls._swap_to_host_stream):
             cls._wait_copy_to_model(param)
-            cls._swap_tensors_to_host(param)
+            cls._swap_tensors_to_host(param, deferred=deferred)
 
 
 def swap_layer_wise_distributed_optimizer_init_wrapper(fn):
@@ -382,6 +402,14 @@ def swap_muon_step(self, closure=None):
             params_list.append(param)
             groups_list.append(group)
 
+    # When swap_optimizer_times==0, sort descending to prefetch large params first.
+    if SwapOptimizerMixin._swap_optimizer_times == 0:
+        paired = sorted(zip(params_list, groups_list), key=lambda pg: pg[0].numel(), reverse=True)
+        if paired:
+            params_list, groups_list = zip(*paired)
+            params_list = list(params_list)
+            groups_list = list(groups_list)
+
     for param, group in zip(params_list, groups_list):
         # Prefetch to device
         if swap_count <= 0:
@@ -411,7 +439,13 @@ def swap_muon_step(self, closure=None):
         self.post_weight_update_fn_inplace(param)
 
         # Copy back and release to host
-        SwapOptimizerMixin.swap_copy_back_and_release(param)
+        SwapOptimizerMixin.swap_copy_back_and_release(param, deferred=SwapOptimizerMixin._swap_optimizer_times == 0)
         swap_count -= param.numel()
+
+    # Reset step count when all optimizers have completed step in this iteration
+    if SwapOptimizerMixin._swap_optimizer_times == 0:
+        SwapOptimizerMixin._step_count += 1
+        if SwapOptimizerMixin._step_count >= SwapOptimizerMixin._total_optimizer_count:
+            SwapOptimizerMixin._step_count = 0
 
     return loss
