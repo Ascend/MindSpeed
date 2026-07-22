@@ -3,31 +3,13 @@
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 import os
-import re
 from typing import List
 from dataclasses import dataclass
 from megatron.training import get_args
 import torch.distributed as dist
+from mindspeed.ops.npu_matmul_add import get_npu_version, NPUVersion
 
 domains = ['tp', 'dp', 'pp', 'ep', 'cp']
-
-
-def is_a3():
-    try:
-        cmd = 'npu-smi info -t board -i 0 -c 0 | grep Chip | grep Name'
-        chip_name = os.popen(cmd).read().strip()  # nosec B605
-
-        is_ascend910 = bool(re.search(r'Ascend910|Ascend 910', chip_name, re.IGNORECASE))
-
-    except Exception as e:
-        raise RuntimeError(f"Fail to get chip name : {str(e)}") from e
-
-    if is_ascend910:
-        return True
-    return False
-
-
-is_a3_version = is_a3()
 
 
 @dataclass
@@ -567,7 +549,7 @@ def get_overlap_space_dict(domain_partition_information, link_type="SDMA"):
     boundary_roce_910b = 8
     boundary_roce_910_93 = os.environ.get('SuperNodeDieNum', 384)
 
-    if is_a3_version:
+    if get_npu_version() == NPUVersion.A3:
         if link_type == "SDMA":
             cross_boundary = []
             for domain in domains:
