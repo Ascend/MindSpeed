@@ -9,7 +9,7 @@
 | Dockerfile Path | `ci/Dockerfile` |
 | Default Scenario | MindSpeed CI testing (includes MindSpeed-LLM, vLLM, vLLM-ascend, verl for ST tests) |
 | Base Image | Configurable CANN image, default `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.1-910b-openeuler24.03-py3.12` |
-| Default Working Directory | `/home/ci_deps/MindSpeed` |
+| Default Working Directory | `/mindspeed_ci_deps/MindSpeed` |
 
 ## Key Fields in the Image Tag
 
@@ -41,12 +41,12 @@ The CI image contains additional components beyond MindSpeed Core for integratio
 | CANN (Base Image) | 9.0.1 | `/usr/local/Ascend` |
 | PyTorch | 2.9.0 | pip |
 | torch_npu | 2.9.0 | pip |
-| Megatron-LM | core_v0.12.1 | `/home/ci_deps/Megatron-LM` |
-| MindSpeed | master | `/home/ci_deps/MindSpeed` |
-| MindSpeed-LLM | master | `/home/ci_deps/MindSpeed-LLM` |
-| vLLM | v0.18.0 | `/home/ci_deps/vllm` |
-| vLLM-ascend | releases/v0.18.0 | `/home/ci_deps/vllm-ascend` |
-| verl | v0.7.0 | `/home/ci_deps/verl` |
+| Megatron-LM | core_v0.12.1 | `/mindspeed_ci_deps/Megatron-LM` |
+| MindSpeed | master | `/mindspeed_ci_deps/MindSpeed` |
+| MindSpeed-LLM | master | `/mindspeed_ci_deps/MindSpeed-LLM` |
+| vLLM | v0.18.0 | `/mindspeed_ci_deps/vllm` |
+| vLLM-ascend | releases/v0.18.0 | `/mindspeed_ci_deps/vllm-ascend` |
+| verl | v0.7.0 | `/mindspeed_ci_deps/verl` |
 | mbridge | latest | pip |
 | transformers | 4.57.1 | pip |
 
@@ -140,9 +140,9 @@ docker run -itd \
   --device=/dev/hisi_hdc \
   --security-opt label=disable \
   --shm-size=32G \
-  -v /home/ci_deps/models:/home/ci_deps/models \
+  -v /mindspeed_ci_deps/models:/mindspeed_ci_deps/models \
   -v /home/dataset:/home/dataset \
-  -v /home/ci_deps/MindSpeed:/home/ci_deps/MindSpeed \
+  -v /mindspeed_ci_deps/MindSpeed:/mindspeed_ci_deps/MindSpeed \
   -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
   -v /usr/local/Ascend/firmware:/usr/local/Ascend/firmware \
   -v /usr/local/sbin/:/usr/local/sbin/ \
@@ -188,7 +188,7 @@ MindSpeed's `requirements_basic.py` registers dummy `flash_attn` namespace packa
 - This image uses a unified Dockerfile and build script for configurable CANN base image selection.
 - The default base image uses CANN 9.0.1, 910b, openEuler 24.03, and Python 3.12.
 - You can switch to Ubuntu 22.04, a3, or a different CANN base image version through `ci/build.sh`.
-- MindSpeed, Megatron-LM, MindSpeed-LLM, vLLM, vLLM-ascend, and verl are cloned to `/home/ci_deps/`.
+- MindSpeed, Megatron-LM, MindSpeed-LLM, vLLM, vLLM-ascend, and verl are cloned to `/mindspeed_ci_deps/`.
 - Environment variables `ENABLE_ATB=1` and `PYTHONPATH` are pre-configured for NPU development.
 - This image is intended for CI/testing scenarios, not production deployment.
 

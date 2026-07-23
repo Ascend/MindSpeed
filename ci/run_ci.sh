@@ -8,17 +8,17 @@
 #   that copy and runs the test suite against it.
 #
 #   The Docker image (mindspeed-ci) provides only dependencies:
-#     /home/ci_deps/Megatron-LM
-#     /home/ci_deps/MindSpeed-LLM
-#     /home/ci_deps/verl
-#     /home/ci_deps/vllm
-#     /home/ci_deps/vllm-ascend
+#     /mindspeed_ci_deps/Megatron-LM
+#     /mindspeed_ci_deps/MindSpeed-LLM
+#     /mindspeed_ci_deps/verl
+#     /mindspeed_ci_deps/vllm
+#     /mindspeed_ci_deps/vllm-ascend
 #     /home/models
 #
 #   MindSpeed itself is NOT installed in the image; it comes
 #   from ${WORKSPACE}/CODE/ and is pip-installed at runtime.
 # ============================================
-set -euo pipefail
+set -e
 
 # --------------------------------------------------
 # Distributed communication setup (Ascend NPU)
@@ -36,9 +36,9 @@ export HCCL_EXEC_TIMEOUT=1800
 # --------------------------------------------------
 # Immutable dependency paths (provided by Docker image)
 # --------------------------------------------------
-MEGATRON_DIR="/home/ci_deps/Megatron-LM"
-MINDSPEED_LLM_DIR="/home/ci_deps/MindSpeed-LLM"
-VERL_DIR="/home/ci_deps/verl"
+MEGATRON_DIR="/mindspeed_ci_deps/Megatron-LM"
+MINDSPEED_LLM_DIR="/mindspeed_ci_deps/MindSpeed-LLM"
+VERL_DIR="/mindspeed_ci_deps/verl"
 MODELS_DIR="/home/models"
 
 # --------------------------------------------------

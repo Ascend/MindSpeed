@@ -85,7 +85,7 @@ RUN echo "Installing system dependencies for ${OS_FAMILY}..." && \
 # ============================================
 # Clone repos (with retry for network resilience)
 # ============================================
-RUN mkdir -p /home/ci_deps && cd /home/ci_deps && \
+RUN mkdir -p /mindspeed_ci_deps && cd /mindspeed_ci_deps && \
     git clone https://gitcode.com/Ascend/MindSpeed.git && \
     cd MindSpeed && git checkout ${MINDSPEED_BRANCH} && cd .. && \
     for i in 1 2 3; do \
@@ -103,7 +103,7 @@ RUN mkdir -p /home/ci_deps && cd /home/ci_deps && \
     for i in 1 2 3; do \
         git clone -b ${VERL_VERSION} https://github.com/verl-project/verl.git && break || sleep 5; \
     done && \
-    cd /home/ci_deps/verl && \
+    cd /mindspeed_ci_deps/verl && \
     sed -i 's/WorkerWrapperBase(vllm_config=self.vllm_config)/WorkerWrapperBase(rpc_rank=0)/' \
         verl/workers/rollout/vllm_rollout/vllm_rollout.py && \
     grep -q 'rpc_rank=0' verl/workers/rollout/vllm_rollout/vllm_rollout.py || { echo "ERROR: WorkerWrapperBase patch failed"; exit 1; } && \
@@ -130,10 +130,10 @@ RUN ARCH=$(uname -m) && \
         PIP_EXTRA="--extra-index-url https://download.pytorch.org/whl/cpu/"; \
     fi && \
     pip install ${PIP_EXTRA} torch==${TORCH_VERSION} torch_npu==${TORCH_NPU_VERSION} && \
-    pip install ${PIP_EXTRA} -r /home/ci_deps/MindSpeed/requirements.txt && \
-    pip install ${PIP_EXTRA} -e /home/ci_deps/MindSpeed && \
-    pip install ${PIP_EXTRA} --no-deps -e /home/ci_deps/Megatron-LM && \
-    pip install ${PIP_EXTRA} -e /home/ci_deps/MindSpeed-LLM && \
+    pip install ${PIP_EXTRA} -r /mindspeed_ci_deps/MindSpeed/requirements.txt && \
+    pip install ${PIP_EXTRA} -e /mindspeed_ci_deps/MindSpeed && \
+    pip install ${PIP_EXTRA} --no-deps -e /mindspeed_ci_deps/Megatron-LM && \
+    pip install ${PIP_EXTRA} -e /mindspeed_ci_deps/MindSpeed-LLM && \
     pip install ${PIP_EXTRA} transformers==4.57.1 && \
     pip install ${PIP_EXTRA} protobuf==6.31.1 && \
     pip install ${PIP_EXTRA} pytest-timeout && \
@@ -158,11 +158,11 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
         PIP_EXTRA="--extra-index-url https://download.pytorch.org/whl/cpu/"; \
     fi && \
-    cd /home/ci_deps/vllm && \
+    cd /mindspeed_ci_deps/vllm && \
     pip install ${PIP_EXTRA} setuptools-scm wheel packaging build jinja2 && \
     pip install ${PIP_EXTRA} -r requirements/build.txt && \
     VLLM_TARGET_DEVICE=empty pip install ${PIP_EXTRA} -v -e . && cd .. && \
-    cd /home/ci_deps/vllm-ascend && \
+    cd /mindspeed_ci_deps/vllm-ascend && \
     pip install ${PIP_EXTRA} -r requirements.txt && \
     export SOC_VERSION=${SOC_VERSION} && \
     export COMPILE_CUSTOM_KERNELS=1 && \
@@ -178,7 +178,7 @@ RUN source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
         source /usr/local/Ascend/nnal/atb/set_env.sh; \
     fi && \
     PIP_EXTRA="--extra-index-url https://mirrors.aliyun.com/pypi/simple/ --extra-index-url https://triton-ascend.osinfra.cn/pypi/simple/" && \
-    cd /home/ci_deps/verl && \
+    cd /mindspeed_ci_deps/verl && \
     pip install ${PIP_EXTRA} -r requirements-npu.txt && \
     pip install ${PIP_EXTRA} -v -e . && \
     cd .. && \
@@ -192,9 +192,9 @@ RUN pip install mbridge --extra-index-url https://mirrors.aliyun.com/pypi/simple
     pip cache purge
 
 ENV ENABLE_ATB=1
-ENV PYTHONPATH="/home/ci_deps/Megatron-LM:/home/ci_deps/MindSpeed-LLM${PYTHONPATH:+:${PYTHONPATH}}"
+ENV PYTHONPATH="/mindspeed_ci_deps/Megatron-LM:/mindspeed_ci_deps/MindSpeed-LLM${PYTHONPATH:+:${PYTHONPATH}}"
 
-WORKDIR /home/ci_deps/MindSpeed
+WORKDIR /mindspeed_ci_deps/MindSpeed
 
 RUN pip install transformers==4.57.1 --extra-index-url https://mirrors.aliyun.com/pypi/simple/ && \
     pip cache purge

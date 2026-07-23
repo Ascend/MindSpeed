@@ -9,7 +9,7 @@
 | Dockerfile 路径 | `ci/Dockerfile` |
 | 默认场景 | MindSpeed CI 测试（包含 MindSpeed-LLM、vLLM、vLLM-ascend、verl，用于 ST 测试） |
 | 基础镜像 | 可配置 CANN 镜像，默认 `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.1-910b-openeuler24.03-py3.12` |
-| 默认工作目录 | `/home/ci_deps/MindSpeed` |
+| 默认工作目录 | `/mindspeed_ci_deps/MindSpeed` |
 
 ## 镜像 Tag 关键字段描述
 
@@ -41,12 +41,12 @@ CI 镜像在 MindSpeed Core 之上额外包含以下组件，用于集成测试�
 | CANN (基础镜像) | 9.0.1 | `/usr/local/Ascend` |
 | PyTorch | 2.9.0 | pip |
 | torch_npu | 2.9.0 | pip |
-| Megatron-LM | core_v0.12.1 | `/home/ci_deps/Megatron-LM` |
-| MindSpeed | master | `/home/ci_deps/MindSpeed` |
-| MindSpeed-LLM | master | `/home/ci_deps/MindSpeed-LLM` |
-| vLLM | v0.18.0 | `/home/ci_deps/vllm` |
-| vLLM-ascend | releases/v0.18.0 | `/home/ci_deps/vllm-ascend` |
-| verl | v0.7.0 | `/home/ci_deps/verl` |
+| Megatron-LM | core_v0.12.1 | `/mindspeed_ci_deps/Megatron-LM` |
+| MindSpeed | master | `/mindspeed_ci_deps/MindSpeed` |
+| MindSpeed-LLM | master | `/mindspeed_ci_deps/MindSpeed-LLM` |
+| vLLM | v0.18.0 | `/mindspeed_ci_deps/vllm` |
+| vLLM-ascend | releases/v0.18.0 | `/mindspeed_ci_deps/vllm-ascend` |
+| verl | v0.7.0 | `/mindspeed_ci_deps/verl` |
 | mbridge | latest | pip |
 | transformers | 4.57.1 | pip |
 
@@ -140,9 +140,9 @@ docker run -itd \
   --device=/dev/hisi_hdc \
   --security-opt label=disable \
   --shm-size=32G \
-  -v /home/ci_deps/models:/home/ci_deps/models \
+  -v /mindspeed_ci_deps/models:/mindspeed_ci_deps/models \
   -v /home/dataset:/home/dataset \
-  -v /home/ci_deps/MindSpeed:/home/ci_deps/MindSpeed \
+  -v /mindspeed_ci_deps/MindSpeed:/mindspeed_ci_deps/MindSpeed \
   -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
   -v /usr/local/Ascend/firmware:/usr/local/Ascend/firmware \
   -v /usr/local/sbin/:/usr/local/sbin/ \
@@ -188,7 +188,7 @@ MindSpeed 的 `requirements_basic.py` 注册了虚拟 `flash_attn` 命名空间�
 - 当前版本采用统一 Dockerfile + 构建脚本结构，支持可配置的 CANN 基础镜像选择。
 - 默认基础镜像使用 CANN 9.0.1、910b、openEuler 24.03、Python 3.12。
 - 可以通过 `ci/build.sh` 切换 Ubuntu 22.04、a3 或其他 CANN 基础镜像版本。
-- MindSpeed、Megatron-LM、MindSpeed-LLM、vLLM、vLLM-ascend 和 verl 克隆到 `/home/ci_deps/`。
+- MindSpeed、Megatron-LM、MindSpeed-LLM、vLLM、vLLM-ascend 和 verl 克隆到 `/mindspeed_ci_deps/`。
 - 环境变量 `ENABLE_ATB=1` 和 `PYTHONPATH` 已预配置，用于 NPU 开发。
 - 此镜像专用于 CI/测试场景，不适用于生产部署。
 
