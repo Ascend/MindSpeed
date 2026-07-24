@@ -129,18 +129,13 @@ class NpuEnhancementFeature(MindSpeedFeature):
     # Patch registration (migrated from MegatronBasic + TransformerEngineBasic)
     # ================================================================
     def pre_register_patches(self, patch_manager, args):
-        """No pre-Megatron compatibility patches are needed."""
+        """No pre-Megatron compatibility patches are needed"""
         return
 
     def register_patches(self, patch_manager, args):
         # ================================================================
-        # Step 1: Megatron config patches (migrated from MegatronBasicFeature)
-        # ================================================================
         self._register_config_patches(patch_manager)
-
-        # ================================================================
         # Step 2: GDN — replace GatedDeltaNet with MindSpeed subclass
-        # (force_patch=True overrides MA's torch-native FLA operators
         #  in favour of MindSpeed Triton-accelerated implementations)
         # ================================================================
         self._register_gdn_patch(patch_manager)
@@ -169,24 +164,26 @@ class NpuEnhancementFeature(MindSpeedFeature):
             from mindspeed.core.megatron_basic.arguments_basic import (
                 transformer_config_init_wrapper,
                 transformer_config_post_init_wrapper,
+                transformer_config_init_subclass,
             )
 
             patch_manager.register_patch(
                 'megatron.core.transformer.transformer_config.TransformerConfig.__init__',
                 transformer_config_init_wrapper,
-                force_patch=True,
+            )
+            patch_manager.register_patch(
+                'megatron.core.transformer.transformer_config.TransformerConfig.__init_subclass__',
+                classmethod(transformer_config_init_subclass),
             )
             patch_manager.register_patch(
                 'megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
                 transformer_config_post_init_wrapper,
-                force_patch=True,
             )
             # MLATransformerConfig is a dataclass subclass with its own generated
             # __init__, so it needs the argument-injection wrapper explicitly.
             patch_manager.register_patch(
                 'megatron.core.transformer.transformer_config.MLATransformerConfig.__init__',
                 transformer_config_init_wrapper,
-                force_patch=True,
             )
             logger.debug("TransformerConfig patches registered")
         except ImportError as e:
@@ -203,9 +200,7 @@ class NpuEnhancementFeature(MindSpeedFeature):
         try:
             from mindspeed.core.ssm.gated_delta_net import GatedDeltaNet
 
-            patch_manager.register_patch(
-                'megatron.core.ssm.gated_delta_net.GatedDeltaNet', GatedDeltaNet, force_patch=True
-            )
+            patch_manager.register_patch('megatron.core.ssm.gated_delta_net.GatedDeltaNet', GatedDeltaNet)
             logger.debug("GDN GatedDeltaNet patch registered (MindSpeed Triton)")
         except ImportError as e:
             logger.debug("GDN GatedDeltaNet patch skipped: %s", e)
@@ -221,7 +216,7 @@ class NpuEnhancementFeature(MindSpeedFeature):
                 'megatron.core.transformer.transformer_block.LayerNormImpl',
                 'megatron.core.extensions.transformer_engine.TENorm',
             ]:
-                patch_manager.register_patch(target, PTNorm, force_patch=True)
+                patch_manager.register_patch(target, PTNorm)
             logger.debug("PTNorm patches registered")
         except ImportError as e:
             logger.debug("PTNorm patches skipped: %s", e)

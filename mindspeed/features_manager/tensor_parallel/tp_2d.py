@@ -64,7 +64,7 @@ class TP2dFeature(MindSpeedFeature):
                 'megatron.core.transformer.transformer_block.LayerNormImpl',
                 'megatron.core.extensions.transformer_engine.TENorm',
             ]:
-                patch_manager.register_patch(target, get_norm_tp_2d, force_patch=True)
+                patch_manager.register_patch(target, get_norm_tp_2d)
 
             from mindspeed.core.tensor_parallel.tp_2d.adaptor import mindspeed_allreduce_layernorm_grads_wrapper
 

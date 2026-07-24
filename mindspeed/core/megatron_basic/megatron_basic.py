@@ -333,6 +333,10 @@ def dist_optim_load_state_dict(self, state_dict):
             self.load_parameter_state_from_dp_zero(param_state)
         elif sharding_type == 'fully_sharded_bucket_space':
             self.load_parameter_state_from_fs_bucket_space(param_state)
+        elif sharding_type == 'fully_reshardable':
+            self.load_parameter_state_from_fully_reshardable(param_state)
+        elif sharding_type == 'dp_reshardable':
+            self.load_parameter_state_from_dp_reshardable(param_state)
         elif sharding_type == 'fully_sharded_model_space':
             self.load_parameter_state_from_fs_model_space(param_state)
         else:

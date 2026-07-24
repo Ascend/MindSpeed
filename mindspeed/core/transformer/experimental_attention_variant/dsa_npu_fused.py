@@ -29,7 +29,10 @@ from megatron.core.transformer.experimental_attention_variant.dsa import (
     unfused_dsa_fn as megatron_unfused_dsa_fn,
 )
 
-from mindspeed.core.transformer.experimental_attention_variant.utils import allgather_head_dim
+from mindspeed.core.transformer.experimental_attention_variant.utils import (
+    allgather_head_dim,
+    get_dsa_query_token_count,
+)
 
 
 def fused_lightning_indexer(
@@ -198,20 +201,17 @@ def fused_sparse_lightning_indexer_kl_loss(
         layout: 'BSND' or 'TND'
 
     Returns:
-        loss: scalar tensor (scaled by 1/sq)
+        loss: scalar tensor averaged over all query tokens
     """
     is_tnd = layout == 'TND'
-    if is_tnd:
-        # TND: tensors are [T, N, D], no B dimension to transpose
-        sq = query.shape[0]
-    else:
+    num_query_tokens = get_dsa_query_token_count(query, layout)
+    if not is_tnd:
         # BSND: transpose sb -> bs for the NPU op
         query, key, query_index, key_index, weights = [
             x.transpose(0, 1) for x in [query, key, query_index, key_index, weights]
         ]
         if query_rope is not None:
             query_rope, key_rope = [x.transpose(0, 1) for x in [query_rope, key_rope]]
-        sq = query.shape[1]
 
     if not is_tnd:
         topk_indices = topk_indices.unsqueeze(2)
@@ -235,7 +235,8 @@ def fused_sparse_lightning_indexer_kl_loss(
         pre_tokens,
         next_tokens,
     )
-    return loss / sq
+    normalized_loss = loss / num_query_tokens
+    return normalized_loss
 
 
 class LILossTrain(torch.autograd.Function):
@@ -404,8 +405,7 @@ def fused_compute_dsa_indexer_kl_loss(
             layout=layout,
         )
 
-    indexer_loss = loss * loss_coeff
-    return indexer_loss
+    return loss * loss_coeff
 
 
 # Stores the original DSAIndexer.forward_with_scores for fallback

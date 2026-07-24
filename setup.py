@@ -5,10 +5,10 @@ from pathlib import Path
 import setuptools
 
 if sys.version_info < (3,):
-    raise Exception("Python 2 is not supported by MindSpeed.")
+    raise RuntimeError("Python 2 is not supported by MindSpeed.")
 
 __description__ = 'MindSpeed for LLMs of Ascend'
-__version__ = '0.12.1'
+__version__ = '0.18.0'
 __author__ = 'Ascend'
 __long_description__ = 'MindSpeed for LLMs of Ascend'
 __url__ = 'https://gitcode.com/Ascend/MindSpeed'
@@ -19,7 +19,7 @@ __package_name__ = 'mindspeed'
 __contact_names__ = 'Ascend'
 
 try:
-    with open("README.md", "r") as fh:
+    with open("README.md", "r", encoding="utf-8") as fh:
         long_description = fh.read()
 except FileNotFoundError:
     long_description = ''
@@ -74,7 +74,7 @@ setuptools.setup(
         'Operating System :: OS Independent',
     ],
     python_requires='>=3.8',
-    install_requires=Path("requirements.txt").read_text().splitlines(),
+    install_requires=Path("requirements.txt").read_text(encoding="utf-8").splitlines(),
     packages=setuptools.find_packages(),
     # Add in any packaged data.
     include_package_data=True,

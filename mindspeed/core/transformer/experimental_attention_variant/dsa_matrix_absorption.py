@@ -14,6 +14,12 @@ except ImportError:
     HAVE_EINOPS = False
 
 from megatron.core import tensor_parallel
+from megatron.core.dist_checkpointing.mapping import (
+    ShardedStateDict,
+    ShardedTensor,
+    ShardedTensorFactory,
+)
+from megatron.core.dist_checkpointing.utils import apply_prefix_mapping
 from megatron.core.models.backends import BackendSpecProvider
 from megatron.core.models.common.embeddings import apply_rotary_pos_emb
 from megatron.core.pipeline_parallel.fine_grained_activation_offload import (
@@ -29,6 +35,7 @@ from megatron.core.tensor_parallel.mappings import (
     scatter_to_sequence_parallel_region,
 )
 from megatron.core.transformer.enums import AttnMaskType
+from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import MLATransformerConfig, TransformerConfig
 from megatron.core.utils import deprecate_inference_params, get_pg_size
@@ -55,6 +62,7 @@ except ImportError:
 
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.experimental_attention_variant.dsa_rope import apply_rope_in_complex
+from mindspeed.core.transformer.experimental_attention_variant.utils import expand_dsa_kv_heads
 
 
 def compute_dsa_indexer_loss(
@@ -74,6 +82,8 @@ def compute_dsa_indexer_loss(
     sq, b, np, hn = query.size()
     skv, b, nkv, hn = key.size()
     sk = key.size(0)
+    key = expand_dsa_kv_heads(key, np)
+    nkv = np
 
     # [sq, b, np, hn] -> [b, np, sq, hn] -> [b * np, sq, hn]
     query = query.permute(1, 2, 0, 3).reshape(b * np, sq, hn)
@@ -140,6 +150,9 @@ def unfused_dsa_fn(query, key, value, topk_indices, softmax_scale):
     skv, b, nkv, hn = key.size()
     skv = key.size(0)
     hnv = value.size(3)
+    key = expand_dsa_kv_heads(key, np)
+    value = expand_dsa_kv_heads(value, np)
+    nkv = np
     # ===================================
     # Raw attention scores [b, np, sq, skv]
     # ===================================
@@ -206,8 +219,9 @@ def get_dsa_module_spec_for_backend(
     """Helper function to get module spec for Sparse Attention (matrix absorption variant).
 
     Aligned with Megatron's get_dsa_module_spec_for_backend signature and conventions.
-    The absorb optimization splits linear_kv_up_proj into separate linear_k_up_proj
-    and linear_v_up_proj to avoid materializing the full [K;V] intermediate tensor.
+    Matrix absorption keeps the independent K/V runtime parameters used by MindSpeed
+    0.16. Its sharded state dict maps those parameters to Megatron 0.18's combined
+    linear_kv_up_proj checkpoint tensor.
     """
     if not config.multi_latent_attention:
         raise RuntimeError("Currently only MLA supports sparse attention.")
@@ -219,7 +233,7 @@ def get_dsa_module_spec_for_backend(
     # layer_norm_weight would never participate in the computation graph.
     # Use standalone layer_norm + column_parallel_linear instead.
     rms_norm = config.normalization == "RMSNorm"
-    qk_norm = backend.layer_norm(rms_norm=rms_norm, for_qk=True)
+    qk_norm = backend.layer_norm(rms_norm=rms_norm, for_qk=True) if config.qk_layernorm else IdentityOp
     linear_q_up_proj = backend.column_parallel_linear()
     linear_k_up_proj = backend.column_parallel_linear()
     linear_v_up_proj = backend.column_parallel_linear()
@@ -426,6 +440,192 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             config=self.config,
             eps=self.config.layernorm_epsilon,
         )
+
+    def _combine_split_kv_up_proj_weights(self, k_weight, v_weight):
+        """Convert historical non-distributed MindSpeed split weights to Megatron layout."""
+        num_heads = self.num_attention_heads_per_partition
+        k_weight = k_weight.view(num_heads, self.config.qk_head_dim, self.config.kv_lora_rank)
+        v_weight = v_weight.view(num_heads, self.config.v_head_dim, self.config.kv_lora_rank)
+        return (
+            torch.cat((k_weight, v_weight), dim=1)
+            .contiguous()
+            .view(
+                num_heads * (self.config.qk_head_dim + self.config.v_head_dim),
+                self.config.kv_lora_rank,
+            )
+        )
+
+    def _split_combined_kv_up_proj_weight(self, weight):
+        """Convert Megatron's per-head interleaved KV tensor to runtime K/V tensors."""
+        num_heads = self.num_attention_heads_per_partition
+        weight = weight.view(
+            num_heads,
+            self.config.qk_head_dim + self.config.v_head_dim,
+            self.config.kv_lora_rank,
+        )
+        k_weight = (
+            weight[:, : self.config.qk_head_dim, :]
+            .contiguous()
+            .view(num_heads * self.config.qk_head_dim, self.config.kv_lora_rank)
+        )
+        v_weight = (
+            weight[:, self.config.qk_head_dim :, :]
+            .contiguous()
+            .view(num_heads * self.config.v_head_dim, self.config.kv_lora_rank)
+        )
+        return k_weight, v_weight
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        """Load Megatron fused-norm keys and historical plain split KV state dicts."""
+        if self.config.qk_layernorm:
+            norm_projection_pairs = [("kv_layernorm", "linear_kv_up_proj")]
+            if self.config.q_lora_rank is not None:
+                norm_projection_pairs.append(("q_layernorm", "linear_q_up_proj"))
+
+            for norm_name, projection_name in norm_projection_pairs:
+                for parameter_name in ("weight", "bias"):
+                    standalone_key = f"{prefix}{norm_name}.{parameter_name}"
+                    fused_key = f"{prefix}{projection_name}.layer_norm_{parameter_name}"
+                    if standalone_key not in state_dict and fused_key in state_dict:
+                        state_dict[standalone_key] = state_dict.pop(fused_key)
+
+                norm_module = getattr(self, norm_name)
+                if type(norm_module).get_extra_state is not torch.nn.Module.get_extra_state:
+                    state_dict.setdefault(f"{prefix}{norm_name}._extra_state", None)
+
+        combined_key = f"{prefix}linear_kv_up_proj.weight"
+        k_key = f"{prefix}linear_k_up_proj.weight"
+        v_key = f"{prefix}linear_v_up_proj.weight"
+        if combined_key in state_dict and k_key not in state_dict and v_key not in state_dict:
+            state_dict[k_key], state_dict[v_key] = self._split_combined_kv_up_proj_weight(state_dict.pop(combined_key))
+
+        combined_extra_state_key = f"{prefix}linear_kv_up_proj._extra_state"
+        k_extra_state_key = f"{prefix}linear_k_up_proj._extra_state"
+        v_extra_state_key = f"{prefix}linear_v_up_proj._extra_state"
+        if combined_extra_state_key in state_dict:
+            combined_extra_state = state_dict.pop(combined_extra_state_key)
+            state_dict.setdefault(k_extra_state_key, combined_extra_state)
+            state_dict.setdefault(v_extra_state_key, combined_extra_state)
+        elif k_extra_state_key in state_dict and v_extra_state_key not in state_dict:
+            state_dict[v_extra_state_key] = state_dict[k_extra_state_key]
+
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+    def sharded_state_dict(self, prefix: str = '', sharded_offsets: tuple = (), metadata=None) -> ShardedStateDict:
+        """Expose the 0.16 runtime layout under Megatron 0.18 checkpoint keys."""
+        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
+
+        combined_weight_key = f"{prefix}linear_kv_up_proj.weight"
+        component_specs = (
+            ("linear_k_up_proj.weight", self.config.qk_head_dim, 0),
+            ("linear_v_up_proj.weight", self.config.v_head_dim, self.config.qk_head_dim),
+        )
+        for local_suffix, head_dim, component_offset in component_specs:
+            local_key = f"{prefix}{local_suffix}"
+            sharded_tensor = sharded_state_dict[local_key]
+            if not isinstance(sharded_tensor, ShardedTensor):
+                raise TypeError(f"Expected {local_key} to be a ShardedTensor, got {type(sharded_tensor).__name__}")
+
+            row_axis = sharded_tensor.prepend_axis_num
+            global_head_start = sharded_tensor.global_offset[row_axis] // head_dim
+            global_num_heads = sharded_tensor.global_shape[row_axis] // head_dim
+            base_global_shape = sharded_tensor.global_shape
+            base_global_offset = sharded_tensor.global_offset
+            prepend_axis_num = sharded_tensor.prepend_axis_num
+
+            def build_fn(
+                key,
+                tensor,
+                replica_id,
+                flattened_range,
+                *,
+                head_dim=head_dim,
+                component_offset=component_offset,
+                global_head_start=global_head_start,
+                global_num_heads=global_num_heads,
+                base_global_shape=base_global_shape,
+                base_global_offset=base_global_offset,
+                prepend_axis_num=prepend_axis_num,
+                row_axis=row_axis,
+            ):
+                if flattened_range is not None:
+                    raise RuntimeError(
+                        "Flattened optimizer state is incompatible with DSA matrix "
+                        "absorption KV checkpoint conversion; use fully_reshardable."
+                    )
+                local_heads = tensor.size(0) // head_dim
+                per_head = tensor.view(local_heads, head_dim, self.config.kv_lora_rank)
+                global_shape = list(base_global_shape)
+                global_shape[row_axis] = global_num_heads * (self.config.qk_head_dim + self.config.v_head_dim)
+                shards = []
+                for local_head in range(local_heads):
+                    global_offset = list(base_global_offset)
+                    global_offset[row_axis] = (global_head_start + local_head) * (
+                        self.config.qk_head_dim + self.config.v_head_dim
+                    ) + component_offset
+                    # CheckpointableShardedTensor passes global_offset and local_shape
+                    # directly to PyTorch DCP as shard_offsets and shard_sizes. DCP
+                    # requires those tuples to have the same rank. Materialize the
+                    # Transformer-layer sharded offsets as singleton local dimensions
+                    # instead of relying on MCore's legacy prepend_axis_num metadata.
+                    data = (
+                        per_head[local_head]
+                        .contiguous()
+                        .view((1,) * prepend_axis_num + (head_dim, self.config.kv_lora_rank))
+                    )
+                    shards.append(
+                        ShardedTensor(
+                            key,
+                            data,
+                            data.dtype,
+                            tuple(data.shape),
+                            tuple(global_shape),
+                            tuple(global_offset),
+                            axis_fragmentations=None,
+                            replica_id=replica_id,
+                            prepend_axis_num=0,
+                        )
+                    )
+                return shards
+
+            def merge_fn(sub_state_dict, row_axis=prepend_axis_num):
+                return torch.cat(sub_state_dict, dim=row_axis).contiguous().view(-1, self.config.kv_lora_rank)
+
+            sharded_state_dict[local_key] = ShardedTensorFactory(
+                combined_weight_key,
+                sharded_tensor.data,
+                build_fn,
+                merge_fn,
+                sharded_tensor.replica_id,
+            )
+
+        k_extra_state_key = f"{prefix}linear_k_up_proj._extra_state"
+        v_extra_state_key = f"{prefix}linear_v_up_proj._extra_state"
+        combined_extra_state_key = f"{prefix}linear_kv_up_proj._extra_state"
+        sharded_state_dict.pop(v_extra_state_key, None)
+        apply_prefix_mapping(sharded_state_dict, {k_extra_state_key: combined_extra_state_key})
+
+        if not self.config.qk_layernorm:
+            return sharded_state_dict
+
+        norm_projection_pairs = [("kv_layernorm", "linear_kv_up_proj")]
+        if self.config.q_lora_rank is not None:
+            norm_projection_pairs.append(("q_layernorm", "linear_q_up_proj"))
+
+        prefix_map = {}
+        for norm_name, projection_name in norm_projection_pairs:
+            # A fused LayerNormLinear owns a single module _extra_state. The plain
+            # up-projection already exposes that checkpoint key; the standalone
+            # TENorm extra state is redundant and must not become
+            # `layer_norm_extra_state`, which Megatron checkpoints never contain.
+            sharded_state_dict.pop(f"{prefix}{norm_name}._extra_state", None)
+            for parameter_name in ("weight", "bias"):
+                standalone_key = f"{prefix}{norm_name}.{parameter_name}"
+                fused_key = f"{prefix}{projection_name}.layer_norm_{parameter_name}"
+                prefix_map[standalone_key] = fused_key
+
+        apply_prefix_mapping(sharded_state_dict, prefix_map)
+        return sharded_state_dict
 
     def forward(
         self,

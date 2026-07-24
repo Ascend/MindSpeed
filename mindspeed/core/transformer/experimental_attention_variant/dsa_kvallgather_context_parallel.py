@@ -371,12 +371,13 @@ def fused_sparse_lightning_indexer_kl_loss_kvallgather(
     cp_stream: Stream
     """
     from mindspeed.core.transformer.experimental_attention_variant.dsa_npu_fused import LILossTrain
+    from mindspeed.core.transformer.experimental_attention_variant.utils import get_dsa_query_token_count
 
     cp_size = get_distributed_world_size(cp_group)
     rank = get_distributed_rank(cp_group)
     is_tnd = layout == 'TND'
 
-    sq = query.shape[0]
+    num_query_tokens = get_dsa_query_token_count(query, layout)
 
     if is_tnd:
         actual_seq_qlen = actual_seq_qlen.to(torch.int32) if actual_seq_qlen is not None else None
@@ -475,7 +476,7 @@ def fused_sparse_lightning_indexer_kl_loss_kvallgather(
                 next_tokens,
             )
 
-    return sum(loss) / sq
+    return sum(loss) / num_query_tokens
 
 
 def transformer_config_post_init_wrapper(fn):

@@ -26,7 +26,7 @@ from mindspeed.ops.triton.l2norm import l2norm as _ms_l2norm
 class GatedDeltaNet(_MegatronGatedDeltaNet):
     """MindSpeed Gated Delta Net — inherits Megatron-main logic, overrides operators."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, cp_comm_type=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Replace chunk_gated_delta_rule with MindSpeed's Triton version.
         # Megatron's __init__ sets self.gated_delta_rule = chunk_gated_delta_rule
