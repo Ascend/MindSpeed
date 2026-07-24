@@ -24,6 +24,7 @@ from .modules.utils import (
     P2PCommOutput,
     P2PCommParams,
     p2p_comm_helper,
+    prefetch_dense_fc1_swap_in,
 )
 from .transformer_layer import transformer_layer_backward, transformer_layer_forward_backward_overlaping
 
@@ -351,6 +352,10 @@ def transformer_block_forward_backward_overlaping(
                     assert fwd_block.config.recompute_num_layers == 1
                     checkpoint = True
             bwd_layer_graph = bwd_block_graphs.pop(-1) if bwd_block_graphs else None
+            if bwd_block_graphs:
+                # Prefetch one layer ahead so the CPU-to-NPU copy can overlap
+                # with the current layer's forward and backward computation.
+                prefetch_dense_fc1_swap_in(bwd_block_graphs[-1])
             cur_p2p_params = pp_comm_params
             cur_bwd_p2p_params = bwd_pp_comm_params
             if unbalanced_block_graphs or l_no != len(fwd_block.layers) - 1 or len(bwd_block_graphs) > 0:
@@ -403,6 +408,8 @@ def transformer_block_forward_backward_overlaping(
 
         while bwd_block_graphs:
             bwd_layer_graph = bwd_block_graphs.pop(-1)
+            if bwd_block_graphs:
+                prefetch_dense_fc1_swap_in(bwd_block_graphs[-1])
             bwd_layer_output_grad = transformer_layer_backward(bwd_layer_output_grad, bwd_layer_graph)
 
     # Final layer norm.
@@ -447,6 +454,8 @@ def transformer_block_backward(block_output_grad, layer_graphs: List[LayerGraph]
     layer_output_grad = block_output_grad
     while len(layer_graphs) > 0:
         layer_graph = layer_graphs.pop(-1)
+        if layer_graphs:
+            prefetch_dense_fc1_swap_in(layer_graphs[-1])
         layer_output_grad = transformer_layer_backward(layer_output_grad, layer_graph)
 
     return layer_output_grad

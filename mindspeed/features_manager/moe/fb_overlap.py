@@ -71,6 +71,21 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--moe-fb-overlap', action='store_true')
         group.add_argument('--moe-unperm2-mem-optim-swap', action='store_true')
+        group.add_argument(
+            '--disable-fb-overlap-linear-dw-detach',
+            action='store_true',
+            help='Compute wgrad immediately for regular TP linear layers while keeping grouped-expert wgrad detached.',
+        )
+        group.add_argument(
+            '--recompute-dense-mlp',
+            action='store_true',
+            help='Recompute the dense MLP FC1 output during backward to reduce activation memory.',
+        )
+        group.add_argument(
+            '--swap-dense-mlp',
+            action='store_true',
+            help='Asynchronously swap the dense MLP FC1 output to CPU and restore it during backward.',
+        )
 
     def validate_args(self, args):
         self.incompatible_check(args, 'moe_alltoall_overlap_comm')
@@ -95,6 +110,20 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
 
         if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')
+
+        if args.disable_fb_overlap_linear_dw_detach and not args.moe_fb_overlap:
+            raise AssertionError(
+                '--disable-fb-overlap-linear-dw-detach currently only can be used with --moe-fb-overlap'
+            )
+
+        if args.recompute_dense_mlp and not args.moe_fb_overlap:
+            raise AssertionError('--recompute-dense-mlp currently only can be used with --moe-fb-overlap')
+
+        if args.swap_dense_mlp and not args.moe_fb_overlap:
+            raise AssertionError('--swap-dense-mlp currently only can be used with --moe-fb-overlap')
+
+        if args.swap_dense_mlp and args.recompute_dense_mlp:
+            raise AssertionError('--swap-dense-mlp and --recompute-dense-mlp cannot be enabled together')
 
         self._validate_pipeline_model_parallel_layout_for_fb_overlap(args)
 

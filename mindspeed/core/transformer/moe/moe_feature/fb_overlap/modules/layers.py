@@ -1,17 +1,14 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-import os
-import warnings
-from typing import Any, Callable, List, Optional
 
 import torch
 import torch.distributed
+from mindspeed.args_utils import get_full_args
 from mindspeed.core.transformer.moe.moe_feature import (
     prepare_input_tensors_for_wgrad_compute,
     get_global_memory_buffer,
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_world_size,
-    get_args
 )
 from .weight_grad_store import WeightGradStore
 
@@ -21,6 +18,8 @@ def linear_backward_wgrad_detach(ctx, grad_output):
     use_bias = ctx.use_bias
     grad_output_buffer = ctx.grad_output_buffer
     wgrad_deferral_limit = ctx.wgrad_deferral_limit
+    linear_wgrad_detach = WeightGradStore.should_detach_linear_wgrad()
+    args = get_full_args()
 
     wgrad_compute = True
     if grad_output_buffer is not None:
@@ -29,14 +28,12 @@ def linear_backward_wgrad_detach(ctx, grad_output):
             wgrad_compute = False
 
     if wgrad_compute:
-        if ctx.sequence_parallel and not WeightGradStore.is_decoupleBlock:
+        if ctx.sequence_parallel and not linear_wgrad_detach:
             world_size = get_tensor_model_parallel_world_size()
             dim_size = list(input_.size())
             dim_size[0] = dim_size[0] * world_size
 
-            all_gather_buffer = get_global_memory_buffer().get_tensor(
-                dim_size, input_.dtype, "mpu"
-            )
+            all_gather_buffer = get_global_memory_buffer().get_tensor(dim_size, input_.dtype, "mpu")
             handle = torch.distributed._all_gather_base(
                 all_gather_buffer, input_, group=get_tensor_model_parallel_group(), async_op=True
             )
@@ -48,19 +45,15 @@ def linear_backward_wgrad_detach(ctx, grad_output):
             total_input = input_
     grad_input = grad_output.matmul(weight)
 
-    if ctx.sequence_parallel and wgrad_compute and not WeightGradStore.is_decoupleBlock:
-        handle.wait()
+    if ctx.sequence_parallel and wgrad_compute and not linear_wgrad_detach:
+        handle.wait()  # pylint: disable=possibly-used-before-assignment
 
-    if wgrad_compute and not WeightGradStore.is_decoupleBlock:
-        grad_output, total_input = prepare_input_tensors_for_wgrad_compute(
-            grad_output, total_input
-        )
+    if wgrad_compute and not linear_wgrad_detach:
+        grad_output, total_input = prepare_input_tensors_for_wgrad_compute(grad_output, total_input)  # pylint: disable=used-before-assignment
 
     if ctx.allreduce_dgrad:
         # Asynchronous all-reduce
-        handle = torch.distributed.all_reduce(
-            grad_input, group=get_tensor_model_parallel_group(), async_op=True
-        )
+        handle = torch.distributed.all_reduce(grad_input, group=get_tensor_model_parallel_group(), async_op=True)
         # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
         # all-reduce is scheduled before the weight gradient computation
 
@@ -77,17 +70,16 @@ def linear_backward_wgrad_detach(ctx, grad_output):
         # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
         # reduce scatter is scheduled before the weight gradient computation
 
-
-    if WeightGradStore.is_decoupleBlock:
-        # TODO: remove clone under MLA setting
+    if linear_wgrad_detach:
+        # TODO: remove clone under MLA setting  # pylint: disable=fixme
         WeightGradStore.put(
             total_input.clone().detach(),
             grad_output.clone().detach(),
             weight,
             ctx.sequence_parallel,
-            in_row=not ctx.sequence_parallel
+            in_row=not ctx.sequence_parallel,
         )
-        if hasattr(weight, 'grad_added_to_main_grad') and get_args().overlap_grad_reduce:
+        if hasattr(weight, 'grad_added_to_main_grad') and args.overlap_grad_reduce:
             weight.skip_grad_accum = True
         grad_weight = None
     else:
@@ -95,6 +87,7 @@ def linear_backward_wgrad_detach(ctx, grad_output):
             if wgrad_compute:
                 if weight.main_grad.dtype == torch.float32:
                     from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
+
                     npu_matmul_add_fp32(total_input, grad_output, weight.main_grad)
                 elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
                     raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")

@@ -79,6 +79,10 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     if bwd_layer_graph.attn_swap_managers:
         for manager in bwd_layer_graph.attn_swap_managers:
             manager.async_swap_in(wait_stream=torch.npu.current_stream())
+    if bwd_layer_graph.fc1_swap_manager:
+        bwd_layer_graph.fc1_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
+    if bwd_layer_graph.probs_swap_manager:
+        bwd_layer_graph.probs_swap_manager.async_swap_in(wait_stream=torch.npu.current_stream())
 
     # shard experts backward grad Allgather
     last_comm_handle = None

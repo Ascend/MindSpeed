@@ -48,6 +48,9 @@ MindSpeed基于DualPipe流水实现了MoE跨microbatch间A2A通信掩盖，具�
 
 - 在启动脚本中加入`--moe-fb-overlap`。
 - 如果需要使用DualpipeV流水，请在启动脚本中加入`--schedules-method dualpipev`。
+- 如果需要关闭普通TP Linear在反向中的权重梯度分离功能，请加入`--disable-fb-overlap-linear-dw-detach`，该参数可以节省显存，但会造成性能损失。
+- 如果需要对Dense层MLP的FC1输出进行激活重计算，请加入`--recompute-dense-mlp`。该参数会降低激活显存占用，但会增加一次Dense FC1前向计算。
+- 如果需要将Dense层MLP的FC1输出异步换出到CPU，并在反向计算前恢复到NPU，请加入`--swap-dense-mlp`。该参数与`--recompute-dense-mlp`不能同时使用。
 - 如果使用megatron VPP，请在启动脚本中配置`--num-layers-per-virtual-pipeline-stage`，例如设置为`1`或根据模型结构进行调整。
 - 支持非PP，多microbatch场景，请在启动脚本中不配置`--pipeline-model-parallel-size`或者配置`--pipeline-model-parallel-size 1`。
 
