@@ -404,7 +404,10 @@ def get_cu_seqlens_qkv_before_attn(cu_seqlens_q, cp_size, rank):
     get splited cu_seqlens_q, cu_seqlens_kv, and kv_seq_range for local rank before attention
     """
 
-    total_length = cu_seqlens_q[-1]
+    def _to_int(value):
+        return value.item() if isinstance(value, torch.Tensor) else int(value)
+
+    total_length = _to_int(cu_seqlens_q[-1])
     chunk_size = total_length // cp_size
     start = rank * chunk_size
     end = start + chunk_size
@@ -420,8 +423,8 @@ def get_cu_seqlens_qkv_before_attn(cu_seqlens_q, cp_size, rank):
         if i == 0:
             seq_start = 0
         else:
-            seq_start = cu_seqlens_q[i - 1]
-        seq_end = cu_seqlens_q[i]
+            seq_start = _to_int(cu_seqlens_q[i - 1])
+        seq_end = _to_int(cu_seqlens_q[i])
 
         # skip non-overlap sequences
         if seq_end <= start:

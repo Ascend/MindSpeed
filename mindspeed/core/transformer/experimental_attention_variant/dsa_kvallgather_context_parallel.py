@@ -37,68 +37,27 @@ def gather_and_permute_cp_shard(
     return t_ag.view(-1, *t.shape[1:])
 
 
-def compute_cu_seqlens_for_window(cu_seqlens, window_size):
-    """Truncate cu_seqlens to cover only tokens within [0, window_size).
+def get_tnd_causal_cp_metadata(cu_seqlens, local_t, cp_size, rank, device):
+    total_t = cu_seqlens[-1].item() if isinstance(cu_seqlens[-1], torch.Tensor) else int(cu_seqlens[-1])
+    expected_total_t = local_t * cp_size
+    if total_t != expected_total_t:
+        raise ValueError(
+            f"TND cu_seqlens total length {total_t} does not match local_t({local_t}) * cp_size({cp_size})."
+        )
 
-    The reordered K follows global causal order, so we find which documents
-    fit within the window and truncate the last one at the window boundary.
+    rank_cu_seqlens_q, rank_cu_seqlens_kv, kv_seq_range = get_cu_seqlens_qkv_before_attn(
+        cu_seqlens,
+        cp_size,
+        rank,
+    )
+    kv_start, kv_end = kv_seq_range
 
-    Supports both formats:
-      - With leading 0: tensor([0, 1024, 2048])
-      - Without leading 0: tensor([1024, 2048])
-    """
-    # Normalize: ensure leading 0 for consistent iteration
-    has_leading_zero = cu_seqlens.numel() > 0 and cu_seqlens[0].item() == 0
-    if has_leading_zero:
-        boundaries = cu_seqlens[1:]
-    else:
-        boundaries = cu_seqlens
-
-    result = [0]
-    for cs in boundaries:
-        cs_val = cs.item() if isinstance(cs, torch.Tensor) else cs
-        if cs_val >= window_size:
-            result.append(window_size)
-            break
-        result.append(cs_val)
-    return torch.tensor(result, dtype=torch.int32, device=cu_seqlens.device)
-
-
-def split_cu_seqlens_for_q_chunk(cu_seqlens_q_rank, T_local, chunk_idx, device):
-    T_half = T_local // 2
-    chunk_start = chunk_idx * T_half
-    chunk_end = (chunk_idx + 1) * T_half
-
-    result = []
-    first_doc_spanning = False
-    prev_end = 0
-
-    for seq_end in cu_seqlens_q_rank:
-        seq_start = prev_end
-        prev_end = seq_end
-        
-        if seq_end <= chunk_start:
-            continue
-        if seq_start >= chunk_end:
-            break
-
-        if seq_start < chunk_start:
-            first_doc_spanning = True
-
-        overlap_end = min(seq_end, chunk_end)
-
-        if not result and first_doc_spanning:
-            result.append(0)
-
-        result.append(overlap_end - chunk_start)
-
-    if not result:
-        result = [T_half]
-
-    if result[0] != 0:
-        result.insert(0, 0)
-
-    return torch.tensor(result, dtype=torch.int32, device=device)
+    return (
+        kv_start,
+        kv_end,
+        torch.tensor(rank_cu_seqlens_q, dtype=torch.int32, device=device),
+        torch.tensor(rank_cu_seqlens_kv, dtype=torch.int32, device=device),
+    )
 
 
 def fused_lightning_indexer_kvallgather(
@@ -128,46 +87,47 @@ def fused_lightning_indexer_kvallgather(
     is_tnd = layout == 'TND'
 
     if is_tnd:
-        # TND: [T, ...] -> [2, T//2, ...] (no transpose, no batch dim)
-        q, weights = [
-            t.view(2, t.shape[0] // 2, *t.shape[1:])
-            for t in [q, weights]
-        ]
-        # [T, ...] -> [cp*T, ...] (reorder for causal order, no transpose)
-        k_ag = gather_and_permute_cp_shard(k, cp_group)
+        local_t = q.shape[0]
+        # reset-attention-mask + kvallgather_cp_algo uses contiguous CP chunks.
+        # CP-rank-order all-gather already restores global TND token order.
+        k_ag = gather_from_sequence_parallel_region(k, group=cp_group)
+        kv_start, kv_end, cu_q_chunk, cu_kv_chunk = get_tnd_causal_cp_metadata(
+            actual_seq_klen, local_t, cp_size, rank, k.device
+        )
+        indices, scores = torch_npu.npu_lightning_indexer(
+            q,
+            k_ag[kv_start:kv_end, ...],
+            weights,
+            actual_seq_lengths_query=cu_q_chunk,
+            actual_seq_lengths_key=cu_kv_chunk,
+            layout_query=layout_query,
+            layout_key=layout_key,
+            sparse_count=index_topk,
+            sparse_mode=3,
+            return_value=True,
+        )
+        return indices, scores
 
-        # Compute cu_seqlens for full gathered K
-        cu_seqlens_kv_full = actual_seq_klen * cp_size if cp_size > 1 else actual_seq_klen
-
-        # Compute per-rank Q cu_seqlens
-        rank_cu_seqlens_q, _, _ = get_cu_seqlens_qkv_before_attn(actual_seq_qlen, cp_size, rank)
-        T_local = q.shape[1]  # T//2 per chunk
-    else:
-        # BSND: [s, b, ...] -> [2, s//2, b, ...] -> [2, b, s//2, ...]
-        q, weights = [
-            t.view(2, t.shape[0] // 2, *t.shape[1:]).transpose(1, 2)
-            for t in [q, weights]
-        ]
-        # [s, b, ...] -> [cp*s, b, ...] -> [b, cp*s, ...]
-        k_ag = gather_and_permute_cp_shard(k, cp_group).transpose(0, 1)
+    # BSND: [s, b, ...] -> [2, s//2, b, ...] -> [2, b, s//2, ...]
+    q, weights = [
+        t.view(2, t.shape[0] // 2, *t.shape[1:]).transpose(1, 2)
+        for t in [q, weights]
+    ]
+    # [s, b, ...] -> [cp*s, b, ...] -> [b, cp*s, ...]
+    k_ag = gather_and_permute_cp_shard(k, cp_group).transpose(0, 1)
 
     indices = [None, None]
     scores = [None, None]
     local_seq_chunk_ids = [rank + 1, 2 * cp_size - rank]
-    chunk_size = k_ag.shape[1 if not is_tnd else 0] // cp_size // 2
+    chunk_size = k_ag.shape[1] // cp_size // 2
 
     for i, chunk_id in enumerate(local_seq_chunk_ids):
         q_ = q[i]
-        kv_len = chunk_id * chunk_size
 
-        if is_tnd:
-            k_ag_ = k_ag[:kv_len, ...]
-            cu_q_chunk = split_cu_seqlens_for_q_chunk(rank_cu_seqlens_q, T_local * 2, i, device=k.device)
-            cu_kv_chunk = compute_cu_seqlens_for_window(cu_seqlens_kv_full, kv_len)
-        else:
-            k_ag_ = k_ag[:, :kv_len, ...]
-            cu_q_chunk = actual_seq_qlen
-            cu_kv_chunk = actual_seq_klen
+        kv_len = chunk_id * chunk_size
+        k_ag_ = k_ag[:, :kv_len, ...]
+        cu_q_chunk = actual_seq_qlen
+        cu_kv_chunk = actual_seq_klen
 
         weights_ = weights[i]
 
@@ -184,14 +144,9 @@ def fused_lightning_indexer_kvallgather(
             return_value=True,
         )
 
-    if is_tnd:
-        # TND: [T//2, N, sparse_size] per step → [T, N, sparse_size]
-        topk_indices = torch.cat(indices, dim=0)
-        topk_score = torch.cat(scores, dim=0)
-    else:
-        # BSND: [B, S//2, 1, sparse_size] per step → [B, S, sparse_size]
-        topk_indices = torch.cat(indices, dim=1).squeeze(2)
-        topk_score = torch.cat(scores, dim=1).squeeze(2)
+    # BSND: [B, S//2, 1, sparse_size] per step -> [B, S, sparse_size]
+    topk_indices = torch.cat(indices, dim=1).squeeze(2)
+    topk_score = torch.cat(scores, dim=1).squeeze(2)
 
     return topk_indices, topk_score
 
@@ -237,90 +192,79 @@ def fused_npu_sparse_flash_attention_kvallgather(
     if is_tnd:
         actual_seq_qlen = packed_seq_params.cu_seqlens_q.to(torch.int32)
         actual_seq_klen = packed_seq_params.cu_seqlens_kv.to(torch.int32)
+        local_t = q.shape[0]
 
-        # TND: [T, ...] -> [2, T//2, ...] (no transpose)
-        q, q_rope = [
-            t.view(2, t.shape[0] // 2, *t.shape[1:])
-            for t in [q, q_rope]
-        ]
-        # [T, ...] -> [cp*T, ...] (reorder for causal order, no transpose)
-        k_ag = gather_and_permute_cp_shard(k, cp_group)
-        v_ag = gather_and_permute_cp_shard(v, cp_group)
-        k_rope_ag = gather_and_permute_cp_shard(k_rope, cp_group)
+        # reset-attention-mask + kvallgather_cp_algo uses contiguous CP chunks.
+        # CP-rank-order all-gather already restores global TND token order.
+        k_ag = gather_from_sequence_parallel_region(k, group=cp_group)
+        v_ag = gather_from_sequence_parallel_region(v, group=cp_group)
+        k_rope_ag = gather_from_sequence_parallel_region(k_rope, group=cp_group)
+        kv_start, kv_end, cu_q_chunk, cu_kv_chunk = get_tnd_causal_cp_metadata(
+            actual_seq_klen, local_t, cp_size, rank, q.device
+        )
+        attn_outs = torch_npu.npu_sparse_flash_attention(
+            q,
+            k_ag[kv_start:kv_end, ...],
+            v_ag[kv_start:kv_end, ...],
+            sparse_indices=topk_indices.to(torch.int32),
+            block_table=None,
+            actual_seq_lengths_query=cu_q_chunk,
+            actual_seq_lengths_kv=cu_kv_chunk,
+            query_rope=q_rope,
+            key_rope=k_rope_ag[kv_start:kv_end, ...],
+            scale_value=scale,
+            sparse_block_size=1,
+            layout_query='TND',
+            layout_kv='TND',
+            sparse_mode=3,
+            attention_mode=2,
+            return_softmax_lse=True,
+        )
+        return attn_outs[0], attn_outs[1], attn_outs[2]
 
-        cu_seqlens_kv_full = actual_seq_klen * cp_size if cp_size > 1 else actual_seq_klen
-        rank_cu_seqlens_q, _, _ = get_cu_seqlens_qkv_before_attn(actual_seq_qlen, cp_size, rank)
+    # BSND: [s, b, ...] -> [2, s//2, b, ...] -> [2, b, s//2, ...]
+    q, q_rope = [
+        t.view(2, t.shape[0] // 2, *t.shape[1:]).transpose(1, 2)
+        for t in [q, q_rope]
+    ]
+    # [s, b, ...] -> [cp*s, b, ...] -> [b, cp*s, ...]
+    k_ag, v_ag, k_rope_ag = [
+        gather_and_permute_cp_shard(t, cp_group).transpose(0, 1)
+        for t in [k, v, k_rope]
+    ]
 
-        # [T, N, sparse_size] -> [2, T//2, N, sparse_size] (no unsqueeze for TND)
-        t_total = topk_indices.shape[0]
-        topk_indices = topk_indices.view(2, t_total // 2, *topk_indices.shape[1:])
-    else:
-        # BSND: [s, b, ...] -> [2, s//2, b, ...] -> [2, b, s//2, ...]
-        q, q_rope = [
-            t.view(2, t.shape[0] // 2, *t.shape[1:]).transpose(1, 2)
-            for t in [q, q_rope]
-        ]
-        # [s, b, ...] -> [cp*s, b, ...] -> [b, cp*s, ...]
-        k_ag, v_ag, k_rope_ag = [
-            gather_and_permute_cp_shard(t, cp_group).transpose(0, 1)
-            for t in [k, v, k_rope]
-        ]
-
-        # [b, s, sparse_size] -> [2, b, s//2, 1, sparse_size]
-        b, s, sparse_size = topk_indices.shape
-        topk_indices = topk_indices.view(b, 2, s // 2, sparse_size).transpose(0, 1).unsqueeze(3)
+    # [b, s, sparse_size] -> [2, b, s//2, 1, sparse_size]
+    b, s, sparse_size = topk_indices.shape
+    topk_indices = topk_indices.view(b, 2, s // 2, sparse_size).transpose(0, 1).unsqueeze(3)
 
     out_per_step = [None, None]
     softmax_max = [None, None]
     softmax_sum = [None, None]
     out = torch.empty_like(q)
     local_seq_chunk_ids = [rank + 1, 2 * cp_size - rank]
-    chunk_size = k_ag.shape[1 if not is_tnd else 0] // cp_size // 2
+    chunk_size = k_ag.shape[1] // cp_size // 2
 
     for i, chunk_id in enumerate(local_seq_chunk_ids):
+
         kv_len = chunk_id * chunk_size
-
-        if is_tnd:
-            cu_q_chunk = split_cu_seqlens_for_q_chunk(rank_cu_seqlens_q, seq_dim, i, device=q.device)
-            cu_kv_chunk = compute_cu_seqlens_for_window(cu_seqlens_kv_full, kv_len)
-
-            attn_outs = torch_npu.npu_sparse_flash_attention(
-                q[i],
-                k_ag[:kv_len, ...],
-                v_ag[:kv_len, ...],
-                sparse_indices=topk_indices[i].to(torch.int32),
-                block_table=None,
-                actual_seq_lengths_query=cu_q_chunk,
-                actual_seq_lengths_kv=cu_kv_chunk,
-                query_rope=q_rope[i],
-                key_rope=k_rope_ag[:kv_len, ...],
-                scale_value=scale,
-                sparse_block_size=1,
-                layout_query='TND',
-                layout_kv='TND',
-                sparse_mode=3,
-                attention_mode=2,
-                return_softmax_lse=True,
-            )
-        else:
-            attn_outs = torch_npu.npu_sparse_flash_attention(
-                q[i],
-                k_ag[:, :kv_len, ...],
-                v_ag[:, :kv_len, ...],
-                sparse_indices=topk_indices[i].to(torch.int32),
-                block_table=None,
-                actual_seq_lengths_query=None,
-                actual_seq_lengths_kv=None,
-                query_rope=q_rope[i],
-                key_rope=k_rope_ag[:, :kv_len, ...],
-                scale_value=scale,
-                sparse_block_size=1,
-                layout_query='BSND',
-                layout_kv='BSND',
-                sparse_mode=3,
-                attention_mode=2,
-                return_softmax_lse=True,
-            )
+        attn_outs = torch_npu.npu_sparse_flash_attention(
+            q[i],
+            k_ag[:, :kv_len, ...],
+            v_ag[:, :kv_len, ...],
+            sparse_indices=topk_indices[i].to(torch.int32),
+            block_table=None,
+            actual_seq_lengths_query=None,
+            actual_seq_lengths_kv=None,
+            query_rope=q_rope[i],
+            key_rope=k_rope_ag[:, :kv_len, ...],
+            scale_value=scale,
+            sparse_block_size=1,
+            layout_query='BSND',
+            layout_kv='BSND',
+            sparse_mode=3,
+            attention_mode=2,
+            return_softmax_lse=True,
+        )
 
         out_per_step[i] = attn_outs[0]
         softmax_max[i] = attn_outs[1]
@@ -328,20 +272,15 @@ def fused_npu_sparse_flash_attention_kvallgather(
 
         out[i].copy_(out_per_step[i])
 
-    if is_tnd:
-        # TND: [n2, T//2, n1/n2] per step -> [n2, T, n1/n2]
-        softmax_max_out = torch.cat(softmax_max, dim=1).contiguous()
-        softmax_sum_out = torch.cat(softmax_sum, dim=1).contiguous()
-        # [2, T//2, n, d] -> [T, n, d]
-        out = out.view(-1, *out.shape[-2:])
-    else:
-        # BSND: [b, n2, s//2, n1/n2] per step -> [b, n2, s, n1/n2]
-        softmax_max_out = torch.cat(softmax_max, dim=2)
-        softmax_sum_out = torch.cat(softmax_sum, dim=2)
-        # [2, b, s//2, n, d] -> [b, s, n, d] -> [s, b, n, d]
-        out = out.transpose(0, 1).contiguous()
-        out = out.view(out.shape[0], -1, *out.shape[-2:])
-        out = rearrange(out, 'b s h d -> s b h d')
+    # BSND: [b, n2, s//2, n1/n2] per step -> [b, n2, s, n1/n2].
+    # TND returns above because it uses contiguous CP chunks and does not need
+    # the BSND two-half zigzag recombination.
+    softmax_max_out = torch.cat(softmax_max, dim=2)
+    softmax_sum_out = torch.cat(softmax_sum, dim=2)
+    # [2, b, s//2, n, d] -> [b, s, n, d] -> [s, b, n, d]
+    out = out.transpose(0, 1).contiguous()
+    out = out.view(out.shape[0], -1, *out.shape[-2:])
+    out = rearrange(out, 'b s h d -> s b h d')
 
     return out, softmax_max_out, softmax_sum_out
 
@@ -400,104 +339,84 @@ def fused_sparse_lightning_indexer_kl_loss_kvallgather(
     if is_tnd:
         actual_seq_qlen = actual_seq_qlen.to(torch.int32) if actual_seq_qlen is not None else None
         actual_seq_klen = actual_seq_klen.to(torch.int32) if actual_seq_klen is not None else None
+        local_t = query.shape[0]
 
-        # TND: [T, ...] -> [2, T//2, ...] (no transpose)
-        query, query_rope, query_index, weights = [
-            t.view(2, t.shape[0] // 2, *t.shape[1:])
-            for t in [query, query_rope, query_index, weights]
-        ]
+        # reset-attention-mask + kvallgather_cp_algo uses contiguous CP chunks.
+        # CP-rank-order all-gather already restores global TND token order.
+        key_ag = gather_from_sequence_parallel_region(key, group=cp_group)
+        key_index_ag = gather_from_sequence_parallel_region(key_index, group=cp_group)
+        key_rope_ag = gather_from_sequence_parallel_region(key_rope, group=cp_group)
+        kv_start, kv_end, cu_q_chunk, cu_kv_chunk = get_tnd_causal_cp_metadata(
+            actual_seq_klen, local_t, cp_size, rank, query.device
+        )
+        return LILossTrain.apply(
+            query,
+            key_ag[kv_start:kv_end, ...],
+            query_index,
+            key_index_ag[kv_start:kv_end, ...],
+            weights,
+            topk_indices,
+            softmax_max,
+            softmax_sum,
+            scale_value,
+            query_rope,
+            key_rope_ag[kv_start:kv_end, ...],
+            cu_q_chunk,
+            cu_kv_chunk,
+            'TND',
+            sparse_mode,
+            pre_tokens,
+            next_tokens,
+        ) / sq
 
-        # [T, N, sparse_size] -> [2, T//2, N, sparse_size]
-        t_total = topk_indices.shape[0]
-        topk_indices = topk_indices.view(2, t_total // 2, *topk_indices.shape[1:])
+    # BSND: [s, b, ...] -> [2, s//2, b, ...] -> [2, b, s//2, ...]
+    query, query_rope, query_index, weights = [
+        t.view(2, t.shape[0] // 2, *t.shape[1:]).transpose(1, 2)
+        for t in [query, query_rope, query_index, weights]
+    ]
 
-        # [n2, T, n1/n2] -> [n2, 2, T//2, n1/n2] -> [2, n2, T//2, n1/n2]
-        softmax_max, softmax_sum = [
-            t.view(t.shape[0], 2, t.shape[1] // 2, t.shape[2]).permute(1, 0, 2, 3)
-            for t in [softmax_max, softmax_sum]
-        ]
+    # [b, s, sparse_size] -> [b, 2, s//2, sparse_size] -> [2, b, s//2, 1, sparse_size]
+    b, s, sparse_size = topk_indices.shape
+    topk_indices = topk_indices.view(b, 2, s // 2, sparse_size).transpose(0, 1).unsqueeze(3)
 
-        # [T, ...] -> [cp*T, ...] (reorder for causal order, no transpose)
-        key_ag = gather_and_permute_cp_shard(key, cp_group)
-        key_index_ag = gather_and_permute_cp_shard(key_index, cp_group)
-        key_rope_ag = gather_and_permute_cp_shard(key_rope, cp_group)
+    # [b, 1, s, n] -> [2, b, 1, s//2, n]
+    softmax_max, softmax_sum = [
+        rearrange(t, 'b n2 (c s) n1 -> c b n2 s n1', n2=1, c=2)
+        for t in [softmax_max, softmax_sum]
+    ]
 
-        cu_seqlens_kv_full = actual_seq_klen * cp_size if cp_size > 1 else actual_seq_klen
-        rank_cu_seqlens_q, _, _ = get_cu_seqlens_qkv_before_attn(actual_seq_qlen, cp_size, rank)
-        T_local = query.shape[1]  # T//2 per chunk
-    else:
-        # BSND: [s, b, ...] -> [2, s//2, b, ...] -> [2, b, s//2, ...]
-        query, query_rope, query_index, weights = [
-            t.view(2, t.shape[0] // 2, *t.shape[1:]).transpose(1, 2)
-            for t in [query, query_rope, query_index, weights]
-        ]
-
-        # [b, s, sparse_size] -> [b, 2, s//2, sparse_size] -> [2, b, s//2, 1, sparse_size]
-        b, s, sparse_size = topk_indices.shape
-        topk_indices = topk_indices.view(b, 2, s // 2, sparse_size).transpose(0, 1).unsqueeze(3)
-
-        # [b, 1, s, n] -> [2, b, 1, s//2, n]
-        softmax_max, softmax_sum = [
-            rearrange(t, 'b n2 (c s) n1 -> c b n2 s n1', n2=1, c=2)
-            for t in [softmax_max, softmax_sum]
-        ]
-
-        # [s, b, ...] -> [cp*s, b, ...] -> [b, cp*s, ...]
-        key_ag, key_index_ag, key_rope_ag = [
-            gather_and_permute_cp_shard(t, cp_group).transpose(0, 1)
-            for t in [key, key_index, key_rope]
-        ]
+    # [s, b, ...] -> [cp*s, b, ...] -> [b, cp*s, ...]
+    key_ag, key_index_ag, key_rope_ag = [
+        gather_and_permute_cp_shard(t, cp_group).transpose(0, 1)
+        for t in [key, key_index, key_rope]
+    ]
 
     loss = [None, None]
     local_seq_chunk_ids = [rank + 1, 2 * cp_size - rank]
-    chunk_size = key_ag.shape[1 if not is_tnd else 0] // cp_size // 2
+    chunk_size = key_ag.shape[1] // cp_size // 2
 
     for i, chunk_id in enumerate(local_seq_chunk_ids):
+
         kv_len = chunk_id * chunk_size
-
-        if is_tnd:
-            cu_q_chunk = split_cu_seqlens_for_q_chunk(rank_cu_seqlens_q, T_local * 2, i, device=query.device)
-            cu_kv_chunk = compute_cu_seqlens_for_window(cu_seqlens_kv_full, kv_len)
-
-            loss[i] = LILossTrain.apply(
-                query[i],
-                key_ag[:kv_len, ...],
-                query_index[i],
-                key_index_ag[:kv_len, ...],
-                weights[i],
-                topk_indices[i],
-                softmax_max[i],
-                softmax_sum[i],
-                scale_value,
-                query_rope[i],
-                key_rope_ag[:kv_len, ...],
-                cu_q_chunk,
-                cu_kv_chunk,
-                'TND',
-                sparse_mode,
-                pre_tokens,
-                next_tokens,
-            )
-        else:
-            loss[i] = LILossTrain.apply(
-                query[i],
-                key_ag[:, :kv_len, ...],
-                query_index[i],
-                key_index_ag[:, :kv_len, ...],
-                weights[i],
-                topk_indices[i],
-                softmax_max[i],
-                softmax_sum[i],
-                scale_value,
-                query_rope[i],
-                key_rope_ag[:, :kv_len, ...],
-                actual_seq_qlen,
-                actual_seq_klen,
-                'BSND',
-                sparse_mode,
-                pre_tokens,
-                next_tokens,
-            )
+        loss[i] = LILossTrain.apply(
+            query[i],
+            key_ag[:, :kv_len, ...],
+            query_index[i],
+            key_index_ag[:, :kv_len, ...],
+            weights[i],
+            topk_indices[i],
+            softmax_max[i],
+            softmax_sum[i],
+            scale_value,
+            query_rope[i],
+            key_rope_ag[:, :kv_len, ...],
+            actual_seq_qlen,
+            actual_seq_klen,
+            'BSND',
+            sparse_mode,
+            pre_tokens,
+            next_tokens,
+        )
 
     return sum(loss) / sq
 

@@ -661,14 +661,8 @@ class MLASelfAttentionAbsorb(MLASelfAttention):
             rotary_pos_emb, mscale = self.rotary_pos_emb(rotary_seq_len, packed_seq=thd_packed_seq)
 
         if packed_seq_params is not None and packed_seq_params.qkv_format == 'thd':
-            if packed_seq_params.cu_seqlens_q_padded is not None:
-                cu_seqlens_q = packed_seq_params.cu_seqlens_q_padded
-            else:
-                cu_seqlens_q = packed_seq_params.cu_seqlens_q
-            if packed_seq_params.cu_seqlens_kv_padded is not None:
-                cu_seqlens_kv = packed_seq_params.cu_seqlens_kv_padded
-            else:
-                cu_seqlens_kv = packed_seq_params.cu_seqlens_kv
+            cu_seqlens_q = packed_seq_params
+            cu_seqlens_kv = packed_seq_params
         else:
             cu_seqlens_q = cu_seqlens_kv = None
 

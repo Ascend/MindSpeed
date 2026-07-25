@@ -194,10 +194,14 @@ def fused_dsa_attn_forward(
             )
         # Save indexer loss for logging
         if indexer_loss_coeff > 0:
+            indexer_loss_avg_group = None
+            if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
+                indexer_loss_avg_group = mpu.get_context_parallel_group()
             DSAIndexerLossLoggingHelper.save_loss_to_tracker(
                 loss=indexer_loss,
                 layer_number=self.layer_number,
                 num_layers=self.config.num_layers + self.config.mtp_num_layers if self.config.mtp_num_layers else self.config.num_layers,
+                avg_group=indexer_loss_avg_group,
             )
         # Attach loss to output
         output = DSAIndexerLossAutoScaler.apply(output, indexer_loss)
@@ -281,7 +285,7 @@ def forward_with_scores(
         nope_dim = self.index_head_dim - self.qk_pos_emb_head_dim
         q_nope, q_pe = torch.split(q, [nope_dim, self.qk_pos_emb_head_dim], dim=-1)
         from megatron.core.models.common.embeddings import apply_rotary_pos_emb
-        cu_seqlens = packed_seq_params.cu_seqlens_q
+        cu_seqlens = packed_seq_params
         if getattr(args, 'apply_rope_in_complex', False):
             from mindspeed.core.models.common.embeddings.rotary_pos_embedding import apply_rotary_pos_emb_bshd_in_complex
             q_pe = apply_rotary_pos_emb_bshd_in_complex(q_pe, rotary_pos_emb, rotary_interleaved=False)
@@ -302,7 +306,7 @@ def forward_with_scores(
         k = k.reshape(seqlen, 1, self.index_head_dim)
         nope_dim = self.index_head_dim - self.qk_pos_emb_head_dim
         k_nope, k_pe = torch.split(k, [nope_dim, self.qk_pos_emb_head_dim], dim=-1)
-        cu_seqlens = packed_seq_params.cu_seqlens_kv
+        cu_seqlens = packed_seq_params
         if getattr(args, 'apply_rope_in_complex', False):
             k_pe = apply_rotary_pos_emb_bshd_in_complex(k_pe, rotary_pos_emb, rotary_interleaved=False)
         else:
