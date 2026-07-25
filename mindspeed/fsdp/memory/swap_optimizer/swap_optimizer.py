@@ -5,8 +5,8 @@ from torch import Tensor
 from torch.optim import AdamW
 
 
-class SwapOptimizerOperate():
-
+# pylint: disable=no-member
+class SwapOptimizerOperate:
     swap_to_device_stream = None
     swap_to_host_stream = None
 
@@ -36,8 +36,9 @@ class SwapOptimizerOperate():
 
         self.opt_states_initialization()
 
-         # predefine memory data for calculating swap_numel.
+        # predefine memory data for calculating swap_numel.
         self.mem_fraction_static = mem_fraction_static
+        self.swap_numel = 0
         self.memory_data_initialization()
 
     def opt_states_initialization(self):
@@ -85,18 +86,18 @@ class SwapOptimizerOperate():
         return swap_numel
 
     def swap_all_to_host(self):
-        for param in self.param_to_cpu_states_map.keys():
+        for param in self.param_to_cpu_states_map:
             self.swap_tensors_to_host(param)
-        for param in self.param_to_cpu_states_map.keys():
+        for param in self.param_to_cpu_states_map:
             event = self.swap_to_host_events_map.get(param, None)
             if event is not None:
                 torch.accelerator.current_stream().wait_event(event)
                 self.swap_to_host_events_map[param] = None
 
     def swap_all_to_device(self):
-        for param in self.param_to_cpu_states_map.keys():
+        for param in self.param_to_cpu_states_map:
             self.swap_tensors_to_device(param)
-        for param in self.param_to_cpu_states_map.keys():
+        for param in self.param_to_cpu_states_map:
             event = self.swap_to_device_events_map.get(param, None)
             if event is not None:
                 torch.accelerator.current_stream().wait_event(event)
@@ -171,37 +172,40 @@ class AdamWSwap(AdamW, SwapOptimizerOperate):
         state_keys: Optional[List[str]] = None,
     ):
         """
-            This is a class that supports swapping optimizer states from the device to the host side
-            to reduce peak GPU memory usage.
-            
-            During non-step phases, to avoid the additional GPU memory overhead from optimizer states,
-            they are swapped from the device side to the host side. This operation is executed in the
-            __init__ method of SwapOptimizerOperate.
-            
-            During the step execution, to further minimize peak memory usage, optimizer states are
-            swapped from the host side back to the device side in batches, based on the available
-            GPU memory. This operation is performed within the step method.
+        This is a class that supports swapping optimizer states from the device to the host side
+        to reduce peak GPU memory usage.
 
-            Args:
-                mem_fraction_static(float): Allocate available GPU memory * mem_fraction_static for swapping parameters 
-                    from host to device in batches.
-                state_keys(list): Optimizer States That Need to be Swapped
-                Other parameters: Refer to the documentation of the native torch.optim.AdamW parameters.
+        During non-step phases, to avoid the additional GPU memory overhead from optimizer states,
+        they are swapped from the device side to the host side. This operation is executed in the
+        __init__ method of SwapOptimizerOperate.
 
-            Examples for AdamW:
-                >>> AdamWSwap(params, mem_fraction_static=0.9, state_keys=['exp_avg', 'exp_avg_sq', 'max_exp_avg_sq'])
+        During the step execution, to further minimize peak memory usage, optimizer states are
+        swapped from the host side back to the device side in batches, based on the available
+        GPU memory. This operation is performed within the step method.
+
+        Args:
+            mem_fraction_static(float): Allocate available GPU memory * mem_fraction_static for swapping parameters
+                from host to device in batches.
+            state_keys(list): Optimizer States That Need to be Swapped
+            Other parameters: Refer to the documentation of the native torch.optim.AdamW parameters.
+
+        Examples for AdamW:
+            >>> AdamWSwap(params, mem_fraction_static=0.9, state_keys=['exp_avg', 'exp_avg_sq', 'max_exp_avg_sq'])
         """
-        super().__init__(params,
-                lr=lr,
-                betas=betas,
-                eps=eps,
-                weight_decay=weight_decay,
-                amsgrad=amsgrad,
-                foreach=False,
-                maximize=maximize,
-                capturable=False,
-                differentiable=False,
-                fused=True,)
+        # pylint: disable=unexpected-keyword-arg
+        super().__init__(
+            params,
+            lr=lr,
+            betas=betas,
+            eps=eps,
+            weight_decay=weight_decay,
+            amsgrad=amsgrad,
+            foreach=False,
+            maximize=maximize,
+            capturable=False,
+            differentiable=False,
+            fused=True,
+        )
 
         SwapOptimizerOperate.__init__(self, mem_fraction_static=mem_fraction_static)
 
@@ -238,17 +242,36 @@ class AdamWSwap(AdamW, SwapOptimizerOperate):
                 state['exp_avg'] = torch.zeros_like(param, memory_format=torch.preserve_format)
                 state['exp_avg_sq'] = torch.zeros_like(param, memory_format=torch.preserve_format)
             if 'max_exp_avg_sq' not in state:
-                state['max_exp_avg_sq'] = torch.zeros_like(param, memory_format=torch.preserve_format) if amsgrad else None
+                state['max_exp_avg_sq'] = (
+                    torch.zeros_like(param, memory_format=torch.preserve_format) if amsgrad else None
+                )
 
             if swap_count == 0:
                 swap_count = self.swap_batch_tensor_to_device(params_list, i)
             self.wait_swap_to_device_event(param)
 
-            torch._fused_adamw_([param.to_local()], [param.grad.to_local()], [state['exp_avg'].to_local()], [state['exp_avg_sq'].to_local()], [state['exp_avg_sq'].to_local()] if amsgrad else [],
-                                [group['step']], lr=group['lr'], beta1=beta1, beta2=beta2, weight_decay=group['weight_decay'],
-                                eps=group['eps'], amsgrad=amsgrad, maximize=group['maximize'])
+            torch._fused_adamw_(
+                [param.to_local()],
+                [param.grad.to_local()],
+                [state['exp_avg'].to_local()],
+                [state['exp_avg_sq'].to_local()],
+                [state['exp_avg_sq'].to_local()] if amsgrad else [],
+                [group['step']],
+                lr=group['lr'],
+                beta1=beta1,
+                beta2=beta2,
+                weight_decay=group['weight_decay'],
+                eps=group['eps'],
+                amsgrad=amsgrad,
+                maximize=group['maximize'],
+            )
 
+            # Sync: swap_to_host_stream must wait for the compute stream to finish
+            # _fused_adamw_ before reading/resizing device_state, since device_state
+            # shares storage with state['exp_avg']/state['exp_avg_sq'] via to_local().
+            compute_stream = torch.accelerator.current_stream()
             with torch.accelerator.stream(self.swap_to_host_stream):
+                torch.accelerator.current_stream().wait_stream(compute_stream)
                 swap_count -= param.to_local().numel()
                 self.swap_tensors_to_host(param)
 
