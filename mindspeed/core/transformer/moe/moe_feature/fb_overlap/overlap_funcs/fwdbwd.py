@@ -1035,6 +1035,11 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             detached_mlp_input, probs_detached, routing_map
         )
 
+        if fwd_dispatcher.num_local_experts > 1:
+            # launch synchronization here to wait for non-blocking mem copy in preprocess func.
+            fwd_dispatcher.cuda_sync_point = "no_sync"
+            torch.npu.current_stream().synchronize()
+
         if args.moe_zero_memory != 'disable':
             (bwd_perm_a2a_out, bwd_recomp_perm_a2a_handle), _ = bwd_dispatcher.async_dispatch_comm(
                 bwd_perm1_out,
@@ -1049,11 +1054,6 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
             torch.npu.current_stream().wait_event(share_expert_pre_event)
             fwd_shared_experts.linear_fc1_forward_and_act()
             fwd_shared_experts.linear_fc2_forward()
-
-        if fwd_dispatcher.num_local_experts > 1:
-            # launch synchronization here to wait for non-blocking mem copy in preprocess func.
-            fwd_dispatcher.cuda_sync_point = "no_sync"
-            torch.npu.current_stream().synchronize()
 
     bwd_unperm_a2a_handle.wait()
     bwd_unperm_a2a_handle = None
