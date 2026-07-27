@@ -8,7 +8,7 @@ During MoE model training, expert load exhibits an imbalance phenomenon, especia
 
 To address the above issues, a load balancing solution based on expert migration is proposed. By dynamically migrating experts at a certain frequency during training, hot experts are mixed and matched, which can significantly alleviate device-level load imbalance and improve throughput. The solution framework is shown in the figure below.
 
-<p align="center"> <img src="../figures/expert_load_balance1.png" ></p>
+<p align="center"> <img src="../figures/expert_load_balance1_en.png" ></p>
 
 The solution mainly consists of two parts: the planner and the executor.
 **Planner**: Performs migration preparation tasks, including expert load data collection, load prediction, and expert placement optimization.
