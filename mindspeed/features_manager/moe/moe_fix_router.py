@@ -7,7 +7,7 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 
 class MoEFixRouterFeature(MindSpeedFeature):
     def __init__(self):
-        super().__init__('fix-router', 0)
+        super().__init__('fix-router', 2)
 
     def register_args(self, parser: ArgumentParser):
         group = parser.add_argument_group(title=self.feature_name)
@@ -20,7 +20,7 @@ class MoEFixRouterFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         from mindspeed.core.transformer.moe.moe_utils import topk_softmax_with_capacity
 
-        if args.fix_router or getattr(args, 'moe_expert_capacity_factor', None):
+        if args.fix_router:
             patch_manager.register_patch(
                 'megatron.core.transformer.moe.moe_utils.topk_softmax_with_capacity', topk_softmax_with_capacity
             )
