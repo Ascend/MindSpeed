@@ -79,7 +79,7 @@ run_st() {
     echo "Detected Python version: $PYTHON_VERSION"
 
     # --- Install MindSpeed from PR-merged code ---
-    pip$PYTHON_VERSION install -e .
+    pip$PYTHON_VERSION install -e . -i https://repo.huaweicloud.com/repository/pypi/simple --trusted-host repo.huaweicloud.com
     pip$PYTHON_VERSION install transformers==4.57.1
 
     export PYTHONPATH="${PYTHONPATH}:${code_dir}"
