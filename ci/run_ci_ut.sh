@@ -21,9 +21,7 @@ set -e
 # --------------------------------------------------
 export MASTER_ADDR=localhost
 export MASTER_PORT=6001
-export GLOO_SOCKET_IFNAME=${GLOO_SOCKET_IFNAME:-enp189s0f0}
-export HCCL_SOCKET_IFNAME=${HCCL_SOCKET_IFNAME:-enp189s0f0}
-export TP_SOCKET_IFNAME=${TP_SOCKET_IFNAME:-enp189s0f0}
+
 export GLOO_SOCKET_FAMILY=AF_INET
 export HCCL_SOCKET_FAMILY=AF_INET
 export HCCL_CONNECT_TIMEOUT=1800
