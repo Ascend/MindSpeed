@@ -1,0 +1,101 @@
+{
+    "name": "MindSpeed Dev Container",
+
+    // ── 镜像构建 ──────────────────────────────────────────────────────────
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+
+    // ── 工作区挂载 ────────────────────────────────────────────────────────
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+
+    // ── NPU 设备 + 驱动挂载（op_builder 运行时 + 分布式通信） ─────────────
+    "mounts": [
+        "source=/usr/local/Ascend/driver,target=/usr/local/Ascend/driver,type=bind,consistency=cached",
+        "source=/usr/local/dcmi,target=/usr/local/dcmi,type=bind,consistency=cached",
+        "source=/usr/local/bin/npu-smi,target=/usr/local/bin/npu-smi,type=bind,consistency=cached",
+        "source=/etc/ascend_install.info,target=/etc/ascend_install.info,type=bind,consistency=cached"
+    ],
+
+    // ── 环境变量 ──────────────────────────────────────────────────────────
+    "containerEnv": {
+        "ASCEND_HOME_PATH": "/usr/local/Ascend/ascend-toolkit/latest",
+        "CCACHE_DIR": "/ccache"
+    },
+
+    // ── 容器启动后自动执行（初始化环境） ──────────────────────────────────
+    //     自动发现 .devcontainer/ 位置，兼容两种场景：
+    //     a) 直接打开 MindSpeed 目录 → /workspace/.devcontainer/
+    //     b) 打开包含 MindSpeed 的父目录 → /workspace/MindSpeed/.devcontainer/
+    "postCreateCommand": "bash $(find /workspace -maxdepth 4 -path '*/.devcontainer/postCreate.sh' 2>/dev/null | head -1)",
+
+    // ── 每次新建终端时自动 source CANN 环境 ──────────────────────────────
+    "postAttachCommand": "bash $(find /workspace -maxdepth 4 -path '*/.devcontainer/postAttach.sh' 2>/dev/null | head -1)",
+
+    // ── VS Code 扩展 ──────────────────────────────────────────────────────
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                // Python 核心
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.debugpy",
+                // Ruff（linting + formatting）
+                "charliermarsh.ruff",
+                // C++（op_builder 中 C++ 扩展开发）
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "ms-vscode.cpptools-extension-pack",
+                // 通用
+                "eamodio.gitlens",
+                "yzhang.markdown-all-in-one",
+                "tamasfe.even-better-toml",
+                "redhat.vscode-yaml"
+            ],
+            "settings": {
+                // ── Python ──
+                "python.defaultInterpreterPath": "/usr/bin/python3",
+                "python.terminal.activateEnvironment": false,
+                "[python]": {
+                    "editor.formatOnSave": true,
+                    "editor.defaultFormatter": "charliermarsh.ruff",
+                    "editor.codeActionsOnSave": {
+                        "source.organizeImports": "explicit"
+                    }
+                },
+                // Ruff 自动发现最近的 pyproject.toml / ruff.toml
+                "ruff.lint.args": [],
+
+                // ── C++ ──
+                "[cpp]": {
+                    "editor.formatOnSave": true,
+                    "editor.defaultFormatter": "ms-vscode.cpptools"
+                },
+                "C_Cpp.default.compilerPath": "/usr/bin/gcc",
+                "C_Cpp.default.cppStandard": "c++17",
+                "C_Cpp.default.includePath": [
+                    "${workspaceFolder}/**",
+                    "/usr/local/Ascend/ascend-toolkit/latest/include",
+                    "/usr/local/python3.12/lib/python3.12/site-packages/torch/include",
+                    "/usr/local/python3.12/lib/python3.12/site-packages/torch_npu/include"
+                ],
+                "C_Cpp.clang_format_path": "/usr/bin/clang-format-14",
+
+                // ── 终端 ──
+                "terminal.integrated.defaultProfile.linux": "bash"
+            }
+        }
+    },
+
+    // ── 以 root 运行（与 CANN toolkit 路径匹配） ──────────────────────────
+    "remoteUser": "root",
+
+    // ── 容器运行时参数（NPU 设备 + 分布式通信） ───────────────────────────
+    "runArgs": [
+        "--privileged",
+        "--network=host",
+        "--ipc=host"
+    ]
+}
