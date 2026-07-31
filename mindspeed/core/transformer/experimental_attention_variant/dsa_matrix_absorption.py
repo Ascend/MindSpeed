@@ -40,6 +40,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec, build_module
 from megatron.core.transformer.transformer_config import MLATransformerConfig, TransformerConfig
 from megatron.core.utils import deprecate_inference_params, get_pg_size
 from megatron.core.transformer.experimental_attention_variant.dsa import (
+    bwd_fused_indexer_loss_naive as _megatron_bwd_fused_indexer_loss_naive,
     DSAIndexer,
     DSAIndexerSubmodules,
     DSAttention,
@@ -63,6 +64,47 @@ except ImportError:
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.experimental_attention_variant.dsa_rope import apply_rope_in_complex
 from mindspeed.core.transformer.experimental_attention_variant.utils import expand_dsa_kv_heads
+
+
+def bwd_fused_indexer_loss_naive_absorb(
+    q,
+    weights,
+    k,
+    query,
+    key,
+    topk_indices,
+    softmax_scale,
+    loss_coeff,
+    sparse_loss,
+    grad_loss,
+    pg_collection,
+):
+    """Run Megatron's native indexer-loss backward with absorbed KV heads.
+
+    Matrix absorption keeps the main-attention key in grouped-query form, commonly
+    with one KV head, while Megatron's manual backward reshapes it using the query
+    head count. Materialize the same KV-head expansion already used by the patched
+    forward loss before delegating to Megatron's implementation.
+    """
+    if query.ndim != 4 or key.ndim != 4:
+        raise ValueError(
+            "DSA matrix-absorption backward expects query/key in [S, B, N, H] layout, "
+            f"but got query.ndim={query.ndim}, key.ndim={key.ndim}."
+        )
+    key = expand_dsa_kv_heads(key, query.size(2))
+    return _megatron_bwd_fused_indexer_loss_naive(
+        q,
+        weights,
+        k,
+        query,
+        key,
+        topk_indices,
+        softmax_scale,
+        loss_coeff,
+        sparse_loss,
+        grad_loss,
+        pg_collection,
+    )
 
 
 def compute_dsa_indexer_loss(

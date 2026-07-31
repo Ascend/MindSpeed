@@ -164,6 +164,7 @@ class DeepSeekSparseAttention(MindSpeedFeature):
         if getattr(args, 'use_dsa_absorb', False):
             from mindspeed.core.transformer.experimental_attention_variant.dsa_matrix_absorption import (  # pylint: disable=no-name-in-module
                 MLASelfAttentionAbsorb,
+                bwd_fused_indexer_loss_naive_absorb,
                 compute_dsa_indexer_loss,
                 get_dsa_module_spec_for_backend,
                 unfused_dsa_fn,
@@ -180,6 +181,10 @@ class DeepSeekSparseAttention(MindSpeedFeature):
             patch_manager.register_patch(
                 'megatron.core.transformer.experimental_attention_variant.dsa.compute_dsa_indexer_loss',
                 compute_dsa_indexer_loss,
+            )
+            patch_manager.register_patch(
+                'megatron.core.transformer.experimental_attention_variant.dsa.bwd_fused_indexer_loss_naive',
+                bwd_fused_indexer_loss_naive_absorb,
             )
             patch_manager.register_patch(
                 'megatron.core.models.gpt.experimental_attention_variant_module_specs.get_dsa_module_spec_for_backend',
