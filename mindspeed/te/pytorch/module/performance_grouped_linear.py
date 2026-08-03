@@ -130,10 +130,7 @@ class MindSpeedTEPerformanceGroupedLinear(torch.nn.Module):
             setattr(param, 'allreduce', not (is_expert and self.expert_parallel))
 
     def forward(self, x, m_splits):
-        if self.parallel_mode == 'column':
-            weight = self.weight.view(self.num_gemms, self.config.hidden_size, -1)
-        else:
-            weight = self.weight.view(self.num_gemms, -1, self.config.hidden_size)
+        weight = self.weight.transpose(1, 2).contiguous()
         from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
 
         output = get_gmm_op_cls().gmm_apply(x, weight, None, m_splits, self.weight)
