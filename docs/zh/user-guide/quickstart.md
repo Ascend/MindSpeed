@@ -28,7 +28,7 @@
 
 - 具备基础的PyTorch使用经验
 - 具备初级的Python开发经验
-- 对Megatron-LM仓库有基本的了解
+- 对[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)有基本的了解
 
 ## 数据准备
 

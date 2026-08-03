@@ -18,51 +18,51 @@
 
 在transformer网络中，normalization会将每一层神经元的输入都转换成均值方差都一样的数据，加快其收敛。在MLP和attention层分别进行2D张量并行时，其输入和输出都分别在first-dim和last-dim做了tp_x和tp_y的切分。如果继续使用原LayerNorm或者RMSNorm，需要先将input沿first-dim进行all-gather(x)和沿last-dim进行all-gather(y)操作，才能保证input数据的完整性。为了提升这部分的性能，采用了分布式normalization。其处理流程如下：
 
-1. 计算输入的总和
-首先，计算输入张量$\mathbf{x}$ 在最后一个维度上的总和：
-$$e_x = \sum_{i=1}^{H} x_i$$
+ 1. 计算输入的总和
+    首先，计算输入张量$\mathbf{x}$ 在最后一个维度上的总和：
+    $$e_x = \sum_{i=1}^{H} x_i$$
 
-2. 分布式归约操作（All-Reduce）
-将步骤1中的总和 $e_x$ 在所有tp_y通信域进程中进行归约（求和），确保每个进程都拥有其通信域全局总和：
-$$e_x^{\text{global}} = \text{AllReduce}\left( e_x \right) = \sum_{p=1}^{P} \sum_{i=1}^{H} x_i^{(p)}$$
-其中：
-    - $P$ 是分布式进程的数量。
-    - $x_i^{(p)}$ 表示第 $p$ 个进程中第 $i$ 个元素的值。
+ 2. 分布式归约操作（All-Reduce）
+    将步骤1中的总和 $e_x$ 在所有tp_y通信域进程中进行归约（求和），确保每个进程都拥有其通信域全局总和：
+    $$e_x^{\text{global}} = \text{AllReduce}\left( e_x \right) = \sum_{p=1}^{P} \sum_{i=1}^{H} x_i^{(p)}$$
+    其中：
+        - $P$ 是分布式进程的数量。
+        - $x_i^{(p)}$ 表示第 $p$ 个进程中第 $i$ 个元素的值。
 
-3. 计算输入元素的平方和
-接下来，计算输入张量每个元素的平方和：
-$$s_x = \sum_{i=1}^{H} x_i^2$$
+ 3. 计算输入元素的平方和
+    接下来，计算输入张量每个元素的平方和：
+    $$s_x = \sum_{i=1}^{H} x_i^2$$
 
-4. 分布式归约操作（All-Reduce）
-将步骤3中的平方和 $s_x$ 在所有tp_y通信域进程中进行归约（求和），确保每个进程都拥有其通信域全局平方和：
-$$s_x^{\text{global}} = \text{AllReduce}\left( s_x \right) = \sum_{p=1}^{P} \sum_{i=1}^{H} \left( x_i^{(p)} \right)^2$$
+ 4. 分布式归约操作（All-Reduce）
+    将步骤3中的平方和 $s_x$ 在所有tp_y通信域进程中进行归约（求和），确保每个进程都拥有其通信域全局平方和：
+    $$s_x^{\text{global}} = \text{AllReduce}\left( s_x \right) = \sum_{p=1}^{P} \sum_{i=1}^{H} \left( x_i^{(p)} \right)^2$$
 
-5. 中心化输入数据
-将输入数据 $\mathbf{x}$ 中心化，即减去平均值。平均值 $\mu$ 计算如下：$$\mu = \frac{e_x^{\text{global}}}{H}$$
-然后，中心化输入：
-$$x'_i = x_i - \mu \quad \forall i \in \{1, 2, \dots, H\}$$
+ 5. 中心化输入数据
+    将输入数据 $\mathbf{x}$ 中心化，即减去平均值。平均值 $\mu$ 计算如下：$$\mu = \frac{e_x^{\text{global}}}{H}$$
+    然后，中心化输入：
+    $$x'_i = x_i - \mu \quad \forall i \in \{1, 2, \dots, H\}$$
 
-6. 计算均值的平方
-计算全局均值的平方：
-$$
-e_x'^2 = \left( \frac{e_x^{\text{global}}}{H} \right)^2
-$$
+ 6. 计算均值的平方
+    计算全局均值的平方：
+        $$
+        e_x'^2 = \left( \frac{e_x^{\text{global}}}{H} \right)^2
+        $$
+        
+ 7. 计算归一化因子
+    计算归一化因子 $\gamma$，用于标准化输入数据。公式如下：$$\gamma = \frac{1}{\sqrt{ \left( \frac{s_x^{\text{global}}}{H} \right) - \left( \frac{e_x^{\text{global}}}{H} \right)^2 + \epsilon }}$$
+    这里：
+        - $\frac{s_x^{\text{global}}}{H}$ 是全局平方和的平均值。
+        - $\left( \frac{e_x^{\text{global}}}{H} \right)^2$ 是全局均值的平方。
+        - $\epsilon$ 是一个小常数，防止分母为零，增加数值稳定性。
 
-7. 计算归一化因子
-计算归一化因子 $\gamma$，用于标准化输入数据。公式如下：$$\gamma = \frac{1}{\sqrt{ \left( \frac{s_x^{\text{global}}}{H} \right) - \left( \frac{e_x^{\text{global}}}{H} \right)^2 + \epsilon }}$$
-这里：
-    - $\frac{s_x^{\text{global}}}{H}$ 是全局平方和的平均值。
-    - $\left( \frac{e_x^{\text{global}}}{H} \right)^2$ 是全局均值的平方。
-    - $\epsilon$ 是一个小常数，防止分母为零，增加数值稳定性。
+ 8. 标准化输入数据
+    将中心化后的输入数据 $\mathbf{x}'$ 与归一化因子 $\gamma$ 相乘，得到标准化后的数据 $\mathbf{\hat{x}}$：
+    $$\hat{x}_i = x'_i \cdot \gamma \quad \forall i \in \{1, 2, \dots, H\}$$
 
-8. 标准化输入数据
-将中心化后的输入数据 $\mathbf{x}'$ 与归一化因子 $\gamma$ 相乘，得到标准化后的数据 $\mathbf{\hat{x}}$：
-$$\hat{x}_i = x'_i \cdot \gamma \quad \forall i \in \{1, 2, \dots, H\}$$
-
-9. 应用权重和偏置
-最后，将标准化后的数据与权重向量 $\mathbf{W}$ 相乘，并根据是否存在偏置向量 $\mathbf{b}$ 来决定最终输出。
-    - 如果存在偏置：$$\text{output}_i = b_i + W_i \cdot \hat{x}_i \quad \forall i \in \{1, 2, \dots, H\}$$
-    - 如果不存在偏置：$$\text{output}_i = W_i \cdot \hat{x}_i \quad \forall i \in \{1, 2, \dots, H\}$$
+ 9. 应用权重和偏置
+    最后，将标准化后的数据与权重向量 $\mathbf{W}$ 相乘，并根据是否存在偏置向量 $\mathbf{b}$ 来决定最终输出。
+        - 如果存在偏置：$$\text{output}_i = b_i + W_i \cdot \hat{x}_i \quad \forall i \in \{1, 2, \dots, H\}$$
+        - 如果不存在偏置：$$\text{output}_i = W_i \cdot \hat{x}_i \quad \forall i \in \{1, 2, \dots, H\}$$
 
 ## 使用场景
 

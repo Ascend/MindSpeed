@@ -4,32 +4,33 @@
 
 ### 产品版本信息
 
-<table><tbody><tr><th class="firstcol" valign="top" width="26.25%"><p>产品名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p><span>MindSpeed</span></p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>产品版本</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>26.1.0_core_r0.12.1</p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>版本类型</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>正式版本</p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>发布时间</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>2026年7月</p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>维护周期</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>6个月</p>
-</td>
-</tr>
-</tbody>
+<table>
+  <tbody>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>产品名称</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>MindSpeed</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>产品版本</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>26.1.0</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>版本类型</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>正式版本</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>组件名称</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>MindSpeed Core</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>发布时间</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>2026年7月</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>维护周期</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>6个月</p></td>
+    </tr>
+  </tbody>
 </table>
 
 > [!NOTE]
@@ -111,10 +112,10 @@
       <th colspan="4">CANN版本</th>
     </tr>
     <tr>
-      <th>8.3.RC1</th>
-      <th>8.5.0</th>
-      <th>9.0.0</th>
-      <th>9.1.0</th>
+      <th>8.3.RCX</th>
+      <th>8.5.X</th>
+      <th>9.0.X</th>
+      <th>9.1.X</th>
     </tr>
   </thead>
   <tbody>

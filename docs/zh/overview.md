@@ -1,6 +1,6 @@
 # MindSpeed是什么
 
-MindSpeed是一款专为昇腾平台打造的高性能加速库，涵盖了MindSpeed Core亲和加速模块、MindSpeed LLM套件、MindSpeed MM套件以及MindSpeed RL套件这四个重要组成部分。
+MindSpeed是一款专为昇腾平台打造的高性能加速库，涵盖了MindSpeed Core大模型训练加速库、MindSpeed LLM套件、MindSpeed MM套件以及MindSpeed RL套件这四个重要组成部分。
 
 MindSpeed凭借其卓越的性能表现与深度优化的算法架构，为客户在AI领域实现大模型训练提供了强有力的支持。借助MindSpeed，用户能够充分挖掘并利用昇腾设备的高性能计算能力，这样可以加速大模型训练过程，从而在AI领域更快、更好地服务用户。
 
