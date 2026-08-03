@@ -1,18 +1,14 @@
 #!/bin/bash
 # ============================================
-# MindSpeed CI Entry Script (UT & ST Gate)
+# MindSpeed CI Entry Script (UT Gate)
 #
 # Architecture:
 #   CI automation creates ${WORKSPACE} and places the PR-merged
 #   MindSpeed repo at ${WORKSPACE}/CODE/. This script installs
-#   that copy and runs the test suite against it.
+#   that copy and runs unit tests (pytest) only.
 #
 #   The Docker image (mindspeed-ci) provides only dependencies:
 #     /mindspeed_ci_deps/Megatron-LM
-#     /mindspeed_ci_deps/MindSpeed-LLM
-#     /mindspeed_ci_deps/verl
-#     /mindspeed_ci_deps/vllm
-#     /mindspeed_ci_deps/vllm-ascend
 #     /home/models
 #
 #   MindSpeed itself is NOT installed in the image; it comes
@@ -25,9 +21,7 @@ set -e
 # --------------------------------------------------
 export MASTER_ADDR=localhost
 export MASTER_PORT=6001
-export GLOO_SOCKET_IFNAME=${GLOO_SOCKET_IFNAME:-enp189s0f0}
-export HCCL_SOCKET_IFNAME=${HCCL_SOCKET_IFNAME:-enp189s0f0}
-export TP_SOCKET_IFNAME=${TP_SOCKET_IFNAME:-enp189s0f0}
+
 export GLOO_SOCKET_FAMILY=AF_INET
 export HCCL_SOCKET_FAMILY=AF_INET
 export HCCL_CONNECT_TIMEOUT=1800
@@ -37,8 +31,6 @@ export HCCL_EXEC_TIMEOUT=1800
 # Immutable dependency paths (provided by Docker image)
 # --------------------------------------------------
 MEGATRON_DIR="/mindspeed_ci_deps/Megatron-LM"
-MINDSPEED_LLM_DIR="/mindspeed_ci_deps/MindSpeed-LLM"
-VERL_DIR="/mindspeed_ci_deps/verl"
 MODELS_DIR="/home/models"
 
 # --------------------------------------------------
@@ -62,7 +54,7 @@ try_checkout_branch() {
 }
 
 # --------------------------------------------------
-# Main UT / ST runner
+# Main UT runner
 # --------------------------------------------------
 run_ut() {
     local workspace="$1"
@@ -127,86 +119,15 @@ run_ut() {
     sed -i '1s|^|from __future__ import annotations\n|' megatron/core/dist_checkpointing/strategies/base.py
 
     # ============================================
-    # ST 1: Pretrain base
-    # ============================================
-    echo "===== Running pretrain_base ST ====="
-    bash ./tests_extend/system_tests/pretrain_base.sh
-    if [ $? -ne 0 ]; then
-        echo "ERROR: pretrain_base ST failed"
-        return 1
-    fi
-
-    # ============================================
-    # ST 2: MindSpeed-LLM (DeepSeek) – skip on legacy branches
-    # ============================================
-    echo "Branch: $branch"
-    local skip_llm_branches=("26.0.0_core_r0.12.1" "core_r0.14.0" "core_r0.15.3" "core_r0.16.0" "core_r0.17.0" "core_r0.18.0")
-    local skip_llm=false
-    for skip in "${skip_llm_branches[@]}"; do
-        if [[ "$checkout_lines" == *"$skip"* ]] || [[ "$branch" == *"$skip"* ]]; then
-            skip_llm=true
-            break
-        fi
-    done
-
-    if [ "$skip_llm" = false ]; then
-        cp -rf "${MINDSPEED_LLM_DIR}/mindspeed_llm" ./
-        cp -rf "${MINDSPEED_LLM_DIR}/pretrain_gpt.py" pretrain_gpt_llm.py
-
-        echo "MindSpeed-LLM version info:"
-        cd "${MINDSPEED_LLM_DIR}"
-        git log -1
-        git branch
-        cd "${workspace}/Megatron-LM"
-
-        local commitId
-        commitId=$(git rev-parse --short=9 HEAD)
-        local megatron_id='1d462bd37'
-        echo "Megatron-LM commitId: $commitId"
-        if [ "$commitId" != "${megatron_id}" ]; then
-            echo "===== Running DeepSeek V3 pretrain ST ====="
-            bash ./tests_extend/system_tests/deepseek/pretrain_deepseek_v3_ptd_dualpipev.sh
-            if [ $? -ne 0 ]; then
-                echo "ERROR: DeepSeek V3 pretrain ST failed"
-                return 1
-            fi
-        fi
-    else
-        echo "Skipping MindSpeed-LLM ST for legacy branch"
-    fi
-
-    # ============================================
-    # ST 3: verl – skip on branches without args_utils.py or legacy
-    # ============================================
-    if [ -f "${code_dir}/mindspeed/args_utils.py" ] && \
-       [[ "$branch" != "core_r0.15.3" ]] && \
-       [[ "$branch" != "core_r0.17.0" ]] && \
-       [[ "$branch" != "core_r0.18.0" ]]; then
-        cd "${workspace}"
-        cp -rf "${VERL_DIR}" ./
-        cd verl
-        echo "===== Running verl ST ====="
-        echo "USE_DIST_CKPT=False MODEL_ID=${MODELS_DIR}/Qwen2.5-0.5B MODEL_PATH=${MODELS_DIR}/Qwen2.5-0.5B DIST_CKPT_PATH=${MODELS_DIR}/Qwen2.5-0.5B-dist/ HOME=${MODELS_DIR} bash tests/special_npu/run_qwen2_5_05b_grpo_mindspeed.sh"
-        USE_DIST_CKPT=False \
-            MODEL_ID="${MODELS_DIR}/Qwen2.5-0.5B" \
-            MODEL_PATH="${MODELS_DIR}/Qwen2.5-0.5B" \
-            DIST_CKPT_PATH="${MODELS_DIR}/Qwen2.5-0.5B-dist/" \
-            HOME="${MODELS_DIR}" \
-            bash tests/special_npu/run_qwen2_5_05b_grpo_mindspeed.sh
-        if [ $? -ne 0 ]; then
-            echo "ERROR: verl ST failed"
-            return 1
-        fi
-    else
-        echo "Skipping verl ST (args_utils.py absent or legacy branch)"
-    fi
-
-    # ============================================
     # UT: pytest
     # ============================================
-    cd "${workspace}/Megatron-LM"
     echo "===== Running unit tests ====="
     python$PYTHON_VERSION -m pytest --color=no --timeout=1800 -k "not allocator" -x ./tests_extend/unit_tests/
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Unit tests failed"
+        return 1
+    fi
+    echo "===== Unit tests passed ====="
 }
 
 # ============================================
@@ -231,5 +152,5 @@ for pattern in "${TRIGGER_PATTERNS[@]}"; do
     fi
 done
 
-echo "No CI-trigger path changed. Skipping UT/ST."
+echo "No CI-trigger path changed. Skipping UT."
 exit 0

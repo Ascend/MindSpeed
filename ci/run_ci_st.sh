@@ -1,18 +1,16 @@
 #!/bin/bash
 # ============================================
-# MindSpeed CI Entry Script (UT & ST Gate)
+# MindSpeed CI Entry Script (ST Gate)
 #
 # Architecture:
 #   CI automation creates ${WORKSPACE} and places the PR-merged
 #   MindSpeed repo at ${WORKSPACE}/CODE/. This script installs
-#   that copy and runs the test suite against it.
+#   that copy and runs system tests only.
 #
 #   The Docker image (mindspeed-ci) provides only dependencies:
 #     /mindspeed_ci_deps/Megatron-LM
 #     /mindspeed_ci_deps/MindSpeed-LLM
 #     /mindspeed_ci_deps/verl
-#     /mindspeed_ci_deps/vllm
-#     /mindspeed_ci_deps/vllm-ascend
 #     /home/models
 #
 #   MindSpeed itself is NOT installed in the image; it comes
@@ -25,9 +23,7 @@ set -e
 # --------------------------------------------------
 export MASTER_ADDR=localhost
 export MASTER_PORT=6001
-export GLOO_SOCKET_IFNAME=${GLOO_SOCKET_IFNAME:-enp189s0f0}
-export HCCL_SOCKET_IFNAME=${HCCL_SOCKET_IFNAME:-enp189s0f0}
-export TP_SOCKET_IFNAME=${TP_SOCKET_IFNAME:-enp189s0f0}
+
 export GLOO_SOCKET_FAMILY=AF_INET
 export HCCL_SOCKET_FAMILY=AF_INET
 export HCCL_CONNECT_TIMEOUT=1800
@@ -62,9 +58,9 @@ try_checkout_branch() {
 }
 
 # --------------------------------------------------
-# Main UT / ST runner
+# Main ST runner
 # --------------------------------------------------
-run_ut() {
+run_st() {
     local workspace="$1"
     local branch="$2"
     local code_dir="${workspace}/CODE"
@@ -200,13 +196,6 @@ run_ut() {
     else
         echo "Skipping verl ST (args_utils.py absent or legacy branch)"
     fi
-
-    # ============================================
-    # UT: pytest
-    # ============================================
-    cd "${workspace}/Megatron-LM"
-    echo "===== Running unit tests ====="
-    python$PYTHON_VERSION -m pytest --color=no --timeout=1800 -k "not allocator" -x ./tests_extend/unit_tests/
 }
 
 # ============================================
@@ -226,10 +215,10 @@ cat "${WORKSPACE}/modify.txt"
 for pattern in "${TRIGGER_PATTERNS[@]}"; do
     if grep -q "${pattern}" "${WORKSPACE}/modify.txt"; then
         echo "CI triggered by change in: ${pattern}"
-        run_ut "$WORKSPACE" "$branch"
+        run_st "$WORKSPACE" "$branch"
         exit $?
     fi
 done
 
-echo "No CI-trigger path changed. Skipping UT/ST."
+echo "No CI-trigger path changed. Skipping ST."
 exit 0
