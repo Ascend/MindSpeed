@@ -56,6 +56,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('transformer_engine.pytorch.ops.ReGLU', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.ops.FusibleOperation', torch.nn.Module, create_dummy=True)
         pm.register_patch('flash_attn.flash_attn_interface.flash_attn_unpadded_func', create_dummy=True)
+        pm.register_patch('flash_attn.ops.triton.rotary.apply_rotary', create_dummy=True)
         pm.register_patch('fla.modules.l2norm.l2norm', l2norm, create_dummy=True)
         try:
             import fla_npu
