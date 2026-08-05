@@ -24,6 +24,14 @@ set -e
 export MASTER_ADDR=localhost
 export MASTER_PORT=6001
 
+# Auto-detect the socket interface for HCCL/Gloo (NIC name varies across the
+# resource pool, so a hard-coded default like enp189s0f0 is wrong on many nodes).
+_SOCKET_IFNAME=$(awk '$2 == "00000000" {print $1; exit}' /proc/net/route 2>/dev/null)
+_SOCKET_IFNAME=${_SOCKET_IFNAME:-eth0}
+export GLOO_SOCKET_IFNAME=${GLOO_SOCKET_IFNAME:-${_SOCKET_IFNAME}}
+export HCCL_SOCKET_IFNAME=${HCCL_SOCKET_IFNAME:-${_SOCKET_IFNAME}}
+export TP_SOCKET_IFNAME=${TP_SOCKET_IFNAME:-${_SOCKET_IFNAME}}
+
 export GLOO_SOCKET_FAMILY=AF_INET
 export HCCL_SOCKET_FAMILY=AF_INET
 export HCCL_CONNECT_TIMEOUT=1800
