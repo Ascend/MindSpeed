@@ -190,8 +190,8 @@
 
 |文档名称|内容简介|更新说明|
 |--|--|--|
-|《[MindSpeed快速入门](../zh/user-guide/quickstart.md)》|介绍基于MindSpeed如何实现Megatron-LM在昇腾设备上的高效运行。|-|
-|《[MindSpeed安装指导](../zh/user-guide/install_guide.md)》|指导如何在NPU上基于PyTorch框架完成MindSpeed的安装，内容涵盖硬件与操作系统兼容性说明、驱动固件及CANN基础软件安装的完整安装流程，帮助用户快速搭建大模型分布式训练环境。|-|
+|《[MindSpeed快速入门](../zh/user-guide/quickstart.md)》|介绍基于MindSpeed实现Megatron-LM在昇腾设备上的高效运行。|-|
+|《[MindSpeed软件安装](../zh/user-guide/install_guide.md)》|指导用户在NPU上基于PyTorch框架完成MindSpeed的安装，内容涵盖硬件与操作系统兼容性说明、驱动固件及CANN基础软件安装的完整安装流程，帮助用户快速搭建大模型分布式训练环境。|-|
 
 ## 病毒扫描及漏洞修补列表
 

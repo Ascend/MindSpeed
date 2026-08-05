@@ -1,4 +1,4 @@
-# MindSpeed安装指导
+# MindSpeed软件安装
 
 本文主要向用户介绍如何快速基于PyTorch框架完成MindSpeed Core（大模型训练加速库）的安装。
 
