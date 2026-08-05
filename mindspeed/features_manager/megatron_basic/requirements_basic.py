@@ -51,6 +51,7 @@ class RequirementsBasicFeature(MindSpeedFeature):
         pm.register_patch('transformer_engine.pytorch.ops.ReGLU', torch.nn.Module, create_dummy=True)
         pm.register_patch('transformer_engine.pytorch.ops.FusibleOperation', torch.nn.Module, create_dummy=True)
         pm.register_patch('flash_attn.flash_attn_interface.flash_attn_unpadded_func', create_dummy=True)
+        pm.register_patch('flash_attn.ops.triton.rotary.apply_rotary', create_dummy=True)
 
     def apex_adaptation(self, pm, args):
         from mindspeed.core.megatron_basic.requirements_basic import multi_tensor_l2norm, multi_tensor_scale, multi_tensor_applier
