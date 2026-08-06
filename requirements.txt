@@ -4,8 +4,6 @@ wheel
 numpy<=1.26.0
 six
 regex
-decorator
-attrs
 psutil
 pyyaml
 protobuf
@@ -15,8 +13,6 @@ sentencepiece
 pytest
 pytest-mock
 transformers>=4.43.2
-gpytorch
 pandas
 scikit-learn
 SQLAlchemy
-
