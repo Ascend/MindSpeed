@@ -53,7 +53,6 @@ from mindspeed.features_manager.moe.moe_allgather_overlap import MoEAllGatherOve
 from mindspeed.features_manager.moe.moe_alltoall_overlap import MoEAlltoAllOverLapFeature
 from mindspeed.features_manager.moe.moe_zero_memory import MoEZeroMemoryFeature
 from mindspeed.features_manager.moe.experts_placement import ExpertsPlacementFeature
-from mindspeed.features_manager.moe.moe_topk import MoEExpertCapacityFactorFeature
 
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferAdaptiveFeature
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_set import HcclBufferSetFeature
@@ -219,7 +218,6 @@ def add_moe_features(features_list: List[MindSpeedFeature]):
         MoEFwdBwdOverlapFeature(),
         BalancedMoEFeature(),
         ExpertsPlacementFeature(),
-        MoEExpertCapacityFactorFeature(),
     ])
 
 
