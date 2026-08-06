@@ -1,5 +1,7 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies. All rights reserved.
+# This implementation receives dispatcher state from its adaptor's Megatron base class.
+# pylint: disable=no-member
 
 from typing import List, Optional, Tuple
 
@@ -26,9 +28,7 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
     Note: This class is a replica of the MoEAlltoAllTokenDispatcher from version 0.8.
     """
 
-    def __init__(
-        self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig
-    ) -> None:
+    def __init__(self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig) -> None:
         """
         Initialize the AlltoAll token dispatcher.
 
@@ -40,7 +40,10 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
         self.num_local_experts = num_local_experts
         self.config = config
         self.local_expert_indices = local_expert_indices
-        super().__init__(num_local_experts, local_expert_indices, config)
+        raise NotImplementedError(
+            "The alltoall_seq token dispatcher is not supported with Megatron Core 0.18. "
+            "Use --moe-token-dispatcher-type alltoall instead."
+        )
 
     def set_shared_experts(self, shared_experts):
         """Set shared expert to the dispatcher."""
@@ -90,9 +93,7 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
         elif self.config.moe_expert_capacity_factor is not None:
             # Token drop but no pad. A synchronization is needed before the first
             # permutation to get the `num_out_tokens` CPU value.
-            self.num_out_tokens = num_local_tokens_per_expert.sum().to(
-                torch.device("cpu"), non_blocking=True
-            )
+            self.num_out_tokens = num_local_tokens_per_expert.sum().to(torch.device("cpu"), non_blocking=True)
             self.cuda_sync_point = "before_permutation_1"
         else:
             # Dropless
@@ -123,9 +124,7 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
                 :, self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
             ]
             self.output_splits = (
-                self.num_global_tokens_per_local_expert.sum(axis=-1)
-                .to(torch.device("cpu"), non_blocking=True)
-                .numpy()
+                self.num_global_tokens_per_local_expert.sum(axis=-1).to(torch.device("cpu"), non_blocking=True).numpy()
             )
             num_tokens_per_local_expert = self.num_global_tokens_per_local_expert.sum(axis=0)
 
@@ -135,19 +134,13 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
             # num_tokens_per_local_expert: [num_local_experts]
             # ===================================================
         else:
-            self.num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
-                -1, self.num_experts
-            )
-            num_tokens_per_local_expert = num_local_tokens_per_expert.to(
-                torch.device("cpu"), non_blocking=True
-            )
+            self.num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(-1, self.num_experts)
+            num_tokens_per_local_expert = num_local_tokens_per_expert.to(torch.device("cpu"), non_blocking=True)
 
         if self.num_local_experts > 1:
-            self.num_global_tokens_per_local_expert_cpu = (
-                self.num_global_tokens_per_local_expert.view(-1, self.num_local_experts).to(
-                    torch.device("cpu"), non_blocking=True
-                )
-            )
+            self.num_global_tokens_per_local_expert_cpu = self.num_global_tokens_per_local_expert.view(
+                -1, self.num_local_experts
+            ).to(torch.device("cpu"), non_blocking=True)
 
         torch.cuda.current_stream().synchronize()
         self.send_counts = send_splits.tolist()
@@ -196,12 +189,20 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
         self.hidden_shape_before_permute = hidden_states.shape
         if self.cuda_sync_point == "before_permutation_1":
             torch.cuda.current_stream().synchronize()
-        
+
         (
             permutated_local_input_tokens,
             permuted_probs,
             self.reversed_local_input_permutation_mapping,
-        ) = permute(hidden_states, routing_map, probs=probs, num_out_tokens=self.num_out_tokens, fused=self.config.moe_permute_fusion)
+            _,
+            _,
+        ) = permute(
+            hidden_states,
+            routing_map,
+            probs=probs,
+            num_out_tokens=self.num_out_tokens,
+            fused=self.config.moe_permute_fusion,
+        )
 
         # Perform expert parallel AlltoAll communication
         if self.cuda_sync_point == "before_ep_alltoall":
@@ -220,13 +221,6 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
         # Permutation 2: Sort Probs by local expert.
         global_probs = torch.split(global_probs, self.num_global_tokens_per_local_expert_cpu.ravel().tolist(), dim=0)
         global_probs = torch.cat([global_probs[i] for i in self.sort_input_by_local_experts.tolist()], dim=0)
-
-        # Perform tensor parallel AllGather on the hidden dimension to obtain the input tokens.
-        # global_input_tokens: [SEQL, H/TP] -> [SEQL, H]
-        if parallel_state.get_tensor_model_parallel_world_size() > 1:
-            global_input_tokens = tensor_parallel.all_gather_last_dim_from_tensor_parallel_region(
-                global_input_tokens
-            )
 
         if self.cuda_sync_point == "before_finish":
             torch.cuda.current_stream().synchronize()
@@ -253,9 +247,7 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
         # Perform tensor parallel Reduce-Scatter
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
         if parallel_state.get_tensor_model_parallel_world_size() > 1:
-            hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(
-                hidden_states
-            )
+            hidden_states = tensor_parallel.reduce_scatter_last_dim_to_tensor_parallel_region(hidden_states)
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc2_forward(hidden_states)
@@ -267,7 +259,7 @@ class MoEAlltoAllSEQMC2TokenDispatcher:
             self.reversed_local_input_permutation_mapping,
             restore_shape=self.hidden_shape_before_permute,
             routing_map=self.routing_map,
-            fused=self.config.moe_permute_fusion
+            fused=self.config.moe_permute_fusion,
         )
 
         # Perform tensor parallel AlltoAll communication

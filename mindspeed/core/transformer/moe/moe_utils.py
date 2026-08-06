@@ -1,14 +1,19 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
-from typing import Optional
+from functools import wraps
+from typing import Optional, Tuple
 import torch
 import torch_npu
 
 from megatron.training import get_args
 from megatron.core import parallel_state
-from megatron.core.transformer.moe.moe_utils import (reduce_aux_losses_tracker_across_ranks,
-                                                     clear_aux_losses_tracker, group_limited_topk,
-                                                     get_capacity)
+from megatron.core.transformer.moe.moe_utils import (
+    reduce_aux_losses_tracker_across_ranks,
+    clear_aux_losses_tracker,
+    group_limited_topk,
+    get_capacity,
+)
+from megatron.core.transformer.moe.router_replay import RouterReplay
 from megatron.core.tensor_parallel.utils import divide
 
 AG_TP_HIDDEN_STATUS = None
@@ -20,6 +25,29 @@ SWAP_STREAM2 = None
 SWAP_TENSOR = None
 MATMUL_OUTPUT_GRAD = None
 UNPERMUTED_TOKENS = None
+AMPIPE_SLICES_MAP = {}
+
+
+def get_slice_indices_from_disorder_to_order(seq_length, pipe_degree, device):
+    tp_size = parallel_state.get_tensor_model_parallel_world_size()
+    if pipe_degree <= 0:
+        raise ValueError('pipe_degree must be greater than zero')
+    cache_key = (seq_length, pipe_degree, tp_size, str(device))
+    if AMPIPE_SLICES_MAP.get(cache_key) is not None:
+        return AMPIPE_SLICES_MAP.get(cache_key)
+
+    slice_size = seq_length // tp_size // pipe_degree
+    if slice_size <= 0:
+        raise ValueError('seq_length must be greater than or equal to tp_size * pipe_degree')
+
+    output = []
+    for out_idx in range(0, seq_length // pipe_degree, slice_size):
+        for i in range(out_idx, seq_length, tp_size * slice_size):
+            for j in range(slice_size):
+                output.append(i + j)
+    output = torch.tensor(output, dtype=torch.int32, device=device)
+    AMPIPE_SLICES_MAP[cache_key] = output
+    return output
 
 
 def get_swap_stream():
@@ -194,7 +222,6 @@ def backward_func(func_tensor, gradinputs):
 
 
 def permute(tokens, routing_map, num_out_tokens: int = None):
-
     if routing_map.dim() == 1:
         topk = 1
     else:
@@ -215,7 +242,6 @@ def unpermute(
     probs: torch.Tensor = None,
     routing_map: torch.Tensor = None,
 ):
-
     assert sorted_indices.numel() == permuted_tokens.size(0)
     if probs is not None:
         # Unpermute and merge the tokens with their probabilities
@@ -262,9 +288,7 @@ def get_mean(tensor):
     return tensor.mean()
 
 
-def track_moe_metrics(
-    loss_scale, iteration, writer, wandb_writer=None, total_loss_dict=None, per_layer_logging=False
-):
+def track_moe_metrics(loss_scale, iteration, writer, wandb_writer=None, total_loss_dict=None, per_layer_logging=False):
     # Aux loss logging
 
     reduce_aux_losses_tracker_across_ranks()
@@ -299,10 +323,7 @@ def track_moe_metrics(
                 wandb_writer.log({f"{name}": loss_list_mean}, iteration)
                 if per_layer_logging:
                     wandb_writer.log(
-                        {
-                            f"moe/{name}_layer_{i}": loss
-                            for i, loss in enumerate(loss_list.tolist())
-                        },
+                        {f"moe/{name}_layer_{i}": loss for i, loss in enumerate(loss_list.tolist())},
                         iteration,
                     )
 
@@ -312,7 +333,7 @@ def track_moe_metrics(
 def get_grouped_expert_params(model, num_local_experts, tp_size, config):
     hidden_size = config.hidden_size
     ffn_hidden_size = config.moe_ffn_hidden_size
-    
+
     fc1_output_size = ffn_hidden_size
     if config.gated_linear_unit:
         # Project to 4h. If using swiglu double the output width
@@ -324,28 +345,28 @@ def get_grouped_expert_params(model, num_local_experts, tp_size, config):
 
     weight1_reshaped = model.weight1.view(num_local_experts, hidden_size, fc1_ffn_hidden_size_per_expert)
     weight2_reshaped = model.weight2.view(num_local_experts, fc2_ffn_hidden_size_per_expert, hidden_size)
-    
+
     group_mlp_expert_params = {}
-    
+
     for idx in range(num_local_experts):
         expert_weight1 = weight1_reshaped[idx]  # shape (hidden_size, fc1_ffn_hidden_size_per_expert)
         expert_weight2 = weight2_reshaped[idx]  # shape (fc2_ffn_hidden_size_per_expert, hidden_size)
-        
+
         total_params = expert_weight1.numel() + expert_weight2.numel()
-        
+
         group_mlp_expert_params[idx] = {
             'weight1': expert_weight1,
             'weight2': expert_weight2,
-            'total_params': total_params
+            'total_params': total_params,
         }
     return group_mlp_expert_params
-    
-    
+
+
 def get_expert_param_data(group_mlp_expert_params, params, idx):
     expert_param = group_mlp_expert_params[idx]
     offset = 0
     for weight in ['weight1', 'weight2']:
-        seg1 = params[offset: offset + expert_param[weight].numel()]
+        seg1 = params[offset : offset + expert_param[weight].numel()]
         seg1.copy_(expert_param[weight].data.flatten())
         offset += expert_param[weight].numel()
 
@@ -355,17 +376,17 @@ def set_expert_param_data(group_mlp_expert_params, params, idx):
     offset = 0
     with torch.no_grad():
         for weight in ['weight1', 'weight2']:
-            seg = params[offset: offset + expert_param[weight].numel()]
+            seg = params[offset : offset + expert_param[weight].numel()]
             expert_param[weight].copy_(seg.reshape(expert_param[weight].shape))
             expert_param[weight].grad = None
             offset += expert_param[weight].numel()
-        
-        
+
+
 def get_expert_param_dtype(experts, group_mlp_expert_params, idx):
     e = group_mlp_expert_params[idx]["weight1"].dtype
     return e
-    
-    
+
+
 def get_expert_param_size(experts, group_mlp_expert_params, idx):
     e = group_mlp_expert_params[idx]["total_params"]
     return e
@@ -454,8 +475,10 @@ def topk_softmax_with_capacity(
 
     args = get_args()
     if args.fix_router:
-        top_indices = torch.arange(top_indices.numel(), device=top_indices.device,
-                                   dtype=torch.int64).view(top_indices.shape) % logits.shape[-1]
+        top_indices = (
+            torch.arange(top_indices.numel(), device=top_indices.device, dtype=torch.int64).view(top_indices.shape)
+            % logits.shape[-1]
+        )
 
     topk_masked_gates = torch.zeros_like(logits).scatter(1, top_indices, probs)
     topk_map = torch.zeros_like(logits).int().scatter(1, top_indices, 1).bool()
@@ -472,9 +495,7 @@ def topk_softmax_with_capacity(
 
         # Maskout exceeded tokens
         if drop_policy == "probs":
-            _, capacity_indices = torch.topk(
-                topk_masked_gates, k=expert_capacity, dim=0, sorted=False
-            )
+            _, capacity_indices = torch.topk(topk_masked_gates, k=expert_capacity, dim=0, sorted=False)
             capacity_mask = torch.zeros_like(logits).scatter(0, capacity_indices, 1).bool()
         elif drop_policy == "position":
             _, capacity_indices = torch.topk(topk_map.int(), k=expert_capacity, dim=0, sorted=False)
@@ -490,3 +511,103 @@ def topk_softmax_with_capacity(
             final_map = torch.logical_and(topk_map, capacity_mask)
             final_probs = topk_masked_gates * final_map
         return final_probs, final_map, tokens_per_expert
+
+
+def topk_routing_with_score_function_wrapper(fn):
+    """Replace Megatron 0.18 Top-K expert indices with deterministic round-robin indices."""
+
+    @wraps(fn)
+    def wrapper(
+        logits: torch.Tensor,
+        topk: int,
+        use_pre_softmax: bool = False,
+        num_groups: Optional[int] = None,
+        group_topk: Optional[int] = None,
+        scaling_factor: Optional[float] = None,
+        score_function: str = "softmax",
+        expert_bias: Optional[torch.Tensor] = None,
+        fused: bool = False,
+        router_replay: Optional["RouterReplay"] = None,
+        dense_output: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if fused:
+            raise ValueError("--fix-router does not support --moe-router-fusion")
+
+        probs, _ = fn(
+            logits,
+            topk,
+            use_pre_softmax=use_pre_softmax,
+            num_groups=num_groups,
+            group_topk=group_topk,
+            scaling_factor=scaling_factor,
+            score_function=score_function,
+            expert_bias=expert_bias,
+            fused=fused,
+            router_replay=router_replay,
+            dense_output=True,
+        )
+
+        num_tokens, num_experts = logits.shape
+        top_indices = (
+            torch.arange(num_tokens * topk, device=logits.device, dtype=torch.int64).view(num_tokens, topk)
+            % num_experts
+        )
+
+        if dense_output:
+            return probs, top_indices
+
+        if torch.are_deterministic_algorithms_enabled():
+            rows = torch.arange(num_tokens, device=logits.device).unsqueeze(1)
+            routing_probs = torch.zeros_like(logits)
+            routing_probs.index_put_((rows, top_indices), probs, accumulate=False)
+            routing_map = torch.zeros_like(logits, dtype=logits.dtype)
+            routing_map.index_put_(
+                (rows, top_indices),
+                torch.ones_like(probs, dtype=routing_map.dtype),
+                accumulate=False,
+            )
+            routing_map = routing_map.bool()
+        else:
+            routing_probs = torch.zeros_like(logits).scatter(1, top_indices, probs)
+            routing_map = torch.zeros_like(logits).int().scatter(1, top_indices, 1).bool()
+
+        return routing_probs, routing_map
+
+    return wrapper
+
+
+def compute_routing_scores_for_aux_loss_wrapper(fn):
+    """Use the fixed round-robin routing map for Megatron 0.18 MoE auxiliary losses."""
+
+    @wraps(fn)
+    def wrapper(
+        logits: torch.Tensor,
+        topk: int,
+        score_function: str,
+        fused: bool = False,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if fused:
+            raise ValueError("--fix-router does not support --moe-router-fusion")
+
+        _, scores = fn(
+            logits,
+            topk,
+            score_function,
+            fused=fused,
+            padding_mask=padding_mask,
+        )
+
+        num_tokens, num_experts = logits.shape
+        top_indices = (
+            torch.arange(num_tokens * topk, device=logits.device, dtype=torch.int64).view(num_tokens, topk)
+            % num_experts
+        )
+        routing_map = torch.zeros_like(logits).int().scatter(1, top_indices, 1).bool()
+
+        if padding_mask is not None:
+            routing_map = routing_map & (~padding_mask).unsqueeze(-1)
+
+        return routing_map, scores
+
+    return wrapper

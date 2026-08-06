@@ -5,8 +5,10 @@ import torch
 from megatron.core.transformer.moe.moe_utils import permute
 from megatron.training import get_args
 
-from mindspeed.core.transformer.moe.moe_feature.balanced_moe.communication import _groupedmlp_hot_expert_params_broadcast, \
-    _groupedmlp_hot_expert_gradient_reduce
+from mindspeed.core.transformer.moe.moe_feature.balanced_moe.communication import (
+    _groupedmlp_hot_expert_params_broadcast,
+    _groupedmlp_hot_expert_gradient_reduce,
+)
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.modules.moe_layer import get_shared_params_for_hot_experts
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.utils import CustomSliceFunction
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.utils import run_graph_backward
@@ -30,18 +32,14 @@ class NoDwDetachContext(AbstractContextManager):
 
 def recomp_token_permutation1(hidden_states, routing_map, sumnum_cold_local_hot_tokens):
     hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-    permuted_input_tokens, _, _ = permute(
-        hidden_states, routing_map
-    )
+    permuted_input_tokens, _, _, _, _ = permute(hidden_states, routing_map)
     permuted_local_tokens, permuted_remote_hot_tokens = CustomSliceFunction.apply(
-        permuted_input_tokens, sumnum_cold_local_hot_tokens)
+        permuted_input_tokens, sumnum_cold_local_hot_tokens
+    )
     return permuted_local_tokens, permuted_remote_hot_tokens
 
 
-def transformer_layer_backward_balanced_moe(
-        layer_output_grad,
-        layer_graph
-):
+def transformer_layer_backward_balanced_moe(layer_output_grad, layer_graph):
     self = layer_graph
     args = get_args()
     in_detach_stage = WeightGradStore.is_decoupleBlock
@@ -51,12 +49,20 @@ def transformer_layer_backward_balanced_moe(
     get_shared_params_for_hot_experts().register_shared_weight(self.layer.mlp.hot_experts)
 
     _groupedmlp_hot_expert_params_broadcast(
-        self.layer.mlp.experts, self.hot_experts_list,
-        self.layer.mlp.hot_experts, self.params,
+        self.layer.mlp.experts,
+        self.hot_experts_list,
+        self.layer.mlp.hot_experts,
+        self.params,
     )
 
-    cold_local_hot_input, remote_hot_input, probs, sorted_routing_map, \
-        sumnum_cold_local_hot_tokens, bwd_num_global_tokens_per_local_expert_cpu = self.recompute_needed_tensors
+    (
+        cold_local_hot_input,
+        remote_hot_input,
+        probs,
+        sorted_routing_map,
+        sumnum_cold_local_hot_tokens,
+        bwd_num_global_tokens_per_local_expert_cpu,
+    ) = self.recompute_needed_tensors
 
     # Launch swap-in at the beginning of the backward pass.
     if self.unperm2_swap_manager:
@@ -85,7 +91,7 @@ def transformer_layer_backward_balanced_moe(
         input_splits=self.input_splits,
         output_splits=self.output_splits,
         output_splits_tp=self.output_splits_tp,
-        wait_event=a2a_wait_event
+        wait_event=a2a_wait_event,
     )
     # overlap alltoall by shared experts backward
     if use_shared_experts:
@@ -104,14 +110,14 @@ def transformer_layer_backward_balanced_moe(
         with torch.no_grad():
             input_before_perm1 = self.pre_mlp_layernorm_graph[0]
 
-            perm1_local_out, perm1_remote_hot_out = recomp_token_permutation1(input_before_perm1,
-                                                                              sorted_routing_map,
-                                                                              sumnum_cold_local_hot_tokens)
+            perm1_local_out, perm1_remote_hot_out = recomp_token_permutation1(
+                input_before_perm1, sorted_routing_map, sumnum_cold_local_hot_tokens
+            )
             (perm_a2a_out, perm_a2a_handle), _ = dispatcher.async_dispatch_comm(
                 perm1_local_out,
                 input_splits=self.input_splits,
                 output_splits=self.output_splits,
-                output_splits_tp=self.output_splits_tp
+                output_splits_tp=self.output_splits_tp,
             )
 
     if use_shared_experts:
@@ -141,13 +147,14 @@ def transformer_layer_backward_balanced_moe(
         self.perm_a2a_graph[1][1].grad,
         input_splits=self.output_splits,
         output_splits=self.input_splits,
-        input_splits_tp=self.output_splits_tp
+        input_splits_tp=self.output_splits_tp,
     )
 
     if get_args().moe_zero_memory == 'level0':
         with torch.no_grad():
-            recompute_fc1_input, _ = dispatcher.token_permute2(perm_a2a_out, None,
-                                                               bwd_num_global_tokens_per_local_expert_cpu)
+            recompute_fc1_input, _ = dispatcher.token_permute2(
+                perm_a2a_out, None, bwd_num_global_tokens_per_local_expert_cpu
+            )
             perm_a2a_out.untyped_storage().resize_(0)
             # restore fc1 input for dw computation
             cold_local_hot_input.untyped_storage().resize_(recompute_fc1_input.untyped_storage().size())
@@ -174,13 +181,16 @@ def transformer_layer_backward_balanced_moe(
 
     # hot experts gradient reduce comm is overlaped by attention backward.
     _groupedmlp_hot_expert_gradient_reduce(
-        self.hot_experts_list, self.layer.mlp.hot_experts, self.params,
+        self.hot_experts_list,
+        self.layer.mlp.hot_experts,
+        self.params,
     )
     perm1_remote_hot_grad = self.perm1_graph[1][0].grad if self.perm1_graph[1][0] is not None else None
     perm1_remote_prob_grad = self.perm1_graph[1][1].grad if self.perm1_graph[1][1] is not None else None
 
-    run_graph_backward(self.perm1_graph,
-                       [perm1_out_grad, perm1_prob_out_grad, perm1_remote_hot_grad, perm1_remote_prob_grad])
+    run_graph_backward(
+        self.perm1_graph, [perm1_out_grad, perm1_prob_out_grad, perm1_remote_hot_grad, perm1_remote_prob_grad]
+    )
 
     # Swap-in unperm2 input for probs_grad computation in backward pass of router.
     if self.unperm2_swap_manager:
@@ -191,7 +201,9 @@ def transformer_layer_backward_balanced_moe(
         H = self.unperm2_swap_manager.npu_tensor.shape[-1]
         K = args.moe_router_topk
         probs_dtype = probs.dtype
-        probs_grad = layer_output_grad.to(probs_dtype) * self.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(probs_dtype)
+        probs_grad = layer_output_grad.to(probs_dtype) * self.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(
+            probs_dtype
+        )
         probs_grad = probs_grad.sum(dim=-1)
         layer_output_grad.untyped_storage().resize_(0)
         self.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)

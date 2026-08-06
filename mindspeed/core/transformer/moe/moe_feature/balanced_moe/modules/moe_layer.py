@@ -4,30 +4,26 @@
 import torch
 import torch_npu
 from megatron.core.transformer import build_module
-from megatron.core.transformer.mlp import MLPSubmodules, MLP
+from megatron.core.transformer.mlp import MLPSubmodules
 from megatron.core.transformer.moe.moe_layer import BaseMoELayer
+from megatron.core.transformer.moe.moe_utils import get_default_pg_collection
 from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.transformer_config import TransformerConfig
 from torch.nn.parameter import Parameter
 
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.modules.token_dispatcher import (
-    MoEBalancedAlltoAllTokenDispatcher
+    MoEBalancedAlltoAllTokenDispatcher,
 )
 
 
 class SharedParamsForHotExperts:
-    def __init__(self, weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype=torch.float32,
-                 device="cuda"):
-        self.shared_weight1 = Parameter(
-            torch.empty(weight1_shape, dtype=dtype, device=device)
-        )
+    def __init__(self, weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype=torch.float32, device="cuda"):
+        self.shared_weight1 = Parameter(torch.empty(weight1_shape, dtype=dtype, device=device))
         self.shared_weight1.is_hot_experts = True
         self.shared_weight1.requires_grad = True
         self.shared_weight1.gmm_weight = True
 
-        self.shared_weight2 = Parameter(
-            torch.empty(weight2_shape, dtype=dtype, device=device)
-        )
+        self.shared_weight2 = Parameter(torch.empty(weight2_shape, dtype=dtype, device=device))
         self.shared_weight2.is_hot_experts = True
         self.shared_weight2.requires_grad = True
         self.shared_weight2.gmm_weight = True
@@ -48,11 +44,13 @@ _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS = None
 
 
 def init_global_shared_params_for_hot_experts(
-        weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype=torch.float32, device="cuda"):
+    weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype=torch.float32, device="cuda"
+):
     global _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS
     if _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS is None:
         _GLOBAL_SHARED_PARAMS_FOR_HOT_EXPERTS = SharedParamsForHotExperts(
-            weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype, device)
+            weight1_shape, weight2_shape, grad1_shape, grad2_shape, dtype, device
+        )
 
 
 def get_shared_params_for_hot_experts():
@@ -68,32 +66,28 @@ def get_shared_grad_for_hot_experts():
 
 
 class BalancedMoELayer(BaseMoELayer):
-    """Balanced Mixture of experts Layer **currently only supports no token dropping**.
-    """
+    """Balanced Mixture of experts Layer **currently only supports no token dropping**."""
 
-    def __init__(
-            self, config: TransformerConfig, submodules: MLPSubmodules = None, layer_number: int = None
-    ):
+    def __init__(self, config: TransformerConfig, submodules: MLPSubmodules = None, layer_number: int = None):
         self.submodules = submodules
         # shared_expert two param mutual conversion
         if config.n_shared_experts:
             config.moe_shared_expert_intermediate_size = config.n_shared_experts * (
-                config.moe_ffn_hidden_size if config.moe_ffn_hidden_size is not None else config.ffn_hidden_size)
-        super(BalancedMoELayer, self).__init__(config=config, layer_number=layer_number)
+                config.moe_ffn_hidden_size if config.moe_ffn_hidden_size is not None else config.ffn_hidden_size
+            )
+        super().__init__(config=config, layer_number=layer_number, pg_collection=get_default_pg_collection())
 
         self.moe_layer_recompute = False
 
         # Initialize router
-        self.router = TopKRouter(config=self.config)
+        self.router = TopKRouter(config=self.config, pg_collection=get_default_pg_collection())
 
         if not hasattr(self.config, 'shared_expert_gate'):
             self.config.shared_expert_gate = None
 
         # Initialize experts
         if not self.config.moe_grouped_gemm:
-            raise ValueError(
-                f"use fb overlap should open moe_grouped_gemm"
-            )
+            raise ValueError("use fb overlap should open moe_grouped_gemm")
         # Initialize experts
         self.experts = build_module(self.submodules.experts, self.num_local_experts, self.config)
         self.hot_experts = build_module(self.submodules.experts, self.config.balanced_moe_hot_expert_num, self.config)
@@ -102,7 +96,7 @@ class BalancedMoELayer(BaseMoELayer):
         self.hot_experts.weight2.is_hot_experts = True
 
         # Initialize token dispatcher
-        if self.config.moe_token_dispatcher_type == 'alltoall':
+        if self.config.moe_token_dispatcher_type == 'alltoall':  # nosec B105 - dispatcher enum, not a credential
             self.token_dispatcher = MoEBalancedAlltoAllTokenDispatcher(
                 self.num_local_experts, self.local_expert_indices, config=self.config
             )
@@ -130,7 +124,7 @@ class BalancedMoELayer(BaseMoELayer):
             self.expert_broadcast_streams,
             self.hot_expert_finish_events,
             self.hot_expert_broadcast_handles,
-            self.hot_expert_inter_ep_grad_reduce_handles
+            self.hot_expert_inter_ep_grad_reduce_handles,
         ]
 
         # Hook related.
@@ -151,9 +145,13 @@ class BalancedMoELayer(BaseMoELayer):
         self.hot_experts.weight2.untyped_storage_size = self.hot_experts.weight2.untyped_storage().size()
 
         init_global_shared_params_for_hot_experts(
-            self.hot_experts.weight1.data.shape, self.hot_experts.weight2.data.shape,
-            grad_w1_hot_shape, grad_w2_hot_shape,
-            self.hot_experts.weight1.data.dtype, self.hot_experts.weight1.data.device)
+            self.hot_experts.weight1.data.shape,
+            self.hot_experts.weight2.data.shape,
+            grad_w1_hot_shape,
+            grad_w2_hot_shape,
+            self.hot_experts.weight1.data.dtype,
+            self.hot_experts.weight1.data.device,
+        )
         self.hot_experts.weight1 = None
         self.hot_experts.weight2 = None
 

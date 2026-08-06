@@ -1,21 +1,22 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
-from typing import List, Tuple
+from typing import List
 
 import numpy as np
 import torch
 
+from megatron.core.transformer.moe.moe_utils import get_default_pg_collection
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_feature import (
     TransformerConfig,
     parallel_state,
     gather_from_sequence_parallel_region,
-    tensor_parallel,
     permute,
     unpermute,
     sort_chunks_by_idxs,
-    MoEAlltoAllTokenDispatcher)
+    MoEAlltoAllTokenDispatcher,
+)
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.utils import CustomSliceFunction
 from mindspeed.core.transformer.moe.moe_feature.overlap.token_dispatcher import is_less_or_equal_rc2_cann_version
 
@@ -23,8 +24,7 @@ cann_version_check = is_less_or_equal_rc2_cann_version()
 PREMUTE_FINISH_EVENT = None
 
 
-def move_sorted_columns_to_end(routing_map: torch.Tensor,
-                               remote_list: torch.Tensor) -> torch.Tensor:
+def move_sorted_columns_to_end(routing_map: torch.Tensor, remote_list: torch.Tensor) -> torch.Tensor:
     num_experts = routing_map.size(1)
     device = routing_map.device
 
@@ -33,10 +33,7 @@ def move_sorted_columns_to_end(routing_map: torch.Tensor,
     mask = torch.ones(num_experts, dtype=torch.bool, device=device)
     mask[remote_list] = False
 
-    new_indices = torch.cat([
-        all_indices[mask],
-        all_indices[~mask]
-    ])
+    new_indices = torch.cat([all_indices[mask], all_indices[~mask]])
 
     return routing_map[:, new_indices]
 
@@ -44,8 +41,7 @@ def move_sorted_columns_to_end(routing_map: torch.Tensor,
 class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
     OVERLAP_STREAM = None
 
-    def __init__(self, num_local_experts: int, local_expert_indices: List[int],
-                 config: TransformerConfig):
+    def __init__(self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig):
         """
         Initialize the AlltoAll token dispatcher.
 
@@ -55,10 +51,14 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             config (TransformerConfig): Configuration for the transformer model.
         """
 
-        super(MoEBalancedAlltoAllTokenDispatcher, self).__init__(num_local_experts, local_expert_indices, config)
+        super().__init__(
+            num_local_experts,
+            local_expert_indices,
+            config,
+            pg_collection=get_default_pg_collection(),
+        )
         if MoEBalancedAlltoAllTokenDispatcher.OVERLAP_STREAM is None:
-            MoEBalancedAlltoAllTokenDispatcher.OVERLAP_STREAM = torch.npu.Stream(
-                device=torch.npu.current_device())
+            MoEBalancedAlltoAllTokenDispatcher.OVERLAP_STREAM = torch.npu.Stream(device=torch.npu.current_device())
         self.overlap_stream = MoEBalancedAlltoAllTokenDispatcher.OVERLAP_STREAM
 
     def preprocess(self, routing_map):
@@ -78,11 +78,9 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         """
         num_local_tokens_per_expert = routing_map.sum(dim=0).long()
         self.num_local_tokens_per_expert = num_local_tokens_per_expert
-        self.num_local_tokens_per_expert_np = (
-            num_local_tokens_per_expert
-            .to(torch.device("cpu"), non_blocking=True)
-            .numpy()
-        )
+        self.num_local_tokens_per_expert_np = num_local_tokens_per_expert.to(
+            torch.device("cpu"), non_blocking=True
+        ).numpy()
         # Dropless
         self.num_out_tokens = routing_map.size(0) * self.config.moe_router_topk
         if self.ep_size > 1 or self.num_local_experts > 1:
@@ -101,16 +99,15 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             # expert by all ranks.
             # [tp_size, ep_size, num_experts]
             num_global_tokens_per_expert = (
-                gather_from_sequence_parallel_region(
-                    num_local_tokens_per_expert, group=self.tp_ep_group
-                )
+                gather_from_sequence_parallel_region(num_local_tokens_per_expert, group=self.tp_ep_group)
                 .reshape(self.ep_size, self.tp_size, self.num_experts)
                 .transpose(0, 1)
             )
 
             # cpu/npu syncronize here
             num_global_tokens_per_expert_cpu = num_global_tokens_per_expert.to(
-                torch.device("cpu")).numpy()  # [tp_extended_ep_size, num_experts]
+                torch.device("cpu")
+            ).numpy()  # [tp_extended_ep_size, num_experts]
             self.hot_experts = self.hot_expert_selection(num_global_tokens_per_expert_cpu[self.tp_rank], hot_expert_num)
             if isinstance(self.local_expert_indices, list):
                 self.local_expert_indices_np = np.array(self.local_expert_indices)
@@ -129,19 +126,16 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             remote_hot_masked_num_local_tokens_per_expert = self.num_local_tokens_per_expert_np.copy()  # [num_experts]
             remote_hot_masked_num_local_tokens_per_expert[self.remote_hot_experts] = 0
 
-            self.input_splits = (
-                remote_hot_masked_num_local_tokens_per_expert
-                .reshape(self.ep_size, self.num_local_experts)
-                .sum(axis=1)
-            )
+            self.input_splits = remote_hot_masked_num_local_tokens_per_expert.reshape(
+                self.ep_size, self.num_local_experts
+            ).sum(axis=1)
 
             curr_ep_rank = parallel_state.get_expert_model_parallel_rank()
             # [tp_size, ep_size, num_experts] -> [tp_size, ep_size, num_local_experts]
 
             num_global_cold_local_hot_tokens_per_local_expert = num_global_tokens_per_expert[
-                                                                :, :, self.local_expert_indices[0]:
-                                                                      self.local_expert_indices[-1] + 1
-                                                                ].contiguous()
+                :, :, self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
+            ].contiguous()
             ep_mask = np.ones(self.ep_size, dtype=bool)
             ep_mask[curr_ep_rank] = False
             local_hot_mask = np.isin(self.local_expert_indices_np, self.hot_experts)
@@ -163,23 +157,18 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             # self.output_splits_tp represents the number of tokens received by the current
             # rank from other TP rank.
             self.output_splits_tp = (
-                num_global_cold_local_hot_tokens_per_rank.sum(axis=1)
-                .to(torch.device("cpu"), non_blocking=True)
-                .numpy()
+                num_global_cold_local_hot_tokens_per_rank.sum(axis=1).to(torch.device("cpu"), non_blocking=True).numpy()
             )
             # Megatron will copy num_tokens_per_local_expert to cpu for GMM.
             # NPU GMM can support input splits tensor in device, so no need to copy.
             num_tokens_per_local_expert = num_global_cold_local_hot_tokens_per_local_expert.sum(dim=(0, 1))
         else:
-            num_global_cold_local_hot_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
-                self.num_experts
-            )
+            num_global_cold_local_hot_tokens_per_local_expert = num_local_tokens_per_expert.reshape(self.num_experts)
             num_tokens_per_local_expert = num_local_tokens_per_expert
 
-        self.padded_num_remote_hot_tokens_npu = torch.tensor(
-            self.padded_num_remote_hot_tokens,
-            dtype=torch.int32
-        ).to(routing_map.device)
+        self.padded_num_remote_hot_tokens_npu = torch.tensor(self.padded_num_remote_hot_tokens, dtype=torch.int32).to(
+            routing_map.device
+        )
         if self.num_local_experts > 1:
             self.num_global_tokens_per_local_expert_cpu = num_global_cold_local_hot_tokens_per_local_expert.view(
                 -1, self.num_local_experts
@@ -188,7 +177,10 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         return num_tokens_per_local_expert
 
     def token_permute1(
-            self, hidden_states: torch.Tensor, probs: torch.Tensor, routing_map: torch.Tensor,
+        self,
+        hidden_states: torch.Tensor,
+        probs: torch.Tensor,
+        routing_map: torch.Tensor,
     ):
         """
         Dispatch tokens to local experts before alltoall comm
@@ -233,7 +225,13 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             global PREMUTE_FINISH_EVENT
             self.overlap_stream.wait_event(event)
             if self.config.moe_permute_fusion:
-                permuted_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
+                (
+                    permuted_input_tokens,
+                    permuted_probs,
+                    self.reversed_local_input_permutation_mapping,
+                    _,
+                    _,
+                ) = permute(
                     hidden_states,
                     self.sorted_routing_map,
                     probs=sorted_probs,
@@ -241,7 +239,13 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
                     fused=self.config.moe_permute_fusion,
                 )
             else:
-                permuted_input_tokens, permuted_probs, self.reversed_local_input_permutation_mapping = permute(
+                (
+                    permuted_input_tokens,
+                    permuted_probs,
+                    self.reversed_local_input_permutation_mapping,
+                    _,
+                    _,
+                ) = permute(
                     hidden_states,
                     self.sorted_routing_map,
                     probs=sorted_probs,
@@ -251,16 +255,26 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             PREMUTE_FINISH_EVENT = self.overlap_stream.record_event()
 
         permuted_local_tokens, permuted_remote_hot_tokens = CustomSliceFunction.apply(
-            permuted_input_tokens, self.sumnum_cold_local_hot_tokens)
+            permuted_input_tokens, self.sumnum_cold_local_hot_tokens
+        )
         permuted_local_probs, permuted_remote_hot_probs = CustomSliceFunction.apply(
-            permuted_probs, self.sumnum_cold_local_hot_tokens)
+            permuted_probs, self.sumnum_cold_local_hot_tokens
+        )
 
-        return ((permuted_local_tokens, permuted_remote_hot_tokens),
-                (permuted_local_probs, permuted_remote_hot_probs), global_cold_local_hot_tokens_per_expert)
+        return (
+            (permuted_local_tokens, permuted_remote_hot_tokens),
+            (permuted_local_probs, permuted_remote_hot_probs),
+            global_cold_local_hot_tokens_per_expert,
+        )
 
     def async_dispatch_comm(
-            self, permutated_local_input_tokens, permutated_local_input_token_probs=None,
-            input_splits=None, output_splits=None, output_splits_tp=None, wait_event=None
+        self,
+        permutated_local_input_tokens,
+        permutated_local_input_token_probs=None,
+        input_splits=None,
+        output_splits=None,
+        output_splits_tp=None,
+        wait_event=None,
     ):
         input_splits = input_splits if input_splits is not None else self.input_splits
         output_splits = output_splits if output_splits is not None else self.output_splits
@@ -271,7 +285,7 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             input_splits,
             self.ep_group,
             event=wait_event,
-            stream=torch.npu.current_stream() if wait_event else None
+            stream=torch.npu.current_stream() if wait_event else None,
         )
 
         global_input_token_probs, prob_comm_handle = None, None
@@ -282,58 +296,85 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
                 input_splits,
                 self.ep_group,
                 event=comm_handle,
-                stream=torch.npu.current_stream()
+                stream=torch.npu.current_stream(),
             )
 
         if self.tp_size > 1:
             _, global_input_tokens, comm_handle = async_all_gather(
-                global_input_tokens, self.tp_group,
+                global_input_tokens,
+                self.tp_group,
                 output_split_sizes=output_splits_tp.tolist() if output_splits_tp is not None else None,
-                event=prob_comm_handle if prob_comm_handle else comm_handle, stream=torch.npu.current_stream()
+                event=prob_comm_handle if prob_comm_handle else comm_handle,
+                stream=torch.npu.current_stream(),
             )
             if global_input_token_probs is not None:
                 _, global_input_token_probs, prob_comm_handle = async_all_gather(
-                    global_input_token_probs, self.tp_group,
+                    global_input_token_probs,
+                    self.tp_group,
                     output_split_sizes=output_splits_tp.tolist() if output_splits_tp is not None else None,
-                    event=prob_comm_handle, stream=torch.npu.current_stream()
+                    event=prob_comm_handle,
+                    stream=torch.npu.current_stream(),
                 )
 
         return (global_input_tokens, comm_handle), (global_input_token_probs, prob_comm_handle)
 
     def backward_async_dispatch_comm(
-            self, tokens_grad, token_probs_grad=None,
-            input_splits=None, output_splits=None, input_splits_tp=None, wait_event=None
+        self,
+        tokens_grad,
+        token_probs_grad=None,
+        input_splits=None,
+        output_splits=None,
+        input_splits_tp=None,
+        wait_event=None,
     ):
         last_comm_handle = wait_event
         if self.tp_size > 1:
             input_split_sizes = input_splits_tp.tolist() if input_splits_tp is not None else None
             _, tokens_grad, last_comm_handle = async_reduce_scatter(
-                tokens_grad, self.tp_group, input_split_sizes=input_split_sizes,
-                event=wait_event, stream=torch.npu.current_stream() if wait_event else None
+                tokens_grad,
+                self.tp_group,
+                input_split_sizes=input_split_sizes,
+                event=wait_event,
+                stream=torch.npu.current_stream() if wait_event else None,
             )
             if token_probs_grad is not None:
                 _, token_probs_grad, last_comm_handle = async_reduce_scatter(
-                    token_probs_grad, self.tp_group, input_split_sizes=input_split_sizes,
-                    event=wait_event, stream=torch.npu.current_stream() if wait_event else None
+                    token_probs_grad,
+                    self.tp_group,
+                    input_split_sizes=input_split_sizes,
+                    event=wait_event,
+                    stream=torch.npu.current_stream() if wait_event else None,
                 )
 
         _, tokens_grad, tokens_comm_handle = async_all_to_all(
-            tokens_grad, output_splits, input_splits, self.ep_group, event=last_comm_handle,
-            stream=torch.npu.current_stream() if last_comm_handle else None
+            tokens_grad,
+            output_splits,
+            input_splits,
+            self.ep_group,
+            event=last_comm_handle,
+            stream=torch.npu.current_stream() if last_comm_handle else None,
         )
         token_probs_comm_handle = None
         if token_probs_grad is not None:
             _, token_probs_grad, token_probs_comm_handle = async_all_to_all(
-                token_probs_grad, output_splits, input_splits, self.ep_group, event=last_comm_handle,
-                stream=torch.npu.current_stream() if last_comm_handle else None
+                token_probs_grad,
+                output_splits,
+                input_splits,
+                self.ep_group,
+                event=last_comm_handle,
+                stream=torch.npu.current_stream() if last_comm_handle else None,
             )
 
         return (tokens_grad, tokens_comm_handle), (token_probs_grad, token_probs_comm_handle)
 
-    def token_permute2(self, global_input_tokens, global_input_token_probs,
-                       num_global_tokens_per_local_expert_cpu=None):
-        num_global_tokens_per_local_expert_cpu = num_global_tokens_per_local_expert_cpu \
-            if num_global_tokens_per_local_expert_cpu is not None else self.num_global_tokens_per_local_expert_cpu
+    def token_permute2(
+        self, global_input_tokens, global_input_token_probs, num_global_tokens_per_local_expert_cpu=None
+    ):
+        num_global_tokens_per_local_expert_cpu = (
+            num_global_tokens_per_local_expert_cpu
+            if num_global_tokens_per_local_expert_cpu is not None
+            else self.num_global_tokens_per_local_expert_cpu
+        )
 
         # Permutation 2: AlltoAll output to expert input if num_local_experts > 1
         if self.num_local_experts > 1:
@@ -350,7 +391,9 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         return global_input_tokens, global_input_token_probs
 
     def token_unpermute1(
-            self, hidden_states: torch.Tensor, bias: torch.Tensor = None,
+        self,
+        hidden_states: torch.Tensor,
+        bias: torch.Tensor = None,
     ):
         """
         Reverse the token permutation to restore the original order.
@@ -377,9 +420,9 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
 
         return hidden_states
 
-    def async_combine_comm(self, hidden_states, input_splits=None, output_splits=None, input_splits_tp=None,
-                           wait_event=None):
-
+    def async_combine_comm(
+        self, hidden_states, input_splits=None, output_splits=None, input_splits_tp=None, wait_event=None
+    ):
         # Perform expert parallel AlltoAll communication
         output_splits = output_splits if output_splits is not None else self.input_splits
         input_splits = input_splits if input_splits is not None else self.output_splits
@@ -387,9 +430,11 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
 
         if self.tp_size > 1:
             _, hidden_states, wait_event = async_reduce_scatter(
-                hidden_states, self.tp_group,
+                hidden_states,
+                self.tp_group,
                 input_split_sizes=input_splits_tp.tolist() if input_splits_tp is not None else None,
-                event=wait_event, stream=torch.npu.current_stream() if wait_event else None
+                event=wait_event,
+                stream=torch.npu.current_stream() if wait_event else None,
             )
 
         _, permutated_local_input_tokens, comm_handle = async_all_to_all(
@@ -398,30 +443,36 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
             input_splits,
             self.ep_group,
             event=wait_event,
-            stream=torch.npu.current_stream() if wait_event else None
+            stream=torch.npu.current_stream() if wait_event else None,
         )
 
         return permutated_local_input_tokens, comm_handle
 
-    def backward_async_combine_comm(self, tokens_grad, input_splits=None, output_splits=None, output_splits_tp=None,
-                                    wait_event=None):
-
+    def backward_async_combine_comm(
+        self, tokens_grad, input_splits=None, output_splits=None, output_splits_tp=None, wait_event=None
+    ):
         _, tokens_grad, comm_handle = async_all_to_all(
-            tokens_grad, output_splits, input_splits, self.ep_group, event=wait_event,
-            stream=torch.npu.current_stream() if wait_event else None
+            tokens_grad,
+            output_splits,
+            input_splits,
+            self.ep_group,
+            event=wait_event,
+            stream=torch.npu.current_stream() if wait_event else None,
         )
 
         if self.tp_size > 1:
             output_split_sizes = output_splits_tp.tolist() if output_splits_tp is not None else None
             _, tokens_grad, comm_handle = async_all_gather(
-                tokens_grad, self.tp_group, output_split_sizes=output_split_sizes,
-                event=comm_handle, stream=torch.npu.current_stream()
+                tokens_grad,
+                self.tp_group,
+                output_split_sizes=output_split_sizes,
+                event=comm_handle,
+                stream=torch.npu.current_stream(),
             )
 
         return tokens_grad, comm_handle
 
-    def token_unpermute2(
-            self, permuted_local_hidden_states, remote_hot_hidden_states):
+    def token_unpermute2(self, permuted_local_hidden_states, remote_hot_hidden_states):
         merged_cold_hot_hidden_states = torch.cat([permuted_local_hidden_states, remote_hot_hidden_states], dim=0)
         # Unpermutation 1: AlltoAll output to output
         output = unpermute(
@@ -437,8 +488,9 @@ class MoEBalancedAlltoAllTokenDispatcher(MoEAlltoAllTokenDispatcher):
         return output, None
 
     def hot_expert_selection(self, num_global_tokens_per_expert, hot_expert_num):
-        tokens_per_expert = num_global_tokens_per_expert.sum(axis=0).reshape(self.num_experts // self.num_local_experts,
-                                                                             self.num_local_experts)
+        tokens_per_expert = num_global_tokens_per_expert.sum(axis=0).reshape(
+            self.num_experts // self.num_local_experts, self.num_local_experts
+        )
         tokens_per_ep = tokens_per_expert.sum(axis=1).tolist()
 
         hot_expert_list = []

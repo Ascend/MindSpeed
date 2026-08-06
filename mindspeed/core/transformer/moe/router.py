@@ -2,7 +2,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 from megatron.core.parallel_state import get_expert_tensor_and_model_parallel_group
-from megatron.core.transformer.moe.moe_utils import topk_softmax_with_capacity
+from mindspeed.core.transformer.moe.moe_utils import topk_softmax_with_capacity
 from megatron.core.tensor_parallel.mappings import (
     gather_from_sequence_parallel_region,
     _reduce_scatter_along_first_dim,
@@ -46,7 +46,7 @@ def gather_from_sequence_parallel_region_to_moe_async(input_):
 
 
 def aux_loss_load_balancing(self, logits: torch.Tensor):
-    #TODO: In 0.10.0 ,routing_map replace indices. Should we need this patch?
+    # TODO: In 0.10.0 ,routing_map replace indices. Should we need this patch?
 
     probs, indices, tokens_per_expert = topk_softmax_with_capacity(
         logits,
@@ -89,14 +89,15 @@ def routing_tp_extend_ep(self, logits: torch.Tensor):
         scores, routing_map = self.aux_loss_load_balancing(logits)
     elif self.routing_type == "none":
         # A naive top-k routing without load balancing
-        scores, routing_map, _ = topk_softmax_with_capacity(
+        # The installed Megatron signature can lag the 0.18 compatibility signature used here.
+        scores, routing_map, _ = topk_softmax_with_capacity(  # pylint: disable=unexpected-keyword-arg
             logits,
             self.topk,
             capacity_factor=self.config.moe_expert_capacity_factor,
             pad_to_capacity=self.config.moe_pad_expert_input_to_capacity,
             drop_policy=self.config.moe_token_drop_policy,
             use_pre_softmax=self.config.moe_router_pre_softmax,
-            moe_router_topk_scaling_factor=self.config.moe_router_topk_scaling_factor,
+            scaling_factor=self.config.moe_router_topk_scaling_factor,
         )
     else:
         raise ValueError(f"Unsupported MoE routing type: {self.routing_type}")

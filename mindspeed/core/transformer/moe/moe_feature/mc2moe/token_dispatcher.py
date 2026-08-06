@@ -1,5 +1,7 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies. All rights reserved.
+# This implementation receives dispatcher state from its adaptor's Megatron base class.
+# pylint: disable=no-member,access-member-before-definition
 
 from typing import List, Optional, Tuple
 
@@ -12,7 +14,7 @@ from mindspeed.core.transformer.moe.moe_feature import (
     permute,
     unpermute,
     TransformerConfig,
-    gather_from_sequence_parallel_region
+    gather_from_sequence_parallel_region,
 )
 
 from mindspeed.core.transformer.moe.comm_utils import AsyncAllToAllWithBackward
@@ -28,9 +30,7 @@ class MoEAlltoAllMC2TokenDispatcher:
     (3) token_unpermutation(): sort_chunk(if num_local_experts>1)->RS(TP)->A2A(EP)->unpermute
     """
 
-    def __init__(
-        self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig
-    ) -> None:
+    def __init__(self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig) -> None:
         """
         Initialize the AlltoAll token dispatcher.
 
@@ -112,17 +112,13 @@ class MoEAlltoAllMC2TokenDispatcher:
             # ===================================================
             # [ep_size]. Represents the number of tokens sent by the current rank to other
             # EP ranks.
-            self.input_splits = num_local_tokens_per_expert.reshape(
-                self.ep_size, self.num_local_experts
-            ).sum(axis=1)
+            self.input_splits = num_local_tokens_per_expert.reshape(self.ep_size, self.num_local_experts).sum(axis=1)
             # Gather the global distribution of tokens across ranks.
             # num_global_tokens_per_expert represents the number of tokens sent to each
             # expert by all ranks.
             # [tp_size, ep_size, num_experts]
             num_global_tokens_per_expert = (
-                gather_from_sequence_parallel_region(
-                    num_local_tokens_per_expert, group=self.tp_ep_group
-                )
+                gather_from_sequence_parallel_region(num_local_tokens_per_expert, group=self.tp_ep_group)
                 .reshape(self.ep_size, self.tp_size, self.num_experts)
                 .transpose(0, 1)
             )
@@ -147,9 +143,7 @@ class MoEAlltoAllMC2TokenDispatcher:
             # to get the `input_splits` and `output_splits` CPU values.
             self._maybe_update_cuda_sync_point("before_ep_alltoall")
         else:
-            num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(
-                self.num_experts
-            )
+            num_global_tokens_per_local_expert = num_local_tokens_per_expert.reshape(self.num_experts)
             num_tokens_per_local_expert = num_local_tokens_per_expert
 
             # A synchronization is needed before the returns
@@ -168,8 +162,7 @@ class MoEAlltoAllMC2TokenDispatcher:
                 self._maybe_update_cuda_sync_point("before_permutation_2")
 
         assert (
-            self.cuda_sync_point_priority[self.cuda_dtoh_point]
-            <= self.cuda_sync_point_priority[self.cuda_sync_point]
+            self.cuda_sync_point_priority[self.cuda_dtoh_point] <= self.cuda_sync_point_priority[self.cuda_sync_point]
         ), "cuda_sync_point must be after cuda_dtoh_point."
 
         torch.cuda.current_stream().synchronize()
@@ -215,14 +208,14 @@ class MoEAlltoAllMC2TokenDispatcher:
             self.shared_experts.pre_forward_comm(hidden_states.view(self.hidden_shape))
 
         # Permutation 1: input to AlltoAll input
-        tokens_per_expert = self._maybe_dtoh_and_synchronize(
-            "before_permutation_1", tokens_per_expert
-        )
+        tokens_per_expert = self._maybe_dtoh_and_synchronize("before_permutation_1", tokens_per_expert)
         self.hidden_shape_before_permute = hidden_states.shape
         (
             permutated_local_input_tokens,
             permuted_probs,
             self.reversed_local_input_permutation_mapping,
+            _,
+            _,
         ) = permute(
             hidden_states,
             routing_map,
@@ -233,9 +226,7 @@ class MoEAlltoAllMC2TokenDispatcher:
         )
 
         # Perform expert parallel AlltoAll communication
-        tokens_per_expert = self._maybe_dtoh_and_synchronize(
-            "before_ep_alltoall", tokens_per_expert
-        )
+        tokens_per_expert = self._maybe_dtoh_and_synchronize("before_ep_alltoall", tokens_per_expert)
 
         _, global_probs, global_probs_async_handle = AsyncAllToAllWithBackward.apply(
             permuted_probs,
@@ -306,15 +297,10 @@ class MoEAlltoAllMC2TokenDispatcher:
         Update the CUDA sync point if the priority of the new point is higher than the current
         sync point, which means the new point is reached earlier than the current sync point.
         """
-        if (
-            self.cuda_sync_point_priority[point]
-            < self.cuda_sync_point_priority[self.cuda_sync_point]
-        ):
+        if self.cuda_sync_point_priority[point] < self.cuda_sync_point_priority[self.cuda_sync_point]:
             self.cuda_sync_point = point
 
-    def _maybe_dtoh_and_synchronize(
-        self, point: str, tokens_per_expert: torch.Tensor = None
-    ) -> torch.Tensor:
+    def _maybe_dtoh_and_synchronize(self, point: str, tokens_per_expert: torch.Tensor = None) -> torch.Tensor:
         """
         Move all possible GPU tensors to CPU and make a synchronization at the expected point.
         """
@@ -325,7 +311,6 @@ class MoEAlltoAllMC2TokenDispatcher:
                 if on_side_stream:
                     self.cuda_dtoh_stream.wait_stream(torch.cuda.current_stream())
                 with torch.cuda.stream(self.cuda_dtoh_stream):
-
                     self.input_splits = maybe_move_tensor_to_cpu(
                         self.input_splits, as_numpy=True, record_stream=on_side_stream
                     )
@@ -335,9 +320,7 @@ class MoEAlltoAllMC2TokenDispatcher:
                     self.output_splits_tp = maybe_move_tensor_to_cpu(
                         self.output_splits_tp, as_numpy=True, record_stream=on_side_stream
                     )
-                    self.num_out_tokens = maybe_move_tensor_to_cpu(
-                        self.num_out_tokens, record_stream=on_side_stream
-                    )
+                    self.num_out_tokens = maybe_move_tensor_to_cpu(self.num_out_tokens, record_stream=on_side_stream)
                     if self.num_local_experts > 1 and not self.config.moe_permute_fusion:
                         self.num_global_tokens_per_local_expert = maybe_move_tensor_to_cpu(
                             self.num_global_tokens_per_local_expert, record_stream=on_side_stream
