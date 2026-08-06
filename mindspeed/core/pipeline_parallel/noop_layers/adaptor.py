@@ -113,6 +113,8 @@ def mindspeed_track_moe_metrics(
     track_names: Optional[List[str]] = None,
     num_layers: Optional[int] = None,
     moe_layer_freq: Optional[Union[int, List[int]]] = None,
+    mtp_num_layers: Optional[int] = None,
+    pg_collection=None,
 ):
     """Adaptor to track moe metrics of training.
 
@@ -142,5 +144,7 @@ def mindspeed_track_moe_metrics(
         track_names=track_names,
         num_layers=num_layers,
         moe_layer_freq=moe_layer_freq,
+        mtp_num_layers=mtp_num_layers,
+        pg_collection=pg_collection,
         noop_layers=args.noop_layers,
     )

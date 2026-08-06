@@ -1,6 +1,5 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-from typing import Union
 import logging
 
 import torch
@@ -13,7 +12,6 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import (
     get_gpt_heterogeneous_layer_spec,
 )
-import megatron.legacy.model
 from megatron.core.models.gpt import GPTModel
 from megatron.core.transformer.spec_utils import import_module
 from megatron.core.models.common.language_module.language_module import LanguageModule
@@ -49,10 +47,11 @@ def setup_embeddings_and_output_layer_with_mtp(self) -> None:
     # in these cases.
 
     # DualpipeV.
-    if not self.share_embeddings_and_output_weights and \
-        not getattr(
-        self.config, 'mtp_num_layers', 0) or \
-        self.config.schedules_method == 'dualpipev':
+    if (
+        not self.share_embeddings_and_output_weights
+        and not getattr(self.config, 'mtp_num_layers', 0)
+        or self.config.schedules_method == 'dualpipev'
+    ):
         return
 
     if parallel_state.get_pipeline_model_parallel_world_size() == 1:
@@ -93,9 +92,7 @@ def setup_embeddings_and_output_layer_with_mtp(self) -> None:
         if parallel_state.is_rank_in_embedding_group():
             weight = self.shared_embedding_or_output_weight()
             weight.data = weight.data.cuda()
-            torch.distributed.all_reduce(
-                weight.data, group=parallel_state.get_embedding_group()
-            )
+            torch.distributed.all_reduce(weight.data, group=parallel_state.get_embedding_group())
 
     elif not getattr(LanguageModule, "embedding_warning_printed", False):
         logging.getLogger(__name__).warning(
@@ -107,12 +104,11 @@ def setup_embeddings_and_output_layer_with_mtp(self) -> None:
         )
         LanguageModule.embedding_warning_printed = True
 
- 
- 
-def model_provider_mtp(pre_process=True, post_process=True, use_dualpipe_mtp=False) -> Union[GPTModel, megatron.legacy.model.GPTModel]:
+
+def model_provider_mtp(pre_process=True, post_process=True, use_dualpipe_mtp=False) -> GPTModel:
     """Builds the model.
 
-    If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.
+    Megatron 0.18 only supports the mcore GPT model path.
 
     Args:
         pre_process (bool, optional): Set to true if you need to compute embedings. Defaults to True.
@@ -120,25 +116,29 @@ def model_provider_mtp(pre_process=True, post_process=True, use_dualpipe_mtp=Fal
 
 
     Returns:
-        Union[GPTModel, megatron.legacy.model.GPTModel]: The returned model
+        GPTModel: The returned model.
     """
     args = get_args()
     use_te = args.transformer_impl == "transformer_engine"
 
     if args.record_memory_history:
-        torch.cuda.memory._record_memory_history(True,
+        torch.cuda.memory._record_memory_history(
+            True,
             # keep 100,000 alloc/free events from before the snapshot
             trace_alloc_max_entries=100000,
-
             # record stack information for the trace events
-            trace_alloc_record_context=True)
+            trace_alloc_record_context=True,
+        )
 
         def oom_observer(device, alloc, device_alloc, device_free):
             # snapshot right after an OOM happened
             print('saving allocated state during OOM')
             snapshot = torch.cuda.memory._snapshot()
             from pickle import dump
-            dump(snapshot, open(f"oom_rank-{torch.distributed.get_rank()}_{args.memory_snapshot_path}", 'wb'))
+
+            snapshot_path = f"oom_rank-{torch.distributed.get_rank()}_{args.memory_snapshot_path}"
+            with open(snapshot_path, 'wb') as snapshot_file:
+                dump(snapshot, snapshot_file)
 
         torch._C._cuda_attach_out_of_memory_observer(oom_observer)
 
@@ -149,63 +149,64 @@ def model_provider_mtp(pre_process=True, post_process=True, use_dualpipe_mtp=Fal
     else:
         config = core_transformer_config_from_args(args)
 
-    if args.use_legacy_models:
-        model = megatron.legacy.model.GPTModel(
-            config,
-            num_tokentypes=0,
-            parallel_output=True,
-            pre_process=pre_process,
-            post_process=post_process,
-        )
-    else: # using core models
-        if args.spec is not None:
-            transformer_layer_spec = import_module(args.spec)
+    if args.spec is not None:
+        transformer_layer_spec = import_module(args.spec)
+    else:
+        if args.num_experts:
+            # Define the decoder block spec
+            transformer_layer_spec = get_gpt_decoder_block_spec(
+                config, use_transformer_engine=use_te, normalization=args.normalization
+            )
+        elif args.heterogeneous_layers_config_path is not None:
+            transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
         else:
-            if args.num_experts:
-                # Define the decoder block spec
-                transformer_layer_spec = get_gpt_decoder_block_spec(config, use_transformer_engine=use_te, normalization=args.normalization)
-            elif args.heterogeneous_layers_config_path is not None:
-                transformer_layer_spec = get_gpt_heterogeneous_layer_spec(config, use_te)
+            # Define the decoder layer spec
+            if use_te:
+                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
+                    args.num_experts,
+                    args.moe_grouped_gemm,
+                    args.qk_layernorm,
+                    args.multi_latent_attention,
+                    args.moe_use_legacy_grouped_gemm,
+                )
             else:
-                # Define the decoder layer spec
-                if use_te:
-                    transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-                        args.num_experts, args.moe_grouped_gemm,
-                        args.qk_layernorm, args.multi_latent_attention, args.moe_use_legacy_grouped_gemm)
-                else:
-                    transformer_layer_spec = get_gpt_layer_local_spec(
-                        args.num_experts, args.moe_grouped_gemm,
-                        args.qk_layernorm, args.multi_latent_attention, args.moe_use_legacy_grouped_gemm,
-                        normalization=args.normalization)
-        mtp_block_spec = None
-        if args.mtp_num_layers is not None and use_dualpipe_mtp:
-            mtp_block_spec = get_gpt_mtp_block_spec(config, transformer_layer_spec, use_transformer_engine=use_te)
-            post_process = True
+                transformer_layer_spec = get_gpt_layer_local_spec(
+                    args.num_experts,
+                    args.moe_grouped_gemm,
+                    args.qk_layernorm,
+                    args.multi_latent_attention,
+                    args.moe_use_legacy_grouped_gemm,
+                    normalization=args.normalization,
+                )
+    mtp_block_spec = None
+    if args.mtp_num_layers is not None and use_dualpipe_mtp:
+        mtp_block_spec = get_gpt_mtp_block_spec(config, transformer_layer_spec, use_transformer_engine=use_te)
+        post_process = True
 
-        model = GPTModel(
-            config=config,
-            transformer_layer_spec=transformer_layer_spec,
-            vocab_size=args.padded_vocab_size,
-            max_sequence_length=args.max_position_embeddings,
-            pre_process=pre_process,
-            post_process=post_process,
-            fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
-            parallel_output=True,
-            share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
-            position_embedding_type=args.position_embedding_type,
-            rotary_percent=args.rotary_percent,
-            rotary_base=args.rotary_base,
-            rope_scaling=args.use_rope_scaling,
-            mtp_block_spec=mtp_block_spec,
-        )
+    model = GPTModel(
+        config=config,
+        transformer_layer_spec=transformer_layer_spec,
+        vocab_size=args.padded_vocab_size,
+        max_sequence_length=args.max_position_embeddings,
+        pre_process=pre_process,
+        post_process=post_process,
+        fp16_lm_cross_entropy=args.fp16_lm_cross_entropy,
+        parallel_output=True,
+        share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
+        position_embedding_type=args.position_embedding_type,
+        rotary_percent=args.rotary_percent,
+        rotary_base=args.rotary_base,
+        rope_scaling=args.use_rope_scaling,
+        mtp_block_spec=mtp_block_spec,
+    )
 
     return model
 
 
-def dualpipev_get_mtp_num_layers_to_build(config: TransformerConfig) -> int:
+def dualpipev_get_mtp_num_layers_to_build(config: TransformerConfig, vp_stage=None, pp_rank=None) -> int:
     """Get the number of MTP layers to build in dualpipeV."""
     # Currently, we only support put all of MTP layers on the last pipeline stage.
-    if mpu.is_pipeline_first_stage() and config.schedules_method == 'dualpipev' and not config.dualpipev_first_chunk: 
+    if mpu.is_pipeline_first_stage() and config.schedules_method == 'dualpipev' and not config.dualpipev_first_chunk:
         return config.mtp_num_layers if config.mtp_num_layers else 0
     if mpu.is_pipeline_last_stage() and not config.schedules_method == 'dualpipev':
         return config.mtp_num_layers if config.mtp_num_layers else 0
