@@ -4,7 +4,7 @@
 
 ## 环境准备
 
-1. 请先参考[MindSpeed软件安装](install_guide.md)进行环境准备。
+1. 请单击[MindSpeed快速安装](https://www.hiascend.com/developer/software/mindspeed/download)根据引导进行环境搭建，详细安装说明请参考[MindSpeed软件安装](install_guide.md)。
 
 2. 在Megatron-LM中导入MindSpeed适配器。
 
