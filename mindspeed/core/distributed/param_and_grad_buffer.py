@@ -1,4 +1,4 @@
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 import logging
 import math
@@ -6,7 +6,7 @@ import warnings
 from contextlib import nullcontext
 from functools import wraps
 from logging import getLogger
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 
@@ -18,7 +18,6 @@ from megatron.core.distributed.param_and_grad_buffer import (
     shard_buffer,
 )
 from megatron.core.utils import (
-    is_torch_min_version,
     log_on_each_pipeline_stage,
 )
 from megatron.core.fp8_utils import is_float8tensor
@@ -29,11 +28,18 @@ logger = getLogger(__name__)
 
 def pipe_register_grad_ready_wrapper(register_grad_ready):
     @wraps(register_grad_ready)
-    def wrapper(self, param: torch.nn.Parameter):
-        assert (self.ddp_config.overlap_grad_reduce), 'register_grad_ready() should only be called when overlap_grad_reduce is True'
-        from mindspeed.moe.pipe_experts import FLAG_GRAD_REDUCE
+    def wrapper(
+        self,
+        param: torch.nn.Parameter,
+        force_all_reduce: Optional[bool] = False,
+    ):
+        assert self.ddp_config.overlap_grad_reduce, (
+            'register_grad_ready() should only be called when overlap_grad_reduce is True'
+        )
+        from mindspeed.moe.pipe_experts import FLAG_GRAD_REDUCE  # pylint: disable=no-name-in-module
+
         if self.is_last_microbatch and FLAG_GRAD_REDUCE:
-            register_grad_ready(self, param)
+            register_grad_ready(self, param, force_all_reduce=force_all_reduce)
 
     return wrapper
 
@@ -44,12 +50,15 @@ def reuse_fp32_param_param_and_grad_buffer_init_wrapper(init_func):
         global_args = get_full_args()
         math_ceil = math.ceil
         if global_args.reuse_fp32_param and global_args.use_distributed_optimizer:
+
             def ceil_even(x):
                 return math_ceil(math_ceil(x) / 2) * 2
+
             math.ceil = ceil_even
         init_func(*args, **kwargs)
         if global_args.reuse_fp32_param and global_args.use_distributed_optimizer:
             math.ceil = math_ceil
+
     return reuse_fp32_param_param_and_grad_buffer_init
 
 
@@ -137,7 +146,7 @@ def finish_param_sync(self, skip_next_bucket_dispatch: bool = False):
 
 
 # The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
-def start_grad_sync(self):
+def start_grad_sync(self, force_all_reduce: Optional[bool] = False):
     """
     Initiates grad sync (all-reduce or reduce-scatter) communication operations
     for all buckets in the bucket group.
@@ -145,12 +154,32 @@ def start_grad_sync(self):
     When ddp_config.overlap_grad_reduce is set to True, dispatches an asynchronous
     communication call. When ddp_config.overlap_grad_reduce is set to False, makes
     synchronous call.
-    """
-    assert (
-        self.grad_reduce_handle is None
-    ), 'Should not have multiple communication calls outstanding at once'
 
-    if self.ddp_config.check_for_nan_in_grad:
+    Args:
+        force_all_reduce (bool, optional): use all-reduce even when the distributed
+            optimizer would normally use reduce-scatter.
+    """
+    if self.is_first_batch and self.grad_reduce_handle is not None:
+        # The first batch discovers the expected number of backward-hook calls. Its
+        # collective may therefore already have been dispatched by finish_grad_sync().
+        return
+
+    if (
+        self.previous_grad_reduce_bucket_group is not None
+        and self.previous_grad_reduce_bucket_group.grad_reduce_handle is not None
+    ):
+        self.previous_grad_reduce_bucket_group.finish_grad_sync(force_all_reduce=force_all_reduce)
+
+    assert self.grad_reduce_handle is None, 'Should not have multiple communication calls outstanding at once'
+
+    # Some 0.18 configurations accumulate locally in a different precision from
+    # the communication buffer. Copy those gradients into the buffer before reducing.
+    for bucket in self.buckets:
+        for param in bucket.params_with_extra_main_grads:
+            if getattr(param, 'main_grad_copy_in_grad_buffer', None) is not None:
+                param.main_grad_copy_in_grad_buffer.copy_(param.main_grad)
+
+    if self.ddp_config.check_for_nan_in_grad or self.ddp_config.check_for_large_grads:
         self.check_grads(
             check_for_nan_or_inf=self.ddp_config.check_for_nan_in_grad,
             check_for_large=self.ddp_config.check_for_large_grads,
@@ -168,22 +197,15 @@ def start_grad_sync(self):
         reduce_op = torch.distributed.ReduceOp.AVG
 
     # Use async communications only when overlap_grad_reduce is True.
-    async_op = (
-        self.ddp_config.overlap_grad_reduce
-        and self.ddp_config.num_distributed_optimizer_instances == 1
-    )
-    if (
-        self.ddp_config.num_distributed_optimizer_instances > 1
-        and self.ddp_config.overlap_grad_reduce
-    ):
+    async_op = self.ddp_config.overlap_grad_reduce and self.ddp_config.num_distributed_optimizer_instances == 1
+    if self.ddp_config.num_distributed_optimizer_instances > 1 and self.ddp_config.overlap_grad_reduce:
         # Assign a communication stream if we use partial DP DistOpt and we
         # need to overlap communication
         stream_context = torch.cuda.stream(self.communication_stream)
 
-        # The RS/AR communication stream needs to wait for the default stream
-        # to complete its gradient computation before launching the next
-        # gradient reduction collective
-        self.communication_stream.wait_stream(torch.cuda.default_stream())
+        # The RS/AR communication stream needs to wait for the current compute
+        # stream before launching the next gradient reduction collective.
+        self.communication_stream.wait_stream(torch.cuda.current_stream())
     else:
         stream_context = nullcontext()
 
@@ -194,37 +216,43 @@ def start_grad_sync(self):
 
     # Coalesce communication kernels across buckets in the bucket group.
     self.grad_reduce_handle = []
-    for bucket in self.buckets:
-        if self.ddp_config.use_distributed_optimizer:
-            local_data_view = shard_buffer(bucket.grad_data, self.intra_distributed_optimizer_instance_size)[
-                self.intra_distributed_optimizer_instance_rank
-            ]
-            handle = dist_reduce_scatter_func(
-                local_data_view,
-                bucket.grad_data,
-                op=reduce_op,
-                group=self.intra_distributed_optimizer_instance_group,
-                async_op=async_op,
-            )
-        else:
-            handle = torch.distributed.all_reduce(
-                bucket.grad_data,
-                op=reduce_op,
-                group=self.data_parallel_group,
-                async_op=async_op,
-            )
-        self.grad_reduce_handle.append(handle)
+    with stream_context:
+        for idx, bucket in enumerate(self.buckets):
+            if self.ddp_config.use_distributed_optimizer and not force_all_reduce:
+                if self.cached_grad_buffer_shard_list[idx] is None:
+                    self.cached_grad_buffer_shard_list[idx] = shard_buffer(
+                        bucket.grad_data, self.intra_distributed_optimizer_instance_size
+                    )
+                local_data_view = self.cached_grad_buffer_shard_list[idx][
+                    self.intra_distributed_optimizer_instance_rank
+                ]
+                handle = dist_reduce_scatter_func(
+                    local_data_view,
+                    bucket.grad_data,
+                    op=reduce_op,
+                    group=communication_group,
+                    async_op=async_op,
+                )
+            else:
+                handle = torch.distributed.all_reduce(
+                    bucket.grad_data,
+                    op=reduce_op,
+                    group=communication_group,
+                    async_op=async_op,
+                )
+            self.grad_reduce_handle.append(handle)
 
     # When enabling partial DP domain DistOpt, we need to All-Reduce across all partial domains
-    if (
-        self.ddp_config.use_distributed_optimizer
-        and self.ddp_config.num_distributed_optimizer_instances > 1
-    ):
+    if self.ddp_config.use_distributed_optimizer and self.ddp_config.num_distributed_optimizer_instances > 1:
         self.grad_reduce_handle = []
         # Create a new coalescing facility for the inter partial DP-AllReduce here
-        for bucket in self.buckets:
-            if self.ddp_config.use_distributed_optimizer:
-                local_data_view = shard_buffer(bucket.grad_data, self.intra_distributed_optimizer_instance_size)[
+        with stream_context:
+            for idx, bucket in enumerate(self.buckets):
+                if self.cached_grad_buffer_shard_list[idx] is None:
+                    self.cached_grad_buffer_shard_list[idx] = shard_buffer(
+                        bucket.grad_data, self.intra_distributed_optimizer_instance_size
+                    )
+                local_data_view = self.cached_grad_buffer_shard_list[idx][
                     self.intra_distributed_optimizer_instance_rank
                 ]
                 handle = torch.distributed.all_reduce(
@@ -233,13 +261,13 @@ def start_grad_sync(self):
                     group=self.inter_distributed_optimizer_instance_group,
                     async_op=async_op,
                 )
-            self.grad_reduce_handle.append(handle)
+                self.grad_reduce_handle.append(handle)
     if not async_op:
         self.grad_reduce_handle = None
 
 
 # The patch is a temporary patch and can be removed once PTA supports the _coalescing_manager capability.
-def finish_grad_sync(self):
+def finish_grad_sync(self, force_all_reduce: Optional[bool] = False):
     """
     Finishes grad sync (all-reduce or reduce-scatter) communication operations
     for all buckets in the bucket group.
@@ -247,37 +275,53 @@ def finish_grad_sync(self):
     When ddp_config.overlap_grad_reduce is set to True, waits for asynchronous
     communication call to complete. When ddp_config.overlap_grad_reduce is set to False,
     makes synchronous call.
+
+    Args:
+        force_all_reduce (bool, optional): forward the request to start_grad_sync so
+            distributed-optimizer gradients are replicated instead of reduce-scattered.
     """
     # If overlap_grad_reduce is False, start (and finish) synchronous communication call here.
     self.param_gather_dispatched = False
     if not self.ddp_config.overlap_grad_reduce:
-        self.start_grad_sync()
+        self.start_grad_sync(force_all_reduce=force_all_reduce)
+        self._copy_back_extra_main_grads()
         return
+    if self.grad_reduce_finished:
+        return
+    # The first batch records the expected backward-hook counts, so its asynchronous
+    # communication is dispatched here rather than from register_grad_ready().
+    if self.is_first_batch:
+        self.start_grad_sync(force_all_reduce=force_all_reduce)
     # When using partial DP DistOpt, we don't need to sync as we launch comms on a separate
     # communication stream
     if self.ddp_config.num_distributed_optimizer_instances > 1:
-        torch.cuda.default_stream().wait_stream(self.communication_stream)
+        torch.cuda.current_stream().wait_stream(self.communication_stream)
+        self._copy_back_extra_main_grads()
+        self.grad_reduce_finished = True
         return
     assert self.grad_reduce_handle is not None, (
-        f'Communication call has not been issued for this bucket '
-        f'({len(self.params_with_grad)}/{len(self.params)} params have grad available)'
+        f"Communication call has not been issued for this bucket "
+        f"({len(self.per_param_grad_ready_counts)}/{len(self.params)} "
+        "params have grad available)"
     )
     for handle in self.grad_reduce_handle:
         handle.wait()
     self.grad_reduce_handle = None
+    self._copy_back_extra_main_grads()
+    self.grad_reduce_finished = True
 
 
 def param_and_grad_buffer_init_pad(
-        self,
-        ddp_config: DistributedDataParallelConfig,
-        param_dtype: torch.dtype,
-        grad_dtype: torch.dtype,
-        params: List[torch.nn.Parameter],
-        data_parallel_group: torch.distributed.ProcessGroup,
-        bucket_size: int,
-        param_to_name: Dict[torch.nn.Parameter, str],
-        gradient_scaling_factor: float,
-        param_indices: List[int],
+    self,
+    ddp_config: DistributedDataParallelConfig,
+    param_dtype: torch.dtype,
+    grad_dtype: torch.dtype,
+    params: List[torch.nn.Parameter],
+    data_parallel_group: torch.distributed.ProcessGroup,
+    bucket_size: int,
+    param_to_name: Dict[torch.nn.Parameter, str],
+    gradient_scaling_factor: float,
+    param_indices: List[int],
 ):
     quant_args = get_full_args()
     if getattr(quant_args, 'quant_grads', False):
@@ -303,9 +347,7 @@ def param_and_grad_buffer_init_pad(
     self.param_dtype = param_dtype
     self.grad_dtype = grad_dtype
     self.data_parallel_group = data_parallel_group
-    self.data_parallel_world_size = torch.distributed.get_world_size(
-        group=self.data_parallel_group
-    )
+    self.data_parallel_world_size = torch.distributed.get_world_size(group=self.data_parallel_group)
     self.gradient_scaling_factor = gradient_scaling_factor
 
     # Data structures to store underlying buckets and relevant indexing data.
@@ -381,10 +423,7 @@ def param_and_grad_buffer_init_pad(
         for the shared embedding parameters the same way across DP replicas, allowing
         the DP reduce-scatter to be before the embedding all-reduce.
         """
-        return (
-                getattr(param, "shared_embedding", False)
-                and self.ddp_config.use_distributed_optimizer
-        )
+        return getattr(param, "shared_embedding", False) and self.ddp_config.use_distributed_optimizer
 
     for param in params[::-1]:
         # Iterate through parameters in reverse order to roughly follow backprop order.
@@ -410,7 +449,7 @@ def param_and_grad_buffer_init_pad(
         # If we have enough elements already or the current param is part of the shared
         # embedding layer and needs a separate bucket, form a new bucket.
         if (
-                bucket_size is not None and (param_end_index - bucket_start_index) >= bucket_size
+            bucket_size is not None and (param_end_index - bucket_start_index) >= bucket_size
         ) or _does_param_require_new_bucket(param):
             bucket_end_index = _update_bucket_metadata(param_end_index)
             param_start_index = bucket_end_index
@@ -457,9 +496,7 @@ def param_and_grad_buffer_init_pad(
         # Assign param.data to appropriate segment of self.param_data.
         if self.param_data is not None:
             old_param_data = param.data
-            new_param_data = self._get(
-                param.data.shape, param_start_index, buffer_type=BufferType.PARAM
-            )
+            new_param_data = self._get(param.data.shape, param_start_index, buffer_type=BufferType.PARAM)
             if is_float8tensor(param):
                 param._data = new_param_data
             else:
@@ -469,9 +506,7 @@ def param_and_grad_buffer_init_pad(
             param.data.detach().copy_(old_param_data)
             del old_param_data
 
-        param.main_grad = self._get(
-            param.data.shape, param_start_index, buffer_type=BufferType.GRAD
-        )
+        param.main_grad = self._get(param.data.shape, param_start_index, buffer_type=BufferType.GRAD)
         if bucket_id != cur_bucket_id:
             bucket_end_index = _pad_end_of_bucket_if_needed(param_start_index)
             self.buckets.append(
@@ -505,9 +540,7 @@ def param_and_grad_buffer_init_pad(
 
     # Log buckets for all PP stages.
     log_strs = []
-    log_strs.append(
-        f'Number of buckets for gradient all-reduce / reduce-scatter: {len(self.buckets)}'
-    )
+    log_strs.append(f'Number of buckets for gradient all-reduce / reduce-scatter: {len(self.buckets)}')
     for index, bucket in enumerate(self.buckets):
         numel = 0
         for param in bucket.params:

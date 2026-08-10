@@ -91,6 +91,7 @@ from mindspeed.features_manager.disable_gloo_group.disable_gloo_group_feature im
 from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeature
 from mindspeed.features_manager.transformer.multi_head_latent_attention.mla_feature import MLAFeature
 from mindspeed.features_manager.transformer.experimental_attention_variant.dsa import DeepSeekSparseAttention
+from mindspeed.features_manager.npu_enhancement import NpuEnhancementFeature
 
 from mindspeed.features_manager.tensor_parallel.vocab_parallel import ReplaceIndexPutFeature
 from mindspeed.features_manager.distributed.layerzero import LayerZeroFeature
@@ -123,7 +124,6 @@ FEATURES_LIST = [
 # this list is for reconstruction of mindspeed
 def add_basic_optimizer_features(features_list: List[MindSpeedFeature]):
     from mindspeed.features_manager.optimizer.muon_optimizer_feature import MuonOptimizerFeature
-    from mindspeed.features_manager.npu_enhancement import NpuEnhancementFeature
 
     features_list.extend([MuonOptimizerFeature(), NpuEnhancementFeature()])
 

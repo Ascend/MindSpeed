@@ -1,17 +1,7 @@
-import os
-from enum import Enum
+import platform
 from functools import wraps
-from typing import Dict, List
-from contextlib import nullcontext
+from typing import Optional
 import torch
-from megatron.training import get_args
-from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
-from megatron.core.distributed.param_and_grad_buffer import (
-    BufferType,
-    dist_all_gather_func,
-    dist_reduce_scatter_func,
-    shard_buffer,
-)
 from mindspeed.core.optimizer.low_precision.quant_adamw import ScaleMeta
 from mindspeed.args_utils import get_full_args
 
@@ -64,7 +54,7 @@ def quant_grad_param_and_grad_buffer_init_wrapper(init_func):
                 # Attach per-gradient quantization metadata.
                 scale_meta = ScaleMeta(scale_token, grad_tensor, grad_tensor.numel())
                 grad_tensor.meta = scale_meta
-                scale_slice = bucket.scales[idx:idx + 1]
+                scale_slice = bucket.scales[idx : idx + 1]
                 scale_meta.scale = scale_slice
                 scale_inv = torch.ones_like(scale_slice)
                 scale_inv.copy_(1 / scale_slice)
@@ -78,16 +68,14 @@ def quant_grad_param_and_grad_buffer_init_wrapper(init_func):
 
 def quant_grad_start_grad_sync_wrapper(start_grad_sync):
     @wraps(start_grad_sync)
-    def quant_start_grad_sync(self):
+    def quant_start_grad_sync(self, force_all_reduce: Optional[bool] = False):
         quant_args = get_full_args()
         quant_grads_enabled = getattr(quant_args, 'quant_grads', False)
 
         if not quant_grads_enabled:
-            return start_grad_sync(self)
+            return start_grad_sync(self, force_all_reduce=force_all_reduce)
 
-        assert (
-            self.grad_reduce_handle is None
-        ), 'Should not have multiple communication calls outstanding at once'
+        assert self.grad_reduce_handle is None, 'Should not have multiple communication calls outstanding at once'
 
         # Make sure norm of grads in bucket are not NaN
         # prior to data-parallel all-reduce / reduce-scatter.
@@ -98,22 +86,18 @@ def quant_grad_start_grad_sync_wrapper(start_grad_sync):
                 assert not norm.isnan(), (
                     f'Rank {global_rank}: found NaN in local grad norm in '
                     f'backward pass before data-parallel communication collective. '
-                    f'Device: {torch.cuda.current_device()}, node: {os.uname()[1]}'
+                    f'Device: {torch.cuda.current_device()}, node: {platform.node()}'
                 )
         # Match the same communication group that the underlying bucket group
         # will use for gradient reduction, falling back safely when running
         # with distributed optimizer which may not populate data_parallel_group.
         communication_group = getattr(self, "data_parallel_group", None)
         if getattr(self.ddp_config, "use_distributed_optimizer", False):
-            communication_group = getattr(
-                self, "intra_distributed_optimizer_instance_group", communication_group
-            )
+            communication_group = getattr(self, "intra_distributed_optimizer_instance_group", communication_group)
         if communication_group is None and self.buckets:
             communication_group = getattr(self.buckets[0], "data_parallel_group", None)
         if communication_group is None:
-            raise AttributeError(
-                "No communication group found for quantized grad scale synchronization"
-            )
+            raise AttributeError("No communication group found for quantized grad scale synchronization")
         for bucket in self.buckets:
             scaling_grads = getattr(bucket, 'scaling_grads', None)
             if not scaling_grads:
@@ -138,8 +122,8 @@ def quant_grad_start_grad_sync_wrapper(start_grad_sync):
                 if grad_meta is None:
                     continue
 
-                new_scale = bucket.scales[idx:idx + 1]
-                old_scale = old_scales[idx:idx + 1]
+                new_scale = bucket.scales[idx : idx + 1]
+                old_scale = old_scales[idx : idx + 1]
 
                 grad_meta.scale.copy_(new_scale)
                 if getattr(grad_meta, 'scale_inv', None) is None or grad_meta.scale_inv.shape != grad_meta.scale.shape:
@@ -156,11 +140,11 @@ def quant_grad_start_grad_sync_wrapper(start_grad_sync):
                 safe_scale = grad_meta.scale.clone()
                 scale_inv = torch.zeros_like(safe_scale)
                 non_zero_mask = safe_scale != 0
-                scale_inv[non_zero_mask] = (1.0 / safe_scale[non_zero_mask])
+                scale_inv[non_zero_mask] = 1.0 / safe_scale[non_zero_mask]
                 grad_meta.scale_inv.copy_(scale_inv)
 
         # Delegate the actual gradient communication to the original implementation so
         # overlap and distributed-optimizer semantics remain unchanged.
-        return start_grad_sync(self)
+        return start_grad_sync(self, force_all_reduce=force_all_reduce)
 
     return quant_start_grad_sync
