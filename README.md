@@ -1,7 +1,7 @@
 # <p align="center"> <img src="docs/LOGO.png" height="172px" width="598px"> </p>
 
 <p align="center">
-    <a> <img src="https://img.shields.io/badge/python-3.8%7C3.9%7C3.10-green"> </a>
+    <a> <img src="https://img.shields.io/badge/python-3.12-green"> </a>
     <a> <img src="https://img.shields.io/badge/build-passing-green"> </a>
     <a href="https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE">
         <img alt="Badge" src="https://img.shields.io/badge/License-MIT-blue.svg">
@@ -27,7 +27,7 @@ MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模�
 
 ## 架构说明
 
-MindSpeed Core 当前版本（基于 Megatron-LM 0.17.x）对架构进行了分层解耦，将原有 Megatron/TE 原生适配内容拆分至独立组件，使 MindSpeed 聚焦于昇腾 NPU 独有加速特性：
+MindSpeed Core 当前版本（基于 Megatron-LM 0.18.x）对架构进行了分层解耦，将原有 Megatron/TE 原生适配内容拆分至独立组件，使 MindSpeed 聚焦于昇腾 NPU 独有加速特性：
 
 | 组件 | 定位 | 说明 |
 |------|------|------|
@@ -77,7 +77,7 @@ MindSpeed/
 ---
 
 - [May 21, 2025]: 🚀 MindSpeed Core 支持Mcore 0.12.1版本。
-- [Jun 16, 2026]: 🚀 MindSpeed Core 完成Megatron-LM 0.17.1基础适配，架构分层解耦为MA + TENPU + MindSpeed，配合MegatronAdaptor 和 TransformerEngineNPU使用。
+- [Aug 7, 2026]: 🚀 MindSpeed Core 完成Megatron-LM 0.18.0基础适配，架构分层解耦为MA + TENPU + MindSpeed，配合MegatronAdaptor 和 TransformerEngineNPU使用。
 
 > 注： 当前版本初步支持两种版本的Transformer实现。如需回溯老版本Transformer实现，需要用户配置参数`--transformer-impl local`。
 
@@ -95,14 +95,14 @@ MindSpeed/
 
 | 软件                   | 版本           |
 |----------------------|--------------|
-| MindSpeed Core 分支    | master       |
-| MegatronAdaptor      | core_r0.17.0 |
+| MindSpeed Core 分支    | core_r0.18.0 |
+| MegatronAdaptor      | core_r0.18.0 |
 | TransformerEngineNPU | main         |
-| Megatron-LM 版本       | 0.17.1       |
-| CANN 版本              | 9.0.0        |
+| Megatron-LM 版本       | 0.18.0       |
+| CANN 版本              | 9.1.0        |
 | PyTorch              | 2.7.1        |
-| torch_npu 版本         | 26.0.0       |
-| Python 版本            | Python3.10.x |
+| torch_npu 版本         | 26.1.0       |
+| Python 版本            | Python3.12.x |
 
 更多具体说明请参考：[版本配套表](./docs/zh/release_notes_core.md#版本配套说明)。
 
@@ -126,22 +126,20 @@ MegatronAdaptor (MA)           ← NPU 基础适配，使 Megatron-LM 能运行
 
 ## 使用源码安装
 
-获取并切换Megatron-LM版本至 core_r0.17.1 版本，可参考：
+获取并切换Megatron-LM版本至 core_r0.18.0 版本，可参考：
 
 ```shell
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout core_r0.17.1
+git checkout core_r0.18.0
 ```
 
 ### 安装 MegatronAdaptor（NPU 基础适配层）
 
-MA 负责完成 RNG、softmax、设备检测、TE 虚拟模块等基础适配，是 TENPU 和 MindSpeed 的运行前提。
-
 ```shell
 git clone https://gitcode.com/Ascend/MegatronAdaptor.git
 cd MegatronAdaptor
-git checkout core_r0.17.0
+git checkout core_r0.18.0
 cd ..
 pip install -e MegatronAdaptor
 ```
@@ -167,6 +165,9 @@ pip install -e TransformerEngineNPU
 
 ```shell
 git clone https://gitcode.com/Ascend/MindSpeed.git
+cd MindSpeed
+git checkout core_r0.18.0
+cd ..
 pip install -e MindSpeed
 ```
 
