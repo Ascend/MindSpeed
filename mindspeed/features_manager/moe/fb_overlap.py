@@ -81,10 +81,19 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         self.incompatible_check(args, 'automated_pipeline')
         self.incompatible_check(args, 'recompute_in_bubble')
         self.incompatible_check(args, 'recompute_in_advance')
-        self.incompatible_check(args, 'use_legacy_models')
         self.incompatible_check(args, 'moe_tp_extend_ep')
         self.incompatible_check(args, 'swap_attention')
         self.dependency_check(args, 'moe_grouped_gemm')
+        if args.moe_fb_overlap and getattr(args, 'delay_wgrad_compute', False):
+            raise AssertionError(
+                '--moe-fb-overlap owns the TE expert delayed-wgrad schedule '
+                'and cannot be combined with global --delay-wgrad-compute.'
+            )
+        if args.moe_fb_overlap and args.moe_zero_memory == 'level1':
+            raise AssertionError(
+                '--moe-fb-overlap with TEGroupedMLP currently supports '
+                '--moe-zero-memory disable or level0, but not level1.'
+            )
         if args.moe_fb_overlap and args.moe_token_dispatcher_type in ['allgather', 'alltoall_seq']:
             raise AssertionError('The fb overlap feature do not support allgather and alltoall_seq dispatcher.')
 
@@ -144,12 +153,14 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             )
             from mindspeed.core.transformer.moe.moe_feature.fb_overlap.adaptor import (
                 _make_backward_post_hook,
+                fb_overlap_ddp_init_wrapper,
                 get_moe_module_spec_wrapper,
                 get_forward_backward_func_vpp_overlap_wrapper,
             )
 
             patch_manager.register_patch(
-                'megatron.core.models.gpt.moe_module_specs.get_moe_module_spec', get_moe_module_spec_wrapper
+                'megatron.core.models.gpt.moe_module_specs.get_moe_module_spec_for_backend',
+                get_moe_module_spec_wrapper,
             )
             patch_manager.register_patch(
                 'megatron.core.transformer.transformer_block.TransformerBlock.__init__',
@@ -162,6 +173,10 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
             patch_manager.register_patch(
                 'megatron.core.distributed.distributed_data_parallel.DistributedDataParallel._make_backward_post_hook',
                 _make_backward_post_hook,
+            )
+            patch_manager.register_patch(
+                'megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.__init__',
+                fb_overlap_ddp_init_wrapper,
             )
 
             if self._has_virtual_pipeline(args) or int(getattr(args, 'pipeline_model_parallel_size', 1)) == 1:

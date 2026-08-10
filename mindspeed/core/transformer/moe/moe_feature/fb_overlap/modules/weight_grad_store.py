@@ -34,6 +34,7 @@ def gather(input_slice, stream):
 
 class WeightGradStore:
     cache = []
+    te_expert_cache = []
     weight_grad_queue = queue.Queue()
     store_grad_cache = []
     grad_store = []
@@ -45,9 +46,19 @@ class WeightGradStore:
         cls.cache.append((total_input, grad_output, weight, sequence_parallel, in_row))
 
     @classmethod
+    def put_te_expert(cls, experts):
+        """Queue one TE expert backward_dw call at the existing FB-overlap wgrad boundary."""
+        if not cls.is_decoupleBlock:
+            raise RuntimeError('TE expert wgrad must be queued while FB-overlap decoupling is active.')
+        if not hasattr(experts, 'backward_dw'):
+            raise TypeError(f'TE FB-overlap experts must provide backward_dw(), got {type(experts)!r}.')
+        cls.te_expert_cache.append(experts)
+
+    @classmethod
     def flush_chunk_grad(cls):
-        cls.weight_grad_queue.put(cls.cache)
+        cls.weight_grad_queue.put((cls.cache, cls.te_expert_cache))
         cls.cache = []
+        cls.te_expert_cache = []
 
     @classmethod
     def start_decouple(cls):
@@ -122,7 +133,7 @@ class WeightGradStore:
 
     @classmethod
     def pop(cls, experts_only=False):
-        if len(cls.cache) == 0:
+        if len(cls.cache) == 0 and len(cls.te_expert_cache) == 0:
             return
 
         if experts_only:
@@ -133,8 +144,13 @@ class WeightGradStore:
                 else:
                     cache_mm.append(cache)
             if len(cache_gmm) == 0:
+                cls._pop_te_experts()
                 return
             cls.cache = cache_gmm
+
+        if len(cls.cache) == 0:
+            cls._pop_te_experts()
+            return
 
         if cls.gather_stream is None:
             cls.gather_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
@@ -159,13 +175,23 @@ class WeightGradStore:
             cls.cache = cache_mm
 
         cls.store_grad_cache = None
+        cls._pop_te_experts()
+
+    @classmethod
+    def _pop_te_experts(cls):
+        """Execute TE delayed wgrad in the same FIFO order as expert graph backward."""
+        while cls.te_expert_cache:
+            experts = cls.te_expert_cache.pop(0)
+            experts.backward_dw()
 
     @classmethod
     def pop_single(cls):
         if cls.weight_grad_queue.empty():
             return
 
-        cache_list = cls.weight_grad_queue.get()
+        cache_list, te_expert_cache = cls.weight_grad_queue.get()
         assert len(cls.cache) == 0
+        assert len(cls.te_expert_cache) == 0
         cls.cache = cache_list
+        cls.te_expert_cache = te_expert_cache
         cls.pop()

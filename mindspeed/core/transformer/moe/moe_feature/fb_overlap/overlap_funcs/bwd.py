@@ -2,21 +2,14 @@
 
 import torch
 
-from megatron.core import parallel_state
-from megatron.core.transformer.moe.moe_utils import permute
 
 from mindspeed.args_utils import get_full_args
-from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather, async_reduce_scatter
-from mindspeed.model.transformer import should_recompute_activation
-from mindspeed.core.transformer.moe.moe_utils import get_prob_backward_need_tensors
+from mindspeed.core.transformer.moe.moe_feature import permute
 from ..modules.weight_grad_store import WeightGradStore
 from ..modules.utils import run_graph_backward
 
 
-def transformer_layer_backward_moe(
-    layer_output_grad,
-    layer_graph
-):
+def transformer_layer_backward_moe(layer_output_grad, layer_graph):
     self = layer_graph
     args = get_full_args()
     in_detach_stage = WeightGradStore.is_decoupleBlock
@@ -35,7 +28,7 @@ def transformer_layer_backward_moe(
     if self.attn_swap_managers:
         for manager in self.attn_swap_managers:
             manager.async_swap_in(wait_stream=torch.npu.current_stream())
-    
+
     if getattr(args, 'enable_mhc', False):
         run_graph_backward(self.mlp_mhc_post_graph, layer_output_grad, keep_grad=True)
 
@@ -65,7 +58,7 @@ def transformer_layer_backward_moe(
         input_splits=self.input_splits,
         output_splits=self.output_splits,
         output_splits_tp=self.output_splits_tp,
-        wait_event=a2a_wait_event
+        wait_event=a2a_wait_event,
     )
     # overlap alltoall by shared experts backward
     if use_shared_experts:
@@ -82,7 +75,7 @@ def transformer_layer_backward_moe(
 
             def recomp_token_permutation1(hidden_states, routing_map):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, _, _ = permute(
+                permutated_local_input_tokens, _, _, _, _ = permute(
                     hidden_states, routing_map, num_out_tokens=dispatcher.num_out_tokens, fused=args.moe_permute_fusion
                 )
                 return permutated_local_input_tokens
@@ -92,7 +85,7 @@ def transformer_layer_backward_moe(
                 perm1_out,
                 input_splits=self.input_splits,
                 output_splits=self.output_splits,
-                output_splits_tp=self.output_splits_tp
+                output_splits_tp=self.output_splits_tp,
             )
 
     if use_shared_experts:
@@ -106,9 +99,10 @@ def transformer_layer_backward_moe(
         self.probs_swap_manager.wait_swap_in()
     if self.act_ckpt_manager is not None:
         self.act_ckpt_manager.recompute(True)
-    
+
     WeightGradStore.start_decouple()
     run_graph_backward(self.grouped_mlp_graph, keep_grad=True)  # keep for dw commputation
+    WeightGradStore.put_te_expert(self.layer.mlp.experts)
     if not in_detach_stage:
         WeightGradStore.end_decouple()
     run_graph_backward(self.perm2_graph, keep_graph=True)  # keep for dw commutation
@@ -127,12 +121,14 @@ def transformer_layer_backward_moe(
         self.perm_a2a_graph[1][1].grad,
         input_splits=self.output_splits,
         output_splits=self.input_splits,
-        input_splits_tp=self.output_splits_tp
+        input_splits_tp=self.output_splits_tp,
     )
 
     if args.moe_zero_memory != 'disable':
         with torch.no_grad():
-            recompute_fc1_input, _ = dispatcher.token_permute2(perm_a2a_out, None, bwd_num_global_tokens_per_local_expert_cpu)
+            recompute_fc1_input, _ = dispatcher.token_permute2(
+                perm_a2a_out, None, bwd_num_global_tokens_per_local_expert_cpu
+            )
             perm_a2a_out.untyped_storage().resize_(0)
             # restore fc1 input for dw computation
             dispached_input.untyped_storage().resize_(recompute_fc1_input.untyped_storage().size())
@@ -155,22 +151,24 @@ def transformer_layer_backward_moe(
         H = self.unperm2_swap_manager.npu_tensor.shape[-1]
         K = args.moe_router_topk
         probs_dtype = probs.dtype
-        probs_grad = layer_output_grad.to(probs_dtype) * self.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(probs_dtype)
+        probs_grad = layer_output_grad.to(probs_dtype) * self.unperm2_swap_manager.npu_tensor.reshape(-1, K, H).to(
+            probs_dtype
+        )
         probs_grad = probs_grad.sum(dim=-1)
         layer_output_grad.untyped_storage().resize_(0)
         self.unperm2_swap_manager.npu_tensor.untyped_storage().resize_(0)
-    
+
     run_graph_backward(self.router_graph, probs_grad)
     torch.npu.current_stream().wait_stream(dispatcher.overlap_stream)
     run_graph_backward(self.pre_mlp_layernorm_graph)
 
     if getattr(args, 'enable_mhc', False):
         # backward for mlp_mhc_pre
-        run_graph_backward(self.mlp_mhc_pre_graph, 
-            (self.mlp_mhc_pre_graph[1][0].grad, 
-            self.mlp_mhc_pre_graph[1][1].grad, 
-            self.mlp_mhc_pre_graph[1][2].grad))
-    
+        run_graph_backward(
+            self.mlp_mhc_pre_graph,
+            (self.mlp_mhc_pre_graph[1][0].grad, self.mlp_mhc_pre_graph[1][1].grad, self.mlp_mhc_pre_graph[1][2].grad),
+        )
+
     if self.attn_swap_managers:
         for manager in self.attn_swap_managers:
             manager.wait_swap_in()
@@ -204,4 +202,3 @@ def transformer_layer_backward_noop(layer_output_grad, layer_graph):
         run_graph_backward(layer_graph.unperm2_graph, layer_output_grad, keep_grad=True)
 
     return getattr(layer_graph.layer_input, 'grad', None)
-

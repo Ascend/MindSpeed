@@ -3,7 +3,6 @@
 import torch
 from torch.autograd.variable import Variable
 
-from megatron.core.pipeline_parallel import p2p_communication
 from mindspeed.args_utils import get_full_args
 
 
@@ -78,8 +77,16 @@ class NoopLayerGraph:
 
 
 class LayerGraph:
-    def __init__(self, saved_graph_and_graph_inputs, recompute_needed_tensors, layer,
-                 checkpointed=False, hot_experts_list=None, hot_expert_inter_ep_grad_reduce_handles=None, params=None):
+    def __init__(
+        self,
+        saved_graph_and_graph_inputs,
+        recompute_needed_tensors,
+        layer,
+        checkpointed=False,
+        hot_experts_list=None,
+        hot_expert_inter_ep_grad_reduce_handles=None,
+        params=None,
+    ):
         args = get_full_args()
         if not checkpointed:
             self.attn_graph = saved_graph_and_graph_inputs[0]
@@ -109,7 +116,8 @@ class LayerGraph:
         self.checkpointed = checkpointed
         self.layer = layer
         self.is_moe_layer = hasattr(layer, 'mlp') and (
-                hasattr(layer.mlp, 'experts') or hasattr(layer.mlp, 'hot_experts'))
+            hasattr(layer.mlp, 'experts') or hasattr(layer.mlp, 'hot_experts')
+        )
         self.hot_experts_list = hot_experts_list
         self.hot_expert_inter_ep_grad_reduce_handles = hot_expert_inter_ep_grad_reduce_handles
         self.params = params
@@ -132,6 +140,7 @@ class LayerGraph:
 class P2PCommParams:
     tensor_shape = None
     config = None
+    p2p_communicator = None
 
     def __init__(self, send_next=False, send_prev=False, recv_next=False, recv_prev=False):
         self.send_next = send_next
@@ -144,8 +153,14 @@ class P2PCommParams:
 
 
 class P2PCommOutput:
-    def __init__(self, input_tensor=None, output_tensor_grad=None, fwd_wait_handles=None, bwd_wait_handles=None,
-                 input_tensor_grad=None):
+    def __init__(
+        self,
+        input_tensor=None,
+        output_tensor_grad=None,
+        fwd_wait_handles=None,
+        bwd_wait_handles=None,
+        input_tensor_grad=None,
+    ):
         self.input_tensor = input_tensor
         self.fwd_wait_handles = fwd_wait_handles
         self.output_tensor_grad = output_tensor_grad
@@ -154,8 +169,9 @@ class P2PCommOutput:
 
 
 def is_p2p_comm_needed(pp_comm_params: P2PCommParams):
-    return pp_comm_params is not None and \
-        (pp_comm_params.send_next or pp_comm_params.send_prev or pp_comm_params.recv_next or pp_comm_params.recv_prev)
+    return pp_comm_params is not None and (
+        pp_comm_params.send_next or pp_comm_params.send_prev or pp_comm_params.recv_next or pp_comm_params.recv_prev
+    )
 
 
 def p2p_comm_helper(comm_params: P2PCommParams, tensor_tosend):
@@ -167,14 +183,13 @@ def p2p_comm_helper(comm_params: P2PCommParams, tensor_tosend):
     tensor_send_prev = None
     if comm_params.send_prev:
         tensor_send_prev = tensor_tosend
-    tensor_recv_prev, tensor_recv_next, p2p_handles = p2p_communication._communicate(
+    tensor_recv_prev, tensor_recv_next, p2p_handles = comm_params.p2p_communicator._communicate(
         tensor_send_next=tensor_send_next,
         tensor_send_prev=tensor_send_prev,
         recv_prev=comm_params.recv_prev,
         recv_next=comm_params.recv_next,
         tensor_shape=comm_params.tensor_shape,
         wait_on_reqs=False,
-        config=comm_params.config
     )
 
     if comm_params.recv_next:
@@ -240,9 +255,7 @@ class TensorSwapManager:
         """
         swap_stream = self._get_swap_out_stream()
         # Allocate pinned CPU memory (enables faster async transfers)
-        self.cpu_tensor = torch.empty_like(self.npu_tensor,
-                                           pin_memory=True,
-                                           device='cpu')
+        self.cpu_tensor = torch.empty_like(self.npu_tensor, pin_memory=True, device='cpu')
 
         with torch.npu.stream(swap_stream):
             if wait_event:
@@ -250,9 +263,7 @@ class TensorSwapManager:
             if wait_stream:
                 swap_stream.wait_stream(wait_stream)
 
-            self.cpu_tensor.untyped_storage().copy_(
-                self.npu_tensor.untyped_storage(),
-                non_blocking=True)
+            self.cpu_tensor.untyped_storage().copy_(self.npu_tensor.untyped_storage(), non_blocking=True)
 
             self.swap_out_event = torch.npu.Event()
             self.swap_out_event.record()
@@ -282,8 +293,7 @@ class TensorSwapManager:
             return
         swap_stream = self._get_swap_in_stream()
         # Ensure NPU storage is properly sized
-        self.npu_tensor.untyped_storage().resize_(
-            self.cpu_tensor.untyped_storage().size())
+        self.npu_tensor.untyped_storage().resize_(self.cpu_tensor.untyped_storage().size())
         # Wait for previous swap-out to complete
         torch.npu.current_stream().wait_event(self.swap_out_event)
 
@@ -293,9 +303,7 @@ class TensorSwapManager:
             if wait_stream:
                 swap_stream.wait_stream(wait_stream)
 
-            self.npu_tensor.untyped_storage().copy_(
-                self.cpu_tensor.untyped_storage(),
-                non_blocking=True)
+            self.npu_tensor.untyped_storage().copy_(self.cpu_tensor.untyped_storage(), non_blocking=True)
 
             self.swap_in_event = torch.npu.Event()
             self.swap_in_event.record()
@@ -343,5 +351,4 @@ def make_async_swap_in_hook(swap_managers):
     Returns:
         A callable hook function that triggers swap-in for all managers
     """
-    return lambda *_: [m.async_swap_in(wait_stream=torch.npu.current_stream())
-                       for m in swap_managers]
+    return lambda *_: [m.async_swap_in(wait_stream=torch.npu.current_stream()) for m in swap_managers]

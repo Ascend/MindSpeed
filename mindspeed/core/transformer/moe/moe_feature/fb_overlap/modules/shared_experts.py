@@ -5,16 +5,16 @@ from contextlib import AbstractContextManager, nullcontext
 import torch
 import torch.nn.functional as F
 
-from megatron.core.transformer.moe.shared_experts import SharedExpertMLP, set_tensor_grad_fn_sequence_sr
+from megatron.core.transformer.moe.moe_utils import get_default_pg_collection
+from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
 from megatron.core.fusions.fused_bias_geglu import bias_geglu_impl
 from megatron.core.fusions.fused_bias_gelu import bias_gelu_impl
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu_impl
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_feature import MLPSubmodules
-from .utils import run_graph_backward, detach_tensor
+from .utils import run_graph_backward
 
 
 class NoTPCommContext(AbstractContextManager):
@@ -29,7 +29,6 @@ class NoTPCommContext(AbstractContextManager):
         def patch_fn(*args, **kwargs):
             out = args[0]
             out.data = self.ag_out.data
-            return
 
         return patch_fn
 
@@ -45,7 +44,7 @@ class NoTPCommContext(AbstractContextManager):
                 @staticmethod
                 def wait():
                     return
-                
+
             handle = None
             if kwargs['async_op']:
                 handle = DummyWaitHandle()
@@ -60,15 +59,11 @@ class NoTPCommContext(AbstractContextManager):
         if self.cached_rs_input is not None:
             torch.distributed._reduce_scatter_base = self.make_reducescatter_base_patch()
 
-        return
-
     def __exit__(self, exc_type, exc_value, traceback):
         if self.ag_out is not None:
             torch.distributed._all_gather_base = self.orig_allgather_base
         if self.cached_rs_input is not None:
             torch.distributed._reduce_scatter_base = self.orig_rs_base
-
-        return
 
 
 class SharedExpertMLPFbOverlap(SharedExpertMLP):
@@ -80,10 +75,25 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
     # The shared experts are scheduled into this stream to be overlapped with the dispatcher.
     stream = None
 
-    def __init__(self, config: TransformerConfig, submodules: MLPSubmodules, gate: bool):
+    def __init__(
+        self,
+        config: TransformerConfig,
+        submodules: MLPSubmodules,
+        gate: bool,
+        pg_collection=None,
+        name=None,
+    ):
         config = deepcopy(config)
         config.moe_shared_expert_overlap = True
-        super().__init__(config=config, submodules=submodules, gate=gate)
+        if pg_collection is None:
+            pg_collection = get_default_pg_collection()
+        super().__init__(
+            config=config,
+            submodules=submodules,
+            gate=gate,
+            pg_collection=pg_collection,
+            name=name,
+        )
         self.config.coc_row_nocomm = self.config.coc_fused_kernel
         self.cached_fc1_ag_input = None
         self.cached_fc1_input_grad = None
@@ -117,7 +127,10 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
 
         if self.tp_size > 1:
             _, self.cached_fc1_ag_input, self.fc1_input_comm_handle = async_all_gather(
-                input_, self.tp_group, event=wait_event, stream=torch.npu.current_stream() if wait_event else None,
+                input_,
+                self.tp_group,
+                event=wait_event,
+                stream=torch.npu.current_stream() if wait_event else None,
                 is_use_get_global_memory_buffer=False,
             )
         else:
@@ -152,9 +165,7 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         if self.config.bias_activation_fusion:
             if self.activation_func == F.gelu:
                 if self.config.gated_linear_unit:
-                    intermediate_parallel = bias_geglu_impl(
-                        intermediate_parallel, bias_parallel
-                    )
+                    intermediate_parallel = bias_geglu_impl(intermediate_parallel, bias_parallel)
                 else:
                     assert self.config.add_bias_linear is True
                     intermediate_parallel = bias_gelu_impl(intermediate_parallel, bias_parallel)
@@ -202,11 +213,12 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         assert self.config.moe_shared_expert_overlap
         assert self.cached_fc2_output is not None
 
-
         if self.tp_size > 1:
             _, self.cached_output, self.fc2_output_comm_handle = async_reduce_scatter(
-                self.cached_fc2_output, self.tp_group, event=wait_event,
-                stream=torch.npu.current_stream() if wait_event else None
+                self.cached_fc2_output,
+                self.tp_group,
+                event=wait_event,
+                stream=torch.npu.current_stream() if wait_event else None,
             )
         else:
             self.cached_output, self.fc2_output_comm_handle = self.cached_fc2_output, None
@@ -246,10 +258,12 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         assert self.cached_backward_grad is None
         assert self.pre_backward_handle is None
 
-
         if self.tp_size > 1:
             _, self.cached_backward_grad, self.pre_backward_handle = async_all_gather(
-                grad, self.tp_group, event=wait_event, stream=torch.npu.current_stream() if wait_event else None,
+                grad,
+                self.tp_group,
+                event=wait_event,
+                stream=torch.npu.current_stream() if wait_event else None,
                 is_use_get_global_memory_buffer=False,
             )
         else:
@@ -263,7 +277,9 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
             self.pre_backward_handle = None
 
         # create a dummy tensor to catch the backward reduce scatter input grad.
-        self.cached_fc1_input_grad = torch.empty(1, device=shared_experts_graph[0].device, dtype=shared_experts_graph[0].dtype)
+        self.cached_fc1_input_grad = torch.empty(
+            1, device=shared_experts_graph[0].device, dtype=shared_experts_graph[0].dtype
+        )
         tp_comm_context = nullcontext()
         if self.tp_size > 1:
             tp_comm_context = NoTPCommContext(cached_rs_input=self.cached_fc1_input_grad)
@@ -280,8 +296,10 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
 
         if self.tp_size > 1:
             _, self.cached_input_grad, self.post_backward_handle = async_reduce_scatter(
-                self.cached_fc1_input_grad, self.tp_group, event=wait_event,
-                stream=torch.npu.current_stream() if wait_event else None
+                self.cached_fc1_input_grad,
+                self.tp_group,
+                event=wait_event,
+                stream=torch.npu.current_stream() if wait_event else None,
             )
         else:
             self.cached_input_grad, self.post_backward_handle = None, None

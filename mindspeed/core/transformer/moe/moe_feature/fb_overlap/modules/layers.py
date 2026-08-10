@@ -1,8 +1,5 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-import os
-import warnings
-from typing import Any, Callable, List, Optional
 
 import torch
 import torch.distributed
@@ -11,7 +8,7 @@ from mindspeed.core.transformer.moe.moe_feature import (
     get_global_memory_buffer,
     get_tensor_model_parallel_group,
     get_tensor_model_parallel_world_size,
-    get_args
+    get_args,
 )
 from .weight_grad_store import WeightGradStore
 
@@ -23,6 +20,7 @@ def linear_backward_wgrad_detach(ctx, grad_output):
     wgrad_deferral_limit = ctx.wgrad_deferral_limit
 
     wgrad_compute = True
+    handle = None
     if grad_output_buffer is not None:
         if wgrad_deferral_limit == 0 or len(grad_output_buffer) < wgrad_deferral_limit:
             grad_output_buffer.append(grad_output)
@@ -34,9 +32,7 @@ def linear_backward_wgrad_detach(ctx, grad_output):
             dim_size = list(input_.size())
             dim_size[0] = dim_size[0] * world_size
 
-            all_gather_buffer = get_global_memory_buffer().get_tensor(
-                dim_size, input_.dtype, "mpu"
-            )
+            all_gather_buffer = get_global_memory_buffer().get_tensor(dim_size, input_.dtype, "mpu")
             handle = torch.distributed._all_gather_base(
                 all_gather_buffer, input_, group=get_tensor_model_parallel_group(), async_op=True
             )
@@ -49,18 +45,15 @@ def linear_backward_wgrad_detach(ctx, grad_output):
     grad_input = grad_output.matmul(weight)
 
     if ctx.sequence_parallel and wgrad_compute and not WeightGradStore.is_decoupleBlock:
+        assert handle is not None
         handle.wait()
 
     if wgrad_compute and not WeightGradStore.is_decoupleBlock:
-        grad_output, total_input = prepare_input_tensors_for_wgrad_compute(
-            grad_output, total_input
-        )
+        grad_output, total_input = prepare_input_tensors_for_wgrad_compute(grad_output, total_input)
 
     if ctx.allreduce_dgrad:
         # Asynchronous all-reduce
-        handle = torch.distributed.all_reduce(
-            grad_input, group=get_tensor_model_parallel_group(), async_op=True
-        )
+        handle = torch.distributed.all_reduce(grad_input, group=get_tensor_model_parallel_group(), async_op=True)
         # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
         # all-reduce is scheduled before the weight gradient computation
 
@@ -77,7 +70,6 @@ def linear_backward_wgrad_detach(ctx, grad_output):
         # Here we rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that the
         # reduce scatter is scheduled before the weight gradient computation
 
-
     if WeightGradStore.is_decoupleBlock:
         # TODO: remove clone under MLA setting
         WeightGradStore.put(
@@ -85,7 +77,7 @@ def linear_backward_wgrad_detach(ctx, grad_output):
             grad_output.clone().detach(),
             weight,
             ctx.sequence_parallel,
-            in_row=not ctx.sequence_parallel
+            in_row=not ctx.sequence_parallel,
         )
         if hasattr(weight, 'grad_added_to_main_grad') and get_args().overlap_grad_reduce:
             weight.skip_grad_accum = True
@@ -95,6 +87,7 @@ def linear_backward_wgrad_detach(ctx, grad_output):
             if wgrad_compute:
                 if weight.main_grad.dtype == torch.float32:
                     from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
+
                     npu_matmul_add_fp32(total_input, grad_output, weight.main_grad)
                 elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
                     raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
@@ -128,11 +121,9 @@ def linear_backward_wgrad_detach(ctx, grad_output):
 
     if ctx.sequence_parallel:
         handle.wait()
-        # Need to return None's as gradient has to flow for all the input arguments
-        # provided during forward
-        return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None
+        return sub_grad_input, grad_weight, grad_bias, None, None, None, None, None, None
 
     if ctx.allreduce_dgrad:
         handle.wait()
 
-    return grad_input, grad_weight, grad_bias, None, None, None, None, None
+    return grad_input, grad_weight, grad_bias, None, None, None, None, None, None

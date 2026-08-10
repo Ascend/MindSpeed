@@ -169,6 +169,7 @@ def transformer_layer_forward_backward_overlaping(
     rotary_pos_emb=None,
     rotary_pos_cos=None,
     rotary_pos_sin=None,
+    rotary_pos_cos_sin=None,
     attention_bias=None,
     inference_params=None,
     packed_seq_params=None,
@@ -367,9 +368,11 @@ def hc_repeat(x: torch.Tensor, enable_mhc=False, hc_mult=1):
 
 def dualpipev_fb_overlap_mtp_layer_forward(
     self,
-    decoder_input: Tensor,
+    input_ids: Tensor,
+    position_ids: Tensor,
     hidden_states: Tensor,
     attention_mask: Tensor,
+    padding_mask: Tensor = None,
     context: Tensor = None,
     context_mask: Tensor = None,
     rotary_pos_emb: Tensor = None,
@@ -379,7 +382,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     inference_params: InferenceParams = None,
     packed_seq_params: PackedSeqParams = None,
     sequence_len_offset: Tensor = None,
-    input_ids: Tensor = None,
+    embedding=None,
     pre_process: Tensor = None,
     post_process: Tensor = None,
 ):
@@ -412,6 +415,14 @@ def dualpipev_fb_overlap_mtp_layer_forward(
         [s, b, h], and optionally the updated context tensor if cross-attention is used.
     """
     assert context is None, "multi token prediction + cross attention is not yet supported."
+    input_ids, position_ids, padding_mask, decoder_input, hidden_states = self._get_embeddings(
+        input_ids=input_ids,
+        position_ids=position_ids,
+        padding_mask=padding_mask,
+        embedding=embedding,
+        hidden_states=hidden_states,
+        packed_seq_params=packed_seq_params,
+    )
     hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
 
     if self.config.sequence_parallel:
@@ -486,7 +497,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     # created to prevent this.
     hidden_states = make_viewless_tensor(inp=hidden_states, requires_grad=True, keep_graph=True)
 
-    return hidden_states
+    return hidden_states, input_ids, position_ids, padding_mask
 
 
 class MTPTransformerLayer(torch.autograd.Function):

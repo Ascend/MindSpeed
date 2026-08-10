@@ -7,9 +7,9 @@ from torch import Tensor
 
 from megatron.core.utils import make_viewless_tensor
 from megatron.core import parallel_state
-from megatron.core.transformer.moe.moe_utils import permute
 
 from mindspeed.args_utils import get_full_args
+from mindspeed.core.transformer.moe.moe_feature import permute
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from ..modules.weight_grad_store import WeightGradStore
@@ -25,7 +25,7 @@ from ..modules.utils import (
 )
 
 
-def router_forward(self, hidden_states, input_ids):
+def router_forward(self, hidden_states, input_ids=None):
     args = get_full_args()
     if getattr(args, 'n_hash_layers', 0) >= 1:
         probs, routing_map = self.mlp.router(hidden_states, input_ids)
@@ -122,7 +122,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
 
             def recomp_token_permutation1(hidden_states, routing_map):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, _, _ = permute(
+                permutated_local_input_tokens, _, _, _, _ = permute(
                     hidden_states,
                     routing_map,
                     num_out_tokens=bwd_dispatcher.num_out_tokens,
@@ -202,6 +202,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
 
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
+    WeightGradStore.put_te_expert(bwd_layer_graph.layer.mlp.experts)
     WeightGradStore.end_decouple()
 
     run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
@@ -943,7 +944,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
             def recomp_token_permutation1(hidden_states, routing_map):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, _, _ = permute(
+                permutated_local_input_tokens, _, _, _, _ = permute(
                     hidden_states,
                     routing_map,
                     num_out_tokens=bwd_dispatcher.num_out_tokens,
@@ -1084,6 +1085,7 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
+    WeightGradStore.put_te_expert(bwd_layer_graph.layer.mlp.experts)
     WeightGradStore.end_decouple()
 
     with checkpoint_context:

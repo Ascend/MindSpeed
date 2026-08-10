@@ -45,6 +45,7 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
         position_ids: Tensor,
         hidden_states: Tensor,
         attention_mask: Tensor,
+        padding_mask: Optional[Tensor] = None,
         labels: Tensor = None,
         context: Tensor = None,
         context_mask: Tensor = None,
@@ -85,6 +86,7 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
             'position_ids': position_ids,
             'hidden_states': hidden_states,
             'attention_mask': attention_mask,
+            'padding_mask': padding_mask,
             'labels': labels,
             'context': context,
             'context_mask': context_mask,
@@ -107,6 +109,7 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
             fwd_kwargs['pre_process'] = pre_process
         if 'post_process' in fwd_parameters:
             fwd_kwargs['post_process'] = post_process
+        fwd_kwargs = {key: value for key, value in fwd_kwargs.items() if key in fwd_parameters}
 
         hidden_states_main_model = fwd(self, **fwd_kwargs)
 
@@ -168,10 +171,12 @@ def transformer_block_forward(
     rotary_pos_emb: Tensor = None,
     rotary_pos_cos: Tensor = None,
     rotary_pos_sin: Tensor = None,
+    rotary_pos_cos_sin: Tensor = None,
     attention_bias: Tensor = None,
     inference_context: Optional[BaseInferenceContext] = None,
     packed_seq_params: Optional[PackedSeqParams] = None,
     sequence_len_offset: Optional[Tensor] = None,
+    padding_mask: Tensor = None,
     inference_params: Optional[BaseInferenceContext] = None,
     input_ids: Tensor = None,
 ):
@@ -230,6 +235,7 @@ def transformer_block_forward(
                 rotary_pos_emb=rotary_pos_emb,
                 rotary_pos_cos=rotary_pos_cos,
                 rotary_pos_sin=rotary_pos_sin,
+                rotary_pos_cos_sin=rotary_pos_cos_sin,
                 attention_bias=attention_bias,
                 inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
@@ -262,11 +268,13 @@ def transformer_block_forward_backward_overlaping(
     rotary_pos_emb: Tensor = None,
     rotary_pos_cos: Tensor = None,
     rotary_pos_sin: Tensor = None,
+    rotary_pos_cos_sin: Tensor = None,
     attention_bias: Tensor = None,
     inference_context: Optional[BaseInferenceContext] = None,
     packed_seq_params: Optional[PackedSeqParams] = None,
     sequence_len_offset: Optional[Tensor] = None,
     inference_params: Optional[BaseInferenceContext] = None,
+    padding_mask: Tensor = None,
     bwd_block_output_grad: Tensor = None,
     bwd_block_graphs: List[LayerGraph] = None,
     pp_comm_params: P2PCommParams = None,
@@ -277,19 +285,21 @@ def transformer_block_forward_backward_overlaping(
     if bwd_block_graphs is None:
         return transformer_block_forward(
             self,
-            hidden_states,
-            attention_mask,
-            context,
-            context_mask,
-            rotary_pos_emb,
-            rotary_pos_cos,
-            rotary_pos_sin,
-            attention_bias,
-            inference_context,
-            packed_seq_params,
-            sequence_len_offset,
-            inference_params,
-            input_ids,
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            context=context,
+            context_mask=context_mask,
+            rotary_pos_emb=rotary_pos_emb,
+            rotary_pos_cos=rotary_pos_cos,
+            rotary_pos_sin=rotary_pos_sin,
+            rotary_pos_cos_sin=rotary_pos_cos_sin,
+            attention_bias=attention_bias,
+            inference_context=inference_context,
+            packed_seq_params=packed_seq_params,
+            sequence_len_offset=sequence_len_offset,
+            padding_mask=padding_mask,
+            inference_params=inference_params,
+            input_ids=input_ids,
         )
 
     if not isinstance(bwd_block_graphs, list):
@@ -381,6 +391,7 @@ def transformer_block_forward_backward_overlaping(
                 rotary_pos_emb=rotary_pos_emb,
                 rotary_pos_cos=rotary_pos_cos,
                 rotary_pos_sin=rotary_pos_sin,
+                rotary_pos_cos_sin=rotary_pos_cos_sin,
                 attention_bias=attention_bias,
                 inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
