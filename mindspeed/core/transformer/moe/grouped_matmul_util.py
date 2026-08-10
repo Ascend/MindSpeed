@@ -8,7 +8,7 @@ from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from mindspeed.ops.npu_matmul_add import NPUVersion, check_npu_version
-from transformer_engine.common.recipe import FormatEnum
+from transformer_engine.common.recipe.base import FormatEnum
 from megatron.core.enums import Fp8Recipe
 from functools import lru_cache
 
@@ -137,18 +137,18 @@ class BaseGMMFunction(torch.autograd.Function):
     def op_gmm_add(cls, x, weight, grad, group_list, weight_param):
         cls.gmm_add_impl(x, grad, group_list, weight_param, weight.shape)
         if hasattr(weight_param, 'grad_added_to_main_grad'):
-            if getattr(weight, 'zero_out_wgrad', False):
+            if getattr(weight_param, 'zero_out_wgrad', False):
                 grad_weights = torch.zeros(
                     weight.shape,
                     dtype=x.dtype,
-                    device=torch.cuda.current_device(),
+                    device=weight.device,
                     requires_grad=False,
                 )
             else:
                 grad_weights = torch.empty(
                     weight.shape,
                     dtype=x.dtype,
-                    device=torch.cuda.current_device(),
+                    device=weight.device,
                     requires_grad=False,
                 )
             weight_param.grad_added_to_main_grad = True

@@ -23,11 +23,12 @@ def parallel_transformer_layer_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         from megatron.core.transformer.moe.moe_layer import MoELayer
-        from megatron.core.transformer.moe.experts import TEGroupedMLP as GroupedMLP, SequentialMLP
+        from megatron.core.transformer.moe.experts import SequentialMLP
+        from mindspeed.core.transformer.moe.grouped_mlp import GroupedMLP
 
         fn(self, *args, **kwargs)
         if self.mlp.__class__ is MoELayer:
-            if self.mlp.experts.__class__ is GroupedMLP:
+            if isinstance(self.mlp.experts, GroupedMLP):
                 self.mlp.experts.layer_number = self.layer_number
             if self.mlp.experts.__class__ is SequentialMLP:
                 for expert in self.mlp.experts.local_experts:

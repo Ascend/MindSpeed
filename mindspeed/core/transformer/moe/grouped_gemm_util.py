@@ -227,3 +227,7 @@ def fused_alltoall_gather_bmm(input_, weight, bias, bmm_param):
 
 def fused_bmm_reducescatter_alltoall(input_, weight, bias, bmm_param):
     return FusedBmmReduceScatterFunction.apply(input_, weight, bias, bmm_param)
+
+
+# 向下兼容 Megatron 0.12 的 grouped_gemm_util.ops.gmm() 调用风格
+ops = Ops()

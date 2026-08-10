@@ -18,24 +18,43 @@ class GmmExpertsImpl:
     support gemm_fusion and activation recompute.
     """
 
-    def __init__(self, num_local_experts, config=None):
+    # Supplied by the GroupedMLP base that follows this implementation mixin
+    # in the concrete expert class's MRO.
+    weight1: torch.Tensor
+    weight2: torch.Tensor
+
+    def __init__(
+        self,
+        num_local_experts,
+        config=None,
+        *,
+        pg_collection=None,
+        name=None,
+        **kwargs,
+    ):
         """adjust the logic for generate expert weight to avoid splitting by tp_size
 
         Args:
             num_local_experts: experts in device
             config: TransformerConfig
+            **kwargs: Capture Megatron 0.18 builder params (submodules, etc.).
         """
         self.num_local_experts = num_local_experts
         self.config = config
 
-        # use Megatron GroupedMLP to init to get params
+        # Use MindSpeed GroupedMLP to initialize the active GMM parameters.
         self.layer_number = None
-        self.weight1 = None
-        self.weight2 = None
         self.activation_checkpoint_manager = None
-        super().__init__(num_local_experts, config)
+        super().__init__(
+            num_local_experts,
+            config,
+            pg_collection=pg_collection,
+            name=name,
+            **kwargs,
+        )
         if self.config.gated_linear_unit:
-            assert self.config.activation_func == F.silu, 'Activation function must be silu when using fused_swiglu.'
+            if self.config.activation_func != F.silu:
+                raise ValueError('Activation function must be silu when using fused_swiglu.')
             self.activation_func = fused_swiglu
 
         def activation_func_with_probs(x, probs):
@@ -56,13 +75,26 @@ class GmmExpertsImpl:
         Return:
             output (torch.Tensor): The output of the local experts.
         """
+        if permuted_probs is None:
+            raise ValueError('permuted_probs must be provided for grouped MoE experts.')
+
+        if getattr(self.config, 'moe_apply_probs_on_input', False):
+            if self.config.moe_router_topk != 1:
+                raise ValueError('moe_apply_probs_on_input requires moe_router_topk=1.')
+            original_dtype = permuted_local_hidden_states.dtype
+            permuted_local_hidden_states = (permuted_local_hidden_states * permuted_probs.unsqueeze(-1)).to(
+                original_dtype
+            )
+            # The router probabilities have already been applied to the input.
+            permuted_probs = torch.ones_like(permuted_probs)
+
         is_recompute_activation = (
             should_recompute_activation(self.layer_number)
-            and not self.config.moe_alltoall_overlap_comm
-            and not self.config.moe_allgather_overlap_comm
+            and not getattr(self.config, 'moe_alltoall_overlap_comm', False)
+            and not getattr(self.config, 'moe_allgather_overlap_comm', False)
         )
 
-        gemm_fusion = self.config.gemm_gradient_accumulation_fusion
+        gemm_fusion = getattr(self.config, 'gemm_gradient_accumulation_fusion', False)
 
         quant_w4a16_enable = False
         quant_w8a16_enable = False

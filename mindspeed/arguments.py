@@ -191,7 +191,11 @@ def _add_moe_args(parser):
         "--use-fused-moe-token-permute-and-unpermute", action='store_true', help="Use fused moe permute and unpermute."
     )
     group.add_argument(
-        "--gemm-gradient-accumulation-fusion", action='store_true', help="Use gradient-accumulation-fusion in gemm."
+        "--gmm-gradient-accumulation-fusion",
+        "--gemm-gradient-accumulation-fusion",
+        dest="gemm_gradient_accumulation_fusion",
+        action='store_true',
+        help="Use gradient-accumulation-fusion in GMM.",
     )
     # moe optimization arguments
     group.add_argument(
@@ -1098,7 +1102,7 @@ def validate_args_wrapper(validate_args):
 
         if args.gemm_gradient_accumulation_fusion:
             if not args.moe_grouped_gemm:
-                raise AssertionError('`--gemm-gradient-accumulation-fusion` only support with `--moe-grouped-gemm`.')
+                raise AssertionError('`--gmm-gradient-accumulation-fusion` only support with `--moe-grouped-gemm`.')
 
         if args.fp16:
             args.gradient_accumulation_fusion = False

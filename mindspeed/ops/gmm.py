@@ -14,7 +14,8 @@ def check_optional_tensor(tensor, device, name):
     if isinstance(tensor, torch.Tensor) and tensor.device != device:
         raise RuntimeError(
             f"Expected all tensors to be on the same device, but found at least two devices, "
-            f"{device}(arg0) and {tensor.device}({name})!")
+            f"{device}(arg0) and {tensor.device}({name})!"
+        )
 
 
 class GMMFunction(torch.autograd.Function):
@@ -33,6 +34,8 @@ class GMMFunction(torch.autograd.Function):
             outputs = GMMFunction.builder.load().npu_gmm([x], [weight], bias, group_list, group_type, group_list_type)
         elif group_list_type == 1:
             outputs = GMMFunction.builder2.load().npu_gmm([x], [weight], bias, group_list, group_type, group_list_type)
+        else:
+            raise ValueError(f"group_list_type must be 0 or 1, but got {group_list_type}.")
         if group_list_data_type == 0:
             ctx.save_for_backward(x, weight, original_weight)
             ctx.group_list = group_list
@@ -41,7 +44,6 @@ class GMMFunction(torch.autograd.Function):
         ctx.gemm_fusion = gemm_fusion
         ctx.group_list_type = group_list_type
         ctx.group_list_data_type = group_list_data_type
-
 
         return outputs[0]
 
@@ -55,31 +57,35 @@ class GMMFunction(torch.autograd.Function):
 
         if ctx.gemm_fusion:
             if ctx.group_list_type == 0:
-                dx, _, dbias = GMMFunction.builder.load().npu_gmm_backward_fusion([grad_outputs], [weight], group_list,
-                                                                    ctx.group_list_type)
+                dx, _, dbias = GMMFunction.builder.load().npu_gmm_backward_fusion(
+                    [grad_outputs], [weight], group_list, ctx.group_list_type
+                )
                 npu_groupmatmul_add_fp32(x, grad_outputs, group_list, original_weight.main_grad)
-                
+
             elif ctx.group_list_type == 1:
-                dx, _, dbias = GMMFunction.builder2.load().npu_gmm_backward_fusion([grad_outputs], [weight], group_list,
-                                                                    ctx.group_list_type)
-                group_list_v2 = torch.cumsum(group_list, dim=0)                                           
+                dx, _, dbias = GMMFunction.builder2.load().npu_gmm_backward_fusion(
+                    [grad_outputs], [weight], group_list, ctx.group_list_type
+                )
+                group_list_v2 = torch.cumsum(group_list, dim=0)
                 npu_groupmatmul_add_fp32(x, grad_outputs, group_list_v2, original_weight.main_grad)
+            else:
+                raise ValueError(f"group_list_type must be 0 or 1, but got {ctx.group_list_type}.")
 
             dbias = None if len(dbias) == 0 else dbias[0]
-  
+
             if hasattr(original_weight, 'grad_added_to_main_grad'):
-                if getattr(weight, 'zero_out_wgrad', False):
+                if getattr(original_weight, 'zero_out_wgrad', False):
                     grad_weight = torch.zeros(
                         weight.shape,
                         dtype=x.dtype,
-                        device=torch.cuda.current_device(),
+                        device=weight.device,
                         requires_grad=False,
                     )
                 else:
                     grad_weight = torch.empty(
                         weight.shape,
                         dtype=x.dtype,
-                        device=torch.cuda.current_device(),
+                        device=weight.device,
                         requires_grad=False,
                     )
                 original_weight.grad_added_to_main_grad = True
@@ -89,15 +95,18 @@ class GMMFunction(torch.autograd.Function):
             return None, dx[0], grad_weight, dbias, None
         else:
             if ctx.group_list_type == 0:
-                dx, dw, dbias = GMMFunction.builder.load().npu_gmm_backward([grad_outputs], [x], [weight], group_list,
-                                                                    ctx.group_list_type)
+                dx, dw, dbias = GMMFunction.builder.load().npu_gmm_backward(
+                    [grad_outputs], [x], [weight], group_list, ctx.group_list_type
+                )
             elif ctx.group_list_type == 1:
-                dx, dw, dbias = GMMFunction.builder2.load().npu_gmm_backward([grad_outputs], [x], [weight], group_list,
-                                                                    ctx.group_list_type)
+                dx, dw, dbias = GMMFunction.builder2.load().npu_gmm_backward(
+                    [grad_outputs], [x], [weight], group_list, ctx.group_list_type
+                )
+            else:
+                raise ValueError(f"group_list_type must be 0 or 1, but got {ctx.group_list_type}.")
             dbias = None if len(dbias) == 0 else dbias[0]
 
             return None, dx[0], dw[0], dbias, None
-
 
 
 def npu_gmm_param_verification(x, weight, *, bias=None, group_list=None, group_type=0, group_list_type=0):
@@ -107,7 +116,7 @@ def npu_gmm_param_verification(x, weight, *, bias=None, group_list=None, group_t
         raise TypeError(f"arg1 must be a torch.Tensor, got {type(weight)}.")
     if not isinstance(bias, (torch.Tensor, type(None))):
         raise TypeError(f"bias must be a torch.Tensor or None, got {type(bias)}.")
-    if (group_list_type == 0):
+    if group_list_type == 0:
         if not (
             isinstance(group_list, (torch.Tensor, type(None)))
             or (isinstance(group_list, list) and all(isinstance(x, int) for x in group_list))
@@ -118,11 +127,15 @@ def npu_gmm_param_verification(x, weight, *, bias=None, group_list=None, group_t
             raise TypeError(f"group_list must be a torch.Tensor or None, got {type(group_list)}.")
     if isinstance(group_list, torch.Tensor):
         if len(group_list.shape) > 1:
-            raise ValueError(f"If group_list is not None, it must be an one-dimensional tensor, "
-                             f"got dimension of group_list: {len(group_list.shape)}!")
+            raise ValueError(
+                f"If group_list is not None, it must be an one-dimensional tensor, "
+                f"got dimension of group_list: {len(group_list.shape)}!"
+            )
         if group_list.dtype != torch.int64:
-            raise TypeError(f"group_list must be a List of int64, got group_list type: {type(group_list)}, "
-                            f"dtype: {group_list.dtype}!")
+            raise TypeError(
+                f"group_list must be a List of int64, got group_list type: {type(group_list)}, "
+                f"dtype: {group_list.dtype}!"
+            )
     if not isinstance(group_type, (int, type(None))):
         raise TypeError(f"group_type must be an int or None, got {type(group_type)}.")
     # Ensure all tensors on the same device
@@ -136,16 +149,23 @@ def npu_gmm_param_verification(x, weight, *, bias=None, group_list=None, group_t
         raise RuntimeError(f"{device_warning}, {x_device}(arg0) and {group_list.device}(group_list)!")
 
 
-def _npu_gmm_common(original_weight, x, weight, *, bias=None, group_list=None, group_type=0, group_list_type=0, gemm_fusion=False):
+def _npu_gmm_common(
+    original_weight, x, weight, *, bias=None, group_list=None, group_type=0, group_list_type=0, gemm_fusion=False
+):
     support_dtype = [torch.float16, torch.bfloat16, torch.float32]
     if weight.dtype not in support_dtype:
         raise TypeError(f"Only support non quant case, but got weight dtype {weight.dtype}.")
-    npu_gmm_param_verification(x, weight, bias=bias, group_list=group_list, group_type=group_type,
-                               group_list_type=group_list_type)
+    npu_gmm_param_verification(
+        x, weight, bias=bias, group_list=group_list, group_type=group_type, group_list_type=group_list_type
+    )
     if group_list_type == 0:
-        return torch.ops.mindspeed.npu_gmm(original_weight, x, weight, bias=bias, group_list=group_list, group_type=group_type, gemm_fusion=gemm_fusion)
+        return torch.ops.mindspeed.npu_gmm(
+            original_weight, x, weight, bias=bias, group_list=group_list, group_type=group_type, gemm_fusion=gemm_fusion
+        )
     elif group_list_type == 1:
-        return torch.ops.mindspeed.npu_gmm_v2(original_weight, x, weight, bias=bias, group_list=group_list, group_type=group_type, gemm_fusion=gemm_fusion)
+        return torch.ops.mindspeed.npu_gmm_v2(
+            original_weight, x, weight, bias=bias, group_list=group_list, group_type=group_type, gemm_fusion=gemm_fusion
+        )
     else:
         raise ValueError(f"group_list_type must be 0 or 1, but got {group_list_type}.")
 
@@ -162,7 +182,16 @@ def _npu_gmm(original_weight, x, weight, *, bias=None, group_list=None, group_ty
 
 
 def npu_gmm(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=False, original_weight=None):
-    return _npu_gmm_common(original_weight, x, weight, bias=bias, group_list=group_list, group_type=group_type, group_list_type=0, gemm_fusion=gemm_fusion)
+    return _npu_gmm_common(
+        original_weight,
+        x,
+        weight,
+        bias=bias,
+        group_list=group_list,
+        group_type=group_type,
+        group_list_type=0,
+        gemm_fusion=gemm_fusion,
+    )
 
 
 @impl(AS_LIBRARY, "npu_gmm_v2.Tensor", "PrivateUse1")
@@ -172,4 +201,13 @@ def _npu_gmm_v2(original_weight, x, weight, *, bias=None, group_list=None, group
 
 
 def npu_gmm_v2(x, weight, *, bias=None, group_list=None, group_type=0, gemm_fusion=False, original_weight=None):
-    return _npu_gmm_common(original_weight, x, weight, bias=bias, group_list=group_list, group_type=group_type, group_list_type=1, gemm_fusion=gemm_fusion)
+    return _npu_gmm_common(
+        original_weight,
+        x,
+        weight,
+        bias=bias,
+        group_list=group_list,
+        group_type=group_type,
+        group_list_type=1,
+        gemm_fusion=gemm_fusion,
+    )

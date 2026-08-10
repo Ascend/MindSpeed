@@ -2,7 +2,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import torch
-from megatron.core.transformer.moe.experts import TEGroupedMLP as GroupedMLP
+from mindspeed.core.transformer.moe.grouped_mlp import GroupedMLP
 from megatron.core.utils import make_viewless_tensor
 from megatron.training import get_args
 
@@ -120,7 +120,8 @@ def transformer_layer_forward_balanced_moe(
         _shared_fc1_input = None
 
     # Router forward.
-    probs, routing_map = router_forward(self, detached_mlp_input)
+    # Balanced MoE does not support hash routing, so there are no token ids to forward.
+    probs, routing_map = router_forward(self, detached_mlp_input, None)
     shared_expert_output = None
 
     # Token Perm1 Forward

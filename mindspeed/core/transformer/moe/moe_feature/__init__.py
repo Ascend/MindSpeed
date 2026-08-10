@@ -49,8 +49,6 @@ from megatron.core.tensor_parallel import gather_from_sequence_parallel_region
 from megatron.core.transformer.multi_token_prediction import MultiTokenPredictionBlockSubmodules
 from megatron.core.transformer.moe.moe_layer import MoELayer, BaseMoELayer as MegatronBaseMoeLayer
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP, set_tensor_grad_fn_sequence_sr
-from megatron.core.transformer.moe.experts import TEGroupedMLP as GroupedMLP
-from megatron.core.transformer.moe.legacy_a2a_token_dispatcher import MoEAlltoAllSEQTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
 from megatron.core.transformer.moe.token_dispatcher import MoEAllGatherTokenDispatcher
 from megatron.core.packed_seq_params import PackedSeqParams
@@ -61,5 +59,6 @@ from megatron.core.fusions.fused_bias_gelu import bias_gelu_impl
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu_impl
 
 from mindspeed.core.transformer.moe import grouped_gemm_util
+from mindspeed.core.transformer.moe.grouped_mlp import GroupedMLP
 from mindspeed.core.transformer.moe.moe_utils import topk_softmax_with_capacity
 from mindspeed.args_utils import get_full_args as get_args
