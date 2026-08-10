@@ -1,13 +1,21 @@
 # Copyright (c) 2025; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
+# ``input`` mirrors the public tensor-operation terminology used by callers.
+# pylint: disable=redefined-builtin
+
 from functools import wraps
 from typing import Optional
 import torch
 import torch_npu
 import torch.nn.functional as F
 from mindspeed.core.transformer.moe.moe_feature import (
-     parallel_state, MLP, build_module, TransformerConfig, MLPSubmodules, TransformerConfig)
+    parallel_state,
+    MLP,
+    build_module,
+    MLPSubmodules,
+    TransformerConfig,
+)
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
@@ -28,12 +36,15 @@ def mlp_init(
     config: TransformerConfig,
     submodules: MLPSubmodules,
     is_expert: bool = False,
-    input_size: int = None,
-    with_shared_expert=False
+    input_size: Optional[int] = None,
+    ffn_hidden_size: Optional[int] = None,
+    tp_group: Optional[torch.distributed.ProcessGroup] = None,
+    name: str = None,
+    with_shared_expert=False,
 ):
     """
     Shared expert MLP init with Moe_overlap.
-        In 0.10.0, the definition of shared_experts has conflict. 
+        In 0.10.0, the definition of shared_experts has conflict.
         Rename the MindSpeed version to 'with_shared_expert'.
     """
     super(MLP, self).__init__(config=config)
@@ -42,14 +53,19 @@ def mlp_init(
 
     self.input_size = input_size or self.config.hidden_size
 
-    ffn_hidden_size = self.config.ffn_hidden_size
+    self.tp_group = tp_group
+    if ffn_hidden_size is None:
+        ffn_hidden_size = self.config.ffn_hidden_size
+    fc1_output_size = ffn_hidden_size
+    fc1_stride = 1
     if self.config.gated_linear_unit:
-        ffn_hidden_size *= 2
+        fc1_output_size *= 2
+        fc1_stride = 2
     if with_shared_expert:
         self.linear_fc1 = build_module(
             submodules.linear_fc1,
             self.input_size,
-            ffn_hidden_size,
+            fc1_output_size,
             config=self.config,
             init_method=self.config.init_method,
             gather_output=False,
@@ -57,20 +73,26 @@ def mlp_init(
             skip_bias_add=True,
             is_expert=is_expert,
             tp_comm_buffer_name='fc1',
-            with_shared_expert=with_shared_expert
+            tp_group=tp_group,
+            stride=fc1_stride,
+            name=(name + ".linear_fc1") if name is not None else None,
+            with_shared_expert=with_shared_expert,
         )
     else:
         self.linear_fc1 = build_module(
             submodules.linear_fc1,
             self.input_size,
-            ffn_hidden_size,
+            fc1_output_size,
             config=self.config,
             init_method=self.config.init_method,
             gather_output=False,
             bias=self.config.add_bias_linear,
             skip_bias_add=True,
             is_expert=is_expert,
-            tp_comm_buffer_name='fc1'
+            tp_comm_buffer_name='fc1',
+            tp_group=tp_group,
+            stride=fc1_stride,
+            name=(name + ".linear_fc1") if name is not None else None,
         )
 
     self.activation_func = self.config.activation_func
@@ -78,7 +100,7 @@ def mlp_init(
     if with_shared_expert:
         self.linear_fc2 = build_module(
             submodules.linear_fc2,
-            self.config.ffn_hidden_size,
+            ffn_hidden_size,
             self.config.hidden_size,
             config=self.config,
             init_method=self.config.output_layer_init_method,
@@ -87,12 +109,14 @@ def mlp_init(
             skip_bias_add=True,
             is_expert=is_expert,
             tp_comm_buffer_name='fc2',
-            with_shared_expert=with_shared_expert
+            tp_group=tp_group,
+            name=(name + ".linear_fc2") if name is not None else None,
+            with_shared_expert=with_shared_expert,
         )
     else:
         self.linear_fc2 = build_module(
             submodules.linear_fc2,
-            self.config.ffn_hidden_size,
+            ffn_hidden_size,
             self.config.hidden_size,
             config=self.config,
             init_method=self.config.output_layer_init_method,
@@ -100,7 +124,9 @@ def mlp_init(
             input_is_parallel=True,
             skip_bias_add=True,
             is_expert=is_expert,
-            tp_comm_buffer_name='fc2'
+            tp_comm_buffer_name='fc2',
+            tp_group=tp_group,
+            name=(name + ".linear_fc2") if name is not None else None,
         )
 
     self.with_shared_expert = with_shared_expert
@@ -110,13 +136,16 @@ def core_mlp_forward_wrapper(fn):
     """
     A wrapper about setting args for zero_memory&recompute in MLP.
     """
+
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         if isinstance(args, tuple):
             args = list(args)
+        moe_ctx = kwargs.pop('moe_ctx', None)
 
         if getattr(self.config, 'profile', False) and not self.config.num_experts:
             from mindspeed.auto_settings.module.black.patch.hccl_operator import MOEOrMLPStartOp, MOEOrMLPEndOp
+
             args[0] = MOEOrMLPStartOp.apply(args[0])
             activation_func_1 = torch.nn.Softplus()
             args[0] = activation_func_1(args[0])
@@ -132,7 +161,7 @@ def core_mlp_forward_wrapper(fn):
             if bias is not None:
                 intermediate = intermediate + bias
             if self.config.gated_linear_unit:
-                assert (self.config.activation_func == F.silu), 'Activation function must be silu when using fused_swiglu'
+                assert self.config.activation_func == F.silu, 'Activation function must be silu when using fused_swiglu'
                 if not hasattr(self, 'origin_activation_func'):
                     self.origin_activation_func = self.activation_func
                 self.activation_func = fused_swiglu
@@ -165,10 +194,9 @@ def core_mlp_forward_wrapper(fn):
             hidden_states = args[0]
             intermediate_parallel, bias_parallel = self.linear_fc1(hidden_states)
             self.activation_checkpoint_manager = CheckpointWithoutOutput()
-            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(activation_function,
-                                                                                  False,
-                                                                                  intermediate_parallel,
-                                                                                  bias_parallel)
+            intermediate_parallel = self.activation_checkpoint_manager.checkpoint(
+                activation_function, False, intermediate_parallel, bias_parallel
+            )
             # [s, b, h]
             output, output_bias = self.linear_fc2(intermediate_parallel)
 
@@ -187,6 +215,7 @@ def core_mlp_forward_wrapper(fn):
             output = MOEOrMLPEndOp.apply(output)
 
         return output, output_bias
+
     return wrapper
 
 
@@ -195,6 +224,7 @@ def parallel_transformer_layer_init_wrapper(fn):
     def wrapper(self, *args, **kwargs):
         fn(self, *args, **kwargs)
         from megatron.core.transformer.moe.moe_layer import MoELayer
+
         if self.config.moe_alltoall_overlap_comm or self.config.moe_allgather_overlap_comm:
             if self.mlp.__class__ is MoELayer:
                 self.mlp.experts.layer_number = self.layer_number
@@ -202,6 +232,7 @@ def parallel_transformer_layer_init_wrapper(fn):
                     self.mlp.shared_experts.layer_number = self.layer_number
             else:
                 self.mlp.layer_number = self.layer_number
+
     return wrapper
 
 
@@ -304,7 +335,6 @@ def get_all2all_experts_output():
 
 
 def only_recompute_activation(config, layer_number):
-
     vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
     vpp_size = config.virtual_pipeline_model_parallel_size
     pp_size = config.pipeline_model_parallel_size
@@ -328,7 +358,7 @@ def only_recompute_activation(config, layer_number):
         else:
             return True
     else:
-        return False 
+        return False
 
 
 def forward_func(func, inputs):
@@ -365,13 +395,13 @@ def forward_func(func, inputs):
     return output, *detach_inputs
 
 
-def backward_func(func_tensor, gradinputs):
+def backward_func(func_tensor, gradinputs, retain_graph=False):
     if gradinputs is None or func_tensor.grad_fn is None:
         return
     if isinstance(gradinputs, torch.Tensor):
-        func_tensor.backward(gradinputs)
+        func_tensor.backward(gradinputs, retain_graph=retain_graph)
     elif isinstance(gradinputs, tuple):
-        func_tensor.backward(*gradinputs)
+        func_tensor.backward(*gradinputs, retain_graph=retain_graph)
 
 
 def async_comm_sort_chunks_by_idxs(
@@ -380,7 +410,7 @@ def async_comm_sort_chunks_by_idxs(
     sorted_idxs: torch.Tensor,
     probs: Optional[torch.Tensor] = None,
     fused: bool = False,
-    prob_handle = None
+    prob_handle=None,
 ):
     """Split and sort the input tensor based on the split_sizes and sorted indices."""
     if fused:

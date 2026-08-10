@@ -136,7 +136,7 @@ class CheckpointWithoutOutput:
         for output in self.outputs:
             output.untyped_storage().resize_(0)
 
-    def recompute(self, _):
+    def recompute(self, _, return_output=False):
         if not torch.autograd._is_checkpoint_valid():
             raise RuntimeError("Checkpointing is not compatible with .grad(), please use .backward() if possible")
 
@@ -174,6 +174,9 @@ class CheckpointWithoutOutput:
         self.ctx.outputs = outputs  # pylint: disable=access-member-before-definition
         self.outputs = None
         self.ctx = None
+        if return_output:
+            return outputs[0] if len(outputs) == 1 else outputs
+        return None
 
 
 class RngStateContext:

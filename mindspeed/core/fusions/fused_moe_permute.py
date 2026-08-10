@@ -46,23 +46,51 @@ def restore_original_dtype(
 
 
 def permute(
-    tokens,
-    routing_map,
+    tokens: torch.Tensor,
+    routing_map: torch.Tensor,
     probs: Optional[torch.Tensor] = None,
     num_out_tokens: Optional[int] = None,
     fused: bool = False,
     drop_and_pad: bool = False,
-) -> torch.Tensor:
+    tokens_per_expert: Optional[torch.Tensor] = None,
+    align_size: int = 0,
+) -> Tuple[
+    torch.Tensor,
+    Optional[torch.Tensor],
+    torch.Tensor,
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+]:
+    """Permute tokens with the Megatron 0.17+ five-value return contract.
+
+    MindSpeed keeps the original NPU fused operator used with Megatron 0.12. The
+    two additional return values were introduced by Megatron 0.17 for fused
+    quantization padding. That feature is intentionally not implemented here;
+    ``pad_offsets`` is therefore ``None`` and ``tokens_per_expert`` is forwarded
+    unchanged.
+    """
     if fused:
+        if tokens_per_expert is not None or align_size > 0:
+            raise ValueError(
+                "MindSpeed moe-permute-fusion does not support Megatron's fused "
+                "quantization padding (tokens_per_expert/align_size)."
+            )
         tokens, probs, original_dtype = convert_tensors_to_fp32_if_needed(tokens, probs)
         permuted_input, permuted_probs, sorted_indices = MoePermuteMaskMap.apply(
             tokens, routing_map, probs, num_out_tokens, drop_and_pad
         )
         permuted_input, permuted_probs = restore_original_dtype(permuted_input, permuted_probs, original_dtype)
-        return permuted_input, permuted_probs, sorted_indices
+        return permuted_input, permuted_probs, sorted_indices, None, tokens_per_expert
     else:
         return megatron_permute(
-            tokens, routing_map, probs=probs, num_out_tokens=num_out_tokens, fused=fused, drop_and_pad=drop_and_pad
+            tokens,
+            routing_map,
+            probs=probs,
+            num_out_tokens=num_out_tokens,
+            fused=fused,
+            drop_and_pad=drop_and_pad,
+            tokens_per_expert=tokens_per_expert,
+            align_size=align_size,
         )
 
 
@@ -74,8 +102,13 @@ def unpermute(
     routing_map: torch.Tensor = None,
     fused: bool = False,
     drop_and_pad: bool = False,
+    pad_offsets: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if fused:
+        if pad_offsets is not None:
+            raise ValueError(
+                "MindSpeed moe-permute-fusion does not support Megatron's fused quantization padding (pad_offsets)."
+            )
         return MoeUnpermuteMaskMap.apply(
             permuted_tokens, sorted_indices, restore_shape, probs, routing_map, drop_and_pad
         )
@@ -88,6 +121,7 @@ def unpermute(
             routing_map=routing_map,
             fused=fused,
             drop_and_pad=drop_and_pad,
+            pad_offsets=pad_offsets,
         )
 
 
@@ -108,8 +142,8 @@ def sort_chunks_by_idxs_wrapper(fn):
 
 def moe_alltoall_token_dispatcher_init_wrapper(fn):
     @wraps(fn)
-    def wrapper(self, num_local_experts, local_expert_indices, config) -> None:
-        fn(self, num_local_experts, local_expert_indices, config)
+    def wrapper(self, num_local_experts, local_expert_indices, config, pg_collection=None) -> None:
+        fn(self, num_local_experts, local_expert_indices, config, pg_collection=pg_collection)
         if has_triton() and self.config.moe_permute_fusion:
             self.permute_idx_device = torch.device("npu")
         else:
@@ -216,6 +250,8 @@ def alltoall_seq_token_permutation(
         permutated_local_input_tokens,
         permuted_probs,
         self.reversed_local_input_permutation_mapping,
+        _,
+        _,
     ) = permute(
         hidden_states,
         routing_map,

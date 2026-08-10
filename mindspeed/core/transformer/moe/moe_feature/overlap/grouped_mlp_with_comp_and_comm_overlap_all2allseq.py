@@ -190,7 +190,7 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
 
             def alltoall_token_permutation1(hidden_states, routing_map, probs):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, permuted_probs_, _ = permute(
+                permutated_local_input_tokens, permuted_probs_, _, _, _ = permute(
                     hidden_states,
                     routing_map,
                     probs,

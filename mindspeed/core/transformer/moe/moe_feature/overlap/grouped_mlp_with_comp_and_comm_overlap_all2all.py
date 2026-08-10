@@ -195,7 +195,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
 
             def alltoall_token_permutation1(hidden_states, routing_map, probs=None):
                 hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-                permutated_local_input_tokens, permuted_probs_, _ = permute(
+                permutated_local_input_tokens, permuted_probs_, _, _, _ = permute(
                     hidden_states,
                     routing_map,
                     probs,
@@ -229,7 +229,7 @@ class GroupedMlpWithCompAndCommOverlapAll2All(torch.autograd.Function):
         probs.untyped_storage().resize_(0)
 
         # backward for probs.
-        backward_func(permute2_prob_graph, permuted_probs_inputs_detach.grad)
+        backward_func(permute2_prob_graph, permuted_probs_inputs_detach.grad, retain_graph=True)
 
         permute2_prob_detach_grad = permute2_prob_detach.grad
         if parallel_state.get_expert_tensor_parallel_world_size() > 1:

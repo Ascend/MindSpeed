@@ -110,7 +110,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
 
         # token re-premute.
 
-        (mm1_inputs, _, _) = permute(ag_inputs_tp_ep, local_map)
+        (mm1_inputs, _, _, _, _) = permute(ag_inputs_tp_ep, local_map)
 
         local_map.untyped_storage().resize_(0)
         ag_inputs_tp_ep.untyped_storage().resize_(0)
