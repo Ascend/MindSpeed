@@ -277,7 +277,7 @@ class CPDotProductAttentionImpl:
 
         else:
             # For EoD ulysses
-            if packed_seq_params is not None:
+            if packed_seq_params is not None and is_ulysses_algo:
                 query, key, value = [rearrange(x, 's b (h d) -> (b s) h d', d=head_dim) for x in [query, key, value]]
                 shape_order = 'TND'
 
@@ -313,7 +313,7 @@ class CPDotProductAttentionImpl:
                     actual_seq_kvlen=actual_seq_kvlen
                 )[0]
 
-            if packed_seq_params is not None:
+            if packed_seq_params is not None and is_ulysses_algo:
                 output = rearrange(output, '(b s) h d -> s b (h d)', b=bsz)
                 shape_order = 'TND'
         return output
