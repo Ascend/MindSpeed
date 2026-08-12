@@ -1,16 +1,12 @@
 from typing import List
 
-from mindspeed.deprecate import AutoExecuteFunction
+from megatron_adaptor.auto_execute import AutoExecuteFunction
 
 from mindspeed.features_manager.feature import MindSpeedFeature
 from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
 from mindspeed.features_manager.context_parallel.context_parallel_feature import ContextParallelFeature
 from mindspeed.features_manager.context_parallel.ulysses_context_parallel import UlyssesContextParallelFeature
 from mindspeed.features_manager.data_parallel.async_log_allreduce import AsyncLogAllreduceFeature
-from mindspeed.features_manager.functional.profile import ProfileFeature
-from mindspeed.features_manager.functional.profiler_default import ProfilerDefaultFeature
-from mindspeed.features_manager.functional.npu_deterministic import NPUDeterministicFeature
-from mindspeed.features_manager.functional.npu_datadump import NPUDataDumpFeature
 from mindspeed.features_manager.functional.cache_get_batch_config import CacheGetBatchConfigFeature
 from mindspeed.features_manager.functional.tflops_calculate import TflopsCalculateFeature
 
@@ -108,8 +104,6 @@ from mindspeed.features_manager.qos.qos_feature import QosFeature
 from mindspeed.features_manager.ttp.ttp_feature import TTPFeature
 
 FEATURES_LIST = [
-    # Functional features
-    ProfilerDefaultFeature(),
     # Virtaul Optimizer
     VirtualOptimizerFeature(),
     LowPrecisionOptimizerFeature(),
@@ -150,11 +144,7 @@ def add_affinity_features(features_list: List[MindSpeedFeature]):
 def add_functional_features(features_list: List[MindSpeedFeature]):
     features_list.extend(
         [
-            ProfilerDefaultFeature(),
-            NPUDeterministicFeature(),
             TflopsCalculateFeature(),
-            ProfileFeature(),
-            NPUDataDumpFeature(),
             CacheGetBatchConfigFeature(),
         ]
     )

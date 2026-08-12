@@ -10,7 +10,7 @@ from torch.utils.cpp_extension import _get_build_directory
 from mindspeed.args_utils import get_full_args
 from mindspeed.args_utils import get_mindspeed_args
 from mindspeed.log_config import set_log_config
-from mindspeed.deprecate import AutoExecuteFunction
+from megatron_adaptor.auto_execute import AutoExecuteFunction
 from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
 
 LOG = getLogger(__name__)

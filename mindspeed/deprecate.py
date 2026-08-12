@@ -1,6 +1,6 @@
 """Handle the transition from megatron_adaptor to megatron_v2."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
 from logging import getLogger
@@ -33,7 +33,6 @@ class DeprecatedError(Exception):
         self._func = func
 
     def __str__(self):
-
         return f"""function {self._func} is deprecated
                     at {self._deprecated_date}, but today is {datetime.now}.
                     if you still wanna use the deprecated function,
@@ -76,7 +75,6 @@ class Deprecated:
         self._suggestion = suggestion
 
     def __call__(self, func: Callable):
-
         @wraps(func)
         def wrapper(*args, **kwargs):
             if self._is_deprecated():
@@ -108,8 +106,7 @@ class Deprecated:
         elif self._deprecated_codes:
             for code in self._deprecated_codes:
                 LOG.warning(
-                    "code %s of function %s in module %s "
-                    "will deprecated after %s, Suggestion: %s",
+                    "code %s of function %s in module %s will deprecated after %s, Suggestion: %s",
                     code,
                     func.__name__,
                     func.__module__,
@@ -122,23 +119,3 @@ class Deprecated:
             not ENABLE_DEPRECATED  # type: ignore
             and datetime.now(timezone.utc) > self._deprecated_date
         )
-
-
-class AutoExecuteFunction:
-    AUTO_EXECUTE = True
-
-    def __init__(self, func: Callable):
-        self._func = func
-
-    def __call__(self, *args, **kwargs):
-        if not AutoExecuteFunction.AUTO_EXECUTE:
-            return None
-        return self._func(*args, **kwargs)
-
-
-class NoExecuteFunction:
-    def __enter__(self):
-        AutoExecuteFunction.AUTO_EXECUTE = False
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        AutoExecuteFunction.AUTO_EXECUTE = True
