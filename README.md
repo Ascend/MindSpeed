@@ -35,7 +35,7 @@ MindSpeed Core是针对华为[昇腾设备](https://www.hiascend.com/)的大模�
 
 ---
 
-- [May 11, 2026]: 🚀 MindSpeed Core 支持Mcore 0.16.0版本。
+- [May 11, 2026]: 🚀 MindSpeed Core 支持Mcore 0.16.0版本。当前分支非正式商发分支，仅完成基础适配，可能存在潜在问题，欢迎反馈。
 
 > 注： 当前版本初步支持两种版本的Transformer实现。如需回溯老版本Transformer实现，需要用户配置参数`--transformer-impl local`。
 
