@@ -20,3 +20,4 @@ pandas
 scikit-learn
 SQLAlchemy
 pydantic
+flash-linear-attention
