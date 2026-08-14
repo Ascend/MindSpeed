@@ -2,63 +2,180 @@
 
 from argparse import ArgumentParser
 from functools import wraps
+from inspect import signature
+
+from megatron.core.transformer.cuda_graphs import is_graph_capturing
+
 from mindspeed.features_manager.feature import MindSpeedFeature
 
 
+def _get_alltoall_overlap_delayed_wgrad_params(model):
+    """Map each AllToAll-overlap delayed-wgrad parameter to its TE linear."""
+    from mindspeed.core.transformer.moe.moe_feature.adaptor import (
+        MindSpeedAlltoALLOverLapGmmExperts,
+    )
+
+    delayed_params = {}
+    for experts in model.modules():
+        if not isinstance(experts, MindSpeedAlltoALLOverLapGmmExperts):
+            continue
+
+        for module in (experts.linear_fc1, experts.linear_fc2):
+            if not (
+                hasattr(module, 'need_backward_dw')
+                and module.need_backward_dw()
+                and hasattr(module, 'register_wgrad_accumulation_and_reduce_hooks')
+            ):
+                raise RuntimeError(
+                    f'MindSpeed AllToAll overlap requires delayed-wgrad hooks on {type(module).__name__}.'
+                )
+
+            module_params = [
+                param
+                for param in module.parameters(recurse=False)
+                if param.requires_grad and getattr(param, 'skip_backward_post_hook', False)
+            ]
+            if not module_params:
+                raise RuntimeError(
+                    f'MindSpeed AllToAll overlap found no delayed-wgrad parameters on {type(module).__name__}.'
+                )
+            for param in module_params:
+                if param in delayed_params:
+                    raise RuntimeError('A delayed-wgrad parameter belongs to multiple TE linears.')
+                delayed_params[param] = module
+
+    return delayed_params
+
+
+def _make_alltoall_overlap_delayed_wgrad_hook(self, param, module, ddp_post_hook):
+    """Run the DDP post hook only after TENPU has completed delayed wgrad."""
+
+    def hook(*unused):
+        if is_graph_capturing():
+            return
+
+        if param.grad is not None:
+            ddp_post_hook()
+            return
+
+        if not getattr(module, 'fuse_wgrad_accumulation', False):
+            raise RuntimeError(
+                'TENPU delayed wgrad completed without param.grad while gradient-accumulation fusion is disabled.'
+            )
+        if not hasattr(param, 'main_grad'):
+            raise RuntimeError('TENPU delayed fused wgrad completed without param.main_grad.')
+        if param not in self.param_to_bucket_group:
+            raise RuntimeError('TENPU delayed-wgrad parameter is not assigned to a DDP bucket.')
+
+        # TENPU has already accumulated this wgrad directly into main_grad.
+        # Calling Megatron's regular hook would either assert on param.grad or
+        # add the gradient a second time, so only publish readiness here.
+        param.grad_added_to_main_grad = True
+        if self.ddp_config.overlap_grad_reduce:
+            self.param_to_bucket_group[param].register_grad_ready(param, self.force_all_reduce)
+
+    return hook
+
+
+def _make_alltoall_overlap_autograd_hook(param):
+    """Ignore the early AccumulateGrad callback for a delayed TE wgrad."""
+
+    def hook(*unused):
+        if is_graph_capturing():
+            return
+
+        # A delayed GroupedLinear returns no parameter gradient from its
+        # autograd backward. The real wgrad is produced later by backward_dw(),
+        # so DDP must not publish this parameter at the AccumulateGrad boundary.
+        if param.grad is None:
+            return
+
+        raise RuntimeError(
+            'TENPU marked this expert parameter for delayed wgrad, but its '
+            'autograd callback received param.grad before backward_dw().'
+        )
+
+    return hook
+
+
 def alltoall_overlap_ddp_init_wrapper(fn):
-    """Register DDP post hooks for only the TE experts whose wgrad is delayed."""
+    """Register DDP hooks at the TENPU delayed-wgrad completion boundary."""
+
+    fn_signature = signature(fn)
 
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        result = fn(self, *args, **kwargs)
-        if self.ddp_config.delay_wgrad_compute:
+        bound_args = fn_signature.bind(self, *args, **kwargs)
+        bound_args.apply_defaults()
+        ddp_config = bound_args.arguments['ddp_config']
+        model = bound_args.arguments['module']
+
+        if ddp_config.delay_wgrad_compute:
             raise RuntimeError(
                 'MindSpeed alltoall overlap owns the TE expert delayed-wgrad '
                 'schedule and cannot be combined with global DDP '
                 'delay_wgrad_compute.'
             )
 
-        marker = '_mindspeed_alltoall_overlap_delayed_wgrad_hook_registered'
-        for module in self.module.modules():
-            module_config = getattr(module, 'config', None)
-            if not (
-                getattr(module_config, 'moe_alltoall_overlap_comm', False)
-                and getattr(module, 'delay_wgrad_compute', False)
-                and hasattr(module, 'register_wgrad_accumulation_and_reduce_hooks')
-            ):
-                continue
+        delayed_params = _get_alltoall_overlap_delayed_wgrad_params(model)
+        if not delayed_params:
+            return fn(*bound_args.args, **bound_args.kwargs)
 
-            for param in module.parameters(recurse=False):
-                if not (
-                    param.requires_grad
-                    and getattr(param, 'skip_backward_post_hook', False)
-                    and getattr(param, marker, None) != id(self)
-                ):
-                    continue
+        unexpected_delayed_params = [
+            param
+            for param in model.parameters()
+            if getattr(param, 'skip_backward_post_hook', False) and param not in delayed_params
+        ]
+        if unexpected_delayed_params:
+            raise RuntimeError(
+                'MindSpeed AllToAll overlap found delayed-wgrad parameters outside its TEGroupedMLP experts.'
+            )
 
-                ddp_post_hook = self._make_backward_post_hook(param)
+        original_make_backward_post_hook = self._make_backward_post_hook
+        registered_params = set()
 
-                def delayed_wgrad_post_hook(
-                    param=param,
-                    module=module,
-                    ddp_post_hook=ddp_post_hook,
-                ):
-                    # With gradient-accumulation fusion, TE has already updated
-                    # main_grad in-place and deliberately leaves param.grad as
-                    # None. Megatron's regular hook requires a non-None grad
-                    # when overlap_grad_reduce is enabled, so register the
-                    # bucket directly instead of manufacturing a dummy wgrad.
-                    if param.grad is None and getattr(module, 'fuse_wgrad_accumulation', False):
-                        if not hasattr(param, 'main_grad'):
-                            raise RuntimeError('TE delayed fused wgrad completed without param.main_grad.')
-                        param.grad_added_to_main_grad = True
-                        if self.ddp_config.overlap_grad_reduce and param in self.param_to_bucket_group:
-                            self.param_to_bucket_group[param].register_grad_ready(param, self.force_all_reduce)
-                        return
-                    ddp_post_hook()
+        def make_backward_post_hook(param):
+            module = delayed_params.get(param)
+            if module is None:
+                return original_make_backward_post_hook(param)
+            if param in registered_params:
+                raise RuntimeError('A TENPU delayed-wgrad DDP hook was registered more than once.')
+            registered_params.add(param)
+            return _make_alltoall_overlap_autograd_hook(param)
 
-                module.register_wgrad_accumulation_and_reduce_hooks(delayed_wgrad_post_hook)
-                setattr(param, marker, id(self))
+        # Let Megatron register its normal AccumulateGrad callbacks, but replace
+        # only the delayed expert callbacks with an early no-op. TENPU does not
+        # produce their real gradients until MindSpeed calls backward_dw().
+        had_instance_hook_factory = '_make_backward_post_hook' in self.__dict__
+        instance_hook_factory = self.__dict__.get('_make_backward_post_hook')
+        self._make_backward_post_hook = make_backward_post_hook
+        try:
+            result = fn(*bound_args.args, **bound_args.kwargs)
+        finally:
+            if had_instance_hook_factory:
+                self._make_backward_post_hook = instance_hook_factory
+            else:
+                self.__dict__.pop('_make_backward_post_hook', None)
+
+        if registered_params != set(delayed_params):
+            missing = len(set(delayed_params) - registered_params)
+            raise RuntimeError(
+                'Megatron DDP did not register every TENPU delayed-wgrad parameter '
+                f'for AllToAll overlap: {missing} parameter(s) are missing.'
+            )
+
+        # Publish gradient readiness only from TENPU's actual delayed-wgrad
+        # completion boundary. This hook is distinct from the early autograd
+        # callback above, so fused and non-fused accumulation remain unambiguous.
+        for param, module in delayed_params.items():
+            module.register_wgrad_accumulation_and_reduce_hooks(
+                _make_alltoall_overlap_delayed_wgrad_hook(
+                    self,
+                    param,
+                    module,
+                    original_make_backward_post_hook(param),
+                )
+            )
         return result
 
     return wrapper
