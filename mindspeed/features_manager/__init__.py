@@ -1,9 +1,9 @@
 from typing import List
 
+from megatron_adaptor.features_manager.features_manager import FeaturesManager
 from megatron_adaptor.auto_execute import AutoExecuteFunction
 
 from mindspeed.features_manager.feature import MindSpeedFeature
-from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
 from mindspeed.features_manager.context_parallel.context_parallel_feature import ContextParallelFeature
 from mindspeed.features_manager.context_parallel.ulysses_context_parallel import UlyssesContextParallelFeature
 from mindspeed.features_manager.data_parallel.async_log_allreduce import AsyncLogAllreduceFeature
@@ -383,7 +383,10 @@ def create_features_list():
 
 @AutoExecuteFunction
 def set_default_features_list():
-    MindSpeedFeaturesManager.set_features_list(create_features_list())
+    # Append MindSpeed features to the unified feature list owned by MA's
+    # FeaturesManager instead of replacing it, so MA built-in features and
+    # MindSpeed features are registered/validated/applied together.
+    FeaturesManager.add_feature(create_features_list())
 
 
 set_default_features_list()

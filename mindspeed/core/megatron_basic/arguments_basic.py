@@ -10,47 +10,17 @@ from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
 LOG = getLogger(__name__)
 
 
-def extra_args_provider_decorator(extra_args_provider):
-    """Make a extra args parser  for megatron."""
+def print_after_validate_wrapper(fn):
+    """Only print the arguments after the inner validation finishes.
 
-    @wraps(extra_args_provider if extra_args_provider is not None else (lambda p: p))
-    def wrapper(parser):
-        if extra_args_provider is not None:
-            parser = extra_args_provider(parser)
-        MindSpeedFeaturesManager.register_features_args(parser)
-        return parser
+    Feature argument registration and validation are handled by MA's
+    ``parse_args_wrapper``/``validate_args_wrapper`` over the unified feature
+    list, so the MindSpeed layer keeps only the after-validation printing.
+    """
 
-    return wrapper
-
-
-def parse_args_wrapper(parse_args):
-    """Decorate parse_args function of megatron."""
-
-    @wraps(parse_args)
-    def wrapper(extra_args_provider=None, ignore_unknown_args=False):
-        decorated_provider = extra_args_provider_decorator(extra_args_provider)
-        return parse_args(decorated_provider, ignore_unknown_args)
-
-    return wrapper
-
-
-def validate_args_wrapper(validate_args):
-    """A decorator for megatron arguments validation function."""
-
-    @wraps(validate_args)
+    @wraps(fn)
     def wrapper(args, defaults=None):
-        if defaults is None:
-            defaults = {}
-        # make prev validation and copy some args.
-        MindSpeedFeaturesManager.pre_validate_features_args(args)
-
-        # make megatron args validation then restore args that are copied.
-        args = validate_args(args, defaults)
-
-        # make post validation after megatron validation.
-        MindSpeedFeaturesManager.post_validate_features_args(args=args)
-
-        MindSpeedFeaturesManager.validate_features_args(args=args)
+        args = fn(args, defaults)
 
         # _print_args is patched, so it has three arguments.
         from megatron.training.arguments import _print_args
@@ -128,9 +98,8 @@ def transformer_config_init_subclass(cls, **kwargs):
     for key, value in unknown_config.items():
         if not hasattr(cls, key):
             cls.__annotations__[key] = type(value)
-            value = field(default_factory=value) if callable(value) and not isinstance(value, type) else value
             if callable(value) and not isinstance(value, type):
-                value = field(default_factory=value)
+                value = field(default_factory=value)  # pylint: disable=invalid-field-call
             elif type(value) in mutable_types:
-                value = field(default_factory=lambda: value)
+                value = field(default_factory=lambda value=value: value)  # pylint: disable=invalid-field-call
             setattr(cls, key, value)

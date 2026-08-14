@@ -275,15 +275,16 @@ class NpuEnhancementFeature(MindSpeedFeature):
 
         try:
             from mindspeed.core.megatron_basic.arguments_basic import (
-                parse_args_wrapper,
-                validate_args_wrapper,
                 print_args_wrapper,
+                print_after_validate_wrapper,
             )
 
-            patch_manager.register_patch('megatron.training.arguments.parse_args', parse_args_wrapper)
-            patch_manager.register_patch('megatron.training.arguments.validate_args', validate_args_wrapper)
+            # Argument registration/validation for megatron's parse_args/validate_args and
+            # validate_yaml are handled by MA's MegatronBasicFeature;
+            # MindSpeed only keeps post-validation arg printing here.
+            patch_manager.register_patch('megatron.training.arguments.validate_args', print_after_validate_wrapper)
             patch_manager.register_patch('megatron.training.arguments._print_args', print_args_wrapper)
-            patch_manager.register_patch('megatron.training.yaml_arguments.validate_yaml', validate_args_wrapper)
+            patch_manager.register_patch('megatron.training.yaml_arguments.validate_yaml', print_after_validate_wrapper)
             patch_manager.register_patch('megatron.training.yaml_arguments._print_args', print_args_wrapper)
             logger.debug("Non-mcore args patches registered")
         except ImportError as e:

@@ -10,6 +10,17 @@ from megatron_adaptor.features_manager.mindspeed_feature import (
 class MindSpeedFeature(MAFeature):
     """MindSpeed feature base with MindSpeed-only parser helpers."""
 
+    @property
+    def patch_manager(self):
+        """MindSpeed patches are owned by MindSpeedPatchesManager.
+
+        This keeps MindSpeed patch ownership separate from MA, so that
+        removing the MindSpeed layer restores the MA implementation.
+        """
+        from mindspeed.patch_utils import MindSpeedPatchesManager
+
+        return MindSpeedPatchesManager
+
     @staticmethod
     def _is_arg_registered(parser, option_string):
         """Check if an argument with the given option string is already registered."""
