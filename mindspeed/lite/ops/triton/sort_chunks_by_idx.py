@@ -3,8 +3,19 @@
 
 from typing import Tuple
 import torch
+import functools
 import triton
 import triton.language as tl
+
+
+@functools.cache
+def get_vector_num() -> int:
+    from triton.runtime import driver
+    import torch_npu
+
+    device = torch_npu.npu.current_device()
+    properties = driver.active.utils.get_device_properties(device)
+    return properties["num_vectorcore"]
 
 
 @triton.autotune(
@@ -37,31 +48,37 @@ def _make_chunk_sort_map_kernel(
     IDX_LOAD_WIDTH: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    pid_start = pid * BLOCK_SIZE
 
     load_split_offset = tl.arange(0, IDX_LOAD_WIDTH)
-    input_split_sizes = tl.load(
-        split_sizes_ptr + load_split_offset, mask=load_split_offset < num_splits, other=0
-    ).to(tl.float32)
+    input_split_sizes = tl.load(split_sizes_ptr + load_split_offset, mask=load_split_offset < num_splits, other=0).to(
+        tl.float32
+    )
     input_split_sizes_cumsum = tl.cumsum(input_split_sizes)
 
     for off in range(0, BLOCK_SIZE, SUB_BLOCK_SIZE):
-        token_offsets = pid * BLOCK_SIZE + off + tl.arange(0, SUB_BLOCK_SIZE)
+        block_offsets = off + tl.arange(0, SUB_BLOCK_SIZE)
+        token_offsets = pid_start + block_offsets
         token_offsets_cmp = token_offsets.to(tl.float32)
 
         input_split_sizes_mask = tl.where(input_split_sizes_cumsum[None, :] <= token_offsets_cmp[:, None], 1, 0)
         input_chunk_indices = tl.sum(input_split_sizes_mask, axis=-1)
         cumsum_mask = input_chunk_indices < (num_splits + 1)
-        input_split_sizes_presums = tl.load(cumsum_ptr + input_chunk_indices, mask=cumsum_mask, other=0)
+        safe_indices = tl.where(cumsum_mask, input_chunk_indices, 0)
+        input_split_sizes_presums = tl.load(cumsum_ptr + safe_indices, mask=cumsum_mask, other=0)
 
         inv_mask = input_chunk_indices < num_splits
-        output_chunk_indices = tl.load(inverse_sorted_indices_ptr + input_chunk_indices, mask=inv_mask, other=0)
+        safe_inv_indices = tl.where(inv_mask, input_chunk_indices, 0)
+        output_chunk_indices = tl.load(inverse_sorted_indices_ptr + safe_inv_indices, mask=inv_mask, other=0)
 
         output_chunk_mask = output_chunk_indices < (num_splits + 1)
-        output_presums = tl.load(output_cumsum_ptr + output_chunk_indices, mask=output_chunk_mask, other=0)
+        safe_out_indices = tl.where(output_chunk_mask, output_chunk_indices, 0)
+        output_presums = tl.load(output_cumsum_ptr + safe_out_indices, mask=output_chunk_mask, other=0)
 
         dst_rows = output_presums + token_offsets_cmp - input_split_sizes_presums
-        store_mask = token_offsets < num_tokens 
-        tl.store(dst_rows_ptr + token_offsets, dst_rows, mask=store_mask)
+        store_mask = (block_offsets < BLOCK_SIZE) & (token_offsets < num_tokens)
+        safe_token_offsets = tl.where(store_mask, token_offsets, 0)
+        tl.store(dst_rows_ptr + safe_token_offsets, dst_rows, mask=store_mask)
 
 
 def make_chunk_sort_map(
@@ -85,7 +102,7 @@ def make_chunk_sort_map(
         Number of splits of split_sizes and sorted_indices.
     """
     row_id_map = torch.empty((num_tokens,), dtype=torch.int32, device="npu")
-    num_blocks = min(48, num_tokens)
+    num_blocks = min(get_vector_num(), num_tokens)
     block_size = triton.cdiv(num_tokens, num_blocks)
     grid = (num_blocks, 1, 1)
 
@@ -94,11 +111,13 @@ def make_chunk_sort_map(
     cumsum[1:] = split_sizes.cumsum(dim=0, dtype=torch.int32)
 
     inverse_sorted_indices = torch.empty(num_splits, dtype=torch.int32, device="npu")
-    inverse_sorted_indices.scatter_(dim=0, index=sorted_indices, src=torch.arange(num_splits, dtype=torch.int32, device="npu"))
+    inverse_sorted_indices.scatter_(
+        dim=0, index=sorted_indices, src=torch.arange(num_splits, dtype=torch.int32, device="npu")
+    )
 
     output_split_sizes = split_sizes[sorted_indices]
     output_cumsum = torch.empty(split_sizes.size(0) + 1, dtype=torch.int32, device="npu")
-    output_cumsum[0] = 0 
+    output_cumsum[0] = 0
     output_cumsum[1:] = output_split_sizes.cumsum(dim=0, dtype=torch.int32)
 
     _make_chunk_sort_map_kernel[grid](
@@ -144,11 +163,11 @@ def _sort_chunks_by_map_kernel(
 
     for i in range(pid_start, pid_end):
         if FORWARD:
-            src_row = i
+            src_row = i.to(tl.int64)
             dst_row = tl.load(row_id_map_ptr + i).to(tl.int64)
         else:
             src_row = tl.load(row_id_map_ptr + i).to(tl.int64)
-            dst_row = i
+            dst_row = i.to(tl.int64)
 
         current_offset = tl.arange(0, hidden_size)
         input_offsets = src_row * stride_input_token + current_offset * stride_input_hidden
@@ -196,7 +215,7 @@ def sort_chunks_by_map(
     else:
         permuted_probs = None
 
-    num_blocks = 48
+    num_blocks = min(get_vector_num(), num_tokens)
     block_size = triton.cdiv(num_tokens, num_blocks)
     grid = (num_blocks, 1, 1)
     _sort_chunks_by_map_kernel[grid](
@@ -219,7 +238,7 @@ def sort_chunks_by_map(
     )
 
     return output, permuted_probs
- 
+
 
 class _moe_chunk_sort(torch.autograd.Function):
     """functional MoE chunk permute"""
@@ -247,7 +266,7 @@ class _moe_chunk_sort(torch.autograd.Function):
             raise AssertionError('This operation needs NPU')
         if sorted_idxs.device.type != 'npu':
             raise AssertionError('This operation needs NPU')
-        if probs is not None: 
+        if probs is not None:
             if probs.device.type != 'npu':
                 raise AssertionError('This operation needs NPU')
 
