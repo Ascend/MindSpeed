@@ -268,7 +268,9 @@ def dummy_function(*args: Any, **kwargs: Any):
     pass
 
 
-def _copy_model_params_to_main_params_with_swap(self):
+def _copy_model_params_to_main_params_with_swap(self, state_dict=None):
+    if state_dict is not None:
+        raise NotImplementedError("Initialize main params from state dict is not supported for Muon optimizer")
     for model_group, main_group in zip(self.float16_groups, self.fp32_from_float16_groups):
         for model_param, main_param in zip(model_group, main_group):
             # Swap in

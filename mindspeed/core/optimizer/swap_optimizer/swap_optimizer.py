@@ -26,7 +26,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
     state_keys = ['exp_avg', 'exp_avg_sq', 'max_exp_avg_sq']
 
     def __init__(self, *args, **kwargs):
-        super(SwapDistributedOptimizer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.is_distributed_optimizer = hasattr(self, 'per_model_buffers')
         self.optimizer.is_swap_optimizer = True
         if SwapDistributedOptimizer.swap_to_device_stream is None:
@@ -53,9 +53,9 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         self.optimizer.step = lambda closure=None, **kwargs: swap_adamw_step(self.optimizer, closure)
 
         # print swap param num and size
-        swap_num = sum([key.numel() for key in self.main_param_to_model_param_map.keys()])
+        swap_num = sum(param.numel() for param in self.main_param_to_model_param_map)
         self.optimizer.swap_numel = swap_num // get_args().swap_optimizer_times
-        total_num = sum([sum([p.numel() for p in group['params']]) for group in self.optimizer.param_groups])
+        total_num = sum(param.numel() for group in self.optimizer.param_groups for param in group['params'])
         swap_memory = swap_num * 12 / 1024 / 1024
         print(
             '[Rank {}] swap optimizer: {} ({} MB)/{}\n'.format(
@@ -97,7 +97,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         if model_param.dtype == torch.float32:
             cls.no_swap_params.add(main_param)
             cpu_state = {}
-        elif model_param.dtype == torch.float16 or model_param.dtype == torch.bfloat16:
+        elif model_param.dtype in (torch.float16, torch.bfloat16):
             cpu_state = {'param': torch.empty_like(main_param, pin_memory=True, device='cpu')}
         else:
             raise RuntimeError(f'Unknown dtype: {main_param.dtype}')
@@ -107,11 +107,11 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         cls.copy_to_model_param_events_map[main_param] = None
 
     def swap_to_host(self):
-        for param in self.param_to_cpu_states_map.keys():
+        for param in self.param_to_cpu_states_map:
             self.swap_tensors_to_host(param)
 
     def swap_to_device(self):
-        for param in self.param_to_cpu_states_map.keys():
+        for param in self.param_to_cpu_states_map:
             self.swap_tensors_to_device(param)
 
     @classmethod
@@ -299,6 +299,8 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
           buffers. (e.g., one buffer each for main_param, exp_avg, and
           exp_avg_sq).
         """
+        # The nesting follows the checkpoint buffer/dtype/bucket/state/parameter layout.
+        # pylint: disable=too-many-nested-blocks
 
         # Selectively load from a legacy checkpoint. The legacy format was used
         # prior to Feb 13, 2024.
@@ -389,7 +391,7 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                         for key in dst_tensors:
                             if dst_tensors[key] is None:
                                 continue
-                            elif (
+                            if (
                                 dst_tensors[key].storage().size() != 0
                                 or main_param not in SwapDistributedOptimizer.param_to_cpu_states_map
                             ):
@@ -400,8 +402,14 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         for group in self.optimizer.param_groups:
             for p in group['params']:
                 self.optimizer.param_to_group_map[p] = group
+        return None
 
-    def get_parameter_state_dp_zero(self):
+    def get_parameter_state_dp_zero(
+        self,
+        use_gloo_comm: bool = True,
+        empty_data: bool = False,
+        return_on_all_ranks: bool = False,
+    ):
         """Get parameter state (i.e., parameter & optimizer tensors).
 
         This method performs two steps:
@@ -411,6 +419,8 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         - Gather contiguous buffers on DP rank 0 and concatenate to world
           buffers.
         """
+        # The nesting follows the checkpoint buffer/dtype/bucket/state/parameter layout.
+        # pylint: disable=too-many-nested-blocks
         if self.ddp_config.use_custom_fsdp:
             state = {"buckets_coalesced": True}
             for model_chunk in self.model_chunks:
@@ -437,11 +447,11 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
             return state
 
         # Data parallelism variables.
-        assert self.data_parallel_group_gloo is not None
-        data_parallel_world_size = self.data_parallel_group_gloo.size()
-        data_parallel_rank = torch.distributed.get_rank(self.data_parallel_group_gloo)
-        data_parallel_group_gloo = self.data_parallel_group_gloo
-        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(self.data_parallel_group_gloo)
+        data_parallel_group = self.data_parallel_group_gloo if use_gloo_comm else self.data_parallel_group
+        assert data_parallel_group is not None
+        data_parallel_world_size = data_parallel_group.size()
+        data_parallel_rank = data_parallel_group.rank()
+        data_parallel_global_ranks = torch.distributed.get_process_group_ranks(data_parallel_group)
 
         # Collect param states.
         state = {"buckets_coalesced": True}
@@ -453,81 +463,94 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                 buffer_numel_unpadded = self.buffers[gbuf_idx].numel_unpadded
                 # Create coalesced tensors for all state related to parameters in this buffer.
                 world_tensors = {}
-                if data_parallel_rank == 0:
+                if data_parallel_rank == 0 or return_on_all_ranks:
                     world_tensors = {
                         key: torch.zeros((buffer_numel_unpadded,), dtype=torch.float32, device="cpu")
                         for key in ("param", "exp_avg", "exp_avg_sq")
                     }
                     world_tensors["numel_unpadded"] = buffer_numel_unpadded
-                offset_in_world_tensors = 0
-                for bucket_idx, gbuf_range_map in enumerate(gbuf_range_map_for_all_buckets):
-                    # Compute local DP contiguous shard's size.
-                    gbuf_world_numel = self.buffers[gbuf_idx].buckets[bucket_idx].grad_data.numel()
-                    assert gbuf_world_numel % data_parallel_world_size == 0
-                    gbuf_local_numel = gbuf_world_numel // data_parallel_world_size
+                if not empty_data:
+                    offset_in_world_tensors = 0
+                    for bucket_idx, gbuf_range_map in enumerate(gbuf_range_map_for_all_buckets):
+                        # Compute local DP contiguous shard's size.
+                        gbuf_world_numel = self.buffers[gbuf_idx].buckets[bucket_idx].grad_data.numel()
+                        assert gbuf_world_numel % data_parallel_world_size == 0
+                        gbuf_local_numel = gbuf_world_numel // data_parallel_world_size
 
-                    gbuf_world_numel_unpadded = self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
-                    assert gbuf_world_numel_unpadded <= gbuf_world_numel
+                        gbuf_world_numel_unpadded = self.buffers[gbuf_idx].buckets[bucket_idx].numel_unpadded
+                        assert gbuf_world_numel_unpadded <= gbuf_world_numel
 
-                    local_shards = {
-                        key: torch.zeros((gbuf_local_numel,), dtype=torch.float32, device="cpu")
-                        for key in ("param", "exp_avg", "exp_avg_sq")
-                    }
+                        local_shards = {
+                            key: torch.zeros((gbuf_local_numel,), dtype=torch.float32, device="cpu")
+                            for key in ("param", "exp_avg", "exp_avg_sq")
+                        }
 
-                    # Build contiguous DP rank shards (for param + optim states).
-                    for model_param, param_range_map in gbuf_range_map["param_map"].items():
-                        group_index, group_order = self.model_param_group_index_map[model_param]
-                        main_param = self.optimizer.param_groups[group_index]["params"][group_order]
+                        # Build contiguous DP rank shards (for param + optim states).
+                        for model_param, param_range_map in gbuf_range_map["param_map"].items():
+                            group_index, group_order = self.model_param_group_index_map[model_param]
+                            main_param = self.optimizer.param_groups[group_index]["params"][group_order]
 
-                        if main_param in self.param_to_cpu_states_map:
-                            tensors = self.param_to_cpu_states_map[main_param]
-                        else:
-                            tensors = self._get_main_param_and_optimizer_states(model_param)
+                            if main_param in self.param_to_cpu_states_map:
+                                tensors = self.param_to_cpu_states_map[main_param]
+                            else:
+                                tensors = self._get_main_param_and_optimizer_states(model_param)
 
-                        # Copy states into contiguous shard.
-                        gbuf_local_start = param_range_map["gbuf_local"].start
-                        gbuf_local_end = param_range_map["gbuf_local"].end
-                        for key in local_shards:
-                            local_shards[key][gbuf_local_start:gbuf_local_end].data.copy_(tensors[key].detach().cpu())
+                            # Copy states into contiguous shard.
+                            gbuf_local_start = param_range_map["gbuf_local"].start
+                            gbuf_local_end = param_range_map["gbuf_local"].end
+                            for key in local_shards:
+                                local_shards[key][gbuf_local_start:gbuf_local_end].data.copy_(
+                                    tensors[key].detach().cpu()
+                                )
 
-                    # Gather contiguous shards on DP rank 0.
-                    for key, send_tensor in local_shards.items():
-                        # Gather tensor list.
-                        if data_parallel_rank == 0:
-                            recv_tensors = [
-                                torch.zeros((gbuf_local_numel,), dtype=torch.float32, device="cpu")
-                                for _ in range(data_parallel_world_size)
-                            ]
-                        else:
-                            recv_tensors = None
+                        # Gather contiguous shards on DP rank 0.
+                        for key, send_tensor in local_shards.items():
+                            # Gather tensor list.
+                            if data_parallel_rank == 0 or return_on_all_ranks:
+                                device = "cpu" if use_gloo_comm else torch.cuda.current_device()
+                                recv_tensors = [
+                                    torch.zeros((gbuf_local_numel,), dtype=torch.float32, device=device)
+                                    for _ in range(data_parallel_world_size)
+                                ]
+                            else:
+                                recv_tensors = None
 
-                        # Gather.
-                        torch.distributed.gather(
-                            send_tensor,
-                            recv_tensors,
-                            data_parallel_global_ranks[0],
-                            data_parallel_group_gloo,
-                        )
+                            # Gather.
+                            if not use_gloo_comm:
+                                send_tensor = send_tensor.cuda()
+                            if return_on_all_ranks:
+                                torch.distributed.all_gather(recv_tensors, send_tensor, data_parallel_group)
+                            else:
+                                torch.distributed.gather(
+                                    send_tensor,
+                                    recv_tensors,
+                                    data_parallel_global_ranks[0],
+                                    data_parallel_group,
+                                )
 
-                        # Concatenate.
-                        if data_parallel_rank == 0:
-                            recv_tensors_concatenated = torch.cat(recv_tensors)
-                            # Copy this bucket's collected all-gather tensors into the right place
-                            # in the tensor for the buffer. The tensor for the buffer gets rid of
-                            # the padding between buckets.
-                            start = offset_in_world_tensors
-                            end = offset_in_world_tensors + gbuf_world_numel_unpadded
-                            world_tensors[key][start:end].copy_(recv_tensors_concatenated[:gbuf_world_numel_unpadded])
+                            # Concatenate.
+                            if data_parallel_rank == 0 or return_on_all_ranks:
+                                if not use_gloo_comm:
+                                    recv_tensors = [tensor.cpu() for tensor in recv_tensors]
+                                recv_tensors_concatenated = torch.cat(recv_tensors)
+                                # Copy this bucket's collected all-gather tensors into the right place
+                                # in the tensor for the buffer. The tensor for the buffer gets rid of
+                                # the padding between buckets.
+                                start = offset_in_world_tensors
+                                end = offset_in_world_tensors + gbuf_world_numel_unpadded
+                                world_tensors[key][start:end].copy_(
+                                    recv_tensors_concatenated[:gbuf_world_numel_unpadded]
+                                )
 
-                    offset_in_world_tensors += gbuf_world_numel_unpadded
+                        offset_in_world_tensors += gbuf_world_numel_unpadded
 
                 # Collect world state.
                 dtype_state[dtype] = world_tensors
             state[gbuf_idx] = dtype_state
 
-        return state
+        return state if data_parallel_rank == 0 or return_on_all_ranks else None
 
-    def _copy_model_params_to_main_params(self):
+    def _copy_model_params_to_main_params(self, state_dict=None):
         """
         Copy model params to main params.
 
@@ -535,6 +558,9 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
         the model params. This copy does not make use of the grad buffer as
         an intermediary.
         """
+
+        if state_dict is not None:
+            model_param_to_state_dict_param_map = self._build_model_param_to_state_dict_param_map(state_dict)
 
         # Utility method for copying group params.
         def copy_group_params(model_groups, shard_main_groups):
@@ -544,7 +570,10 @@ class SwapDistributedOptimizer(MegatronDistributedOptimizer):
                     param_range = param_range_map["param"]
                     assert param_range.size == shard_main_param.nelement()
 
-                    shard_model_param = model_param.view(-1)[param_range.start : param_range.end]
+                    source_param = (
+                        model_param_to_state_dict_param_map[model_param] if state_dict is not None else model_param
+                    )
+                    shard_model_param = source_param.view(-1)[param_range.start : param_range.end]
 
                     if shard_main_param.storage().size() != 0:
                         shard_main_param.data.copy_(shard_model_param)
