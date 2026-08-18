@@ -130,7 +130,7 @@ run_ms_ut() {
     # ============================================
     echo "===== Installing Python dependencies ====="
     pip install mindspore==2.8.0 -i https://repo.mindspore.cn/pypi/simple --trusted-host repo.mindspore.cn --extra-index-url https://repo.huaweicloud.com/repository/pypi/simple
-    pip install ml_dtypes -i https://repo.huaweicloud.com/repository/pypi/simple
+    pip install ml_dtypes -i https://repo.huaweicloud.com/repository/pypi/simple --no-deps
     pip install transformers==4.51.0
 
     # ============================================
