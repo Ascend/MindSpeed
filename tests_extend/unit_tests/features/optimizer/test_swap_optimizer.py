@@ -199,6 +199,9 @@ class TestDistributedOptimizer(DistributedTest):
             tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1]
         )
         _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
+        # TE FusedAdam stores the non-capturable group step as a Python integer.
+        for group in optimizer.chained_optimizers[0].optimizer.param_groups:
+            group['step'] = 0
         for _ in range(10):
             set_random_grads(optimizer)
             optimizer.step()
@@ -207,6 +210,12 @@ class TestDistributedOptimizer(DistributedTest):
                     model_chunk.start_param_sync(force_sync=True)
                 torch.cuda.synchronize()
         torch.cuda.synchronize()
+        for group in optimizer.chained_optimizers[0].optimizer.param_groups:
+            assert isinstance(group['step'], int)
+            assert group['step'] == 10
+        for step_tensor in optimizer.chained_optimizers[0].optimizer._swap_step_tensors.values():
+            assert torch.is_tensor(step_tensor)
+            assert step_tensor.item() == 10
         swap_optimizer_params = copy.deepcopy(
             list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups))
         )

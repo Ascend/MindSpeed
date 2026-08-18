@@ -598,13 +598,31 @@ def swap_adamw_step(self, closure=None):
         with torch.enable_grad():
             loss = closure()
 
-    for group in self.param_groups:
-        if 'step' in group:
-            group['step'] += 1
-            if group['step'].is_cpu:
-                group['step'] = group['step'].cuda()
+    if not hasattr(self, '_swap_step_tensors'):
+        self._swap_step_tensors = {}
+    group_step_tensors = {}
+    for group_index, group in enumerate(self.param_groups):
+        step = group.get('step')
+        if step is None:
+            step_tensor = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
+            group['step'] = step_tensor
+        elif torch.is_tensor(step):
+            step.add_(1)
+            if step.is_cpu:
+                step = step.cuda()
+                group['step'] = step
+            step_tensor = step
         else:
-            group['step'] = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
+            # TENPU keeps the public group step as an int and uses a private device tensor
+            # for the fused kernel. Preserve that contract for checkpoint and step syncing.
+            group['step'] = int(step) + 1
+            step_tensor = self._swap_step_tensors.get(group_index)
+            if step_tensor is None:
+                step_tensor = torch.tensor(group['step'], dtype=torch.int64, device=torch.cuda.current_device())
+                self._swap_step_tensors[group_index] = step_tensor
+            else:
+                step_tensor.fill_(group['step'])
+        group_step_tensors[id(group)] = step_tensor
 
     swap_count = 0
     params_list = list(self.param_to_group_map.keys())
@@ -645,7 +663,7 @@ def swap_adamw_step(self, closure=None):
             state['exp_avg'],
             state['exp_avg_sq'],
             state['max_exp_avg_sq'],
-            group['step'],
+            group_step_tensors[id(group)],
             group['lr'],
             beta1,
             beta2,
