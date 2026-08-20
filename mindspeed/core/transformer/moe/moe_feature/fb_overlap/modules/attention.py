@@ -1,9 +1,7 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 #  Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
-import torch
 
 from megatron.training import get_args
-from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 
 
@@ -43,7 +41,7 @@ def attention_forward(
     rotary_pos_sin=None,
     attention_bias=None,
     packed_seq_params=None,
-    recompute_norm=False
+    recompute_norm=False,
 ):
     args = get_args()
     if getattr(args, 'enable_mhc', False):
@@ -92,11 +90,6 @@ def attention_forward(
 
     if getattr(args, 'enable_mhc', False):
         # attn mHC post
-        hidden_states = self.attn_mhc(hidden_states, 
-            mhc_stage='post', 
-            residual=residual, 
-            post=post, 
-            comb=comb
-        )
+        hidden_states = self.attn_mhc(hidden_states, mhc_stage='post', residual=residual, post=post, comb=comb)
 
     return hidden_states

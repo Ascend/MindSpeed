@@ -13,9 +13,7 @@ from megatron.training import get_args
 def transformer_config_post_init(self):
     super(TransformerConfig, self).__post_init__()
     if self.fp16 and self.bf16:
-        raise ValueError(
-            f'Only one of self.fp16: {self.fp16} and self.bf16 {self.bf16} should be True.'
-        )
+        raise ValueError(f'Only one of self.fp16: {self.fp16} and self.bf16 {self.bf16} should be True.')
     args = get_args()
     world_size = args.tp_x if args.tp_2d else self.tensor_model_parallel_size
     if self.num_attention_heads % world_size != 0:
@@ -45,45 +43,33 @@ def transformer_config_post_init(self):
         self.attention_softmax_in_fp32 = True
 
     if self.expert_model_parallel_size > 1 and self.num_moe_experts is None:
-        raise ValueError(f'num_moe_experts must be non None to use expert-parallel.')
+        raise ValueError('num_moe_experts must be non None to use expert-parallel.')
 
     if self.num_moe_experts is not None and self.num_moe_experts <= 0:
-        raise ValueError(f'num_moe_experts must be non-negative.')
+        raise ValueError('num_moe_experts must be non-negative.')
 
     if self.moe_expert_capacity_factor is not None:
-        if self.moe_token_dispatcher_type != "alltoall":
-            raise ValueError(
-                f'moe_expert_capacity_factor only works with alltoall token dispatcher'
-            )
+        if self.moe_token_dispatcher_type != "alltoall":  # nosec
+            raise ValueError('moe_expert_capacity_factor only works with alltoall token dispatcher')
         if self.moe_expert_capacity_factor < 0:
             self.moe_expert_capacity_factor = None
         if self.moe_router_load_balancing_type not in ["aux_loss", "none"]:
-            raise ValueError(
-                f'moe_expert_capacity_factor only works with aux_loss or none load balancing'
-            )
+            raise ValueError('moe_expert_capacity_factor only works with aux_loss or none load balancing')
 
     if self.moe_pad_expert_input_to_capacity:
         if self.moe_expert_capacity_factor is None:
-            raise ValueError(
-                f'moe_expert_capacity_factor must be set to use moe_pad_expert_input_to_capacity'
-            )
+            raise ValueError('moe_expert_capacity_factor must be set to use moe_pad_expert_input_to_capacity')
 
     if self.cpu_offloading and (
         self.cpu_offloading_num_layers < 0 or self.cpu_offloading_num_layers >= self.num_layers
     ):
-        raise ValueError(
-            f'CPU offloading can be done only for layers less than {self.num_layers}'
-        )
+        raise ValueError(f'CPU offloading can be done only for layers less than {self.num_layers}')
 
     if self.cpu_offloading and self.pipeline_model_parallel_size > 1:
-        raise ValueError(
-            f'Currently there is no support for Pipeline parallelism with CPU offloading'
-        )
+        raise ValueError('Currently there is no support for Pipeline parallelism with CPU offloading')
 
     if self.cpu_offloading and self.recompute_granularity is not None:
-        raise ValueError(
-            f'CPU offloading does not work when activation recomputation is enabled'
-        )
+        raise ValueError('CPU offloading does not work when activation recomputation is enabled')
 
     if self.recompute_granularity is not None:
         if self.recompute_granularity not in ['full', 'selective']:
@@ -93,9 +79,7 @@ def transformer_config_post_init(self):
 
         if self.recompute_method is not None:
             if self.recompute_method not in ['block', 'uniform']:
-                raise ValueError(
-                    f'recompute_method: {self.recompute_method} must be "block" or "uniform".'
-                )
+                raise ValueError(f'recompute_method: {self.recompute_method} must be "block" or "uniform".')
         elif self.recompute_granularity != 'selective':
             raise ValueError(
                 f'Using recompute_granularity: {self.recompute_granularity} so recompute_method must be "block" or "uniform"'
@@ -106,9 +90,7 @@ def transformer_config_post_init(self):
                 f'When using recompute_granularity: {self.recompute_granularity} recompute_num_layers must be between '
                 f'1 and num_layers_per_pipeline_rank: {self.num_layers // self.pipeline_model_parallel_size}'
             )
-        elif (
-            self.recompute_granularity == 'selective' and self.recompute_num_layers is not None
-        ):
+        elif self.recompute_granularity == 'selective' and self.recompute_num_layers is not None:
             raise ValueError(
                 f'When using recompute_granularity: {self.recompute_granularity} recompute_num_layers must be None.'
             )
@@ -129,14 +111,8 @@ def transformer_config_post_init(self):
 
     if self.bias_activation_fusion:
         if self.activation_func not in [F.gelu, F.silu]:
-            raise ValueError(
-                "When bias_activation_fusion is True, activation function should be either gelu or swiglu"
-            )
-        if (
-            self.activation_func == F.gelu
-            and not self.gated_linear_unit
-            and not self.add_bias_linear
-        ):
+            raise ValueError("When bias_activation_fusion is True, activation function should be either gelu or swiglu")
+        if self.activation_func == F.gelu and not self.gated_linear_unit and not self.add_bias_linear:
             raise ValueError(
                 "When bias_activation_fusion is True, gated_linear_unit is False, "
                 "and activation function is gelu, add_bias_linear must also be True."
@@ -145,21 +121,17 @@ def transformer_config_post_init(self):
         if self.activation_func != F.silu or not self.gated_linear_unit:
             raise ValueError("Storing activation input in FP8 is supported only for SwiGLU.")
     if self.apply_rope_fusion and self.rotary_interleaved:
-        raise ValueError(f'rotary_interleaved does not work with apply_rope_fusion.')
+        raise ValueError('rotary_interleaved does not work with apply_rope_fusion.')
 
     if self.init_method is None:
         self.init_method = init_method_normal(self.init_method_std)
 
     if self.output_layer_init_method is None:
-        self.output_layer_init_method = scaled_init_method_normal(
-            self.init_method_std, self.num_layers
-        )
+        self.output_layer_init_method = scaled_init_method_normal(self.init_method_std, self.num_layers)
 
     if self.moe_extended_tp:
-        if self.moe_token_dispatcher_type != 'allgather':
-            raise ValueError(
-                "Moe extended TP parallelism only applies to allgather based token dispatcher."
-            )
+        if self.moe_token_dispatcher_type != 'allgather':  # nosec
+            raise ValueError("Moe extended TP parallelism only applies to allgather based token dispatcher.")
         extended_tp_size = self.tensor_model_parallel_size * self.expert_model_parallel_size
         if self.ffn_hidden_size % extended_tp_size != 0:
             raise ValueError(
@@ -170,7 +142,7 @@ def transformer_config_post_init(self):
 def transformer_config_post_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self):
-        #Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
+        # Reset apply_rope_fusion to bypass Megatron core_r0.10.0 check.
         ori_apply_rope_fusion = self.apply_rope_fusion
         self.apply_rope_fusion = False
         if self.num_moe_experts is None:
@@ -188,11 +160,12 @@ def transformer_config_post_init_wrapper(fn):
             field_name = str(key)
             field_type = type(value)
             if not hasattr(self, key):
-                field_def = (field_name, field_type, field(init=False))
+                field_def = (field_name, field_type, field(init=False))  # pylint: disable=invalid-field-call
                 fields.append(field_def)
         self.__class__ = make_dataclass(self.__class__.__name__, fields=fields, bases=(self.__class__,))
 
         for key, value in vars(args).items():
             if not hasattr(self, key):
                 setattr(self, key, value)
+
     return wrapper

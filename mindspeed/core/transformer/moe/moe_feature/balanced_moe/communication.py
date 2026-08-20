@@ -2,12 +2,12 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import torch
-import torch_npu
 from megatron.training import get_args
 
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.parallel_state import (
     get_expert_model_parallel_global_ranks,
-    get_hot_expert_group_list)
+    get_hot_expert_group_list,
+)
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.modules.moe_layer import get_shared_grad_for_hot_experts
 
 
@@ -58,15 +58,19 @@ def _multiple_broadcast(src_rank_list, data_ptr_list, num_hot_experts, params):
             src_rank = src_rank_list[offset]
             weight = data_ptr_list[offset][weight_ofst]
             comm_group = hot_expert_group_list[src_rank % hot_expert_group_list_len]
-            handle = torch.distributed.broadcast(weight.data,
-                                                 src_rank,
-                                                 comm_group,
-                                                 async_op=True)
+            handle = torch.distributed.broadcast(weight.data, src_rank, comm_group, async_op=True)
             hot_expert_broadcast_handles[offset].append(handle)
 
 
 def _groupedmlp_hot_expert_gradient_reduce(hot_experts_list, hot_experts, params):
-    num_local_experts, _, expert_broadcast_streams, hot_expert_finish_events, _, hot_expert_inter_ep_grad_reduce_handles = params
+    (
+        num_local_experts,
+        _,
+        expert_broadcast_streams,
+        hot_expert_finish_events,
+        _,
+        hot_expert_inter_ep_grad_reduce_handles,
+    ) = params
     num_hot_experts = len(hot_experts_list)
     hidden_size = hot_experts.config.hidden_size
     grad_hot_w1, grad_hot_w2 = get_shared_grad_for_hot_experts()
@@ -91,10 +95,7 @@ def _groupedmlp_hot_expert_gradient_reduce(hot_experts_list, hot_experts, params
         dst_rank = global_ranks[dst_rank_idx]
         tgt_rank_list.append(dst_rank)
         # Sender & Receiver
-        data_ptr_list.append((
-            grad_hot_w1[offset].contiguous(),
-            grad_hot_w2[offset].contiguous()
-        ))
+        data_ptr_list.append((grad_hot_w1[offset].contiguous(), grad_hot_w2[offset].contiguous()))
 
     for weight_ofst in range(2):
         for offset in range(num_hot_experts):
@@ -105,8 +106,5 @@ def _groupedmlp_hot_expert_gradient_reduce(hot_experts_list, hot_experts, params
             weight = data_ptr_list[offset][weight_ofst]
             comm_group = hot_expert_group_list[tgt_rank % hot_expert_group_list_len]
 
-            handle = torch.distributed.reduce(weight,
-                                              tgt_rank,
-                                              group=comm_group,
-                                              async_op=True)
+            handle = torch.distributed.reduce(weight, tgt_rank, group=comm_group, async_op=True)
             hot_expert_inter_ep_grad_reduce_handles[weight_ofst][offset] = handle

@@ -1,14 +1,9 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
-import operator
 import queue
-from functools import reduce
 import torch
 import torch_npu
 
-from megatron.core.parallel_state import (
-    get_tensor_model_parallel_group,
-    get_tensor_model_parallel_world_size
-)
+from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
 from megatron.training import get_args
 
 
@@ -113,20 +108,20 @@ class WeightGradStore:
     def overlap_all_gather(cls):
         # used for grad_output all gather in RowParallel and input all gather in ColumnParallel.
         if len(cls.cache) > 0:
-            [input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts] = cls.cache.pop(0)
+            [input_tensor, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts] = cls.cache.pop(0)
             if not sequence_parallel:
-                return (input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts), None
+                return (input_tensor, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts), None
             if not in_row:
-                total_input, handle = gather(input, cls.gather_stream)
+                total_input, handle = gather(input_tensor, cls.gather_stream)
                 grad_output = grad_output_slice
             else:
                 if pipe_experts and not get_args().use_nanopipe_swap:
                     grad_output_slice = cls.grad_store.pop(0)
                 grad_output, handle = gather(grad_output_slice, cls.gather_stream)
-                total_input = input
+                total_input = input_tensor
             return [total_input, grad_output, weight, sequence_parallel, in_row, pipe_experts], handle
         else:
-            raise Exception("All Gather empty queue.")
+            raise RuntimeError("All Gather empty queue.")
 
     @classmethod
     def swap_tensors(cls):
@@ -138,14 +133,14 @@ class WeightGradStore:
                 cls.cache[cache_id] = list(cls.cache[cache_id])
                 if cls.cache[cache_id][-1] and cls.cache[cache_id][1] is None:
                     cls.cache[cache_id][1] = cls.grad_store.pop(0)
-                input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.cache[cache_id]
+                input_tensor, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.cache[cache_id]
                 if pipe_experts:
                     storage_size_g, tensor_cpu_g = cls.host_pipe_experts_grad.pop(0)
                 else:
                     storage_size_g, tensor_cpu_g = cls.host_tensors_gradoutput.pop(0)
                 storage_size_i, tensor_cpu_i = cls.host_tensors_input.pop(0)
                 swap_h2d(grad_output_slice, tensor_cpu_g, storage_size_g, cls.prefetch_stream)
-                swap_h2d(input, tensor_cpu_i, storage_size_i, cls.prefetch_stream)
+                swap_h2d(input_tensor, tensor_cpu_i, storage_size_i, cls.prefetch_stream)
                 cls.swap_event.append((cls.prefetch_stream.record_event()))
 
     @classmethod
@@ -154,22 +149,15 @@ class WeightGradStore:
         grad_output = grad_output.contiguous()
         sb = grad_output.shape[0] * grad_output.shape[1]
         # Convert the tensor shapes to 2D for execution compatibility
-        grad_output = grad_output.view(
-            sb, grad_output.shape[2]
-        )
-        total_input = total_input.view(
-            sb, total_input.shape[2]
-        )
+        grad_output = grad_output.view(sb, grad_output.shape[2])
+        total_input = total_input.view(sb, total_input.shape[2])
         if get_args().gradient_accumulation_fusion:
             import fused_weight_gradient_mlp_cuda
+
             if weight.main_grad.dtype == torch.float32:
-                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(
-                    total_input, grad_output, weight.main_grad
-                )
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(total_input, grad_output, weight.main_grad)
             elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
-                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(
-                    total_input, grad_output, weight.main_grad
-                )
+                fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(total_input, grad_output, weight.main_grad)
             else:
                 raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
         else:
@@ -186,9 +174,9 @@ class WeightGradStore:
         if get_args().overlap_grad_reduce:
             if overlap_arg is None:
                 raise RuntimeError("overlap_arg is invalid")
-            pipeline_parallel_size, nano_flag, synchronized_model_chunks, grad_sync_func, model = overlap_arg 
+            pipeline_parallel_size, nano_flag, synchronized_model_chunks, grad_sync_func, model = overlap_arg
             model_chunk_id = len(nano_flag) - 1
-        input, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.cache.pop(0)
+        input_tensor, grad_output_slice, weight, sequence_parallel, in_row, pipe_experts = cls.cache.pop(0)
         if not sequence_parallel:
             grad_output = grad_output_slice
             handle = None
@@ -197,7 +185,7 @@ class WeightGradStore:
                 grad_output_slice = cls.grad_store.pop(0)
             grad_output, handle = gather(grad_output_slice, cls.gather_stream)
         layers_count = 0
-        cls.store_grad_cache = (input, grad_output, weight, sequence_parallel, in_row, pipe_experts)
+        cls.store_grad_cache = (input_tensor, grad_output, weight, sequence_parallel, in_row, pipe_experts)
         while len(cls.cache) > 0:
             if handle is not None:
                 handle.wait()
@@ -212,7 +200,7 @@ class WeightGradStore:
                             grad_sync_func[model_chunk_id](model[model_chunk_id].parameters())
                             synchronized_model_chunks.add(model_chunk_id)
                         model_chunk_id -= 1
-                        layers_count = 0 
+                        layers_count = 0
                     cls.grad_overlap_count = 0
             cls.store_grad_cache = next_grad_cache
         if handle is not None:

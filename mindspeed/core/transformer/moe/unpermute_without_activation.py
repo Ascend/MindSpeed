@@ -3,21 +3,25 @@
 
 import torch
 import torch.distributed
-import torch.distributed as dist
 import torch_npu
 from megatron.training import get_args
-from mindspeed.core.transformer.moe.moe_utils import set_swap_status, get_swap_status, set_prob_backward_need_tensors, get_swap_stream
+from mindspeed.core.transformer.moe.moe_utils import (
+    set_swap_status,
+    get_swap_status,
+    set_prob_backward_need_tensors,
+    get_swap_stream,
+)
 
 
 class UnpermuteWithoutActivation(torch.autograd.Function):
     @staticmethod
-    def forward(ctx,
+    def forward(
+        ctx,
         permuted_tokens: torch.Tensor,
         sorted_indices: torch.Tensor,
         restore_shape: torch.Size,
         probs: torch.Tensor = None,
         routing_map: torch.Tensor = None,
-
     ):
         """Unpermute a tensor of permuted tokens based on sorted indices, and optionally merge the tokens with their corresponding probabilities.
 
@@ -75,7 +79,9 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
                 forward_event = torch.npu.Event()
                 forward_event.record()
                 set_swap_status(tensor_to_swap)
-                ctx.tensor_cpu = torch.empty(tensor_to_swap.shape, dtype=tensor_to_swap.dtype, pin_memory=True, device='cpu')
+                ctx.tensor_cpu = torch.empty(
+                    tensor_to_swap.shape, dtype=tensor_to_swap.dtype, pin_memory=True, device='cpu'
+                )
                 with torch_npu.npu.stream(swap_stream):
                     swap_stream.wait_event(forward_event)
                     ctx.tensor_cpu.untyped_storage().copy_(tensor_to_swap.untyped_storage(), non_blocking=True)
@@ -99,7 +105,9 @@ class UnpermuteWithoutActivation(torch.autograd.Function):
             backward_event1 = torch.npu.Event()
             backward_event1.record()
             swap_stream = get_swap_stream()
-            permuted_tokens = torch.empty(ctx.tensor_cpu.shape, dtype=ctx.tensor_cpu.dtype, device=torch.npu.current_device())
+            permuted_tokens = torch.empty(
+                ctx.tensor_cpu.shape, dtype=ctx.tensor_cpu.dtype, device=torch.npu.current_device()
+            )
             gather_indices = indices.unsqueeze(1).expand(-1, ctx.hidden_size)
             permuted_tokens_grad = torch.gather(matmul_output_grad, 0, gather_indices)
             with torch_npu.npu.stream(swap_stream):
