@@ -15,19 +15,22 @@
 import time
 from functools import wraps
 import contextlib
-from typing import Callable, Iterator, List, Optional, Union
+from typing import Iterator, List, Union
 import torch
-from torch.autograd.variable import Variable
 from megatron.core import parallel_state
-from megatron.core.enums import ModelType
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.training import get_args
-from megatron.core.pipeline_parallel.schedules import forward_step, backward_step, deallocate_output_tensor, check_first_val_step
+from megatron.core.pipeline_parallel.schedules import (
+    forward_step,
+    backward_step,
+    deallocate_output_tensor,
+    check_first_val_step,
+)
 
 from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 from mindspeed.core.performance.auto_pipeline_perf.autopipeline_perf import profile_context
-import mindspeed.core.training as training
+from mindspeed.core import training
 
 
 def get_forward_backward_func_decorator(get_forward_backward_func):
@@ -40,6 +43,7 @@ def get_forward_backward_func_decorator(get_forward_backward_func):
         else:
             forward_backward_func = get_forward_backward_func(*args, **kwargs)
         return forward_backward_func
+
     return wrapper
 
 
@@ -95,6 +99,7 @@ def backward_step_decorator(fn):
         else:
             input_tensor_grad = fn(*args, **kwargs)
         return input_tensor_grad
+
     return wrapper
 
 
@@ -103,22 +108,30 @@ def get_tensor_shapes():
     tensor_shapes = []
     mbs = args.optimized_mbs_list
     for m in mbs:
-        tensor_shapes.append((args.seq_length // parallel_state.get_context_parallel_world_size() // parallel_state.get_tensor_model_parallel_world_size(), m, args.hidden_size))
+        tensor_shapes.append(
+            (
+                args.seq_length
+                // parallel_state.get_context_parallel_world_size()
+                // parallel_state.get_tensor_model_parallel_world_size(),
+                m,
+                args.hidden_size,
+            )
+        )
     return tensor_shapes
 
 
 def optimized_forward_backward_pipelining(
-        *,
-        forward_step_func,
-        data_iterator: Union[Iterator, List[Iterator]],
-        model: Union[torch.nn.Module, List[torch.nn.Module]],
-        num_microbatches: int,
-        seq_length: int,
-        micro_batch_size: int,
-        decoder_seq_length: int = None,
-        forward_only: bool = False,
-        collect_non_loss_data: bool = False,
-        first_val_step: bool = None,
+    *,
+    forward_step_func,
+    data_iterator: Union[Iterator, List[Iterator]],
+    model: Union[torch.nn.Module, List[torch.nn.Module]],
+    num_microbatches: int,
+    seq_length: int,
+    micro_batch_size: int,
+    decoder_seq_length: int = None,
+    forward_only: bool = False,
+    collect_non_loss_data: bool = False,
+    first_val_step: bool = None,
 ):
     """Run non-interleaved 1F1B schedule, with reduced pipeline bubble.
     Returns dictionary with losses if the last stage, empty dict otherwise.
@@ -136,9 +149,7 @@ def optimized_forward_backward_pipelining(
     argument.optimized_mbs_mode = True
     num_microbatches = len(argument.optimized_mbs_list)
     if config.overlap_p2p_comm:
-        raise ValueError(
-            "Optimized pipeline parallelism does not support overlapping p2p communication"
-        )
+        raise ValueError("Optimized pipeline parallelism does not support overlapping p2p communication")
 
     # Disable async grad reductions
     no_sync_func = config.no_sync_func
@@ -150,27 +161,24 @@ def optimized_forward_backward_pipelining(
         """Disable asynchronous grad reductions"""
         nonlocal no_sync_context
         if no_sync_context is None:
-            no_sync_context = no_sync_func()
-            no_sync_context.__enter__()
+            no_sync_context = contextlib.ExitStack()
+            no_sync_context.enter_context(no_sync_func())
 
     def enable_grad_sync():
         """Enable asynchronous grad reductions"""
         nonlocal no_sync_context
         if no_sync_context is not None:
-            no_sync_context.__exit__(None, None, None)
+            no_sync_context.close()
             no_sync_context = None
 
     disable_grad_sync()
 
     # Compute number of warmup microbatches.
-    num_warmup_microbatches = \
-        (parallel_state.get_pipeline_model_parallel_world_size() -
-         parallel_state.get_pipeline_model_parallel_rank() - 1)
-    num_warmup_microbatches = min(
-        num_warmup_microbatches,
-        num_microbatches)
-    num_microbatches_remaining = \
-        num_microbatches - num_warmup_microbatches
+    num_warmup_microbatches = (
+        parallel_state.get_pipeline_model_parallel_world_size() - parallel_state.get_pipeline_model_parallel_rank() - 1
+    )
+    num_warmup_microbatches = min(num_warmup_microbatches, num_microbatches)
+    num_microbatches_remaining = num_microbatches - num_warmup_microbatches
 
     input_tensors = []
     output_tensors = []
@@ -179,8 +187,7 @@ def optimized_forward_backward_pipelining(
 
     # Run warmup forward passes.
     for i in range(num_warmup_microbatches):
-        input_tensor = p2p_communication.recv_forward(config=config,
-                                                      tensor_shape=tensor_shapes[cnt_fwd])
+        input_tensor = p2p_communication.recv_forward(config=config, tensor_shape=tensor_shapes[cnt_fwd])
         argument.micro_batch_size = argument.optimized_mbs_list[cnt_fwd]
         output_tensor = forward_step(
             forward_step_func,
@@ -204,12 +211,11 @@ def optimized_forward_backward_pipelining(
     # If all microbatches are run in warmup / cooldown phase, then no need to
     # receive this tensor here.
     if num_microbatches_remaining > 0:
-        input_tensor = p2p_communication.recv_forward(config=config,
-                                                      tensor_shape=tensor_shapes[cnt_fwd])
+        input_tensor = p2p_communication.recv_forward(config=config, tensor_shape=tensor_shapes[cnt_fwd])
 
     # Run 1F1B in steady state.
     for i in range(num_microbatches_remaining):
-        last_iteration = (i == (num_microbatches_remaining - 1))
+        last_iteration = i == (num_microbatches_remaining - 1)
         argument.micro_batch_size = argument.optimized_mbs_list[cnt_fwd]
         output_tensor = forward_step(
             forward_step_func,
@@ -221,18 +227,16 @@ def optimized_forward_backward_pipelining(
             config,
             collect_non_loss_data,
             None,
-            check_first_val_step(
-                first_val_step, forward_only, (i == 0) and (num_warmup_microbatches == 0)
-            ),
+            check_first_val_step(first_val_step, forward_only, (i == 0) and (num_warmup_microbatches == 0)),
         )
         if forward_only:
             p2p_communication.send_forward(output_tensor, config=config)
             if not last_iteration:
                 input_tensor = p2p_communication.recv_forward(tensor_shapes=tensor_shapes[cnt_fwd], config=config)
         else:
-            output_tensor_grad = \
-                p2p_communication.send_forward_recv_backward(output_tensor,
-                                                             tensor_shape=tensor_shapes[cnt_bwd], config=config)
+            output_tensor_grad = p2p_communication.send_forward_recv_backward(
+                output_tensor, tensor_shape=tensor_shapes[cnt_bwd], config=config
+            )
 
         cnt_fwd += 1
         # Add input_tensor and output_tensor to end of list, then pop from the
@@ -243,25 +247,22 @@ def optimized_forward_backward_pipelining(
 
         if forward_only:
             if not last_iteration:
-                input_tensor = p2p_communication.recv_forward(config=config,
-                                                              tensor_shape=tensor_shapes[cnt_fwd])
+                input_tensor = p2p_communication.recv_forward(config=config, tensor_shape=tensor_shapes[cnt_fwd])
         else:
             input_tensor, output_tensor = input_tensors.pop(0), output_tensors.pop(0)
             if num_warmup_microbatches == 0 and last_iteration:
                 if config.grad_sync_func is None or rank == 0:
                     enable_grad_sync()
 
-            input_tensor_grad = \
-                backward_step(input_tensor, output_tensor,
-                              output_tensor_grad, model_type, config)
+            input_tensor_grad = backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
 
             if last_iteration:
                 input_tensor = None
                 p2p_communication.send_backward(input_tensor_grad, config=config)
             else:
-                input_tensor = \
-                    p2p_communication.send_backward_recv_forward(
-                        input_tensor_grad, tensor_shape=tensor_shapes[cnt_fwd], config=config)
+                input_tensor = p2p_communication.send_backward_recv_forward(
+                    input_tensor_grad, tensor_shape=tensor_shapes[cnt_fwd], config=config
+                )
         cnt_bwd += 1
 
     # Run cooldown backward passes.
@@ -273,12 +274,9 @@ def optimized_forward_backward_pipelining(
 
             input_tensor = input_tensors.pop(0)
             output_tensor = output_tensors.pop(0)
-            output_tensor_grad = p2p_communication.recv_backward(
-                tensor_shape=tensor_shapes[cnt_bwd], config=config)
+            output_tensor_grad = p2p_communication.recv_backward(tensor_shape=tensor_shapes[cnt_bwd], config=config)
 
-            input_tensor_grad = \
-                backward_step(input_tensor, output_tensor,
-                              output_tensor_grad, model_type, config)
+            input_tensor_grad = backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
             p2p_communication.send_backward(input_tensor_grad, config)
             cnt_bwd += 1
 

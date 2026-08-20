@@ -16,7 +16,6 @@ from functools import wraps
 from typing import List
 
 import torch
-import torch.distributed as dist
 from torch._utils import _flatten_dense_tensors
 from torch._utils import _unflatten_dense_tensors
 
@@ -43,9 +42,7 @@ def _allreduce_layernorm_grads_wrapper(function):
         if layer_norm_2d_grads:
             coalesced = _flatten_dense_tensors(layer_norm_2d_grads)
             torch.distributed.all_reduce(coalesced, group=TPXCollectiveComm.get_comm_group())
-            for buf, synced in zip(
-                layer_norm_2d_grads, _unflatten_dense_tensors(coalesced, layer_norm_2d_grads)
-            ):
+            for buf, synced in zip(layer_norm_2d_grads, _unflatten_dense_tensors(coalesced, layer_norm_2d_grads)):
                 buf.copy_(synced)
 
     return wrapper
@@ -61,13 +58,11 @@ def get_norm_tp_2d(config):
         )
     elif args.normalization == "RMSNorm":
         if args.apply_layernorm_1p:
-            raise NotImplementedError(
-                "RMSNorm does not currently support the layernorm_1p formulation."
-            )
+            raise NotImplementedError("RMSNorm does not currently support the layernorm_1p formulation.")
         return RMSNorm2D(
             config.hidden_size,
             eps=config.layernorm_epsilon,
             last_dim_split_comm_intf=TPYCollectiveComm(),
         )
     else:
-        raise Exception(f"unsupported norm type '{args.normalization}'.")
+        raise ValueError(f"unsupported norm type '{args.normalization}'.")

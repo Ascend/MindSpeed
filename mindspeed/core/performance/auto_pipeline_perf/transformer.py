@@ -14,4 +14,5 @@ def get_attention_mask_wrapper(get_attention_mask):
         else:
             get_attention_mask(*args, **kwargs)
         return mindspeed.model.transformer._GLOBAL_ATTN_MASK
+
     return wrapper

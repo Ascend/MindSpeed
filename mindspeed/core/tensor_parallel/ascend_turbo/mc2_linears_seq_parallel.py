@@ -16,9 +16,7 @@ class ColumnSeqParallelLinear(torch.autograd.Function):
         hcomm_info = None
         if torch.__version__ > "2.0":
             global_rank = torch.distributed.get_global_rank(group, rank)
-            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-                global_rank
-            )
+            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(global_rank)
 
         else:
             hcomm_info = group.get_hccl_comm_name(rank)
@@ -40,9 +38,7 @@ class ColumnSeqParallelLinear(torch.autograd.Function):
         if bias is not None:
             output = output + bias
 
-        output = output.view(
-            int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]
-        )
+        output = output.view(int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1])
 
         ctx.all_gather_output = all_gather_grad_output
         ctx.world_size = world_size
@@ -54,9 +50,7 @@ class ColumnSeqParallelLinear(torch.autograd.Function):
         input_ = ctx.saved_tensors[0]
         weight = ctx.weight
 
-        grad_output_ = grad_output.reshape(
-            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
-        )
+        grad_output_ = grad_output.reshape(grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2])
 
         if ascend_turbo_cfg.all_gather_recomputation:
             dim_size = list(input_.size())
@@ -74,13 +68,9 @@ class ColumnSeqParallelLinear(torch.autograd.Function):
             all_gather_output = ctx.all_gather_output
 
         grad_input = grad_output_.matmul(weight)
-        grad_input = grad_input.reshape(
-            grad_output.shape[0], grad_output.shape[1], weight.shape[1]
-        )
+        grad_input = grad_input.reshape(grad_output.shape[0], grad_output.shape[1], weight.shape[1])
 
-        sub_grad_input = torch.empty(
-            list(input_.size()), dtype=input_.dtype, device=torch.cuda.current_device()
-        )
+        sub_grad_input = torch.empty(list(input_.size()), dtype=input_.dtype, device=torch.cuda.current_device())
         reduce_scatter_work = torch.distributed._reduce_scatter_base(
             sub_grad_input, grad_input, group=ctx.group, async_op=True
         )
@@ -94,6 +84,7 @@ class ColumnSeqParallelLinear(torch.autograd.Function):
 
         if ctx.gradient_accumulation_fusion and weight.main_grad.dtype == torch.float32:
             from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
+
             npu_matmul_add_fp32(all_gather_output, grad_output_, weight.main_grad)
 
             if hasattr(weight, 'grad_added_to_main_grad'):
@@ -123,11 +114,7 @@ class ColumnSeqParallelLinear(torch.autograd.Function):
 
         is_grad_bias_needed = ctx.needs_input_grad[2]
         if is_grad_bias_needed and ctx.use_bias:
-            grad_bias = (
-                grad_output_.sum(dim=0)
-                if grad_output_.is_contiguous()
-                else grad_output_.t().sum(dim=1)
-            )
+            grad_bias = grad_output_.sum(dim=0) if grad_output_.is_contiguous() else grad_output_.t().sum(dim=1)
         else:
             grad_bias = None
 
@@ -148,18 +135,14 @@ class RowSeqParallelLinear(torch.autograd.Function):
         hcomm_info = None
         if torch.__version__ > "2.0":
             global_rank = torch.distributed.get_global_rank(group, rank)
-            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-                global_rank
-            )
+            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(global_rank)
         else:
             hcomm_info = group.get_hccl_comm_name(rank)
 
         x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
 
         # npu_mm_reduce_scatter_base currently do not support bias
-        output = torch_npu.npu_mm_reduce_scatter_base(
-            x, weight.t(), hcomm_info, world_size, reduce_op="sum", bias=None
-        )
+        output = torch_npu.npu_mm_reduce_scatter_base(x, weight.t(), hcomm_info, world_size, reduce_op="sum", bias=None)
 
         if bias is not None:
             output = output + bias
@@ -167,9 +150,7 @@ class RowSeqParallelLinear(torch.autograd.Function):
         ctx.hcomm_info = hcomm_info
         ctx.world_size = world_size
 
-        output = output.view(
-            int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]
-        )
+        output = output.view(int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1])
 
         return output
 
@@ -180,9 +161,7 @@ class RowSeqParallelLinear(torch.autograd.Function):
         hcomm_info = ctx.hcomm_info
         world_size = ctx.world_size
 
-        grad_output_ = grad_output.reshape(
-            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
-        )
+        grad_output_ = grad_output.reshape(grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2])
 
         grad_input, all_gather_grad_output = torch_npu.npu_all_gather_base_mm(
             grad_output_, weight, hcomm_info, world_size, bias=None, gather_index=0
@@ -193,6 +172,7 @@ class RowSeqParallelLinear(torch.autograd.Function):
         x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
         if ctx.gradient_accumulation_fusion and weight.main_grad.dtype == torch.float32:
             from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
+
             npu_matmul_add_fp32(x, all_gather_grad_output, weight.main_grad)
 
             if hasattr(weight, 'grad_added_to_main_grad'):
@@ -222,11 +202,7 @@ class RowSeqParallelLinear(torch.autograd.Function):
 
         is_grad_bias_needed = ctx.needs_input_grad[2]
         if is_grad_bias_needed and ctx.use_bias:
-            grad_bias = (
-                grad_output.sum(dim=0)
-                if grad_output.is_contiguous()
-                else grad_output.t().sum(dim=1)
-            )
+            grad_bias = grad_output.sum(dim=0) if grad_output.is_contiguous() else grad_output.t().sum(dim=1)
         else:
             grad_bias = None
 
@@ -244,9 +220,7 @@ class ColumnSeqParallelLinearWithFrozenWeight(ColumnSeqParallelLinear):
         hcomm_info = None
         if torch.__version__ > "2.0":
             global_rank = torch.distributed.get_global_rank(group, rank)
-            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-                global_rank
-            )
+            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(global_rank)
 
         else:
             hcomm_info = group.get_hccl_comm_name(rank)
@@ -268,9 +242,7 @@ class ColumnSeqParallelLinearWithFrozenWeight(ColumnSeqParallelLinear):
         if bias is not None:
             output = output + bias
 
-        output = output.view(
-            int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]
-        )
+        output = output.view(int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1])
         ctx.hcomm_info = hcomm_info
         ctx.world_size = world_size
         ctx.group = group
@@ -283,13 +255,9 @@ class ColumnSeqParallelLinearWithFrozenWeight(ColumnSeqParallelLinear):
 
         hcomm_info = ctx.hcomm_info
         world_size = ctx.world_size
-        grad_output_ = grad_output.reshape(
-            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
-        )
+        grad_output_ = grad_output.reshape(grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2])
 
-        sub_grad_input = torch_npu.npu_mm_reduce_scatter_base(
-            grad_output_, weight, hcomm_info, world_size, bias=None
-        )
+        sub_grad_input = torch_npu.npu_mm_reduce_scatter_base(grad_output_, weight, hcomm_info, world_size, bias=None)
 
         sub_grad_input = sub_grad_input.view(input_shape)
 
@@ -308,18 +276,14 @@ class RowSeqParallelLinearWithFrozenWeight(RowSeqParallelLinear):
         hcomm_info = None
         if torch.__version__ > "2.0":
             global_rank = torch.distributed.get_global_rank(group, rank)
-            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-                global_rank
-            )
+            hcomm_info = group._get_backend(torch.device("npu")).get_hccl_comm_name(global_rank)
         else:
             hcomm_info = group.get_hccl_comm_name(rank)
 
         x = input_.reshape(input_.shape[0] * input_.shape[1], input_.shape[2])
 
         # npu_mm_reduce_scatter_base currently do not support bias
-        output = torch_npu.npu_mm_reduce_scatter_base(
-            x, weight.t(), hcomm_info, world_size, reduce_op="sum", bias=None
-        )
+        output = torch_npu.npu_mm_reduce_scatter_base(x, weight.t(), hcomm_info, world_size, reduce_op="sum", bias=None)
 
         if bias is not None:
             output = output + bias
@@ -327,9 +291,7 @@ class RowSeqParallelLinearWithFrozenWeight(RowSeqParallelLinear):
         ctx.hcomm_info = hcomm_info
         ctx.world_size = world_size
 
-        output = output.view(
-            int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1]
-        )
+        output = output.view(int(output.shape[0] / input_.shape[1]), input_.shape[1], output.shape[1])
 
         return output
 
@@ -339,9 +301,7 @@ class RowSeqParallelLinearWithFrozenWeight(RowSeqParallelLinear):
         weight = ctx.weight
         hcomm_info = ctx.hcomm_info
         world_size = ctx.world_size
-        grad_output_ = grad_output.reshape(
-            grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2]
-        )
+        grad_output_ = grad_output.reshape(grad_output.shape[0] * grad_output.shape[1], grad_output.shape[2])
 
         grad_input, _ = torch_npu.npu_all_gather_base_mm(
             grad_output_, weight, hcomm_info, world_size, bias=None, gather_index=0

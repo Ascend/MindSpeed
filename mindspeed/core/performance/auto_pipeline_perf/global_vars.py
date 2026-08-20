@@ -13,4 +13,5 @@ def get_num_microbatches_wrapper(get_num_microbatches):
             return argument.global_batch_size // argument.data_parallel_size // argument.micro_batch_size
         else:
             return get_num_microbatches(*args, **kwargs)
+
     return wrapper

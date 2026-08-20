@@ -21,8 +21,12 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
 from megatron.training import get_args
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
-from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPXOverlapCollectiveComm, \
-    TPYCollectiveComm, TPYOverlapCollectiveComm
+from mindspeed.core.tensor_parallel.comm_group_api import (
+    TPXCollectiveComm,
+    TPXOverlapCollectiveComm,
+    TPYCollectiveComm,
+    TPYOverlapCollectiveComm,
+)
 from mindspeed.core.tensor_parallel.tp_2d.parallel_linear_2d import ParallelLinear2D
 
 
@@ -32,7 +36,7 @@ def mlp_init(
     submodules: MLPSubmodules,
     is_expert: bool = False,
     input_size: int = None,
-    with_shared_expert=False
+    with_shared_expert=False,
 ):
     super(MLP, self).__init__(config=config)
 
@@ -55,7 +59,7 @@ def mlp_init(
             skip_bias_add=True,
             is_expert=is_expert,
             tp_comm_buffer_name='fc1',
-            with_shared_expert=with_shared_expert
+            with_shared_expert=with_shared_expert,
         )
     else:
         self.linear_fc1 = build_module(
@@ -68,7 +72,7 @@ def mlp_init(
             bias=self.config.add_bias_linear,
             skip_bias_add=True,
             is_expert=is_expert,
-            tp_comm_buffer_name='fc1'
+            tp_comm_buffer_name='fc1',
         )
 
     self.activation_func = self.config.activation_func
@@ -85,7 +89,7 @@ def mlp_init(
             skip_bias_add=True,
             is_expert=is_expert,
             tp_comm_buffer_name='fc2',
-            with_shared_expert=with_shared_expert
+            with_shared_expert=with_shared_expert,
         )
     else:
         self.linear_fc2 = build_module(
@@ -98,7 +102,7 @@ def mlp_init(
             input_is_parallel=True,
             skip_bias_add=True,
             is_expert=is_expert,
-            tp_comm_buffer_name='fc2'
+            tp_comm_buffer_name='fc2',
         )
 
     self.with_shared_expert = with_shared_expert
@@ -129,7 +133,8 @@ def mlp_init_2d_wrapper(fn):
                 enable_overlap_matmul_with_rs=args.enable_overlap_matmul_with_rs,
                 partition_dim=0,
                 enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
-                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu)
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu,
+            )
             self.linear_fc2 = ParallelLinear2D(
                 self.config.ffn_hidden_size,
                 self.config.hidden_size,
@@ -146,5 +151,7 @@ def mlp_init_2d_wrapper(fn):
                 enable_overlap_matmul_with_rs=False,
                 partition_dim=1,
                 enable_backward_overlap_ag_with_matmul=args.enable_backward_overlap_ag_with_matmul,
-                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu)
+                _initialize_affine_weight_gpu=_initialize_affine_weight_gpu,
+            )
+
     return wrapper

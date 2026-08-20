@@ -1,18 +1,21 @@
 import os
 import sys
 import threading
-import subprocess
 import re
-from itertools import combinations
 from logging import getLogger
 
 from megatron.training import get_args
-from mindspeed.core.multi_modal.dist_train.dist_parallel_state import get_tensor_model_parallel_world_size
 from mindspeed.log_config import log_rank_0
-from mindspeed.core.qos.domain_info import domains, generate_masked_orthogonal_rank_groups, \
-    get_tensor_parallel_comm_domain, get_pipeline_parallel_comm_domain, get_data_parallel_comm_domain, \
-    get_context_parallel_comm_domain, get_expert_parallel_comm_domain, get_overlap_time_dict, get_overlap_space_dict, \
-    is_cross_boundary, is_a3_version
+from mindspeed.core.qos.domain_info import (
+    get_tensor_parallel_comm_domain,
+    get_pipeline_parallel_comm_domain,
+    get_data_parallel_comm_domain,
+    get_context_parallel_comm_domain,
+    get_expert_parallel_comm_domain,
+    get_overlap_time_dict,
+    get_overlap_space_dict,
+    is_a3_version,
+)
 
 LOG = getLogger()
 
@@ -28,13 +31,13 @@ _DEFAULT_QOS_ROCE_HIGH = os.environ.get('QOS_ROCE_HIGH', 5)
 sdma_qos_str_to_value = {
     'low': _DEFAULT_QOS_SDMA_LOW,
     'middle': _DEFAULT_QOS_SDMA_MIDDLE,
-    'high': _DEFAULT_QOS_SDMA_HIGH
+    'high': _DEFAULT_QOS_SDMA_HIGH,
 }
 
 roce_qos_str_to_value = {
     'low': _DEFAULT_QOS_ROCE_LOW,
     'middle': _DEFAULT_QOS_ROCE_MIDDLE,
-    'high': _DEFAULT_QOS_ROCE_HIGH
+    'high': _DEFAULT_QOS_ROCE_HIGH,
 }
 
 _PARALLEL_TYPES = [
@@ -56,7 +59,7 @@ _PARALLEL_TYPES = [
     'tp-ep-mp',
     'tp-ep-pp',
     'ep-dp',
-    'hcp'
+    'hcp',
 ]
 
 domains = ('tp', 'dp', 'pp', 'ep', 'cp')
@@ -77,18 +80,17 @@ class Qos:
         if Qos._initialize:
             return
         if sdma_queue_list is None:
-            self.sdma_queue_list = [_DEFAULT_QOS_SDMA_LOW, _DEFAULT_QOS_SDMA_MIDDLE,
-                                    _DEFAULT_QOS_SDMA_HIGH]
+            self.sdma_queue_list = [_DEFAULT_QOS_SDMA_LOW, _DEFAULT_QOS_SDMA_MIDDLE, _DEFAULT_QOS_SDMA_HIGH]
         if roce_queue_list is None:
-            self.roce_queue_list = [_DEFAULT_QOS_ROCE_LOW, _DEFAULT_QOS_ROCE_MIDDLE,
-                                    _DEFAULT_QOS_ROCE_HIGH]
+            self.roce_queue_list = [_DEFAULT_QOS_ROCE_LOW, _DEFAULT_QOS_ROCE_MIDDLE, _DEFAULT_QOS_ROCE_HIGH]
         else:
             self.sdma_queue_list = sdma_queue_list
             self.roce_queue_list = roce_queue_list
 
         self.args = get_args()
-        self.aiqos_mode = self.args.aiqos_mode if hasattr(self.args,
-                                                          'aiqos_mode') and self.args.aiqos_mode is not None else "auto"
+        self.aiqos_mode = (
+            self.args.aiqos_mode if hasattr(self.args, 'aiqos_mode') and self.args.aiqos_mode is not None else "auto"
+        )
         if self.aiqos_mode.lower() not in ['auto', 'manual']:
             raise ValueError('aiqos mode must be "auto or manual"')
         self.roce_aiqos_schedule = {}
@@ -108,7 +110,7 @@ class Qos:
             # Define valid string values and update regex pattern to match them (case-insensitive)
             valid_values = r'(high|low|middle)'
             # Regex pattern: matches {key:value, key:value,...} format with valid string values
-            pattern = fr'^\{{\s*([a-zA-Z0-9_-]+:\s*{valid_values}\s*(,\s*[a-zA-Z0-9_-]+:\s*{valid_values}\s*)*)?\}}$'
+            pattern = rf'^\{{\s*([a-zA-Z0-9_-]+:\s*{valid_values}\s*(,\s*[a-zA-Z0-9_-]+:\s*{valid_values}\s*)*)?\}}$'
 
             # Validate the overall format with case-insensitive matching
             if not re.match(pattern, clean_str, re.IGNORECASE):
@@ -156,14 +158,16 @@ class Qos:
                 priority_str_lower = priority_str.strip().lower()
                 if priority_str_lower not in roce_qos_str_to_value:
                     raise ValueError(
-                        f"Invalid QoS priority string: {priority_str}, only 'high'/'low'/'middle' are allowed")
+                        f"Invalid QoS priority string: {priority_str}, only 'high'/'low'/'middle' are allowed"
+                    )
                 self.roce_aiqos_schedule[key] = roce_qos_str_to_value[priority_str_lower]
 
             for key, priority_str in self.sdma_aiqos_schedule.items():
                 priority_str_lower = priority_str.strip().lower()
                 if priority_str_lower not in sdma_qos_str_to_value:
                     raise ValueError(
-                        f"Invalid QoS priority string: {priority_str}, only 'high'/'low'/'middle' are allowed")
+                        f"Invalid QoS priority string: {priority_str}, only 'high'/'low'/'middle' are allowed"
+                    )
                 self.sdma_aiqos_schedule[key] = sdma_qos_str_to_value[priority_str_lower]
         elif self.aiqos_mode.lower() == 'auto':
             self.cal_auto_qos()
@@ -189,13 +193,15 @@ class Qos:
         return self.sdma_aiqos_schedule[parallel_type.lower()]
 
     def cal_auto_qos(self):
-        parallel_comm_domain_list = [get_tensor_parallel_comm_domain(), get_data_parallel_comm_domain(),
-                                     get_pipeline_parallel_comm_domain(), get_expert_parallel_comm_domain(),
-                                     get_context_parallel_comm_domain(),
-                                     ]
+        parallel_comm_domain_list = [
+            get_tensor_parallel_comm_domain(),
+            get_data_parallel_comm_domain(),
+            get_pipeline_parallel_comm_domain(),
+            get_expert_parallel_comm_domain(),
+            get_context_parallel_comm_domain(),
+        ]
         domain_partition_information = {
-            key: domain.rank_list
-            for key, domain in zip(domains, parallel_comm_domain_list)
+            key: domain.rank_list for key, domain in zip(domains, parallel_comm_domain_list)
         }
 
         if self.args.aiqos_enable_roce:
@@ -206,7 +212,6 @@ class Qos:
         sdma_qos_res = self.combination(parallel_comm_domain_list, domain_partition_information, link_type="SDMA")
         for parallel_type, qos in sdma_qos_res.items():
             self.sdma_aiqos_schedule[parallel_type] = qos
-        return
 
     def combination(self, parallel_comm_domain_list=None, domain_partition_information=None, link_type="SDMA"):
         if parallel_comm_domain_list is None or domain_partition_information is None:
@@ -218,7 +223,7 @@ class Qos:
             queue_nums = len(self.sdma_queue_list)
         time_overlap = get_overlap_time_dict()
         space_overlap = get_overlap_space_dict(domain_partition_information, link_type=link_type)
-        comb = generate_distributions(domain_nums, queue_nums)
+        comb = generate_distributions(domain_nums, queue_nums)  # pylint: disable=possibly-used-before-assignment
         min_single_comb = comb[0]
         degree = sys.maxsize
         for each_comb in comb:
@@ -240,8 +245,7 @@ class Qos:
                 sum_comm_amount_no_overlap += parallel_comm_domain_list[each_flow].comm_amount_no_overlap
             if sum_comm_amount == 0:
                 continue
-            else:
-                cur_rate = sum_comm_amount_no_overlap / sum_comm_amount
+            cur_rate = sum_comm_amount_no_overlap / sum_comm_amount
             rate[min_single_comb.index(each_queue)] = cur_rate
         sorted_rate = dict(sorted(zip(rate, min_single_comb), key=lambda x: x[0], reverse=True))
         length = len(sorted_rate)
@@ -249,8 +253,10 @@ class Qos:
         queue_index = 1 if length <= 2 else 0
         q_list = self.sdma_queue_list if link_type == "SDMA" else self.roce_queue_list
         if not q_list:
-            raise ValueError(f"Queue list is empty for link_type '{link_type}'. "
-                             + f"Please ensure self.{link_type.lower()}_queue_list is initialized.")
+            raise ValueError(
+                f"Queue list is empty for link_type '{link_type}'. "
+                + f"Please ensure self.{link_type.lower()}_queue_list is initialized."
+            )
         for value in sorted_rate.values():
             for flow in value:
                 qos_res[domains[flow]] = q_list[queue_index]
@@ -277,8 +283,9 @@ class Qos:
                 self.roce_aiqos_schedule['ep-dp'] = self.roce_aiqos_schedule['dp']
                 self.roce_aiqos_schedule['mp'] = self.roce_aiqos_schedule['pp']
                 self.roce_aiqos_schedule['tp-ep-pp'] = self.roce_aiqos_schedule['pp']
-                self.roce_aiqos_schedule['tp-ep-mp'] = max(self.roce_aiqos_schedule['pp'],
-                                                           self.roce_aiqos_schedule['tp'])
+                self.roce_aiqos_schedule['tp-ep-mp'] = max(
+                    self.roce_aiqos_schedule['pp'], self.roce_aiqos_schedule['tp']
+                )
 
 
 def generate_distributions(m, n):
@@ -312,12 +319,9 @@ def cal_conflict_degree(single_comb_info, parallel_comm_domain_list, time_overla
     degree = 0
     for each_queue in single_comb_info:
         for i, elem_i in enumerate(each_queue):
-            for j, elem_j in enumerate(each_queue[i + 1:], start=i + 1):
+            for j, elem_j in enumerate(each_queue[i + 1 :], start=i + 1):
                 key = (domains[elem_i], domains[elem_j])
                 conflict_state = time_overlap[key] * space_overlap[key]
                 if conflict_state == 1:
-                    degree += min(
-                        parallel_comm_domain_list[i].comm_amount,
-                        parallel_comm_domain_list[j].comm_amount
-                    )
+                    degree += min(parallel_comm_domain_list[i].comm_amount, parallel_comm_domain_list[j].comm_amount)
     return degree

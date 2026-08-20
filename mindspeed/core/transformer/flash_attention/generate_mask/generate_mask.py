@@ -21,23 +21,12 @@ def generate_attention_mask(config, compress, device):
         warnings.warn("Flash Attention is highly recommended!")
         if not hasattr(config, 'micro_batch_size'):
             raise RuntimeError('Please set micro_batch_size or set use_flash_attn=True in config.')
-        _GLOBAL_ATTN_MASK = (
-            torch.tril(
-                torch.ones(
-                    [config.micro_batch_size, 1, config.seq_length, config.seq_length],
-                    dtype=bool,
-                    device=device
-                ), 
-                diagonal=-(config.pre_tockens + 1)
-            ) + 
-            torch.triu(
-                torch.ones(
-                    [config.micro_batch_size, 1, config.seq_length, config.seq_length],
-                    dtype=bool, 
-                    device=device
-                ), 
-                diagonal=config.next_tockens + 1
-            )
+        _GLOBAL_ATTN_MASK = torch.tril(
+            torch.ones([config.micro_batch_size, 1, config.seq_length, config.seq_length], dtype=bool, device=device),
+            diagonal=-(config.pre_tockens + 1),
+        ) + torch.triu(
+            torch.ones([config.micro_batch_size, 1, config.seq_length, config.seq_length], dtype=bool, device=device),
+            diagonal=config.next_tockens + 1,
         )
         return
 
@@ -45,15 +34,8 @@ def generate_attention_mask(config, compress, device):
         seq_len = 2048
     else:
         seq_len = config.seq_length
-    
-    _GLOBAL_ATTN_MASK = torch.triu(
-        torch.ones(
-            (seq_len, seq_len), 
-            device=device, 
-            dtype=torch.bool
-        ), 
-        diagonal=1
-    )
+
+    _GLOBAL_ATTN_MASK = torch.triu(torch.ones((seq_len, seq_len), device=device, dtype=torch.bool), diagonal=1)
 
 
 def get_attention_mask(config):

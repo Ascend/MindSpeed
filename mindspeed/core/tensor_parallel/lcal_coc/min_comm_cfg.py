@@ -1,8 +1,6 @@
 import ast
-import os
 from enum import Enum
 import torch
-import torch_npu
 import torch.nn.functional as F
 from megatron.training import get_args
 
@@ -15,11 +13,7 @@ def column_forward(self, input_, weight, column_parallel_function=None, check_fc
     use_weight = self.weight if weight is None else weight
     if hasattr(self, "norm") and self.norm:
         use_weight = F.normalize(self.weight)
-    output_parallel = column_parallel_function.apply(
-        input_parallel,
-        use_weight,
-        bias
-    )
+    output_parallel = column_parallel_function.apply(input_parallel, use_weight, bias)
     output = output_parallel
     output_bias = self.bias if self.skip_bias_add else None
     return output, output_bias
@@ -28,17 +22,15 @@ def column_forward(self, input_, weight, column_parallel_function=None, check_fc
 def row_forward(self, input_, row_parallel_function=None, check_fcn=None):
     if check_fcn is not None:
         check_fcn()
-    
+
     if self.input_is_parallel:
         input_parallel = input_
     else:
-        input_parallel = scatter_to_tensor_parallel_region(input_)
-    
-    output_parallel = row_parallel_function.apply(
-        input_parallel,
-        self.weight,
-        None
-    )
+        from megatron.core.tensor_parallel.mappings import scatter_to_sequence_parallel_region
+
+        input_parallel = scatter_to_sequence_parallel_region(input_)
+
+    output_parallel = row_parallel_function.apply(input_parallel, self.weight, None)
     output = output_parallel
     if not self.skip_bias_add:
         output = output + self.bias if self.bias is not None else output
@@ -97,7 +89,7 @@ class MinCommConfig:
 
     def print_settings(self):
         if self.coc_fused_kernel:
-            enable_coc_in_column_backward = True if self.enable_coc_in_column_backward else False
+            enable_coc_in_column_backward = bool(self.enable_coc_in_column_backward)
         else:
             enable_coc_in_column_backward = False
         if self.coc_fused_kernel:
@@ -105,12 +97,10 @@ class MinCommConfig:
                 "is coc turned on": True,
                 "use script or use fused kernel": "fused kernel",
                 "is sequence parallel enabled": self.sequence_parallel_enabled,
-                "is coc enabled in column backward": enable_coc_in_column_backward
+                "is coc enabled in column backward": enable_coc_in_column_backward,
             }
         elif "ORIGINAL" in self.module_type.name:
-            settings_dict = {
-                "is coc turned on": False
-            }
+            settings_dict = {"is coc turned on": False}
         else:
             settings_dict = {
                 "is coc turned on": True,
@@ -119,7 +109,7 @@ class MinCommConfig:
                 "parallel num": self.parallel_num,
                 "module type": self.module_type.name,
                 "is sequence parallel enabled": self.sequence_parallel_enabled,
-                "if get aligned mm inputs": self.matmul_soc_friendly_enabled
+                "if get aligned mm inputs": self.matmul_soc_friendly_enabled,
             }
         if torch.npu.current_device() == 0:
             print("\n-----------------------------COC Settings: ------------------------------------")
@@ -155,8 +145,9 @@ class MinCommConfig:
 
     def replace_forward_functions_by_autograd_class(self, column_autograd_class, row_autograd_class):
         def column_parallel_forward(x, input_, weight=None, **kwargs):
-            return column_forward(x, input_, weight, column_parallel_function=column_autograd_class,
-                                  check_fcn=self.check_fcn)
+            return column_forward(
+                x, input_, weight, column_parallel_function=column_autograd_class, check_fcn=self.check_fcn
+            )
 
         def row_parallel_forward(x, y):
             return row_forward(x, y, row_parallel_function=row_autograd_class, check_fcn=self.check_fcn)
@@ -196,12 +187,16 @@ class MinCommConfig:
         self.enable_coc_in_column_backward = enable_coc_in_column_backward
 
     def acquire_module_type(self, tp_size):
-        sequence_parallel_types = [ModuleType.ORIGINAL_SEQ_PARALLEL,
-                                   ModuleType.REWRITE_SEQ_PARALLEL,
-                                   ModuleType.COC_FOR_SEQ_PARALLEL]
-        all_reduce_types = [ModuleType.ORIGINAL_ALL_REDUCE,
-                            ModuleType.REWRITE_ALL_REDUCE,
-                            ModuleType.COC_FOR_ALL_REDUCE]
+        sequence_parallel_types = [
+            ModuleType.ORIGINAL_SEQ_PARALLEL,
+            ModuleType.REWRITE_SEQ_PARALLEL,
+            ModuleType.COC_FOR_SEQ_PARALLEL,
+        ]
+        all_reduce_types = [
+            ModuleType.ORIGINAL_ALL_REDUCE,
+            ModuleType.REWRITE_ALL_REDUCE,
+            ModuleType.COC_FOR_ALL_REDUCE,
+        ]
 
         if self.parallel_num not in [1, 2, 4, 8]:
             raise RuntimeError("coc_parallel_num must be either 1, 2, 4 or 8. Current value not supported")

@@ -3,18 +3,36 @@
 import torch
 from megatron.training import get_args
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_expert_tensor_and_model_parallel_group
-from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear, _initialize_affine_weight_cpu, \
-    _initialize_affine_weight_gpu, set_tensor_model_parallel_attributes, _grad_accum_fusion_available, \
-    linear_with_grad_accumulation_and_async_allreduce, linear_with_frozen_weight
-from megatron.core.tensor_parallel.mappings import scatter_to_tensor_model_parallel_region, \
-    reduce_from_tensor_model_parallel_region, gather_from_tensor_model_parallel_region, copy_to_tensor_model_parallel_region
-from megatron.core.tensor_parallel.mappings import scatter_to_sequence_parallel_region as megatron_scatter_to_sequence_parallel_region
-from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region as megatron_gather_from_sequence_parallel_region
+from megatron.core.tensor_parallel.layers import (
+    ColumnParallelLinear,
+    RowParallelLinear,
+    _initialize_affine_weight_cpu,
+    _initialize_affine_weight_gpu,
+    set_tensor_model_parallel_attributes,
+    linear_with_grad_accumulation_and_async_allreduce,
+    linear_with_frozen_weight,
+)
+from megatron.core.tensor_parallel.mappings import (
+    scatter_to_tensor_model_parallel_region,
+    reduce_from_tensor_model_parallel_region,
+    gather_from_tensor_model_parallel_region,
+    copy_to_tensor_model_parallel_region,
+)
+from megatron.core.tensor_parallel.mappings import (
+    scatter_to_sequence_parallel_region as megatron_scatter_to_sequence_parallel_region,
+)
+from megatron.core.tensor_parallel.mappings import (
+    gather_from_sequence_parallel_region as megatron_gather_from_sequence_parallel_region,
+)
 
 from .unaligned_column_parallel_linear import UnalignedColumnParallelLinear
 from .unaligned_row_parallel_linear import UnalignedRowParallelLinear
-from .unaligned_utils import unaligned_divide, unaligned_scatter_to_sequence_parallel_region, \
-    unaligned_reduce_scatter_to_sequence_parallel_region, unaligned_gather_from_sequence_parallel_region
+from .unaligned_utils import (
+    unaligned_divide,
+    unaligned_scatter_to_sequence_parallel_region,
+    unaligned_reduce_scatter_to_sequence_parallel_region,
+    unaligned_gather_from_sequence_parallel_region,
+)
 
 
 class UnalignedColumnParallelLinearAdaptor(UnalignedColumnParallelLinear, ColumnParallelLinear):
@@ -32,7 +50,9 @@ class UnalignedColumnParallelLinearAdaptor(UnalignedColumnParallelLinear, Column
             kwargs['parallel_group'] = get_tensor_model_parallel_group()
 
         if kwargs['tp_comm_buffer_name'] == 'qkv':
-            kwargs['fusion_number'] = (config.hidden_size + 2 * config.kv_channels * config.num_query_groups) // config.num_query_groups
+            kwargs['fusion_number'] = (
+                config.hidden_size + 2 * config.kv_channels * config.num_query_groups
+            ) // config.num_query_groups
         else:
             kwargs['fusion_number'] = 1
 
@@ -46,7 +66,7 @@ class UnalignedColumnParallelLinearAdaptor(UnalignedColumnParallelLinear, Column
         kwargs['gather_from_tensor_model_parallel_region'] = gather_from_tensor_model_parallel_region
         kwargs['copy_to_tensor_model_parallel_region'] = copy_to_tensor_model_parallel_region
         kwargs['linear_with_frozen_weight'] = linear_with_frozen_weight
-        super(UnalignedColumnParallelLinearAdaptor, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 
 class UnalignedRowParallelLinearAdaptor(UnalignedRowParallelLinear, RowParallelLinear):
@@ -63,7 +83,9 @@ class UnalignedRowParallelLinearAdaptor(UnalignedRowParallelLinear, RowParallelL
         else:
             kwargs['parallel_group'] = get_tensor_model_parallel_group()
 
-        if kwargs['tp_comm_buffer_name'] is not None and not kwargs['tp_comm_buffer_name'].startswith('fc'): # attention.linear_proj
+        if kwargs['tp_comm_buffer_name'] is not None and not kwargs['tp_comm_buffer_name'].startswith(
+            'fc'
+        ):  # attention.linear_proj
             kwargs['fusion_number'] = config.hidden_size // config.num_query_groups
         else:
             kwargs['fusion_number'] = 1
@@ -77,7 +99,7 @@ class UnalignedRowParallelLinearAdaptor(UnalignedRowParallelLinear, RowParallelL
         kwargs['scatter_to_tensor_model_parallel_region'] = scatter_to_tensor_model_parallel_region
         kwargs['linear_with_frozen_weight'] = linear_with_frozen_weight
         kwargs['reduce_from_tensor_model_parallel_region'] = reduce_from_tensor_model_parallel_region
-        super(UnalignedRowParallelLinearAdaptor, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 
 def divide_adaptor(numerator, denominator):
@@ -103,24 +125,21 @@ def reduce_scatter_to_sequence_parallel_region_adaptor(inputs):
 def gather_from_sequence_parallel_region_adaptor(inputs, tensor_parallel_output_grad=True):
     group = get_tensor_model_parallel_group()
     world_size = torch.distributed.get_world_size(group)
-    
+
     dim_size = torch.tensor(inputs.shape[0], dtype=torch.long, device=inputs.device)
     torch.distributed.all_reduce(dim_size, group=group)
     total_dim_size = dim_size.item()
-    
+
     if total_dim_size % world_size != 0:
-        return unaligned_gather_from_sequence_parallel_region(inputs, total_dim_size, group, tensor_parallel_output_grad)
+        return unaligned_gather_from_sequence_parallel_region(
+            inputs, total_dim_size, group, tensor_parallel_output_grad
+        )
     else:
         return megatron_gather_from_sequence_parallel_region(inputs, tensor_parallel_output_grad)
-    
-    
+
+
 def get_rotary_seq_len(
-    self,
-    inference_params,
-    transformer,
-    transformer_input,
-    transformer_config,
-    packed_seq_params=None
+    self, inference_params, transformer, transformer_input, transformer_config, packed_seq_params=None
 ) -> float:
     if inference_params is not None:
         rotary_seq_len = inference_params.max_sequence_length
@@ -135,10 +154,11 @@ def get_rotary_seq_len(
                 rotary_seq_len = get_args().seq_length
             else:
                 rotary_seq_len = torch.Tensor([rotary_seq_len]).cuda().int()
-                torch.distributed.all_reduce(rotary_seq_len, op=torch.distributed.ReduceOp.SUM, group=get_tensor_model_parallel_group())
+                torch.distributed.all_reduce(
+                    rotary_seq_len, op=torch.distributed.ReduceOp.SUM, group=get_tensor_model_parallel_group()
+                )
                 rotary_seq_len = rotary_seq_len.item()
 
     rotary_seq_len *= transformer_config.context_parallel_size
 
     return rotary_seq_len
-

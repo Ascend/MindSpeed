@@ -1,20 +1,12 @@
-import time
 import json
+
 import numpy as np
 import torch
-import torch_npu
 from megatron.training import get_args
-from megatron.training import print_rank_0
 
 
 class PipelineParallelParas:
-    def __init__(self,
-                 num_stages,
-                 fwd_durations,
-                 bwd_durations,
-                 num_microbatches,
-                 comm_matrix,
-                 num_layers):
+    def __init__(self, num_stages, fwd_durations, bwd_durations, num_microbatches, comm_matrix, num_layers):
         self.num_stages = num_stages
         self.num_microbatches = num_microbatches
         self.fwd_durations = fwd_durations
@@ -30,21 +22,21 @@ def time_model_nfmb(paras, stage_schedule):
     comm_matrix = paras.comm_matrix
     chunk_placement = list(range(num_stages)) + list(range(num_stages - 1, -1, -1))
     # Fwd Bwd执行顺序
-    fwd_bwd_comp_order = ([f'F_{i}' for i in range(num_stages)] +
-                          [f'B_{i}' for i in range(num_stages - 1, -1, -1)])
+    fwd_bwd_comp_order = [f'F_{i}' for i in range(num_stages)] + [f'B_{i}' for i in range(num_stages - 1, -1, -1)]
     chunk_stage_map = dict(zip(fwd_bwd_comp_order, chunk_placement))
 
     if isinstance(stage_schedule, dict):
         stage_list = []
         for s in range(num_stages):
             fb_list = stage_schedule[f"stage{s}"]
-            stage_list.append([element[0]+f"_{s}-"+element[1:] for element in fb_list])
+            stage_list.append([element[0] + f"_{s}-" + element[1:] for element in fb_list])
     else:
         stage_list = stage_schedule
 
     # 初始化
-    fwd_bwd_list = ([f"F_{j}-{i}" for i in range(num_mb) for j in range(num_stages)]
-                    + [f"B_{j}-{i}" for i in range(num_mb) for j in range(num_stages)])
+    fwd_bwd_list = [f"F_{j}-{i}" for i in range(num_mb) for j in range(num_stages)] + [
+        f"B_{j}-{i}" for i in range(num_mb) for j in range(num_stages)
+    ]
     values = [0 for _ in range(num_stages * num_mb * 2)]
     start_time = dict(zip(fwd_bwd_list, values))
     fwd_bwd_durations = dict()
@@ -60,9 +52,16 @@ def time_model_nfmb(paras, stage_schedule):
         start_time[f"F_{s + 1}-{0}"] = start_time[f"F_{s}-{0}"] + fwd_durations[s, 0] + comm_matrix[s][s + 1]
 
     # 获取当前任务的上一个任务以及依赖任务的结束时间
-    def get_prev_task_time(task_start_time, task_list, pp_stage_id, mb_idx,
-                          chunk_stage_map, comp_order, model_chunk_times,
-                          comm_time_matrix):
+    def get_prev_task_time(
+        task_start_time,
+        task_list,
+        pp_stage_id,
+        mb_idx,
+        chunk_stage_map,
+        comp_order,
+        model_chunk_times,
+        comm_time_matrix,
+    ):
         current_task = task_list[pp_stage_id][mb_idx]
         prev_task_same_stage = task_list[pp_stage_id][mb_idx - 1]
         chunk_id_prev_task_same_stage, _ = prev_task_same_stage.split('-')
@@ -75,9 +74,9 @@ def time_model_nfmb(paras, stage_schedule):
         else:
             comm_time = 0.01
         # 同一个stage上，前一个任务完成时间
-        end_time_prev_task_stage = (task_start_time[prev_task_same_stage]
-                                    + model_chunk_times[prev_task_same_stage]
-                                    + comm_time)
+        end_time_prev_task_stage = (
+            task_start_time[prev_task_same_stage] + model_chunk_times[prev_task_same_stage] + comm_time
+        )
 
         # 相同micro batch id，上一个model chunk上的计算时间
         cur_model_chunk, cur_mb = current_task.split('-')
@@ -86,9 +85,9 @@ def time_model_nfmb(paras, stage_schedule):
             prev_model_chunk = comp_order[chunk_position - 1]
             prev_task_batch = prev_model_chunk + '-' + cur_mb
             comm_time = comm_time_matrix[chunk_stage_map[prev_model_chunk]][chunk_stage_map[cur_model_chunk]]
-            end_time_dependent_task_batch = (task_start_time[prev_task_batch]
-                                             + model_chunk_times[prev_task_batch]
-                                             + comm_time)
+            end_time_dependent_task_batch = (
+                task_start_time[prev_task_batch] + model_chunk_times[prev_task_batch] + comm_time
+            )
             completed_flag = task_start_time[prev_task_same_stage] > 0 and task_start_time[prev_task_batch] > 0
         else:
             end_time_dependent_task_batch = 0.1
@@ -108,14 +107,21 @@ def time_model_nfmb(paras, stage_schedule):
             ids_old.append(remaining[s])
             if remaining[s]:
                 microbatch_idx = len(stage_list[0]) - remaining[s]
-                (end_time_prev_task_same_stage,
-                 end_time_dependent_task_same_microbatch,
-                 job_flag) = get_prev_task_time(start_time, stage_list, s, microbatch_idx, chunk_stage_map,
-                                                fwd_bwd_comp_order, fwd_bwd_durations, comm_matrix)
+                (end_time_prev_task_same_stage, end_time_dependent_task_same_microbatch, job_flag) = get_prev_task_time(
+                    start_time,
+                    stage_list,
+                    s,
+                    microbatch_idx,
+                    chunk_stage_map,
+                    fwd_bwd_comp_order,
+                    fwd_bwd_durations,
+                    comm_matrix,
+                )
 
                 if job_flag:
-                    start_time[stage_list[s][microbatch_idx]] = max(end_time_prev_task_same_stage,
-                                                                    end_time_dependent_task_same_microbatch)
+                    start_time[stage_list[s][microbatch_idx]] = max(
+                        end_time_prev_task_same_stage, end_time_dependent_task_same_microbatch
+                    )
                     remaining[s] = remaining[s] - 1
 
             ids_new.append(remaining[s])
@@ -142,8 +148,7 @@ def get_schedule_1f1b(paras):
     computation_placement = list(range(num_stages)) + list(range(num_stages - 1, -1, -1))
 
     # Fwd Bwd执行顺序
-    fwd_bwd_order = ([f'F_{i}' for i in range(num_stages)] +
-                     [f'B_{i}' for i in range(num_stages - 1, -1, -1)])
+    fwd_bwd_order = [f'F_{i}' for i in range(num_stages)] + [f'B_{i}' for i in range(num_stages - 1, -1, -1)]
 
     # 根据1F1B策略生成每个stage上的调度顺序
     def get_stage_list(fwd_seq, bwd_seq, num_advanced):
@@ -166,9 +171,9 @@ def get_schedule_1f1b(paras):
         for s in range(num_stages):
             stage_chunk_id = [index for index, element in enumerate(comp_placement) if element == s]
             warmup = num_stages - s
-            stage_s_list = get_stage_list(all_jobs_array[stage_chunk_id[0]],
-                                          all_jobs_array[stage_chunk_id[1]],
-                                          warmup - 1)
+            stage_s_list = get_stage_list(
+                all_jobs_array[stage_chunk_id[0]], all_jobs_array[stage_chunk_id[1]], warmup - 1
+            )
             stage_list.append(stage_s_list)
         return stage_list
 
@@ -192,8 +197,7 @@ def get_schedule_eager1f1b(paras, num_forwards, layers_placement):
     chunk_placement = list(range(num_stages)) + list(range(num_stages - 1, -1, -1))
 
     # Fwd Bwd执行顺序
-    fwd_bwd_comp_order = ([f'F_{i}' for i in range(num_stages)] +
-                          [f'B_{i}' for i in range(num_stages - 1, -1, -1)])
+    fwd_bwd_comp_order = [f'F_{i}' for i in range(num_stages)] + [f'B_{i}' for i in range(num_stages - 1, -1, -1)]
 
     # 根据1F1B策略生成每个stage上的调度顺序
     def get_stage_list(fwd_seq, bwd_seq, num_advanced):
@@ -215,19 +219,16 @@ def get_schedule_eager1f1b(paras, num_forwards, layers_placement):
         stage_list = []
         activations_num = int(paras.num_layers // paras.num_stages) * (num_advanced + paras.num_stages)
         nums_under_memory = [int(activations_num // layers_placement[i]) for i in range(paras.num_stages)]
-        warmups = [min(nums_under_memory[s] - s - 1,
-                     2 * paras.num_stages - 2 * s - 2) for s in range(paras.num_stages)]
+        warmups = [min(nums_under_memory[s] - s - 1, 2 * paras.num_stages - 2 * s - 2) for s in range(paras.num_stages)]
         for i in range(paras.num_stages - 1):
             warmups[i + 1] = min(warmups[i] - 1, warmups[i + 1])
             warmups[i + 1] = max(warmups[i + 1], 0)
 
         for s in range(paras.num_stages):
             stage_chunk_id = [index for index, element in enumerate(comp_placement) if element == s]
-            num = sum(np.array(paras.bwd_durations[s + 1:])
-                      + np.array(paras.fwd_durations[s + 1:])) // np.array(paras.fwd_durations[s])
-            stage_s_list = get_stage_list(all_jobs_array[stage_chunk_id[0]],
-                                          all_jobs_array[stage_chunk_id[1]],
-                                          warmups[s])
+            stage_s_list = get_stage_list(
+                all_jobs_array[stage_chunk_id[0]], all_jobs_array[stage_chunk_id[1]], warmups[s]
+            )
             stage_list.append(stage_s_list)
         return stage_list
 
@@ -277,12 +278,14 @@ def schedule_layers(paras, num_mb_for_remaining_memory):
             bwd_new = np.array(paras.bwd_durations)
             bwd_new[i] += bwd_time_per_layer
             bwd_new[-1] -= bwd_time_per_layer
-            paras1 = PipelineParallelParas(paras.num_stages,
-                                           fwd_new.tolist(),
-                                           bwd_new.tolist(),
-                                           paras.num_microbatches,
-                                           paras.comm_matrix,
-                                           paras.num_layers)
+            paras1 = PipelineParallelParas(
+                paras.num_stages,
+                fwd_new.tolist(),
+                bwd_new.tolist(),
+                paras.num_microbatches,
+                paras.comm_matrix,
+                paras.num_layers,
+            )
             e2e_time[0, i + 1], stage_start_time1 = time_model_nfmb(paras1, schedule_1f1b)
             paras_all.append(paras1)
             layers_p1 = [stage_layers] * paras.num_stages
@@ -374,14 +377,9 @@ def solve_pipelineschedule(args, data_parallel_size, num_forwards_first_stage, f
     num_micro_batches = args.global_batch_size // data_parallel_size // args.micro_batch_size
     num_layers = args.num_layers
 
-    pp_paras = PipelineParallelParas(pipeline_stages,
-                                     forward_time_each_stage,
-                                     backward_time_each_stage,
-                                     num_micro_batches,
-                                     comm_matrix,
-                                     num_layers)
+    pp_paras = PipelineParallelParas(
+        pipeline_stages, forward_time_each_stage, backward_time_each_stage, num_micro_batches, comm_matrix, num_layers
+    )
     # FB schedule
-    start_time = time.time()
     schedule_list, optimal_layers, schedule_time = schedule_layers(pp_paras, num_forwards_first_stage)
-    end_time = time.time()
     return schedule_list, schedule_time, optimal_layers

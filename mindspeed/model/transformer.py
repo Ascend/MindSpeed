@@ -17,7 +17,7 @@
 import warnings
 
 import torch
-from megatron.core import parallel_state, mpu, tensor_parallel
+from megatron.core import mpu
 from megatron.core.transformer.module import MegatronModule
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
@@ -44,23 +44,28 @@ def set_attention_mask(attn_mask):
     _GLOBAL_ATTN_MASK = attn_mask
 
 
-def generate_attention_mask(compress, device):
+def generate_attention_mask(compress=True, device=None):
     global _GLOBAL_ATTN_MASK
     args = get_args()
+    if device is None:
+        device = 'cpu' if getattr(args, 'attention_mask_on_cpu', False) else 'npu'
     if not args.use_flash_attn:
         warnings.warn("Flash Attention is highly recommended")
-        _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device), diagonal=-(args.pre_tockens + 1)) \
-                                + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device), diagonal=args.next_tockens + 1))
+        _GLOBAL_ATTN_MASK = torch.tril(
+            torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device),
+            diagonal=-(args.pre_tockens + 1),
+        ) + torch.triu(
+            torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device),
+            diagonal=args.next_tockens + 1,
+        )
         return
 
     if compress:
         seq_len = 2048
     else:
         seq_len = args.seq_length
-    
-    _GLOBAL_ATTN_MASK = torch.triu(
-                            torch.ones((seq_len, seq_len), 
-                            device=device, dtype=torch.bool), diagonal=1)
+
+    _GLOBAL_ATTN_MASK = torch.triu(torch.ones((seq_len, seq_len), device=device, dtype=torch.bool), diagonal=1)
 
 
 def get_attention_mask():
@@ -70,6 +75,7 @@ def get_attention_mask():
 
     args = get_args()
     should_generate_mask = False
+    compress = False
     device = 'npu'
 
     if args.attention_mask_type == 'causal':
@@ -92,7 +98,6 @@ def get_attention_mask():
         else:
             should_generate_mask = True
             compress = True
-
 
     if getattr(args, 'attention_mask_on_cpu', False):
         device = 'cpu'
@@ -155,7 +160,9 @@ def should_recompute_activation(layer_number):
         if args.recompute_activation_function_num_layers < 0:
             raise AssertionError('--recompute-activation-function-num-layers cannot be less than 0.')
         elif args.recompute_activation_function_num_layers > args.num_layers:
-            raise AssertionError('--recompute-activation-function-num-layers cannot be greater than the number of layers.')
+            raise AssertionError(
+                '--recompute-activation-function-num-layers cannot be greater than the number of layers.'
+            )
     return should_recompute(args, layer_number, args.recompute_activation_function_num_layers)
 
 

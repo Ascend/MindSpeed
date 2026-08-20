@@ -14,15 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import collections
-from functools import wraps
 from typing import Iterator, List, Union
 import contextlib
 
 import torch
 from megatron.training import get_args
 from megatron.core import parallel_state
-from megatron.core.pipeline_parallel.schedules import deallocate_output_tensor, forward_step, backward_step, \
-    check_first_val_step
+from megatron.core.pipeline_parallel.schedules import (
+    deallocate_output_tensor,
+    forward_step,
+    backward_step,
+    check_first_val_step,
+)
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.utils import get_model_config, get_model_type
 from megatron.core.enums import ModelType
@@ -39,38 +42,35 @@ def get_forward_backward_func_ripipe_patch(*args, **kwargs):
 
 
 def forward_backward_ripipe_pipelining(
-        *,
-        forward_step_func,
-        data_iterator: Union[Iterator, List[Iterator]],
-        model: Union[torch.nn.Module, List[torch.nn.Module]],
-        num_microbatches: int,
-        seq_length: int,
-        micro_batch_size: int,
-        decoder_seq_length: int = None,
-        forward_only: bool = False,
-        collect_non_loss_data: bool = False,
-        first_val_step: bool = None,
+    *,
+    forward_step_func,
+    data_iterator: Union[Iterator, List[Iterator]],
+    model: Union[torch.nn.Module, List[torch.nn.Module]],
+    num_microbatches: int,
+    seq_length: int,
+    micro_batch_size: int,
+    decoder_seq_length: int = None,
+    forward_only: bool = False,
+    collect_non_loss_data: bool = False,
+    first_val_step: bool = None,
 ):
     """Almost directly copied from megatron's forward_backward_pipelining_with_interleaving
-    function, all modifications are annotated with 'ripipe related' or 'nanopipe related' """
+    function, all modifications are annotated with 'ripipe related' or 'nanopipe related'
+    """
     # ripipe related, setup checkpoint manager.
     pipeline_checkpoint_manager = get_pipeline_checkpoint_manager(
-        num_of_chunks=parallel_state.get_virtual_pipeline_model_parallel_world_size())
+        num_of_chunks=parallel_state.get_virtual_pipeline_model_parallel_world_size()
+    )
     args = get_args()
     if args.recompute_in_bubble or args.recompute_in_advance:
         pipeline_checkpoint_manager.open_ri_pipe = True
         pipeline_checkpoint_manager.do_pre_recompute = True
 
-
-    """Run interleaved 1F1B schedule (model split into model chunks), with
-    communication between pipeline stages as needed.
-
-    Returns dictionary with losses if the last stage, empty dict otherwise."""
     assert isinstance(model, list), "interleaved pipeline parallelism expected model chunking"
     assert all(isinstance(chunk, torch.nn.Module) for chunk in model), "invalid model chunking"
-    assert isinstance(
-        data_iterator, list
-    ), "interleaved pipeline parallelism expected each model chunk to have a data iterator"
+    assert isinstance(data_iterator, list), (
+        "interleaved pipeline parallelism expected each model chunk to have a data iterator"
+    )
 
     config = get_model_config(model[0])
     if config.overlap_p2p_comm and config.batch_p2p_comm:
@@ -104,14 +104,14 @@ def forward_backward_ripipe_pipelining(
         """Disable asynchronous grad reductions"""
         nonlocal no_sync_context
         if no_sync_context is None:
-            no_sync_context = no_sync_func()
-            no_sync_context.__enter__()
+            no_sync_context = contextlib.ExitStack()
+            no_sync_context.enter_context(no_sync_func())
 
     def enable_grad_sync():
         """Enable asynchronous grad reductions"""
         nonlocal no_sync_context
         if no_sync_context is not None:
-            no_sync_context.__exit__(None, None, None)
+            no_sync_context.close()
             no_sync_context = None
 
     disable_grad_sync()
@@ -139,9 +139,7 @@ def forward_backward_ripipe_pipelining(
         raise RuntimeError("Interleaving is not supported with an encoder and decoder model.")
 
     if decoder_seq_length is not None and decoder_seq_length != seq_length:
-        raise RuntimeError(
-            "Interleaving is not supported with a different decoder sequence length."
-        )
+        raise RuntimeError("Interleaving is not supported with a different decoder sequence length.")
 
     tensor_shape = [seq_length, micro_batch_size, config.hidden_size]
     tensor_shape[0] = tensor_shape[0] // parallel_state.get_context_parallel_world_size()
@@ -162,17 +160,21 @@ def forward_backward_ripipe_pipelining(
         num_warmup_microbatches = min(num_warmup_microbatches, total_num_microbatches)
     num_microbatches_remaining = total_num_microbatches - num_warmup_microbatches
 
-    num_fwd = min((pipeline_parallel_size - 1) * 2 + (num_model_chunks - 1) * pipeline_parallel_size, total_num_microbatches)
+    num_fwd = min(
+        (pipeline_parallel_size - 1) * 2 + (num_model_chunks - 1) * pipeline_parallel_size, total_num_microbatches
+    )
     num_dx = num_fwd - num_warmup_microbatches
     overlap_chunks_num = (num_dx + pipeline_parallel_size - 1) // pipeline_parallel_size
     nano_flag = [True] * len(model)
     for i in range(overlap_chunks_num):
         nano_flag[-i - 1] = False
     # ripipe related, calculate the variables needed by the recompute_in_bubble function
-    num_microbatches_recompute, num_microbatches_recompute_forward, num_microbatches_recompute_steady_groups, \
-        num_microbatches_recompute_tail = get_ripipe_recompute_count_params(num_microbatches,
-                                                                            num_model_chunks,
-                                                                            num_warmup_microbatches)
+    (
+        num_microbatches_recompute,
+        num_microbatches_recompute_forward,
+        num_microbatches_recompute_steady_groups,
+        num_microbatches_recompute_tail,
+    ) = get_ripipe_recompute_count_params(num_microbatches, num_model_chunks, num_warmup_microbatches)
 
     # Checkpoint the activations of partial Transformer layers in a number of micro-batches
     # within the maximum outstanding micro-batch backpropagations.
@@ -198,12 +200,13 @@ def forward_backward_ripipe_pipelining(
         if not forward:
             model_chunk_id = num_model_chunks - model_chunk_id - 1
         group_id = microbatch_id // (pipeline_parallel_size * num_model_chunks)
-        intra_chunk_batch_id = (microbatch_id_in_group % pipeline_parallel_size)
+        intra_chunk_batch_id = microbatch_id_in_group % pipeline_parallel_size
         return group_id, intra_chunk_batch_id, model_chunk_id
 
     def should_recompute(fk):
         """ripipe related, needed by recompute_in_bubble function, used to determine
-        whether a mircobatch needs to be recomputed in the 1f1b stage."""
+        whether a mircobatch needs to be recomputed in the 1f1b stage.
+        """
         gid, intro_group_bid, chunk_id = get_chunk_batch_id(fk, forward=True)
         if chunk_id == 0:
             if gid < 2:
@@ -227,7 +230,6 @@ def forward_backward_ripipe_pipelining(
     def is_first_microbatch_for_model_chunk(microbatch_id: int) -> bool:
         """Check if an iteration is the first for a model chunk."""
         microbatch_group_size = pipeline_parallel_size * num_model_chunks
-        num_microbatch_groups = total_num_microbatches // microbatch_group_size
         microbatch_group_id = microbatch_id // microbatch_group_size
         microbatch_id_in_group = microbatch_id % microbatch_group_size
         if microbatch_group_id == 0:
@@ -249,7 +251,8 @@ def forward_backward_ripipe_pipelining(
     def forward_step_helper(microbatch_id, checkpoint_activations_microbatch):
         """Helper method to run forward step with model split into chunks
         (run set_virtual_pipeline_model_parallel_rank() before calling
-        forward_step())."""
+        forward_step()).
+        """
         model_chunk_id = get_model_chunk_id(microbatch_id, forward=True)
         parallel_state.set_virtual_pipeline_model_parallel_rank(model_chunk_id)
 
@@ -260,15 +263,12 @@ def forward_backward_ripipe_pipelining(
         # pipeline-parallel group.
         if config.param_sync_func is not None:
             param_sync_microbatch_id = microbatch_id + pipeline_parallel_rank
-            if (
-                    param_sync_microbatch_id < total_num_microbatches
-                    and is_first_microbatch_for_model_chunk(param_sync_microbatch_id)
+            if param_sync_microbatch_id < total_num_microbatches and is_first_microbatch_for_model_chunk(
+                param_sync_microbatch_id
             ):
                 param_sync_chunk_id = get_model_chunk_id(param_sync_microbatch_id, forward=True) + 1
                 if 1 < param_sync_chunk_id < num_model_chunks:
-                    config.param_sync_func[param_sync_chunk_id](
-                        model[param_sync_chunk_id].parameters()
-                    )
+                    config.param_sync_func[param_sync_chunk_id](model[param_sync_chunk_id].parameters())
 
         # forward step
         if parallel_state.is_pipeline_first_stage():
@@ -286,7 +286,9 @@ def forward_backward_ripipe_pipelining(
             collect_non_loss_data,
             checkpoint_activations_microbatch,
             check_first_val_step(
-                first_val_step, forward_only, is_first_microbatch_for_model_chunk(microbatch_id),
+                first_val_step,
+                forward_only,
+                is_first_microbatch_for_model_chunk(microbatch_id),
             ),
         )
         output_tensors[model_chunk_id].append(output_tensor)
@@ -306,24 +308,27 @@ def forward_backward_ripipe_pipelining(
     def backward_step_helper(microbatch_id):
         """Helper method to run backward step with model split into chunks
         (run set_virtual_pipeline_model_parallel_rank() before calling
-        backward_step())."""
+        backward_step()).
+        """
         model_chunk_id = get_model_chunk_id(microbatch_id, forward=False)
         parallel_state.set_virtual_pipeline_model_parallel_rank(model_chunk_id)
 
         # launch grad synchronization (default)
-        if config.grad_sync_func is None and is_last_microbatch_for_model_chunk(microbatch_id) and nano_flag[model_chunk_id]:
+        if (
+            config.grad_sync_func is None
+            and is_last_microbatch_for_model_chunk(microbatch_id)
+            and nano_flag[model_chunk_id]
+        ):
             enable_grad_sync()
             synchronized_model_chunks.add(model_chunk_id)
 
         if parallel_state.is_pipeline_last_stage():
-            if len(output_tensor_grads[model_chunk_id]) == 0:
+            if len(output_tensor_grads[model_chunk_id]) == 0:  # pylint: disable=possibly-used-before-assignment
                 output_tensor_grads[model_chunk_id].append(None)
         input_tensor = input_tensors[model_chunk_id].pop(0)
         output_tensor = output_tensors[model_chunk_id].pop(0)
         output_tensor_grad = output_tensor_grads[model_chunk_id].pop(0)
-        input_tensor_grad = backward_step(
-            input_tensor, output_tensor, output_tensor_grad, model_type, config
-        )
+        input_tensor_grad = backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)
 
         # launch grad synchronization (custom grad sync)
         # Note: Asynchronous communication tends to slow down compute.
@@ -332,9 +337,7 @@ def forward_backward_ripipe_pipelining(
         # pipeline-parallel group.
         if config.grad_sync_func is not None:
             grad_sync_microbatch_id = microbatch_id - pipeline_parallel_rank
-            if grad_sync_microbatch_id >= 0 and is_last_microbatch_for_model_chunk(
-                    grad_sync_microbatch_id
-            ):
+            if grad_sync_microbatch_id >= 0 and is_last_microbatch_for_model_chunk(grad_sync_microbatch_id):
                 grad_sync_chunk_id = get_model_chunk_id(grad_sync_microbatch_id, forward=False)
                 if nano_flag[grad_sync_chunk_id]:
                     enable_grad_sync()
@@ -352,7 +355,6 @@ def forward_backward_ripipe_pipelining(
     bwd_wait_handles = None
 
     for k in range(num_warmup_microbatches):
-
         if fwd_wait_handles is not None:
             for req in fwd_wait_handles if isinstance(fwd_wait_handles, list) else fwd_wait_handles.values():
                 req.wait()
@@ -360,8 +362,7 @@ def forward_backward_ripipe_pipelining(
         # Decide to checkpoint all layers' activations of the current micro-batch
         if max_outstanding_backprops is not None:
             checkpoint_activations_microbatch = (
-                    k % max_outstanding_backprops
-                    >= config.num_microbatches_with_partial_activation_checkpoints
+                k % max_outstanding_backprops >= config.num_microbatches_with_partial_activation_checkpoints
             )
         else:
             checkpoint_activations_microbatch = None
@@ -393,11 +394,7 @@ def forward_backward_ripipe_pipelining(
         # Send and receive tensors as appropriate (send tensors computed
         # in this iteration; receive tensors for next iteration).
         if not config.overlap_p2p_comm:
-            if (
-                    k == (num_warmup_microbatches - 1)
-                    and not forward_only
-                    and not all_warmup_microbatches
-            ):
+            if k == (num_warmup_microbatches - 1) and not forward_only and not all_warmup_microbatches:
                 input_tensor_grad = None
                 recv_next = True
                 if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -428,11 +425,7 @@ def forward_backward_ripipe_pipelining(
                 overlap_p2p_comm=True,
             )
 
-            if (
-                    k == (num_warmup_microbatches - 1)
-                    and not forward_only
-                    and not all_warmup_microbatches
-            ):
+            if k == (num_warmup_microbatches - 1) and not forward_only and not all_warmup_microbatches:
                 input_tensor_grad = None
                 recv_next = True
                 if parallel_state.is_pipeline_last_stage(ignore_virtual=True):
@@ -462,8 +455,7 @@ def forward_backward_ripipe_pipelining(
         # Decide to checkpoint all layers' activations of the current micro-batch
         if max_outstanding_backprops is not None:
             checkpoint_activations_microbatch = (
-                    forward_k % max_outstanding_backprops
-                    >= config.num_microbatches_with_partial_activation_checkpoints
+                forward_k % max_outstanding_backprops >= config.num_microbatches_with_partial_activation_checkpoints
             )
         else:
             checkpoint_activations_microbatch = None
@@ -501,9 +493,7 @@ def forward_backward_ripipe_pipelining(
             recv_prev = True
             if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
                 # First stage is ahead of last stage by (pipeline_parallel_size - 1).
-                next_forward_model_chunk_id = get_model_chunk_id(
-                    forward_k - (pipeline_parallel_size - 1), forward=True
-                )
+                next_forward_model_chunk_id = get_model_chunk_id(forward_k - (pipeline_parallel_size - 1), forward=True)
                 if next_forward_model_chunk_id == (num_model_chunks - 1):
                     recv_prev = False
                 next_forward_model_chunk_id += 1
@@ -615,9 +605,7 @@ def forward_backward_ripipe_pipelining(
             recv_prev = True
             if parallel_state.is_pipeline_first_stage(ignore_virtual=True):
                 # First stage is ahead of last stage by (pipeline_parallel_size - 1).
-                next_forward_model_chunk_id = get_model_chunk_id(
-                    forward_k - (pipeline_parallel_size - 1), forward=True
-                )
+                next_forward_model_chunk_id = get_model_chunk_id(forward_k - (pipeline_parallel_size - 1), forward=True)
                 if next_forward_model_chunk_id == (num_model_chunks - 1):
                     recv_prev = False
                 next_forward_model_chunk_id += 1
@@ -703,23 +691,21 @@ def forward_backward_ripipe_pipelining(
             out_tensor, bwd_wait_handles = p2p_communication.send_backward_recv_backward(
                 input_tensor_grad, recv_next=recv_next, tensor_shape=tensor_shape, config=config, overlap_p2p_comm=True
             )
-            output_tensor_grads[next_backward_model_chunk_id].append(
-                out_tensor
-            )
+            output_tensor_grads[next_backward_model_chunk_id].append(out_tensor)
 
             if (
-                    getattr(args, "use_nanopipe", False) and
-                    getattr(args, "use_nanopipe_swap", False) and
-                    k == max(
-                        num_microbatches_remaining + 1,
-                        (total_num_microbatches + num_microbatches_remaining) // 2
-                    )
+                getattr(args, "use_nanopipe", False)
+                and getattr(args, "use_nanopipe_swap", False)
+                and k == max(num_microbatches_remaining + 1, (total_num_microbatches + num_microbatches_remaining) // 2)
             ):
                 WeightGradStore.swap_tensors()
 
             # ripipe related, actually do the recomputation
-            if args.recompute_in_bubble and num_microbatches_recompute > 0 and \
-                    num_microbatches_recompute_forward < num_microbatches_recompute:
+            if (
+                args.recompute_in_bubble
+                and num_microbatches_recompute > 0
+                and num_microbatches_recompute_forward < num_microbatches_recompute
+            ):
                 old_vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
                 parallel_state.set_virtual_pipeline_model_parallel_rank(0)
                 pipeline_checkpoint_manager.recompute_next_force(0)
@@ -732,7 +718,9 @@ def forward_backward_ripipe_pipelining(
                     pipeline_checkpoint_manager.recompute_next(vpp_rank)
             # ripipe related, use async communication
             if config.overlap_p2p_comm and bwd_wait_handles is not None:
-                for wait_handle in bwd_wait_handles if isinstance(bwd_wait_handles, list) else bwd_wait_handles.values():
+                for wait_handle in (
+                    bwd_wait_handles if isinstance(bwd_wait_handles, list) else bwd_wait_handles.values()
+                ):
                     wait_handle.wait()
 
         # nanopipe related
@@ -778,8 +766,7 @@ def get_ripipe_recompute_count_params(num_microbatches, num_model_chunks, num_wa
     num_microbatches_recompute_forward = 0
     if args.recompute_in_bubble and num_microbatches // pipeline_parallel_size > 1:
         num_microbatches_recompute = num_warmup_microbatches + 1 - num_model_chunks * pipeline_parallel_size
-        if num_microbatches_recompute < 0:
-            num_microbatches_recompute = 0
+        num_microbatches_recompute = max(num_microbatches_recompute, 0)
 
         num_microbatches_recompute_forward = num_microbatches_recompute
         if num_microbatches_recompute > 0 and num_microbatches // pipeline_parallel_size >= 3:
@@ -792,8 +779,18 @@ def get_ripipe_recompute_count_params(num_microbatches, num_model_chunks, num_wa
             else:
                 num_microbatches_recompute_tail = 1
 
-    params = collections.namedtuple('RecomputeCountParams',
-                                    ['num_microbatches_recompute', 'num_microbatches_recompute_forward',
-                                     'num_microbatches_recompute_steady_groups', 'num_microbatches_recompute_tail'])
-    return params(num_microbatches_recompute, num_microbatches_recompute_forward,
-                  num_microbatches_recompute_steady_groups, num_microbatches_recompute_tail)
+    params = collections.namedtuple(
+        'RecomputeCountParams',
+        [
+            'num_microbatches_recompute',
+            'num_microbatches_recompute_forward',
+            'num_microbatches_recompute_steady_groups',
+            'num_microbatches_recompute_tail',
+        ],
+    )
+    return params(
+        num_microbatches_recompute,
+        num_microbatches_recompute_forward,
+        num_microbatches_recompute_steady_groups,
+        num_microbatches_recompute_tail,
+    )
