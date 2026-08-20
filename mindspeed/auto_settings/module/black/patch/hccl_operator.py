@@ -41,12 +41,11 @@ def get_communication_info(comm_type, *args, **kwargs):
         'output_shapes': output_shape,
         'world_size': world_size,
         'async': async_op,
-        'dtype': data_type
+        'dtype': data_type,
     }
 
 
 def hccl_operator_decorator(fn_name, fn):
-
     @wraps(fn)
     def wrapper(*args, **kwargs):
         global _BLOCK_NAME, _COLLECTED_BLOCK_NAMES
@@ -60,19 +59,18 @@ def hccl_operator_decorator(fn_name, fn):
 
             if _BLOCK_NAME not in auto_profiler.context['comm_operators']:
                 auto_profiler.context['comm_operators'][_BLOCK_NAME] = []
-            
+
             operator = get_communication_info(fn_name, *args, **kwargs)
             operator['type'] = fn_name
 
             auto_profiler.context['comm_operators'][_BLOCK_NAME].append(operator)
 
         return fn(*args, **kwargs)
-    
+
     return wrapper
 
 
 def p2p_operator_decorator(fn_name, fn):
-    
     @wraps(fn)
     def wrapper(*args, **kwargs):
         global _BLOCK_NAME, _COLLECTED_BLOCK_NAMES
@@ -94,7 +92,7 @@ def p2p_operator_decorator(fn_name, fn):
             auto_profiler.context['comm_operators'][_BLOCK_NAME].append(operator)
 
         return fn(*args, **kwargs)
-    
+
     return wrapper
 
 
@@ -104,12 +102,12 @@ class AttentionStartOp(torch.autograd.Function):
         set_block_name('attention')
         output = input_data * 1
         return output
-              
+
     @staticmethod
     def backward(ctx, grad_output):
         set_block_name('else')
         return grad_output
-    
+
 
 class AttentionEndOp(torch.autograd.Function):
     @staticmethod
@@ -117,7 +115,7 @@ class AttentionEndOp(torch.autograd.Function):
         set_block_name('else')
         output = input_data * 1
         return output
-    
+
     @staticmethod
     def backward(ctx, grad_output):
         set_block_name('attention_grad')
@@ -130,12 +128,12 @@ class MOEOrMLPStartOp(torch.autograd.Function):
         set_block_name('moe/mlp')
         output = input_data * 1
         return output
-    
+
     @staticmethod
     def backward(ctx, grad_output):
         set_block_name('else')
         return grad_output
-    
+
 
 class MOEOrMLPEndOp(torch.autograd.Function):
     @staticmethod
@@ -143,7 +141,7 @@ class MOEOrMLPEndOp(torch.autograd.Function):
         set_block_name('else')
         output = input_data * 1
         return output
-    
+
     @staticmethod
     def backward(ctx, grad_output) -> Any:
         set_block_name('moe/mlp_grad')

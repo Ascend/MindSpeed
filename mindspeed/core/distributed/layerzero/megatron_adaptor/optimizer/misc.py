@@ -1,12 +1,9 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
-from typing import List, Optional
-from functools import wraps
 
 import torch
 from megatron.core import parallel_state
-from megatron.training.global_vars import get_args
 from mindspeed.core.distributed.layerzero.zero3 import LayerZeRO3
 
 
@@ -38,4 +35,3 @@ def mga_finalize_model_grads(*args, **kwargs):
             if num_tokens > 0:
                 scaling = 1.0 / num_tokens
                 scale_gradients(model_chunk, scaling)
-    return None

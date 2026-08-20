@@ -23,11 +23,7 @@ import torch
 import numpy as np
 from megatron.core import mpu, tensor_parallel
 from megatron.training import get_args, ft_integration, wandb_utils
-from megatron.training.utils import (
-    unwrap_model,
-    print_rank_0,
-    is_last_rank
-)
+from megatron.training.utils import unwrap_model, print_rank_0, is_last_rank
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training.checkpointing import (
     checkpoint_exists,
@@ -37,17 +33,17 @@ from megatron.training.checkpointing import (
     _to_dtensor,
     check_checkpoint_args,
     get_checkpoint_version,
-    fix_query_key_value_ordering
+    fix_query_key_value_ordering,
 )
 from megatron.core.num_microbatches_calculator import update_num_microbatches
+
 # [ModelOpt]: Import
 try:
     from modelopt.torch.opt.plugins import (
-        save_modelopt_state,
-        save_sharded_modelopt_state,
         restore_modelopt_state,
         restore_sharded_modelopt_state,
     )
+
     has_nvidia_modelopt = True
 except Exception:
     has_nvidia_modelopt = False
@@ -62,9 +58,17 @@ from megatron.training.checkpointing import (
 from torch.distributed.checkpoint.state_dict import get_optimizer_state_dict
 
 
-def generate_state_dict(args, model, optimizer, opt_param_scheduler,
-                        rng_state, use_dist_ckpt=False, iteration=None,
-                        optim_sd_kwargs=None, rerun_state=None):
+def generate_state_dict(
+    args,
+    model,
+    optimizer,
+    opt_param_scheduler,
+    rng_state,
+    use_dist_ckpt=False,
+    iteration=None,
+    optim_sd_kwargs=None,
+    rerun_state=None,
+):
     """Generate a state dict from given model, optimizer, scheduler, rng state and others.
 
     Note: use_dist_ckpt is deprecated and not used. Will be removed soon.
@@ -86,7 +90,7 @@ def generate_state_dict(args, model, optimizer, opt_param_scheduler,
         model_sd = None
         if args.ckpt_format == "torch_dist":
             model_sd = model[i].sharded_state_dict()
-        else:   # torch, torch_dcp
+        else:  # torch, torch_dcp
             model_sd = model[i].state_dict_for_save_checkpoint()
 
         state_dict[key] = model_sd
@@ -99,15 +103,16 @@ def generate_state_dict(args, model, optimizer, opt_param_scheduler,
             if args.ckpt_format == "torch_dist":
                 optimizer_sd = optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
             elif args.ckpt_format == "torch_dcp":
-                optimizer_sd = get_optimizer_state_dict(model[0], [opt.optimizer for opt in optimizer.chained_optimizers])
+                optimizer_sd = get_optimizer_state_dict(
+                    model[0], [opt.optimizer for opt in optimizer.chained_optimizers]
+                )
             else:
                 optimizer_sd = optimizer.state_dict()
 
             state_dict['optimizer'] = optimizer_sd
 
         if opt_param_scheduler is not None:
-            state_dict['opt_param_scheduler'] = \
-                opt_param_scheduler.state_dict()
+            state_dict['opt_param_scheduler'] = opt_param_scheduler.state_dict()
 
     # Rerun state
     state_dict['rerun_state_machine'] = rerun_state
@@ -118,8 +123,15 @@ def generate_state_dict(args, model, optimizer, opt_param_scheduler,
     return state_dict
 
 
-def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', strict=True,
-                    checkpointing_context=None, skip_load_to_model_and_opt=False):
+def load_checkpoint(
+    ddp_model,
+    optimizer,
+    opt_param_scheduler,
+    load_arg='load',
+    strict=True,
+    checkpointing_context=None,
+    skip_load_to_model_and_opt=False,
+):
     """Load a model checkpoint and return the iteration.
     strict (bool): whether to strictly enforce that the keys in
         :attr:`state_dict` of the checkpoint match the names of
@@ -128,10 +140,7 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
         for :attr:`model` and :attr:`optimizer`. In case of running FSDP2 with mcore distributed
         checkpointing, the tensors are already loaded in-place by `_load_base_checkpoint`.
     """
-    from megatron.training.checkpointing import (
-        _load_base_checkpoint,
-        generate_state_dict
-    )
+    from megatron.training.checkpointing import _load_base_checkpoint
 
     args = get_args()
     load_dir = getattr(args, load_arg)
@@ -171,9 +180,9 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
             raise NotImplementedError(f"checkpoint format {ckpt_format} not supported")
 
     load_kwargs = {}
-    if ckpt_format == "torch_dist":
+    if ckpt_format == "torch_dist":  # pylint: disable=too-many-nested-blocks
         ckpt_tp_pp = (
-            state_dict['args'].tensor_model_parallel_size,
+            state_dict['args'].tensor_model_parallel_size,  # pylint: disable=used-before-assignment
             state_dict['args'].pipeline_model_parallel_size,
             getattr(state_dict['args'], 'encoder_tensor_model_parallel_size', 0),
             getattr(state_dict['args'], 'encoder_pipeline_model_parallel_size', 0),
@@ -189,8 +198,13 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
         )
 
         # Determine if RNG state will be loaded
-        if (ckpt_tp_pp == run_tp_pp and not release and not args.finetune and not args.no_load_rng
-                and not getattr(state_dict['args'], 'no_save_rng', False)):
+        if (
+            ckpt_tp_pp == run_tp_pp
+            and not release  # pylint: disable=used-before-assignment
+            and not args.finetune
+            and not args.no_load_rng
+            and not getattr(state_dict['args'], 'no_save_rng', False)
+        ):
             gen_sd_rng_state = get_rng_state(args.ckpt_format)  # we can load the rng state
         else:
             gen_sd_rng_state = None
@@ -199,42 +213,46 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
 
         optim_sd_kwargs = dict(is_loading=True)
         # Determine if optimizer state will be loaded
-        if (not release and not args.finetune and not args.no_load_optim
-                and not getattr(state_dict['args'], 'no_save_optim', False)):
+        if (
+            not release
+            and not args.finetune
+            and not args.no_load_optim
+            and not getattr(state_dict['args'], 'no_save_optim', False)
+        ):
             gen_sd_optim = optimizer
             gen_sd_opt_param_scheduler = opt_param_scheduler
 
             if args.use_distributed_optimizer:
-                optim_sd_kwargs['sharding_type'] = ('fully_sharded_model_space'
-                                                    if getattr(state_dict['args'], 'ckpt_fully_parallel_save', False)
-                                                    else 'dp_zero_gather_scatter')
+                optim_sd_kwargs['sharding_type'] = (
+                    'fully_sharded_model_space'
+                    if getattr(state_dict['args'], 'ckpt_fully_parallel_save', False)
+                    else 'dp_zero_gather_scatter'
+                )
                 # This is for backwards-compatibility. Can be removed once 'fully_sharded_bucket_space' loading is removed
                 for maybe_dist_opt_optim_state in (state_dict['optimizer'], *state_dict['optimizer'].values()):
                     if 'param_state_sharding_type' in maybe_dist_opt_optim_state:
                         if maybe_dist_opt_optim_state['param_state_sharding_type'] == 'fully_sharded_bucket_space':
                             print_rank_0(
-                                'Detected deprecated `fully_sharded_bucket_space` DistributedOptimizer checkpoint format')
+                                'Detected deprecated `fully_sharded_bucket_space` DistributedOptimizer checkpoint format'
+                            )
                             optim_sd_kwargs['sharding_type'] = maybe_dist_opt_optim_state['param_state_sharding_type']
                         break
 
                 if ckpt_tp_pp != run_tp_pp and optim_sd_kwargs['sharding_type'] != 'fully_sharded_model_space':
                     raise RuntimeError(
                         f"{mismatch_msg}: not supported for DistributedOptimizer with sharding type {optim_sd_kwargs['sharding_type']}."
-                        f" Please use `--ckpt-fully-parallel-save` flag during checkpoint saving.")
+                        f" Please use `--ckpt-fully-parallel-save` flag during checkpoint saving."
+                    )
         else:
             gen_sd_optim = None
             gen_sd_opt_param_scheduler = None
 
         # Determine if rerun state will be loaded
-        if (
-                ckpt_tp_pp == run_tp_pp
-                and not release
-                and not args.finetune
-                and 'rerun_state_machine' in state_dict
-        ):
+        if ckpt_tp_pp == run_tp_pp and not release and not args.finetune and 'rerun_state_machine' in state_dict:
             rerun_state_machine = get_rerun_state_machine()
             gen_sd_rerun_state = rerun_state_machine.state_dict(
-                data_iterator=None, ckpt_format=ckpt_format,
+                data_iterator=None,
+                ckpt_format=ckpt_format,
             )
         else:
             gen_sd_rerun_state = None
@@ -249,7 +267,7 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
             elif ckpt_type == CheckpointType.GLOBAL:
                 restore_modelopt_state(model, state_dict)
             else:
-                restore_sharded_modelopt_state(model, checkpoint_name)
+                restore_sharded_modelopt_state(model, checkpoint_name)  # pylint: disable=used-before-assignment
 
         # [ModelOpt]: Initial loading from non-resume sharded checkpoint to a Distillation Model
         # will result in key mismatch with loss modules potentially containing parameters, since
@@ -259,8 +277,13 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
                 for m in model:
                     stack.enter_context(m.hide_loss_modules())
             load_kwargs['sharded_state_dict'] = generate_state_dict(
-                args, model, gen_sd_optim, gen_sd_opt_param_scheduler, gen_sd_rng_state,
-                optim_sd_kwargs=optim_sd_kwargs, rerun_state=gen_sd_rerun_state
+                args,
+                model,
+                gen_sd_optim,
+                gen_sd_opt_param_scheduler,
+                gen_sd_rng_state,
+                optim_sd_kwargs=optim_sd_kwargs,
+                rerun_state=gen_sd_rerun_state,
             )
 
         # When "--fp8-param-gather" is disabled, this function doesn't modify anything.
@@ -272,7 +295,8 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
         model_sd = model[0].state_dict()
         rerun_state_machine = get_rerun_state_machine()
         rerun_state = rerun_state_machine.state_dict(
-            data_iterator=[], ckpt_format=args.ckpt_format,
+            data_iterator=[],
+            ckpt_format=args.ckpt_format,
         )
         # Initialize sharded state dictionary with mandatory components
         sharded_state_dict = {
@@ -289,7 +313,9 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
                 # FIX: Conditional state dict construction for Megatron compatibility
                 # Previously only,
                 # now they are conditionally added based on --no_load_optim and --no_load_rng flags
-                optimizer_sd = get_optimizer_state_dict(model[0], [opt.optimizer for opt in optimizer.chained_optimizers])
+                optimizer_sd = get_optimizer_state_dict(
+                    model[0], [opt.optimizer for opt in optimizer.chained_optimizers]
+                )
                 sharded_state_dict.update({"optimizer": optimizer_sd})
             if opt_param_scheduler is not None:
                 sharded_state_dict.update({"opt_param_scheduler": opt_param_scheduler.state_dict()})
@@ -300,8 +326,7 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
         load_kwargs["sharded_state_dict"] = sharded_state_dict
 
     state_dict, checkpoint_name, release, ckpt_type = _load_base_checkpoint(
-        load_dir, args, rank0=False, checkpointing_context=checkpointing_context,
-        **load_kwargs
+        load_dir, args, rank0=False, checkpointing_context=checkpointing_context, **load_kwargs
     )
 
     # Checkpoint not loaded.
@@ -327,8 +352,11 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
             try:  # Backward compatible with older checkpoints
                 iteration = state_dict['total_iters']
             except KeyError:
-                print_rank_0('A metadata file exists but unable to load '
-                             'iteration from checkpoint {}, exiting'.format(checkpoint_name))
+                print_rank_0(
+                    'A metadata file exists but unable to load iteration from checkpoint {}, exiting'.format(
+                        checkpoint_name
+                    )
+                )
                 sys.exit()
     num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
 
@@ -339,13 +367,10 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
     if 'args' in state_dict and not args.finetune:
         checkpoint_args = state_dict['args']
         check_checkpoint_args(checkpoint_args)
-        args.consumed_train_samples = getattr(checkpoint_args,
-                                              'consumed_train_samples', 0)
-        args.skipped_train_samples = getattr(checkpoint_args,
-                                             'skipped_train_samples', 0)
+        args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
+        args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
         update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
-        args.consumed_valid_samples = getattr(checkpoint_args,
-                                              'consumed_valid_samples', 0)
+        args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
     else:
         print_rank_0('could not find arguments in the checkpoint ...')
 
@@ -380,13 +405,11 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
                 assert not is_torch_dist
                 tracker_filename = get_checkpoint_tracker_filename(load_dir)
                 iteration, release = read_metadata(tracker_filename)
-                model_checkpoint_name = \
-                    get_checkpoint_name(load_dir, iteration, release)
-                optim_checkpoint_name = \
-                    get_distributed_optimizer_checkpoint_name(
-                        model_checkpoint_name)
-                optimizer.load_parameter_state(optim_checkpoint_name,
-                                               update_legacy_format=args.ckpt_convert_update_legacy_dist_opt_format)
+                model_checkpoint_name = get_checkpoint_name(load_dir, iteration, release)
+                optim_checkpoint_name = get_distributed_optimizer_checkpoint_name(model_checkpoint_name)
+                optimizer.load_parameter_state(
+                    optim_checkpoint_name, update_legacy_format=args.ckpt_convert_update_legacy_dist_opt_format
+                )
 
             # Load scheduler.
             if opt_param_scheduler is not None:
@@ -395,10 +418,12 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
                 else:
                     opt_param_scheduler.load_state_dict(state_dict['opt_param_scheduler'])
         except KeyError as e:
-            print_rank_0('Unable to load optimizer from checkpoint {}. '
-                         'Specify --no-load-optim or --finetune to prevent '
-                         'attempting to load the optimizer state, '
-                         'exiting ...'.format(checkpoint_name))
+            print_rank_0(
+                'Unable to load optimizer from checkpoint {}. '
+                'Specify --no-load-optim or --finetune to prevent '
+                'attempting to load the optimizer state, '
+                'exiting ...'.format(checkpoint_name)
+            )
             raise e
     else:
         if (args.fp16 or args.bf16) and optimizer is not None:
@@ -428,8 +453,7 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
                 # Check for empty states array
                 if not rng_state['rng_tracker_states']:
                     raise KeyError
-                tensor_parallel.get_cuda_rng_tracker().set_states(
-                    rng_state['rng_tracker_states'])
+                tensor_parallel.get_cuda_rng_tracker().set_states(rng_state['rng_tracker_states'])
             else:  # backward compatability
                 random.setstate(state_dict['random_rng_state'])
                 np.random.set_state(state_dict['np_rng_state'])
@@ -438,34 +462,36 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, load_arg='load', 
                 # Check for empty states array
                 if not state_dict['rng_tracker_states']:
                     raise KeyError
-                tensor_parallel.get_cuda_rng_tracker().set_states(
-                    state_dict['rng_tracker_states'])
+                tensor_parallel.get_cuda_rng_tracker().set_states(state_dict['rng_tracker_states'])
         except KeyError:
-            print_rank_0('Unable to load rng state from checkpoint {}. '
-                         'Specify --no-load-rng or --finetune to prevent '
-                         'attempting to load the rng state, '
-                         'exiting ...'.format(checkpoint_name))
+            print_rank_0(
+                'Unable to load rng state from checkpoint {}. '
+                'Specify --no-load-rng or --finetune to prevent '
+                'attempting to load the rng state, '
+                'exiting ...'.format(checkpoint_name)
+            )
             sys.exit()
 
     # Some utilities want to load a checkpoint without distributed being initialized
     if torch.distributed.is_initialized():
         torch.distributed.barrier()
 
-    print_rank_0(f'  successfully loaded checkpoint from {load_dir} '
-                 f'[ t {mpu.get_tensor_model_parallel_rank() + 1}/{mpu.get_tensor_model_parallel_world_size()}, '
-                 f'p {mpu.get_pipeline_model_parallel_rank() + 1}/{mpu.get_pipeline_model_parallel_world_size()} ] '
-                 f'at iteration {iteration}')
+    print_rank_0(
+        f'  successfully loaded checkpoint from {load_dir} '
+        f'[ t {mpu.get_tensor_model_parallel_rank() + 1}/{mpu.get_tensor_model_parallel_world_size()}, '
+        f'p {mpu.get_pipeline_model_parallel_rank() + 1}/{mpu.get_pipeline_model_parallel_world_size()} ] '
+        f'at iteration {iteration}'
+    )
 
     # Additional callback for wandb (last rank)
-    if not torch.distributed.is_initialized() \
-            or is_last_rank():
+    if not torch.distributed.is_initialized() or is_last_rank():
         wandb_utils.on_load_checkpoint_success(checkpoint_name, load_dir)
 
     torch.cuda.empty_cache()
 
     if iteration > 0:
         # Notify FT that a checkpoint was loaded.
-        is_local_chkpt = (ckpt_type == CheckpointType.LOCAL)
+        is_local_chkpt = ckpt_type == CheckpointType.LOCAL
         ft_integration.on_checkpoint_loaded(is_local_chkpt=is_local_chkpt)
 
     return iteration, num_floating_point_operations_so_far

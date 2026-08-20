@@ -20,8 +20,8 @@ from mindspeed.core.tensor_parallel.comm_autograd_function import (
 )
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm
 from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
- 
- 
+
+
 def language_model_embedding_forward_wrapper(forward):
     @wraps(forward)
     def wrapper(self, *args, **kwargs):
@@ -31,4 +31,5 @@ def language_model_embedding_forward_wrapper(forward):
                 encoder_input, TPXCollectiveComm, TPYCollectiveComm
             )
         return encoder_input
+
     return wrapper

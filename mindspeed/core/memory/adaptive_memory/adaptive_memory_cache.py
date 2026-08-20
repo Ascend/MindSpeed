@@ -62,7 +62,13 @@ class AdaptiveLayerMemPolicy:
         return self.recompute == other.recompute and self.swap == other.swap
 
     def __repr__(self):
-        result = {'recompute': self.recompute, 'swap': self.swap, 'memory': self.memory, 'time': self.time, 'adapt_type': self.adapt_type}
+        result = {
+            'recompute': self.recompute,
+            'swap': self.swap,
+            'memory': self.memory,
+            'time': self.time,
+            'adapt_type': self.adapt_type,
+        }
         return str(result)
 
 
@@ -101,7 +107,6 @@ class AdaptiveModelMemPolicy:
 
 
 class PolicyCacheManager(metaclass=SingletonBase):
-
     def __init__(self):
         self.local_file_name_list = []
         self.normal_policy_cache: List[AdaptiveModelMemPolicy] = []
@@ -117,7 +122,7 @@ class PolicyCacheManager(metaclass=SingletonBase):
             print_rank_0(f"load history oom policy False!!!!!!!!: {self.local_file_name_list[cur_pp_rank]}")
             return
 
-        with open(self.local_file_name_list[cur_pp_rank], "r") as f:
+        with open(self.local_file_name_list[cur_pp_rank], "r", encoding='utf-8') as f:
             for line in f:
                 json_format = json.loads(line)
                 policy: AdaptiveModelMemPolicy = AdaptiveModelMemPolicy.parse_from_json(json_format)
@@ -126,7 +131,7 @@ class PolicyCacheManager(metaclass=SingletonBase):
 
     @staticmethod
     def _get_version_file(src_path, key, version_file_name):
-        version_path = src_path[:src_path.index(key) + len(key)]
+        version_path = src_path[: src_path.index(key) + len(key)]
         return os.path.join(version_path, version_file_name)
 
     def _get_software_version(self):
@@ -144,18 +149,18 @@ class PolicyCacheManager(metaclass=SingletonBase):
         if not os.path.isfile(ascend_toolkit_version_file) or not os.path.isfile(driver_version_file):
             return {}
 
-        with open(ascend_toolkit_version_file, "r") as f:
+        with open(ascend_toolkit_version_file, "r", encoding='utf-8') as f:
             f.readline()
             ascend_version = f.readline()
 
-        with open(driver_version_file, "r") as f:
+        with open(driver_version_file, "r", encoding='utf-8') as f:
             driver_version = f.readline()
 
         return {
             "torch": torch_version,
             "torch_npu": torch_npu_version,
             "ascend_toolkit": ascend_version,
-            "driver": driver_version
+            "driver": driver_version,
         }
 
     def _scan_dir_recursively(self, dir_name, sha256s):
@@ -172,10 +177,10 @@ class PolicyCacheManager(metaclass=SingletonBase):
                     sha256s.append(sha256_instance.hexdigest())
 
     def _get_source_code_hash(self):
-        mindspeed_path, = mindspeed.__path__
+        (mindspeed_path,) = mindspeed.__path__
         sha256s = []
         self._scan_dir_recursively(mindspeed_path, sha256s)
-        sha256s.sorted()
+        sha256s.sort()
         sha256_instance = hashlib.sha256()
         for x in sha256s:
             sha256_instance.update(x.encode('utf-8'))
@@ -200,9 +205,13 @@ class PolicyCacheManager(metaclass=SingletonBase):
             "micro_batch_size": mbs,
             "sequence_len": seq_len,
             "hidden": hidden,
-            "tp": tp, "cp": cp, "sp": sp, "ep": ep, "dp": dp,
+            "tp": tp,
+            "cp": cp,
+            "sp": sp,
+            "ep": ep,
+            "dp": dp,
             "world_size": world_size,
-            "source_hash": self._get_source_code_hash()
+            "source_hash": self._get_source_code_hash(),
         }
         software_versions = self._get_software_version()
         arguments.update(software_versions)
@@ -229,14 +238,14 @@ class PolicyCacheManager(metaclass=SingletonBase):
         rank_per_pp = total_ranks // pp
         # 不同节点的rank0需要存policy 以及 相同节点不同pp stage中的rank0需要存一下policy
         if torch.distributed.get_rank() % cur_device_ranks == 0 or (
-                torch.distributed.get_rank() % rank_per_pp == 0 and torch.distributed.get_rank() % cur_device_ranks != 0):
+            torch.distributed.get_rank() % rank_per_pp == 0 and torch.distributed.get_rank() % cur_device_ranks != 0
+        ):
             flags = os.O_WRONLY | os.O_CREAT
             mode = stat.S_IWUSR | stat.S_IRUSR
             with os.fdopen(os.open(self.local_file_name_list[cur_pp_rank], flags, mode), 'w') as fout:
                 fout.write("")
                 for p in self.oom_policy_cache:
                     fout.write(p.to_json() + "\n")
-
 
     def add_normal_policy_cache(self, policy):
         if policy in self.normal_policy_cache:
@@ -259,19 +268,19 @@ class PolicyCacheManager(metaclass=SingletonBase):
 
     def check_in_cache(self, policy: AdaptiveModelMemPolicy):
         if policy is None:
-            raise ValueError(f"unexpect policy")
+            raise ValueError("unexpect policy")
 
         in_normal = next((x for x in self.normal_policy_cache if x == policy), None) is not None
         return in_normal or next((x for x in self.oom_policy_cache if x == policy), None) is not None
 
     def check_in_normal_cache(self, policy: AdaptiveModelMemPolicy):
         if policy is None:
-            raise ValueError(f"unexpect policy")
+            raise ValueError("unexpect policy")
 
         return next((x for x in self.normal_policy_cache if x == policy), None) is not None
 
     def check_in_oom_cache(self, policy: AdaptiveModelMemPolicy):
         if policy is None:
-            raise ValueError(f"unexpect policy")
+            raise ValueError("unexpect policy")
 
         return next((x for x in self.oom_policy_cache if x == policy), None) is not None

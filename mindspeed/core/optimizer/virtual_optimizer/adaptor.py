@@ -7,8 +7,8 @@ from megatron.core.parallel_state import get_pipeline_model_parallel_rank, get_p
 from megatron.training import get_args
 from mindspeed.core.optimizer.virtual_optimizer.virtual_adam import (
     virtual_optimizer_step_impl,
-    virtual_optimizer_replace, 
-    VirtualAllocator
+    virtual_optimizer_replace,
+    VirtualAllocator,
 )
 
 
@@ -28,9 +28,8 @@ def get_global_virtual_allocator():
     args = get_args()
     if not hasattr(args, "virtual_allocator"):
         args.virtual_allocator = VirtualAllocator(
-            get_pipeline_model_parallel_rank(),
-            get_pipeline_model_parallel_world_size(),
-            get_args().virtual_optimizer)
+            get_pipeline_model_parallel_rank(), get_pipeline_model_parallel_world_size(), get_args().virtual_optimizer
+        )
     return args.virtual_allocator
 
 
@@ -41,4 +40,5 @@ def replace_swap_tensor_wrapper(fn):
         virtual_allocator = get_global_virtual_allocator()
         virtual_optimizer_replace(self.optimizer, virtual_allocator)
         return res
+
     return wrapper

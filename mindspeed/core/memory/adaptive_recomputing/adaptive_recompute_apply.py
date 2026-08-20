@@ -4,7 +4,12 @@ from megatron.core import tensor_parallel
 from megatron.training import print_rank_0
 from megatron.training import get_args
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager
-from mindspeed.core.memory.adaptive_recomputing.prefetch import prefetch_tensor, prefetch_register_post_backward_hook, prefetch_register_pre_forward_hook, get_swap_prefetch, get_layer_id
+from mindspeed.core.memory.adaptive_recomputing.prefetch import (
+    prefetch_register_post_backward_hook,
+    prefetch_register_pre_forward_hook,
+    get_swap_prefetch,
+    get_layer_id,
+)
 
 
 class RecomputeHook:
@@ -132,7 +137,6 @@ def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_gr
         recompute_layer = recompute_list
 
     pre_layer_full_name = config["pre_layer_full_name"]
-    pre_layer_ctx = config["pre_layer_ctx"]
     cur_layer_name = config["cur_layer_name"]
     if cur_layer_name == "module" and isinstance(models, list):
         idx = 0
@@ -143,8 +147,9 @@ def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_gr
             print_rank_0(f'prefetch_layer: {prefetch_layer}---{hook_layer}')
             if any(filter(None, prefetch_layer)):
                 prefetch_recompute_group = [prefetch_layer, hook_layer, recompute_layer]
-                register_recursive_apply_prefetch(config, model, get_list_layers_context(ctx, idx),
-                                                  prefetch_recompute_group, prefetch_args)
+                register_recursive_apply_prefetch(
+                    config, model, get_list_layers_context(ctx, idx), prefetch_recompute_group, prefetch_args
+                )
             idx += 1
         return
 
@@ -153,13 +158,12 @@ def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_gr
         prefetch_register_post_backward_hook(models, pre_layer_full_name + '.' + cur_layer_name, prefetch_args)
         prefetch_register_pre_forward_hook(models, pre_layer_full_name + '.' + cur_layer_name, prefetch_args)
     if hook_list == prefetch_list and prefetch_list != ['']:
-        if "name" in ctx and ctx["name"] in args.swap_modules and \
-                get_layer_id(ctx["prefix_name"]) in prefetch_list:
+        if "name" in ctx and ctx["name"] in args.swap_modules and get_layer_id(ctx["prefix_name"]) in prefetch_list:
             print_rank_0(f"prefetch swap hook success: {pre_layer_full_name + '.' + cur_layer_name}")
             models.no_checkpoint_adaptive_recompute_forward = models.forward
-            models.forward = get_swap_prefetch(prefetch_args).hook_swap_manager_forward(models.forward,
-                                                                                        pre_layer_full_name +
-                                                                                        '.' + cur_layer_name)
+            models.forward = get_swap_prefetch(prefetch_args).hook_swap_manager_forward(
+                models.forward, pre_layer_full_name + '.' + cur_layer_name
+            )
             get_recompute_hook().recompute_modules.append(models)
             return
         elif is_recompute_layer(ctx, recompute_list):
@@ -172,9 +176,9 @@ def register_recursive_apply_prefetch(config, models, ctx, prefetch_recompute_gr
         if is_hook_layer(ctx, prefetch_list):
             print_rank_0(f"prefetch tensor hook success: {pre_layer_full_name + '.' + cur_layer_name}")
             models.no_checkpoint_adaptive_recompute_forward = models.forward
-            models.forward = get_swap_prefetch(prefetch_args).hook_swap_manager_forward(models.forward,
-                                                                                        pre_layer_full_name +
-                                                                                        '.' + cur_layer_name)
+            models.forward = get_swap_prefetch(prefetch_args).hook_swap_manager_forward(
+                models.forward, pre_layer_full_name + '.' + cur_layer_name
+            )
             get_recompute_hook().recompute_modules.append(models)
             return
     pre_layer_full_name += "." + cur_layer_name if pre_layer_full_name != "" else cur_layer_name

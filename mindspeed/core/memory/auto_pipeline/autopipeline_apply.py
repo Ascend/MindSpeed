@@ -1,7 +1,5 @@
-import torch
-from megatron.training import print_rank_0
 from megatron.training import get_args
-from megatron.core import utils, parallel_state, tensor_parallel
+from megatron.core import parallel_state, tensor_parallel
 
 
 def apply_autopipeline(models):

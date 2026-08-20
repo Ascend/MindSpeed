@@ -1,3 +1,5 @@
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION.
 # Copyright (c) Microsoft Corporation.
 
 from functools import wraps
@@ -16,9 +18,7 @@ def collect_main_grad_data_for_unscaling_quant(self):
     args = get_args()
     if args.quant_grads:
         meta_grads_scale_inv = [
-            param.quant_grad.meta.scale_inv
-            for group in self.optimizer.param_groups
-            for param in group["params"]
+            param.quant_grad.meta.scale_inv for group in self.optimizer.param_groups for param in group["params"]
         ]
 
     return main_grads, meta_grads_scale_inv
@@ -35,7 +35,7 @@ def copy_model_grads_to_main_grads_quant(self):
                 assert param_range.size == shard_main_param.nelement()
 
                 model_grad = model_param.main_grad
-                shard_model_grad = model_grad.view(-1)[param_range.start: param_range.end]
+                shard_model_grad = model_grad.view(-1)[param_range.start : param_range.end]
                 if args.quant_grads:
                     shard_main_param.quant_grad = shard_model_grad
                     shard_main_param.quant_grad.meta = model_grad.meta
@@ -70,9 +70,7 @@ def ddp_make_backward_post_hook_wrapper(make_hook_func):
             if param in self.param_to_bucket_group:
                 assert param.requires_grad
                 if self.ddp_config.overlap_grad_reduce:
-                    assert (
-                        param.grad is not None
-                    ), "param.grad being None is not safe when overlap_grad_reduce is True"
+                    assert param.grad is not None, "param.grad being None is not safe when overlap_grad_reduce is True"
                 grad_tensor = param.grad
                 if grad_tensor is not None and (
                     not param.grad_added_to_main_grad or getattr(param, "zero_out_wgrad", False)

@@ -1,7 +1,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import uuid
-from typing import Callable, List, Optional  # codecheck_ignore
+from typing import Callable  # codecheck_ignore
 from functools import wraps, partial
 
 import torch
@@ -18,8 +18,8 @@ def compress_optimizer_step(self, closure=None):
 
 
 def layer_forward_wrapper(forward) -> Callable:
-    """ Main enterence of adaptive activation compression.
-    """
+    """Main enterence of adaptive activation compression."""
+
     @wraps(forward)
     def wrapper(self, *args, **kwargs):
         if self.layer_number not in get_args().compress_activation:
@@ -35,11 +35,11 @@ def layer_forward_wrapper(forward) -> Callable:
             result = forward(self, *args, **kwargs)
         if result is None or result[0].grad_fn is None:
             raise RuntimeError(
-                "Result is None or grad_fn is missing."
-                "Ensure the model is in training mode and gradients are enabled."
+                "Result is None or grad_fn is missing.Ensure the model is in training mode and gradients are enabled."
             )
         result[0].register_hook(partial(backward_start, order_layer_uuid))
         return result
+
     return wrapper
 
 
@@ -52,25 +52,19 @@ def get_global_context() -> GlobalContext:
     if not hasattr(args, "global_context"):
         filter_funcs = [filter_func]
         async_funcs = ["matmul", "allgather", "all2all"]
-        config = GlobalContextConfig(
-            get_moe_average_token_num(),
-            get_args().num_experts,
-            filter_funcs, 
-            async_funcs
-        )
+        config = GlobalContextConfig(get_moe_average_token_num(), get_args().num_experts, filter_funcs, async_funcs)
         setattr(args, "global_context", GlobalContext(config))
     return args.global_context
 
 
 def get_statistic() -> int:
-    """ Determine whether each encoding requires re-statistical analysis of the PDF.
-    """
+    """Determine whether each encoding requires re-statistical analysis of the PDF."""
     increment = get_args().curr_iteration - get_args().iteration
     return increment <= 3 or increment % 100 == 0
 
 
 def get_moe_average_token_num() -> int:
-    """ Calculate the average number of tokens allocated per card 
+    """Calculate the average number of tokens allocated per card
     for the MoE model based on configuration.
     """
     args = get_args()
@@ -83,16 +77,14 @@ def get_absolute_order(ctx: GlobalContext) -> int:
 
 
 def filter_func(tensor: torch.Tensor) -> bool:
-    """ Exclude tensors that do not require compression.
-    """
+    """Exclude tensors that do not require compression."""
     if tensor.grad_fn is None:
         return False
     if tensor.dtype == torch.float32:
         return False
     if tensor.numel() == 0 or tensor.numel() % 64 != 0 or tensor.numel() < 32768:
         return False
-    if tensor.storage().size() == 0 or tensor.storage_offset() != 0 \
-        or tensor.storage().size() != tensor.numel():
+    if tensor.storage().size() == 0 or tensor.storage_offset() != 0 or tensor.storage().size() != tensor.numel():
         return False
     if tensor.grad_fn and "CheckpointWithout" in str(tensor.grad_fn):
         return False

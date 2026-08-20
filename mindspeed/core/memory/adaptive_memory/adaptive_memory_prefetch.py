@@ -1,11 +1,14 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
-import re
 import torch
 from megatron.training import print_rank_0, get_args
 from .adaptive_memory_tool import SingletonBase, FuncLocationMgr, broadcast_obj
 from .adaptive_memory_tool import AdaptiveStepMgr, ContextKey as Key
-from .adaptive_memory_swap_manager import SwapManager, transformer_layer_register_post_forward_hook, \
-    transformer_layer_register_pre_backward_hook, LayerProfilingHook
+from .adaptive_memory_swap_manager import (
+    SwapManager,
+    transformer_layer_register_post_forward_hook,
+    transformer_layer_register_pre_backward_hook,
+    LayerProfilingHook,
+)
 
 
 class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
@@ -71,14 +74,15 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
         if self.need_swap_module_name[key][-1] not in keys:
             return True
         else:
-            if not self.need_swap_module_name[self.need_swap_module_name[key][-1]][0]:
-                return True
-            else:
-                return False
+            return not self.need_swap_module_name[self.need_swap_module_name[key][-1]][0]
 
     # get prefetch config
     def solve_prefetch_config(self):
-        self.prefetch_deep_list = [num for num in range(self.prefetch_deep_start, self.prefetch_deep_end + 1) for _ in range(self.each_depth_run_times)]
+        self.prefetch_deep_list = [
+            num
+            for num in range(self.prefetch_deep_start, self.prefetch_deep_end + 1)
+            for _ in range(self.each_depth_run_times)
+        ]
         self.prefetch_hook_interval = len(self.prefetch_deep_list)
         self.set_chunk_num()
 
@@ -106,11 +110,15 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
             prefetch_register_forward_hook_for_recording_time(models, cur_layer_full_name)
             prefetch_register_pre_forward_hook(models, cur_layer_full_name)
             # register pack/unpack
-            print_rank_0(f"cur_step()={AdaptiveStepMgr().get_cur_step()}, is_recording=True, prefetch swap hook success: {cur_layer_full_name}")
+            print_rank_0(
+                f"cur_step()={AdaptiveStepMgr().get_cur_step()}, is_recording=True, prefetch swap hook success: {cur_layer_full_name}"
+            )
             SwapManager().hook_prefetch_forward(models, cur_layer_full_name)
 
         if ctx.get(Key.IS_LAYER0_OF_MODULE0, False):
-            print_rank_0(f"cur_step()={AdaptiveStepMgr().get_cur_step()}, is_recording=True, prefetch forward and backward hook success: {cur_layer_full_name}")
+            print_rank_0(
+                f"cur_step()={AdaptiveStepMgr().get_cur_step()}, is_recording=True, prefetch forward and backward hook success: {cur_layer_full_name}"
+            )
             prefetch_register_pre_forward_hook(models, cur_layer_full_name, True)
             transformer_layer_register_post_forward_hook(models, True)
             transformer_layer_register_pre_backward_hook(models)
@@ -118,17 +126,22 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
     def prefetch_profiling_register_for_function(self, ctx, cur_layer_full_name):
         if self.prefetch_deep_list[self.get_deep_index()] == ctx[Key.DEEP]:
             self.function_swap_profiling_deep = ctx[Key.DEEP]
-            print_rank_0(f"cur_step()={AdaptiveStepMgr().get_cur_step()}, {self.function_swap_profiling_deep=}, is_recording=True, prefetch swap hook success: {cur_layer_full_name}")
+            print_rank_0(
+                f"cur_step()={AdaptiveStepMgr().get_cur_step()}, {self.function_swap_profiling_deep=}, is_recording=True, prefetch swap hook success: {cur_layer_full_name}"
+            )
 
     def prefetch_register(self, ctx, models, cur_layer_full_name):
         if ctx.get(Key.IS_LAYER0_OF_MODULE0, False):
-            print_rank_0(f"is_recording=False, prefetch forward and backward hook success: cur_step()={AdaptiveStepMgr().get_cur_step()}, {cur_layer_full_name}")
+            print_rank_0(
+                f"is_recording=False, prefetch forward and backward hook success: cur_step()={AdaptiveStepMgr().get_cur_step()}, {cur_layer_full_name}"
+            )
             transformer_layer_register_post_forward_hook(models)
             transformer_layer_register_pre_backward_hook(models)
-            from .adaptive_memory_profiling import AdaptiveMemoryProfiling
             LayerProfilingHook().apply_layer_profiling_hook(models)
         if cur_layer_full_name in self.need_swap_module_name:
-            print_rank_0(f"is_recording=False, prefetch swap hook success: cur_step()={AdaptiveStepMgr().get_cur_step()}, {cur_layer_full_name}")
+            print_rank_0(
+                f"is_recording=False, prefetch swap hook success: cur_step()={AdaptiveStepMgr().get_cur_step()}, {cur_layer_full_name}"
+            )
             SwapManager().hook_prefetch_forward(models, cur_layer_full_name)
             ctx[Key.IS_SWAP] = True
         elif Key.AVG_TIME in ctx and Key.IS_MODLUE_OF_LAYER0 in ctx:
@@ -137,12 +150,13 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
     def prefetch_register_for_function(self, ctx, cur_layer_full_name):
         if cur_layer_full_name in self.need_swap_module_name:
             if ctx[Key.NAME] not in self.prefetch_function_list:
-                print_rank_0(f"is_recording=False, prefetch swap hook success: cur_step()={AdaptiveStepMgr().get_cur_step()}, {cur_layer_full_name}")
+                print_rank_0(
+                    f"is_recording=False, prefetch swap hook success: cur_step()={AdaptiveStepMgr().get_cur_step()}, {cur_layer_full_name}"
+                )
                 self.prefetch_function_list.append(ctx[Key.NAME])
             ctx[Key.IS_SWAP] = True
         else:
             ctx[Key.IS_SWAP] = False
-
 
     def register_recursive_apply_prefetch(self, config, models, ctx, is_prefetch_prof=True):
         pre_layer_full_name = config["pre_layer_full_name"]
@@ -151,7 +165,9 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
             idx = 0
             for model in models:
                 if idx < self.chunk_num:
-                    self.register_recursive_apply_prefetch(config, model, self._get_list_layers_context(ctx, idx), is_prefetch_prof)
+                    self.register_recursive_apply_prefetch(
+                        config, model, self._get_list_layers_context(ctx, idx), is_prefetch_prof
+                    )
                 idx += 1
             return
 
@@ -215,7 +231,11 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
         if len(list(self.prefetch_module_event_dict.keys())) == 0:
             return
         first_key = list(self.prefetch_module_event_dict.keys())[0]
-        if Key.PREFIX_NAME in context and Key.NAME in context and first_key == context[Key.PREFIX_NAME] + "." + context[Key.NAME]:
+        if (
+            Key.PREFIX_NAME in context
+            and Key.NAME in context
+            and first_key == context[Key.PREFIX_NAME] + "." + context[Key.NAME]
+        ):
             cur_event_list = self.prefetch_module_event_dict.pop(first_key)
             for event_list in cur_event_list:
                 start, end = event_list[0], event_list[1]
@@ -223,7 +243,9 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
                 if Key.MODULE_FORWARD_TOTAL_TIME in context:
                     context[Key.MODULE_FORWARD_CNT] += 1
                     context[Key.MODULE_FORWARD_TOTAL_TIME] += cur_time
-                    context[Key.MODULE_FORWARD_AVG_TIME] = context[Key.MODULE_FORWARD_TOTAL_TIME] / context[Key.MODULE_FORWARD_CNT]
+                    context[Key.MODULE_FORWARD_AVG_TIME] = (
+                        context[Key.MODULE_FORWARD_TOTAL_TIME] / context[Key.MODULE_FORWARD_CNT]
+                    )
                 else:
                     context[Key.MODULE_FORWARD_CNT] = 1
                     context[Key.MODULE_FORWARD_TOTAL_TIME] = cur_time
@@ -237,7 +259,11 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
         if len(list(self.swap_event_dict.keys())) == 0:
             return
         first_key = list(self.swap_event_dict.keys())[0]
-        if Key.PREFIX_NAME in context and Key.NAME in context and first_key == context[Key.PREFIX_NAME] + "." + context[Key.NAME]:
+        if (
+            Key.PREFIX_NAME in context
+            and Key.NAME in context
+            and first_key == context[Key.PREFIX_NAME] + "." + context[Key.NAME]
+        ):
             cur_event_list = self.swap_event_dict.pop(first_key)
             for event_list in cur_event_list:
                 start, end = event_list[0], event_list[1]
@@ -245,7 +271,9 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
                 if Key.MODULE_SWAP_TOTAL_TIME in context:
                     context[Key.MODULE_SWAP_CNT] += 1
                     context[Key.MODULE_SWAP_TOTAL_TIME] += cur_time
-                    context[Key.MODULE_SWAP_AVG_TIME] = context[Key.MODULE_SWAP_TOTAL_TIME] / context[Key.MODULE_SWAP_CNT]
+                    context[Key.MODULE_SWAP_AVG_TIME] = (
+                        context[Key.MODULE_SWAP_TOTAL_TIME] / context[Key.MODULE_SWAP_CNT]
+                    )
                 else:
                     context[Key.MODULE_SWAP_CNT] = 1
                     context[Key.MODULE_SWAP_TOTAL_TIME] = cur_time
@@ -259,21 +287,28 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
         if len(list(self.swap_memory_in_module_dict.keys())) == 0:
             return
         first_key = list(self.swap_memory_in_module_dict.keys())[0]
-        if Key.PREFIX_NAME in context and Key.NAME in context and first_key == context[Key.PREFIX_NAME] + "." + context[Key.NAME]:
+        if (
+            Key.PREFIX_NAME in context
+            and Key.NAME in context
+            and first_key == context[Key.PREFIX_NAME] + "." + context[Key.NAME]
+        ):
             memory = self.swap_memory_in_module_dict.pop(first_key)
             if Key.MODULE_SWAP_TOTAL_MEMORY in context:
                 context[Key.MODULE_SWAP_TOTAL_MEMORY] += memory
-                context[Key.MODULE_SWAP_AVG_MEMORY] = context[Key.MODULE_SWAP_TOTAL_MEMORY] / context[Key.MODULE_SWAP_CNT]
+                context[Key.MODULE_SWAP_AVG_MEMORY] = (
+                    context[Key.MODULE_SWAP_TOTAL_MEMORY] / context[Key.MODULE_SWAP_CNT]
+                )
             else:
                 context[Key.MODULE_SWAP_TOTAL_MEMORY] = memory
-                context[Key.MODULE_SWAP_AVG_MEMORY] = context[Key.MODULE_SWAP_TOTAL_MEMORY] / context[Key.MODULE_SWAP_CNT]
+                context[Key.MODULE_SWAP_AVG_MEMORY] = (
+                    context[Key.MODULE_SWAP_TOTAL_MEMORY] / context[Key.MODULE_SWAP_CNT]
+                )
         if Key.SUBMODULES not in context:
             return
         for submodule in context[Key.SUBMODULES]:
             self.record_swap_memory(submodule)
 
     def deal_not_need_swap_module(self, context):
-
         if context.get(Key.IS_MODLUE_OF_LAYER0, False) and Key.IS_SWAP not in context:
             context[Key.IS_SWAP] = False
 
@@ -329,8 +364,10 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
                 # 处理异常场景
                 self.is_stable_apply = True
         elif self.is_first_select_module and not SwapManager().is_need_adjust_module():
-            print_rank_0(f"swap is stable, step={AdaptiveStepMgr().get_cur_step()}, "
-                         f"forward time is {LayerProfilingHook().get_single_layer_time()}")
+            print_rank_0(
+                f"swap is stable, step={AdaptiveStepMgr().get_cur_step()}, "
+                f"forward time is {LayerProfilingHook().get_single_layer_time()}"
+            )
             self.is_stable_apply = True
 
         self.is_first_select_module = True
@@ -397,9 +434,13 @@ class AdaptiveMemoryPrefetch(metaclass=SingletonBase):
             AdaptiveMemoryPrefetch().swap_event_dict[key] = [[swap_tensor.start_pack_event, swap_tensor.end_pack_event]]
         elif has_key and swap_tensor.first_tensor:
             if is_function:
-                AdaptiveMemoryPrefetch().swap_event_dict[key].append([swap_tensor.start_pack_event, swap_tensor.end_pack_event])
+                AdaptiveMemoryPrefetch().swap_event_dict[key].append(
+                    [swap_tensor.start_pack_event, swap_tensor.end_pack_event]
+                )
             else:
-                AdaptiveMemoryPrefetch().swap_event_dict[swap_tensor.pack_module_name].append([swap_tensor.start_pack_event, swap_tensor.end_pack_event])
+                AdaptiveMemoryPrefetch().swap_event_dict[swap_tensor.pack_module_name].append(
+                    [swap_tensor.start_pack_event, swap_tensor.end_pack_event]
+                )
 
 
 def forward_post_hook_func_for_recording_time(module_name):

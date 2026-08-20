@@ -7,11 +7,11 @@ from .hccl_operator import MOEOrMLPStartOp, MOEOrMLPEndOp
 
 
 def moelayer_forward_decorator(fn):
-
     @wraps
     def wrapper(*args, **kwargs):
         prof_file = get_args().prof_file
         if prof_file:
+            args = list(args)
             args[1] = MOEOrMLPStartOp.apply(args[1])
             activation_func_1 = torch.nn.Softplus()
             args[1] = activation_func_1(args[1])
@@ -22,7 +22,7 @@ def moelayer_forward_decorator(fn):
             output = activation_func_2(output)
             output = MOEOrMLPEndOp.apply(output)
             return output, mlp_bias
-        
+
         return fn(*args, **kwargs)
-    
+
     return wrapper

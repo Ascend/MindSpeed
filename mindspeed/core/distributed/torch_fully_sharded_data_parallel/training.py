@@ -5,7 +5,6 @@ import torch
 from accelerate import init_empty_weights
 
 from megatron.core import mpu, tensor_parallel
-from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.utils import get_model_config
 from megatron.core.enums import ModelType
 from megatron.core.transformer.module import Float16Module
@@ -15,11 +14,8 @@ from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed.custom_fsdp import FullyShardedDataParallel as custom_FSDP
 from megatron.training.global_vars import (
     get_args,
-    get_signal_handler,
-    get_timers,
-    get_tensorboard_writer,
-    get_wandb_writer,
-    get_one_logger)
+)
+
 try:
     from megatron.core.distributed import TorchFullyShardedDataParallel as torch_FSDP
 
@@ -35,18 +31,14 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
 
     # Build model.
     def build_model():
-        if mpu.get_pipeline_model_parallel_world_size() > 1 and \
-        args.virtual_pipeline_model_parallel_size is not None:
+        if mpu.get_pipeline_model_parallel_world_size() > 1 and args.virtual_pipeline_model_parallel_size is not None:
             model = []
             for i in range(args.virtual_pipeline_model_parallel_size):
                 mpu.set_virtual_pipeline_model_parallel_rank(i)
                 # Set pre_process and post_process only after virtual rank is set.
                 pre_process = mpu.is_pipeline_first_stage()
                 post_process = mpu.is_pipeline_last_stage()
-                this_model = model_provider_func(
-                    pre_process=pre_process,
-                    post_process=post_process
-                )
+                this_model = model_provider_func(pre_process=pre_process, post_process=post_process)
                 this_model.model_type = model_type
                 model.append(this_model)
         else:
@@ -59,22 +51,18 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
                     rank = mpu.get_pipeline_model_parallel_rank()
                     first_decoder_rank = args.encoder_pipeline_model_parallel_size
                     world_size = mpu.get_pipeline_model_parallel_world_size()
-                    pre_process = rank == 0 or rank == first_decoder_rank
-                    post_process = (rank == (first_decoder_rank - 1)) or (rank == (world_size - 1))
+                    pre_process = rank in (0, first_decoder_rank)
+                    post_process = rank in ((first_decoder_rank - 1), (world_size - 1))
                     add_encoder = mpu.is_inside_encoder(rank)
                     add_decoder = mpu.is_inside_decoder(rank)
                 model = model_provider_func(
-                    pre_process=pre_process,
-                    post_process=post_process,
-                    add_encoder=add_encoder,
-                    add_decoder=add_decoder)
-            else:
-                model = model_provider_func(
-                    pre_process=pre_process,
-                    post_process=post_process
+                    pre_process=pre_process, post_process=post_process, add_encoder=add_encoder, add_decoder=add_decoder
                 )
+            else:
+                model = model_provider_func(pre_process=pre_process, post_process=post_process)
             model.model_type = model_type
         return model
+
     if args.init_model_with_meta_device:
         # ==============Fix Megatron Meta Initialization==============
         with init_empty_weights():
@@ -95,16 +83,14 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
 
     # Print number of parameters.
-    num_parameters = sum(
-        [sum([p.nelement() for p in model_module.parameters()])
-         for model_module in model]
-    )
+    num_parameters = sum(sum(p.nelement() for p in model_module.parameters()) for model_module in model)
     if mpu.get_data_parallel_rank() == 0:
-        print(' > number of parameters on (tensor, pipeline) '
-              'model parallel rank ({}, {}): {}'.format(
-            mpu.get_tensor_model_parallel_rank(),
-            mpu.get_pipeline_model_parallel_rank(),
-            num_parameters), flush=True)
+        print(
+            ' > number of parameters on (tensor, pipeline) model parallel rank ({}, {}): {}'.format(
+                mpu.get_tensor_model_parallel_rank(), mpu.get_pipeline_model_parallel_rank(), num_parameters
+            ),
+            flush=True,
+        )
 
     # GPU allocation.
     # For FSDP2, we don't allocate GPU memory here. We allocate GPU memory
@@ -167,13 +153,17 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
             if not ddp_config.overlap_grad_reduce:
                 ddp_config.bucket_size = None
 
-        model = [DP(config=config,
-                     ddp_config=ddp_config,
-                     module=model_chunk,
-                     # Turn off bucketing for model_chunk 2 onwards, since communication for these
-                     # model chunks is overlapped with compute anyway.
-                     disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step)
-                 for (model_chunk_idx, model_chunk) in enumerate(model)]
+        model = [
+            DP(
+                config=config,
+                ddp_config=ddp_config,
+                module=model_chunk,
+                # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                # model chunks is overlapped with compute anyway.
+                disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
+            )
+            for (model_chunk_idx, model_chunk) in enumerate(model)
+        ]
 
         # Broadcast params from data parallel src rank to other data parallel ranks.
         if args.data_parallel_random_init:

@@ -7,7 +7,6 @@ from megatron.training.global_vars import get_args
 
 
 def sequential_mlp_forward_decorator(fn):
-
     @wraps(fn)
     def wrapper(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
         prof_file = get_args().prof_file

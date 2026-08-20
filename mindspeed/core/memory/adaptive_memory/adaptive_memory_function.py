@@ -1,17 +1,10 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
 
-from copy import copy
-from typing import List, Any
 
 import torch
 from megatron.core.tensor_parallel.random import checkpoint
 
-from megatron.training import print_rank_0, get_args
-from megatron.core.num_microbatches_calculator import get_num_microbatches
-from megatron.core.tensor_parallel.random import get_cuda_rng_tracker
-from megatron.core import parallel_state as ps
 
-from mindspeed.core.tensor_parallel.random import _set_cuda_rng_state
 from .adaptive_memory_profiling import AdaptiveMemoryProfiling
 from .adaptive_memory_solver import AdaptMemGraphSolver
 from .adaptive_memory_prefetch import AdaptiveMemoryPrefetch, pre_forward_func
@@ -41,7 +34,7 @@ class FunctionCtxMgr(metaclass=SingletonBase):
             self._child_dict[func_name] = child_name
 
     def ctx_iter(self):
-        for key in self._ctx_dict.keys():
+        for key in self._ctx_dict:
             yield self._ctx_dict.get(key), self._child_dict.get(key)
 
 
@@ -118,19 +111,28 @@ def adapt_mem_func_wrapper(fc_class, *args):
         if fc_class.__name__ not in AdaptiveMemoryPrefetch().function_list:
             AdaptiveMemoryPrefetch().function_list.append(fc_class.__name__)
         return FunctionProfilingWrapper(fc_class).run_profiling(*args)
-    elif AdaptiveStepMgr().is_swap_profiling_step() and is_first_layer: # recording swap profiling
-        if FunctionCtxMgr()._ctx_dict.get(fc_class.__name__)[Key.DEEP] == AdaptiveMemoryPrefetch().function_swap_profiling_deep:
-            module_full_name = FunctionCtxMgr()._ctx_dict.get(fc_class.__name__)[Key.PREFIX_NAME] + "." + fc_class.__name__
+    elif AdaptiveStepMgr().is_swap_profiling_step() and is_first_layer:  # recording swap profiling
+        if (
+            FunctionCtxMgr()._ctx_dict.get(fc_class.__name__)[Key.DEEP]
+            == AdaptiveMemoryPrefetch().function_swap_profiling_deep
+        ):
+            module_full_name = (
+                FunctionCtxMgr()._ctx_dict.get(fc_class.__name__)[Key.PREFIX_NAME] + "." + fc_class.__name__
+            )
             return wrap_swap_profiling(fc_class, module_full_name, *args)
     elif AdaptiveStepMgr().is_swap_profiling_done() and not AdaptiveMemoryPrefetch().is_stable_apply and is_first_layer:
         if fc_class.__name__ in AdaptiveMemoryPrefetch().prefetch_function_list:
             return wrap_function(fc_class, *args)
-    elif AdaptiveStepMgr().is_all_profiling_done() and AdaptiveMemoryPrefetch().is_stable_apply: # do one of prefetch/recompute/swap
+    elif (
+        AdaptiveStepMgr().is_all_profiling_done() and AdaptiveMemoryPrefetch().is_stable_apply
+    ):  # do one of prefetch/recompute/swap
         action = AdaptMemGraphSolver().get_func_action(fc_class.__name__, cnt - 1)
         if action == ModuleAction.RECOMPUTE:
+
             def fc_class_apply():
                 return fc_class.apply(*args)
+
             return checkpoint(fc_class_apply, False)
         elif action == ModuleAction.SWAP:
             return wrap_function(fc_class, *args)
-    return fc_class.apply(*args) # do default function.apply
+    return fc_class.apply(*args)  # do default function.apply

@@ -1,21 +1,20 @@
 # Copyright (c) 2024; NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
-import collections
 import functools
 import inspect
 import warnings
 from functools import partial
-from typing import Any, Callable, Dict, List, Set, Tuple, Type, Union
+from typing import Any, Callable, Dict, Set, Union
 
-import torch.nn as nn
-from torch.distributed.fsdp._wrap_utils import _override_module_mixed_precision, _validate_frozen_params, _warn_on_overridden_mixed_precision
-from megatron.training.global_vars import get_args
-from megatron.core.tensor_parallel.layers import (
-    ColumnParallelLinear,
-    RowParallelLinear,
-    VocabParallelEmbedding
+from torch import nn
+from torch.distributed.fsdp._wrap_utils import (
+    _override_module_mixed_precision,
+    _validate_frozen_params,
+    _warn_on_overridden_mixed_precision,
 )
+from megatron.training.global_vars import get_args
+from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear, VocabParallelEmbedding
 from mindspeed.core.distributed.layerzero.zero3._common_utils import (
     _get_module_zero3_state,
 )
@@ -53,9 +52,7 @@ def _auto_wrap(
 
     if isinstance(policy, _Policy):
         root_kwargs["auto_wrap_policy" if is_wrapper else "policy"] = None
-        target_module_to_kwargs = policy._run_policy(
-            root_module, ignored_modules, root_kwargs
-        )
+        target_module_to_kwargs = policy._run_policy(root_module, ignored_modules, root_kwargs)
         if mixed_precision is not None:
             target_module_to_kwargs = _run_mixed_precision_override_policy(
                 root_module,
@@ -79,8 +76,7 @@ def _auto_wrap(
                     target_module_to_kwargs,
                 )
         except AssertionError:
-            warnings.warn(
-                "Global args is not correctly initialized, skip TP wrapping...")
+            warnings.warn("Global args is not correctly initialized, skip TP wrapping...")
 
         _validate_frozen_params(
             root_module,
@@ -88,8 +84,7 @@ def _auto_wrap(
             ignored_params,
             True,
         )
-        wrap_fn = _construct_wrap_fn(
-            root_module, target_module_to_kwargs, fsdp_fn)
+        wrap_fn = _construct_wrap_fn(root_module, target_module_to_kwargs, fsdp_fn)
         _post_order_apply(root_module, wrap_fn)
         return
 

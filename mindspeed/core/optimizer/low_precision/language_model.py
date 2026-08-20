@@ -1,5 +1,4 @@
 from functools import wraps
-import torch
 from megatron.training import get_args
 
 

@@ -1,21 +1,18 @@
 import os
 import json
-import statistics
 import math
-import time
-import multiprocessing
 from functools import wraps
 import torch
 import megatron.training.global_vars
 from megatron.training import get_args
 from megatron.training import print_rank_0
-from .autopipeline import check_equal_model_configs
+from mindspeed.core.memory.auto_pipeline.autopipeline import check_equal_model_configs
 import mindspeed.model.transformer as mindspeed_transformer
 import megatron.core.parallel_state as megatron_parallel_state
 import mindspeed.core.parallel_state as mindspeed_parallel_state
 
 
-class AutoPipelineSolver():
+class AutoPipelineSolver:
     def __init__(self, context):
         self.context = context
         self.MB_SIZE = 1024 * 1024
@@ -62,7 +59,6 @@ class AutoPipelineSolver():
         self.optimal_sch = []
         self.minn = []
 
-
     def find_target_profile(self, module, target, profile_type):
         context = self.context
         while module in context:
@@ -73,7 +69,6 @@ class AutoPipelineSolver():
                     context = sub_context
         return 0
 
-
     def get_min_max_layer(self):
         layer_avg = round(self.num_layers / self.pipeline_model_parallel_size)
         if 1 <= layer_avg <= 4:
@@ -83,7 +78,6 @@ class AutoPipelineSolver():
         else:
             layer_range = 2
         return layer_avg - layer_range, layer_avg + layer_range
-
 
     def parse_profile(self):
         self.first_stage_embed = self.context["first_stage_embed"] * self.MB_SIZE
@@ -98,14 +92,13 @@ class AutoPipelineSolver():
         self.comm_time = self.context["comm_time"]
         self.forward_activation = self.find_target_profile("layers", "module", "memory") * self.MB_SIZE
         self.forward_mlp_activation = self.find_target_profile("layers", "mlp", "memory") * self.MB_SIZE
-        self.forward_attention_activation = self.find_target_profile("layers", "self_attention", "memory") * self.MB_SIZE
+        self.forward_attention_activation = (
+            self.find_target_profile("layers", "self_attention", "memory") * self.MB_SIZE
+        )
         self.forward_layer_activation = self.find_target_profile("layers", "0", "memory") * self.MB_SIZE
 
-
     def naive_search(self, module_type, answer_queue):
-
         def dfs_build_layers(prefix_n_layers, cur_layers_sum):
-
             if len(prefix_n_layers) > self.pipeline_model_parallel_size:
                 return
             if cur_layers_sum > self.num_layers:
@@ -115,7 +108,9 @@ class AutoPipelineSolver():
                     return
 
             if len(prefix_n_layers) == self.pipeline_model_parallel_size and cur_layers_sum == self.num_layers:
-                status, prefix_recomp_modules, mem_set = self.get_recompute_modules(prefix_n_layers, self.pipeline_model_parallel_size, module_type)
+                status, prefix_recomp_modules, mem_set = self.get_recompute_modules(
+                    prefix_n_layers, self.pipeline_model_parallel_size, module_type
+                )
                 if status:
                     answer_queue.append((prefix_n_layers, prefix_recomp_modules, mem_set, module_type))
                 if len(answer_queue) == 0 and len(self.ans) == 0:
@@ -136,7 +131,6 @@ class AutoPipelineSolver():
 
         return answer_queue
 
-
     def main_search(self):
         mlp_answer_queue, attn_answer_queue, layer_answer_queue = [], [], []
         mlp_answer_queue = self.naive_search(0, mlp_answer_queue)
@@ -148,9 +142,7 @@ class AutoPipelineSolver():
 
         return self.ans
 
-
     def cal_module_param(self, module_type):
-
         per_layer_activation_param = self.forward_activation
         per_recompute_module_param = 0
         if module_type == 0:
@@ -165,43 +157,64 @@ class AutoPipelineSolver():
 
         return per_layer_activation_param, per_recompute_module_param
 
-
-    def cal_model_mem(self, per_layer_activation_param, per_recompute_module_param, n_layer, n_recompute_module, parallel_num, \
-                      stage_num):
+    def cal_model_mem(
+        self,
+        per_layer_activation_param,
+        per_recompute_module_param,
+        n_layer,
+        n_recompute_module,
+        parallel_num,
+        stage_num,
+    ):
         if stage_num == 0:
-            stage_max_optimizer_mem = (self.first_stage_embed + self.per_trans_layer_param * n_layer) + self.embed_activation
-            model_mem = self.first_stage_embed + self.per_trans_layer_param * n_layer \
-                        + stage_max_optimizer_mem \
-                        + per_layer_activation_param * n_layer * parallel_num
+            stage_max_optimizer_mem = (
+                self.first_stage_embed + self.per_trans_layer_param * n_layer
+            ) + self.embed_activation
+            model_mem = (
+                self.first_stage_embed
+                + self.per_trans_layer_param * n_layer
+                + stage_max_optimizer_mem
+                + per_layer_activation_param * n_layer * parallel_num
+            )
         elif stage_num == self.pipeline_model_parallel_size - 1:
-            stage_max_optimizer_mem = (self.last_stage_embed + self.per_trans_layer_param * n_layer) + self.embed_activation
-            model_mem = self.last_stage_embed + self.per_trans_layer_param * n_layer \
-                        + stage_max_optimizer_mem \
-                        + per_layer_activation_param * n_layer * parallel_num
+            stage_max_optimizer_mem = (
+                self.last_stage_embed + self.per_trans_layer_param * n_layer
+            ) + self.embed_activation
+            model_mem = (
+                self.last_stage_embed
+                + self.per_trans_layer_param * n_layer
+                + stage_max_optimizer_mem
+                + per_layer_activation_param * n_layer * parallel_num
+            )
         else:
             stage_max_optimizer_mem = self.per_trans_layer_param * n_layer
-            model_mem = self.per_trans_layer_param * n_layer \
-                        + stage_max_optimizer_mem \
-                        + per_layer_activation_param * n_layer * parallel_num
+            model_mem = (
+                self.per_trans_layer_param * n_layer
+                + stage_max_optimizer_mem
+                + per_layer_activation_param * n_layer * parallel_num
+            )
         return model_mem
-
 
     def set_target_memory(self):
         per_layer_activation_param, per_recompute_module_param = self.cal_module_param(0)
         stage_num = 0
         default_n_layers_mems = []
         while stage_num < self.pipeline_model_parallel_size:
-            default_layer_mem = self.cal_model_mem(per_layer_activation_param, per_recompute_module_param,
-                               self.num_layers/self.pipeline_model_parallel_size, 0,
-                               self.pipeline_model_parallel_size - stage_num, stage_num)
+            default_layer_mem = self.cal_model_mem(
+                per_layer_activation_param,
+                per_recompute_module_param,
+                self.num_layers / self.pipeline_model_parallel_size,
+                0,
+                self.pipeline_model_parallel_size - stage_num,
+                stage_num,
+            )
             default_n_layers_mems.append(default_layer_mem)
             stage_num += 1
 
-        target_memory = sum(default_n_layers_mems)/len(default_n_layers_mems)
+        target_memory = sum(default_n_layers_mems) / len(default_n_layers_mems)
         if self.ratio < 1.0:
             target_memory = max(default_n_layers_mems)
         return target_memory
-
 
     def get_recompute_modules(self, n_layers, num_pp_stage, module_type):
         per_layer_activation_param, per_recompute_module_param = self.cal_module_param(module_type)
@@ -211,9 +224,14 @@ class AutoPipelineSolver():
         status = True
 
         while stage_num < len(n_layers):
-            init_layer_mem = self.cal_model_mem(per_layer_activation_param, per_recompute_module_param,\
-                                                n_layers[stage_num], 0,
-                                                num_pp_stage - stage_num, stage_num)
+            init_layer_mem = self.cal_model_mem(
+                per_layer_activation_param,
+                per_recompute_module_param,
+                n_layers[stage_num],
+                0,
+                num_pp_stage - stage_num,
+                stage_num,
+            )
             if init_layer_mem <= self.target_memory * self.ratio:
                 n_recompute_module = 0
                 init_recompute_modules.append(n_recompute_module)
@@ -221,7 +239,10 @@ class AutoPipelineSolver():
                 if (per_recompute_module_param * (num_pp_stage - stage_num) / self.MB_SIZE) == 0:
                     n_recompute_module = 0
                 else:
-                    n_recompute_module = math.ceil((init_layer_mem / self.MB_SIZE - self.target_memory * self.ratio / self.MB_SIZE) / (per_recompute_module_param * (num_pp_stage - stage_num) / self.MB_SIZE))
+                    n_recompute_module = math.ceil(
+                        (init_layer_mem / self.MB_SIZE - self.target_memory * self.ratio / self.MB_SIZE)
+                        / (per_recompute_module_param * (num_pp_stage - stage_num) / self.MB_SIZE)
+                    )
                 if n_recompute_module > n_layers[stage_num]:
                     status = False
                     n_recompute_module = n_layers[stage_num]
@@ -229,16 +250,20 @@ class AutoPipelineSolver():
                 else:
                     init_recompute_modules.append(n_recompute_module)
 
-            init_layer_mem = self.cal_model_mem(per_layer_activation_param, per_recompute_module_param,
-                                                n_layers[stage_num], n_recompute_module,
-                                                num_pp_stage - stage_num, stage_num)
-            init_layer_mem -= per_recompute_module_param*n_recompute_module
+            init_layer_mem = self.cal_model_mem(
+                per_layer_activation_param,
+                per_recompute_module_param,
+                n_layers[stage_num],
+                n_recompute_module,
+                num_pp_stage - stage_num,
+                stage_num,
+            )
+            init_layer_mem -= per_recompute_module_param * n_recompute_module
             init_layer_mem /= self.MB_SIZE
             new_n_layers_mems.append(init_layer_mem)
             stage_num += 1
 
-        return status, init_recompute_modules, (self.target_memory/self.MB_SIZE, new_n_layers_mems)
-
+        return status, init_recompute_modules, (self.target_memory / self.MB_SIZE, new_n_layers_mems)
 
     def dp(self, examples):
         # lookup duration via parallel params
@@ -263,10 +288,14 @@ class AutoPipelineSolver():
         num_microbatch = len(mbs)
         mbs = [0] + mbs
 
-        SF = [[0 for i in range(num_microbatch + 1)] for _ in range(num_pp_stage + 1)]  # start of forward 图中蓝色的左边
+        SF = [
+            [0 for i in range(num_microbatch + 1)] for _ in range(num_pp_stage + 1)
+        ]  # start of forward 图中蓝色的左边
         EF = [[0 for i in range(num_microbatch + 1)] for _ in range(num_pp_stage + 1)]  # end of forward 图中蓝色的右边
 
-        SB = [[0 for i in range(num_microbatch + 1)] for _ in range(num_pp_stage + 1)]  # start of backward 图中绿色的左边
+        SB = [
+            [0 for i in range(num_microbatch + 1)] for _ in range(num_pp_stage + 1)
+        ]  # start of backward 图中绿色的左边
         EB = [[0 for i in range(num_microbatch + 1)] for _ in range(num_pp_stage + 1)]  # end of backward 图中绿色的右边
 
         warmup = [num_pp_stage - p - 1 for p in range(num_pp_stage)]
@@ -281,7 +310,6 @@ class AutoPipelineSolver():
 
         # 1f1b
         for num_1f1b in range(1, num_microbatch + 1):
-
             # # fwd of 1f1b
             for p in range(1, num_pp_stage + 1):
                 if remaining[p - 1] < num_1f1b:
@@ -316,10 +344,8 @@ class AutoPipelineSolver():
                 SB[p][m] = max(EB[p][m - 1], EB[p + 1][m] + ComBwd)
                 EB[p][m] = SB[p][m] + Bwd * n_layers[p] + RecompFwd * n_recompute_layers[p]
 
-        itertime = max([max(EB[p]) for p in range(num_pp_stage)])
+        itertime = max(max(EB[p]) for p in range(num_pp_stage))
         self.policy.append((itertime, examples))
-        return
-
 
     def find_top_optimal_schedule(self):
         self.main_search()
@@ -336,7 +362,9 @@ class AutoPipelineSolver():
                     self.minn[0] = min_itertime
                     self.optimal_sch[0] = res[1]
         else:
-            print_rank_0("[INFO] [Autopipeline Policy Time Searching Stage] No strategy is satisfied. We will apply the minimum memory strategy instead.")
+            print_rank_0(
+                "[INFO] [Autopipeline Policy Time Searching Stage] No strategy is satisfied. We will apply the minimum memory strategy instead."
+            )
             self.minn.append(0)
             self.optimal_sch.append(self.backup[0])
 
@@ -395,7 +423,7 @@ def destroy_global_parallel_group():
         megatron_parallel_state._TENSOR_AND_DATA_PARALLEL_GROUP_WITH_CP,
         megatron_parallel_state._EXPERT_MODEL_PARALLEL_GROUP,
         megatron_parallel_state._TENSOR_AND_EXPERT_PARALLEL_GROUP,
-        megatron_parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP
+        megatron_parallel_state._DATA_MODULO_EXPERT_PARALLEL_GROUP,
     ]
     for gid in range(len(global_parallel_group)):
         if global_parallel_group[gid]:
@@ -432,40 +460,46 @@ def destroy_model_parallel_profiling_wrapper(destroy_model_parallel):
     @wraps(destroy_model_parallel)
     def wrapper(*args, **kwargs):
         argument = get_args()
-        enable_profiling_destroy = (argument.automated_pipeline and not argument.num_layer_list) \
-                                   or (argument.automated_pipeline_perf and not argument.optimized_mbs_list)
+        enable_profiling_destroy = (argument.automated_pipeline and not argument.num_layer_list) or (
+            argument.automated_pipeline_perf and not argument.optimized_mbs_list
+        )
         if enable_profiling_destroy:
             destroy_global_parallel_group()
         else:
             destroy_model_parallel(*args, **kwargs)
+
     return wrapper
 
 
 def get_profiling_data(policy, args):
-    instance = {"model_configs": {
-        "vocab_size": args.padded_vocab_size,
-        "hidden_size": args.hidden_size,
-        "ffn_hidden_size": args.ffn_hidden_size,
-        "seq_length": args.seq_length,
-        "num_attention_heads": args.num_attention_heads
-    }, "autopipeline_policy": [{
-        "num_layers": args.num_layers,
-        "pipeline_model_parallel_size": args.pipeline_model_parallel_size,
-        "tensor_model_parallel_size": args.tensor_model_parallel_size,
-        "ratio": args.save_memory_ratio,
-        "num_layer_list": policy[0][0],
-        "recompute_module_list": policy[0][1],
-        "recompute_type": policy[0][3]
-    }]}
+    instance = {
+        "model_configs": {
+            "vocab_size": args.padded_vocab_size,
+            "hidden_size": args.hidden_size,
+            "ffn_hidden_size": args.ffn_hidden_size,
+            "seq_length": args.seq_length,
+            "num_attention_heads": args.num_attention_heads,
+        },
+        "autopipeline_policy": [
+            {
+                "num_layers": args.num_layers,
+                "pipeline_model_parallel_size": args.pipeline_model_parallel_size,
+                "tensor_model_parallel_size": args.tensor_model_parallel_size,
+                "ratio": args.save_memory_ratio,
+                "num_layer_list": policy[0][0],
+                "recompute_module_list": policy[0][1],
+                "recompute_type": policy[0][3],
+            }
+        ],
+    }
     return instance
 
 
 def save_profiling_data(policy, config_file):
-
     args = get_args()
     instance = get_profiling_data(policy, args)
     if os.path.exists(config_file):
-        with open(config_file, "r") as config_json:
+        with open(config_file, "r", encoding="utf-8") as config_json:
             config_contents = config_json.read()
         parsed_contents = json.loads(config_contents)
         index = check_equal_model_configs(args, parsed_contents)
@@ -474,11 +508,11 @@ def save_profiling_data(policy, config_file):
                 parsed_contents[index]["autopipeline_policy"].append(instance["autopipeline_policy"][0])
         else:
             parsed_contents.append(instance)
-        with open(config_file, "w") as f:
+        with open(config_file, "w", encoding="utf-8") as f:
             json.dump(parsed_contents, f, ensure_ascii=False)
             os.chmod(config_file, 0o640)
     else:
-        with open(config_file, "w") as f:
+        with open(config_file, "w", encoding="utf-8") as f:
             json.dump([instance], f, ensure_ascii=False)
             os.chmod(config_file, 0o640)
 

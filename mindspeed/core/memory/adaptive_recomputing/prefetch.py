@@ -155,18 +155,22 @@ class SwapPrefetch:
             swap_tensor.is_slice_tensor = True
             if ori_tensor.storage().data_ptr() not in self.slice_tensor_storage_ptr:
                 if self.swap_tensors and self.swap_tensors[0].layer_id != 0:
-                    self.slice_tensor_storage_ptr[ori_tensor.storage().data_ptr()] = \
-                        [f'{len(self.prefetch_list) - 1}_{len(self.swap_tensors)}']
+                    self.slice_tensor_storage_ptr[ori_tensor.storage().data_ptr()] = [
+                        f'{len(self.prefetch_list) - 1}_{len(self.swap_tensors)}'
+                    ]
                 else:
-                    self.slice_tensor_storage_ptr[ori_tensor.storage().data_ptr()] = \
-                        [f'{len(self.prefetch_list)}_{len(self.swap_tensors)}']
+                    self.slice_tensor_storage_ptr[ori_tensor.storage().data_ptr()] = [
+                        f'{len(self.prefetch_list)}_{len(self.swap_tensors)}'
+                    ]
             else:
                 if self.swap_tensors and self.swap_tensors[0].layer_id != 0:
                     self.slice_tensor_storage_ptr[ori_tensor.storage().data_ptr()].append(
-                        f'{len(self.prefetch_list) - 1}_{len(self.swap_tensors)}')
+                        f'{len(self.prefetch_list) - 1}_{len(self.swap_tensors)}'
+                    )
                 else:
                     self.slice_tensor_storage_ptr[ori_tensor.storage().data_ptr()].append(
-                        f'{len(self.prefetch_list)}_{len(self.swap_tensors)}')
+                        f'{len(self.prefetch_list)}_{len(self.swap_tensors)}'
+                    )
 
         # Records the same data_ptr tensor status.
         if ori_tensor.storage().data_ptr() in self.data_ptr:
@@ -192,11 +196,14 @@ class SwapPrefetch:
         # Remove prefetch completed list
         if len(self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index]) == 0:
             self.prefetch_list[self.cur_micro_num].remove(
-                self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index])
+                self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index]
+            )
             self.prefetch_data_ptr_list[self.cur_micro_num].remove(
-                self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index])
+                self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index]
+            )
             self.slice_tensor_storage_ptr_list[self.cur_micro_num].remove(
-                self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index])
+                self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index]
+            )
             if len(self.prefetch_list[self.cur_micro_num]) == 0:
                 self.prefetch_list.remove(self.prefetch_list[self.cur_micro_num])
                 self.prefetch_data_ptr_list.remove(self.prefetch_data_ptr_list[self.cur_micro_num])
@@ -234,8 +241,7 @@ class SwapPrefetch:
         for swap_tensor in self.swap_tensors:
             if self.swap_tensors[0].layer_id > self.first_layer_id and self.prefetch_list:
                 swap_tensor.layer_index = len(self.prefetch_list[-1])
-            if swap_tensor.layer_id == int(get_layer_id(module_name)) \
-                    and swap_tensor.stat == "d2h":
+            if swap_tensor.layer_id == int(get_layer_id(module_name)) and swap_tensor.stat == "d2h":
                 if not self.update_slice_tensor_stat(swap_tensor):
                     continue
                 if not first_resize_tensor:
@@ -266,12 +272,18 @@ class SwapPrefetch:
 
     def h2d_special_tensor(self, swap_tensor):
         if swap_tensor.is_slice_tensor:
-            if swap_tensor.storage_data_ptr in self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index]:
-                _, index = self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index][swap_tensor.storage_data_ptr][
-                    0].split('_')
+            if (
+                swap_tensor.storage_data_ptr
+                in self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index]
+            ):
+                _, index = self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index][
+                    swap_tensor.storage_data_ptr
+                ][0].split('_')
                 if swap_tensor == self.prefetch_list[self.cur_micro_num][swap_tensor.layer_index][int(index)]:
                     swap_tensor.launch_h2d(self.prefetch_stream, True)
-                    del self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index][swap_tensor.storage_data_ptr]
+                    del self.slice_tensor_storage_ptr_list[self.cur_micro_num][swap_tensor.layer_index][
+                        swap_tensor.storage_data_ptr
+                    ]
             else:
                 swap_tensor.launch_h2d(self.prefetch_stream, False)
         else:
@@ -284,10 +296,15 @@ class SwapPrefetch:
             self.cur_micro_num = self.pp * (self.vpp - 1 - self.remove_num // self.pp)
         for swap_tensor_list in self.prefetch_list[self.cur_micro_num]:
             for swap_tensor in reversed(swap_tensor_list):
-                if swap_tensor.layer_id + self.interval == int(get_layer_id(module_name)) \
-                        and swap_tensor.stat == "host" \
-                        and swap_tensor.storage_data_ptr in self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index]:
-                    del self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index][swap_tensor.storage_data_ptr]
+                if (
+                    swap_tensor.layer_id + self.interval == int(get_layer_id(module_name))
+                    and swap_tensor.stat == "host"
+                    and swap_tensor.storage_data_ptr
+                    in self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index]
+                ):
+                    del self.prefetch_data_ptr_list[self.cur_micro_num][swap_tensor.layer_index][
+                        swap_tensor.storage_data_ptr
+                    ]
                     # For slice tensors, only the first tensor is resized. Other h2d the tensor size
                     self.h2d_special_tensor(swap_tensor)
 

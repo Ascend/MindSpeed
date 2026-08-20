@@ -5,7 +5,6 @@ from megatron.training.global_vars import get_args
 
 
 def router_forward_decorator(fn):
-
     @wraps(fn)
     def wrapper(self, input_data):
         prof_file = get_args().prof_file
@@ -21,7 +20,7 @@ def router_forward_decorator(fn):
             scores, indices = self.routing(logits)
 
             scores, full_pattern = force_load_balance(logits, scores, indices)
-            print(f'scores shape: {(len(scores[0]), len(scores[1 ]))}')
+            print(f'scores shape: {(len(scores[0]), len(scores[1]))}')
 
             return scores, full_pattern
 

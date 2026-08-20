@@ -8,7 +8,6 @@ from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 
 
 def compute_language_model_loss_wrapper(fn):
-
     @wraps(fn)
     def wrapper(*args, **kwargs):
         prof_file = get_args().prof_file
@@ -17,7 +16,7 @@ def compute_language_model_loss_wrapper(fn):
 
             if 'loss' not in auto_profiler.context:
                 auto_profiler.context['loss'] = {}
-                
+
             torch.cuda.synchronize()
             used_mem, _ = auto_profiler.get_memory_status()
             start_time = time.time()
@@ -29,7 +28,7 @@ def compute_language_model_loss_wrapper(fn):
             auto_profiler.context['loss']['memory'] = (cur_used_mem - used_mem) / auto_profiler.unit_gb
             auto_profiler.context['loss']['max_memory'] = (cur_max_mem - used_mem) / auto_profiler.unit_gb
             return loss
-        
+
         return fn(*args, **kwargs)
-    
+
     return wrapper

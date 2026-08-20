@@ -1,9 +1,5 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-import math
-import types
 from functools import wraps
-import torch
-import torch_npu
 
 from megatron.training import get_args
 from megatron.training import print_rank_0
@@ -48,20 +44,25 @@ def get_adaptive_recompute_profiling_step():
     adaptive_recompute_device_size = getattr(all_args, 'adaptive-recompute-device-size', -1)
     adaptive_recompute_device_swap = getattr(all_args, 'adaptive-recompute-device-swap', False)
     if profiling_step < 5 or profiling_step > max_profiling_step:
-        print_rank_0(f"[WARNING] consider set \"adaptive-recompute-profiling-step\" value >=5"
-                     f"and <={max_profiling_step}, or remove it.")
+        print_rank_0(
+            f"[WARNING] consider set \"adaptive-recompute-profiling-step\" value >=5"
+            f"and <={max_profiling_step}, or remove it."
+        )
     if profiling_step <= 0:
         print_rank_0("[WARNING] \"adaptive-recompute-profiling-step\" value can not <=0, will use default value 10.")
         profiling_step = 10
     print_rank_0(
         "success to activate adaptive recompute train: adaptive-recompute-device-swap={}, adaptive-recompute-device-size={}, "
-        "adaptive-recompute-profiling-step={}".format(adaptive_recompute_device_swap,
-                                                      adaptive_recompute_device_size, profiling_step))
+        "adaptive-recompute-profiling-step={}".format(
+            adaptive_recompute_device_swap, adaptive_recompute_device_size, profiling_step
+        )
+    )
     return profiling_step
 
 
 class AdaptiveRecomputeSwap(AdaptiveRecompute):
     """Memory optimization handler combining activation recomputation and tensor prefetching."""
+
     adaptive_recomputing = None
 
     def __init__(self):
@@ -90,14 +91,18 @@ class AdaptiveRecomputeSwap(AdaptiveRecompute):
             "swap_modules": swap_modules,
         }
         prefetch_recompute_group, interval, num_prefetch, swap_noop_layers = self.solve_prefetch_policy()
-        print(f"[DEBUG] swap_list： {prefetch_recompute_group[0]},"
-              f" prefetch_list： {prefetch_recompute_group[1]},"
-              f" recompute_list： {prefetch_recompute_group[2]}")
+        print(
+            f"[DEBUG] swap_list： {prefetch_recompute_group[0]},"
+            f" prefetch_list： {prefetch_recompute_group[1]},"
+            f" recompute_list： {prefetch_recompute_group[2]}"
+        )
         for i in prefetch_recompute_group[0]:
             if not any(filter(None, i)):
                 vpp -= 1
         prefetch_args = [prefetch_recompute_group[0], vpp, interval, num_prefetch]
-        AdaptiveRecomputeSwapReg().register_recursive_apply_prefetch(config, models, self.context, prefetch_recompute_group, prefetch_args)
+        AdaptiveRecomputeSwapReg().register_recursive_apply_prefetch(
+            config, models, self.context, prefetch_recompute_group, prefetch_args
+        )
 
     def solve_prefetch_policy(self):
         all_args = get_args()
@@ -116,8 +121,7 @@ class AdaptiveRecomputeSwap(AdaptiveRecompute):
             else:
                 recompute_num_layers *= vpp_size
         else:
-            if recompute_num_layers >= per_pp_layers:
-                recompute_num_layers = per_pp_layers
+            recompute_num_layers = min(recompute_num_layers, per_pp_layers)
         if all_args.recompute_method == 'block':
             self.num_prefetch = recompute_num_layers
         elif all_args.recompute_method == 'uniform':
@@ -177,7 +181,9 @@ class AdaptiveRecomputeSwap(AdaptiveRecompute):
 
         if recompute_num_layers <= vpp_size:
             recompute_list = [['0'] if i < recompute_num_layers else [''] for i in range(vpp_size)]
-            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(args, 'reduce_recompute_for_last_chunk', False):
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(
+                args, 'reduce_recompute_for_last_chunk', False
+            ):
                 recompute_list[-1] = ['']
         else:
             for chunk in range(vpp_size):
@@ -186,7 +192,9 @@ class AdaptiveRecomputeSwap(AdaptiveRecompute):
                     if layer_id % vpp_size == chunk:
                         chunk_recompute_layer.append(f'{layer_id // vpp_size}')
                 recompute_list.append(chunk_recompute_layer)
-            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(args, 'reduce_recompute_for_last_chunk', False):
+            if parallel_state.is_pipeline_last_stage(ignore_virtual=True) and getattr(
+                args, 'reduce_recompute_for_last_chunk', False
+            ):
                 if recompute_list[-1][-1] == str(args.num_layers_per_virtual_pipeline_stage - 1):
                     recompute_list[-1].pop()
                     if len(recompute_list[-1]) == 0:

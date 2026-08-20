@@ -12,7 +12,14 @@ from megatron.core import parallel_state as ps
 from .adaptive_memory_cache import AdaptiveModelMemPolicy, PolicyCacheManager
 from .adaptive_memory_policy import AdaptMemPolicyManager
 from .adaptive_memory_swap_manager import SwapManager
-from .adaptive_memory_tool import SingletonBase, LayerAction, ModuleAction, FuncLocation, ContextKey as Key, BYTES_PER_MB
+from .adaptive_memory_tool import (
+    SingletonBase,
+    LayerAction,
+    ModuleAction,
+    FuncLocation,
+    ContextKey as Key,
+    BYTES_PER_MB,
+)
 from .adaptive_memory_tool import AdaptiveStepMgr, broadcast_obj
 
 
@@ -37,8 +44,8 @@ class AdaptMemGraphSolver(metaclass=SingletonBase):
         self.min_dichotomy_value = 1
         self.dichotomy_memory_left = 0
         self.dichotomy_memory_right = 0
-        self.alloc_retries_times = 0 # 记录当前策略alloc失败的次数
-        self.is_stable_for_non_oom_policy = 1 # 判断非oom的策略是否稳定==>1：稳定、0：不稳定
+        self.alloc_retries_times = 0  # 记录当前策略alloc失败的次数
+        self.is_stable_for_non_oom_policy = 1  # 判断非oom的策略是否稳定==>1：稳定、0：不稳定
 
     def prepare_solver(self, model_context):
         self.need_prepare_solver = False
@@ -64,7 +71,7 @@ class AdaptMemGraphSolver(metaclass=SingletonBase):
             num_warmup_bs += (vpp - 1) * pp
             num_warmup_bs += 1
             num_warmup_bs = min(num_warmup_bs, total_num_micro_batches)
-            remain_batch_num = (num_warmup_bs - pp * vpp)
+            remain_batch_num = num_warmup_bs - pp * vpp
             for i in range(vpp):
                 if i == 0:
                     num_warmup_bs_in_chunks.append(pp + max(0, remain_batch_num))
@@ -103,8 +110,11 @@ class AdaptMemGraphSolver(metaclass=SingletonBase):
         self.swap_size = (total_swap_out_size - self.record_swap_out_size) // BYTES_PER_MB
         self.check_num_alloc_retries()
         num_list = [
-            int(total_swap_out_size), int(AdaptMemPolicyManager().hccl_memory), int(self.swap_size),
-            int(self.flag_find_target_memory), int(self.alloc_retries_times)
+            int(total_swap_out_size),
+            int(AdaptMemPolicyManager().hccl_memory),
+            int(self.swap_size),
+            int(self.flag_find_target_memory),
+            int(self.alloc_retries_times),
         ]
         size_tensor = self.tensor_all_reduce(num_list, torch.distributed.ReduceOp.MAX)
         total_swap_out_size = size_tensor[0]
@@ -140,7 +150,7 @@ class AdaptMemGraphSolver(metaclass=SingletonBase):
 
     def reduce_device_memory(self, device_memory):
         cur_min_memory = min(self.device_memory, device_memory)
-        self.device_memory, = self.tensor_all_reduce([int(cur_min_memory)], torch.distributed.ReduceOp.MIN)
+        (self.device_memory,) = self.tensor_all_reduce([int(cur_min_memory)], torch.distributed.ReduceOp.MIN)
         print_rank_0(f"reduce device memory from {device_memory} to {self.device_memory}")
 
     def check_cur_adapt_policy(self):
@@ -176,7 +186,8 @@ class AdaptMemGraphSolver(metaclass=SingletonBase):
             if self.flag_find_target_memory:
                 self.remove_swap_manager_hook_step = cur_step + 10
                 print_rank_0(
-                    f"success to find the target value of the current round of search: {self.cur_device_memory}")
+                    f"success to find the target value of the current round of search: {self.cur_device_memory}"
+                )
                 break
             # OOM policy
             policy_cache_manager = PolicyCacheManager()
@@ -375,7 +386,7 @@ class AdaptMemGraphSolver(metaclass=SingletonBase):
         for policy in self.best_layer_policy_comb:
             policy_recompute = str(policy.recompute)
             policy_swap = str(policy.swap)
-            if (policy_recompute, policy_swap) in self.adapt_mem_policy.keys():
+            if (policy_recompute, policy_swap) in self.adapt_mem_policy:
                 self.adapt_mem_policy[policy_recompute, policy_swap] += 1
             else:
                 self.adapt_mem_policy[policy_recompute, policy_swap] = 1

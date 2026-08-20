@@ -9,7 +9,7 @@ import torch
 
 from megatron.core.distributed.distributed_data_parallel_config import DistributedDataParallelConfig
 from megatron.core.distributed.param_and_grad_buffer import BufferType
-from megatron.core.utils import is_torch_min_version, log_on_each_pipeline_stage
+from megatron.core.utils import log_on_each_pipeline_stage
 from megatron.core.fp8_utils import is_float8tensor
 from megatron.training import get_args
 
@@ -18,16 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 def param_and_grad_buffer_init_pad(
-        self,
-        ddp_config: DistributedDataParallelConfig,
-        param_dtype: torch.dtype,
-        grad_dtype: torch.dtype,
-        params: List[torch.nn.Parameter],
-        data_parallel_group: torch.distributed.ProcessGroup,
-        bucket_size: int,
-        param_to_name: Dict[torch.nn.Parameter, str],
-        gradient_scaling_factor: float,
-        param_indices: List[int],
+    self,
+    ddp_config: DistributedDataParallelConfig,
+    param_dtype: torch.dtype,
+    grad_dtype: torch.dtype,
+    params: List[torch.nn.Parameter],
+    data_parallel_group: torch.distributed.ProcessGroup,
+    bucket_size: int,
+    param_to_name: Dict[torch.nn.Parameter, str],
+    gradient_scaling_factor: float,
+    param_indices: List[int],
 ):
     quant_args = get_args()
     if getattr(quant_args, 'quant_grads', False):
@@ -53,9 +53,7 @@ def param_and_grad_buffer_init_pad(
     self.param_dtype = param_dtype
     self.grad_dtype = grad_dtype
     self.data_parallel_group = data_parallel_group
-    self.data_parallel_world_size = torch.distributed.get_world_size(
-        group=self.data_parallel_group
-    )
+    self.data_parallel_world_size = torch.distributed.get_world_size(group=self.data_parallel_group)
     self.gradient_scaling_factor = gradient_scaling_factor
 
     # Data structures to store underlying buckets and relevant indexing data.
@@ -132,10 +130,7 @@ def param_and_grad_buffer_init_pad(
         for the shared embedding parameters the same way across DP replicas, allowing
         the DP reduce-scatter to be before the embedding all-reduce.
         """
-        return (
-                getattr(param, "shared_embedding", False)
-                and self.ddp_config.use_distributed_optimizer
-        )
+        return getattr(param, "shared_embedding", False) and self.ddp_config.use_distributed_optimizer
 
     for param in params[::-1]:
         # Iterate through parameters in reverse order to roughly follow backprop order.
@@ -156,7 +151,7 @@ def param_and_grad_buffer_init_pad(
         # If we have enough elements already or the current param is part of the shared
         # embedding layer and needs a separate bucket, form a new bucket.
         if (
-                bucket_size is not None and (param_end_index - bucket_start_index) >= bucket_size
+            bucket_size is not None and (param_end_index - bucket_start_index) >= bucket_size
         ) or _does_param_require_new_bucket(param):
             bucket_end_index = _update_bucket_metadata(param_end_index)
             param_start_index = bucket_end_index
@@ -203,9 +198,7 @@ def param_and_grad_buffer_init_pad(
         # Assign param.data to appropriate segment of self.param_data.
         if self.param_data is not None:
             old_param_data = param.data
-            new_param_data = self._get(
-                param.data.shape, param_start_index, buffer_type=BufferType.PARAM
-            )
+            new_param_data = self._get(param.data.shape, param_start_index, buffer_type=BufferType.PARAM)
             if is_float8tensor(param):
                 param._data = new_param_data
             else:
@@ -215,9 +208,7 @@ def param_and_grad_buffer_init_pad(
             param.data.detach().copy_(old_param_data)
             del old_param_data
 
-        param.main_grad = self._get(
-            param.data.shape, param_start_index, buffer_type=BufferType.GRAD
-        )
+        param.main_grad = self._get(param.data.shape, param_start_index, buffer_type=BufferType.GRAD)
         if bucket_id != cur_bucket_id:
             bucket_end_index = _pad_end_of_bucket_if_needed(param_start_index)
             self.buckets.append(
@@ -251,9 +242,7 @@ def param_and_grad_buffer_init_pad(
 
     # Log buckets for all PP stages.
     log_strs = []
-    log_strs.append(
-        f'Number of buckets for gradient all-reduce / reduce-scatter: {len(self.buckets)}'
-    )
+    log_strs.append(f'Number of buckets for gradient all-reduce / reduce-scatter: {len(self.buckets)}')
     for index, bucket in enumerate(self.buckets):
         numel = 0
         for param in bucket.params:

@@ -8,7 +8,6 @@ import acl
 import torch
 import torch.nn
 
-from megatron.training import print_rank_0, get_args
 from megatron.core import tensor_parallel
 
 from .adaptive_memory_tool import AdaptiveStepMgr, BYTES_PER_MB, SingletonBase, ContextKey as Key
@@ -23,19 +22,22 @@ class RecomputeHook(metaclass=SingletonBase):
     @staticmethod
     def hook_checkpoint_forward(forward_func):
         def custom_forward(*args, **kwargs):
-            tensor_item_keys_in_kwargs = [x for x in kwargs.keys() if torch.is_tensor(kwargs[x])]
+            tensor_item_keys_in_kwargs = [k for k, v in kwargs.items() if torch.is_tensor(v)]
             tensor_item_values_in_kwargs = [x for x in kwargs.values() if torch.is_tensor(x)]
             non_tensor_item_in_kwargs = {k: v for k, v in kwargs.items() if not torch.is_tensor(v)}
             origin_args_length = len(args)
 
             def inside_forward(*new_args):
                 origin_args = new_args[:origin_args_length]
-                origin_kwargs = {**dict(zip(tensor_item_keys_in_kwargs, new_args[origin_args_length:])),
-                                 **non_tensor_item_in_kwargs}
+                origin_kwargs = {
+                    **dict(zip(tensor_item_keys_in_kwargs, new_args[origin_args_length:])),
+                    **non_tensor_item_in_kwargs,
+                }
                 return forward_func(*origin_args, **origin_kwargs)
-            
+
             new_args = args + tuple(tensor_item_values_in_kwargs)
             return tensor_parallel.checkpoint(inside_forward, False, *new_args)
+
         return custom_forward
 
     def reset_recompute_modules(self):
@@ -45,7 +47,6 @@ class RecomputeHook(metaclass=SingletonBase):
 
 
 class AdaptiveMemoryProfiling(metaclass=SingletonBase):
-
     def __init__(self):
         # saved module data and structure
         self.context = {'name': 'root', 'deep': 0, 'prefix_name': '', 'submodules': []}
@@ -165,7 +166,7 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
 
     def _update_children_ctx(self, ctx, parent, func_name):
         old_prefix_name = ctx[Key.PREFIX_NAME]
-        new_prefix_name = old_prefix_name[0:len(parent)] + "." + func_name + old_prefix_name[len(parent):]
+        new_prefix_name = old_prefix_name[0 : len(parent)] + "." + func_name + old_prefix_name[len(parent) :]
         ctx[Key.PREFIX_NAME] = new_prefix_name
         ctx[Key.DEEP] += 1
         AdaptiveMemoryPrefetch().prefetch_deep_end = max(AdaptiveMemoryPrefetch().prefetch_deep_end, ctx[Key.DEEP])
@@ -182,7 +183,8 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
         return False
 
     def forward_pre_hook(self, prefix, name, ctx):
-        """ Hook, which will be registered before the FWD to add context parameters and add timer start event """
+        """Hook, which will be registered before the FWD to add context parameters and add timer start event"""
+
         def hook(module, *args, **kwargs):
             FuncLocationMgr().push_name(prefix, name)
             if Key.IS_LAYER0_OF_MODULE0 in ctx:
@@ -200,8 +202,10 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
                 ctx[Key.INPUT] = 0
                 ctx[Key.MEMORY] = 0
 
-
-            if AdaptiveStepMgr().is_recompute_profiling_step() and not AdaptiveStepMgr().is_last_recompute_profiling_step():
+            if (
+                AdaptiveStepMgr().is_recompute_profiling_step()
+                and not AdaptiveStepMgr().is_last_recompute_profiling_step()
+            ):
                 start_event = torch.npu.Event(enable_timing=True)
                 self.time_event_list.append([start_event])
                 start_event.record()
@@ -209,13 +213,17 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
         return hook
 
     def forward_post_hook(self, prefix, name, ctx):
-        """ Hook, which will be registered in the FWD to calculate context parameters and add timer stop event """
+        """Hook, which will be registered in the FWD to calculate context parameters and add timer stop event"""
+
         def hook(module, args, output):
             FuncLocationMgr().pop_name(prefix, name)
             if Key.IS_LAYER0_OF_MODULE0 in ctx:
                 FuncLocationMgr().is_first_layer = False
 
-            if AdaptiveStepMgr().is_recompute_profiling_step() and not AdaptiveStepMgr().is_last_recompute_profiling_step():
+            if (
+                AdaptiveStepMgr().is_recompute_profiling_step()
+                and not AdaptiveStepMgr().is_last_recompute_profiling_step()
+            ):
                 end_event = torch.npu.Event(enable_timing=True)
                 end_event.record()
                 for item in reversed(self.time_event_list):
@@ -230,7 +238,7 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
         return hook
 
     def construct_ctx_recursively(self, deep, prefix_name, model, ctx, allowed_adapting):
-        """ Function, recursively construct context to save profiling data in the future """
+        """Function, recursively construct context to save profiling data in the future"""
         next_allowed_adapting = allowed_adapting
         for name, module in model.named_children():
             if Key.SUBMODULES not in ctx:
@@ -251,7 +259,7 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
             self.construct_ctx_recursively(next_deep, next_name, module, current_ctx, next_allowed_adapting)
 
     def register_hook_recursively(self, model, ctx, in_first_module=False, in_first_layer=False, start_index=0):
-        """ Function, recursively register hooks to get profiling data on needed modules """
+        """Function, recursively register hooks to get profiling data on needed modules"""
         for module in model.children():
             if Key.SUBMODULES not in ctx:
                 continue
@@ -324,7 +332,7 @@ class AdaptiveMemoryProfiling(metaclass=SingletonBase):
             self._record_submodule_forward_time(sub_layer)
 
     def construct_and_register_profiling_hooks(self, models):
-        """ Function, used to construct and register hooks into first model to get profiling data in the future """
+        """Function, used to construct and register hooks into first model to get profiling data in the future"""
         if isinstance(models, Iterable):
             for idx, model in enumerate(models):
                 self.construct_ctx_recursively(1, Key.MODULE + str(idx), model, self.context, True)

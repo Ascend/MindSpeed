@@ -20,10 +20,9 @@ def set_tenpu_cp_runtime_options(attention, args):
     hierarchy = getattr(args, 'hierarchical_context_parallel_sizes', None)
     attention.hierarchical_context_parallel_sizes = hierarchy
     attention.ulysses_degree_in_cp = (
-        hierarchy[0]
-        if hierarchy and len(hierarchy) == 2
-        else getattr(args, 'ulysses_degree_in_cp', None)
+        hierarchy[0] if hierarchy and len(hierarchy) == 2 else getattr(args, 'ulysses_degree_in_cp', None)
     )
+
 
 def te_dot_product_attention_init_wrapper(init_func):
     """Publish MindSpeed CP options after Megatron creates TENPU attention."""

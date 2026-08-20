@@ -17,11 +17,11 @@ from mindspeed.model.transformer import should_recompute_norm
 def get_gpt_decoder_block_spec_wrapper(fn):
     @wraps(fn)
     def wrapper(
-    config: TransformerConfig,
-    use_transformer_engine: bool,
-    normalization: Optional[str] = None,
-    qk_l2_norm: Optional[bool] = False,
-):
+        config: TransformerConfig,
+        use_transformer_engine: bool,
+        normalization: Optional[str] = None,
+        qk_l2_norm: Optional[bool] = False,
+    ):
         res = fn(config, use_transformer_engine)
         res.layer_norm = TENorm
         return res
@@ -31,14 +31,16 @@ def get_gpt_decoder_block_spec_wrapper(fn):
 
 def get_gpt_layer_local_spec_wrapper(fn):
     @wraps(fn)
-    def wrapper(num_experts: Optional[int] = None,
-                moe_grouped_gemm: Optional[bool] = False,
-                qk_layernorm: Optional[bool] = False,
-                multi_latent_attention: Optional[bool] = False,
-                fp8: Optional[str] = None,  # pylint: disable=unused-arguments
-                moe_use_legacy_grouped_gemm: Optional[bool] = False,
-                normalization: Optional[str] = None,
-                qk_l2_norm: Optional[bool] = False):
+    def wrapper(
+        num_experts: Optional[int] = None,
+        moe_grouped_gemm: Optional[bool] = False,
+        qk_layernorm: Optional[bool] = False,
+        multi_latent_attention: Optional[bool] = False,
+        fp8: Optional[str] = None,  # pylint: disable=unused-argument
+        moe_use_legacy_grouped_gemm: Optional[bool] = False,
+        normalization: Optional[str] = None,
+        qk_l2_norm: Optional[bool] = False,
+    ):
         res = fn(num_experts, moe_grouped_gemm, qk_layernorm, multi_latent_attention)
         args = get_args()
         if args.multi_head_latent_attention:
@@ -49,7 +51,7 @@ def get_gpt_layer_local_spec_wrapper(fn):
                 q_layernorm=TENorm if args.qk_layernorm else IdentityOp,
                 k_layernorm=TENorm if args.qk_layernorm else IdentityOp,
                 linear_qb=ColumnParallelLinear,
-                linear_kvb=ColumnParallelLinear
+                linear_kvb=ColumnParallelLinear,
             )
         else:
             if qk_layernorm:
@@ -71,6 +73,7 @@ def build_layers_wrapper(fn, column_forward, row_forward):
                 for local_expert in layer.mlp.experts.local_experts:
                     local_expert.linear_fc1.forward = types.MethodType(column_forward, local_expert.linear_fc1)
                     local_expert.linear_fc2.forward = types.MethodType(row_forward, local_expert.linear_fc2)
+
     return wrapper
 
 
@@ -83,4 +86,5 @@ def build_norm_recompute_layer_wrapper(fn):
                 continue
             if should_recompute_norm(layer):
                 layer.forward = types.MethodType(norm_recompute_forward, layer)
+
     return wrapper

@@ -2,7 +2,6 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 
 from functools import wraps
-from torch import Tensor
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.training import get_args
 from mindspeed.utils import get_actual_seq_len, compute_qkv_index, get_position_ids
@@ -13,10 +12,7 @@ def gpt_forward_wrapper(fn):
     def wrapper(*args, **kwargs):
         actual_seq_len = get_actual_seq_len()
 
-        packed_seq_params = PackedSeqParams(
-            cu_seqlens_q=actual_seq_len, 
-            cu_seqlens_kv=actual_seq_len
-        )
+        packed_seq_params = PackedSeqParams(cu_seqlens_q=actual_seq_len, cu_seqlens_kv=actual_seq_len)
 
         q_index, kv_index = compute_qkv_index(actual_seq_len.clone().tolist())
         packed_seq_params.q_index = q_index
@@ -35,8 +31,7 @@ def gptmodel_init_wrapper(init_func):
         init_func(self, *args, **kwargs)
         args = get_args()
         quant_enabled = bool(
-            getattr(getattr(self, "config", None), "quant_states", None)
-            or getattr(args, "quant_states", None)
+            getattr(getattr(self, "config", None), "quant_states", None) or getattr(args, "quant_states", None)
         )
         if not quant_enabled:
             return
