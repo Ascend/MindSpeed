@@ -13,9 +13,13 @@ import torch
 
 from mindspeed.ops.triton.l2norm import l2norm_bwd, l2norm_fwd
 from mindspeed.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
-from mindspeed.ops.triton.solve_tril import solve_tril
 from mindspeed.ops.triton.cumsum import chunk_local_cumsum
-from mindspeed.ops.triton.utils import autocast_custom_bwd, autocast_custom_fwd, input_guard
+from mindspeed.ops.triton.utils import autocast_custom_bwd, autocast_custom_fwd, input_guard, is_arch35
+
+if is_arch35():
+    from mindspeed.ops.triton.triton_950.solve_tril import solve_tril
+else:
+    from mindspeed.ops.triton.solve_tril import solve_tril
 
 
 def prepare_chunk_indices(cu_seqlens: List[int], chunk_size: int) -> List[int]:
