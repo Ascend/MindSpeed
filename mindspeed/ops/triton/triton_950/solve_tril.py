@@ -516,6 +516,5 @@ def solve_tril(
         limit_auto_multi_buffer_of_local_buffer="no-limit",
         sync_solver=True,
         num_stages=2,
-        enable_dynamic_cv_pipeline=True,
     )
     return Ai
