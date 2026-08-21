@@ -8,10 +8,10 @@ import torch.nn.functional as F
 from megatron.core.transformer.moe.moe_utils import get_default_pg_collection
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
 from megatron.core.fusions.fused_bias_geglu import bias_geglu_impl
 from megatron.core.fusions.fused_bias_gelu import bias_gelu_impl
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu_impl
+from megatron.core.utils import get_pg_size
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_feature import MLPSubmodules
 from .utils import run_graph_backward
@@ -103,10 +103,20 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
         self.pre_backward_handle = None
         self.cached_input_grad = None
         self.post_backward_handle = None
-        self.tp_group = get_tensor_model_parallel_group()
-        self.tp_size = get_tensor_model_parallel_world_size()
-        # overwrite the explicit expert comm back to False
-        self.linear_fc1.explicit_expert_comm = False
+        self.tp_size = get_pg_size(self.tp_group)
+
+        if hasattr(self.linear_fc1, 'parallel_mode'):
+            self.linear_fc1.parallel_mode = 'column'
+            for overlap_attr in (
+                'ub_overlap_ag_fprop',
+                'ub_overlap_rs_dgrad',
+                'overlap_ag_fprop',
+                'overlap_rs_dgrad',
+            ):
+                if hasattr(self.linear_fc1, overlap_attr):
+                    setattr(self.linear_fc1, overlap_attr, False)
+        else:
+            self.linear_fc1.explicit_expert_comm = False
 
         if self.tp_size > 1:
             assert self.config.sequence_parallel
@@ -286,6 +296,12 @@ class SharedExpertMLPFbOverlap(SharedExpertMLP):
 
         with tp_comm_context:
             run_graph_backward(shared_experts_graph, self.cached_backward_grad, keep_grad=keep_grad)
+
+        if self.tp_size > 1 and hasattr(self.linear_fc1, 'parallel_mode'):
+            reduce_scatter_input_shape = list(shared_experts_graph[1].shape)
+            reduce_scatter_input_shape[0] *= self.tp_size
+            self.cached_fc1_input_grad = self.cached_fc1_input_grad.view(reduce_scatter_input_shape)
+
         self.cached_backward_grad = None
 
     def post_backward_comm(self, wait_event=None):
