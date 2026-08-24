@@ -1,6 +1,10 @@
 # <p align="center"> <img src="docs/LOGO.png" height="172px" width="598px"> </p>
 
 <p align="center">
+    简体中文 | <a href="./README_en.md">English</a>
+</p>
+
+<p align="center">
     <a> <img src="https://img.shields.io/badge/python-3.8%7C3.9%7C3.10-green"> </a>
     <a> <img src="https://img.shields.io/badge/build-passing-green"> </a>
     <a href="https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE">
