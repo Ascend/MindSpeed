@@ -64,10 +64,7 @@ def get_grad_norm_fp32(
         if float_grads:
             total_norm = max(float(grad.abs().max()) for grad in float_grads)
         if quant_grads:
-            quant_norm = max(
-                (grad.float() * grad.meta.scale_inv[0]).abs().max()
-                for grad in quant_grads
-            )
+            quant_norm = max((grad.float() * grad.meta.scale_inv[0]).abs().max() for grad in quant_grads)
             total_norm = max(total_norm, quant_norm)
         total_norm_tensor = torch.tensor([float(total_norm)], dtype=torch.float, device='cuda')
         # Take max across all model-parallel GPUs.
@@ -124,6 +121,7 @@ def clip_grad_by_total_norm_fp32_wrapper(func):
             parameters = [parameters]
 
         quant_scale_invs: List[torch.Tensor] = []
+        raw_quant_grads: List[torch.Tensor] = []
         if not use_decoupled_grad:
             for param in parameters:
                 quant_grad = getattr(param, 'quant_grad', None)
@@ -137,6 +135,10 @@ def clip_grad_by_total_norm_fp32_wrapper(func):
                         print("Skipping quant scale_inv with non-finite entries during clipping.")
                         continue
                     quant_scale_invs.append(scale_inv)
+                else:
+                    # FP16-native quant grads have no scale metadata; clip the FP16
+                    # tensor directly.
+                    raw_quant_grads.append(to_local_if_dtensor(quant_grad))
 
         if use_decoupled_grad:
             grads = []
@@ -156,15 +158,24 @@ def clip_grad_by_total_norm_fp32_wrapper(func):
                         clip_coef,
                     )
         else:
-            if quant_scale_invs and total_norm > 0.0:
+            if (raw_quant_grads or quant_scale_invs) and total_norm > 0.0:
                 clip_coef = max_norm / (total_norm + 1e-6)
                 if clip_coef < 1.0:
                     dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device='cuda')
-                    multi_tensor_applier(
-                        multi_tensor_scale_impl,
-                        dummy_overflow_buf,
-                        [quant_scale_invs, quant_scale_invs],
-                        clip_coef,
-                    )
+                    if raw_quant_grads:
+                        multi_tensor_applier(
+                            multi_tensor_scale_impl,
+                            dummy_overflow_buf,
+                            [raw_quant_grads, raw_quant_grads],
+                            clip_coef,
+                        )
+                    if quant_scale_invs:
+                        multi_tensor_applier(
+                            multi_tensor_scale_impl,
+                            dummy_overflow_buf,
+                            [quant_scale_invs, quant_scale_invs],
+                            clip_coef,
+                        )
         return func(parameters, max_norm, total_norm, use_decoupled_grad=use_decoupled_grad)
+
     return clip_grad_by_total_norm_fp32

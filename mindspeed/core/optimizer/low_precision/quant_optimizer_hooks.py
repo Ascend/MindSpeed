@@ -1,4 +1,3 @@
-import os
 from functools import wraps
 from typing import List
 import logging
@@ -6,7 +5,7 @@ import types
 
 import torch
 
-import megatron.core.tensor_parallel as tensor_parallel
+from megatron.core import tensor_parallel
 from megatron.training import get_args
 from megatron.core.transformer.module import param_is_not_shared
 
@@ -21,6 +20,7 @@ def _global_world_size() -> int:
     except RuntimeError:
         return 1
 
+
 logger = logging.getLogger(__name__)
 _PATCHED_ADAM_CACHE = {}
 
@@ -29,9 +29,7 @@ _PATCHED_ADAM_CACHE = {}
 def prepare_grads_impl(self) -> bool:
     timers = self.config.timers
     if timers is not None:
-        timers('optimizer-copy-to-main-grad', log_level=1).start(
-            barrier=self.config.barrier_with_L1_time
-        )
+        timers('optimizer-copy-to-main-grad', log_level=1).start(barrier=self.config.barrier_with_L1_time)
     if not getattr(self, 'is_stub_optimizer', False):
         self._copy_model_grads_to_main_grads()
         if timers is not None:
@@ -43,9 +41,7 @@ def prepare_grads_impl(self) -> bool:
 
     if self.grad_scaler:
         if timers is not None:
-            timers('optimizer-unscale-and-check-inf', log_level=1).start(
-                barrier=self.config.barrier_with_L1_time
-            )
+            timers('optimizer-unscale-and-check-inf', log_level=1).start(barrier=self.config.barrier_with_L1_time)
         found_inf_flag = self._unscale_main_grads_and_check_for_nan()
         if timers is not None:
             timers('optimizer-unscale-and-check-inf').stop()
@@ -58,18 +54,14 @@ def prepare_grads_impl(self) -> bool:
 def step_with_ready_grads_impl(self) -> bool:
     timers = self.config.timers
     if timers is not None:
-        timers('optimizer-inner-step', log_level=1).start(
-            barrier=self.config.barrier_with_L1_time
-        )
+        timers('optimizer-inner-step', log_level=1).start(barrier=self.config.barrier_with_L1_time)
     if not getattr(self, 'is_stub_optimizer', False):
         self.optimizer.step()
     if timers is not None:
         timers('optimizer-inner-step').stop()
 
     if timers is not None:
-        timers('optimizer-copy-main-to-model-params', log_level=1).start(
-            barrier=self.config.barrier_with_L1_time
-        )
+        timers('optimizer-copy-main-to-model-params', log_level=1).start(barrier=self.config.barrier_with_L1_time)
     if not getattr(self, 'is_stub_optimizer', False):
         if getattr(self.config, 'reuse_fp32_param', False):
             self.fp32_tensor_convert_to_fp16_tensor()
@@ -83,8 +75,7 @@ def step_with_ready_grads_impl(self) -> bool:
 @torch.no_grad()
 def mixed_precision_optimizer_step_impl(self):
     timers = self.config.timers
-    timers('optimizer-copy-to-main-grad', log_level=1).start(
-        barrier=self.config.barrier_with_L1_time)
+    timers('optimizer-copy-to-main-grad', log_level=1).start(barrier=self.config.barrier_with_L1_time)
     if not getattr(self, 'is_stub_optimizer', False):
         self._copy_model_grads_to_main_grads()
         timers('optimizer-copy-to-main-grad').stop()
@@ -92,34 +83,28 @@ def mixed_precision_optimizer_step_impl(self):
         if getattr(self.config, 'reuse_fp32_param', False):
             self.fp16_tensor_convert_to_fp32_tensor()
     if self.grad_scaler:
-        timers('optimizer-unscale-and-check-inf', log_level=1).start(
-            barrier=self.config.barrier_with_L1_time)
+        timers('optimizer-unscale-and-check-inf', log_level=1).start(barrier=self.config.barrier_with_L1_time)
         found_inf_flag = self._unscale_main_grads_and_check_for_nan()
         timers('optimizer-unscale-and-check-inf').stop()
         self.grad_scaler.update(found_inf_flag)
         if found_inf_flag:
             return False, None, None
-    timers('optimizer-clip-main-grad', log_level=1).start(
-        barrier=self.config.barrier_with_L1_time)
+    timers('optimizer-clip-main-grad', log_level=1).start(barrier=self.config.barrier_with_L1_time)
     grad_norm = None
     if self.config.clip_grad > 0.0:
         grad_norm = self.clip_grad_norm(self.config.clip_grad)
     timers('optimizer-clip-main-grad').stop()
 
-    timers('optimizer-count-zeros', log_level=1).start(
-        barrier=self.config.barrier_with_L1_time)
-    num_zeros_in_grad = self.count_zeros() if \
-        self.config.log_num_zeros_in_grad else None
+    timers('optimizer-count-zeros', log_level=1).start(barrier=self.config.barrier_with_L1_time)
+    num_zeros_in_grad = self.count_zeros() if self.config.log_num_zeros_in_grad else None
     timers('optimizer-count-zeros').stop()
 
-    timers('optimizer-inner-step', log_level=1).start(
-        barrier=self.config.barrier_with_L1_time)
+    timers('optimizer-inner-step', log_level=1).start(barrier=self.config.barrier_with_L1_time)
     if not getattr(self, 'is_stub_optimizer', False):
         self.optimizer.step()
-        timers('optimizer-inner-step').stop()
+    timers('optimizer-inner-step').stop()
 
-    timers('optimizer-copy-main-to-model-params', log_level=1).start(
-        barrier=self.config.barrier_with_L1_time)
+    timers('optimizer-copy-main-to-model-params', log_level=1).start(barrier=self.config.barrier_with_L1_time)
     if not getattr(self, 'is_stub_optimizer', False):
         if getattr(self.config, 'reuse_fp32_param', False):
             self.fp32_tensor_convert_to_fp16_tensor()
@@ -139,6 +124,7 @@ def optimizer_config_init_wrapper(init_func):
         quant_enabled = getattr(args_namespace, 'use_quant_optimizer', False)
         self.reuse_fp32_param = getattr(args_namespace, 'reuse_fp32_param', False)
         self.use_quant_optimizer = quant_enabled
+
     return optimizer_config_init
 
 
@@ -151,12 +137,11 @@ def get_megatron_optimizer_func_wrapper(func):
             for optim in chained_optimizer.chained_optimizers:
                 if hasattr(optim, "optimizer") and optim.optimizer is not None:
                     optim.optimizer.ema_decay = getattr(args_namespace, 'ema_decay', None)
-                else:
-                    setattr(optim, 'ema_decay', getattr(args_namespace, 'ema_decay', None))
             return chained_optimizer
         if hasattr(chained_optimizer, "optimizer") and chained_optimizer.optimizer is not None:
             chained_optimizer.optimizer.ema_decay = getattr(args_namespace, 'ema_decay', None)
         return chained_optimizer
+
     return get_megatron_optimizer_func
 
 
@@ -167,23 +152,23 @@ def optimizer_config_post_init_wrapper(post_init_func):
         args_namespace = get_args()
         if getattr(args_namespace, 'use_quant_optimizer', False):
             if self.optimizer != 'adam':
-                raise AssertionError('MindSpeed quant optimizer only supports Adam.')
+                raise AssertionError('MindSpeed quant optimizer does not support optimizer CPU offload.')
             if self.optimizer_cpu_offload:
                 raise AssertionError('MindSpeed quant optimizer does not support optimizer CPU offload.')
         else:
             post_init_func(*args, **kwargs)
-        return None
+
     return optimizer_config_post_init
 
 
 def get_optimizer_builder_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        config = args[0]
         args_namespace = get_args()
         if getattr(args_namespace, 'use_quant_optimizer', False):
             return _build_mindspeed_quant_optimizer(*args, **kwargs)
         return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -263,8 +248,8 @@ def _get_patched_adam(original_adam, quant_class):
     adam_meta = type(original_adam)
 
     class _MindSpeedAdamMeta(adam_meta):
-        def __instancecheck__(self, instance):  # type: ignore[override]
-            if adam_meta.__instancecheck__(self, instance):  # type: ignore[misc]
+        def __instancecheck__(self, instance):
+            if adam_meta.__instancecheck__(self, instance):
                 return True
             return isinstance(instance, quant_class)
 
@@ -324,32 +309,50 @@ def reuse_fp32_param_init_wrapper(init_func):
         self.res_float16_groups = []
         self.float16_float32_groups = []
         self.int32_float32_groups = []
-        for float16_params_this_group, fp32_from_float16_group in zip(self.float16_groups, self.fp32_from_float16_groups):
+        for float16_params_this_group, fp32_from_float16_group in zip(
+            self.float16_groups, self.fp32_from_float16_groups
+        ):
             res_float16_params_this_group = []
             float16_float32_params_this_group = []
             int32_float32_params_this_group = []
             for i, (_, fp32_from_fp16_param) in enumerate(zip(float16_params_this_group, fp32_from_float16_group)):
                 res_float16_params_this_group.append(
-                    torch.empty((fp32_from_fp16_param.numel() * 1), dtype=torch.bfloat16, device=fp32_from_fp16_param.device))
+                    torch.empty(
+                        (fp32_from_fp16_param.numel() * 1), dtype=torch.bfloat16, device=fp32_from_fp16_param.device
+                    )
+                )
                 float16_float32_params_this_group.append(
-                    torch.empty((fp32_from_fp16_param.numel() * 2), dtype=torch.bfloat16, device=fp32_from_fp16_param.device))
+                    torch.empty(
+                        (fp32_from_fp16_param.numel() * 2), dtype=torch.bfloat16, device=fp32_from_fp16_param.device
+                    )
+                )
                 int32_float32_params_this_group.append(
-                    torch.empty((fp32_from_fp16_param.numel() * 1), dtype=torch.int32, device=fp32_from_fp16_param.device))
-                init_and_reuse_storage_of_tensors(fp32_from_float16_group[i],
-                                                  float16_float32_params_this_group[-1],
-                                                  res_float16_params_this_group[-1],
-                                                  float16_params_this_group[i],
-                                                  int32_float32_params_this_group[-1])
+                    torch.empty(
+                        (fp32_from_fp16_param.numel() * 1), dtype=torch.int32, device=fp32_from_fp16_param.device
+                    )
+                )
+                init_and_reuse_storage_of_tensors(
+                    fp32_from_float16_group[i],
+                    float16_float32_params_this_group[-1],
+                    res_float16_params_this_group[-1],
+                    float16_params_this_group[i],
+                    int32_float32_params_this_group[-1],
+                )
             self.res_float16_groups.append(res_float16_params_this_group)
             self.float16_float32_groups.append(float16_float32_params_this_group)
             self.int32_float32_groups.append(int32_float32_params_this_group)
         self._copy_model_params_to_main_params = _copy_model_params_to_main_params
         if getattr(args_namespace, 'npu_deterministic', False):
-            self.fp16_tensor_convert_to_fp32_tensor = types.MethodType(fp16_tensor_convert_to_fp32_tensor_deterministic, self)
-            self.fp32_tensor_convert_to_fp16_tensor = types.MethodType(fp32_tensor_convert_to_fp16_tensor_deterministic, self)
+            self.fp16_tensor_convert_to_fp32_tensor = types.MethodType(
+                fp16_tensor_convert_to_fp32_tensor_deterministic, self
+            )
+            self.fp32_tensor_convert_to_fp16_tensor = types.MethodType(
+                fp32_tensor_convert_to_fp16_tensor_deterministic, self
+            )
         else:
             self.fp16_tensor_convert_to_fp32_tensor = types.MethodType(fp16_tensor_convert_to_fp32_tensor, self)
             self.fp32_tensor_convert_to_fp16_tensor = types.MethodType(fp32_tensor_convert_to_fp16_tensor, self)
+
     return reuse_fp32_param_init
 
 
@@ -357,14 +360,9 @@ def _copy_model_params_to_main_params():
     pass
 
 
-def init_and_reuse_storage_of_tensors(
-        fp32_tensor,
-        bf16_fp32_tensor,
-        res_tensor,
-        bf16_tensor,
-        int32_tensor
-):
+def init_and_reuse_storage_of_tensors(fp32_tensor, bf16_fp32_tensor, res_tensor, bf16_tensor, int32_tensor):
     from mindspeed.op_builder import AlgorithmOpBuilder
+
     reuse_data_ptr = AlgorithmOpBuilder().load().reuse_data_ptr
     reuse_data_ptr(bf16_fp32_tensor, fp32_tensor, 0)
     reuse_data_ptr(int32_tensor, fp32_tensor, 0)
@@ -374,14 +372,12 @@ def init_and_reuse_storage_of_tensors(
 
 
 def fp16_tensor_convert_to_fp32_tensor(self):
-    for int32_float32_group, float16_param_group in zip(
-            self.int32_float32_groups, self.float16_float32_groups):
+    for int32_float32_group, float16_param_group in zip(self.int32_float32_groups, self.float16_float32_groups):
         bf16_tensors_to_fp32_tensors(int32_float32_group, float16_param_group)
 
 
 def fp32_tensor_convert_to_fp16_tensor(self):
-    for int32_float32_param_group, float16_param_group in zip(
-        self.int32_float32_groups, self.float16_float32_groups):
+    for int32_float32_param_group, float16_param_group in zip(self.int32_float32_groups, self.float16_float32_groups):
         fp32_tensors_to_bf16_tensors(int32_float32_param_group, float16_param_group)
 
 
@@ -403,14 +399,20 @@ def bf16_tensors_to_fp32_tensors(int32_tensors, bf16_fp32_tensors):
 
 def fp16_tensor_convert_to_fp32_tensor_deterministic(self):
     for int32_float32_group, float16_param_group, fp32_from_float16_group in zip(
-        self.int32_float32_groups, self.float16_float32_groups, self.fp32_from_float16_groups):
-        bf16_tensors_to_fp32_tensors_deterministic(int32_float32_group, float16_param_group, fp32_from_float16_group, self.optimizer)
+        self.int32_float32_groups, self.float16_float32_groups, self.fp32_from_float16_groups
+    ):
+        bf16_tensors_to_fp32_tensors_deterministic(
+            int32_float32_group, float16_param_group, fp32_from_float16_group, self.optimizer
+        )
 
 
 def fp32_tensor_convert_to_fp16_tensor_deterministic(self):
     for int32_float32_param_group, float16_param_group, fp32_from_float16_group in zip(
-        self.int32_float32_groups, self.float16_float32_groups, self.fp32_from_float16_groups):
-        fp32_tensors_to_bf16_tensors_deterministic(int32_float32_param_group, float16_param_group, fp32_from_float16_group, self.optimizer)
+        self.int32_float32_groups, self.float16_float32_groups, self.fp32_from_float16_groups
+    ):
+        fp32_tensors_to_bf16_tensors_deterministic(
+            int32_float32_param_group, float16_param_group, fp32_from_float16_group, self.optimizer
+        )
 
 
 def fp32_tensors_to_bf16_tensors_deterministic(int32_tensors, bf16_fp32_tensors, fp32_tensors, optimizer):
@@ -474,43 +476,46 @@ def collect_main_grad_data_for_unscaling_wrapper(func):
     @wraps(func)
     def _collect_main_grad_data_for_unscaling(self):
         base = func(self)
-        meta_grads_scale_inv = []
-
-        def _register_scale_inv(tensor):
-            if tensor is None:
-                return
-            meta = getattr(tensor, 'meta', None)
-            if meta is None:
-                return
-            scale_inv = getattr(meta, 'scale_inv', None)
-            if scale_inv is None:
-                return
-            meta_grads_scale_inv.append(scale_inv)
+        if not isinstance(base, list):
+            base = list(base)
+        seen_ids = {id(t) for t in base}
 
         for group in getattr(self, 'fp32_from_float16_groups', []):
             for main_param in group:
-                _register_scale_inv(getattr(main_param, 'quant_grad', None))
+                quant_grad = getattr(main_param, 'quant_grad', None)
+                if quant_grad is not None and id(quant_grad.data) not in seen_ids:
+                    base.append(quant_grad.data)
+                    seen_ids.add(id(quant_grad.data))
 
-        return base, meta_grads_scale_inv
+        return base
+
     return _collect_main_grad_data_for_unscaling
+
+
+def quantize_grad_once(grad_tensor: torch.Tensor) -> torch.Tensor:
+    if grad_tensor is None:
+        return None
+    # The DDP grad buffer is already FP16. No additional quantization is required;
+    # reuse the FP16 buffer view to avoid an extra FP16 copy.
+    return grad_tensor
 
 
 def copy_model_grads_to_main_grads(self):
     args_namespace = get_args()
 
-    for model_group, main_group in zip(
-        self.float16_groups, self.fp32_from_float16_groups
-    ):
+    for model_group, main_group in zip(self.float16_groups, self.fp32_from_float16_groups):
         for model_param, main_param in zip(model_group, main_group):
             if hasattr(model_param, 'main_grad'):
                 if args_namespace.quant_grads:
-                    main_param.quant_grad = model_param.main_grad
+                    main_param.quant_grad = quantize_grad_once(model_param.main_grad)
+                    main_param.grad = None
                 else:
                     main_param.grad = model_param.main_grad.float()
             else:
                 if model_param.grad is not None:
                     if args_namespace.quant_grads:
-                        main_param.quant_grad = model_param.grad
+                        main_param.quant_grad = quantize_grad_once(model_param.grad)
+                        main_param.grad = None
                     else:
                         main_param.grad = model_param.grad.float()
 
@@ -522,8 +527,9 @@ def copy_model_grads_to_main_grads(self):
     # For fp32 grads, we need to reset the grads to main grad.
     for model_group in self.fp32_from_fp32_groups:
         for model_param in model_group:
-            if args.quant_grads:
-                model_param.quant_grad = model_param.main_grad
+            if args_namespace.quant_grads:
+                model_param.quant_grad = quantize_grad_once(model_param.main_grad)
+                model_param.grad = None
             else:
                 model_param.grad = model_param.main_grad
 
@@ -541,9 +547,7 @@ def unscale_main_grads_and_check_for_nan(self):
             meta_grads_scale_inv = []
     self.found_inf.fill_(0.0)
     if not getattr(self, 'is_stub_optimizer', False):
-        torch._amp_foreach_non_finite_check_and_unscale_(
-            main_grads, self.found_inf, self.grad_scaler.inv_scale
-        )
+        torch._amp_foreach_non_finite_check_and_unscale_(main_grads, self.found_inf, self.grad_scaler.inv_scale)
         if meta_grads_scale_inv:
             torch._amp_foreach_non_finite_check_and_unscale_(
                 meta_grads_scale_inv, self.found_inf, self.grad_scaler.inv_scale
@@ -592,4 +596,5 @@ def zero_grad_group_helper_wrapper(func):
                     else:
                         param.quant_grad.requires_grad_(False)
                     param.quant_grad.zero_()
+
     return _zero_grad_group_helper
