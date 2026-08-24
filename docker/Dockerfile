@@ -1,12 +1,12 @@
 # ============================================
 # MindSpeed Core Docker Image
-# NPU Type: Configurable (910b, a3, etc.)
+# NPU Type: Configurable (a3, 910b, 950)
 # Supports: x86_64 and aarch64
 # Supports: Ubuntu and openEuler CANN base images
 # ============================================
 
 ARG OS=openeuler24.03
-ARG BASE_IMAGE_VERSION=9.0.0-beta.2
+ARG BASE_IMAGE_VERSION=9.1.0
 ARG NPU_TYPE=910b
 ARG PYTHON_VERSION=3.11
 ARG BASE_IMAGE=""
@@ -16,10 +16,11 @@ FROM ${BASE_IMAGE:-swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${BASE_IMAGE_
 USER root
 SHELL ["/bin/bash", "-c"]
 
-ARG OS_FAMILY=ubuntu
+ARG OS_FAMILY=openeuler
 ARG TORCH_VERSION=2.7.1
-ARG TORCH_NPU_VERSION=2.7.1
-ARG MINDSPEED_BRANCH=master
+ARG TORCH_NPU_VERSION=2.7.1.post8
+ARG NUMPY_VERSION=1.26.0
+ARG MINDSPEED_BRANCH=v26.1.0_core_r0.12.1
 ARG MEGATRON_BRANCH=core_v0.12.1
 
 # Prepare required system dependencies
@@ -99,6 +100,11 @@ RUN ARCH=$(uname -m) && \
     pip install -e /MindSpeed && \
     pip install -e /Megatron-LM && \
     pip install transformers==4.57.1 && \
+    pip install --no-deps \
+        torch==${TORCH_VERSION} \
+        torch_npu==${TORCH_NPU_VERSION} \
+        numpy==${NUMPY_VERSION} && \
+    python -c "from importlib.metadata import version; from packaging.version import Version; expected = {'torch': '${TORCH_VERSION}', 'torch_npu': '${TORCH_NPU_VERSION}', 'numpy': '${NUMPY_VERSION}'}; actual = {name: version(name) for name in expected}; mismatched = {name: (expected[name], actual[name]) for name in expected if Version(actual[name]).public != Version(expected[name]).public}; assert not mismatched, f'Version mismatch: {mismatched}'; print(f'Pinned versions verified: {actual}')" && \
     rm -rf /tmp/* /var/tmp/* && \
     pip cache purge
 
