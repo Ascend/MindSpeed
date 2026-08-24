@@ -72,6 +72,7 @@ class NoopLayerGraph:
         self.checkpointed = checkpointed
         self.is_moe_layer = False
         self.layer = layer
+        self.swap_layer_input_entry = None
 
     def record_layer_inputs(self, *args):
         self.layer_inputs = args  # pylint: disable=attribute-defined-outside-init
@@ -134,6 +135,8 @@ class LayerGraph:
         # For selective recompute
         self.act_ckpt_manager = None
         self.remote_hot_act_ckpt_manager = None
+        # Exact layer-input swap entry associated with this forward graph.
+        self.swap_layer_input_entry = None
 
     def record_layer_inputs(self, *args):
         self.layer_inputs = args  # pylint: disable=attribute-defined-outside-init

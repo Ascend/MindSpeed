@@ -5,6 +5,7 @@ import torch
 import torch_npu
 
 from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.core.memory.recompute.recompute_common import get_recompute_priority
 from megatron.core import parallel_state
 from megatron.core.transformer.moe.moe_utils import (
     reduce_aux_losses_tracker_across_ranks,
@@ -125,22 +126,7 @@ def get_all2all_experts_output():
 
 def only_recompute_activation(layer_number):
     args = get_args()
-    vpp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
-    vpp_size = args.virtual_pipeline_model_parallel_size
-    pp_size = args.pipeline_model_parallel_size
-
-    if vpp_size is not None:
-        layer_per_chunk = args.num_layers_per_virtual_pipeline_stage
-    elif pp_size is not None:
-        layer_per_chunk = args.num_layers // pp_size
-    else:
-        layer_per_chunk = args.num_layers
-
-    if vpp_rank is None:
-        vpp_rank = 0
-    if vpp_size is None:
-        vpp_size = 1
-    recompute_priority = ((layer_number - 1) % layer_per_chunk) * vpp_size + vpp_rank
+    recompute_priority = get_recompute_priority(args, layer_number, enable_per_pp_rank=True)
     moe_zero_memory_num_layers = args.moe_zero_memory_num_layers
 
     if moe_zero_memory_num_layers:

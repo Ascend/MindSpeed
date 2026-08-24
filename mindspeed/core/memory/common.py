@@ -6,12 +6,14 @@ from torch import Tensor
 
 from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
+from mindspeed.core.memory.recompute.recompute_common import get_recompute_priority
 from mindspeed.core.memory.adaptive_memory.adaptive_memory_swap_manager import SwapManager as AdaptiveMemorySwapManager
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager as AdaptiveRecomputingSwapManager
 
 
 def swap_out_by_size(size):
     from megatron.training import get_args
+
     args = get_args()
     if args.adaptive_memory_optimization:
         return AdaptiveMemorySwapManager().swap_out_by_size(size)
@@ -21,26 +23,28 @@ def swap_out_by_size(size):
 
 def linear_forward_main_grad_wrapper(forward_func):
     @wraps(forward_func)
-    def linear_forward_main_grad(ctx,
-                                 inputs,
-                                 weight,
-                                 bias,
-                                 gradient_accumulation_fusion,
-                                 allreduce_dgrad,
-                                 sequence_parallel,
-                                 grad_output_buffer,
-                                 wgrad_deferral_limit,
-                                 ):
-        output = forward_func(ctx,
-                              inputs,
-                              weight,
-                              bias,
-                              gradient_accumulation_fusion,
-                              allreduce_dgrad,
-                              sequence_parallel,
-                              grad_output_buffer,
-                              wgrad_deferral_limit,
-                              )
+    def linear_forward_main_grad(
+        ctx,
+        inputs,
+        weight,
+        bias,
+        gradient_accumulation_fusion,
+        allreduce_dgrad,
+        sequence_parallel,
+        grad_output_buffer,
+        wgrad_deferral_limit,
+    ):
+        output = forward_func(
+            ctx,
+            inputs,
+            weight,
+            bias,
+            gradient_accumulation_fusion,
+            allreduce_dgrad,
+            sequence_parallel,
+            grad_output_buffer,
+            wgrad_deferral_limit,
+        )
         ctx.weight = weight
         return output
 
@@ -52,6 +56,7 @@ def linear_backward_main_grad_wrapper(backward_func):
     def linear_backward_main_grad(ctx, grad_output):
         class NewCtx:
             pass
+
         new_ctx = NewCtx()
         inputs, _ = ctx.saved_tensors
         for key in dir(ctx):
@@ -71,34 +76,33 @@ def linear_backward_main_grad_wrapper(backward_func):
 
 
 def transformer_block_checkpointed_forward(
-        self,
-        hidden_states: Tensor,
-        attention_mask: Tensor,
-        context: Tensor,
-        context_mask: Tensor,
-        rotary_pos_emb: Tensor,
-        attention_bias: Tensor,
-        packed_seq_params: PackedSeqParams,
-        use_inner_fp8_context
+    self,
+    hidden_states: Tensor,
+    attention_mask: Tensor,
+    context: Tensor,
+    context_mask: Tensor,
+    rotary_pos_emb: Tensor,
+    attention_bias: Tensor,
+    packed_seq_params: PackedSeqParams,
+    use_inner_fp8_context,
 ):
     """Forward method with activation checkpointing."""
 
     def custom(start: int, end: int):
         def custom_forward(
-                hidden_states,
-                attention_mask,
-                context,
-                context_mask,
-                rotary_pos_emb,
+            hidden_states,
+            attention_mask,
+            context,
+            context_mask,
+            rotary_pos_emb,
         ):
             from megatron.core.fp8_utils import get_fp8_context
             from contextlib import nullcontext
+
             for index in range(start, end):
                 layer = self._get_layer(index)
                 inner_fp8_context = (
-                    get_fp8_context(self.config, layer.layer_number - 1)
-                    if use_inner_fp8_context
-                    else nullcontext()
+                    get_fp8_context(self.config, layer.layer_number - 1) if use_inner_fp8_context else nullcontext()
                 )
                 with inner_fp8_context:
                     hidden_states, context = layer(
@@ -164,12 +168,6 @@ def transformer_block_checkpointed_forward(
                     rotary_pos_emb,
                 )
     elif self.config.recompute_method == 'block':
-        vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
-        vpp_size = self.config.virtual_pipeline_model_parallel_size
-        if vpp_rank is None or not getattr(self.config, 'enable_recompute_layers_per_pp_rank', False):
-            vpp_rank = 0
-        if vpp_size is None or not getattr(self.config, 'enable_recompute_layers_per_pp_rank', False):
-            vpp_size = 1
         for layer_idx in range(self.num_layers_per_pipeline_rank):
             # The number of layers each pipeline rank recomputes is self.recompute_num_layers.
             # If self.recompute_num_layers cannot divide exactly  the number of layers in each pp rank,
@@ -180,16 +178,14 @@ def transformer_block_checkpointed_forward(
             # Stage 1: [2, 3]   [6, 7]
             # With self.recompute_num_layers = 2, we will recompute layers 0,4 for stage 0, and 2,6 for stage 1.
             # With self.recompute_num_layers = 3, we will recompute layers 0,1,4 for stage 0, and 2,3,6 for stage 1.
-            def should_recompute():
-                if getattr(self.config, 'reduce_recompute_for_last_chunk', False):
-                    def is_last_layer():
-                        return (layer_idx == self.num_layers_per_pipeline_rank - 1) and mpu.is_pipeline_last_stage()
+            layer = self._get_layer(layer_idx)
+            recompute_priority = get_recompute_priority(self.config, layer.layer_number)
+            should_recompute_layer = recompute_priority < self.config.recompute_num_layers
+            if getattr(self.config, 'reduce_recompute_for_last_chunk', False):
+                is_last_layer = layer_idx == self.num_layers_per_pipeline_rank - 1 and mpu.is_pipeline_last_stage()
+                should_recompute_layer = should_recompute_layer and not is_last_layer
 
-                    return ((layer_idx * vpp_size + vpp_rank) < self.config.recompute_num_layers) and not is_last_layer()
-                else:
-                    return (layer_idx * vpp_size + vpp_rank) < self.config.recompute_num_layers
-
-            if should_recompute() and not getattr(self.config, 'swap_attention', False):
+            if should_recompute_layer and not getattr(self.config, 'swap_attention', False):
                 hidden_states, context = checkpoint_handler(custom(layer_idx, layer_idx + 1))
             else:
                 hidden_states, context = custom(layer_idx, layer_idx + 1)(

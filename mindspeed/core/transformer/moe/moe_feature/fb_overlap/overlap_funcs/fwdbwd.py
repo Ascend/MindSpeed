@@ -13,7 +13,13 @@ from mindspeed.args_utils import get_full_args
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from ..modules.weight_grad_store import WeightGradStore
-from ..modules.attention import attention_forward, set_async_alltoall_inputs, get_async_alltoall_outputs
+from ..modules.attention import (
+    attention_forward,
+    set_async_alltoall_inputs,
+    get_async_alltoall_outputs,
+    discard_attention_recompute_outputs_for_mhc_post,
+    discard_mlp_mhc_pre_recompute_output,
+)
 from ..modules.utils import (
     detach_tensor,
     run_graph_backward,
@@ -322,6 +328,7 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
     # p2p_communication), it serves to document the origin of this
     # 'view' tensor.
     output = make_viewless_tensor(inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True)
+    discard_attention_recompute_outputs_for_mhc_post(fwd_layer, output)
 
     # handle fwd p2p communication
     next_iter_input_tensor, fwd_p2p_handles = None, None
@@ -622,6 +629,7 @@ def transformer_layer_forward_moe_backward_dense_overlaping(
     # p2p_communication), it serves to document the origin of this
     # 'view' tensor.
     output = make_viewless_tensor(inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True)
+    discard_attention_recompute_outputs_for_mhc_post(fwd_layer, output)
 
     # handle fwd p2p communication
     next_iter_input_tensor, fwd_p2p_handles = None, None
@@ -770,6 +778,7 @@ def transformer_layer_forward_dense_backward_dense_overlaping(
     # p2p_communication), it serves to document the origin of this
     # 'view' tensor.
     output = make_viewless_tensor(inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True)
+    discard_attention_recompute_outputs_for_mhc_post(fwd_layer, output)
 
     # handle fwd p2p communication
     next_iter_input_tensor, fwd_p2p_handles = None, None
@@ -1308,6 +1317,8 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
                 post=detached_mlp_mhc_post,
                 comb=detached_mlp_mhc_comb,
             )
+            discard_attention_recompute_outputs_for_mhc_post(fwd_layer, mlp_mhc_output)
+            discard_mlp_mhc_pre_recompute_output(fwd_layer, mlp_mhc_output)
 
     # handle fwd p2p communication
     next_iter_input_tensor, fwd_p2p_handles = None, None

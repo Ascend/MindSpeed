@@ -1,6 +1,6 @@
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 
-from typing import Optional, Callable, List
+from typing import Callable, List, Optional
 
 import torch
 import torch_npu
@@ -210,16 +210,48 @@ class SwapLayerInputManager:
         if cls._d2h_stream is None:
             cls._d2h_stream = torch_npu.npu.Stream(device=torch.npu.current_device())
 
-    def swap_out_tensors(self, tensors: List[torch.Tensor]):
-        """Add a tensor to the current micro-batch's swap collection."""
-        if self.layer_idx + 1 < self.num_layers:
-            swap_tensors = [t for t in tensors if is_valid_for_swap(t, self.custom_check_fn)]
-            self.batch_stack.append(SwapTensors(swap_tensors))
-            self.batch_stack[-1].swap_to_host(SwapLayerInputManager._d2h_stream, async_op=True)
+    def swap_out_tensors(self, tensors: List[torch.Tensor]) -> Optional[SwapTensors]:
+        """Swap valid tensors to host and return their tracked swap entry."""
+        if self.layer_idx + 1 >= self.num_layers:
+            return None
 
-    def wait_swap_out(self):
-        if len(self.batch_stack) > 0:
-            self.batch_stack[-1].wait_d2h_and_release_device_tensor()
+        swap_tensors = [tensor for tensor in tensors if is_valid_for_swap(tensor, self.custom_check_fn)]
+        if not swap_tensors:
+            return None
+
+        swap_entry = SwapTensors(swap_tensors)
+        self.batch_stack.append(swap_entry)
+        swap_entry.swap_to_host(SwapLayerInputManager._d2h_stream, async_op=True)
+        return swap_entry
+
+    def wait_swap_out(self, swap_entry: Optional[SwapTensors] = None):
+        """Wait for a specific swap-out, or the latest one when omitted."""
+        if swap_entry is None and self.batch_stack:
+            swap_entry = self.batch_stack[-1]
+        if swap_entry is not None:
+            swap_entry.wait_d2h_and_release_device_tensor()
+
+    def restore_swap_entry(self, swap_entry: Optional[SwapTensors]):
+        """Restore one tracked entry to device and remove it from this manager."""
+        if swap_entry is None:
+            return
+
+        self._ensure_streams()
+        if swap_entry.stat == "d2h":
+            swap_entry.wait_d2h_and_release_device_tensor()
+        if swap_entry.stat == "host":
+            swap_entry.swap_to_device(self._h2d_stream, async_op=True)
+        if swap_entry.stat == "h2d":
+            swap_entry.wait_h2d_and_release_cpu_tensor()
+        if swap_entry.stat == "device":
+            self.remove_swap_entry(swap_entry)
+
+    def remove_swap_entry(self, swap_entry: SwapTensors):
+        """Remove an entry by identity without disturbing pipeline ordering."""
+        for index, tracked_entry in enumerate(self.batch_stack):
+            if tracked_entry is swap_entry:
+                self.batch_stack.pop(index)
+                return
 
     def swap_in_prev_layer(self):
         prev_manager = self._get_prev_layer_manager()
@@ -248,7 +280,7 @@ class SwapLayerInputManager:
             swap_entry = prev_manager.batch_stack[-1]
             swap_entry.wait_d2h_and_release_device_tensor()
 
-        if self.layer_idx + 1 < self.num_layers:
+        if self.layer_idx + 1 < self.num_layers and self.batch_stack:
             self.batch_stack[-1].swap_to_host(SwapLayerInputManager._d2h_stream, async_op=True)
 
     def backward_hook(self, _):

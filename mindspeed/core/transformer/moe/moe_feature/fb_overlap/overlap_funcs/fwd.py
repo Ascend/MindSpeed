@@ -10,7 +10,11 @@ from mindspeed.core.memory.recompute.activation.activation_recompute_forward imp
     DENSE_FC1_MEMORY_CONTEXT,
 )
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
-from ..modules.attention import attention_forward
+from ..modules.attention import (
+    attention_forward,
+    discard_attention_recompute_outputs_for_mhc_post,
+    discard_mlp_mhc_pre_recompute_output,
+)
 from ..modules.utils import (
     detach_tensor,
     NoopLayerGraph,
@@ -243,6 +247,8 @@ def transformer_layer_forward_moe(
             post=detached_mlp_mhc_post,
             comb=detached_mlp_mhc_comb,
         )
+        discard_attention_recompute_outputs_for_mhc_post(self, mlp_mhc_output)
+        discard_mlp_mhc_pre_recompute_output(self, mlp_mhc_output)
 
     saved_tensors = [
         (attention_out, detached_attention_out),
@@ -380,6 +386,7 @@ def transformer_layer_forward_dense(
     # p2p_communication), it serves to document the origin of this
     # 'view' tensor.
     output = make_viewless_tensor(inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True)
+    discard_attention_recompute_outputs_for_mhc_post(self, output)
 
     saved_tensors = (
         (attention_graph, detached_attention_out),

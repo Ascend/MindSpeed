@@ -18,47 +18,48 @@ class SwapLayerInputFeature(MindSpeedFeature):
         )
 
     def register_patches(self, patch_manager, args):
-        if getattr(args, self.feature_name, None):
-            from mindspeed.core.memory.swap_layer_input.swap_layer_input import (
-                swap_layer_input_init_wrapper,
-                swap_layer_input_forward_wrapper,
-                swap_layer_input_fboverlap_forward_wrapper,
-                swap_layer_input_fboverlap_1f1b_wrapper,
-                swap_layer_input_fboverlap_backward_wrapper,
-            )
+        if not getattr(args, self.feature_name, False):
+            return
 
-            patch_manager.register_patch(
-                'megatron.core.transformer.transformer_layer.TransformerLayer.__init__', swap_layer_input_init_wrapper
-            )
-            patch_manager.register_patch(
-                'megatron.core.transformer.transformer_layer.TransformerLayer.forward', swap_layer_input_forward_wrapper
-            )
-            if getattr(args, 'moe_fb_overlap', None):
-                patch_manager.register_patch(
-                    'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwd.transformer_layer_forward_moe',
-                    swap_layer_input_fboverlap_forward_wrapper,
-                )
-                patch_manager.register_patch(
-                    'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwd.transformer_layer_forward_dense',
-                    swap_layer_input_fboverlap_forward_wrapper,
-                )
-                patch_manager.register_patch(
-                    'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.transformer_layer_forward_dense_backward_dense_overlaping',
-                    swap_layer_input_fboverlap_1f1b_wrapper,
-                )
-                patch_manager.register_patch(
-                    'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.transformer_layer_forward_moe_backward_dense_overlaping',
-                    swap_layer_input_fboverlap_1f1b_wrapper,
-                )
-                patch_manager.register_patch(
-                    'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.transformer_layer_forward_dense_backward_moe_overlaping',
-                    swap_layer_input_fboverlap_1f1b_wrapper,
-                )
-                patch_manager.register_patch(
-                    'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.transformer_layer_forward_moe_backward_moe_overlaping',
-                    swap_layer_input_fboverlap_1f1b_wrapper,
-                )
-                patch_manager.register_patch(
-                    'mindspeed.core.transformer.moe.moe_feature.fb_overlap.transformer_layer.transformer_layer_backward',
-                    swap_layer_input_fboverlap_backward_wrapper,
-                )
+        from mindspeed.core.memory.swap_layer_input.swap_layer_input import (
+            swap_layer_input_fboverlap_1f1b_wrapper,
+            swap_layer_input_fboverlap_backward_wrapper,
+            swap_layer_input_fboverlap_forward_wrapper,
+            swap_layer_input_forward_wrapper,
+            swap_layer_input_init_wrapper,
+        )
+
+        patch_manager.register_patch(
+            'megatron.core.transformer.transformer_layer.TransformerLayer.__init__',
+            swap_layer_input_init_wrapper,
+        )
+        patch_manager.register_patch(
+            'megatron.core.transformer.transformer_layer.TransformerLayer.forward',
+            swap_layer_input_forward_wrapper,
+        )
+
+        if not getattr(args, 'moe_fb_overlap', False):
+            return
+
+        for target in (
+            'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwd.transformer_layer_forward_moe',
+            'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwd.transformer_layer_forward_dense',
+        ):
+            patch_manager.register_patch(target, swap_layer_input_fboverlap_forward_wrapper)
+
+        for target in (
+            'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.'
+            'transformer_layer_forward_dense_backward_dense_overlaping',
+            'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.'
+            'transformer_layer_forward_moe_backward_dense_overlaping',
+            'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.'
+            'transformer_layer_forward_dense_backward_moe_overlaping',
+            'mindspeed.core.transformer.moe.moe_feature.fb_overlap.overlap_funcs.fwdbwd.'
+            'transformer_layer_forward_moe_backward_moe_overlaping',
+        ):
+            patch_manager.register_patch(target, swap_layer_input_fboverlap_1f1b_wrapper)
+
+        patch_manager.register_patch(
+            'mindspeed.core.transformer.moe.moe_feature.fb_overlap.transformer_layer.transformer_layer_backward',
+            swap_layer_input_fboverlap_backward_wrapper,
+        )

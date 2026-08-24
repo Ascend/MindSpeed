@@ -17,9 +17,9 @@
 import warnings
 
 import torch
-from megatron.core import parallel_state, mpu, tensor_parallel
 from megatron.core.transformer.module import MegatronModule
 from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.core.memory.recompute.recompute_common import should_recompute as should_recompute_common
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 try:
@@ -49,27 +49,30 @@ def generate_attention_mask(compress, device):
     args = get_args()
     if not args.use_flash_attn:
         warnings.warn("Flash Attention is highly recommended")
-        _GLOBAL_ATTN_MASK = (torch.tril(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device), diagonal=-(args.pre_tockens + 1)) \
-                                + torch.triu(torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device), diagonal=args.next_tockens + 1))
+        _GLOBAL_ATTN_MASK = torch.tril(
+            torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device),
+            diagonal=-(args.pre_tockens + 1),
+        ) + torch.triu(
+            torch.ones([args.micro_batch_size, 1, args.seq_length, args.seq_length], dtype=bool, device=device),
+            diagonal=args.next_tockens + 1,
+        )
         return
 
     if compress:
         seq_len = 2048
     else:
         seq_len = args.seq_length
-    
-    _GLOBAL_ATTN_MASK = torch.triu(
-                            torch.ones((seq_len, seq_len), 
-                            device=device, dtype=torch.bool), diagonal=1)
+
+    _GLOBAL_ATTN_MASK = torch.triu(torch.ones((seq_len, seq_len), device=device, dtype=torch.bool), diagonal=1)
 
 
 def get_attention_mask():
-    global _GLOBAL_ATTN_MASK
     if _GLOBAL_ATTN_MASK is not None:
         return _GLOBAL_ATTN_MASK
 
     args = get_args()
     should_generate_mask = False
+    compress = False
     device = 'npu'
 
     if args.attention_mask_type == 'causal':
@@ -93,7 +96,6 @@ def get_attention_mask():
             should_generate_mask = True
             compress = True
 
-
     if getattr(args, 'attention_mask_on_cpu', False):
         device = 'cpu'
 
@@ -104,39 +106,7 @@ def get_attention_mask():
 
 
 def should_recompute(args, layer_number, num_recompute):
-    vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
-    vpp_size = args.virtual_pipeline_model_parallel_size
-    pp_size = args.pipeline_model_parallel_size
-
-    if vpp_size is not None:
-        layer_per_chunk = args.num_layers_per_virtual_pipeline_stage
-    elif pp_size is not None:
-        layer_per_chunk = args.num_layers // pp_size
-    else:
-        layer_per_chunk = args.num_layers
-
-    if vpp_rank is None or not args.enable_recompute_layers_per_pp_rank:
-        vpp_rank = 0
-    if vpp_size is None or not args.enable_recompute_layers_per_pp_rank:
-        vpp_size = 1
-    recompute_priority = ((layer_number - 1) % layer_per_chunk) * vpp_size + vpp_rank
-    full_recompute_layers = args.recompute_num_layers
-
-    if full_recompute_layers:
-        if recompute_priority < full_recompute_layers:
-            # Do full recomputation
-            return False
-        elif num_recompute is None:
-            return True
-        elif recompute_priority < full_recompute_layers + num_recompute:
-            return True
-        else:
-            return False
-
-    if num_recompute is None:
-        return True
-    else:
-        return recompute_priority < num_recompute
+    return should_recompute_common(args, layer_number, num_recompute)
 
 
 def should_recompute_activation(layer_number):
@@ -155,7 +125,9 @@ def should_recompute_activation(layer_number):
         if args.recompute_activation_function_num_layers < 0:
             raise AssertionError('--recompute-activation-function-num-layers cannot be less than 0.')
         elif args.recompute_activation_function_num_layers > args.num_layers:
-            raise AssertionError('--recompute-activation-function-num-layers cannot be greater than the number of layers.')
+            raise AssertionError(
+                '--recompute-activation-function-num-layers cannot be greater than the number of layers.'
+            )
     return should_recompute(args, layer_number, args.recompute_activation_function_num_layers)
 
 
