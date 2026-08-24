@@ -41,6 +41,10 @@ class WeightGradStore:
     is_decoupleBlock = False
 
     @classmethod
+    def should_detach_linear_wgrad(cls):
+        return cls.is_decoupleBlock and not getattr(get_args(), 'disable_fb_overlap_linear_dw_detach', False)
+
+    @classmethod
     def put(cls, total_input, grad_output, weight, sequence_parallel, in_row=False):
         cls.cache.append((total_input, grad_output, weight, sequence_parallel, in_row))
 

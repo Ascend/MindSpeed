@@ -71,6 +71,11 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
         group = parser.add_argument_group(title=self.feature_name)
         group.add_argument('--moe-fb-overlap', action='store_true')
         group.add_argument('--moe-unperm2-mem-optim-swap', action='store_true')
+        group.add_argument(
+            '--disable-fb-overlap-linear-dw-detach',
+            action='store_true',
+            help='Compute wgrad immediately for regular TP linear layers while keeping grouped-expert wgrad detached.',
+        )
 
     def validate_args(self, args):
         self.incompatible_check(args, 'moe_alltoall_overlap_comm')
@@ -95,6 +100,11 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
 
         if args.moe_unperm2_mem_optim_swap and not args.moe_fb_overlap:
             raise AssertionError('--moe-unperm2-mem-optim-swap currently only can be used with --moe-fb-overlap')
+
+        if args.disable_fb_overlap_linear_dw_detach and not args.moe_fb_overlap:
+            raise AssertionError(
+                '--disable-fb-overlap-linear-dw-detach currently only can be used with --moe-fb-overlap'
+            )
 
         self._validate_pipeline_model_parallel_layout_for_fb_overlap(args)
 
