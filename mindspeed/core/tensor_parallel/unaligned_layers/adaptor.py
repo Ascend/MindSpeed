@@ -1,5 +1,7 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+from functools import wraps
+
 import torch
 from megatron.training import get_args
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_expert_tensor_and_model_parallel_group
@@ -162,3 +164,33 @@ def get_rotary_seq_len(
     rotary_seq_len *= transformer_config.context_parallel_size
 
     return rotary_seq_len
+
+
+def unaligned_transformer_config_post_init_wrapper(fn):
+    """Decorate TransformerConfig.__post_init__ to bypass the head-divisibility assertion.
+
+    Only when the number of attention heads (or query groups) is not divisible by the
+    tensor model parallel size and ``unaligned_linear`` is active, temporarily set
+    ``tensor_model_parallel_size = 1`` so the megatron-native divisibility checks pass;
+    all other validation is left to megatron.
+    """
+
+    @wraps(fn)
+    def wrapper(self):
+        tp = self.tensor_model_parallel_size
+        heads_need = tp > 1 and (self.num_attention_heads % tp != 0)
+        qg_need = (
+            tp > 1
+            and self.num_query_groups is not None
+            and (self.num_query_groups % tp != 0)
+            and (tp % self.num_query_groups != 0)
+        )
+        if not (heads_need or qg_need):
+            return fn(self)
+        self.tensor_model_parallel_size = 1
+        try:
+            return fn(self)
+        finally:
+            self.tensor_model_parallel_size = tp
+
+    return wrapper

@@ -3,7 +3,6 @@
 
 This replaces the deleted megatron_basic/ features. It registers:
   - FP8: Fp8Recipe enum extension + get_fp8_context + TEDelayedScaling patches
-  - Config: TransformerConfig init/post_init wrappers
   - Norm: PTNorm replacement
   - Bug fixes: duplicate allgather, count_zero, async save, weight_decay
   - Args: all MindSpeed-specific CLI arguments (migrated from deleted features)
@@ -134,7 +133,6 @@ class NpuEnhancementFeature(MindSpeedFeature):
 
     def register_patches(self, patch_manager, args):
         # ================================================================
-        self._register_config_patches(patch_manager)
         # Step 2: GDN — replace GatedDeltaNet with MindSpeed subclass
         #  in favour of MindSpeed Triton-accelerated implementations)
         # ================================================================
@@ -158,37 +156,6 @@ class NpuEnhancementFeature(MindSpeedFeature):
     # ================================================================
     # Internal patch methods
     # ================================================================
-    def _register_config_patches(self, patch_manager):
-        """TransformerConfig patches for MindSpeed-specific parameters."""
-        try:
-            from mindspeed.core.megatron_basic.arguments_basic import (
-                transformer_config_init_wrapper,
-                transformer_config_post_init_wrapper,
-                transformer_config_init_subclass,
-            )
-
-            patch_manager.register_patch(
-                'megatron.core.transformer.transformer_config.TransformerConfig.__init__',
-                transformer_config_init_wrapper,
-            )
-            patch_manager.register_patch(
-                'megatron.core.transformer.transformer_config.TransformerConfig.__init_subclass__',
-                classmethod(transformer_config_init_subclass),
-            )
-            patch_manager.register_patch(
-                'megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
-                transformer_config_post_init_wrapper,
-            )
-            # MLATransformerConfig is a dataclass subclass with its own generated
-            # __init__, so it needs the argument-injection wrapper explicitly.
-            patch_manager.register_patch(
-                'megatron.core.transformer.transformer_config.MLATransformerConfig.__init__',
-                transformer_config_init_wrapper,
-            )
-            logger.debug("TransformerConfig patches registered")
-        except ImportError as e:
-            logger.debug("TransformerConfig patches skipped: %s", e)
-
     def _register_gdn_patch(self, patch_manager):
         """Replace GatedDeltaNet with MindSpeed Triton-accelerated subclass.
 

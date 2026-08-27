@@ -1,11 +1,6 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
-import inspect
 from logging import getLogger
 from functools import wraps
-from dataclasses import make_dataclass, field
-
-from mindspeed.args_utils import get_full_args
-from mindspeed.features_manager.features_manager import MindSpeedFeaturesManager
 
 LOG = getLogger(__name__)
 
@@ -39,67 +34,3 @@ def print_args_wrapper(fn):
             fn(title, args)
 
     return wrapper
-
-
-def transformer_config_post_init_wrapper(fn):
-    @wraps(fn)
-    def wrapper(self):
-        # make prev validation and copy some args.
-        MindSpeedFeaturesManager.pre_validate_features_args(self)
-
-        fn(self)
-
-        MindSpeedFeaturesManager.post_validate_features_args(args=self)
-
-        MindSpeedFeaturesManager.validate_features_args(args=self)
-
-    return wrapper
-
-
-def transformer_config_init_wrapper(fn):
-    @wraps(fn)
-    def wrapper(self, *args, **kwargs):
-        known_config = {}
-        unknown_config = {}
-        full_args = vars(get_full_args()).copy()
-        full_args.update(dict(kwargs))
-
-        config_key = inspect.signature(self.__class__).parameters
-        for key, value in full_args.items():
-            if key in config_key:
-                known_config[key] = value
-            else:
-                unknown_config[key] = value
-
-        fields = []
-        for key, value in unknown_config.items():
-            if not hasattr(self, key):
-                fields.append((str(key), type(value), field(init=False)))  # pylint: disable=invalid-field-call
-        self.__class__ = make_dataclass(self.__class__.__name__, fields=fields, bases=(self.__class__,))
-        for key, value in unknown_config.items():
-            if not hasattr(self, key):
-                setattr(self, key, value)
-        fn(self, *args, **known_config)
-
-    return wrapper
-
-
-def transformer_config_init_subclass(cls, **kwargs):
-    mutable_types = (list, dict, set, bytearray)
-    unknown_config = {}
-    full_args = vars(get_full_args()).copy()
-    full_args.update(kwargs)
-
-    config_key = inspect.signature(cls).parameters
-    for key, value in full_args.items():
-        if key not in config_key:
-            unknown_config[key] = value
-
-    for key, value in unknown_config.items():
-        if not hasattr(cls, key):
-            cls.__annotations__[key] = type(value)
-            if callable(value) and not isinstance(value, type):
-                value = field(default_factory=value)  # pylint: disable=invalid-field-call
-            elif type(value) in mutable_types:
-                value = field(default_factory=lambda value=value: value)  # pylint: disable=invalid-field-call
-            setattr(cls, key, value)

@@ -203,10 +203,14 @@ class DeepSeekSparseAttention(MindSpeedFeature):
             from mindspeed.core.transformer.experimental_attention_variant.dsa_kvallgather_context_parallel import (  # pylint: disable=no-name-in-module
                 transformer_config_post_init_wrapper,
             )
-            from megatron.core.transformer.transformer_config import TransformerConfig
 
-            # Wrap TransformerConfig.__post_init__ to bypass the DSA+CP assertion
-            TransformerConfig.__post_init__ = transformer_config_post_init_wrapper(TransformerConfig.__post_init__)
+            # Wrap TransformerConfig.__post_init__ via the patch manager (instead
+            # of direct class-attribute assignment) to bypass the DSA+CP assertion;
+            # keeps the layer registered/removable through the unified pipeline.
+            patch_manager.register_patch(
+                'megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
+                transformer_config_post_init_wrapper,
+            )
 
             logger.info(
                 "DSA CP: kvallgather context parallel support enabled. "
