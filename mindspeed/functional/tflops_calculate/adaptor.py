@@ -1,4 +1,5 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+# 2025 NVIDIA CORPORATION AFFILIATES. All rights reserved
 import os
 from datetime import datetime
 
@@ -6,12 +7,13 @@ import torch
 
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
-from megatron.training import get_args, get_timers
+from megatron.training import get_timers
 from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import print_rank_last, report_memory
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 from megatron.training.global_vars import get_tensorboard_writer, get_wandb_writer, get_one_logger
 
+from mindspeed.args_utils import get_full_args as get_args
 from .tflops_utils import get_count
 
 

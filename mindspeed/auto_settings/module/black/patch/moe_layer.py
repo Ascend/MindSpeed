@@ -1,7 +1,7 @@
 from functools import wraps
 
 import torch
-from megatron.training.global_vars import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from .hccl_operator import MOEOrMLPStartOp, MOEOrMLPEndOp
 

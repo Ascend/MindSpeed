@@ -1,6 +1,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
 import torch
-from megatron.training import print_rank_0, get_args
+from megatron.training import print_rank_0
+from mindspeed.args_utils import get_full_args as get_args
 from .adaptive_memory_tool import SingletonBase, FuncLocationMgr, broadcast_obj
 from .adaptive_memory_tool import AdaptiveStepMgr, ContextKey as Key
 from .adaptive_memory_swap_manager import (

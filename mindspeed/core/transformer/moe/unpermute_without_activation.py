@@ -4,7 +4,7 @@
 import torch
 import torch.distributed
 import torch_npu
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.moe_utils import (
     set_swap_status,
     get_swap_status,

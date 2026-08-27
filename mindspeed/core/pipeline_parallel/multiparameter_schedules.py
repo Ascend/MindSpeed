@@ -19,13 +19,14 @@ from typing import Iterator, List, Union
 
 import torch
 
-from megatron.training import get_args
 from megatron.core import parallel_state
 from megatron.core.enums import ModelType
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.utils import get_model_config, get_model_type
 
 from megatron.core.pipeline_parallel.schedules import forward_step, deallocate_output_tensor, check_first_val_step
+
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def forward_step_wrapper(fn):

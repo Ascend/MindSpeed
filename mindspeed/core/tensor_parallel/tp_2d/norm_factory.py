@@ -21,7 +21,7 @@ from torch._utils import _unflatten_dense_tensors
 
 from megatron.core.transformer import TransformerConfig
 from megatron.core.utils import get_attr_wrapped_model
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm
 from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D

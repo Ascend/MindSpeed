@@ -1,7 +1,7 @@
 from functools import wraps
 import torch
-from megatron.training import get_args
 from megatron.core import mpu
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def build_pretraining_data_loader_decorator(build_pretraining_data_loader):

@@ -1,3 +1,4 @@
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 # pylint: skip-file
 
@@ -5,9 +6,8 @@ import os
 from functools import wraps
 
 from megatron.core import mpu
-from megatron.training import get_args
 from megatron.training.checkpointing import ensure_directory_exists, get_checkpoint_name
-
+from mindspeed.args_utils import get_full_args as get_args
 
 _CHECKPOINT_NAME = ""
 _RELEASE = False

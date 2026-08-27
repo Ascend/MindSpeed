@@ -41,10 +41,10 @@ from megatron.core.transformer.transformer_layer import TransformerLayer
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.distributed import TorchFullyShardedDataParallel
-from megatron.training import get_args
 from megatron.training.utils import unwrap_model
 
 from mindspeed.utils import _get_dtype
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def _get_class_type(name: str) -> type:

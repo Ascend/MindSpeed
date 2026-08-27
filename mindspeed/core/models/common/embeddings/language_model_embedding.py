@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from functools import wraps
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.comm_autograd_function import (
     auto_grad_scatter_along_first_dim_then_last_dim,
 )

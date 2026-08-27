@@ -12,13 +12,13 @@ import torch
 import torch.nn
 import torch_npu
 from megatron.training import print_rank_0
-from megatron.training import get_args
 from megatron.training import get_timers
 from megatron.training import training
 from megatron.training.training import print_datetime
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core import mpu, tensor_parallel
 from megatron.training.initialize import initialize_megatron, set_jit_fusion_options
+from mindspeed.args_utils import get_full_args as get_args
 
 
 class AutoPipeline:

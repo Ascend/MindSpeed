@@ -2,7 +2,7 @@
 import torch
 from megatron.core import tensor_parallel
 from megatron.training import print_rank_0
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.memory.adaptive_recomputing.swap_manager import SwapManager
 from mindspeed.core.memory.adaptive_recomputing.prefetch import (
     prefetch_register_post_backward_hook,

@@ -9,9 +9,9 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from megatron.training.checkpointing import get_rng_state
-from megatron.training.global_vars import get_args
 from megatron.training.utils import print_rank_0
 from megatron.core import mpu, tensor_parallel
+from mindspeed.args_utils import get_full_args as get_args
 
 from .state_dict import shard_state_dict, clean_ignored_modules, use_zero1_params
 from .optim_state import _shard_optim_state_dict

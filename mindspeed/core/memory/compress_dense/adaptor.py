@@ -1,6 +1,7 @@
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 from dataclasses import dataclass
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from megatron.core.fusions.fused_bias_geglu import (
     bias_geglu_impl,
     quick_gelu,

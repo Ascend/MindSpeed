@@ -3,10 +3,10 @@
 import types
 from functools import wraps
 import torch
-from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.mlp import MLP
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.auto_settings.module.black.patch.hccl_operator import MOEOrMLPEndOp, MOEOrMLPStartOp
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import MoELayerOverlapAll2All
 from mindspeed.core.transformer.moe.moe_layer_overlap_allgather import MoELayerOverlapAllGather

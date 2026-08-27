@@ -1,5 +1,5 @@
 from functools import wraps
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.model.transformer import generate_attention_mask
 import mindspeed.model.transformer
 

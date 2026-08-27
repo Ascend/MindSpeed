@@ -1,5 +1,5 @@
-from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def apply_autopipeline(models):

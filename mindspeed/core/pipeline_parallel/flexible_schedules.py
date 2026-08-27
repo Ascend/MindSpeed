@@ -43,7 +43,7 @@ from megatron.core.parallel_state import (
     get_pipeline_model_parallel_next_rank,
     get_pipeline_model_parallel_prev_rank,
 )
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.parallel_state import get_pipeline_parallel_group_for_new_stream
 
 

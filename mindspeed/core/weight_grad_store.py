@@ -4,7 +4,7 @@ import torch
 import torch_npu
 
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def gather(input_slice, stream):

@@ -9,8 +9,8 @@ from megatron.core.fusions.fused_bias_swiglu import weighted_bias_swiglu_impl
 from megatron.core.fusions.fused_weighted_squared_relu import weighted_squared_relu_impl
 from megatron.core.transformer.moe.experts import TEGroupedMLP
 from megatron.core.transformer.moe.moe_utils import get_default_pg_collection
-from megatron.training import get_args
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.model.transformer import should_recompute_activation
 

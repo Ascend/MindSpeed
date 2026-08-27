@@ -19,7 +19,6 @@ import contextlib
 import torch
 from functools import wraps
 from megatron.core.enums import ModelType
-from megatron.training import get_args
 from megatron.core import parallel_state
 from megatron.core.utils import get_attr_wrapped_model, get_model_type
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
@@ -27,6 +26,7 @@ from megatron.core.pipeline_parallel.schedules import set_current_microbatch
 from mindspeed.core.pipeline_parallel import flexible_schedules
 from mindspeed.core.pipeline_parallel.ripipe_schedules import forward_backward_ripipe_pipelining
 from mindspeed.core.pipeline_parallel import multiparameter_schedules
+from mindspeed.args_utils import get_full_args as get_args
 
 LOSS_BACKWARD_SCALE = torch.tensor(1.0)
 

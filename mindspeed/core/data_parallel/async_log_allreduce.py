@@ -20,7 +20,7 @@ import gc
 import torch
 
 from megatron.core import mpu
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.training import get_timers
 from megatron.core.optimizer.qk_clip import clip_qk

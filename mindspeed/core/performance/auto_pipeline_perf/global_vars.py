@@ -1,5 +1,5 @@
 from functools import wraps
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def get_num_microbatches_wrapper(get_num_microbatches):

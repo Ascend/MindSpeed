@@ -1,6 +1,6 @@
 import torch
 import torch_npu
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from .ascend_turbo_cfg import ascend_turbo_cfg
 
 

@@ -25,6 +25,8 @@ from mindspeed.core.transformer.transformer_block import _get_layer_offset
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import (
     NoopTransformerLayer,
 )
+from mindspeed.args_utils import get_full_args as get_args
+
 from megatron.core import parallel_state
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_local_spec
 from megatron.core.parallel_state import destroy_model_parallel
@@ -35,7 +37,6 @@ from megatron.core.transformer.moe.moe_utils import (
     clear_aux_losses_tracker,
 )
 from megatron.core.transformer.transformer_block import TransformerBlock
-from megatron.training import get_args
 from megatron.training.arguments import parse_args, validate_args
 from megatron.training.global_vars import set_args
 from megatron.training.initialize import (

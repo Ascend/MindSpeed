@@ -4,7 +4,7 @@ import threading
 import re
 from logging import getLogger
 
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.log_config import log_rank_0
 from mindspeed.core.qos.domain_info import (
     get_tensor_parallel_comm_domain,

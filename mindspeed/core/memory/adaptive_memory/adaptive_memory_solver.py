@@ -6,7 +6,8 @@ from copy import deepcopy
 from typing import List
 
 import torch
-from megatron.training import print_rank_0, get_args
+from mindspeed.args_utils import get_full_args as get_args
+from megatron.training import print_rank_0
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.core import parallel_state as ps
 from .adaptive_memory_cache import AdaptiveModelMemPolicy, PolicyCacheManager

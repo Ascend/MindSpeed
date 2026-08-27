@@ -2,7 +2,7 @@ from functools import wraps
 from typing import Any, Literal
 
 import torch
-from megatron.training.global_vars import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 

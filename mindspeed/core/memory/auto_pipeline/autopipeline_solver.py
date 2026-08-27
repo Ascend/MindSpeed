@@ -4,12 +4,12 @@ import math
 from functools import wraps
 import torch
 import megatron.training.global_vars
-from megatron.training import get_args
 from megatron.training import print_rank_0
 from mindspeed.core.memory.auto_pipeline.autopipeline import check_equal_model_configs
 import mindspeed.model.transformer as mindspeed_transformer
 import megatron.core.parallel_state as megatron_parallel_state
 import mindspeed.core.parallel_state as mindspeed_parallel_state
+from mindspeed.args_utils import get_full_args as get_args
 
 
 class AutoPipelineSolver:

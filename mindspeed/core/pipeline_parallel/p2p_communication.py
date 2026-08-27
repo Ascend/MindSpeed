@@ -14,7 +14,7 @@ from megatron.core.parallel_state import (
 )
 from megatron.core.pipeline_parallel.p2p_communication import _batched_p2p_ops, _p2p_ops
 from megatron.core import ModelParallelConfig
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.utils import get_actual_seq_len, set_actual_seq_len, get_position_ids, set_position_ids
 
 # Types

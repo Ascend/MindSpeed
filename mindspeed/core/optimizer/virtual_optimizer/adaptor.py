@@ -4,7 +4,7 @@ from functools import wraps
 
 import torch
 from megatron.core.parallel_state import get_pipeline_model_parallel_rank, get_pipeline_model_parallel_world_size
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.optimizer.virtual_optimizer.virtual_adam import (
     virtual_optimizer_step_impl,
     virtual_optimizer_replace,

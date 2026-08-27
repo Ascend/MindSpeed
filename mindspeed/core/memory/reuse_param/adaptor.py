@@ -6,7 +6,7 @@ from functools import wraps
 import torch
 import torch_npu
 
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.core.memory.reuse_param.reuse_distrib_optimizer import (
     get_parameter_state_dp_zero,

@@ -2,7 +2,7 @@
 from functools import wraps
 
 from megatron.training.training import get_num_microbatches
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from .swap_manager import SwapManager
 
@@ -10,15 +10,15 @@ from .swap_manager import SwapManager
 def megatron_get_optimizer_tensors_fcn(optimizer):
     results = []
     optimizers = [optimizer] if not hasattr(optimizer, "chained_optimizers") else optimizer.chained_optimizers
-    for optimizer in optimizers:
-        for group in optimizer.optimizer.param_groups:
+    for opt in optimizers:
+        for group in opt.optimizer.param_groups:
             amsgrad = group["amsgrad"]
             for p in group["params"]:
                 if p is None:
                     continue
                 results.append(p.data)
 
-                state = optimizer.optimizer.state[p]
+                state = opt.optimizer.state[p]
                 if len(state) > 0:
                     results.append(state["exp_avg"])
                     results.append(state["exp_avg_sq"])

@@ -17,7 +17,7 @@ import torch
 
 from megatron.core.parallel_state import get_expert_tensor_and_model_parallel_group
 from megatron.core.transformer.moe.moe_utils import permute
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.grouped_matmul_util import GmmContext, get_gmm_op_cls
 from mindspeed.core.transformer.moe.moe_utils import (

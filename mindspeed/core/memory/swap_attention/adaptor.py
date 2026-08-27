@@ -1,10 +1,10 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 from functools import wraps
 
-from megatron.training import get_args
 from megatron.training import print_rank_0
 from megatron.core import parallel_state
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute import AdaptiveRecompute
 from mindspeed.core.memory.swap_attention.swap_attention_apply import AdaptiveRecomputeSwapReg
 

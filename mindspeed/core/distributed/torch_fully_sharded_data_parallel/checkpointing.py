@@ -22,7 +22,8 @@ import random
 import torch
 import numpy as np
 from megatron.core import mpu, tensor_parallel
-from megatron.training import get_args, ft_integration, wandb_utils
+from mindspeed.args_utils import get_full_args as get_args
+from megatron.training import ft_integration, wandb_utils
 from megatron.training.utils import unwrap_model, print_rank_0, is_last_rank
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training.checkpointing import (

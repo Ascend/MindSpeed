@@ -2,8 +2,8 @@ import time
 from functools import wraps
 import torch
 import torch_npu
-from megatron.training import get_args
 from megatron.training.utils import print_rank_0
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.ascend_turbo.initialize import initialize_cfg_from_args
 from .utils import extend_seed_all
 

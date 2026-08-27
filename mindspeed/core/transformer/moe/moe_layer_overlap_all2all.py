@@ -1,7 +1,6 @@
 import torch
 from megatron.core import tensor_parallel
 from megatron.core.transformer.moe.moe_layer import MoELayer
-from megatron.training import get_args
 from megatron.core.transformer.moe.moe_utils import permute, save_to_aux_losses_tracker, sort_chunks_by_idxs
 from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
@@ -11,6 +10,7 @@ from megatron.core.parallel_state import (
     get_expert_model_parallel_group,
 )
 from megatron.core.transformer.moe.moe_utils import MoEAuxLossAutoScaler
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.grouped_matmul_util import get_gmm_op_cls
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_all_gather
 from mindspeed.core.transformer.moe.moe_utils import forward_func, backward_func

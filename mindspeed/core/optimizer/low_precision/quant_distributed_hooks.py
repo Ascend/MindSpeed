@@ -5,7 +5,7 @@
 from functools import wraps
 import torch
 
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from megatron.core.transformer.cuda_graphs import is_graph_capturing
 
 

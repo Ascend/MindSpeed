@@ -22,7 +22,7 @@ import torch.distributed
 from megatron.core import mpu
 from megatron.core.optimizer.optimizer import ChainedOptimizer
 from megatron.core.utils import unwrap_model
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def save_checkpoint_ema_wrapper(func):

@@ -161,8 +161,6 @@ def get_batch_on_this_cp_rank(batch):
     # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
     # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
     # that we can get balanced workload among GPUs in a context parallel group.
-    from megatron.training import get_args
-
     args = get_args()
 
     cp_size = args.context_parallel_size
@@ -378,8 +376,6 @@ def broadcast_dynamic(item):
 
 
 def get_batch_on_this_tp_rank(data_iterator, mtp_on_this_rank: bool = False):
-    from megatron.training import get_args
-
     args = get_args()
 
     if mpu.get_tensor_model_parallel_rank() == 0:
@@ -620,7 +616,7 @@ def check_param_hashes_across_dp_replicas_hccl(model: List[torch.nn.Module]) -> 
         for i, (model_chunk_id, param_name, param) in enumerate(params):
             if not torch.equal(local_param_hashes[i], all_param_hashes[0][i]):
                 rank = torch.distributed.get_rank()
-                logger.info(f"[Rank {rank}] Hash not matching for {param_name} in model chunk {model_chunk_id}")
+                logger.info("[Rank %d] Hash not matching for %s in model chunk %d", rank, param_name, model_chunk_id)
     return param_hashes_match
 
 

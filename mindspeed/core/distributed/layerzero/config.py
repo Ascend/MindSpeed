@@ -16,11 +16,12 @@ from torch import nn
 from megatron.core import mpu
 from megatron.core.optimizer import OptimizerConfig
 from megatron.training.training import get_optimizer_param_scheduler, get_model
-from megatron.training.global_vars import get_args, get_timers
+from megatron.training.global_vars import get_timers
 from megatron.training.utils import print_rank_0
 from megatron.core.utils import get_model_config, unwrap_model
 from megatron.training.checkpointing import load_checkpoint
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.distributed.layerzero.zero3 import LayerZeRO3
 from mindspeed.core.distributed.layerzero.zero3.wrap import ModuleWrapPolicy
 from mindspeed.core.distributed.layerzero.zero3.api import (

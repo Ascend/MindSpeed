@@ -172,8 +172,8 @@ class TestDistTrainConfigWithDistributed(DistributedTest):
             reset_global_group_and_ranks()
             clear_model_comm_ranks()
             initialize_model_parallel()
-            from megatron.training import get_args
-            config.validate_configs_world_size(get_args())
+            from mindspeed.args_utils import get_full_args
+            config.validate_configs_world_size(get_full_args())
         assert "`model_index` must be continuous" in str(exc_info.value)
 
     def test_model_config_name_invalid_value(self):
@@ -247,8 +247,8 @@ class TestDistTrainConfigWithDistributed(DistributedTest):
             reset_global_group_and_ranks()
             clear_model_comm_ranks()
             initialize_model_parallel()
-            from megatron.training import get_args
-            config.validate_configs_world_size(get_args())
+            from mindspeed.args_utils import get_full_args
+            config.validate_configs_world_size(get_full_args())
         assert exc_info.type is RuntimeError
 
     def test_main_dp_duplicate(self):

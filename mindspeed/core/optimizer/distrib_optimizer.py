@@ -10,10 +10,10 @@ def _gather_hccl(send_tensor, recv_tensors, data_parallel_group, return_on_all_r
         gather_hccl(send_tensor, recv_tensors, data_parallel_group)
         return
 
-    from megatron.training import get_args
+    from mindspeed.args_utils import get_full_args
 
     data_parallel_world_size = data_parallel_group.size()
-    stride = get_args().hccl_slice_size
+    stride = get_full_args().hccl_slice_size
     (dim1,) = send_tensor.shape
     nums_gather = (dim1 + stride - 1) // stride
 
@@ -51,7 +51,7 @@ def get_parameter_state_dp_zero_hccl(
     data_parallel_rank = data_parallel_group.rank()
 
     state = {"buckets_coalesced": True}
-    for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
+    for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):  # pylint: disable=too-many-nested-blocks
         dtype_state = {}
         if len(gbuf_range_maps) != 1:
             raise AssertionError("single dtype supported, for now.")
@@ -139,7 +139,7 @@ def load_parameter_state_from_dp_zero_hccl(self, state_dict, *, update_legacy_fo
 
     from mindspeed.utils import _scatter_hccl
 
-    for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):
+    for gbuf_idx, gbuf_range_maps in enumerate(self.gbuf_ranges):  # pylint: disable=too-many-nested-blocks
         for dtype, gbuf_range_map_for_all_buckets in gbuf_range_maps.items():
             if data_parallel_rank == 0:
                 buffer_numel_unpadded = self.buffers[gbuf_idx].numel_unpadded

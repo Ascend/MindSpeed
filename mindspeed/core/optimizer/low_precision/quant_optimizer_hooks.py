@@ -6,8 +6,8 @@ import types
 import torch
 
 from megatron.core import tensor_parallel
-from megatron.training import get_args
 from megatron.core.transformer.module import param_is_not_shared
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def _global_world_size() -> int:

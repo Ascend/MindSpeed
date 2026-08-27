@@ -3,7 +3,7 @@ import torch_npu
 
 from megatron.core.parallel_state import get_expert_model_parallel_group, get_expert_tensor_and_model_parallel_group
 from megatron.core.transformer.moe.moe_layer import MoELayer
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.legacy_a2a_token_dispatcher import cann_version_check
 from mindspeed.core.transformer.moe.comm_utils import async_all_gather, async_reduce_scatter
 from mindspeed.core.transformer.moe.moe_utils import (

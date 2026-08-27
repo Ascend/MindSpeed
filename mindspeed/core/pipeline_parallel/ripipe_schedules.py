@@ -18,7 +18,7 @@ from typing import Iterator, List, Union
 import contextlib
 
 import torch
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from megatron.core import parallel_state
 from megatron.core.pipeline_parallel.schedules import (
     deallocate_output_tensor,

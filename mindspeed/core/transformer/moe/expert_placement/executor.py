@@ -2,7 +2,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 import torch
 from megatron.core import parallel_state, tensor_parallel
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from megatron.core.distributed.param_and_grad_buffer import shard_buffer
 from megatron.training.utils import print_rank_0
 from mindspeed.core.transformer.moe.moe_utils import (

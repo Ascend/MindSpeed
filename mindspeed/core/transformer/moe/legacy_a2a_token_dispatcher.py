@@ -2,10 +2,10 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
 import torch
 from torch_npu.utils.collect_env import get_cann_version
-from megatron.training import get_args
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.transformer.moe.moe_utils import permute, unpermute, sort_chunks_by_idxs, get_capacity
 from megatron.core.tensor_parallel.mappings import reduce_scatter_to_sequence_parallel_region
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.router import gather_from_sequence_parallel_region_to_moe_async
 from mindspeed.core.transformer.moe.comm_utils import async_all_to_all
 from mindspeed.core.transformer.moe.moe_layer_overlap_all2all import forward_func

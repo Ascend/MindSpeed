@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from megatron.core import parallel_state, tensor_parallel
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe import grouped_gemm_util as gg

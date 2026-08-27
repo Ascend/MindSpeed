@@ -19,8 +19,9 @@ from megatron.core.datasets.blended_megatron_dataset_builder import (
 from megatron.core.datasets.gpt_dataset import GPTDatasetConfig, MockGPTDataset
 from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.enums import ModelType
-from megatron.training import get_args, get_tokenizer, pretrain
+from megatron.training import get_tokenizer, pretrain
 from megatron.training.arguments import core_transformer_config_from_args
+from mindspeed.args_utils import get_full_args as get_args
 
 LOG = getLogger(__name__)
 

@@ -13,8 +13,8 @@ from torch.distributed.fsdp._wrap_utils import (
     _validate_frozen_params,
     _warn_on_overridden_mixed_precision,
 )
-from megatron.training.global_vars import get_args
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear, VocabParallelEmbedding
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.distributed.layerzero.zero3._common_utils import (
     _get_module_zero3_state,
 )

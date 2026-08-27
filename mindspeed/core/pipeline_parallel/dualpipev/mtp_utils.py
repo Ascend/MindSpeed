@@ -5,7 +5,6 @@ import logging
 import torch
 
 from megatron.core import parallel_state
-from megatron.training import get_args
 from megatron.training import print_rank_0
 from megatron.core import mpu
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -24,6 +23,8 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_with_transformer_engine_spec,
     get_gpt_mtp_block_spec,
 )
+
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def setup_embeddings_and_output_layer_with_mtp(self) -> None:

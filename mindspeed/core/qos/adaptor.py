@@ -22,7 +22,7 @@ from megatron.core.parallel_state import (
 )
 
 import megatron.core.parallel_state as mcps
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.qos.qos import Qos
 from mindspeed.log_config import log_rank_0
 from mindspeed.core.qos.domain_info import is_a3_version

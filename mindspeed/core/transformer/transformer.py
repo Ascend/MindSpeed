@@ -6,15 +6,15 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from megatron.training import get_args
 from megatron.core import tensor_parallel, mpu
 from megatron.core.utils import make_viewless_tensor
 from megatron.core.transformer.identity_op import IdentityOp
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.transformer.moe.moe_utils import only_recompute_activation
-from transformer_engine.pytorch.module.layernorm_linear import (
+from transformer_engine.pytorch.module.layernorm_linear import (  # pylint: disable=no-name-in-module
     LayerNormLinear as MindSpeedTELayerNormColumnParallelLinear,
 )
 

@@ -10,7 +10,6 @@ from functools import wraps
 import torch
 import torch_npu
 from datetime import datetime
-from megatron.training import get_args
 from megatron.training import get_timers
 from megatron.core import parallel_state
 from megatron.core.num_microbatches_calculator import get_num_microbatches
@@ -21,6 +20,7 @@ from megatron.training.training import num_floating_point_operations
 from megatron.training.utils import print_rank_last, report_memory
 from megatron.training.theoretical_memory_usage import report_theoretical_memory
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.auto_settings.auto_settings import AutoSettings
 from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 from mindspeed.core.memory.auto_pipeline.autopipeline import autopipeline_profiling

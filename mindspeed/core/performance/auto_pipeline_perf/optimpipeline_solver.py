@@ -4,8 +4,8 @@ import math
 from itertools import product
 import numpy as np
 import torch
-from megatron.training import get_args
 from megatron.training.arguments import parse_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.arguments import parse_args_wrapper
 from mindspeed.core.performance.auto_pipeline_perf.autopipeline_perf import check_equal_model_configs
 

@@ -3,7 +3,7 @@
 
 from functools import wraps
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.utils import get_actual_seq_len, compute_qkv_index, get_position_ids
 
 

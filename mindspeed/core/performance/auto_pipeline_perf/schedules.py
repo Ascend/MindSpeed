@@ -20,14 +20,13 @@ import torch
 from megatron.core import parallel_state
 from megatron.core.pipeline_parallel import p2p_communication
 from megatron.core.utils import get_model_config, get_model_type
-from megatron.training import get_args
 from megatron.core.pipeline_parallel.schedules import (
     forward_step,
     backward_step,
     deallocate_output_tensor,
     check_first_val_step,
 )
-
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 from mindspeed.core.performance.auto_pipeline_perf.autopipeline_perf import profile_context
 from mindspeed.core import training

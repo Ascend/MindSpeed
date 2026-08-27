@@ -3,7 +3,7 @@ from contextlib import AbstractContextManager
 
 import torch
 from megatron.core.transformer.moe.moe_utils import permute
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.communication import (
     _groupedmlp_hot_expert_params_broadcast,

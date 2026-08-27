@@ -6,9 +6,9 @@ from megatron.core.tensor_parallel import ColumnParallelLinear, RowParallelLinea
 from megatron.core.transformer.attention import SelfAttentionSubmodules
 from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.identity_op import IdentityOp
-from megatron.training import get_args
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.extensions.transformer_engine import TENorm
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.transformer import norm_recompute_forward
 from mindspeed.core.transformer.transformer_block import NoopTransformerLayer
 from mindspeed.model.transformer import should_recompute_norm

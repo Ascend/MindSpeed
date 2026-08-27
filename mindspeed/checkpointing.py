@@ -31,7 +31,6 @@ from megatron.core.dist_checkpointing.strategies.fully_parallel import (
     FullyParallelSaveStrategyWrapper,
 )
 from megatron.core.optimizer.optimizer import ChainedOptimizer
-from megatron.training import get_args
 from megatron.training.utils import append_to_progress_log, print_rank_0, unwrap_model
 
 from megatron.training.async_utils import schedule_async_save
@@ -44,6 +43,7 @@ from megatron.training.checkpointing import (
     read_metadata,
     find_checkpoint_rank_0,
 )
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def save_checkpoint(

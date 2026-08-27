@@ -12,9 +12,7 @@ from megatron.core.fp8_utils import correct_amax_history_if_needed
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed.custom_fsdp import FullyShardedDataParallel as custom_FSDP
-from megatron.training.global_vars import (
-    get_args,
-)
+from mindspeed.args_utils import get_full_args as get_args
 
 try:
     from megatron.core.distributed import TorchFullyShardedDataParallel as torch_FSDP

@@ -6,8 +6,8 @@ import os
 import re
 from typing import List
 from dataclasses import dataclass
-from megatron.training import get_args
 import torch.distributed as dist
+from mindspeed.args_utils import get_full_args as get_args
 
 domains = ['tp', 'dp', 'pp', 'ep', 'cp']
 

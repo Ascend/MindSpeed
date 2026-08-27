@@ -5,7 +5,7 @@ from typing import Callable  # codecheck_ignore
 from functools import wraps, partial
 
 import torch
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.core.memory.compress.compress_optimizer import compress_optimizer_step_impl
 from mindspeed.core.memory.compress.compress_activation import CompressHook, GlobalContext, GlobalContextConfig

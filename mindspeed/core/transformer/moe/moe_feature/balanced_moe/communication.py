@@ -2,7 +2,7 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 
 import torch
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.parallel_state import (
     get_expert_model_parallel_global_ranks,

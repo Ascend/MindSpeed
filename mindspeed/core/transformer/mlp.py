@@ -19,8 +19,8 @@ from functools import wraps
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.mlp import MLPSubmodules, MLP
-from megatron.training import get_args
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.comm_group_api import (
     TPXCollectiveComm,
     TPXOverlapCollectiveComm,

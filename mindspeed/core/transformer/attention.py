@@ -14,11 +14,11 @@ from megatron.core.transformer.attention import CrossAttentionSubmodules, Attent
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core import mpu
 from megatron.core.utils import divide
-from megatron.training import get_args
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
 from megatron.core.process_groups_config import ProcessGroupCollection
 from megatron.core.utils import get_pg_size
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.auto_settings.module.black.patch.hccl_operator import AttentionEndOp
 from mindspeed.core.context_parallel.ulysses_context_parallel.ulysses_context_parallel import UlyssesContextAttention
 from mindspeed.core.parallel_state import (

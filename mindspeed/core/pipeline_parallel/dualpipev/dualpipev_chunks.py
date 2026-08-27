@@ -16,7 +16,7 @@ from megatron.core.distributed import FullyShardedDataParallel as custom_FSDP
 from megatron.core.enums import ModelType
 from megatron.training import ft_integration, one_logger_utils
 from megatron.training.initialize import initialize_megatron, set_jit_fusion_options
-from megatron.training.global_vars import get_args, get_timers, get_one_logger, get_wandb_writer
+from megatron.training.global_vars import get_timers, get_one_logger, get_wandb_writer
 from megatron.training.utils import print_rank_0, is_last_rank, append_to_progress_log
 from megatron.training.training import (
     print_datetime,
@@ -44,6 +44,7 @@ try:
 except ImportError:
     HAVE_FSDP2 = False
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.pipeline_parallel.dualpipev.dualpipev_schedules import get_dualpipe_chunk
 from mindspeed.core.pipeline_parallel.dualpipev.mtp_utils import model_provider_mtp
 

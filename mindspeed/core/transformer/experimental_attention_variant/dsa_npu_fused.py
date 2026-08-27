@@ -361,9 +361,9 @@ def fused_compute_dsa_indexer_kl_loss(
         total_query = query
         total_query_rope = q_pos_emb
 
-    from mindspeed.args_utils import get_full_args as get_args
+    from mindspeed.args_utils import get_full_args
 
-    args = get_args()
+    args = get_full_args()
     if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
         from mindspeed.core.transformer.experimental_attention_variant.dsa_kvallgather_context_parallel import (
             fused_sparse_lightning_indexer_kl_loss_kvallgather,
@@ -432,9 +432,9 @@ def forward_with_scores(self, x, qr, mask=None, packed_seq_params=None, use_fuse
             self, x, qr, mask, packed_seq_params
         )
 
-    from mindspeed.args_utils import get_full_args as get_args
+    from mindspeed.args_utils import get_full_args
 
-    args = get_args()
+    args = get_full_args()
 
     use_tnd = packed_seq_params is not None
 
@@ -563,9 +563,9 @@ def fused_dsa_attn_forward(
     Training and inference share the same P2 path; P3 only runs in training.
     When use_fused_lightning_indexer is off, falls back to native indexer path.
     """
-    from mindspeed.args_utils import get_full_args as get_args
+    from mindspeed.args_utils import get_full_args
 
-    args = get_args()
+    args = get_full_args()
 
     use_tnd = packed_seq_params is not None
     if use_tnd:

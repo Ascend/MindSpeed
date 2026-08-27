@@ -126,9 +126,9 @@ def parse_hccl_buffer_string(hccl_group_buffer):
 
 def hccl_buffer_auto_adaptive():
     import math
-    from megatron.training import get_args
+    from mindspeed.args_utils import get_full_args
 
-    args = get_args()
+    args = get_full_args()
 
     seq_length = args.seq_length
     micro_batch_size = args.micro_batch_size
@@ -379,9 +379,9 @@ def hccl_buffer_auto_adaptive():
 def get_nccl_options_wrapper(get_nccl_options):
     @wraps(get_nccl_options)
     def wrapper(pg_name, nccl_comm_cfgs):
-        from megatron.training import get_args
+        from mindspeed.args_utils import get_full_args
 
-        args = get_args()
+        args = get_full_args()
         if args.hccl_group_buffer is not None or args.hccl_group_buffer_adaptive:
             global _HCCL_GROUP_BUFFER
             if _HCCL_GROUP_BUFFER.get(pg_name) is not None:
@@ -419,9 +419,9 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
         local_world_size: Optional[int] = None,
     ):
         from megatron.training.utils import print_rank_0
-        from megatron.training import get_args
+        from mindspeed.args_utils import get_full_args
 
-        args = get_args()
+        args = get_full_args()
         if rank_offset != 0 or local_world_size is not None:
             raise NotImplementedError(
                 "MindSpeed feature-owned process groups do not support rank_offset/local_world_size sub-worlds."
@@ -562,7 +562,7 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
             if rank in ranks:
                 _PIPELINE_MODEL_PARALLEL_GROUP_FOR_NEW_STREAM = group
 
-        args = get_args()
+        args = get_full_args()
         nd1_dim1_sz = args.nd1_dim1_size if args.use_nd_matmul else args.tp_x
         nd2_dim1_sz = args.nd2_dim1_size if args.use_nd_matmul else args.tp_y
         initialize_ndmm_parallel_group(
@@ -579,8 +579,8 @@ def initialize_model_parallel_wrapper(initialize_model_parallel):
                     tp=tensor_model_parallel_size,
                     cp=context_parallel_size,
                     ep=expert_model_parallel_size,
-                    tp_x=get_args().tp_x,
-                    tp_y=get_args().tp_y,
+                    tp_x=get_full_args().tp_x,
+                    tp_y=get_full_args().tp_y,
                 ),
                 pg_name="tp-y-cp",
                 overlap_gp_name="tp-y-cp-overlap",
@@ -622,12 +622,12 @@ def get_ring_ranks_for_inter_window_dkv():
 def initialize_context_parallel_group_for_send_recv_overlap(
     tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
 ):
-    from megatron.training import get_args
+    from mindspeed.args_utils import get_full_args
 
-    if not get_args().use_cp_send_recv_overlap:
+    if not get_full_args().use_cp_send_recv_overlap:
         return
     # when tp_y > 1, use TensorParallelYUnionCP
-    if get_args().tp_2d and get_args().tp_y > 1:
+    if get_full_args().tp_2d and get_full_args().tp_y > 1:
         return
     rank = torch.distributed.get_rank()
     world_size: int = torch.distributed.get_world_size()
@@ -654,9 +654,9 @@ def initialize_context_parallel_group_for_send_recv_overlap(
 def initialize_context_parallel_group_for_hybrid_cp(
     tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size, nccl_comm_cfgs
 ):
-    from megatron.training import get_args
+    from mindspeed.args_utils import get_full_args
 
-    if not hasattr(get_args(), 'context_parallel_algo') or get_args().context_parallel_algo not in (
+    if not hasattr(get_full_args(), 'context_parallel_algo') or get_full_args().context_parallel_algo not in (
         'hybrid_cp_algo',
         'hybrid_adaptive_cp_algo',
     ):
@@ -669,7 +669,7 @@ def initialize_context_parallel_group_for_hybrid_cp(
         tensor_model_parallel_size * pipeline_model_parallel_size * context_parallel_size
     )
 
-    ulysses_degree = get_args().ulysses_degree_in_cp
+    ulysses_degree = get_full_args().ulysses_degree_in_cp
     assert context_parallel_size > ulysses_degree and context_parallel_size % ulysses_degree == 0
     ring_degree = context_parallel_size // ulysses_degree
 
@@ -716,10 +716,10 @@ def initialize_context_parallel_group_for_double_ring(
     context_parallel_size,
     nccl_comm_cfgs,
 ):
-    from megatron.training import get_args
+    from mindspeed.args_utils import get_full_args
     import megatron.core.parallel_state as ps
 
-    args = get_args()
+    args = get_full_args()
     if args.tp_2d:
         return
     if context_parallel_size == 1 or args.context_parallel_algo not in ['megatron_cp_algo', 'hybrid_cp_algo']:
@@ -791,7 +791,7 @@ def initialize_context_parallel_group_for_double_ring(
                 cp_ranks = range(start_rank + k, end_rank, tensor_model_parallel_size)
 
                 if use_hybrid_cp:
-                    ulysses_degree = get_args().ulysses_degree_in_cp
+                    ulysses_degree = get_full_args().ulysses_degree_in_cp
                     assert context_parallel_size > ulysses_degree and context_parallel_size % ulysses_degree == 0
                     # ring cp ranks
                     for m in range(ulysses_degree):
@@ -1067,10 +1067,10 @@ def initialize_ndmm_parallel_group(
     nd2_dim1_size: int = 1,
 ) -> None:
     import megatron.core.parallel_state as ps
-    from megatron.training import get_args
+    from mindspeed.args_utils import get_full_args
     from megatron.training.global_vars import _ensure_var_is_not_initialized
 
-    args = get_args()
+    args = get_full_args()
     if not (args.use_nd_matmul or args.tp_2d):
         return
 
@@ -1221,9 +1221,9 @@ def get_expert_data_parallel_group_gloo_replace(partial_expert_data_parallel=Fal
 def new_group_wrapper(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        from megatron.training import get_args
+        from mindspeed.args_utils import get_full_args
 
-        if get_args().disable_gloo_group:
+        if get_full_args().disable_gloo_group:
             if "backend" in kwargs and kwargs["backend"] == "gloo":
                 return None
         return fn(*args, **kwargs)

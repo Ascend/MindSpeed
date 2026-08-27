@@ -2,7 +2,7 @@ from torch import nn
 
 from megatron.core.transformer.transformer_config import TransformerConfig
 from mindspeed.core.fusions.fused_rms_norm import RMSNorm
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.comm_group_api import TPYCollectiveComm
 from mindspeed.core.tensor_parallel.tp_2d.layernorm_2d import LayerNorm2D
 from mindspeed.core.tensor_parallel.tp_2d.rms_norm_2d import RMSNorm2D

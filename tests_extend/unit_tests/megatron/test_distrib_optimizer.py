@@ -8,10 +8,11 @@ from tests_extend.unit_tests.common import DistributedTest
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.transformer import TransformerConfig, MegatronModule
-from megatron.training.global_vars import set_args, get_args, get_timers, _set_timers
+from megatron.training.global_vars import set_args, get_timers, _set_timers
 from megatron.training.arguments import parse_args
 from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
 from megatron.core.utils import get_model_config
+from mindspeed.args_utils import get_full_args as get_args
 
 pytestmark = pytest.mark.slow
 

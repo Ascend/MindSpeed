@@ -2,7 +2,7 @@ import ast
 from enum import Enum
 import torch
 import torch.nn.functional as F
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def column_forward(self, input_, weight, column_parallel_function=None, check_fcn=None):

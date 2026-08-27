@@ -12,9 +12,9 @@ import torch_npu
 
 from megatron.training import print_rank_0
 from megatron.core.num_microbatches_calculator import get_num_microbatches
-from megatron.training import get_args
 from megatron.core import parallel_state
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import get_recompute_hook
 from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import get_swap_hook
 from mindspeed.core.memory.adaptive_recomputing.adaptive_recompute_apply import (
@@ -226,7 +226,7 @@ class AdaptiveRecomputePolicy:
             return None
         get_graph_solver().print_list_to_policy(recompute_policy_list)
         print_rank_0(
-            f"max available memory: {self.context_copy['max_device_memory']}, previous policy swap size: {swap_size}, "
+            f"max available memory: {self.context_copy['max_device_memory']}, previous policy swap size: {swap_size}, "  # pylint: disable=unsubscriptable-object
             f"next policy device memory: {self.cur_device_memory}"
         )
         print_rank_0(
@@ -343,8 +343,7 @@ class AdaptiveRecomputePolicy:
             else:
                 recompute_num_layers *= vpp_size
         else:
-            if recompute_num_layers >= per_pp_layers:
-                recompute_num_layers = per_pp_layers
+            recompute_num_layers = min(recompute_num_layers, per_pp_layers)
         if all_args.recompute_method == 'block':
             self.num_prefetch = recompute_num_layers
         elif all_args.recompute_method == 'uniform':
@@ -533,7 +532,7 @@ class AdaptiveRecompute:
                 name = current_ctx['name']
 
                 # profiling entire module
-                if "module" == prefix_name or 'module0' == prefix_name:
+                if prefix_name in ("module", "module0"):
                     pre_hook = module.register_forward_pre_hook(self.forward_pre_hook(prefix_name, name, current_ctx))
                     post_hook = module.register_forward_hook(self.forward_post_hook(prefix_name, name, current_ctx))
                     self.modules_hooks.append(pre_hook)

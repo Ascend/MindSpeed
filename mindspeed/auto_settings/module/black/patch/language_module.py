@@ -2,7 +2,7 @@ import time
 from functools import wraps
 
 import torch
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.auto_settings.module.black.auto_patch import AutoPatcher
 

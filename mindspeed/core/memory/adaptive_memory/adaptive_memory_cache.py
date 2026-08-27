@@ -9,7 +9,8 @@ from pathlib import Path
 
 import torch
 import torch_npu
-from megatron.training import get_args, print_rank_0
+from mindspeed.args_utils import get_full_args as get_args
+from megatron.training import print_rank_0
 from megatron.core import parallel_state
 
 import mindspeed

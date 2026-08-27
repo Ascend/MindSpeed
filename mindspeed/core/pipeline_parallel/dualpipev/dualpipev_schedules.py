@@ -7,7 +7,6 @@ from typing import Iterator, List, Union
 import torch
 
 from megatron.core import parallel_state
-from megatron.training import get_args
 from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
 from megatron.core.utils import (
     get_attr_wrapped_model,
@@ -28,6 +27,7 @@ from mindspeed.core.transformer.moe.moe_feature.fb_overlap.gpt_model import gpt_
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.transformer_layer import P2PCommParams
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.vpp_schedules import forward_step_func_wrapper
+from mindspeed.args_utils import get_full_args as get_args
 
 
 def detach_tensor(tensor, checkpoint_forward=False):

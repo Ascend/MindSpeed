@@ -29,8 +29,9 @@ from megatron.training.training import preprocess_common_state_dict
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.training.utils import print_rank_0
 from megatron.core.utils import unwrap_model
-from megatron.training.global_vars import get_args, get_timers, get_wandb_writer, get_one_logger
+from megatron.training.global_vars import get_timers, get_wandb_writer, get_one_logger
 from megatron.training.async_utils import maybe_finalize_async_save
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.transformer.moe.expert_placement.executor import build_param_params_module_mlp_map
 from mindspeed.core.transformer.moe.expert_placement.executor import expert_weight_and_optimizer_state_placement
 from mindspeed.core.transformer.moe.expert_placement.planner import print_expert_load

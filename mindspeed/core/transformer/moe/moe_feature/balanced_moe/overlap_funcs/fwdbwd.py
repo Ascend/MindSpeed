@@ -5,7 +5,7 @@ from contextlib import nullcontext
 import torch
 from megatron.core import parallel_state
 from megatron.core.utils import make_viewless_tensor
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
 from mindspeed.core.transformer.moe.moe_feature.balanced_moe.communication import (

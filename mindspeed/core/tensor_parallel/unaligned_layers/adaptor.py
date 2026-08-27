@@ -3,7 +3,6 @@
 from functools import wraps
 
 import torch
-from megatron.training import get_args
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_expert_tensor_and_model_parallel_group
 from megatron.core.tensor_parallel.layers import (
     ColumnParallelLinear,
@@ -27,6 +26,7 @@ from megatron.core.tensor_parallel.mappings import (
     gather_from_sequence_parallel_region as megatron_gather_from_sequence_parallel_region,
 )
 
+from mindspeed.args_utils import get_full_args as get_args
 from .unaligned_column_parallel_linear import UnalignedColumnParallelLinear
 from .unaligned_row_parallel_linear import UnalignedRowParallelLinear
 from .unaligned_utils import (

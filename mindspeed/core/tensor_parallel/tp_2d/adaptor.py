@@ -6,7 +6,6 @@ import torch
 from torch._utils import _flatten_dense_tensors
 from torch._utils import _unflatten_dense_tensors
 
-from megatron.training import get_args
 from megatron.core.utils import get_attr_wrapped_model
 from megatron.core.tensor_parallel.layers import _initialize_affine_weight_gpu
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding as MegatronRotaryEmbedding
@@ -28,6 +27,7 @@ from megatron.core.transformer.attention import Attention as MegatronAttention
 from megatron.core.transformer import build_module
 from megatron.core.process_groups_config import ProcessGroupCollection
 
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.tensor_parallel.comm_autograd_function import (
     auto_grad_scatter_along_first_dim_then_last_dim,
 )

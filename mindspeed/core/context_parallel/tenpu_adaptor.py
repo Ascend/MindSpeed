@@ -34,8 +34,8 @@ def te_dot_product_attention_init_wrapper(init_func):
         # Import lazily: this module is registered before Megatron finishes
         # importing, while the global argument namespace is available by the
         # time a model attention module is constructed.
-        from megatron.training import get_args
+        from mindspeed.args_utils import get_full_args
 
-        set_tenpu_cp_runtime_options(self, get_args())
+        set_tenpu_cp_runtime_options(self, get_full_args())
 
     return wrapper

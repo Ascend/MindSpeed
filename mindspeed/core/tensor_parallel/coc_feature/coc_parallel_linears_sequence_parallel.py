@@ -1,7 +1,7 @@
 from functools import reduce
 import torch
 
-from megatron.training import get_args
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
 from .min_comm_cfg import min_comm_config
 from .matmul_soc_friendly import get_aligned_mm_inputs

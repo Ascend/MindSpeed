@@ -334,9 +334,9 @@ class AdamW(Optimizer):
             maximize=maximize,
         )
         super().__init__(params, defaults)
-        from megatron.training import get_args
+        from mindspeed.args_utils import get_full_args
 
-        self.args = get_args()
+        self.args = get_full_args()
 
     def _resolve_dtype(self, dtype_value):
         if isinstance(dtype_value, torch.dtype):

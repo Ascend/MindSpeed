@@ -12,8 +12,8 @@ from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.utils import attention_mask_func
 from megatron.core.utils import divide
-from megatron.training import get_args
 from megatron.core import parallel_state
+from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.models.common.embeddings.rotary_pos_embedding import yarn_get_mscale
 from mindspeed.model.alibi_mask import AlibiForFusionAttnSingleton
 
