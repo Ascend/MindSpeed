@@ -112,9 +112,6 @@ class NpuEnhancementFeature(MindSpeedFeature):
             raise AssertionError('transformer engine does not support ascend coc')
         if args.use_ascend_mc2 and args.fp8 and args.fp8_recipe != 'mxfp8':
             raise AssertionError('MC2 is supported only by the mxfp8 recipe in fp8.')
-        if args.fp8 == 'hif8':
-            if args.fp8_recipe != 'tensorwise':
-                raise ValueError("hif8 only support tensorwise scaling type")
         if args.use_gmm_fp8:
             if args.fp8_recipe not in ('mxfp8', 'tensorwise', 'delayed'):
                 warnings.warn(

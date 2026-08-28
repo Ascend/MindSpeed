@@ -88,6 +88,7 @@ from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeatur
 from mindspeed.features_manager.transformer.multi_head_latent_attention.mla_feature import MLAFeature
 from mindspeed.features_manager.transformer.experimental_attention_variant.dsa import DeepSeekSparseAttention
 from mindspeed.features_manager.npu_enhancement import NpuEnhancementFeature
+from mindspeed.features_manager.transformer_engine import TeRecipeFeature
 
 from mindspeed.features_manager.tensor_parallel.vocab_parallel import ReplaceIndexPutFeature
 from mindspeed.features_manager.distributed.layerzero import LayerZeroFeature
@@ -347,6 +348,10 @@ def add_ttp_feature(features_list: List[MindSpeedFeature]):
     features_list.append(TTPFeature())
 
 
+def add_transformer_engine_features(features_list: List[MindSpeedFeature]):
+    features_list.append(TeRecipeFeature())
+
+
 def create_features_list():
     features_list = []
     add_basic_optimizer_features(features_list)
@@ -378,6 +383,7 @@ def create_features_list():
     add_aiqos_feature(features_list)
     add_qat_features(features_list)
     add_ttp_feature(features_list)
+    add_transformer_engine_features(features_list)
     return features_list
 
 
