@@ -8,6 +8,7 @@ from mindspeed.te.pytorch.fp8.constants import TensorKey
 from mindspeed.te.pytorch.fp8.recipes.recipe import Recipe, RecipeScaling
 from mindspeed.te.pytorch.fp8.reuse import reuse_or_quantize
 from mindspeed.te.pytorch.utils import view_as_n_dim, get_quant_dtype
+from mindspeed.args_utils import get_full_args as get_args
 
 
 class MXFP8ScalingRecipe(Recipe):
@@ -66,15 +67,15 @@ class MXFP8BlockScaling(RecipeScaling):
 
 
 class MXFP8MatMul(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, x: torch.Tensor, weight: torch.Tensor, need_grad: bool = True):
         qdtype = get_quant_dtype()
         x_2d = view_as_n_dim(x)
         ctx.output_dtype = x.dtype
-        if need_grad:
-            x_quant, x_scale, ctx.x, ctx.x_scale = \
-                torch_npu.npu_dynamic_mx_quant_with_dual_axis(x_2d, dst_type=qdtype.x)
+        if need_grad and not getattr(get_args(), 'mxfp8_defer_backward_quant', False):
+            x_quant, x_scale, ctx.x, ctx.x_scale = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+                x_2d, dst_type=qdtype.x
+            )
             w_quant, w_scale, ctx.w, ctx.w_scale = reuse_or_quantize(
                 weight,
                 TensorKey.weight,
@@ -91,10 +92,16 @@ class MXFP8MatMul(torch.autograd.Function):
                 dst_type=qdtype.w,
             )
             ctx.save_for_backward(x, weight)
-        output = torch_npu.npu_quant_matmul(x_quant, w_quant.t(), w_scale.transpose(0, 1),
-                                            pertoken_scale=x_scale,
-                                            output_dtype=x.dtype, scale_dtype=torch_npu.float8_e8m0fnu,
-                                            pertoken_scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
+        output = torch_npu.npu_quant_matmul(
+            x_quant,
+            w_quant.t(),
+            w_scale.transpose(0, 1),
+            pertoken_scale=x_scale,
+            output_dtype=x.dtype,
+            scale_dtype=torch_npu.float8_e8m0fnu,
+            pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
+            group_sizes=[1, 1, 32],
+        )
         if len(x.shape) != 2:
             output = output.reshape(*x.shape[:-1], *output.shape[1:])
         if weight.requires_grad:
@@ -104,8 +111,9 @@ class MXFP8MatMul(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grads: torch.Tensor):
         qdtype = get_quant_dtype()
-        grads_dx, grads_dx_scale, grads_dw, grads_dw_scale = \
-            torch_npu.npu_dynamic_mx_quant_with_dual_axis(view_as_n_dim(grads), dst_type=qdtype.grads)
+        grads_dx, grads_dx_scale, grads_dw, grads_dw_scale = torch_npu.npu_dynamic_mx_quant_with_dual_axis(
+            view_as_n_dim(grads), dst_type=qdtype.grads
+        )
 
         if hasattr(ctx, 'x'):
             x_quant, x_scale, w_quant, w_scale = ctx.x, ctx.x_scale, ctx.w, ctx.w_scale
@@ -120,14 +128,27 @@ class MXFP8MatMul(torch.autograd.Function):
             )
             x_quant, x_scale = torch_npu.npu_dynamic_mx_quant(view_as_n_dim(x), axis=-2, dst_type=qdtype.x)
 
-        dx = torch_npu.npu_quant_matmul(grads_dx, w_quant, w_scale,
-                                        pertoken_scale=grads_dx_scale,
-                                        output_dtype=ctx.output_dtype, scale_dtype=torch_npu.float8_e8m0fnu,
-                                        pertoken_scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
+        dx = torch_npu.npu_quant_matmul(
+            grads_dx,
+            w_quant,
+            w_scale,
+            pertoken_scale=grads_dx_scale,
+            output_dtype=ctx.output_dtype,
+            scale_dtype=torch_npu.float8_e8m0fnu,
+            pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
+            group_sizes=[1, 1, 32],
+        )
         if len(grads.shape) != 2:
             dx = dx.reshape(*grads.shape[:-1], *dx.shape[1:])
 
-        dw = torch_npu.npu_quant_matmul(grads_dw.t(), x_quant, x_scale, pertoken_scale=grads_dw_scale.transpose(0, 1),
-                                        output_dtype=ctx.output_dtype, scale_dtype=torch_npu.float8_e8m0fnu,
-                                        pertoken_scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
+        dw = torch_npu.npu_quant_matmul(
+            grads_dw.t(),
+            x_quant,
+            x_scale,
+            pertoken_scale=grads_dw_scale.transpose(0, 1),
+            output_dtype=ctx.output_dtype,
+            scale_dtype=torch_npu.float8_e8m0fnu,
+            pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
+            group_sizes=[1, 1, 32],
+        )
         return dx, dw, None, None, None

@@ -189,15 +189,24 @@ class MXFP8GMMFunction(BaseGMMFunction):
     def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None, reuse_identity=None):
         qdtype = get_quant_dtype()
         x_mxfp8, x_scale = torch_npu.npu_dynamic_mx_quant(x, axis=-1, dst_type=qdtype.x)
-        weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale = reuse_or_quantize(
-            weight,
-            TensorKey.weight,
-            torch_npu.npu_dynamic_mx_quant_with_dual_axis,
-            op_name="npu_dynamic_mx_quant_with_dual_axis",
-            reuse_identity=reuse_identity,
-            dst_type=qdtype.w,
-        )
-        ctx.w_quant = (weight_col_mxfp8, weight_col_scale)
+        if getattr(get_args(), 'mxfp8_defer_backward_quant', False):
+            weight_row_mxfp8, weight_row_scale = reuse_or_quantize(
+                weight,
+                TensorKey.weight,
+                torch_npu.npu_dynamic_mx_quant,
+                axis=-2,
+                dst_type=qdtype.w,
+            )
+        else:
+            weight_col_mxfp8, weight_col_scale, weight_row_mxfp8, weight_row_scale = reuse_or_quantize(
+                weight,
+                TensorKey.weight,
+                torch_npu.npu_dynamic_mx_quant_with_dual_axis,
+                op_name="npu_dynamic_mx_quant_with_dual_axis",
+                reuse_identity=reuse_identity,
+                dst_type=qdtype.w,
+            )
+            ctx.w_quant = (weight_col_mxfp8, weight_col_scale)
         return torch_npu.npu_grouped_matmul(
             [x_mxfp8],
             [weight_row_mxfp8],
@@ -217,7 +226,18 @@ class MXFP8GMMFunction(BaseGMMFunction):
     def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         grad_mxfp8, grad_scale = torch_npu.npu_dynamic_mx_quant(grad, axis=-1, dst_type=qdtype.grads)
-        weight_mxfp8, weight_scale = ctx.w_quant
+
+        if hasattr(ctx, 'w_quant'):
+            weight_mxfp8, weight_scale = ctx.w_quant
+        else:
+            weight_mxfp8, weight_scale = reuse_or_quantize(
+                weight,
+                TensorKey.weight,
+                torch_npu.npu_dynamic_mx_quant,
+                axis=-1,
+                dst_type=qdtype.w,
+            )
+
         return torch_npu.npu_grouped_matmul(
             [grad_mxfp8],
             [rearrange(weight_mxfp8, 'n h f -> n f h')],
