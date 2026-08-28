@@ -162,7 +162,7 @@ usage: replace_ascend_path.py [-h] [--source SOURCE] [--target TARGET]
                                [--dir DIR] [--extensions EXT [EXT ...]]
                                [--dry-run]
 
-选项：
+Option:
   -h, --help            Help information
   --source SOURCE       Source path (default: /usr/local/Ascend/driver)
   --target TARGET       Target path (default: /usr/local/npu/driver)

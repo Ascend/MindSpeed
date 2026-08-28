@@ -24,7 +24,7 @@
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Release Date</p></th>
-      <td class="cellrowborder" valign="top" width="73.75%"><p>07, 2026</p></td>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>Jul, 2026</p></td>
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Maintenance Period</p></th>
