@@ -5,6 +5,8 @@ import torch_npu
 from mindspeed.ops.dropout_add_rms_norm import npu_dropout_add_rms_norm
 from mindspeed.ops.dropout_add_layer_norm import npu_dropout_add_layer_norm
 
+pytestmark = pytest.mark.slow
+
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 

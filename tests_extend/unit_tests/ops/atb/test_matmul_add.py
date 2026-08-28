@@ -4,6 +4,8 @@ import torch
 import torch_npu
 from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
 
+pytestmark = pytest.mark.slow
+
 
 class TestMatmulAdd():
     def test_matmul_add(self):

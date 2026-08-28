@@ -10,6 +10,8 @@ from megatron.core.tensor_parallel.data import broadcast_data
 import megatron.core.parallel_state as Utils
 from tests_extend.unit_tests.common import DistributedTest
 
+pytestmark = pytest.mark.slow
+
 
 class TestTPData(DistributedTest):
     world_size = 8

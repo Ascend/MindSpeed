@@ -11,10 +11,64 @@ from multiprocessing.pool import RUN
 import pytest
 
 
+# ---------------------------------------------------------------------------
+# pytest-xdist support: pin each worker to a distinct physical NPU so that the
+# single-card unit tests can run in parallel (`pytest -n <N>`).  This must be
+# set before torch_npu initializes, hence it is done at conftest import time
+# (pytest imports this conftest before any test module).  It is a no-op when
+# pytest is not running under xdist.
+# ---------------------------------------------------------------------------
+_worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
+if _worker_id.startswith("gw"):
+    os.environ["ASCEND_RT_VISIBLE_DEVICES"] = str(int(_worker_id[2:]))
+
+
 def pytest_configure(config):
     config.option.durations = 0
     config.option.durations_min = 1
     config.option.verbose = True
+    config.addinivalue_line(
+        "markers",
+        "dist: distributed (multi-card) test that spawns its own process group",
+    )
+    config.addinivalue_line("markers", "slow: tests excluded from the default CI gate")
+
+
+def _is_slow_context_mapping_case(item):
+    path = str(getattr(item, "path", item.fspath)).replace("\\", "/")
+    if not path.endswith("mindspeed/core/context_parallel/test_mapping.py"):
+        return False
+
+    params = getattr(getattr(item, "callspec", None), "params", {})
+    if params.get("gather_scatter_idx") not in (None, (2, 0)):
+        return True
+    if params.get("input_shape") not in (None, [32, 64, 32]):
+        return True
+    if params.get("dim") not in (None, 0):
+        return True
+    return "bfloat16" in str(params.get("dtype"))
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-all"):
+        return
+
+    skip_slow = pytest.mark.skip(reason="slow test; pass --run-all to execute")
+    for item in items:
+        if _is_slow_context_mapping_case(item):
+            item.add_marker(pytest.mark.slow)
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
+
+
+# Tag every distributed test (classes inheriting DistributedTest) with the
+# "dist" marker, so the CI can run single-card tests in parallel (-m "not dist")
+# while keeping the multi-card ones sequential (-m dist).  Marking is done in
+# pytest_itemcollected (during collection) so that the -m filter can see it.
+def pytest_itemcollected(item):
+    cls = getattr(item, "cls", None)
+    if cls is not None and getattr(cls, "is_dist_test", False):
+        item.add_marker(pytest.mark.dist)
 
 
 # Override of pytest "runtest" for DistributedTest class
@@ -65,5 +119,11 @@ def pytest_addoption(parser):
         action="store",
         default=None,
         help="Specify AI framework, e.g., mindspore"
+    )
+    parser.addoption(
+        "--run-all",
+        action="store_true",
+        default=False,
+        help="Run the complete unit test suite, including tests marked as slow",
     )
 

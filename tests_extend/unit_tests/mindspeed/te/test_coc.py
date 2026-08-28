@@ -14,6 +14,8 @@ from mindspeed.te.pytorch.module.ops.mc2_ops import Mc2Ops
 from tests_extend.commons import initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
 
+pytestmark = pytest.mark.slow
+
 
 class TestAllgatherMatmul(DistributedTest):
     world_size = 8

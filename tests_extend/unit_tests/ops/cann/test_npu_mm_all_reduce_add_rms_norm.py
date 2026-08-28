@@ -45,7 +45,14 @@ class TestNPUMMAllReduceAddRmsNorm(DistributedTest):
         return hcomm_info
     
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16, torch.int8])
+    @pytest.mark.parametrize(
+        'dtype',
+        [
+            pytest.param(torch.float16, marks=pytest.mark.slow),
+            torch.bfloat16,
+            torch.int8,
+        ],
+    )
     def test_npu_mm_all_reduce_add_rms_norm(self, dtype):
         rank = int(os.environ["LOCAL_RANK"])
         hcomm_info = self.get_hcomm_info(self.world_size, rank)

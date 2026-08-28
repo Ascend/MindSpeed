@@ -18,6 +18,8 @@ from megatron.core.optimizer import get_megatron_optimizer, OptimizerConfig
 from megatron.core.optimizer_param_scheduler import ParamGroupOverride
 from megatron.core.utils import get_model_config
 
+pytestmark = pytest.mark.slow
+
 
 class Model(MegatronModule):
     def __init__(self, config):

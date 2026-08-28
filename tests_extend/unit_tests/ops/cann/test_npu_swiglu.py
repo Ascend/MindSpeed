@@ -40,7 +40,13 @@ class TestNpuSwiglu(DistributedTest):
         return hidden_states
 
     @pytest.mark.skipif(DEVICE_NAME != 'Ascend910B', reason='device type is not supported, skip this UT!')
-    @pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize(
+        'dtype',
+        [
+            pytest.param(torch.float16, marks=pytest.mark.slow),
+            torch.bfloat16,
+        ],
+    )
     def test_npu_swiglu(self, dtype):
         args = parse_args(None, True)
         set_args(args)

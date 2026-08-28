@@ -52,6 +52,7 @@ from mindspeed.core.context_parallel.utils import (set_scheduling_info,
                                                    set_remapped_seq_order)
 
 sys.argv = original_argv
+pytestmark = pytest.mark.slow
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 

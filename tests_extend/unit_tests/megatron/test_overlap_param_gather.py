@@ -20,6 +20,8 @@ from megatron.core import mpu
 from tests_extend.commons import set_random_seed, initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
 
+pytestmark = pytest.mark.slow
+
 
 class Model(MegatronModule):
     def __init__(self, config):

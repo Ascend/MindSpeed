@@ -12,6 +12,8 @@ from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_para
 
 from tests_extend.unit_tests.common import DistributedTest
 
+pytestmark = pytest.mark.slow
+
 
 class TestTPLayers(DistributedTest):
     world_size = 8
