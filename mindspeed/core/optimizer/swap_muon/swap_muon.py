@@ -374,6 +374,15 @@ def load_state_dict_swap_wrapper(fn):
         else:
             result = fn(self, *args, **kwargs)
 
+        # torch.optim.Optimizer.load_state_dict replaces its per-parameter state
+        # dictionaries. Refresh the cached references before copying the loaded
+        # states back to their CPU mirrors.
+        optimizer_state = getattr(getattr(self, "optimizer", None), "state", None)
+        if optimizer_state is not None:
+            for param in SwapOptimizerMixin._param_to_cpu_states:
+                if param in optimizer_state:
+                    SwapOptimizerMixin._state_map[param] = optimizer_state[param]
+
         # Swap out: copy updated values back to CPU mirrors and free device storage
         for param in swapped_params:
             SwapOptimizerMixin._swap_tensors_to_host(param)

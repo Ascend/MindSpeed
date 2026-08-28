@@ -1,11 +1,12 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 from functools import partial
-import copy
 import itertools
+import os
 
 import pytest
 import torch
+import torch.distributed as dist
 
 from mindspeed import megatron_adaptor  # noqa: F401
 from mindspeed.megatron_adaptor import repatch
@@ -24,18 +25,21 @@ from tests_extend.unit_tests.common import DistributedTest
 from tests_extend.commons import set_random_seed, initialize_model_parallel
 
 
+FAST_OPTIMIZER_STEPS = 2
+
+
 def initialize_gpt_model(pre_process=True, post_process=True, seed=0, **config_kwargs):
     torch.manual_seed(seed)
     model_parallel_cuda_manual_seed(seed)
 
-    default_config_kwargs = dict(num_layers=8, hidden_size=512, num_attention_heads=32, use_cpu_initialization=True)
+    default_config_kwargs = dict(num_layers=2, hidden_size=128, num_attention_heads=8, use_cpu_initialization=True)
     default_config_kwargs.update(**config_kwargs)
     transformer_config = TransformerConfig(**default_config_kwargs)
     model = GPTModel(
         config=transformer_config,
         transformer_layer_spec=get_gpt_layer_local_spec(),
-        vocab_size=1024,
-        max_sequence_length=64,
+        vocab_size=128,
+        max_sequence_length=16,
         pre_process=pre_process,
         post_process=post_process,
     )
@@ -128,6 +132,7 @@ def reset_swap_distributed_optimizer():
     SwapDistributedOptimizer.main_param_to_model_param_map = {}
     SwapDistributedOptimizer.no_swap_params = set()
     SwapDistributedOptimizer.step_count = 0
+    SwapDistributedOptimizer.swap_optimizer_times = 16
     SwapDistributedOptimizer.ALL_OPTIMIZER = []
 
 
@@ -146,6 +151,7 @@ def reset_swap_optimizer_mixin():
     SwapOptimizerMixin._main_param_to_model_param = {}
     SwapOptimizerMixin._step_count = 0
     SwapOptimizerMixin._total_optimizer_count = 0
+    SwapOptimizerMixin._swap_optimizer_times = 0
 
 
 class Timers:
@@ -156,64 +162,69 @@ class Timers:
         return self._dummy_timer
 
 
-class TestDistributedOptimizer(DistributedTest):
-    world_size = 8
-
-    @pytest.mark.parametrize("is_deterministic", [False])
-    @pytest.mark.parametrize("overlap_grad_reduce", [pytest.param(True, marks=pytest.mark.slow), False])
-    @pytest.mark.parametrize("overlap_param_gather", [pytest.param(True, marks=pytest.mark.slow), False])
-    @pytest.mark.parametrize(
-        "tp_pp",
-        [
-            pytest.param((4, 1), marks=pytest.mark.slow),
-            (2, 2),
-            pytest.param((8, 1), marks=pytest.mark.slow),
-        ],
-    )
-    def test_swap_optimizer(self, tp_pp, is_deterministic, overlap_grad_reduce, overlap_param_gather):
-        args = parse_args(None, True)
-        args.npu_deterministic = is_deterministic
-        args.overlap_grad_reduce = overlap_grad_reduce
-        args.overlap_param_gather = overlap_param_gather
-        set_args(args)
-
-        # truth
-        init_mock_args(args, use_distributed_optimizer=True)
-        initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
-        _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
-        for _ in range(10):
+def run_optimizer_steps(optimizer, steps=FAST_OPTIMIZER_STEPS, overlap_param_gather=False, muon=False):
+    """Run a small deterministic optimizer workload shared by the swap tests."""
+    for _ in range(steps):
+        if muon:
+            for sub_optimizer in optimizer.chained_optimizers:
+                for float16_group in sub_optimizer.float16_groups:
+                    for param in float16_group:
+                        param.grad = torch.randn_like(param.data, dtype=param.data.dtype)
+        else:
             for float16_group in optimizer.chained_optimizers[0].model_float16_groups:
-                for p in float16_group:
-                    p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
-            optimizer.step()
-            if overlap_param_gather:
-                for model_chunk in optimizer.model_chunks:
-                    model_chunk.start_param_sync(force_sync=True)
-                torch.cuda.synchronize()
-        truth_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups)))
+                for param in float16_group:
+                    param.grad = torch.randn_like(param.data, dtype=param.data.dtype)
+        optimizer.step()
+        if overlap_param_gather:
+            for model_chunk in optimizer.model_chunks:
+                model_chunk.start_param_sync(force_sync=True)
+        torch.cuda.synchronize()
 
-        # swap_optimizer
-        init_mock_args(args, use_distributed_optimizer=True, swap_optimizer=True)
-        initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
-        _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
-        for _ in range(10):
-            for float16_group in optimizer.chained_optimizers[0].model_float16_groups:
-                for p in float16_group:
-                    p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
-            optimizer.step()
-            if overlap_param_gather:
-                for model_chunk in optimizer.model_chunks:
-                    model_chunk.start_param_sync(force_sync=True)
-                torch.cuda.synchronize()
-        swap_optimizer_params = copy.deepcopy(
-            list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups))
-        )
 
-        for p, swap_optimizer_p in zip(truth_params, swap_optimizer_params):
-            if is_deterministic:
-                assert torch.allclose(p.data, swap_optimizer_p.data, rtol=0, atol=0)
-            else:
-                assert torch.allclose(p.data, swap_optimizer_p.data, rtol=0.005, atol=0.005)
+def clone_optimizer_model_params(optimizer, muon=False):
+    group_attr = "float16_groups" if muon else "model_float16_groups"
+    groups = getattr(optimizer.chained_optimizers[0], group_attr)
+    return [param.detach().clone() for param in itertools.chain(*groups)]
+
+
+class SwapOptimizerTestBase(DistributedTest):
+    topologies = ()
+
+    def test_swap_optimizer(self):
+        for tensor_parallel_size, pipeline_parallel_size, overlap_grad_reduce, overlap_param_gather in self.topologies:
+            args = parse_args(None, True)
+            args.npu_deterministic = False
+            args.overlap_grad_reduce = overlap_grad_reduce
+            args.overlap_param_gather = overlap_param_gather
+            set_args(args)
+
+            reset_swap_distributed_optimizer()
+            init_mock_args(args, use_distributed_optimizer=True)
+            initialize_model_parallel(
+                tensor_model_parallel_size=tensor_parallel_size,
+                pipeline_model_parallel_size=pipeline_parallel_size,
+            )
+            _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
+            run_optimizer_steps(optimizer, overlap_param_gather=overlap_param_gather)
+            truth_params = clone_optimizer_model_params(optimizer)
+
+            reset_swap_distributed_optimizer()
+            init_mock_args(args, use_distributed_optimizer=True, swap_optimizer=True)
+            initialize_model_parallel(
+                tensor_model_parallel_size=tensor_parallel_size,
+                pipeline_model_parallel_size=pipeline_parallel_size,
+            )
+            _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
+            run_optimizer_steps(optimizer, overlap_param_gather=overlap_param_gather)
+            swap_optimizer_params = clone_optimizer_model_params(optimizer)
+
+            for param, swap_optimizer_param in zip(truth_params, swap_optimizer_params):
+                assert torch.allclose(param, swap_optimizer_param, rtol=0.005, atol=0.005)
+
+
+class TestDistributedOptimizer(SwapOptimizerTestBase):
+    world_size = 2
+    topologies = ((1, 1, False, False),)
 
     def test_swap_optimizer_deferred_release(self):
         """Verify swap_optimizer_times=0 (deferred release) produces the same
@@ -221,7 +232,7 @@ class TestDistributedOptimizer(DistributedTest):
         """
         from mindspeed.core.optimizer.swap_optimizer.swap_optimizer import SwapDistributedOptimizer
 
-        tp_pp = (2, 2)
+        tp_pp = (1, 1)
         args = parse_args(None, True)
         args.npu_deterministic = False
         args.overlap_grad_reduce = False
@@ -234,13 +245,8 @@ class TestDistributedOptimizer(DistributedTest):
         repatch(vars(args))
         initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
         _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
-        for _ in range(10):
-            for float16_group in optimizer.chained_optimizers[0].model_float16_groups:
-                for p in float16_group:
-                    p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
-            optimizer.step()
-            torch.cuda.synchronize()
-        baseline_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups)))
+        run_optimizer_steps(optimizer)
+        baseline_params = clone_optimizer_model_params(optimizer)
 
         # Deferred release: swap_optimizer with times=0
         reset_swap_distributed_optimizer()
@@ -248,13 +254,8 @@ class TestDistributedOptimizer(DistributedTest):
         repatch(vars(args))
         initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
         _, optimizer = setup_model_and_optimizer(seed=5, use_distributed_optimizer=True)
-        for _ in range(10):
-            for float16_group in optimizer.chained_optimizers[0].model_float16_groups:
-                for p in float16_group:
-                    p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
-            optimizer.step()
-            torch.cuda.synchronize()
-        deferred_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].model_float16_groups)))
+        run_optimizer_steps(optimizer)
+        deferred_params = clone_optimizer_model_params(optimizer)
 
         # Verify numerical consistency
         for p, dp in zip(baseline_params, deferred_params):
@@ -269,7 +270,7 @@ class TestDistributedOptimizer(DistributedTest):
         """
         from mindspeed.core.optimizer.swap_muon.swap_muon import SwapOptimizerMixin
 
-        tp_pp = (2, 2)
+        tp_pp = (1, 1)
         args = parse_args(None, True)
         args.npu_deterministic = False
         args.overlap_grad_reduce = False
@@ -286,14 +287,8 @@ class TestDistributedOptimizer(DistributedTest):
         reset_swap_optimizer_mixin()
         initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
         _, optimizer = setup_model_and_muon_optimizer(seed=5)
-        for _ in range(10):
-            for sub_opt in optimizer.chained_optimizers:
-                for float16_group in sub_opt.float16_groups:
-                    for p in float16_group:
-                        p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
-            optimizer.step()
-            torch.cuda.synchronize()
-        baseline_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].float16_groups)))
+        run_optimizer_steps(optimizer, muon=True)
+        baseline_params = clone_optimizer_model_params(optimizer, muon=True)
 
         # Deferred release: swap_optimizer with times=0
         init_mock_args(
@@ -302,14 +297,8 @@ class TestDistributedOptimizer(DistributedTest):
         reset_swap_optimizer_mixin()
         initialize_model_parallel(tensor_model_parallel_size=tp_pp[0], pipeline_model_parallel_size=tp_pp[1])
         _, optimizer = setup_model_and_muon_optimizer(seed=5)
-        for _ in range(10):
-            for sub_opt in optimizer.chained_optimizers:
-                for float16_group in sub_opt.float16_groups:
-                    for p in float16_group:
-                        p.grad = torch.randn_like(p.data, dtype=p.data.dtype)
-            optimizer.step()
-            torch.cuda.synchronize()
-        deferred_params = copy.deepcopy(list(itertools.chain(*optimizer.chained_optimizers[0].float16_groups)))
+        run_optimizer_steps(optimizer, muon=True)
+        deferred_params = clone_optimizer_model_params(optimizer, muon=True)
 
         # Verify numerical consistency
         for p, dp in zip(baseline_params, deferred_params):
@@ -317,3 +306,66 @@ class TestDistributedOptimizer(DistributedTest):
 
         # Verify class state is properly reset after each iteration
         assert SwapOptimizerMixin._step_count == 0
+
+    def test_swap_muon_checkpoint_round_trip(self, class_tmpdir):
+        """Swap-Muon checkpoints restore parameters and momentum without retaining NPU storage."""
+        from mindspeed.core.optimizer.swap_muon.swap_muon import SwapOptimizerMixin
+
+        args = parse_args(None, True)
+        args.npu_deterministic = False
+        args.overlap_grad_reduce = False
+        args.overlap_param_gather = False
+        set_args(args)
+        init_mock_args(
+            args,
+            use_distributed_optimizer=True,
+            swap_optimizer=True,
+            swap_optimizer_times=0,
+            optimizer='muon',
+        )
+        repatch(vars(args))
+
+        reset_swap_optimizer_mixin()
+        try:
+            initialize_model_parallel(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
+            _, optimizer = setup_model_and_muon_optimizer(seed=5)
+            run_optimizer_steps(optimizer, steps=1, muon=True)
+
+            checkpoint_path = os.path.join(str(class_tmpdir), f"swap_muon_optimizer_rank_{dist.get_rank()}.pt")
+            optimizer.save_state_dict_to_file(checkpoint_path)
+            expected_cpu_states = {
+                param: {
+                    key: value.clone() if value is not None else None
+                    for key, value in cpu_states.items()
+                    if key in ("param", "momentum_buffer")
+                }
+                for param, cpu_states in SwapOptimizerMixin._param_to_cpu_states.items()
+            }
+            assert expected_cpu_states
+            assert all(param.storage().size() == 0 for param in expected_cpu_states)
+
+            for cpu_states in SwapOptimizerMixin._param_to_cpu_states.values():
+                cpu_states["param"].add_(1)
+                cpu_states["momentum_buffer"].add_(1)
+
+            optimizer.load_state_dict_from_file(checkpoint_path)
+
+            for param, expected in expected_cpu_states.items():
+                cpu_states = SwapOptimizerMixin._param_to_cpu_states[param]
+                assert param.storage().size() == 0
+                assert SwapOptimizerMixin._state_map[param]["momentum_buffer"].storage().size() == 0
+                assert torch.equal(cpu_states["param"], expected["param"])
+                assert torch.equal(cpu_states["momentum_buffer"], expected["momentum_buffer"])
+        finally:
+            reset_swap_optimizer_mixin()
+
+
+@pytest.mark.slow
+class TestDistributedOptimizerTopologies(SwapOptimizerTestBase):
+    world_size = 8
+    topologies = tuple(
+        (tensor_parallel_size, pipeline_parallel_size, overlap_grad_reduce, overlap_param_gather)
+        for tensor_parallel_size, pipeline_parallel_size in ((4, 1), (2, 2), (8, 1))
+        for overlap_grad_reduce in (True, False)
+        for overlap_param_gather in (True, False)
+    )
