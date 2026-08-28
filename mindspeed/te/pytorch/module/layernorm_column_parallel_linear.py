@@ -215,9 +215,11 @@ class MindSpeedTELayerNormColumnParallelLinear(torch.nn.Module):
     def _rmsnorm(self, inp):
         if self.config.use_fused_rmsnorm:
             return torch_npu.npu_rms_norm(inp, self.layer_norm_weight, epsilon=self.config.layernorm_epsilon)[0]
-        return (
-            inp * torch.rsqrt(inp.pow(2).mean(-1, keepdim=True) + self.config.layernorm_epsilon)
-        ) * self.layer_norm_weight
+        inp_dtype = inp.dtype
+        inp = inp.to(torch.float32)
+        var = inp.pow(2).mean(-1, keepdim=True)
+        inp = inp * torch.rsqrt(var + self.config.layernorm_epsilon)
+        return inp.to(inp_dtype) * self.layer_norm_weight
 
     def enable_recompute_norm(self, norm_ckpt):
         self.is_recompute_norm = True
