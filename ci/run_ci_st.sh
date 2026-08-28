@@ -140,6 +140,17 @@ run_st() {
         return 1
     fi
 
+    echo "===== Running relocated UT cases (slow dist tests) ====="
+    python$PYTHON_VERSION -m pytest --color=no --timeout=1800 -k "not allocator" -x \
+        ./tests_extend/unit_tests/features/moe/test_1f1b_overlap.py \
+        ./tests_extend/unit_tests/features/reuse_fp32_param/test_reuse_fp32_param.py \
+        ./tests_extend/unit_tests/features/multi_model/test_conv3d_model.py \
+        ./tests_extend/unit_tests/ops/cann/test_npu_mm_all_reduce_add_rms_norm_.py
+    if [ $? -ne 0 ]; then
+        echo "ERROR: relocated UT cases failed"
+        return 1
+    fi
+
     # ============================================
     # ST 2: MindSpeed-LLM (DeepSeek) – skip on legacy branches
     # ============================================

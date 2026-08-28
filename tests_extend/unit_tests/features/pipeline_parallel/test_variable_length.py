@@ -1,13 +1,11 @@
 from argparse import Namespace
-import types
 
 import torch
-import torch_npu
+import torch_npu  # noqa: F401 - side effect: routes torch.cuda to NPU
 import pytest
 from pytest_mock import MockFixture
 
-import mindspeed.megatron_adaptor
-
+import mindspeed.megatron_adaptor  # noqa: F401 - side effect: applies patches
 
 from mindspeed.core.pipeline_parallel.variable_seq_length.adaptor import (
     mindspeed_communicate,
@@ -51,6 +49,16 @@ def test_mindspeed_communicate_shapes(mocker: MockFixture):
     assert ret == (1, 2)
 
 
+def _mock_p2p_ops(**kwargs):
+    # Simulate a real p2p op: zero-fill the receive shape tensors so the result
+    # is deterministic. The real ops receive into these tensors; an empty mock
+    # would leave them as uninitialized memory and the assertion becomes flaky.
+    for key, value in kwargs.items():
+        if key.startswith("tensor_recv") and value is not None:
+            value.zero_()
+    return []
+
+
 @pytest.mark.parametrize(
     " config, expected",
     [
@@ -83,8 +91,8 @@ def test_communicate_shapes_impl(mocker: MockFixture, config, expected):
         get_pipeline_model_parallel_group=lambda: None,
         get_pipeline_model_parallel_next_rank=lambda: 1,
         get_pipeline_model_parallel_prev_rank=lambda: 2,
-        batched_p2p_ops=lambda **kwargs: [],
-        p2p_ops=lambda **kwargs: [],
+        batched_p2p_ops=_mock_p2p_ops,
+        p2p_ops=_mock_p2p_ops,
     )
     assert ret[0] == expected
 
@@ -110,7 +118,7 @@ def test_communicate_impl(mocker: MockFixture, config, expected):
         "mindspeed.core.pipeline_parallel.variable_seq_length.communicate.communicate_shapes_impl",
         return_value=([0, 0, 0], [0, 0, 0]),
     )
-    prev, next, reqs = communicate_impl(
+    prev, next_, reqs = communicate_impl(
         tensor_send_next=torch.tensor([1, 2, 3]),
         tensor_send_prev=torch.tensor([4, 5, 6]),
         recv_prev=True,
@@ -123,8 +131,8 @@ def test_communicate_impl(mocker: MockFixture, config, expected):
         batched_p2p_ops=lambda **kwargs: {},
         p2p_ops=lambda **kwargs: {},
         original_batched_p2p_ops=lambda **kwargs: {},
-        original_p2p_ops=lambda **kwargs: {}
+        original_p2p_ops=lambda **kwargs: {},
     )
     assert prev.sum() == expected[0]
-    assert next.sum() == expected[1]
+    assert next_.sum() == expected[1]
     assert len(reqs) == len(expected[2])

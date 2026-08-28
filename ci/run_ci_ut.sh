@@ -128,9 +128,45 @@ run_ut() {
 
     # ============================================
     # UT: pytest
+    #   - multi-card tests (marked "dist") need the whole node -> sequential
+    #   - single-card tests -> run in parallel across all NPUs via pytest-xdist
+    #     (each xdist worker is pinned to a distinct physical card in conftest)
     # ============================================
     echo "===== Running unit tests ====="
-    python$PYTHON_VERSION -m pytest --color=no --timeout=1800 -k "not allocator" -x ./tests_extend/unit_tests/
+
+    ST_RELOCATED_UT_IGNORES=(
+        --ignore=./tests_extend/unit_tests/features/moe/test_1f1b_overlap.py
+        --ignore=./tests_extend/unit_tests/features/reuse_fp32_param/test_reuse_fp32_param.py
+        --ignore=./tests_extend/unit_tests/features/multi_model/test_conv3d_model.py
+        --ignore=./tests_extend/unit_tests/ops/cann/test_npu_mm_all_reduce_add_rms_norm_.py
+    )
+
+    # Make sure pytest-xdist is available for the parallel single-card pass.
+    pip$PYTHON_VERSION install pytest-xdist \
+        -i https://repo.huaweicloud.com/repository/pypi/simple \
+        --trusted-host repo.huaweicloud.com || true
+
+    # Detect how many NPUs are visible (parallelism cap for single-card tests).
+    NPU_COUNT=$(python$PYTHON_VERSION -c "import torch; print(torch.npu.device_count())" 2>/dev/null || echo 1)
+
+    if python$PYTHON_VERSION -c "import xdist" 2>/dev/null && [ "${NPU_COUNT}" -gt 1 ]; then
+        # ---- Single-card tests: run in parallel across all NPUs ----
+        echo "===== Running single-card unit tests in parallel on ${NPU_COUNT} NPUs ====="
+        python$PYTHON_VERSION -m pytest --color=no --timeout=1800 \
+            -k "not allocator" -m "not dist" -x -n "${NPU_COUNT}" \
+            "${ST_RELOCATED_UT_IGNORES[@]}" ./tests_extend/unit_tests/
+
+        # ---- Distributed (multi-card) tests: need the whole node, sequential ----
+        echo "===== Running distributed (multi-card) unit tests sequentially ====="
+        python$PYTHON_VERSION -m pytest --color=no --timeout=1800 \
+            -k "not allocator" -m dist -x \
+            "${ST_RELOCATED_UT_IGNORES[@]}" ./tests_extend/unit_tests/
+    else
+        # Fallback: pytest-xdist unavailable or single NPU -> original behavior.
+        python$PYTHON_VERSION -m pytest --color=no --timeout=1800 \
+            -k "not allocator" -x \
+            "${ST_RELOCATED_UT_IGNORES[@]}" ./tests_extend/unit_tests/
+    fi
     if [ $? -ne 0 ]; then
         echo "ERROR: Unit tests failed"
         return 1

@@ -11,11 +11,37 @@ from multiprocessing.pool import RUN
 import pytest
 
 
+# ---------------------------------------------------------------------------
+# pytest-xdist support: pin each worker to a distinct physical NPU so that the
+# single-card unit tests can run in parallel (`pytest -n <N>`).  This must be
+# set before torch_npu initializes, hence it is done at conftest import time
+# (pytest imports this conftest before any test module).  It is a no-op when
+# pytest is not running under xdist.
+# ---------------------------------------------------------------------------
+_worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
+if _worker_id.startswith("gw"):
+    os.environ["ASCEND_RT_VISIBLE_DEVICES"] = str(int(_worker_id[2:]))
+
+
 def pytest_configure(config):
     config.option.durations = 0
     config.option.durations_min = 1
     config.option.verbose = True
     config.addinivalue_line("markers", "slow: tests excluded from the default CI gate")
+    config.addinivalue_line(
+        "markers",
+        "dist: distributed (multi-card) test that spawns its own process group",
+    )
+
+
+# Tag every distributed test (classes inheriting DistributedTest) with the
+# "dist" marker, so the CI can run single-card tests in parallel (-m "not dist")
+# while keeping the multi-card ones sequential (-m dist).  Marking is done in
+# pytest_itemcollected (during collection) so that the -m filter can see it.
+def pytest_itemcollected(item):
+    cls = getattr(item, "cls", None)
+    if cls is not None and getattr(cls, "is_dist_test", False):
+        item.add_marker(pytest.mark.dist)
 
 
 def _is_slow_context_mapping_case(item):
