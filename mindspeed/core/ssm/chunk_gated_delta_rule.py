@@ -14,7 +14,14 @@ from mindspeed.ops.triton.solve_tril import solve_tril
 from mindspeed.ops.triton.cumsum import chunk_local_cumsum
 from mindspeed.ops.triton.utils import autocast_custom_bwd, autocast_custom_fwd, input_guard, is_arch35
 
-if is_arch35():
+try:
+    import fla
+    HAVE_FLA = True
+except ImportError:
+    HAVE_FLA = False
+    warnings.warn("fla package not found. Using generic Triton kernels. Performance may be suboptimal.")
+    
+if HAVE_FLA and is_arch35():
     from mindspeed.ops.triton.triton_950.chunk_delta_h import chunk_gated_delta_rule_bwd_dhu, chunk_gated_delta_rule_fwd_h
     from mindspeed.ops.triton.triton_950.chunk_o import chunk_bwd_dqkwg, chunk_bwd_dv_local, chunk_fwd_o
     from mindspeed.ops.triton.triton_950.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
