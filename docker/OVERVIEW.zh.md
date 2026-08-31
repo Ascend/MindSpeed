@@ -15,33 +15,29 @@
 
 推荐 Tag 模板：
 
-`{MindSpeed版本}-cann{CANN版本}-torch_npu{TorchNPU版本}-{NPU类型}-{操作系统}-py{Python版本}-{架构类型}`
+`{MindSpeed版本}-cann{CANN版本}-torch_npu{TorchNPU版本}-{NPU类型}-{操作系统}-py{Python版本}`
 
 镜像 tag 和 CANN 基础镜像名中的“NPU 类型”必须使用小写：`a3`、`910b` 或 `950`。完整 `--base-image` 会原样传入，因此其中的 tag 必须与已发布的 CANN 镜像名完全一致。
 
 示例：
 
-- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11-x86_64`
-- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11-aarch64`
+- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11`
+- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11`
 
 ## 最新版本 CANN 9.1.0
 
-如下所示是支持 CANN 最新发布的 9.1.0 版本的所有镜像，历史版本的所有 Tag 请参考 [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/support_tags.md)。
+如下所示是支持 CANN 最新发布的 9.1.0 版本的所有镜像。
 
 | Tag | Dockerfile | Content |
 | ------ | ------ | ------ |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11-aarch64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11-x86_64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.11-aarch64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.11-x86_64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11-aarch64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11-x86_64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11-aarch64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11-x86_64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.11-aarch64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.11-x86_64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.11-aarch64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.11-x86_64 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+
+> 上表中的最新 Tag 为多架构镜像（x86 与 aarch64 二合一）。该 Dockerfile 实际构建完成后会生成带架构后缀的 Tag，例如 `-aarch64` / `-x86_64` 后缀（如 `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11-aarch64`）。历史版本所有 Tag 请参考 [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.1.0_core_r0.12.1/docker/support_tags.md)。
 
 ## 构建参数
 
@@ -92,7 +88,7 @@ bash build.sh \
 下载镜像：
 
 ```bash
-docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11-aarch64
+docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11
 ```
 
 运行镜像：
@@ -111,7 +107,7 @@ docker run -it -d \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
   -v {path-to-data}:/data \
   -v {path-to-weights}:/weights \
-  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11-aarch64 \
+  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11 \
   bin/bash
 ```
 
