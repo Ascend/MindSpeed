@@ -15,11 +15,13 @@ from .kvallgather_context_parallel import (
 class BaseCPStrategy(torch.nn.Module, ABC):
     """Base class for all Context Parallelism strategies"""
 
-    def __init__(self,
-                 softmax_scale: float,
-                 attention_dropout: float = 0.0,
-                 attention_type: str = "self",
-                 deterministic: bool = False):
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_dropout: float = 0.0,
+        attention_type: str = "self",
+        deterministic: bool = False,
+    ):
         super().__init__()
         self.softmax_scale = softmax_scale
         self.attention_dropout = attention_dropout
@@ -31,7 +33,7 @@ class BaseCPStrategy(torch.nn.Module, ABC):
         _, _, n_head, _ = query_layer.shape
 
         query_layer, key_layer, value_layer = [
-            rearrange(x, 's b h d -> s b (h d)')
+            rearrange(x, "s b h d -> s b (h d)")
             for x in [query_layer, key_layer, value_layer]
         ]
 
@@ -51,21 +53,21 @@ class BaseCPStrategy(torch.nn.Module, ABC):
 
     @abstractmethod
     def forward(
-            self,
-            query_layer,
-            key_layer,
-            value_layer,
-            attention_mask,
-            qkv_format,
-            cu_seqlens_q,
-            cu_seqlens_kv,
-            attn_mask_type,
-            max_seqlen_q,
-            max_seqlen_kv,
-            cp_group,
-            cp_global_ranks,
-            cp_stream,
-            **kwargs
+        self,
+        query_layer,
+        key_layer,
+        value_layer,
+        attention_mask,
+        qkv_format,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        attn_mask_type,
+        max_seqlen_q,
+        max_seqlen_kv,
+        cp_group,
+        cp_global_ranks,
+        cp_stream,
+        **kwargs,
     ) -> torch.Tensor:
         pass
 
@@ -74,25 +76,24 @@ class KVAllGatherCPStrategy(BaseCPStrategy):
     """AllGather-based Context Parallelism Strategy"""
 
     def forward(
-            self,
-            query_layer,
-            key_layer,
-            value_layer,
-            attention_mask,
-            qkv_format,
-            cu_seqlens_q,
-            cu_seqlens_kv,
-            attn_mask_type,
-            max_seqlen_q,
-            max_seqlen_kv,
-            cp_group,
-            cp_global_ranks,
-            cp_stream,
-            **kwargs
+        self,
+        query_layer,
+        key_layer,
+        value_layer,
+        attention_mask,
+        qkv_format,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        attn_mask_type,
+        max_seqlen_q,
+        max_seqlen_kv,
+        cp_group,
+        cp_global_ranks,
+        cp_stream,
+        **kwargs,
     ):
-
         # Prepare tensors based on format
-        if qkv_format == 'sbhd':
+        if qkv_format == "sbhd":
             query_layer, key_layer, value_layer, n_head = self._prepare_sbhd_format(
                 query_layer, key_layer, value_layer
             )
@@ -109,13 +110,11 @@ class KVAllGatherCPStrategy(BaseCPStrategy):
                 self.softmax_scale,
                 self.deterministic,
                 cp_group,
-                cp_stream
+                cp_stream,
             )
 
-        elif qkv_format == 'thd':
-            n_head, cu_seqlens_q, cu_seqlens_kv = self._prepare_thd_format(
-                query_layer, cu_seqlens_q, cu_seqlens_kv
-            )
+        elif qkv_format == "thd":
+            _, n_head, _ = query_layer.shape
 
             return AttnFuncWithCPAndKVAllGatherForTHD.apply(
                 query_layer,
@@ -130,7 +129,7 @@ class KVAllGatherCPStrategy(BaseCPStrategy):
                 self.deterministic,
                 cp_group,
                 cu_seqlens_q,
-                cu_seqlens_kv
+                cu_seqlens_kv,
             )
 
         else:
@@ -145,10 +144,7 @@ class CPStrategyFactory:
     }
 
     @staticmethod
-    def create_strategy(
-            strategy_type: str,
-            **strategy_params
-    ) -> BaseCPStrategy:
+    def create_strategy(strategy_type: str, **strategy_params) -> BaseCPStrategy:
         """Create a CP strategy instance
 
         Args:
