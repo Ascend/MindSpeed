@@ -49,7 +49,7 @@ For details, see the [Overall Model Migration Process](#overall-model-migration-
 
 The main process for migrating a Megatron-LM-based model is as follows.
 
-![procedure](../figures/model-migration-procedure_en.png)
+<img src="../figures/model-migration-procedure_en.png" height="60%" width="60%">
 
 ## Model Selection
 

@@ -129,4 +129,4 @@ Table 2 Special scenarios
 
 ## Vulnerability Response
 
- We take the security of community releases very seriously. The Mind open-source community receives, investigates, and discloses security vulnerabilities related to this community. For details, please refer to [Ascend Vulnerability Response](https://gitcode.com/Ascend/community/blob/master/docs/security.md)
+ We take the security of community releases very seriously. The Mind open-source community receives, investigates, and discloses security vulnerabilities related to this community. <!-- For details, please refer to [Ascend Vulnerability Response](https://gitcode.com/Ascend/community/blob/master/docs/security.md) -->

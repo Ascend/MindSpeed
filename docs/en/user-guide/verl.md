@@ -10,7 +10,7 @@ Install the corresponding dependencies according to the MindSpeed documentation.
 ### 2. Verl Installation
 
 Follow the Verl documentation to install the corresponding dependencies:
-> See [Verl Installation Guide](https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/get_start/quick_start.rst).
+<!-- > See [Verl Installation Guide](https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/en/get_start/quick_start.rst). -->
 > Note: If the CANN version used is higher than 8.3.RC1, the installed versions of vLLM and vLLM-Ascend must be greater than or equal to 0.9.1. For vLLM 0.9.1 installation, refer to <https://docs.vllm.ai/projects/ascend/en/v0.9.1/>.
 
 ## Enabling MindSpeed Backend

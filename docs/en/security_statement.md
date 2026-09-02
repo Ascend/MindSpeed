@@ -6,6 +6,6 @@ The security hardening measures listed in this document are basic hardening reco
 
 |Component|Address|
 |:---|:---|
-<!-- |MindSpeed LLM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.1.0/docs/en/SECURITYNOTE.md)| -->
-|MindSpeed MM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.1.0/SECURITYNOTE.md)|
+|MindSpeed LLM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.1.0/docs/en/SECURITYNOTE.md)| 
+|MindSpeed MM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.1.0/SECURITYNOTE_en.md)|
 |MindSpeed Core|See [Security Statement](./SECURITYNOTE.md)|
