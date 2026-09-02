@@ -8,11 +8,11 @@
 
 2. 在Megatron-LM中导入MindSpeed适配器。
 
-    在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下新增一行“import mindspeed.megatron_adaptor”代码，即如下修改：
+    在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下新增一行“import megatron_adaptor”代码，即如下修改：
 
     ```Python
     import torch
-    import mindspeed.megatron_adaptor # 新增代码行
+    import megatron_adaptor # 新增代码行
     from functools import partial
     from contextlib import nullcontext
     import inspect
@@ -56,11 +56,11 @@
 
 4. 预训练数据集生成
 
-    若在昇腾设备上使用preprocess_data.py脚本处理数据，须在“Megatron-LM”目录下修改“tools/preprocess_data.py”脚本，在“import torch”下新增一行“import mindspeed.megatron_adaptor”代码。
+    若在昇腾设备上使用preprocess_data.py脚本处理数据，须在“Megatron-LM”目录下修改“tools/preprocess_data.py”脚本，在“import torch”下新增一行“import megatron_adaptor”代码。
 
     ```python
     import torch
-    import mindspeed.megatron_adaptor
+    import megatron_adaptor
     import numpy as np
     ```
 

@@ -198,11 +198,11 @@ import mindspeed.megatron_adaptor  # 无报错即 MindSpeed 正常加载
 
 ## 操作方法
 
-以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import mindspeed.megatron_adaptor`，即如下修改：
+以 GPT 模型为例：在 Megatron-LM 目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：`import megatron_adaptor`，即如下修改：
 
   ```python
     import torch
-    import mindspeed.megatron_adaptor # 新增代码行
+    import megatron_adaptor # 新增代码行
     from functools import partial
     from contextlib import nullcontext
     import inspect

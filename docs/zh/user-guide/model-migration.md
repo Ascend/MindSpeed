@@ -69,7 +69,7 @@ NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架�
 
  2. 在`Megatron-LM`仓库根目录下修改`pretrain_gpt.py`文件，在`import torch`下新增一行：
 
-    `import mindspeed.megatron_adaptor`
+    `import megatron_adaptor`
 
     即可完成对`Megatron-LM`模型的适配。
 
@@ -78,7 +78,7 @@ NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架�
     ```python
     import os
     import torch
-    import mindspeed.megatron_adaptor # 新增代码行
+    import megatron_adaptor # 新增代码行
     from functools import partial
     from typing import Union
     ```

@@ -129,7 +129,7 @@ run_st() {
     pip$PYTHON_VERSION list
 
     # --- Apply required source patches ---
-    sed -i '1s/^/import mindspeed.megatron_adaptor\n/' pretrain_gpt.py
+    sed -i '1s/^/import megatron_adaptor\n/' pretrain_gpt.py
     sed -i '1s|^|from __future__ import annotations\n|' megatron/core/dist_checkpointing/strategies/base.py
 
     # ============================================
