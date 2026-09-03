@@ -3,31 +3,13 @@
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 import os
-import re
 from typing import List
 from dataclasses import dataclass
 import torch.distributed as dist
 from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.ops.npu_matmul_add import get_npu_version, NPUVersion
 
-domains = ['tp', 'dp', 'pp', 'ep', 'cp']
-
-
-def is_a3():
-    try:
-        cmd = 'npu-smi info -t board -i 0 -c 0 | grep Chip | grep Name'
-        chip_name = os.popen(cmd).read().strip()  # nosec B605：cmd 为硬编码，无注入风险
-
-        is_ascend910 = bool(re.search(r'Ascend910|Ascend 910', chip_name, re.IGNORECASE))
-
-    except Exception as e:
-        raise RuntimeError(f"Fail to get chip name : {str(e)}") from e
-
-    if is_ascend910:
-        return True
-    return False
-
-
-is_a3_version = is_a3()
+domains = ["tp", "dp", "pp", "ep", "cp"]
 
 
 @dataclass
@@ -54,7 +36,7 @@ def generate_masked_orthogonal_rank_groups(
         return sum(x * y for x, y in zip(a, b))
 
     def decompose(index, shape, stride=None):
-        '''
+        """
         This function solve the math problem below:
             There is an equation:
                 index = sum(idx[i] * stride[i])
@@ -62,7 +44,7 @@ def generate_masked_orthogonal_rank_groups(
             Return the idx.
         This function will used to get the pp/dp/pp_rank
         from group_index and rank_in_group.
-        '''
+        """
         if stride is None:
             stride = prefix_product(shape)
         idx = [(index // d) % s for s, d in zip(shape, stride)]
@@ -101,7 +83,16 @@ def generate_masked_orthogonal_rank_groups(
 class RankGenerator:
     """A class for generating rank groups for different modes of parallelism."""
 
-    def __init__(self, tp: int, ep: int, dp: int, pp: int, cp: int, order: str, rank_offset: int = 0) -> None:
+    def __init__(
+        self,
+        tp: int,
+        ep: int,
+        dp: int,
+        pp: int,
+        cp: int,
+        order: str,
+        rank_offset: int = 0,
+    ) -> None:
         self.tp = tp
         self.ep = ep
         self.dp = dp
@@ -120,8 +111,8 @@ class RankGenerator:
         self.order = order
         order = order.lower()
 
-        if 'ep' in order:
-            if 'ep-dp' not in order and 'dp-ep' not in order:
+        if "ep" in order:
+            if "ep-dp" not in order and "dp-ep" not in order:
                 raise RuntimeError(f"The ep and dp must be adjacent in order ({self.order}).")
 
         for name, size in self.name_to_size.items():
@@ -130,26 +121,28 @@ class RankGenerator:
                     f"The size of ({name}) is ({size}), but you haven'tspecified the order ({self.order})."
                 )
             elif name not in order:
-                order = order + '-' + name
+                order = order + "-" + name
 
         self.order_w_ep = order
-        self.order_wo_ep = '-'.join([token for token in order.split('-') if token != 'ep'])  # nosec
+        self.order_wo_ep = "-".join(
+            [token for token in order.split("-") if token != "ep"]  # nosec B105 - parallelism label
+        )
         self.ordered_size_wo_ep = []
         self.ordered_size_w_ep = []
 
-        for token in order.split('-'):
-            if token == 'dp':  # nosec
+        for token in order.split("-"):
+            if token == "dp":  # nosec B105 - parallelism label
                 self.ordered_size_w_ep.append(self.dp // self.ep)
                 self.ordered_size_wo_ep.append(self.dp)
-            elif token == 'ep':  # nosec
+            elif token == "ep":  # nosec B105 - parallelism label
                 self.ordered_size_w_ep.append(self.ep)
             else:
                 self.ordered_size_w_ep.append(self.name_to_size[token])
                 self.ordered_size_wo_ep.append(self.name_to_size[token])
 
     def generate_target_parallelism_match_mask(self, parallelism_order: str, target_parallelism_tokens: str):
-        ordered_parallelism_tokens = parallelism_order.split('-')
-        target_parallelism_token_list = target_parallelism_tokens.split('-')
+        ordered_parallelism_tokens = parallelism_order.split("-")
+        target_parallelism_token_list = target_parallelism_tokens.split("-")
         match_mask = [False] * len(ordered_parallelism_tokens)
 
         for parallelism_identifier in target_parallelism_token_list:
@@ -202,7 +195,7 @@ def RankGenerate():
         dp=dp,
         pp=pp,
         cp=cp,
-        order='tp-cp-ep-dp-pp',
+        order="tp-cp-ep-dp-pp",
         rank_offset=0,
     )
     return g
@@ -218,9 +211,9 @@ def get_tensor_parallel_comm_domain():
     num_layers = int(args.num_layers)
     global_batch_size = int(args.global_batch_size)
     micro_batch_size = int(args.micro_batch_size)
-    sequence_parallel = getattr(args, 'sequence_parallel', False)
-    use_ascend_mc2 = getattr(args, 'use_ascend_mc2', False)
-    use_ascend_coc = getattr(args, 'use_ascend_coc', False)
+    sequence_parallel = getattr(args, "sequence_parallel", False)
+    use_ascend_mc2 = getattr(args, "use_ascend_mc2", False)
+    use_ascend_coc = getattr(args, "use_ascend_coc", False)
     micro_batches = global_batch_size // micro_batch_size
 
     # Compute communication ratios and counts
@@ -255,14 +248,14 @@ def get_tensor_parallel_comm_domain():
     comm_non_overlap_groups_amount = micro_batches * comm_non_overlap * comm_parallel_ratio * rank_num
 
     g = RankGenerate()
-    tp_group_ranks = g.get_ranks('tp')
+    tp_group_ranks = g.get_ranks("tp")
     tp_groups_ips = None
     num_tp_groups = world_size // rank_num
     return ParallelCommDomain(
         tp_groups_ips,
         tp_group_ranks,
         world_size,
-        'tp',
+        "tp",
         int(comm_tp_groups_amount) * num_tp_groups,
         int(comm_non_overlap_groups_amount) * num_tp_groups,
     )
@@ -280,8 +273,8 @@ def get_pipeline_parallel_comm_domain():
     hidden_size = int(args.hidden_size)
     num_layers = int(args.num_layers)
     global_batch_size = int(args.global_batch_size)
-    sequence_parallel = getattr(args, 'sequence_parallel', False)
-    num_layers_per_virtual_stage = getattr(args, 'num_layers_per_virtual_pipeline_stage', None)
+    sequence_parallel = getattr(args, "sequence_parallel", False)
+    num_layers_per_virtual_stage = getattr(args, "num_layers_per_virtual_pipeline_stage", None)
     num_model_chunks = num_layers // pipeline_model_parallel_size
     pipeline_stage_num = pipeline_model_parallel_size
     micro_batches = global_batch_size // micro_batch_size
@@ -340,14 +333,14 @@ def get_pipeline_parallel_comm_domain():
             comm_non_overlap_groups_amount = comm_non_overlap
 
     g = RankGenerate()
-    pp_group_ranks = g.get_ranks('pp')
+    pp_group_ranks = g.get_ranks("pp")
     pp_groups_ips = None
     num_pp_groups = world_size // rank_num
     return ParallelCommDomain(
         pp_groups_ips,
         pp_group_ranks,
         world_size,
-        'pp',
+        "pp",
         comm_pp_groups_amount * num_pp_groups,
         comm_non_overlap_groups_amount * num_pp_groups,
     )
@@ -365,21 +358,21 @@ def get_data_parallel_comm_domain():
     num_attention_heads = int(args.num_attention_heads)
     ffn_hidden_size = int(args.ffn_hidden_size)
     padded_vocab_size = int(args.padded_vocab_size)
-    num_experts = int(args.num_experts) if getattr(args, 'num_experts', False) else 1
+    num_experts = int(args.num_experts) if getattr(args, "num_experts", False) else 1
     pipeline_model_parallel_size = int(args.pipeline_model_parallel_size)
     tensor_model_parallel_size = int(args.tensor_model_parallel_size)
-    num_query_groups = int(args.num_query_groups) if getattr(args, 'num_query_groups', False) else num_attention_heads
-    num_layers_per_virtual_stage = getattr(args, 'num_layers_per_virtual_pipeline_stage', None)
-    use_distributed_optimizer = getattr(args, 'use_distributed_optimizer', False)
-    overlap_grad_reduce = getattr(args, 'overlap_grad_reduce', False)
-    overlap_param_gather = getattr(args, 'overlap_param_gather', False)
-    group_query_attention = getattr(args, 'group_query_attention', False)
+    num_query_groups = int(args.num_query_groups) if getattr(args, "num_query_groups", False) else num_attention_heads
+    num_layers_per_virtual_stage = getattr(args, "num_layers_per_virtual_pipeline_stage", None)
+    use_distributed_optimizer = getattr(args, "use_distributed_optimizer", False)
+    overlap_grad_reduce = getattr(args, "overlap_grad_reduce", False)
+    overlap_param_gather = getattr(args, "overlap_param_gather", False)
+    group_query_attention = getattr(args, "group_query_attention", False)
     if not group_query_attention:
         num_query_groups = num_attention_heads
-    swiglu = getattr(args, 'swiglu', False)
+    swiglu = getattr(args, "swiglu", False)
     gated_linear_multiplier = 1.5 if swiglu else 1
     num_model_chunks = num_layers // pipeline_model_parallel_size
-    untie_embeddings_and_output_weights = getattr(args, 'untie_embeddings_and_output_weights', False)
+    untie_embeddings_and_output_weights = getattr(args, "untie_embeddings_and_output_weights", False)
 
     # Query projection size and ratio
     query_projection_size = kv_channels * num_attention_heads
@@ -426,14 +419,14 @@ def get_data_parallel_comm_domain():
         comm_non_overlap_groups_amount -= comm_dp_groups_amount * 0.5
 
     g = RankGenerate()
-    dp_group_ranks = g.get_ranks('dp')
+    dp_group_ranks = g.get_ranks("dp")
     dp_groups_ips = None
     num_dp_groups = world_size // rank_num
     return ParallelCommDomain(
         dp_groups_ips,
         dp_group_ranks,
         world_size,
-        'dp',
+        "dp",
         comm_dp_groups_amount * num_dp_groups,
         comm_non_overlap_groups_amount * num_dp_groups,
     )
@@ -446,14 +439,14 @@ def get_context_parallel_comm_domain():
     rank_num = int(args.context_parallel_size)
     cp_groups_ips = None
     g = RankGenerate()
-    cp_group_ranks = g.get_ranks('cp')
+    cp_group_ranks = g.get_ranks("cp")
 
     seq_length = args.seq_length
     hidden_size = args.hidden_size
     micro_batch_size = args.micro_batch_size
     num_layers = args.num_layers
 
-    if args.context_parallel_algo == 'megatron_cp_algo':
+    if args.context_parallel_algo == "megatron_cp_algo":
         comm_per_layer = 0
         # forward, the first factor 2 comes from k, v.
         comm_per_layer += seq_length * micro_batch_size * hidden_size * (rank_num - 1) / rank_num * 2
@@ -463,7 +456,7 @@ def get_context_parallel_comm_domain():
         comm_cp_groups_amount = comm_per_layer * num_layers
 
         comm_non_overlap_groups_amount = 0
-    elif args.context_parallel_algo == 'ulysses_cp_algo':
+    elif args.context_parallel_algo == "ulysses_cp_algo":
         # The factor 3 comes from q, k, v
         comm_per_layer = (rank_num - 1) / rank_num * seq_length * micro_batch_size * hidden_size * 3
         # The factor 2 comes from forward and backward
@@ -485,7 +478,12 @@ def get_context_parallel_comm_domain():
         comm_non_overlap_groups_amount = ulysses_comm_per_layer * num_layers
 
     return ParallelCommDomain(
-        cp_groups_ips, cp_group_ranks, world_size, 'cp', comm_cp_groups_amount, comm_non_overlap_groups_amount
+        cp_groups_ips,
+        cp_group_ranks,
+        world_size,
+        "cp",
+        comm_cp_groups_amount,
+        comm_non_overlap_groups_amount,
     )
 
 
@@ -497,7 +495,7 @@ def get_expert_parallel_comm_domain():
     num_ep_groups = args.data_parallel_size // rank_num
     ep_groups_ips = None
     g = RankGenerate()
-    ep_group_ranks = g.get_ranks('ep', independent_ep=True)
+    ep_group_ranks = g.get_ranks("ep", independent_ep=True)
     num_ep_groups = world_size // rank_num
     topk = args.moe_router_topk
 
@@ -506,26 +504,25 @@ def get_expert_parallel_comm_domain():
     micro_batch_size = args.micro_batch_size
     num_layers = args.num_layers
 
-    if args.moe_token_dispatcher_type == "alltoall":  # nosec
+    if args.moe_token_dispatcher_type == "alltoall":  # nosec B105 - dispatcher enum
         num_tokens = micro_batch_size * seq_length * topk
         ep_comm_per_layer = num_tokens * (rank_num - 1) / rank_num * hidden_size * rank_num * 2
         comm_ep_groups_amount = ep_comm_per_layer * num_layers
         comm_non_overlap_groups_amount = comm_ep_groups_amount
 
-    elif args.moe_token_dispatcher_type == "allgather":  # nosec
+    elif args.moe_token_dispatcher_type == "allgather":  # nosec B105 - dispatcher enum
         num_tokens = micro_batch_size * seq_length * topk
         ep_comm_per_layer = num_tokens * (rank_num - 1) * hidden_size * rank_num * 2
         comm_ep_groups_amount = ep_comm_per_layer * num_layers
         comm_non_overlap_groups_amount = comm_ep_groups_amount
-
     else:
-        raise ValueError(f"unsupported moe_token_dispatcher_type: {args.moe_token_dispatcher_type}")
+        raise ValueError(f"Unsupported moe_token_dispatcher_type for AI QoS: {args.moe_token_dispatcher_type}")
 
     return ParallelCommDomain(
         ep_groups_ips,
         ep_group_ranks,
         world_size,
-        'ep',
+        "ep",
         comm_ep_groups_amount * num_ep_groups,
         comm_non_overlap_groups_amount * num_ep_groups,
     )
@@ -540,35 +537,35 @@ def get_overlap_time_dict():
         time_overlap[key] = 0
 
     args = get_args()
-    time_overlap[('pp', 'tp')] = 1
-    time_overlap[('pp', 'dp')] = 1
-    time_overlap[('pp', 'cp')] = 1
-    time_overlap[('pp', 'ep')] = 1
+    time_overlap[("pp", "tp")] = 1
+    time_overlap[("pp", "dp")] = 1
+    time_overlap[("pp", "cp")] = 1
+    time_overlap[("pp", "ep")] = 1
 
-    time_overlap[('tp', 'pp')] = 1
-    time_overlap[('dp', 'pp')] = 1
-    time_overlap[('cp', 'pp')] = 1
-    time_overlap[('ep', 'pp')] = 1
+    time_overlap[("tp", "pp")] = 1
+    time_overlap[("dp", "pp")] = 1
+    time_overlap[("cp", "pp")] = 1
+    time_overlap[("ep", "pp")] = 1
 
     if args.overlap_grad_reduce or args.overlap_param_gather:
-        time_overlap[('dp', 'tp')] = 1
-        time_overlap[('dp', 'pp')] = 1
-        time_overlap[('dp', 'cp')] = 1
-        time_overlap[('dp', 'ep')] = 1
+        time_overlap[("dp", "tp")] = 1
+        time_overlap[("dp", "pp")] = 1
+        time_overlap[("dp", "cp")] = 1
+        time_overlap[("dp", "ep")] = 1
 
-        time_overlap[('tp', 'dp')] = 1
-        time_overlap[('pp', 'dp')] = 1
-        time_overlap[('cp', 'dp')] = 1
-        time_overlap[('ep', 'dp')] = 1
+        time_overlap[("tp", "dp")] = 1
+        time_overlap[("pp", "dp")] = 1
+        time_overlap[("cp", "dp")] = 1
+        time_overlap[("ep", "dp")] = 1
 
     return time_overlap
 
 
 def get_overlap_space_dict(domain_partition_information, link_type="SDMA"):
     boundary_roce_910b = 8
-    boundary_roce_910_93 = os.environ.get('SuperNodeDieNum', 384)
+    boundary_roce_910_93 = os.environ.get("SuperNodeDieNum", 384)
 
-    if is_a3_version:
+    if get_npu_version() == NPUVersion.A3:
         if link_type == "SDMA":
             cross_boundary = []
             for domain in domains:

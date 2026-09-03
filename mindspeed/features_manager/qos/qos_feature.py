@@ -24,17 +24,13 @@ class QosFeature(MindSpeedFeature):
             patch_manager: Patch manager instance for registering patches
             args: Parsed command line arguments
         """
-        if args.aiqos:
-            # Validate manual mode requirements
-            if args.aiqos_mode == 'manual':
-                # Check if schedule is provided
-                if not args.aiqos_schedule:
-                    raise ValueError(
-                        "QoS manual mode requires --aiqos-schedule parameter. "
-                    )
-            # Import QoS modules and register patches
-            from mindspeed.core.qos.adaptor import create_group_qos, initialize_model_parallel_qos
-            patch_manager.register_patch(
-                'megatron.core.parallel_state.initialize_model_parallel',
-                initialize_model_parallel_qos
-            )
+        if not args.aiqos:
+            return
+
+        if args.aiqos_mode == 'manual' and not args.aiqos_schedule:
+            raise ValueError("QoS manual mode requires --aiqos-schedule parameter. ")
+
+        from mindspeed.core.qos.adaptor import get_nccl_options_qos_wrapper
+
+        # Patch get_nccl_options so both create_group and direct new_group paths get QoS.
+        patch_manager.register_patch('megatron.core.parallel_state.get_nccl_options', get_nccl_options_qos_wrapper)

@@ -14,24 +14,24 @@ from mindspeed.core.qos.domain_info import (
     get_expert_parallel_comm_domain,
     get_overlap_time_dict,
     get_overlap_space_dict,
-    is_a3_version,
 )
+from mindspeed.ops.npu_matmul_add import get_npu_version, NPUVersion
 
 LOG = getLogger()
 
 _DEFAULT_QOS = 4
-_DEFAULT_QOS_SDMA_LOW = os.environ.get('QOS_SDMA_LOW', 2)
-_DEFAULT_QOS_SDMA_MIDDLE = os.environ.get('QOS_SDMA_MIDDLE', 4)
-_DEFAULT_QOS_SDMA_HIGH = os.environ.get('QOS_SDMA_HIGH', 6)
+_DEFAULT_QOS_HCCL_LOW = os.environ.get('QOS_HCCL_LOW', 2)
+_DEFAULT_QOS_HCCL_MIDDLE = os.environ.get('QOS_HCCL_MIDDLE', 4)
+_DEFAULT_QOS_HCCL_HIGH = os.environ.get('QOS_HCCL_HIGH', 6)
 
 _DEFAULT_QOS_ROCE_LOW = os.environ.get('QOS_ROCE_LOW', 3)
 _DEFAULT_QOS_ROCE_MIDDLE = os.environ.get('QOS_ROCE_MIDDLE', 4)
 _DEFAULT_QOS_ROCE_HIGH = os.environ.get('QOS_ROCE_HIGH', 5)
 
-sdma_qos_str_to_value = {
-    'low': _DEFAULT_QOS_SDMA_LOW,
-    'middle': _DEFAULT_QOS_SDMA_MIDDLE,
-    'high': _DEFAULT_QOS_SDMA_HIGH,
+hccl_qos_str_to_value = {
+    'low': _DEFAULT_QOS_HCCL_LOW,
+    'middle': _DEFAULT_QOS_HCCL_MIDDLE,
+    'high': _DEFAULT_QOS_HCCL_HIGH,
 }
 
 roce_qos_str_to_value = {
@@ -76,15 +76,16 @@ class Qos:
                 cls._instance = super(Qos, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, sdma_queue_list=None, roce_queue_list=None):
+    def __init__(self, hccl_queue_list=None, roce_queue_list=None):
         if Qos._initialize:
             return
-        if sdma_queue_list is None:
-            self.sdma_queue_list = [_DEFAULT_QOS_SDMA_LOW, _DEFAULT_QOS_SDMA_MIDDLE, _DEFAULT_QOS_SDMA_HIGH]
+        if hccl_queue_list is None:
+            self.hccl_queue_list = [_DEFAULT_QOS_HCCL_LOW, _DEFAULT_QOS_HCCL_MIDDLE, _DEFAULT_QOS_HCCL_HIGH]
+        else:
+            self.hccl_queue_list = hccl_queue_list
         if roce_queue_list is None:
             self.roce_queue_list = [_DEFAULT_QOS_ROCE_LOW, _DEFAULT_QOS_ROCE_MIDDLE, _DEFAULT_QOS_ROCE_HIGH]
         else:
-            self.sdma_queue_list = sdma_queue_list
             self.roce_queue_list = roce_queue_list
 
         self.args = get_args()
@@ -94,7 +95,7 @@ class Qos:
         if self.aiqos_mode.lower() not in ['auto', 'manual']:
             raise ValueError('aiqos mode must be "auto or manual"')
         self.roce_aiqos_schedule = {}
-        self.sdma_aiqos_schedule = {}
+        self.hccl_aiqos_schedule = {}
         self.init_qos()
         Qos._initialize = True
 
@@ -153,7 +154,7 @@ class Qos:
 
         if self.aiqos_mode.lower() == 'manual':
             parse_args(self.args.aiqos_schedule, self.roce_aiqos_schedule)
-            parse_args(self.args.aiqos_schedule, self.sdma_aiqos_schedule)
+            parse_args(self.args.aiqos_schedule, self.hccl_aiqos_schedule)
             for key, priority_str in self.roce_aiqos_schedule.items():
                 priority_str_lower = priority_str.strip().lower()
                 if priority_str_lower not in roce_qos_str_to_value:
@@ -162,19 +163,19 @@ class Qos:
                     )
                 self.roce_aiqos_schedule[key] = roce_qos_str_to_value[priority_str_lower]
 
-            for key, priority_str in self.sdma_aiqos_schedule.items():
+            for key, priority_str in self.hccl_aiqos_schedule.items():
                 priority_str_lower = priority_str.strip().lower()
-                if priority_str_lower not in sdma_qos_str_to_value:
+                if priority_str_lower not in hccl_qos_str_to_value:
                     raise ValueError(
                         f"Invalid QoS priority string: {priority_str}, only 'high'/'low'/'middle' are allowed"
                     )
-                self.sdma_aiqos_schedule[key] = sdma_qos_str_to_value[priority_str_lower]
+                self.hccl_aiqos_schedule[key] = hccl_qos_str_to_value[priority_str_lower]
         elif self.aiqos_mode.lower() == 'auto':
             self.cal_auto_qos()
             self.init_domain_qos_schedule_rules()
         log_rank_0(LOG.info, f'qos roce schedule: {self.roce_aiqos_schedule}')
-        if is_a3_version:
-            log_rank_0(LOG.info, f'qos sdma schedule: {self.sdma_aiqos_schedule}')
+        if get_npu_version() in (NPUVersion.A3, NPUVersion.A5):
+            log_rank_0(LOG.info, f'qos hccl schedule: {self.hccl_aiqos_schedule}')
 
     def set_parallel_roce_qos(self, parallel_type):
         if parallel_type is None:
@@ -185,12 +186,12 @@ class Qos:
             return _DEFAULT_QOS
         return self.roce_aiqos_schedule[parallel_type.lower()]
 
-    def set_parallel_sdma_qos(self, parallel_type):
+    def set_parallel_hccl_qos(self, parallel_type):
         if parallel_type is None:
             return _DEFAULT_QOS
-        if parallel_type.lower() not in _PARALLEL_TYPES or parallel_type.lower() not in self.sdma_aiqos_schedule:
+        if parallel_type.lower() not in _PARALLEL_TYPES or parallel_type.lower() not in self.hccl_aiqos_schedule:
             return _DEFAULT_QOS
-        return self.sdma_aiqos_schedule[parallel_type.lower()]
+        return self.hccl_aiqos_schedule[parallel_type.lower()]
 
     def cal_auto_qos(self):
         parallel_comm_domain_list = [
@@ -209,21 +210,22 @@ class Qos:
             for parallel_type, qos in roce_qos_res.items():
                 self.roce_aiqos_schedule[parallel_type] = qos
 
-        sdma_qos_res = self.combination(parallel_comm_domain_list, domain_partition_information, link_type="SDMA")
-        for parallel_type, qos in sdma_qos_res.items():
-            self.sdma_aiqos_schedule[parallel_type] = qos
+        hccl_qos_res = self.combination(parallel_comm_domain_list, domain_partition_information, link_type="SDMA")
+        for parallel_type, qos in hccl_qos_res.items():
+            self.hccl_aiqos_schedule[parallel_type] = qos
 
     def combination(self, parallel_comm_domain_list=None, domain_partition_information=None, link_type="SDMA"):
         if parallel_comm_domain_list is None or domain_partition_information is None:
             raise ValueError("parallel_comm_domain_list  or domain_partition_information is None")
         domain_nums = len(parallel_comm_domain_list)
+        queue_nums = 0
         if link_type == "ROCE":
             queue_nums = len(self.roce_queue_list)
         elif link_type == "SDMA":
-            queue_nums = len(self.sdma_queue_list)
+            queue_nums = len(self.hccl_queue_list)
         time_overlap = get_overlap_time_dict()
         space_overlap = get_overlap_space_dict(domain_partition_information, link_type=link_type)
-        comb = generate_distributions(domain_nums, queue_nums)  # pylint: disable=possibly-used-before-assignment
+        comb = generate_distributions(domain_nums, queue_nums)
         min_single_comb = comb[0]
         degree = sys.maxsize
         for each_comb in comb:
@@ -251,12 +253,9 @@ class Qos:
         length = len(sorted_rate)
         qos_res = {}
         queue_index = 1 if length <= 2 else 0
-        q_list = self.sdma_queue_list if link_type == "SDMA" else self.roce_queue_list
+        q_list = self.hccl_queue_list if link_type == "SDMA" else self.roce_queue_list
         if not q_list:
-            raise ValueError(
-                f"Queue list is empty for link_type '{link_type}'. "
-                + f"Please ensure self.{link_type.lower()}_queue_list is initialized."
-            )
+            raise ValueError(f"Queue list is empty for link_type '{link_type}'.")
         for value in sorted_rate.values():
             for flow in value:
                 qos_res[domains[flow]] = q_list[queue_index]
@@ -265,14 +264,14 @@ class Qos:
 
     def init_domain_qos_schedule_rules(self):
         if self.args.num_experts is None:
-            self.sdma_aiqos_schedule['dp-cp'] = self.sdma_aiqos_schedule['dp']
-            self.sdma_aiqos_schedule['mp'] = self.sdma_aiqos_schedule['pp']
+            self.hccl_aiqos_schedule['dp-cp'] = self.hccl_aiqos_schedule['dp']
+            self.hccl_aiqos_schedule['mp'] = self.hccl_aiqos_schedule['pp']
         else:
-            self.sdma_aiqos_schedule['dp-cp'] = self.sdma_aiqos_schedule['dp']
-            self.sdma_aiqos_schedule['ep-dp'] = self.sdma_aiqos_schedule['dp']
-            self.sdma_aiqos_schedule['mp'] = self.sdma_aiqos_schedule['pp']
-            self.sdma_aiqos_schedule['tp-ep-pp'] = self.sdma_aiqos_schedule['pp']
-            self.sdma_aiqos_schedule['tp-ep-mp'] = max(self.sdma_aiqos_schedule['pp'], self.sdma_aiqos_schedule['tp'])
+            self.hccl_aiqos_schedule['dp-cp'] = self.hccl_aiqos_schedule['dp']
+            self.hccl_aiqos_schedule['ep-dp'] = self.hccl_aiqos_schedule['dp']
+            self.hccl_aiqos_schedule['mp'] = self.hccl_aiqos_schedule['pp']
+            self.hccl_aiqos_schedule['tp-ep-pp'] = self.hccl_aiqos_schedule['pp']
+            self.hccl_aiqos_schedule['tp-ep-mp'] = max(self.hccl_aiqos_schedule['pp'], self.hccl_aiqos_schedule['tp'])
 
         if self.args.aiqos_enable_roce:
             if self.args.num_experts is None:
