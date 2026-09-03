@@ -1,24 +1,24 @@
 import pytest
 import torch
-from mindspeed import megatron_adaptor  # noqa: F401
-from mindspeed.model.transformer import set_attention_mask
-from mindspeed.features_manager.recompute.activation_function import RecomputeActivationFeature
-from mindspeed.patch_utils import MindSpeedPatchesManager as pm
 
-from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
-from megatron.training.global_vars import set_args
-from megatron.training.arguments import parse_args
-from megatron.core.transformer.mlp import MLP, MLPSubmodules
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+from megatron.core.transformer.mlp import MLP, MLPSubmodules
+from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.training.arguments import parse_args
+from megatron.training.global_vars import set_args
 
+from mindspeed import megatron_adaptor  # noqa: F401
+from mindspeed.features_manager.recompute.activation_function import RecomputeActivationFeature
+from mindspeed.model.transformer import set_attention_mask
+from mindspeed.patch_utils import MindSpeedPatchesManager as pm
 from tests_extend.commons import initialize_model_parallel
 from tests_extend.unit_tests.common import DistributedTest
 
 pytestmark = pytest.mark.slow
 
 
-class ActRecomputeFeatureTset:
+class ActRecomputeFeatureTest:
     @staticmethod
     def act_recompute_register_patch(patch_manager):
         args = parse_args(None, True)
@@ -48,11 +48,11 @@ class TestActivationRecompute(DistributedTest):
     world_size = 8
 
     def test_activation_recompute(self):
-        ActRecomputeFeatureTset().act_recompute_register_patch(pm)
-        self.activation_recopute()
-        ActRecomputeFeatureTset().del_recompute_register_patch(pm)
+        ActRecomputeFeatureTest().act_recompute_register_patch(pm)
+        self.activation_recompute()
+        ActRecomputeFeatureTest().del_recompute_register_patch(pm)
 
-    def activation_recopute(self):
+    def activation_recompute(self):
         initialize_model_parallel(2, 2)
         model_parallel_cuda_manual_seed(312)
 
@@ -67,8 +67,8 @@ class TestActivationRecompute(DistributedTest):
         config.layer_number = 4
         config.pipeline_model_parallel_size = 2
         config.gradient_accumulation_fusion = False
-        transformer_block_ref = MLP(config, submodules=submodules)
-        transformer_block_test = MLP(config, submodules=submodules)
+        transformer_block_ref = MLP(config, submodules=submodules, ffn_hidden_size=config.ffn_hidden_size)
+        transformer_block_test = MLP(config, submodules=submodules, ffn_hidden_size=config.ffn_hidden_size)
         transformer_block_test.load_state_dict(transformer_block_ref.state_dict().copy())
 
         sequence_length = 32
@@ -87,8 +87,9 @@ class TestActivationRecompute(DistributedTest):
 
         transformer_block_ref.layer_number = 4
 
-        out_ref, _ = transformer_block_ref(hidden_states=hidden_states_ref)
-        out_test, _ = transformer_block_test(hidden_states=hidden_states_test)
+        padding_mask = torch.zeros((micro_batch_size, sequence_length), dtype=bool).cuda()
+        out_ref, _ = transformer_block_ref(hidden_states=hidden_states_ref, padding_mask=padding_mask)
+        out_test, _ = transformer_block_test(hidden_states=hidden_states_test, padding_mask=padding_mask)
 
         assert torch.allclose(out_ref, out_test)
 
