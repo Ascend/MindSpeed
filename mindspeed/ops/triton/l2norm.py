@@ -82,18 +82,17 @@ def l2norm_bwd_kernel1(
         for num_warps in [1, 2, 4, 8, 16]
         for BT in BT_LIST
     ],
-    key=['D', 'NB']
+    key=['D']
 )
-@triton.jit
+@triton.jit(do_not_specialize=[4])
 def l2norm_fwd_kernel(
     x,
     y,
     rstd,
     eps,
-    T: tl.constexpr,
+    T,
     D: tl.constexpr,
     BD: tl.constexpr,
-    NB: tl.constexpr,
     BT: tl.constexpr,
     bt_size,
 ):
@@ -119,19 +118,18 @@ def l2norm_fwd_kernel(
         for num_warps in [1, 2, 4, 8, 16]
         for BT in BT_LIST
     ],
-    key=['D', 'NB']
+    key=['D']
 )
-@triton.jit
+@triton.jit(do_not_specialize=[5])
 def l2norm_bwd_kernel(
     y,
     rstd,
     dy,
     dx,
     eps,
-    T: tl.constexpr,
+    T,
     D: tl.constexpr,
     BD: tl.constexpr,
-    NB: tl.constexpr,
     BT: tl.constexpr,
     bt_size,
 ):
@@ -187,7 +185,6 @@ def l2norm_fwd(
 
     rstd = torch.empty((T,), dtype=torch.float32, device=x.device)
     if D <= 512:
-        NB = triton.cdiv(T, 2048)
         bt_size = 32
 
         def grid(meta):
@@ -202,7 +199,6 @@ def l2norm_fwd(
             T=T,
             D=D,
             BD=BD,
-            NB=NB,
             bt_size=bt_size,
         )
     else:
@@ -235,9 +231,7 @@ def l2norm_bwd(
     BD = min(MAX_FUSED_SIZE, triton.next_power_of_2(D))
     if D > BD:
         raise RuntimeError("This layer norm doesn't support feature dim >= 64KB.")
-
     if D <= 512:
-        NB = triton.cdiv(T, 2048)
         bt_size = 40
         l2norm_bwd_kernel[(bt_size,)](
             y=y,
@@ -248,7 +242,6 @@ def l2norm_bwd(
             T=T,
             D=D,
             BD=BD,
-            NB=NB,
             bt_size=bt_size,
         )
     else:
@@ -261,7 +254,6 @@ def l2norm_bwd(
             D=D,
             BD=BD,
         )
-
     return dx.view(y_shape_og)
 
 
