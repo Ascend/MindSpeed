@@ -52,18 +52,6 @@ class ReuseFP32Param(MindSpeedFeature):
                     'megatron.core.optimizer.optimizer_config.OptimizerConfig.__init__',
                     optimizer_config_init_wrapper,
                 )
-                # Megatron 0.17 introduces OptimizerConfig subclasses (AdamOptimizerConfig,
-                # SGDOptimizerConfig) as @dataclass. Python dataclass child __init__ does NOT
-                # call parent __init__, so the OptimizerConfig patch above won't fire for them.
-                # We must also patch the subclass __init__ methods separately.
-                patch_manager.register_patch(
-                    'megatron.core.optimizer.optimizer_config.AdamOptimizerConfig.__init__',
-                    optimizer_config_init_wrapper,
-                )
-                patch_manager.register_patch(
-                    'megatron.core.optimizer.optimizer_config.SGDOptimizerConfig.__init__',
-                    optimizer_config_init_wrapper,
-                )
 
             if not getattr(args, 'enable_zero3', False) and args.optimizer_selection != 'fused_ema_adamw':
                 patch_manager.register_patch(
