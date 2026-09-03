@@ -68,16 +68,20 @@ def get_moe_module_spec_gmm_wrapper(fn):
 
 
 def te_grouped_linear_init_wrapper(fn):
-    """Adapt Megatron's TEGroupedLinear construction for TE-NPU grouped weights."""
+    """Map MindSpeed GMM options into Megatron's TE-NPU grouped-weight config."""
     fn_signature = signature(fn)
 
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
+        from mindspeed.args_utils import get_full_args
+
         bound_args = fn_signature.bind(self, *args, **kwargs)
         parallel_mode = bound_args.arguments.get('parallel_mode')
         config = bound_args.arguments.get('config')
+        mindspeed_args = get_full_args()
+        legacy_performance_mode = getattr(mindspeed_args, 'te_gmm_mode', 'compatible') == 'performance'
 
-        if getattr(config, 'gemm_gradient_accumulation_fusion', False):
+        if legacy_performance_mode or getattr(config, 'gemm_gradient_accumulation_fusion', False):
             config.moe_single_grouped_weight = True
 
         fn(self, *args, **kwargs)

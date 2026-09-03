@@ -2,26 +2,22 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 # ruff: noqa: E402
 from copy import deepcopy
-import sys
 import pytest
 import torch
 import torch_npu
 
-sys.argv.append("--use-fused-rotary-pos-emb")
 from mindspeed import megatron_adaptor  # noqa: F401
 from tests_extend.unit_tests.common import DistributedTest
 from megatron.training.arguments import parse_args
 from megatron.training.global_vars import set_args
 from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
 
-sys.argv.remove("--use-fused-rotary-pos-emb")
-
 DEVICE_NAME = torch_npu.npu.get_device_name(0)[:10]
 
 
-def create_test_args(use_fused_rotary_pos_emb=False):
+def create_test_args(apply_rope_fusion=False):
     args = parse_args(None, True)
-    args.use_fused_rotary_pos_emb = use_fused_rotary_pos_emb
+    args.apply_rope_fusion = apply_rope_fusion
     return args
 
 

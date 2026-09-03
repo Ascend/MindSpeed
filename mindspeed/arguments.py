@@ -297,8 +297,6 @@ def _add_cp_args(parser):
 
 
 def _add_network_size_args(parser):
-    group = parser.add_argument_group(title='network size')
-    group.add_argument("--use-fused-rotary-pos-emb", action='store_true', help="Use fused rotary-pos-emb.")
     return parser
 
 
@@ -736,9 +734,9 @@ def validate_args_wrapper(validate_args):
                 raise AssertionError(
                     '--use-fused-swiglu must enable with --swiglu, but --swiglu={}.'.format(args.swiglu)
                 )
-        if args.use_fused_rotary_pos_emb:
+        if getattr(args, 'apply_rope_fusion', False):
             if args.position_embedding_type != 'rope':
-                raise AssertionError('--use-fused-rotary-pos-emb must enable with--position-embedding-type=rope')
+                raise AssertionError('apply_rope_fusion must enable with --position-embedding-type=rope')
         if args.alibi_fusion_attn_type is not None and args.alibi_fusion_attn_type not in [0, 2]:
             raise AssertionError('--alibi-fusion-attn-type only support for `0, 2`')
         if args.reuse_fp32_param and not args.bf16:
