@@ -11,16 +11,18 @@ def set_tenpu_cp_runtime_options(attention, args):
     TENPU's ring preparation path reads these attributes from the attention
     instance immediately before the first forward pass.
     """
-    attention.cp_window_size = int(getattr(args, 'cp_window_size', 1))
-    attention.use_cp_send_recv_overlap = bool(getattr(args, 'use_cp_send_recv_overlap', False))
+    attention.cp_window_size = int(getattr(args, "cp_window_size", 1))
+    attention.use_cp_send_recv_overlap = bool(getattr(args, "use_cp_send_recv_overlap", False))
+    attention.megatron_cp_in_bnsd = bool(getattr(args, "megatron_cp_in_bnsd", False))
+    attention.use_fused_ring_attention_update = bool(getattr(args, "use_fused_ring_attention_update", False))
 
     # ``a2a+p2p`` applies the window to its p2p subgroup.  Preserve both the
     # public Megatron hierarchy and the legacy spelling so TENPU can derive
     # that subgroup without consulting MindSpeed global arguments.
-    hierarchy = getattr(args, 'hierarchical_context_parallel_sizes', None)
+    hierarchy = getattr(args, "hierarchical_context_parallel_sizes", None)
     attention.hierarchical_context_parallel_sizes = hierarchy
     attention.ulysses_degree_in_cp = (
-        hierarchy[0] if hierarchy and len(hierarchy) == 2 else getattr(args, 'ulysses_degree_in_cp', None)
+        hierarchy[0] if hierarchy and len(hierarchy) == 2 else getattr(args, "ulysses_degree_in_cp", None)
     )
 
 

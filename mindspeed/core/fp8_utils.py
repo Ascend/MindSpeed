@@ -11,9 +11,16 @@ from megatron.core import parallel_state
 from megatron.core.enums import Fp8Recipe
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.extensions.transformer_engine import TEDelayedScaling
+from mindspeed.args_utils import get_full_args
 
 
-def quantize_param_shard(model_params, main_params, start_offsets, data_parallel_group, fsdp_shard_model_params=None):
+def quantize_param_shard(
+    model_params,
+    main_params,
+    start_offsets,
+    data_parallel_group,
+    fsdp_shard_model_params=None,
+):
     """Cast shard fp32 main params to fp8 model params."""
 
     warnings.warn("Currently, it is not supported to Cast shard fp32 main params to fp8 model params")
@@ -62,7 +69,7 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
             fp8_format = Format.E4M3
         elif config.fp8 == "hybrid":
             fp8_format = Format.HYBRID
-        elif config.fp8 == 'hif8':
+        elif config.fp8 == "hif8":
             fp8_format = Format.HIF8
         else:
             raise ValueError("E4M3, HYBRID and hif8 are the only supported FP8 formats.")
@@ -76,13 +83,20 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
             )
         elif config.fp8_recipe == Fp8Recipe.tensorwise:
             fp8_recipe = Float8CurrentScaling(fp8_format=fp8_format)
+        elif getattr(config, "mxfp8_32x32", False) or getattr(get_full_args(), "mxfp8_32x32", False):
+            try:
+                from transformer_engine.common.recipe import MXFP832x32BlockScaling
+            except ImportError as exc:
+                raise RuntimeError("mxfp8-32x32 requires TENPU branch feat/mxfp8-32x32 or a newer release") from exc
+            fp8_recipe = MXFP832x32BlockScaling(fp8_format=fp8_format)
         elif config.fp8_recipe == Fp8Recipe.mxfp8:
             fp8_recipe = MXFP8BlockScaling(fp8_format=fp8_format)
         elif config.fp8_recipe == Fp8Recipe.blockwise:
             fp8_recipe = Float8BlockScaling(fp8_format=fp8_format)
         else:
             raise ValueError(
-                "Float8CurrentScaling, MXFP8BlockScaling and DelayedScaling are the only supported FP8 recipes."
+                "Float8CurrentScaling, MXFP8BlockScaling, MXFP832x32BlockScaling "
+                "and DelayedScaling are the only supported FP8 recipes."
             )
         fp8_group = None
         if parallel_state.model_parallel_is_initialized():

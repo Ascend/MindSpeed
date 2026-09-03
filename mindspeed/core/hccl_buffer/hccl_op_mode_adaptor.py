@@ -1,12 +1,15 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 from functools import wraps
 
-import torch_npu
-
 from megatron.training.utils import print_rank_0
 
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.core.hccl_buffer.hccl_adaptive_func import parse_hccl_op_mode_string, _HCCL_OP_MODE
+from mindspeed.core.hccl_buffer.adaptor import merge_hccl_config
+from mindspeed.core.hccl_buffer.hccl_adaptive_func import (
+    get_hccl_group_config,
+    parse_hccl_op_mode_string,
+    _HCCL_OP_MODE,
+)
 
 
 def get_nccl_options_wrapper(get_nccl_options):
@@ -14,12 +17,13 @@ def get_nccl_options_wrapper(get_nccl_options):
     def wrapper(pg_name, nccl_comm_cfgs):
         args = get_args()
         options = get_nccl_options(pg_name, nccl_comm_cfgs)
-        if args.hccl_op_mode and _HCCL_OP_MODE.get(pg_name) is not None:
-            original_hccl_config = options.hccl_config
-            options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
-            original_hccl_config["hccl_op_expansion_mode"] = _HCCL_OP_MODE[pg_name]
-            options.hccl_config = original_hccl_config
-        return options
+        if not args.hccl_op_mode:
+            return options
+
+        op_mode = get_hccl_group_config(_HCCL_OP_MODE, pg_name)
+        if op_mode is None:
+            return options
+        return merge_hccl_config(options, {"hccl_op_expansion_mode": op_mode})
 
     return wrapper
 

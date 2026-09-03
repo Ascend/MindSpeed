@@ -5,7 +5,9 @@ from einops import rearrange
 from typing import Type
 
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import WeightGradStore
+from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_store import (
+    WeightGradStore,
+)
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 from mindspeed.ops.npu_matmul_add import NPUVersion, check_npu_version
 from transformer_engine.common.recipe.base import FormatEnum
@@ -24,7 +26,7 @@ class QuantDtype:
         self.w = w
         self.grads = grads
         if self.x == torch_npu.hifloat8:
-            self.mm_kwargs = {'x1_dtype': self.x, 'x2_dtype': self.w}
+            self.mm_kwargs = {"x1_dtype": self.x, "x2_dtype": self.w}
             self.gmm_kwargs = {"x_dtype": self.x, "weight_dtype": self.w}
         else:
             self.mm_kwargs = {}
@@ -34,9 +36,9 @@ class QuantDtype:
 @lru_cache
 def get_quant_dtype():
     args = get_args()
-    if args.fp8 == 'hif8':
+    if args.fp8 == "hif8":
         return QuantDtype(torch_npu.hifloat8, torch_npu.hifloat8, torch_npu.hifloat8)
-    elif args.fp8 == 'hybrid':
+    elif args.fp8 == "hybrid":
         return QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e5m2)
     return QuantDtype(torch.float8_e4m3fn, torch.float8_e4m3fn, torch.float8_e4m3fn)
 
@@ -45,10 +47,12 @@ class GmmContext:
     pass
 
 
-def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
+def get_gmm_quant_func() -> Type["BaseGMMFunction"] | None:
     args = get_args()
     if not args.fp8 or not args.use_gmm_fp8:
         return None
+    if getattr(args, "mxfp8_32x32", False):
+        return MXFP832x32GMMFunction
     if args.fp8_recipe == Fp8Recipe.mxfp8:
         return MXFP8GMMFunction
     elif args.fp8_recipe in [Fp8Recipe.tensorwise, Fp8Recipe.delayed]:
@@ -57,7 +61,7 @@ def get_gmm_quant_func() -> Type['BaseGMMFunction'] | None:
     return None
 
 
-def get_gmm_op_cls() -> Type['BaseGMMFunction']:
+def get_gmm_op_cls() -> Type["BaseGMMFunction"]:
     gmm_quant_func = get_gmm_quant_func()
     if gmm_quant_func is not None:
         return gmm_quant_func
@@ -69,17 +73,17 @@ class BaseGMMFunction(torch.autograd.Function):
     def gmm_apply(cls, x, weight, bias, tokens_per_expert, weight_param):
         # Accept tokens_per_expert and normalize it into group_list.
         if isinstance(tokens_per_expert, list):
-            tokens_per_expert = torch.tensor(tokens_per_expert, device='npu', dtype=torch.int64)
+            tokens_per_expert = torch.tensor(tokens_per_expert, device="npu", dtype=torch.int64)
         group_list = torch.cumsum(tokens_per_expert, dim=0)
         return cls.apply(x, weight, bias, group_list, weight_param)
 
     @classmethod
     def forward(cls, ctx, x, weight, bias, group_list, weight_param, group_list_type=0):
         if isinstance(group_list, torch.Tensor):
-            if group_list.device.type == 'cpu':
+            if group_list.device.type == "cpu":
                 group_list = group_list.npu()
         else:
-            group_list = torch.tensor(group_list, device='npu', dtype=torch.int64)
+            group_list = torch.tensor(group_list, device="npu", dtype=torch.int64)
         output = cls.op_forward(ctx, x, weight, group_list, group_list_type, bias=bias)
         ctx.save_for_backward(x, weight, group_list)
         ctx.weight_param = weight_param
@@ -94,7 +98,7 @@ class BaseGMMFunction(torch.autograd.Function):
         dx = cls.op_dx(ctx, grad_outputs, weight, group_list, group_list_type)[0]
         if WeightGradStore.is_decoupleBlock:
             # Split dw computation and defer it to the delayed path.
-            weight_tensor = rearrange(weight, 'n h f -> h n f')
+            weight_tensor = rearrange(weight, "n h f -> h n f")
             WeightGradStore.put(
                 [ctx, x, group_list, group_list_type, weight.shape],
                 grad_outputs,
@@ -102,7 +106,7 @@ class BaseGMMFunction(torch.autograd.Function):
                 sequence_parallel=False,
                 in_row=False,
             )
-            if hasattr(weight_param, 'grad_added_to_main_grad') and getattr(get_args(), 'overlap_grad_reduce', False):
+            if hasattr(weight_param, "grad_added_to_main_grad") and getattr(get_args(), "overlap_grad_reduce", False):
                 # When overlap_grad_reduce is True, need to ensure that backward hooks
                 # are all run on the main backprop thread to prevent deadlocks. Setup
                 # dummy grad_weight tensor to prevent backward hooks from being run
@@ -136,8 +140,8 @@ class BaseGMMFunction(torch.autograd.Function):
     @classmethod
     def op_gmm_add(cls, x, weight, grad, group_list, weight_param):
         cls.gmm_add_impl(x, grad, group_list, weight_param, weight.shape)
-        if hasattr(weight_param, 'grad_added_to_main_grad'):
-            if getattr(weight_param, 'zero_out_wgrad', False):
+        if hasattr(weight_param, "grad_added_to_main_grad"):
+            if getattr(weight_param, "zero_out_wgrad", False):
                 grad_weights = torch.zeros(
                     weight.shape,
                     dtype=x.dtype,
@@ -170,13 +174,19 @@ class BF16GMMFunction(BaseGMMFunction):
             return GMMFunction.builder.load().npu_gmm([x], [weight], bias or [], group_list, 0, 0)
 
         return torch_npu.npu_grouped_matmul(
-            [x], [weight], bias=bias, group_list=group_list, split_item=3, group_type=0, group_list_type=group_list_type
+            [x],
+            [weight],
+            bias=bias,
+            group_list=group_list,
+            split_item=3,
+            group_type=0,
+            group_list_type=group_list_type,
         )
 
     @classmethod
     def op_dx(cls, ctx, grad, weight, group_list, group_list_type=0, bias=None):
         if len(weight.shape) == 3:
-            weight = rearrange(weight, 'n h f -> n f h')
+            weight = rearrange(weight, "n h f -> n f h")
         else:
             weight = weight.t()
         if not check_npu_version(NPUVersion.A5):
@@ -241,9 +251,9 @@ class MXFP8GMMFunction(BaseGMMFunction):
         weight_mxfp8, weight_scale = ctx.w_quant
         return torch_npu.npu_grouped_matmul(
             [grad_mxfp8],
-            [rearrange(weight_mxfp8, 'n h f -> n f h')],
+            [rearrange(weight_mxfp8, "n h f -> n f h")],
             bias=bias,
-            scale=[rearrange(weight_scale, 'n h f g -> n f h g')],
+            scale=[rearrange(weight_scale, "n h f g -> n f h g")],
             per_token_scale=[grad_scale],
             group_list=group_list,
             group_type=0,
@@ -258,17 +268,25 @@ class MXFP8GMMFunction(BaseGMMFunction):
     def op_dw(cls, ctx, x, grad, group_list, group_list_type=0, bias=None):
         qdtype = get_quant_dtype()
         x_mxfp8, x_scale = torch_npu.npu_grouped_dynamic_mx_quant(
-            x, group_list.to(torch.int32), round_mode="rint", dst_type=qdtype.x, blocksize=32
+            x,
+            group_list.to(torch.int32),
+            round_mode="rint",
+            dst_type=qdtype.x,
+            blocksize=32,
         )
         grad_mxfp8, grad_scale = torch_npu.npu_grouped_dynamic_mx_quant(
-            grad, group_list.to(torch.int32), round_mode="rint", dst_type=qdtype.grads, blocksize=32
+            grad,
+            group_list.to(torch.int32),
+            round_mode="rint",
+            dst_type=qdtype.grads,
+            blocksize=32,
         )
         return torch_npu.npu_grouped_matmul(
             [x_mxfp8.t()],
             [grad_mxfp8],
             bias=bias,
             scale=[grad_scale],
-            per_token_scale=[rearrange(x_scale, 'n h f -> h n f')],
+            per_token_scale=[rearrange(x_scale, "n h f -> h n f")],
             group_list=group_list,
             group_type=2,
             output_dtype=x.dtype,
@@ -282,21 +300,56 @@ class MXFP8GMMFunction(BaseGMMFunction):
     def gmm_add_impl(cls, x, grad, group_list, weight_param, weight_shape):
         qdtype = get_quant_dtype()
         x_quant, x_scale = torch_npu.npu_grouped_dynamic_mx_quant(
-            x, group_list.to(torch.int32), round_mode="rint", dst_type=qdtype.x, blocksize=32
+            x,
+            group_list.to(torch.int32),
+            round_mode="rint",
+            dst_type=qdtype.x,
+            blocksize=32,
         )
         grad_quant, grad_scale = torch_npu.npu_grouped_dynamic_mx_quant(
-            grad, group_list.to(torch.int32), round_mode="rint", dst_type=qdtype.grads, blocksize=32
+            grad,
+            group_list.to(torch.int32),
+            round_mode="rint",
+            dst_type=qdtype.grads,
+            blocksize=32,
         )
         torch_npu.npu_add_quant_gmm_(
             weight_param.main_grad.view(weight_shape),
             x_quant.t(),
             grad_quant,
             grad_scale,
-            x1_scale=rearrange(x_scale, 'n h f -> h n f'),
+            x1_scale=rearrange(x_scale, "n h f -> h n f"),
             group_list_type=0,
             group_list=group_list,
             x1_scale_dtype=torch_npu.float8_e8m0fnu,
             x2_scale_dtype=torch_npu.float8_e8m0fnu,
+        )
+
+
+class MXFP832x32GMMFunction(MXFP8GMMFunction):
+    """MXFP8 GMM using one 32x32-quantized weight payload."""
+
+    @classmethod
+    def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
+        qdtype = get_quant_dtype()
+        x_mxfp8, x_scale = torch_npu.npu_dynamic_mx_quant(x, axis=-1, dst_type=qdtype.x)
+        weight_mxfp8, weight_col_scale, weight_row_scale = torch_npu.npu_dynamic_block_mx_quant(
+            weight, dst_type=qdtype.w
+        )
+        ctx.w_quant = (weight_mxfp8, weight_col_scale)
+        return torch_npu.npu_grouped_matmul(
+            [x_mxfp8],
+            [weight_mxfp8],
+            bias=bias,
+            scale=[weight_row_scale],
+            per_token_scale=[x_scale],
+            group_list=group_list,
+            group_type=0,
+            output_dtype=x.dtype,
+            group_list_type=group_list_type,
+            scale_dtype=torch_npu.float8_e8m0fnu,
+            per_token_scale_dtype=torch_npu.float8_e8m0fnu,
+            split_item=3,
         )
 
 
@@ -307,7 +360,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
         g_size = len(group_list)
         dst_type_max = FormatEnum.HIF8_15.value.max if qdtype == torch_npu.hifloat8 else 0
         x_quant, x_scale = torch_npu.npu_dynamic_quant(
-            x, dst_type=qdtype.x, quant_mode='pertensor', dst_type_max=dst_type_max
+            x, dst_type=qdtype.x, quant_mode="pertensor", dst_type_max=dst_type_max
         )
         x_scale = x_scale.expand(g_size)
         w_quant, w_scale = torch_npu.npu_dynamic_quant(
@@ -339,7 +392,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
         w_quant, w_scale = ctx.saved_weight
         return torch_npu.npu_grouped_matmul(
             [grad_quant],
-            [rearrange(w_quant, 'n h f -> n f h')],
+            [rearrange(w_quant, "n h f -> n f h")],
             bias=None,
             scale=[w_scale],
             per_token_scale=[grad_scale],
@@ -376,7 +429,7 @@ class TensorwiseGMMFunction(BaseGMMFunction):
             return ctx.saved_grads
         dst_type_max = FormatEnum.HIF8_224.value.max if dst_type == torch_npu.hifloat8 else 0
         grad_quant, grad_scale = torch_npu.npu_dynamic_quant(
-            grad, dst_type=dst_type, quant_mode='pertensor', dst_type_max=dst_type_max
+            grad, dst_type=dst_type, quant_mode="pertensor", dst_type_max=dst_type_max
         )
         grad_scale = grad_scale.expand(g_size)
         ctx.saved_grads = (grad_quant, grad_scale)

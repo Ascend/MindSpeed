@@ -7,23 +7,39 @@ from megatron.training.utils import print_rank_0
 
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.hccl_buffer.hccl_adaptive_func import (
+    get_hccl_group_config,
     hccl_buffer_auto_adaptive,
     parse_hccl_buffer_string,
     _HCCL_GROUP_BUFFER,
 )
 
 
+def merge_hccl_config(options, hccl_config):
+    """Merge HCCL fields without dropping options supplied by another feature."""
+    if not hccl_config:
+        return options
+
+    if options is None or not hasattr(options, "hccl_config"):
+        options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+
+    original_hccl_config = dict(getattr(options, "hccl_config", None) or {})
+    original_hccl_config.update(hccl_config)
+    options.hccl_config = original_hccl_config
+    return options
+
+
 def get_nccl_options_wrapper(get_nccl_options):
     @wraps(get_nccl_options)
     def wrapper(pg_name, nccl_comm_cfgs):
         args = get_args()
-        if args.hccl_group_buffer_adaptive:
-            global _HCCL_GROUP_BUFFER
-            if _HCCL_GROUP_BUFFER.get(pg_name) is not None:
-                options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
-                options.hccl_config = {"hccl_buffer_size": _HCCL_GROUP_BUFFER[pg_name]}
-                return options
-        return get_nccl_options(pg_name, nccl_comm_cfgs)
+        options = get_nccl_options(pg_name, nccl_comm_cfgs)
+        if args.hccl_group_buffer is None and not args.hccl_group_buffer_adaptive:
+            return options
+
+        buffer_size = get_hccl_group_config(_HCCL_GROUP_BUFFER, pg_name)
+        if buffer_size is None:
+            return options
+        return merge_hccl_config(options, {"hccl_buffer_size": buffer_size})
 
     return wrapper
 

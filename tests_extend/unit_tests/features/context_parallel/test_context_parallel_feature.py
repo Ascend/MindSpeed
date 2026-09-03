@@ -1,4 +1,4 @@
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 
 import pytest
 
@@ -23,6 +23,7 @@ def _make_args(**overrides):
         cp_window_size=1,
         use_cp_send_recv_overlap=False,
         use_fused_ring_attention_update=False,
+        megatron_cp_in_bnsd=False,
         position_embedding_type='rope',
         alibi_fusion_attn_type=None,
         use_flash_attn=False,
@@ -36,6 +37,23 @@ def _make_args(**overrides):
     for key, value in overrides.items():
         setattr(args, key, value)
     return args
+
+
+def test_context_parallel_compatibility_args_are_registered():
+    parser = ArgumentParser(conflict_handler='resolve')
+
+    ContextParallelFeature().register_args(parser)
+    args = parser.parse_args(
+        [
+            '--use-cp-send-recv-overlap',
+            '--use-fused-ring-attention-update',
+            '--megatron-cp-in-bnsd',
+        ]
+    )
+
+    assert args.use_cp_send_recv_overlap is True
+    assert args.use_fused_ring_attention_update is True
+    assert args.megatron_cp_in_bnsd is True
 
 
 def test_p2p_eod_general_is_skipped_without_mindspeed_ring():
@@ -164,6 +182,40 @@ def test_p2p_overlap_is_allowed_and_uses_tenpu_runtime_mapping():
     assert attention.ulysses_degree_in_cp is None
 
 
+def test_megatron_cp_in_bnsd_is_preserved_for_tenpu():
+    args = _make_args(attention_mask_type='causal', megatron_cp_in_bnsd=True)
+
+    ContextParallelFeature().validate_args(args)
+
+    attention = type('Attention', (), {})()
+    set_tenpu_cp_runtime_options(attention, args)
+    assert attention.megatron_cp_in_bnsd is True
+
+
+def test_fused_ring_attention_update_is_preserved_for_tenpu():
+    args = _make_args(
+        attention_mask_type='causal',
+        use_fused_ring_attention_update=True,
+    )
+
+    ContextParallelFeature().validate_args(args)
+
+    attention = type('Attention', (), {})()
+    set_tenpu_cp_runtime_options(attention, args)
+    assert attention.use_fused_ring_attention_update is True
+
+
+def test_fused_ring_attention_update_is_rejected_for_non_ring_cp():
+    args = _make_args(
+        reset_attention_mask=False,
+        cp_comm_type=['all_gather'],
+        use_fused_ring_attention_update=True,
+    )
+
+    with pytest.raises(AssertionError, match='Ring CP options'):
+        ContextParallelFeature().validate_args(args)
+
+
 def test_p2p_custom_window_is_allowed_when_it_partitions_cp():
     args = _make_args(
         context_parallel_size=4,
@@ -218,6 +270,37 @@ def test_context_parallel_feature_uses_early_string_values_without_becoming_defa
     )
 
     assert patch_manager.calls == []
+
+    ContextParallelFeature().register_patches(
+        patch_manager,
+        _make_args(
+            context_parallel_size='2',
+            cp_window_size='1',
+            attention_mask_type='causal',
+            megatron_cp_in_bnsd=True,
+        ),
+    )
+
+    assert len(patch_manager.calls) == 1
+    assert patch_manager.calls[0][0][0] == (
+        'megatron.core.extensions.transformer_engine.TEDotProductAttention.__init__'
+    )
+
+    patch_manager.calls.clear()
+
+    ContextParallelFeature().register_patches(
+        patch_manager,
+        _make_args(
+            context_parallel_size='2',
+            cp_window_size='1',
+            attention_mask_type='causal',
+            use_fused_ring_attention_update=True,
+        ),
+    )
+
+    assert len(patch_manager.calls) == 1
+
+    patch_manager.calls.clear()
 
     ContextParallelFeature().register_patches(
         patch_manager,

@@ -17,6 +17,14 @@ from mindspeed.features_manager.feature import MindSpeedFeature
 logger = logging.getLogger("mindspeed.fp8.feature")
 
 
+def _normalize_fp8_recipe(args):
+    """Preserve the TENPU 32x32 selector while using Megatron's MXFP8 enum."""
+    requested_32x32 = getattr(args, 'fp8_recipe', None) == 'mxfp8-32x32'
+    args.mxfp8_32x32 = requested_32x32 or getattr(args, 'mxfp8_32x32', False)
+    if requested_32x32:
+        args.fp8_recipe = 'mxfp8'
+
+
 class NpuEnhancementFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('npu-enhancement', optimization_level=0)
@@ -47,6 +55,9 @@ class NpuEnhancementFeature(MindSpeedFeature):
         basic_group.add_argument("--use-fused-swiglu", action='store_true', help="Use fused swiglu.")
 
         te_group = parser.add_argument_group(title="transformer-engine-basic")
+        # Megatron does not expose this recipe in Fp8Recipe. Keep its public
+        # spelling, then normalize to mxfp8 while retaining a TENPU selector.
+        self.add_parser_argument_choices_value(parser, '--fp8-recipe', 'mxfp8-32x32')
         te_group.add_argument(
             '--no-use-gmm-fp8', action='store_false', help='not use GMM with scaling recipe.', dest='use_gmm_fp8'
         )
@@ -54,13 +65,13 @@ class NpuEnhancementFeature(MindSpeedFeature):
             '--te-comparison-with-cpu',
             action='store_true',
             default=False,
-            help='Compare the cast and quantmatmul of te on cpu and npu online.',
+            help='Compare TE-NPU quantized GEMMs with a CPU FP32 reference online.',
         )
         te_group.add_argument(
             '--te-comparison-with-bf16',
             action='store_true',
             default=False,
-            help='Compare the cast and quantmatmul of te with bf16 online.',
+            help='Compare TE-NPU quantized GEMMs with an NPU BF16 reference online.',
         )
         te_group.add_argument(
             '--te-gmm-mode',
@@ -80,6 +91,8 @@ class NpuEnhancementFeature(MindSpeedFeature):
     # Argument validation (migrated from MegatronBasic + TransformerEngineBasic)
     # ================================================================
     def validate_args(self, args):
+        _normalize_fp8_recipe(args)
+
         # --- From MegatronBasicFeature.validate_args ---
         # Fix VPP when VPP_size=1 from megatron core_r0.14.0
         if (
@@ -130,6 +143,7 @@ class NpuEnhancementFeature(MindSpeedFeature):
 
     def register_patches(self, patch_manager, args):
         # ================================================================
+        self._configure_te_comparison(args)
         # Step 2: GDN — replace GatedDeltaNet with MindSpeed subclass
         #  in favour of MindSpeed Triton-accelerated implementations)
         # ================================================================
@@ -149,6 +163,18 @@ class NpuEnhancementFeature(MindSpeedFeature):
         # Step 7: Non-mcore patches (args parser + compile deps)
         # ================================================================
         self._register_non_mcore_patches(patch_manager)
+
+    def _configure_te_comparison(self, args):
+        """Map MindSpeed comparison flags to TransformerEngine-NPU."""
+        if not (getattr(args, 'te_comparison_with_cpu', False) or getattr(args, 'te_comparison_with_bf16', False)):
+            return
+
+        from transformer_engine.pytorch import configure_gemm_comparison
+
+        configure_gemm_comparison(
+            compare_with_cpu=getattr(args, 'te_comparison_with_cpu', False),
+            compare_with_bf16=getattr(args, 'te_comparison_with_bf16', False),
+        )
 
     # ================================================================
     # Internal patch methods

@@ -1,3 +1,4 @@
+# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 """TransformerEngine NPU patches.
 
@@ -21,13 +22,30 @@ except (ImportError, ModuleNotFoundError):
 
 
 def get_fp8_recipe_wrapper(fn):
-    """Wrap get_fp8_recipe to support HiF8 format."""
+    """Wrap get_fp8_recipe to support MindSpeed/TENPU recipe extensions."""
 
     @wraps(fn)
     def wrapper(config: TransformerConfig):
+        fp8_recipe = getattr(config.fp8_recipe, "value", config.fp8_recipe)
+        if fp8_recipe == "mxfp8":
+            from mindspeed.args_utils import get_full_args
+
+            if getattr(get_full_args(), "mxfp8_32x32", False):
+                try:
+                    from transformer_engine.common.recipe import MXFP832x32BlockScaling
+                except ImportError as exc:
+                    raise RuntimeError("mxfp8-32x32 requires the matching TENPU recipe implementation.") from exc
+
+                if config.fp8 == "e4m3":
+                    fp8_format = transformer_engine.common.recipe.Format.E4M3
+                elif config.fp8 == "hybrid":
+                    fp8_format = transformer_engine.common.recipe.Format.HYBRID
+                else:
+                    raise ValueError("mxfp8-32x32 supports E4M3 and HYBRID FP8 formats only.")
+                return MXFP832x32BlockScaling(fp8_format=fp8_format)
+
         if config.fp8 == "hif8":
             fp8_format = transformer_engine.common.recipe.Format.HIF8
-            fp8_recipe = getattr(config.fp8_recipe, "value", config.fp8_recipe)
             if fp8_recipe == "delayed":
                 return TEDelayedScaling(
                     config=config,

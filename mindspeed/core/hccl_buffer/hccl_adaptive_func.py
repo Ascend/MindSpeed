@@ -5,42 +5,75 @@ _HCCL_GROUP_BUFFER = {}
 _HCCL_OP_MODE = {}
 
 
+# Megatron 0.18 renamed or split several process groups. Keep the master
+# configuration names as aliases so existing launch scripts continue to apply
+# to the corresponding 0.18 groups. An explicitly configured 0.18 name always
+# takes precedence over its alias.
+_HCCL_GROUP_ALIASES = {
+    "ep": ("exp",),
+    "ep_dp": ("dp_modulo_exp", "dp"),
+    "ep_tp": ("tp_exp",),
+    "hcp": ("cp",),
+    "inter_dp_cp": ("dp_cp",),
+    "inter_ep_dp": ("ep_dp", "dp_modulo_exp", "dp"),
+    "inner_dp": ("dp",),
+    "intra_dist_opt_instance": ("dp",),
+    "intra_dp_cp": ("dp_cp",),
+    "intra_ep_dp": ("ep_dp", "dp_modulo_exp", "dp"),
+    "pos_embd": ("embd",),
+    "tp_ep_mp": ("mp_exp",),
+    "tp_ep_pp": ("mp_exp",),
+}
+
+
+_SUPPORTED_HCCL_GROUPS = {
+    "dp",
+    "dp_cp",
+    "cp",
+    "mp",
+    "mp_exp",
+    "tp",
+    "pp",
+    "embd",
+    "tp_dp_cp",
+    "tp_dp",
+    "tp_cp",
+    "tp_exp",
+    "tp_ep_mp",
+    "exp",
+    "ep",
+    "dp_modulo_exp",
+    "pp_new_stream",
+    "cp2",
+    "cp_ulysses",
+    "cp_ring",
+    "cp_ring_intra",
+    "cp_ring_intra_overlap",
+    "nd1_dim1",
+    "ag_x_sd_rcv_overlap",
+    "nd1_dim2",
+    "ag_y_sd_rcv_overlap",
+    "nd2_dim1",
+    "nd2_dim2",
+    "default_group",
+    # Megatron 0.18 process groups.
+    "ep_dp",
+    "ep_tp",
+    "hcp",
+    "inter_dp_cp",
+    "inter_ep_dp",
+    "inner_dp",
+    "intra_dist_opt_instance",
+    "intra_dp_cp",
+    "intra_ep_dp",
+    "pos_embd",
+    "tp_ep_pp",
+}
+
+
 def _parse_key_value_string(input_string, target_dict, dict_name="config"):
     if input_string is None or not input_string:
         return
-
-    allowed_keys = [
-        "dp",
-        "dp_cp",
-        "cp",
-        "mp",
-        "mp_exp",
-        "tp",
-        "pp",
-        "embd",
-        "tp_dp_cp",
-        "dp_cp",
-        "tp_dp",
-        "tp_cp",
-        "tp_exp",
-        "tp_ep_mp",
-        "exp",
-        "ep",
-        "dp_modulo_exp",
-        "pp_new_stream",
-        "cp2",
-        "cp_ulysses",
-        "cp_ring",
-        "cp_ring_intra",
-        "cp_ring_intra_overlap",
-        "nd1_dim1",
-        "ag_x_sd_rcv_overlap",
-        "nd1_dim2",
-        "ag_y_sd_rcv_overlap",
-        "nd2_dim1",
-        "nd2_dim2",
-        "default_group",
-    ]
 
     # a string seperated by ';' will result in a error for running verl, so "," is added to support that case
     parts = input_string.split(';') if "," not in input_string else input_string.split(',')
@@ -51,7 +84,7 @@ def _parse_key_value_string(input_string, target_dict, dict_name="config"):
             key = key_value[0].strip().replace(' ', '')
             value_str = key_value[1].strip().replace(' ', '')
 
-            if key in allowed_keys:
+            if key in _SUPPORTED_HCCL_GROUPS:
                 try:
                     value = int(value_str)
                     if value <= 0:
@@ -73,6 +106,16 @@ def parse_hccl_buffer_string(hccl_group_buffer):
 
 def parse_hccl_op_mode_string(hccl_op_mode_string):
     _parse_key_value_string(hccl_op_mode_string, _HCCL_OP_MODE, "--hccl-op-mode")
+
+
+def get_hccl_group_config(target_dict, pg_name):
+    """Return an explicit group value or its Megatron 0.18 compatibility alias."""
+    if pg_name in target_dict:
+        return target_dict[pg_name]
+    for alias in _HCCL_GROUP_ALIASES.get(pg_name, ()):
+        if alias in target_dict:
+            return target_dict[alias]
+    return None
 
 
 def hccl_buffer_auto_adaptive(args):
