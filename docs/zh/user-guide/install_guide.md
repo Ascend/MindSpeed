@@ -33,13 +33,6 @@
 
 > [!NOTE]
 >
-> 本文档中不同安装方式的示例命令使用了不同版本的 Python：
->
-> - 镜像安装示例基于 Python 3.11
-> - 源码安装示例基于 Python 3.10
->
-> 请根据您实际环境的 Python 版本选择对应的包版本。
->
 > 安装运行程序建议使用非root用户，且建议对安装程序的目录文件做好权限管控：文件夹权限设置为750，文件权限设置为640。可以通过设置umask控制安装后文件的权限，如设置umask为0027。
 > 更多安全相关内容请参见《[安全声明](../SECURITYNOTE.md)》中各组件关于“文件权限控制”的说明。
 
@@ -49,58 +42,60 @@
 
 > [!NOTE]
 >
-> - 使用镜像前，请先确认机器型号。最新镜像仅支持aarch64架构，可通过uname -a命令确认当前环境是否符合要求。
-> - 配套镜像已预装配套的CANN 9.0.0软件及TorchNPU 26.1.0插件，您可根据需要选用。
-> - 若您当前环境与提供的镜像不兼容，请选择[方式二：源码安装](#方式二源码安装)。
-> - master分支后续会更新新的镜像，如果需要自定义构建镜像请参见[镜像概述](../../../docker/OVERVIEW.zh.md)。
+> - 使用镜像前，请先确认机器型号。最新镜像支持aarch64及X86_64架构，可通过uname -a命令确认当前环境是否符合要求。
+> - 配套镜像已预装配套的CANN 9.1.0软件及TorchNPU 26.1.0插件，可根据需要选用。
+> - 若当前环境与提供的镜像不兼容，请选择[方式二：源码安装](#方式二源码安装)。
+> - 如果需要自定义构建镜像请参见[镜像概述](../../../docker/OVERVIEW.zh.md)。
 
-1. 拉取镜像
+1. 获取镜像
 
-   最新镜像均配套[MindSpeed Core的26.1.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1)，请按需[拉取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
+   最新镜像均配套[MindSpeed Core的26.1.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1)，请按需[获取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
 
-   - <term>Atlas A2 训练系列产品</term>：26.1.0_core_r0.12.1-910b-openeuler24.03-py3.11-aarch64 (待发布)
+   - <term>Ascend 950 系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
 
-   - <term>Atlas A3 训练系列产品</term>：26.1.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64 (待发布)
+   - <term>Ascend 950 系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.12
+
+   - <term>Atlas A3 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+
+   - <term>Atlas A3 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.12
+
+   - <term>Atlas A2 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.12
+
+   - <term>Atlas A2 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.12
+
+   以镜像v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12为例：
 
    ```bash
-   # 确认是否成功拉取镜像
+   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   ```
+
+2. 确认是否成功拉取镜像
+
+   ```bash
    docker image list
    ```
 
-   > [!NOTE]
-   >
-   > 此镜像基于 Python 3.11 构建。
+3. 运行镜像
 
-2. 创建容器
+   复制启动命令前，请将-v参数内的{path-to-data}、{path-to-weights}两处路径，替换为宿主机本地真实目录，否则容器启动失败。
 
    ```bash
-    # 挂载镜像
-    docker run -dit --ipc=host --network host --name '容器名' --privileged -v /usr/local/Ascend/driver:/usr/local/Ascend/driver -v /usr/local/Ascend/firmware:/usr/local/Ascend/firmware -v /usr/local/sbin/:/usr/local/sbin/ -v /home/:/home/ -v /data/:/data 镜像名:标签 /bin/bash
+   docker run -it -d \
+      --name mindspeed-core \
+      --privileged \
+      --network host \
+      --ipc=host \
+      -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+      -v /usr/local/dcmi:/usr/local/dcmi \
+      -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+      -v /etc/ascend_install.info:/etc/ascend_install.info \
+      -v {path-to-data}:/data \
+      -v {path-to-weights}:/weights \
+      swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12 \
+      /bin/bash
    ```
 
-   当前默认配置驱动和固件安装在/usr/local/Ascend，如有差异请修改指令路径。
-
-   当前容器默认初始化NPU驱动和CANN环境信息，如需要安装新的，请自行替换或手动source，详见容器的~/.bashrc。
-
-    示例：
-
-      ```bash
-      docker run -itd \
-         --name mindspeed \
-         --privileged \
-         --network host \
-         --ipc=host \
-         -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
-         -v /usr/local/dcmi:/usr/local/dcmi \
-         -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
-         -v /etc/ascend_install.info:/etc/ascend_install.info \
-         -v /home:/home \
-         -v /data:/data \
-         -v /mnt:/mnt \
-         mindspeed-core:26.1.0_core_r0.12.1-a3-openeuler24.03-py3.11-aarch64
-      ```
-
-3. 加载容器并确认环境状态
+4. 加载容器并确认环境状态
 
    ```bash
     # 加载容器
@@ -135,8 +130,6 @@
    ```
 
    >[!NOTE]
-   >
-   > 示例使用 Python 3.10 的 wheel 包（cp310），请根据实际环境选择对应版本。
    >
    > 如有旧版本MindSpeed，请先[卸载](#卸载mindspeed)旧版本MindSpeed，再安装新版本MindSpeed。
    >
