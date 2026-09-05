@@ -1,8 +1,6 @@
 # Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
 from unittest.mock import patch, MagicMock
-import pytest
-import torch
-from mindspeed import megatron_adaptor
+from mindspeed import megatron_adaptor  # noqa: F401 - import side effect: patch_features()
 import mindspeed.core.multi_modal.dist_train.dist_parallel_state as dps
 
 
@@ -62,13 +60,15 @@ class TestInitializeModelParallel:
         mock_config.main_dp = False
         mock_get_config.return_value = mock_config
 
-        with patch("mindspeed.core.multi_modal.dist_train.dist_parallel_state.get_all_config_size", return_value=1), \
-                patch("torch.distributed.is_initialized", return_value=True), \
-                patch("mindspeed.core.multi_modal.dist_train.dist_parallel_state.get_all_config",
-                      return_value={0: mock_config}), \
-                patch("mindspeed.core.multi_modal.dist_train.utils.get_global_data_parallel_size",
-                      return_value=1):
-
+        with (
+            patch("mindspeed.core.multi_modal.dist_train.dist_parallel_state.get_all_config_size", return_value=1),
+            patch("torch.distributed.is_initialized", return_value=True),
+            patch(
+                "mindspeed.core.multi_modal.dist_train.dist_parallel_state.get_all_config",
+                return_value={0: mock_config},
+            ),
+            patch("mindspeed.core.multi_modal.dist_train.utils.get_global_data_parallel_size", return_value=1),
+        ):
             dps.initialize_model_parallel()
 
             assert "model0" in dps.ALL_SUB_WORLD
@@ -88,14 +88,14 @@ class TestStateFunctions:
         assert test_func() is True
         mock_set.assert_called()
 
-    @patch("mindspeed.core.multi_modal.dist_train.dist_parallel_state.subwrold_decorator")
-    @patch("mindspeed.core.multi_modal.dist_train.dist_train_config.get_dist_model_name", return_value="model0")
-    @patch("torch.distributed.get_rank", MockDistributed.get_rank)  # 模拟分布式rank
-    def test_get_functions(self, mock_get_name, mock_decorator):
-        dps._TENSOR_MODEL_PARALLEL_GROUP = "tp_group"
-        dps._DATA_PARALLEL_GROUP = "dp_group"
-        assert dps.get_tensor_model_parallel_group() is not None
-        assert dps.get_data_parallel_group() is not None
+    def test_get_functions(self, monkeypatch):
+        subworld = dps.DetachedSubWorld("model0", 0, [0])
+        subworld.tensor_model_parallel_group = "tp_group"
+        subworld.data_parallel_group = "dp_group"
+        monkeypatch.setattr(dps, "_CUR_SUB_WORLD", subworld)
+
+        assert dps.get_tensor_model_parallel_group() == "tp_group"
+        assert dps.get_data_parallel_group() == "dp_group"
 
 
 class TestHelperFunctions:
@@ -116,11 +116,11 @@ class TestHelperFunctions:
 
 
 class TestExpertParallel:
-    @patch("mindspeed.core.multi_modal.dist_train.dist_parallel_state.subwrold_decorator")
-    @patch("mindspeed.core.multi_modal.dist_train.dist_train_config.get_dist_model_name", return_value="model0")
-    @patch("torch.distributed.get_rank", MockDistributed.get_rank)
-    def test_expert_functions(self, mock_get_name, mock_decorator):
-        dps._EXPERT_MODEL_PARALLEL_GROUP = "expert_group"
-        dps.get_expert_model_parallel_group()
-        dps._MPU_EXPERT_MODEL_PARALLEL_WORLD_SIZE = 0
+    def test_expert_functions(self, monkeypatch):
+        subworld = dps.DetachedSubWorld("model0", 0, [0])
+        subworld.expert_model_parallel_group = "expert_group"
+        subworld.mpu_expert_model_parallel_world_size = 0
+        monkeypatch.setattr(dps, "_CUR_SUB_WORLD", subworld)
+
+        assert dps.get_expert_model_parallel_group() == "expert_group"
         assert dps.get_expert_model_parallel_world_size() == 0
