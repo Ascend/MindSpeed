@@ -213,7 +213,7 @@ class HamiltonCPStrategy(BaseCPStrategy):
         max_seqlen_kv,
         cp_group,
         cp_global_ranks,
-        cp_stream,
+        cp_stream=None,
         **kwargs,
     ):
         # Prepare tensors based on format
@@ -283,6 +283,12 @@ class CPStrategyFactory:
         Raises:
             ValueError: If strategy_type is not supported
         """
+        if strategy_type == "deepseek_v4_cp_algo":
+            raise NotImplementedError(
+                "deepseek_v4_cp_algo requires the DeepSeek V4 compressed-KV CP communication path "
+                "and is not supported by TEDotProductAttention CPStrategyFactory."
+            )
+
         if strategy_type not in CPStrategyFactory._STRATEGY_MAP:
             available = CPStrategyFactory.get_available_strategies()
             raise ValueError(f"Unsupported CP strategy: {strategy_type}. Available strategies: {available}")
