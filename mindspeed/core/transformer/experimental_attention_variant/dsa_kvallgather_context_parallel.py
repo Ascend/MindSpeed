@@ -77,7 +77,9 @@ def fused_lightning_indexer_kvallgather(
 
     for i, chunk_id in enumerate(local_seq_chunk_ids):
         q_ = q[i]
-        k_ag_ = k_ag[:, :chunk_id * chunk_size, ...]
+        k_slice = k_ag[:, :chunk_id * chunk_size, ...]
+        # npu_lightning_indexer requires a contiguous key.
+        k_ag_ = k_slice.reshape(-1).reshape(k_slice.shape)
 
         weights_ = weights[i]
 
@@ -158,10 +160,11 @@ def fused_npu_sparse_flash_attention_kvallgather(
 
     for i, chunk_id in enumerate(local_seq_chunk_ids):
         kv_len = chunk_id * chunk_size
-
+        k_slice = k_ag[:, :kv_len, ...]
+        # npu_sparse_flash_attention requires a contiguous key.
         attn_outs = torch_npu.npu_sparse_flash_attention(
-            q[i], 
-            k_ag[:, :kv_len, ...],
+            q[i],
+            k_slice.reshape(-1).reshape(k_slice.shape),
             v_ag[:, :kv_len, ...],
             sparse_indices=topk_indices[i].to(torch.int32),
             block_table=None,
