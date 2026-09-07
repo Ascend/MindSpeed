@@ -11,10 +11,13 @@ def virtual_optimizer_replace(optimizer, virtual_allocator):
     if not optimizer.state:
         return
     for group in optimizer.param_groups:
-        for p in group['params']:
-            state = optimizer.state[p]
-            state["exp_avg"] = virtual_allocator.copy2swap(state["exp_avg"])
-            state["exp_avg_sq"] = virtual_allocator.copy2swap(state["exp_avg_sq"])
+        for p in group["params"]:
+            state = optimizer.state.get(p, {})
+            for state_name in ("exp_avg", "exp_avg_sq"):
+                state_tensor = state.get(state_name)
+                if state_tensor is None or getattr(state_tensor, "swap_tensor", False):
+                    continue
+                state[state_name] = virtual_allocator.copy2swap(state_tensor)
 
 
 def virtual_optimizer_step_impl(self, closure=None):
@@ -29,38 +32,36 @@ def virtual_optimizer_step_impl(self, closure=None):
         exp_avgs = []
         exp_avg_sqs = []
         max_exp_avg_sqs = []
-        amsgrad = group['amsgrad']
-        beta1, beta2 = group['betas']
+        amsgrad = group.get("amsgrad", False)
+        beta1, beta2 = group["betas"]
 
-        if 'step' in group:
-            group['step'] += 1
-            if group['step'].is_cpu:
-                group['step'] = group['step'].cuda()
+        if "step" in group:
+            group["step"] = torch.as_tensor(group["step"], dtype=torch.int64, device=torch.cuda.current_device()) + 1
         else:
-            group['step'] = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
+            group["step"] = torch.tensor(1, dtype=torch.int64, device=torch.cuda.current_device())
 
-        for p in group['params']:
+        for p in group["params"]:
             if p.grad is None:
                 continue
             params_with_grad.append(p)
             if p.grad.is_sparse:
-                raise RuntimeError('AdamW does not support sparse gradients')
+                raise RuntimeError("AdamW does not support sparse gradients")
             grads.append(p.grad)
 
             state = self.state[p]
 
             # State initialization
             if len(state) == 0:
-                state['exp_avg'], state['exp_avg_sq'] = self.virtual_allocator.init_exp(p)
+                state["exp_avg"], state["exp_avg_sq"] = self.virtual_allocator.init_exp(p)
                 if amsgrad:
                     # Maintains max of all exp. moving avg. of sq. grad. values
-                    state['max_exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    state["max_exp_avg_sq"] = torch.zeros_like(p, memory_format=torch.preserve_format)
 
-            exp_avgs.append(state['exp_avg'])
-            exp_avg_sqs.append(state['exp_avg_sq'])
+            exp_avgs.append(state["exp_avg"])
+            exp_avg_sqs.append(state["exp_avg_sq"])
 
             if amsgrad:
-                max_exp_avg_sqs.append(state['max_exp_avg_sq'])
+                max_exp_avg_sqs.append(state["max_exp_avg_sq"])
 
         adamw(
             params_with_grad,
@@ -68,14 +69,14 @@ def virtual_optimizer_step_impl(self, closure=None):
             exp_avgs,
             exp_avg_sqs,
             max_exp_avg_sqs,
-            group['step'],
+            group["step"],
             amsgrad=amsgrad,
             beta1=beta1,
             beta2=beta2,
-            lr=group['lr'],
-            weight_decay=group['weight_decay'],
-            eps=group['eps'],
-            maximize=group['maximize'],
+            lr=group["lr"],
+            weight_decay=group["weight_decay"],
+            eps=group["eps"],
+            maximize=group.get("maximize", False),
         )
 
     self.virtual_allocator.print_swap_size(self.print_swap_flag)

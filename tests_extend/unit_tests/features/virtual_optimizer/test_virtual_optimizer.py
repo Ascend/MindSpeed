@@ -5,7 +5,6 @@ import os
 from unittest import mock
 
 import pytest
-pytest.skip("Skip test due to delete unuse module errors", allow_module_level=True)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,7 +12,9 @@ import torch_npu
 
 import mindspeed.megatron_adaptor
 from mindspeed.core.optimizer.adamw import AdamW
+from mindspeed.core.optimizer.virtual_optimizer.adaptor import bind_virtual_optimizer
 from mindspeed.core.optimizer.virtual_optimizer.virtual_adam import virtual_optimizer_step_impl, VirtualAllocator
+from mindspeed.features_manager.optimizer.virtual_optimizer import VirtualOptimizerFeature
 
 
 def virtual_optimizer_step(self, closure=None):
@@ -95,3 +96,43 @@ class TestVirtualOptimizer:
         assert (torch.allclose(output, output_, atol=1e-6))
         for g1, g2 in zip(grad, grad_):
             assert (torch.allclose(g1, g2, atol=1e-6))
+
+
+def test_virtual_optimizer_parser_uses_supported_option_name():
+    parser = argparse.ArgumentParser()
+    VirtualOptimizerFeature().register_args(parser)
+    args = parser.parse_args(["--virtual-optimizer", "2"])
+    assert args.virtual_optimizer == [2.0]
+
+
+def test_virtual_optimizer_binds_actual_raw_optimizer_instance():
+    class RawOptimizer:
+        def __init__(self):
+            self.param_groups = [{"params": [], "betas": (0.9, 0.999)}]
+            self.state = {}
+
+        def step(self):
+            raise AssertionError("original step should be replaced")
+
+    raw_optimizer = RawOptimizer()
+    assert bind_virtual_optimizer(raw_optimizer) is raw_optimizer
+    assert raw_optimizer._mindspeed_virtual_optimizer_bound
+    assert raw_optimizer.param_groups[0]["amsgrad"] is False
+    assert raw_optimizer.param_groups[0]["maximize"] is False
+
+
+def test_virtual_copy_returns_destination():
+    from mindspeed.features_manager.optimizer.virtual_optimizer import swap_tensor_copy_wrapper
+
+    class Scalar:
+        def __init__(self, value):
+            self.value = float(value)
+
+        def copy_(self, other):
+            self.value = other.value
+            return self
+
+    destination, source = Scalar(0), Scalar(5)
+    result = swap_tensor_copy_wrapper(Scalar.copy_)(destination, source)
+    assert result is destination
+    assert destination.value == 5
