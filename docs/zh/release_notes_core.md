@@ -4,32 +4,33 @@
 
 ### 产品版本信息
 
-<table><tbody><tr><th class="firstcol" valign="top" width="26.25%"><p>产品名称</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p><span>MindSpeed</span></p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>产品版本</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>26.1.0_core_r0.12.1</p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>版本类型</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>正式版本</p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>发布时间</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>2026年7月</p>
-</td>
-</tr>
-<tr><th class="firstcol" valign="top" width="26.25%"><p>维护周期</p>
-</th>
-<td class="cellrowborder" valign="top" width="73.75%"><p>6个月</p>
-</td>
-</tr>
-</tbody>
+<table>
+  <tbody>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>产品名称</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>MindSpeed</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>产品版本</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>26.1.0</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>版本类型</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>正式版本</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>组件名称</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>MindSpeed Core</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>发布时间</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>2026年7月</p></td>
+    </tr>
+    <tr>
+      <th class="firstcol" valign="top" width="26.25%"><p>维护周期</p></th>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>6个月</p></td>
+    </tr>
+  </tbody>
 </table>
 
 > [!NOTE]
@@ -42,7 +43,7 @@
 
 |MindSpeed Core代码分支名称|CANN版本|TorchNPU版本|Python版本|PyTorch版本|
 |--|--|--|--|--|
-|master（在研版本）|在研版本|在研版本|Python3.10|2.7.1|
+|master（在研版本）|在研版本|在研版本|Python3.12|2.10.0|
 |26.1.0_core_r0.12.1|9.1.0|26.1.0|Python3.10|2.7.1|
 |26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|
 
@@ -112,10 +113,10 @@
       <th colspan="4">CANN版本</th>
     </tr>
     <tr>
-      <th>8.3.RC1</th>
-      <th>8.5.0</th>
-      <th>9.0.0</th>
-      <th>9.1.0</th>
+      <th>8.3.RCX</th>
+      <th>8.5.X</th>
+      <th>9.0.X</th>
+      <th>9.1.X</th>
     </tr>
   </thead>
   <tbody>
@@ -190,18 +191,12 @@
 
 |文档名称|内容简介|更新说明|
 |--|--|--|
-|《[MindSpeed快速入门](../zh/user-guide/quickstart.md)》|介绍基于MindSpeed如何实现Megatron-LM在昇腾设备上的高效运行。|-|
-|《[MindSpeed安装指导](../zh/user-guide/install_guide.md)》|指导如何在NPU上基于PyTorch框架完成MindSpeed的安装，内容涵盖硬件与操作系统兼容性说明、驱动固件及CANN基础软件安装的完整安装流程，帮助用户快速搭建大模型分布式训练环境。|-|
+|《[MindSpeed快速入门](../zh/user-guide/quickstart.md)》|介绍基于MindSpeed实现Megatron-LM在昇腾设备上的高效运行。|-|
+|《[MindSpeed软件安装](../zh/user-guide/install_guide.md)》|指导用户在NPU上基于PyTorch框架完成MindSpeed的安装，内容涵盖硬件与操作系统兼容性说明、驱动固件及CANN基础软件安装的完整安装流程，帮助用户快速搭建大模型分布式训练环境。|-|
 
 ## 病毒扫描及漏洞修补列表
 
 ### 病毒扫描结果
-
-|防病毒软件名称|防病毒软件版本|病毒库版本|扫描时间|扫描结果|
-|---|---|---|---|---|
-|QiAnXin|8.0.5.5260|2026-04-01 08:00:00.0|2026-07-06|无病毒，无恶意|
-|Kaspersky|12.0.0.6672|2026-04-02 10:05:00|2026-07-06|无病毒，无恶意|
-|Bitdefender|7.5.1.200224|7.100588|2026-07-06|无病毒，无恶意|
 
 ### 漏洞修补列表
 

@@ -4,7 +4,7 @@
 
 ## 环境准备
 
-1. 请先参考[MindSpeed安装指导](install_guide.md)进行环境准备。
+1. 请单击[MindSpeed快速安装](https://www.hiascend.com/developer/software/mindspeed/download)根据引导进行环境搭建，详细安装说明请参考[MindSpeed软件安装](install_guide.md)。
 
 2. 在Megatron-LM中导入MindSpeed适配器。
 
@@ -17,7 +17,7 @@
     from contextlib import nullcontext
     import inspect
     ```
-
+    
 > [!NOTE]
 >
 > MindSpeed Core支持<term>Ascend 950 系列产品</term>、<term>Atlas A3 训练系列产品</term>和<term>Atlas A2 训练系列产品</term>，且要求单NPU的片上内存为64GB及以上
@@ -28,7 +28,7 @@
 
 - 具备基础的PyTorch使用经验
 - 具备初级的Python开发经验
-- 对Megatron-LM仓库有基本的了解
+- 对[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)有基本的了解
 
 ## 数据准备
 
