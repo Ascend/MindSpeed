@@ -6,6 +6,16 @@ from typing import List, Optional
 
 try:
     import fla_npu
+    from fla_npu.ops.ascendc import (
+        npu_chunk_bwd_dqkwg,
+        npu_chunk_bwd_dv_local,
+        npu_chunk_fwd_o,
+        npu_chunk_gated_delta_rule_bwd_dhu,
+        npu_chunk_gated_delta_rule_fwd_h,
+        npu_prepare_wy_repr_bwd_da,
+        npu_prepare_wy_repr_bwd_full,
+        npu_recompute_w_u_fwd,
+    )
 except ModuleNotFoundError:
     fla_npu = None
 
@@ -75,11 +85,11 @@ def flash_chunk_gated_delta_rule_fwd(
     else:
         chunk_indices = None
 
-    w, u = torch.ops.npu.npu_recompute_w_u_fwd(
+    w, u = npu_recompute_w_u_fwd(
         k, v, beta, A, chunk_size, g=g, gk=None, cu_seqlens=cu_seqlens1, chunk_indices=chunk_indices
     )
 
-    h, v_new, final_state = torch.ops.npu.npu_chunk_gated_delta_rule_fwd_h(
+    h, v_new, final_state = npu_chunk_gated_delta_rule_fwd_h(
         k,
         w,
         u,
@@ -91,7 +101,7 @@ def flash_chunk_gated_delta_rule_fwd(
         chunk_size=chunk_size,
     )
 
-    o = torch.ops.npu.npu_chunk_fwd_o(
+    o = npu_chunk_fwd_o(
         q, k, v_new, h, scale, g=g, cu_seqlens=cu_seqlens1, chunk_indices=chunk_indices, chunk_size=chunk_size
     )
 
@@ -128,11 +138,11 @@ def flash_chunk_gated_delta_rule_bwd(
     else:
         chunk_indices = None
 
-    w, u = torch.ops.npu.npu_recompute_w_u_fwd(
+    w, u = npu_recompute_w_u_fwd(
         k, v, beta, A, chunk_size, g=g, gk=None, cu_seqlens=cu_seqlens1, chunk_indices=chunk_indices
     )
 
-    h, v_new, final_state = torch.ops.npu.npu_chunk_gated_delta_rule_fwd_h(
+    h, v_new, final_state = npu_chunk_gated_delta_rule_fwd_h(
         k,
         w,
         u,
@@ -145,7 +155,7 @@ def flash_chunk_gated_delta_rule_bwd(
         chunk_size=chunk_size,
     )
 
-    dv = torch.ops.npu.npu_chunk_bwd_dv_local(
+    dv = npu_chunk_bwd_dv_local(
         q,
         k,
         do,
@@ -158,7 +168,7 @@ def flash_chunk_gated_delta_rule_bwd(
         chunk_size=chunk_size,
     )
 
-    dh, dh0, dv = torch.ops.npu.npu_chunk_gated_delta_rule_bwd_dhu(
+    dh, dh0, dv = npu_chunk_gated_delta_rule_bwd_dhu(
         q,
         k,
         w,
@@ -174,18 +184,18 @@ def flash_chunk_gated_delta_rule_bwd(
         chunk_size=chunk_size,
     )
 
-    dq, dk, dw, dg = torch.ops.npu.npu_chunk_bwd_dqkwg(
+    dq, dk, dw, dg = npu_chunk_bwd_dqkwg(
         q, k, v_new, g, h, do, dh, dv, chunk_size, chunk_indices=chunk_indices, scale=scale, cu_seqlens=cu_seqlens1
     )
     dq = dq.transpose(1, 2).contiguous()
     dk = dk.transpose(1, 2).contiguous()
     dg = dg.transpose(1, 2).contiguous()
 
-    dA = torch.ops.npu.npu_prepare_wy_repr_bwd_da(
+    dA = npu_prepare_wy_repr_bwd_da(
         k, v, beta, A, dw, dv, g, cu_seqlens=cu_seqlens1, chunk_indices=chunk_indices, chunk_size=chunk_size
     )
 
-    dk2, dv, db, dg2 = torch.ops.npu.npu_prepare_wy_repr_bwd_full(
+    dk2, dv, db, dg2 = npu_prepare_wy_repr_bwd_full(
         k,
         v,
         beta,

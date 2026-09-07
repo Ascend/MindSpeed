@@ -3,6 +3,7 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
+from fla_npu.ops.ascendc import npu_causal_conv1d, npu_causal_conv1d_bwd
 
 
 def _activation_mode(activation: Optional[str]) -> int:
@@ -126,7 +127,7 @@ class _NpuCausalConv1dFunction(torch.autograd.Function):
 
         if query_start_loc is None:
             conv_states = _to_npu_conv_state(None, batch, width, dim, x)
-            out = torch.ops.npu.npu_causal_conv1d(
+            out = npu_causal_conv1d(
                 x=x,
                 weight=weight_npu,
                 bias=bias,
@@ -139,7 +140,7 @@ class _NpuCausalConv1dFunction(torch.autograd.Function):
             x_packed = x.squeeze(0).contiguous()
             num_seqs = len(query_start_loc) - 1
             conv_states = _to_npu_conv_state(None, num_seqs, width, dim, x)
-            out = torch.ops.npu.npu_causal_conv1d(
+            out = npu_causal_conv1d(
                 x=x_packed,
                 weight=weight_npu,
                 bias=bias,
@@ -161,33 +162,58 @@ class _NpuCausalConv1dFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_out: torch.Tensor):
         x, weight = ctx.saved_tensors
-        bias = ctx.bias
+        weight_npu = weight.transpose(0, 1).contiguous()
+        width = weight_npu.shape[0]
+        activation_mode = _activation_mode(ctx.activation)
+        query_start_loc = ctx.query_start_loc
 
-        with torch.enable_grad():
-            x_ = x.detach().requires_grad_(True)
-            weight_ = weight.detach().requires_grad_(True)
-            bias_ = bias.detach().requires_grad_(True) if bias is not None else None
-            out = _torch_causal_conv1d(
-                x_,
-                weight_,
-                bias_,
-                ctx.activation,
-                ctx.query_start_loc,
-                has_initial_state=False,
-            )
-            grad_inputs = (x_, weight_, bias_) if bias_ is not None else (x_, weight_)
-            grads = torch.autograd.grad(
-                out,
-                grad_inputs,
-                grad_out,
-                allow_unused=False,
-            )
-
-        if bias is None:
-            grad_x, grad_weight = grads
-            grad_bias = None
+        if query_start_loc is None:
+            op_x = x.contiguous()
+            op_grad_out = grad_out.contiguous()
+            num_seqs = x.shape[0]
+            input_layout = "BSH"
         else:
-            grad_x, grad_weight, grad_bias = grads
+            op_x = x.squeeze(0).contiguous()
+            op_grad_out = grad_out.squeeze(0).contiguous()
+            num_seqs = len(query_start_loc) - 1
+            input_layout = "TND"
+
+        preactivation = None
+        if activation_mode != 0:
+            conv_states = _to_npu_conv_state(None, num_seqs, width, x.shape[-1], x)
+            forward_kwargs = {
+                "x": op_x,
+                "weight": weight_npu,
+                "bias": ctx.bias,
+                "conv_states": conv_states,
+                "activation_mode": 0,
+                "pad_slot_id": -1,
+                "run_mode": 0,
+            }
+            if query_start_loc is not None:
+                forward_kwargs.update(
+                    query_start_loc=query_start_loc,
+                    cache_indices=list(range(num_seqs)),
+                    initial_state_mode=[0] * num_seqs,
+                )
+            preactivation = npu_causal_conv1d(**forward_kwargs)
+
+        grad_x, grad_weight, grad_bias, _ = npu_causal_conv1d_bwd(
+            x=op_x,
+            y=preactivation,
+            weight=weight_npu,
+            dy=op_grad_out,
+            initial_state=None,
+            dht=None,
+            query_start_loc=query_start_loc,
+            activation=activation_mode,
+            input_layout=input_layout,
+        )
+        if query_start_loc is not None:
+            grad_x = grad_x.unsqueeze(0)
+        grad_weight = grad_weight.transpose(0, 1).contiguous()
+        if ctx.bias is None:
+            grad_bias = None
 
         return grad_x, grad_weight, grad_bias, None, None
 
@@ -225,7 +251,7 @@ def causal_conv1d(
             return out, None
 
         conv_states = _to_npu_conv_state(initial_state, batch, width, dim, x)
-        out = torch.ops.npu.npu_causal_conv1d(
+        out = npu_causal_conv1d(
             x=x,
             weight=weight_npu,
             bias=bias,
@@ -248,7 +274,7 @@ def causal_conv1d(
         return out, None
 
     conv_states = _to_npu_conv_state(initial_state, num_seqs, width, dim, x)
-    out = torch.ops.npu.npu_causal_conv1d(
+    out = npu_causal_conv1d(
         x=x_packed,
         weight=weight_npu,
         bias=bias,
