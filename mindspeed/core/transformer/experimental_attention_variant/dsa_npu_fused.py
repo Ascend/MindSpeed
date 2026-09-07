@@ -1,14 +1,16 @@
 # Copyright (c) 2024, Huawei Technologies Co., Ltd.
 #
-# DSA NPU fused operators (P1+P2+P3).
+# DSA NPU fused operators (P1 and the P1+P2+P3 bundle).
 #
 # Aligns with MindSpeed 0.16 dsa_fused.py's tightly-coupled design:
 #   P2 (forward_with_scores) returns 4-tuple (topk_indices, q, k, weights)
 #   P1 (fused_npu_sparse_flash_attention) returns (output, softmax_max, softmax_sum)
 #   P3 (fused_compute_dsa_indexer_kl_loss) reuses P1+P2 precomputed results
 #
-# P1+P2+P3 are tightly coupled: P2's raw NPU op has no autograd (backward is
-# handled by P3's LILossTrain), so they must be enabled together.
+# P1 can use Megatron's native indexer and KL loss on unpacked, non-CP inputs.
+# P2's raw NPU op has no autograd (backward is handled by P3's LILossTrain), so
+# P2 and P3 remain coupled and are enabled only as part of the complete
+# P1+P2+P3 bundle.
 #
 # Reference: MindSpeed 0.16 core_r0.16.0 dsa_fused.py
 
@@ -552,16 +554,14 @@ def fused_dsa_attn_forward(
 ):
     """P1: Replace DSAttention.forward with NPU fused path.
 
-    Integrates P2 (fused lightning indexer) and P3 (fused KL loss) in a
-    tightly-coupled design:
-      1. P2: forward_with_scores(use_fused_lightning_indexer=True)
-         -> (topk_indices, query_index, key_index, weights)
-      2. P1: fused_npu_sparse_flash_attention
-         -> (output, softmax_max, softmax_sum)
-      3. P3: fused_compute_dsa_indexer_kl_loss reuses P1+P2 precomputed results
+    Supports two fused-operator paths:
+      1. P1-only uses Megatron's native indexer and native KL loss.
+      2. P1+P2+P3 uses the fused indexer and KL loss, with P3 reusing P1's
+         softmax statistics and P2's precomputed query/key/weights.
 
-    Training and inference share the same P2 path; P3 only runs in training.
-    When use_fused_lightning_indexer is off, falls back to native indexer path.
+    P1-only is limited to unpacked inputs with context-parallel size one.
+    Training and inference share the same indexer selection; P3 runs only in
+    training.
     """
     from mindspeed.args_utils import get_full_args
 
@@ -592,6 +592,12 @@ def fused_dsa_attn_forward(
         index_scores = None
     else:
         # Native fallback: build float mask and call original forward_with_scores
+        if use_tnd:
+            raise RuntimeError(
+                "DSA P1-only does not support TND/packed sequences because Megatron's "
+                "native DSA indexer does not support packed_seq_params. Enable P2+P3 "
+                "or disable sequence packing."
+            )
         if attn_mask_type is not None:
             if attn_mask_type != AttnMaskType.causal:
                 raise RuntimeError(f"Only causal mask is supported for now, but got attn_mask_type={attn_mask_type}")

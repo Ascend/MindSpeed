@@ -54,18 +54,22 @@ class DeepSeekSparseAttention(MindSpeedFeature):
         if not getattr(args, 'qk_layernorm', False):
             raise AssertionError('Megatron bug: qk_layernorm required for DSA MLA qk norm calculation.')
 
-        # P1+P2+P3 are tightly coupled: P2's raw NPU op has no autograd (backward is
-        # handled by P3's SparseLIGradKlLoss), and P3 reuses P1's softmax stats and
-        # P2's precomputed results. They must be enabled together (or all off).
+        # P1 can run with the native indexer and native KL loss, while P2's raw
+        # NPU op has no autograd and therefore remains coupled to P3. P3 also
+        # reuses P1's softmax statistics, so the supported fused combinations
+        # are P1-only and the complete P1+P2+P3 bundle.
         use_p1 = getattr(args, 'use_fused_sparse_flash_attention', False)
         use_p2 = getattr(args, 'use_fused_lightning_indexer', False)
         use_p3 = getattr(args, 'use_fused_lightning_indexer_kl_loss', False)
-        if (use_p1 or use_p2 or use_p3) and not (use_p1 and use_p2 and use_p3):
+        fused_kernels_enabled = use_p1 or use_p2 or use_p3
+        p1_only = use_p1 and not use_p2 and not use_p3
+        full_fusion = use_p1 and use_p2 and use_p3
+
+        if fused_kernels_enabled and not (p1_only or full_fusion):
             raise AssertionError(
-                "DSA P1+P2+P3 are tightly coupled and must be enabled together: "
-                "--use-fused-sparse-flash-attention (P1), --use-fused-lightning-indexer (P2), "
-                "--use-fused-lightning-indexer-kl-loss (P3). P2 uses a raw NPU op without "
-                "autograd (backward handled by P3), and P3 reuses P1's softmax stats."
+                "DSA fused operators support only P1 by itself or the complete P1+P2+P3 "
+                "bundle. P2 uses a raw NPU op without autograd (backward handled by P3), "
+                "and P3 reuses P1's softmax statistics and P2's precomputed results."
             )
         if use_p3 and getattr(args, 'num_attention_heads', None) not in (32, 64, 128):
             raise AssertionError(
@@ -74,6 +78,13 @@ class DeepSeekSparseAttention(MindSpeedFeature):
                 f"receives the TP-allgathered attention head count as Q_N, but got "
                 f"{getattr(args, 'num_attention_heads', None)}. Disable the fused DSA "
                 "P1/P2/P3 path or use a supported attention-head count."
+            )
+
+        if p1_only and self._get_context_parallel_size(args) > 1:
+            raise AssertionError(
+                "DSA P1-only does not support context parallelism because the native "
+                "indexer produces rank-local top-k indices. Enable P2+P3 or set "
+                "--context-parallel-size 1."
             )
 
         if self._get_context_parallel_size(args) > 1:
@@ -87,15 +98,38 @@ class DeepSeekSparseAttention(MindSpeedFeature):
         """Register all DSA NPU optimization patches.
 
         Patch coupling:
-        - P1+P2+P3 are tightly coupled and registered as a group (when all enabled)
-        - P4 (complex RoPE) and P5 (matrix absorption) are independent
+        - P1 can use the native indexer and native KL loss when enabled by itself
+        - P2+P3 remain coupled and are registered only as part of P1+P2+P3
+        - P4 complex RoPE and P5 matrix absorption are independent
         - Without any NPU flags: pure Megatron native DSA
         """
         import logging
 
         logger = logging.getLogger(__name__)
 
-        # P1+P2+P3: Tightly-coupled NPU fused operators
+        # Megatron core_r0.18.0 rejects DSA + apply_rope_fusion because its
+        # DSAIndexer has no dedicated fused-RoPE path. Backport the semantics
+        # of Megatron e354f1f57 with the Ascend fused RoPE operator. P4 remains
+        # an explicit alternative for the indexer while the main MLA path can
+        # still keep RoPE fusion enabled.
+        if getattr(args, 'apply_rope_fusion', False):
+            from mindspeed.core.transformer.experimental_attention_variant.dsa_rope import (
+                dsa_indexer_apply_rope_wrapper,
+                dsa_transformer_config_post_init_wrapper,
+            )
+
+            patch_manager.register_patch(
+                'megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
+                dsa_transformer_config_post_init_wrapper,
+            )
+            if not getattr(args, 'apply_rope_in_complex', False):
+                patch_manager.register_patch(
+                    'megatron.core.transformer.experimental_attention_variant.dsa.DSAIndexer._apply_rope',
+                    dsa_indexer_apply_rope_wrapper,
+                )
+
+        # P1 may be enabled independently; P2+P3 are installed only for the
+        # complete fused path.
         use_p1 = getattr(args, 'use_fused_sparse_flash_attention', False)
         use_p2 = getattr(args, 'use_fused_lightning_indexer', False)
         use_p3 = getattr(args, 'use_fused_lightning_indexer_kl_loss', False)
@@ -119,7 +153,7 @@ class DeepSeekSparseAttention(MindSpeedFeature):
             megatron_dsa.hadamard_transform = hadamard_transform
             logger.info("DSA: fast_hadamard_transform is unavailable; using MindSpeed torch fallback.")
 
-        if use_p1 and use_p2 and use_p3:
+        if use_p1:
             from megatron.core.transformer.experimental_attention_variant.dsa import (
                 DSAIndexer,
                 DSAttention,
@@ -129,15 +163,17 @@ class DeepSeekSparseAttention(MindSpeedFeature):
             # P1: Replace DSAttention.forward with fused NPU path
             DSAttention.forward = dsa_npu_fused.fused_dsa_attn_forward
 
-            # P2: Replace DSAIndexer.forward_with_scores with NPU fused path
-            # Save original method for fallback (use_fused_lightning_indexer=False path)
-            dsa_npu_fused._original_DSAIndexer_forward_with_scores = DSAIndexer.forward_with_scores
-            DSAIndexer.forward_with_scores = dsa_npu_fused.forward_with_scores
-
-            logger.info(
-                "DSA P1+P2+P3: Tightly-coupled NPU fused operators registered "
-                "(DSAttention.forward + DSAIndexer.forward_with_scores replaced)"
-            )
+            if use_p2 and use_p3:
+                # P2: Replace DSAIndexer.forward_with_scores with NPU fused path.
+                # Save the original method for the wrapper's native fallback.
+                dsa_npu_fused._original_DSAIndexer_forward_with_scores = DSAIndexer.forward_with_scores
+                DSAIndexer.forward_with_scores = dsa_npu_fused.forward_with_scores
+                logger.info(
+                    "DSA P1+P2+P3: fused attention, indexer, and KL loss registered "
+                    "(DSAttention.forward + DSAIndexer.forward_with_scores replaced)"
+                )
+            else:
+                logger.info("DSA P1-only: fused sparse attention registered with native indexer and KL loss")
 
         # P4: Replace DSAIndexer._apply_rope with complex domain RoPE (independent)
         if getattr(args, 'apply_rope_in_complex', False):
