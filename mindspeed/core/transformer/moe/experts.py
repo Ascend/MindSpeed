@@ -122,7 +122,7 @@ def groupedmlp_init_wrapper(fn):
 def groupedmlp_forward(self, permuted_local_hidden_states, tokens_per_expert, permuted_probs):
     args = get_args()
     is_recompute_activation = (
-        should_recompute_activation(self.layer_number)
+        should_recompute_activation(self.layer_number, vp_stage=getattr(self, "vp_stage", None))
         and not args.moe_alltoall_overlap_comm
         and not args.moe_allgather_overlap_comm
     )

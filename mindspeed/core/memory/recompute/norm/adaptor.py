@@ -133,11 +133,19 @@ def _discard_output_and_register_recompute(checkpoint_manager, hook_output):
 def norm_recompute_layer_init_wrapper(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
+        vp_stage = kwargs.get("vp_stage")
+        if vp_stage is None and len(args) > 5:
+            vp_stage = args[5]
         fn(self, *args, **kwargs)
+        self.vp_stage = vp_stage
 
         self.mindspeed_recompute_fused_input_layernorm = False
         self.mindspeed_recompute_fused_pre_mlp_layernorm = False
-        if not should_recompute_norm(getattr(self, "layer_number", None), self.config):
+        if not should_recompute_norm(
+            getattr(self, "layer_number", None),
+            self.config,
+            vp_stage=vp_stage,
+        ):
             return
 
         if isinstance(self.input_layernorm, IdentityOp):

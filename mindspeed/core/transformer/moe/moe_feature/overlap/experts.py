@@ -97,7 +97,16 @@ class OverLapGmmExpertsImpl:
                 permuted_local_hidden_states,
                 w1,
                 w2,
-                (self.weight1, self.weight2, self.activation_func, group_list, self.layer_number, self.config),
+                (
+                    self.weight1,
+                    self.weight2,
+                    self.activation_func,
+                    group_list,
+                    self.layer_number,
+                    self.config,
+                    getattr(self, "vp_stage", None),
+                    getattr(self, "is_mtp_layer", False),
+                ),
             )
 
 
@@ -203,8 +212,12 @@ class AlltoAllOverLapGmmExpertsImpl(TEGroupedMLP):
                 fc2_input = fc2_input.to(original_dtype)
             return fc2_input
 
-        is_recompute_activation = self.config.moe_zero_memory == "level0" or should_recompute_activation(
-            self.layer_number
+        is_recompute_activation = self.config.moe_zero_memory == "level0" or (
+            not getattr(self, "is_mtp_layer", False)
+            and should_recompute_activation(
+                self.layer_number,
+                vp_stage=getattr(self, "vp_stage", None),
+            )
         )
         if is_recompute_activation:
             activation_checkpoint = CheckpointWithoutOutput()

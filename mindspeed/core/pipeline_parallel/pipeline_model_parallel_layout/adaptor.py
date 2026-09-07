@@ -3,7 +3,7 @@
 
 from functools import wraps
 
-from .layout import LayerType, PipelineParallelLayerLayout
+from .layout import PipelineParallelLayerLayout
 
 
 def _get_layout(config):
@@ -17,7 +17,12 @@ def get_num_layers_to_build_wrapper(fn):
     def wrapper(config, *args, **kwargs):
         layout = _get_layout(config)
         if layout is not None:
-            return layout.get_num_layers_to_build(layer_type=LayerType.decoder)
+            vp_stage = kwargs.get("vp_stage", args[0] if args else None)
+            pp_rank = kwargs.get("pp_rank", args[1] if len(args) > 1 else None)
+            return layout.get_num_layers_to_build(
+                vp_stage=vp_stage,
+                pp_rank=pp_rank,
+            )
         return fn(config, *args, **kwargs)
 
     return wrapper
@@ -30,7 +35,12 @@ def get_transformer_layer_offset_wrapper(fn):
     def wrapper(config, *args, **kwargs):
         layout = _get_layout(config)
         if layout is not None:
-            return layout.get_layer_offset(layer_type=LayerType.decoder)
+            vp_stage = kwargs.get("vp_stage", args[0] if args else None)
+            pp_rank = kwargs.get("pp_rank", args[1] if len(args) > 1 else None)
+            return layout.get_layer_offset(
+                vp_stage=vp_stage,
+                pp_rank=pp_rank,
+            )
         return fn(config, *args, **kwargs)
 
     return wrapper
@@ -74,11 +84,6 @@ def apply_pipeline_model_parallel_layout_to_config(config):
         config.pipeline_model_parallel_layout = PipelineParallelLayerLayout(
             layout=config.pipeline_model_parallel_layout,
             pipeline_model_parallel_size=config.pipeline_model_parallel_size,
-        )
-    elif not isinstance(config.pipeline_model_parallel_layout, PipelineParallelLayerLayout):
-        raise TypeError(
-            "pipeline_model_parallel_layout must be a str, list, or "
-            f"PipelineParallelLayerLayout, but got {type(config.pipeline_model_parallel_layout)}"
         )
 
     # Check whether the input VPP size conflicts with the PP layout.

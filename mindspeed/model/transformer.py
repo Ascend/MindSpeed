@@ -17,9 +17,9 @@
 import warnings
 
 import torch
-from megatron.core import mpu
 from megatron.core.transformer.module import MegatronModule
 from mindspeed.args_utils import get_full_args as get_args
+from mindspeed.core.memory.recompute.recompute_common import get_recompute_priority
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 try:
@@ -108,23 +108,12 @@ def get_attention_mask():
     return _GLOBAL_ATTN_MASK
 
 
-def should_recompute(args, layer_number, num_recompute):
-    vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
-    vpp_size = args.virtual_pipeline_model_parallel_size
-    pp_size = args.pipeline_model_parallel_size
-
-    if vpp_size is not None:
-        layer_per_chunk = args.num_layers_per_virtual_pipeline_stage
-    elif pp_size is not None:
-        layer_per_chunk = args.num_layers // pp_size
+def should_recompute(args, layer_number, num_recompute, vp_stage=None):
+    if args.enable_recompute_layers_per_pp_rank:
+        recompute_priority = get_recompute_priority(args, layer_number, vp_stage=vp_stage)
     else:
-        layer_per_chunk = args.num_layers
-
-    if vpp_rank is None or not args.enable_recompute_layers_per_pp_rank:
-        vpp_rank = 0
-    if vpp_size is None or not args.enable_recompute_layers_per_pp_rank:
-        vpp_size = 1
-    recompute_priority = ((layer_number - 1) % layer_per_chunk) * vpp_size + vpp_rank
+        vpp_size = args.virtual_pipeline_model_parallel_size or 1
+        recompute_priority = get_recompute_priority(args, layer_number, vp_stage=vp_stage) // vpp_size
     full_recompute_layers = args.recompute_num_layers
 
     if full_recompute_layers:
@@ -144,7 +133,7 @@ def should_recompute(args, layer_number, num_recompute):
         return recompute_priority < num_recompute
 
 
-def should_recompute_activation(layer_number):
+def should_recompute_activation(layer_number, vp_stage=None):
     args = get_args()
     if not args.recompute_activation_function or layer_number is None:
         return False
@@ -163,11 +152,21 @@ def should_recompute_activation(layer_number):
             raise AssertionError(
                 '--recompute-activation-function-num-layers cannot be greater than the number of layers.'
             )
-    return should_recompute(args, layer_number, args.recompute_activation_function_num_layers)
+    return should_recompute(
+        args,
+        layer_number,
+        args.recompute_activation_function_num_layers,
+        vp_stage=vp_stage,
+    )
 
 
-def should_recompute_norm(self):
+def should_recompute_norm(self, vp_stage=None):
     args = get_args()
     if not args.recompute_norm or self.layer_number is None:
         return False
-    return should_recompute(args, self.layer_number, args.recompute_norm_num_layers)
+    return should_recompute(
+        args,
+        self.layer_number,
+        args.recompute_norm_num_layers,
+        vp_stage=vp_stage,
+    )

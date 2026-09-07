@@ -18,7 +18,16 @@ from mindspeed.model.transformer import should_recompute_activation
 class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inputs, weights1, weights2, args):
-        original_weight1, original_weight2, activation_func, group_list, layer_number, config = args
+        (
+            original_weight1,
+            original_weight2,
+            activation_func,
+            group_list,
+            layer_number,
+            config,
+            vp_stage,
+            is_mtp_layer,
+        ) = args
         ctx.config = config
         use_gmm = inputs.nelement() != 0
         ctx.use_gmm = use_gmm
@@ -39,10 +48,13 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
             mm2_out = gmm_cls.op_forward(ctx.gmm_ctx_2, act_out, weights2, group_list)[0]
         else:
             mm2_out = torch.matmul(act_out, weights2)
-        if should_recompute_activation(layer_number):
+        ctx.recompute_activation = not is_mtp_layer and should_recompute_activation(
+            layer_number,
+            vp_stage=vp_stage,
+        )
+        if ctx.recompute_activation:
             act_out.untyped_storage().resize_(0)
             ctx.activation_func = activation_func
-        ctx.layer_number = layer_number
         ctx.save_for_backward(
             detached_act_inputs, act_out, weights1, weights2, original_weight1, original_weight2, group_list
         )
@@ -51,7 +63,6 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *grad_outs):
         grad_outs = grad_outs[0]
-        layer_number = ctx.layer_number
         config = ctx.config
         # pylint: disable=unpacking-non-sequence
         act_inputs, act_graph, weights1, weights2, original_weight1, original_weight2, group_list = ctx.saved_tensors
@@ -64,7 +75,7 @@ class GroupedMlpWithCompAndCommOverlapAllGather(torch.autograd.Function):
             grad_mm2_inputs = gmm_cls.op_dx(ctx.gmm_ctx_2, grad_outs, weights2, group_list)[0]
         else:
             grad_mm2_inputs = torch.matmul(grad_outs, weights2.t())
-        if should_recompute_activation(layer_number):
+        if ctx.recompute_activation:
             activation_func = ctx.activation_func
             act_out = activation_func(act_inputs)
             mm2_inputs = act_out

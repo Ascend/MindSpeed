@@ -459,11 +459,13 @@ def test_track_mode_metrics_impl(mocker: MockFixture):
 def test_build_layers_impl(mocker: MockFixture):
     class MockTransformer:
         def __init__(self):
-            self.config = Namespace(noop_layers={1, 2})
+            self.config = Namespace(noop_layers={5, 6})
             self.submodules = Namespace(
                 layer_specs=[None, None, None],
                 layer_norm=True,
             )
+            self.vp_stage = 1
+            self.pg_collection = Namespace(pp=object())
             self.layers = None
             self.post_process = False
             self.post_layer_norm = False
@@ -471,16 +473,31 @@ def test_build_layers_impl(mocker: MockFixture):
 
     transformer = MockTransformer()
     noop_transformer = NoopTransformerLayer
+    build_calls = []
 
     def build_module(x, **kwargs):
+        build_calls.append(kwargs)
         return x
 
     mocker.patch(
-        "mindspeed.core.pipeline_parallel.noop_layers.transformer._get_layer_offset",
-        return_value=0,
+        "mindspeed.core.pipeline_parallel.noop_layers.transformer.get_pg_rank",
+        return_value=1,
+    )
+    get_offset = mocker.patch(
+        "mindspeed.core.pipeline_parallel.noop_layers.transformer.transformer_layer.get_transformer_layer_offset",
+        return_value=4,
     )
 
     build_layers_impl(transformer, noop_transformer, build_module)
 
     assert isinstance(transformer.layers[1], NoopTransformerLayer)
     assert isinstance(transformer.layers[2], NoopTransformerLayer)
+    get_offset.assert_called_once_with(transformer.config, 1, 1)
+    assert build_calls == [
+        {
+            "config": transformer.config,
+            "layer_number": 1,
+            "pg_collection": transformer.pg_collection,
+            "vp_stage": 1,
+        }
+    ]

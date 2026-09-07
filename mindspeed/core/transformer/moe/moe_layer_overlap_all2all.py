@@ -31,7 +31,10 @@ class MoELayerOverlapAll2All(torch.autograd.Function):
         ctx.input_shape = hidden_states.shape
         hidden_states = hidden_states.detach()
         hidden_states.requires_grad = True
-        ctx.is_only_recompute_activation = only_recompute_activation(moe_layer.layer_number)
+        ctx.is_only_recompute_activation = only_recompute_activation(
+            moe_layer.layer_number,
+            vp_stage=getattr(moe_layer, "vp_stage", None),
+        )
 
         # router
         with torch.enable_grad():

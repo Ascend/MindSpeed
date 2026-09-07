@@ -117,7 +117,10 @@ class MindSpeedFbOverlapGmmExperts(TEGroupedMLP):
                 "moe-zero-memory=disable or level0, but not level1."
             )
 
-        is_recompute_activation = args.moe_zero_memory == "level0" or should_recompute_activation(self.layer_number)
+        is_recompute_activation = args.moe_zero_memory == "level0" or should_recompute_activation(
+            self.layer_number,
+            vp_stage=getattr(self, "vp_stage", None),
+        )
         group_metadata = self.linear_fc1.make_grouped_linear_metadata(tokens_per_expert)
         if permuted_probs is None:
             raise RuntimeError("FB-overlap TE grouped experts require permuted_probs.")

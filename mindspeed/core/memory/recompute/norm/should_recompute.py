@@ -3,7 +3,7 @@ from mindspeed.core.memory.recompute.recompute_common import should_recompute
 from mindspeed.core.pipeline_parallel.ripipe_schedules import get_pipeline_checkpoint_manager
 
 
-def should_recompute_norm(layer_number, config):
+def should_recompute_norm(layer_number, config, vp_stage=None):
     if not config.recompute_norm or layer_number is None:
         return False
 
@@ -13,5 +13,5 @@ def should_recompute_norm(layer_number, config):
             return False
         elif config.recompute_in_bubble:
             return True
-    
-    return should_recompute(config, layer_number, config.recompute_norm_num_layers)
+
+    return should_recompute(config, layer_number, config.recompute_norm_num_layers, vp_stage=vp_stage)

@@ -151,7 +151,9 @@ def core_mlp_forward_wrapper(fn):
             args[0] = activation_func_1(args[0])
 
         self.layer_number = getattr(self, "layer_number", None)
-        is_recompute_activation = should_recompute_activation(self.layer_number)
+        is_recompute_activation = not getattr(self, "is_mtp_layer", False) and should_recompute_activation(
+            self.layer_number, vp_stage=getattr(self, "vp_stage", None)
+        )
         if self.config.moe_alltoall_overlap_comm and not isinstance(args[-1], torch.Tensor):
             moe_ctx = args[-1]
             args = args[:-1]
@@ -226,10 +228,21 @@ def parallel_transformer_layer_init_wrapper(fn):
         from megatron.core.transformer.moe.moe_layer import MoELayer
 
         if self.config.moe_alltoall_overlap_comm or self.config.moe_allgather_overlap_comm:
+            vp_stage = kwargs.get("vp_stage")
+            if vp_stage is None and len(args) > 5:
+                vp_stage = args[5]
+            is_mtp_layer = getattr(self, "is_mtp_layer", False)
+            self.vp_stage = vp_stage
+            self.mlp.vp_stage = vp_stage
+            self.mlp.is_mtp_layer = is_mtp_layer
             if self.mlp.__class__ is MoELayer:
                 self.mlp.experts.layer_number = self.layer_number
+                self.mlp.experts.vp_stage = vp_stage
+                self.mlp.experts.is_mtp_layer = is_mtp_layer
                 if self.config.moe_shared_expert_intermediate_size or self.config.n_shared_experts:
                     self.mlp.shared_experts.layer_number = self.layer_number
+                    self.mlp.shared_experts.vp_stage = vp_stage
+                    self.mlp.shared_experts.is_mtp_layer = is_mtp_layer
             else:
                 self.mlp.layer_number = self.layer_number
 

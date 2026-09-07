@@ -199,7 +199,7 @@ def transformer_block_checkpointed_forward(
             for layer_idx in range(self.num_layers_per_pipeline_rank):
                 run_chunk(layer_idx, layer_idx + 1, False)
     elif self.config.recompute_method == 'block':
-        vpp_rank = mpu.get_virtual_pipeline_model_parallel_rank()
+        vpp_rank = self.vp_stage
         vpp_size = self.config.virtual_pipeline_model_parallel_size
         if vpp_rank is None or not getattr(self.config, 'enable_recompute_layers_per_pp_rank', False):
             vpp_rank = 0
@@ -221,7 +221,10 @@ def transformer_block_checkpointed_forward(
                 if getattr(self.config, 'reduce_recompute_for_last_chunk', False):
 
                     def is_last_layer():
-                        return (layer_idx == self.num_layers_per_pipeline_rank - 1) and mpu.is_pipeline_last_stage()
+                        return layer_idx == self.num_layers_per_pipeline_rank - 1 and mpu.is_pipeline_last_stage(
+                            ignore_virtual=False,
+                            vp_stage=self.vp_stage,
+                        )
 
                     return (
                         (layer_idx * vpp_size + vpp_rank) < self.config.recompute_num_layers

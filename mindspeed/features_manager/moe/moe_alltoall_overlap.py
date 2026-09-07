@@ -207,6 +207,15 @@ class MoEAlltoAllOverLapFeature(MindSpeedFeature):
                 '`--moe-alltoall-overlap-comm` only support with `--moe-token-dispatcher-type alltoall` or `--moe-token-dispatcher-type alltoall_seq`.'
             )
         if args.moe_alltoall_overlap_comm:
+            if (
+                args.moe_token_dispatcher_type == 'alltoall'  # nosec B105
+                and getattr(args, 'hybrid_layer_pattern', None) is not None
+                and getattr(args, 'recompute_activation_function', False)
+            ):
+                raise AssertionError(
+                    '`--moe-alltoall-overlap-comm` does not support selective activation recompute '
+                    'with `--hybrid-layer-pattern`; hybrid layer numbering cannot identify the VPP chunk reliably.'
+                )
             if args.expert_model_parallel_size == 1:
                 raise AssertionError(
                     '`--moe-alltoall-overlap-comm` only support with `--expert-model-parallel-size` > 1.'

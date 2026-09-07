@@ -61,7 +61,7 @@ class GmmExpertsMC2Impl:
 
         """
         is_recompute_activation = (
-            should_recompute_activation(self.layer_number)
+            should_recompute_activation(self.layer_number, vp_stage=getattr(self, "vp_stage", None))
             and not self.config.moe_alltoall_overlap_comm
             and not self.config.moe_allgather_overlap_comm
         )

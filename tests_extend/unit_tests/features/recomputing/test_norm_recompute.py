@@ -57,13 +57,22 @@ def test_norm_recompute_layer_init_uses_native_megatron_flags(monkeypatch):
         recompute_input_layernorm=False,
         recompute_pre_mlp_layernorm=False,
     )
+    received_vp_stages = []
+
+    def should_recompute_norm(layer_number, config, vp_stage=None):
+        del layer_number, config
+        received_vp_stages.append(vp_stage)
+        return True
+
     monkeypatch.setattr(
         "mindspeed.core.memory.recompute.norm.adaptor.should_recompute_norm",
-        lambda layer_number, config: True,
+        should_recompute_norm,
     )
 
-    norm_recompute_layer_init_wrapper(lambda self: None)(layer)
+    norm_recompute_layer_init_wrapper(lambda self, vp_stage=None: None)(layer, vp_stage=1)
 
+    assert layer.vp_stage == 1
+    assert received_vp_stages == [1]
     assert layer.recompute_input_layernorm
     assert layer.recompute_pre_mlp_layernorm
     assert not layer.mindspeed_recompute_fused_input_layernorm
@@ -88,7 +97,7 @@ def test_norm_recompute_layer_init_marks_transformer_engine_fused_norms(monkeypa
     )
     monkeypatch.setattr(
         "mindspeed.core.memory.recompute.norm.adaptor.should_recompute_norm",
-        lambda layer_number, config: True,
+        lambda layer_number, config, vp_stage=None: True,
     )
 
     norm_recompute_layer_init_wrapper(lambda self: None)(layer)
@@ -130,7 +139,7 @@ def test_norm_recompute_layer_init_splits_te_modules_without_legacy_recompute_ap
 
     monkeypatch.setattr(
         "mindspeed.core.memory.recompute.norm.adaptor.should_recompute_norm",
-        lambda layer_number, config: True,
+        lambda layer_number, config, vp_stage=None: True,
     )
     monkeypatch.setattr(
         "mindspeed.core.memory.recompute.norm.adaptor._split_fused_norm_linear",

@@ -15,14 +15,25 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
 
     @staticmethod
     def _get_pipeline_model_parallel_layout_stage_count(layout):
-        layout = layout.replace(',', '')
-        patterns = [
-            r"\(([^)]+)\)\*(\d+)",
-            r"(.)\*(\d+)",
-        ]
-        for pattern in patterns:
-            layout = re.sub(pattern, lambda x: x.group(1) * int(x.group(2)), layout)
-        return len(layout.split('|'))
+        if isinstance(layout, str):
+            layout = layout.replace(',', '')
+            patterns = [
+                r"\(([^)]+)\)\*(\d+)",
+                r"(.)\*(\d+)",
+            ]
+            for pattern in patterns:
+                layout = re.sub(pattern, lambda x: x.group(1) * int(x.group(2)), layout)
+            return len(layout.split('|'))
+
+        parsed_layout = getattr(layout, 'layout', None)
+        if parsed_layout is not None:
+            return sum(len(pp_layout) for pp_layout in parsed_layout)
+        if isinstance(layout, (list, tuple)):
+            return len(layout)
+        raise TypeError(
+            'pipeline_model_parallel_layout must be a layout string, a stage list, '
+            'or a parsed PipelineParallelLayerLayout object.'
+        )
 
     @staticmethod
     def _has_virtual_pipeline(args):
@@ -46,19 +57,17 @@ class MoEFwdBwdOverlapFeature(MindSpeedFeature):
                 '--noop-layers is not supported with --pipeline-model-parallel-layout and --moe-fb-overlap now.'
             )
 
-        from mindspeed.core.pipeline_parallel.pipeline_model_parallel_layout.adaptor import LayerType
-        from mindspeed.core.pipeline_parallel.pipeline_model_parallel_layout.layout import (
-            PipelineParallelLayerLayout,
-        )
+        layout = args.pipeline_model_parallel_layout
+        if not hasattr(layout, 'layout'):
+            from mindspeed.core.pipeline_parallel.pipeline_model_parallel_layout.layout import (
+                PipelineParallelLayerLayout,
+            )
 
-        layout = PipelineParallelLayerLayout(
-            args.pipeline_model_parallel_layout,
-            args.pipeline_model_parallel_size,
-        )
+            layout = PipelineParallelLayerLayout(layout, args.pipeline_model_parallel_size)
         empty_decoder_chunks = []
         for pp_rank, pp_layout in enumerate(layout.layout):
             for vpp_rank, chunk in enumerate(pp_layout):
-                if chunk.count(LayerType.decoder) == 0:
+                if not any(getattr(layer_type, 'name', None) == 'decoder' for layer_type in chunk):
                     empty_decoder_chunks.append(f'pp_rank={pp_rank}, vpp_rank={vpp_rank}')
 
         if empty_decoder_chunks:

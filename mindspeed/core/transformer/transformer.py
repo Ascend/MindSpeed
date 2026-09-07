@@ -26,16 +26,24 @@ def parallel_transformer_layer_init_wrapper(fn):
         from megatron.core.transformer.moe.experts import SequentialMLP
         from mindspeed.core.transformer.moe.grouped_mlp import GroupedMLP
 
+        vp_stage = kwargs.get("vp_stage")
+        if vp_stage is None and len(args) > 5:
+            vp_stage = args[5]
         fn(self, *args, **kwargs)
+        self.vp_stage = vp_stage
+        self.mlp.vp_stage = vp_stage
         if self.mlp.__class__ is MoELayer:
             if isinstance(self.mlp.experts, GroupedMLP):
                 self.mlp.experts.layer_number = self.layer_number
+                self.mlp.experts.vp_stage = vp_stage
             if self.mlp.experts.__class__ is SequentialMLP:
                 for expert in self.mlp.experts.local_experts:
                     expert.layer_number = self.layer_number
+                    expert.vp_stage = vp_stage
             global_args = get_args()
             if global_args.n_shared_experts:
                 self.mlp.shared_experts.layer_number = self.layer_number
+                self.mlp.shared_experts.vp_stage = vp_stage
         else:
             self.mlp.layer_number = self.layer_number
 
@@ -183,7 +191,10 @@ def core_mlp_forward_wrapper(fn):
             args[0] = activation_func_1(args[0])
 
         self.layer_number = getattr(self, "layer_number", None)
-        is_recompute_activation = should_recompute_activation(self.layer_number)
+        is_recompute_activation = should_recompute_activation(
+            self.layer_number,
+            vp_stage=getattr(self, "vp_stage", None),
+        )
         moe_ctx = None
         if get_args().moe_alltoall_overlap_comm and not isinstance(args[-1], torch.Tensor):
             moe_ctx = args[-1]
@@ -212,7 +223,10 @@ def core_mlp_forward_wrapper(fn):
         elif (
             moe_zero_memory == "level1"
             and not get_args().moe_fb_overlap
-            and not only_recompute_activation(self.layer_number)
+            and not only_recompute_activation(
+                self.layer_number,
+                vp_stage=getattr(self, "vp_stage", None),
+            )
         ):
             if self.with_shared_expert:
                 self.activation_function = activation_function

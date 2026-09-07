@@ -28,7 +28,11 @@ def core_activation_recompute_forward_impl(
     nvtx_range_pop(suffix="linear_fc1")
 
     self.layer_number = getattr(self, "layer_number", None)
-    is_recompute_activation = should_recompute_activation(self.layer_number, self.config)
+    is_recompute_activation = should_recompute_activation(
+        self.layer_number,
+        self.config,
+        vp_stage=getattr(self, "vp_stage", None),
+    )
 
     def activation_function(*function_args):
         intermediate_parallel, bias_parallel, per_token_scale = function_args
