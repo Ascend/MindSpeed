@@ -3,7 +3,12 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
-from fla_npu.ops.ascendc import npu_causal_conv1d, npu_causal_conv1d_bwd
+
+try:
+    import fla_npu
+    from fla_npu.ops.ascendc import npu_causal_conv1d, npu_causal_conv1d_bwd
+except ModuleNotFoundError:
+    fla_npu = None
 
 
 def _activation_mode(activation: Optional[str]) -> int:
