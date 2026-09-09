@@ -7,6 +7,7 @@ from functools import lru_cache
 import torch
 
 from .._utils import normalize_cu_seqlens
+from ._stride_utils import normalize_dense_strides
 
 
 _CUSTOM_OPS = None
@@ -168,6 +169,10 @@ def npu_lightning_indexer(
         max_seqlen_k = int(seq_k) if max_seqlen_k is None else int(max_seqlen_k)
         batch_for_metadata = int(batch_size)
 
+    query_op = normalize_dense_strides(query_op)
+    key_op = normalize_dense_strides(key_op)
+    weights_op = normalize_dense_strides(weights_op.float())
+
     if cmp_residual_k is None:
         residual_value = int(seq_k) % int(cmp_ratio)
         residual_values = (residual_value,) * int(batch_for_metadata)
@@ -202,7 +207,7 @@ def npu_lightning_indexer(
     indices, values = custom_ops.lightning_indexer(
         query_op,
         key_op,
-        weights_op.float(),
+        weights_op,
         int(topk),
         cu_seqlens_q=cu_q,
         cu_seqlens_k=cu_k,

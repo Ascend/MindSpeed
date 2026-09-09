@@ -4,6 +4,8 @@
 import torch
 import torch.nn.functional as F
 
+from ._stride_utils import normalize_dense_strides
+
 __all__ = [
     "npu_sparse_flash_mla_from_smla_inputs",
     "npu_sparse_flash_mla_with_indexer_loss_from_smla_inputs",
@@ -278,6 +280,9 @@ def npu_sparse_flash_mla_forward(
         layout_q=layout_q,
         layout_kv=layout_kv,
     )
+    q = normalize_dense_strides(q)
+    ori_kv = normalize_dense_strides(ori_kv)
+    cmp_kv = normalize_dense_strides(cmp_kv)
     metadata = _ensure_metadata(
         metadata,
         q,
@@ -357,6 +362,12 @@ def npu_sparse_flash_mla_grad(
     layout_kv="BSND",
 ):
     softmax_scale = _resolve_softmax_scale(softmax_scale)
+    q = normalize_dense_strides(q)
+    dout = normalize_dense_strides(dout)
+    attn_out = normalize_dense_strides(attn_out)
+    softmax_lse = normalize_dense_strides(softmax_lse)
+    ori_kv = normalize_dense_strides(ori_kv)
+    cmp_kv = normalize_dense_strides(cmp_kv)
     op = _load_grad_op()
     return op.npu_sparse_flash_mla_grad(
         q,
@@ -791,6 +802,12 @@ class _SparseFlashMlaWithIndexerLossFunction(torch.autograd.Function):
         )
         if not torch.is_tensor(cmp_softmax_l1) or cmp_softmax_l1.numel() == 0:
             raise RuntimeError("SparseFlashMlaGrad did not return cmp_softmax_l1 for indexer loss.")
+
+        query_index = normalize_dense_strides(query_index)
+        key_index = normalize_dense_strides(key_index)
+        weights = normalize_dense_strides(weights)
+        cmp_sparse_indices = normalize_dense_strides(cmp_sparse_indices)
+        cmp_softmax_l1 = normalize_dense_strides(cmp_softmax_l1)
 
         indexer_op = _load_indexer_loss_grad_op()
         slig_metadata = indexer_op.sparse_lightning_indexer_kl_loss_grad_metadata(
