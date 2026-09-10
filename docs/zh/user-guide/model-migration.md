@@ -63,7 +63,7 @@ NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架�
 
 ## 模型迁移
 
-仅仅一行代码就可以轻松使能`MindSpeed`的各项功能，完成对`Megatron-LM`的模型迁移。
+仅仅一行代码就可以轻松使用`MindSpeed`的各项功能，完成对`Megatron-LM`的模型迁移。
 
  1. 参考[安装指南](../user-guide/install_guide.md)完成基础环境的搭建。
 
@@ -87,9 +87,7 @@ NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架�
 
 ### 环境变量配置
 
-在终端上执行下述命令进行`Ascend`环境变量的配置，
-其中`CANN_INSTALL_PATH`是属于`CANN软件包的安装位置，
-需要根据机器上具体情况进行调整。
+在终端上执行下述命令进行`Ascend`环境变量的配置，其中`CANN_INSTALL_PATH`是CANN软件包的安装位置，需要根据机器上具体情况进行调整。
 
 ```shell
 source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
@@ -97,15 +95,17 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
 ### 数据集准备
 
- 1. 在[gpt-3.5-turbo](https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main)中下载`vocab.json`和`merges.txt`放到`Megatron-LM`仓库根目录下新建的`gpt-tokenizer`目录内，并且分别重命名为`gpt2-vocab.json`和`gpt2-merges.txt`
+ 1. 在[gpt-3.5-turbo](https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main)中下载`vocab.json`和`merges.txt`。将下载的文件放到`Megatron-LM`仓库根目录下新建的`gpt-tokenizer`目录内，并且分别重命名为`gpt2-vocab.json`和`gpt2-merges.txt`。
 
     如果出现下载速度太慢或者无法访问下载的情况，
-    请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
+    请配置可用的访问国外网站的代理或者可用的HuggingFace国内源重试。
+    如无法顺利访问HuggingFace社区下载资源，推荐前往ModelScope下载，需关注待下载文件的正确性与安全性。
 
- 2. 在[huggingface](https://huggingface.co/datasets/tatsu-lab/alpaca)的网站下载Alpaca的train-00000-of-000010-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
+ 2. 在[HuggingFace](https://huggingface.co/datasets/tatsu-lab/alpaca)的网站下载Alpaca的train-00000-of-00001-a09b74b3ef9c3b56.parquet数据集放到服务器任意目录内，示例目录为`/home/datasets/Alpaca`。
 
     如果出现下载速度太慢或者无法访问下载的情况，
-    请配置可用的访问国外网站的代理或者可用的huggingface国内源重试。
+    请配置可用的访问国外网站的代理或者可用的HuggingFace国内源重试。
+    如无法顺利访问HuggingFace社区下载资源，推荐前往ModelScope下载，需关注待下载文件的正确性与安全性。
 
  3. 读取Alpaca数据集parquet格式的原始语料，并将其转换为JSON格式，以便后续处理。
 
@@ -125,7 +125,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     ```python
     import json
     import pandas as pd
-    data_df = pd.read_parquet("train-00000-of-000010-a09b74b3ef9c3b56.parquet")
+    data_df = pd.read_parquet("train-00000-of-00001-a09b74b3ef9c3b56.parquet")
     data_df['text'] = data_df['text'].apply(lambda v: json.dumps({"text": v}))
     with open("alpaca_json.json", encoding='utf-8', mode='w') as f:
         for i, row in data_df.iterrows():
@@ -138,6 +138,8 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
  4. 在`Megatron-LM`仓库根目录下执行如下命令进行数据预处理，将步骤3生成的json格式的数据集转换成`Megatron-LM`识别的数据集格式。
 
     ```shell
+    mkdir -p ./gpt_pretrain_data
+
     python tools/preprocess_data.py \
         --input /home/datasets/Alpaca/alpaca_json.json \
         --output-prefix ./gpt_pretrain_data/alpaca \
@@ -233,22 +235,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
     ![iter_result](../figures/iter_result.png)
 
-    从core_r0.10.0版本开始，
-    `Megatron-LM`和`MindSpeed`大量使用高版本语法的类型注解（Type Annotations），如:
-
-    ```python
-    hierarchical_context_parallel_sizes: Optional[list[int]] = None
-    ```
-
-    因此，若出现以下报错：
-
-    ```python
-    TypeError: 'type' object is not subscriptable.
-    ```
-
-    则需升级python到3.9及以上版本。
-
-   **后续处理**
+    **后续处理**
 
     - `pretrain_single.sh`训练脚本默认配置了模型保存路径，
     如果需要进行模型加载重新训练，
@@ -256,6 +243,21 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
     - 若训练过程中提示部分CUDA接口报错，可能是部分API（算子API或者框架API）不支持引起，
     用户可进入[昇腾MindSpeed开源社区](https://gitcode.com/Ascend/MindSpeed)提出ISSUE求助。
+
+    - 从core_r0.10.0版本开始，
+    `Megatron-LM`和`MindSpeed`大量使用高版本语法的类型注解（Type Annotations），如:
+
+        ```python
+        hierarchical_context_parallel_sizes: Optional[list[int]] = None
+        ```
+
+        因此，若出现以下报错：
+
+        ```python
+        TypeError: 'type' object is not subscriptable.
+        ```
+
+        则需升级Python到3.10及以上版本。
 
 #### 多机多卡训练
 
@@ -407,7 +409,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     TypeError: 'type' object is not subscriptable.
     ```
 
-    则需升级python到3.9及以上版本。
+    则需升级Python到3.9及以上版本。
 
     **后续处理**
 
@@ -502,7 +504,7 @@ GPT_ARGS="
     --use-checkpoint-opt_param-scheduler
 "
 
-#数据集配置
+# 数据集配置
 DATA_ARGS="
     --data-path $DATA_PATH \
     --vocab-file $VOCAB_FILE \

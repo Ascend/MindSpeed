@@ -6,9 +6,9 @@
 
 在长文本场景下，模型训练面临空间和时间复杂度较高的问题。MindSpeed从序列维度出发，实现了多种序列并行方法，解决了序列维度扩展问题。本手册从性能诊断到优化实践，全面指导用户使用MindSpeed进行Megatron性能优化。
 
-## 一、性能诊断方法论
+## 性能诊断方法论
 
-### 1.1 性能指标定义
+### 性能指标定义
 
 性能优化的第一步是理解性能指标。对于一个batch而言，时间主要由以下部分构成：
 
@@ -25,7 +25,7 @@
 - **通信时间**：单节点时卡之间和多节点时节点之间的通信时间。由于PyTorch的特殊机制，在通信和计算可以并行的情况下，表示未被计算掩盖的通信时间。
 - **调度时间**：模型从CPU的指令到调用NPU侧的核（Kernel）所需要的时间。
 
-### 1.2 调优流程
+### 调优流程
 
 性能调优一般遵循以下五步流程：
 
@@ -33,13 +33,13 @@
 采集profiling数据 → 分析算子耗时 → 分析通信耗时 → 分析内存使用 → 选择优化策略
 ```
 
-1. **采集profiling数据**：运行训练脚本并启用profiling功能
-2. **分析算子耗时**：识别耗时最长的算子，定位计算瓶颈
-3. **分析通信耗时**：查看通信时间占比，判断是否存在通信瓶颈
-4. **分析内存使用**：检查显存占用情况，判断是否存在内存瓶颈
-5. **选择优化策略**：根据瓶颈类型选择合适的优化方案
+1. **采集profiling数据**：运行训练脚本并启用profiling功能。
+2. **分析算子耗时**：识别耗时最长的算子，定位计算瓶颈。
+3. **分析通信耗时**：查看通信时间占比，判断是否存在通信瓶颈。
+4. **分析内存使用**：检查显存占用情况，判断是否存在内存瓶颈。
+5. **选择优化策略**：根据瓶颈类型选择合适的优化方案。
 
-### 1.3 性能数据采集
+### 性能数据采集
 
 采集性能数据是分析性能问题、找到性能瓶颈的关键步骤。MindSpeed支持基于昇腾芯片采集profiling数据。
 
@@ -71,7 +71,7 @@ python your_train_script.py \
 | `--profile-record-shapes` | 是否采集计算shape（用于分析显存和计算量） | False |
 | `--profile-save-path` | 采集数据保存路径 | ./profile_dir |
 
-### 1.4 性能分析流程
+### 性能分析流程
 
 采集到性能数据后，可通过[MindStudio Insight](https://www.hiascend.com/document/detail/zh/mindstudio/2600/GUI_baseddevelopmenttool/MindStudioInsight/docs/zh/user_guide/overview.md)对性能数据进行可视化分析，定位性能瓶颈。
 
@@ -88,12 +88,12 @@ MindStudio Insight支持多维度性能分析：
 
 #### 分析流程
 
-1. **数据导入**：将采集到的profiling数据导入MindStudio Insight
-2. **可视化分析**：查看算子耗时分布图、通信时间占比等
-3. **瓶颈定位**：根据分析结果定位性能瓶颈
-4. **优化建议**：根据瓶颈类型选择合适的优化策略
+1. **数据导入**：将采集到的profiling数据导入MindStudio Insight。
+2. **可视化分析**：查看算子耗时分布图、通信时间占比等。
+3. **瓶颈定位**：根据分析结果定位性能瓶颈。
+4. **优化建议**：根据瓶颈类型选择合适的优化策略。
 
-### 1.5 瓶颈类型判断
+### 瓶颈类型判断
 
 根据分析结果，可将性能瓶颈分为以下几类：
 
@@ -104,9 +104,9 @@ MindStudio Insight支持多维度性能分析：
 | **内存瓶颈** | 显存占用接近上限 | 训练过程中出现OOM错误 |
 | **数据加载瓶颈** | 数据加载时间占比高 | 训练过程中GPU/NPU空闲等待数据 |
 
-## 二、序列并行优化方案
+## 序列并行优化方案
 
-### 2.1 Ascend Ulysses长序列并行
+### Ascend Ulysses长序列并行
 
 #### 算法思路
 
@@ -123,9 +123,10 @@ num_head要能被tp_size*cp_size整除。适合head数较多且能被并行维�
 
 具体使用方式参考如下示例：
 
-1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录。
+1. 拷贝`MindSpeed`目录下的`tests_extend`文件夹到`Megatron`目录中，并进入`Megatron`目录。
 
-2. 修改 `tests_extend/system_tests/feature_tests/ulysses.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径。
+2. 修改`tests_extend/system_tests/feature_tests/ulysses.sh`文件中`TOKENIZER_MODEL`和`DATA_PATH`为本地路径。
+
 3. 执行如下命令：
 
     ```shell
@@ -136,7 +137,7 @@ num_head要能被tp_size*cp_size整除。适合head数较多且能被并行维�
 
 利用多个计算设备对输入序列进行并行切分，降低单设备的内存消耗，相比不开启序列并行单步耗时增加，相比重计算计算效率提升。
 
-### 2.2 Ascend Ring Attention长序列并行
+### Ascend Ring Attention长序列并行
 
 #### 算法思路
 
@@ -144,7 +145,7 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 
 #### 使用场景
 
-当使用GPT类模型进行训练，同时数据进MoE层时，实际序列长度8K以上。
+当使用GPT类模型进行训练，同时数据进MoE层时，实际序列长度8k以上。
 
 不同于Ulysses方案，该方案不需要确保head_size被cp_size整除。
 
@@ -160,14 +161,14 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 | --seq-length [int] | 输入序列的长度。 | 否 | - |
 | --use-cp-send-recv-overlap | 建议开启，开启后支持send receive overlap功能。 | 是 | 默认为True |
 | --attention-mask-type | 设置Mask计算类型。 | 是 | 默认是causal（倒三角）Mask计算，设置general代表全量计算 |
-| --context-parallel-algo | 长序列并行算法选项，当设置为`megatron_cp_algo`时开启Ring Attention。 | 是 | 默认为ulysses_cp_algo，megatron_cp_algo，hybrid_cp_algo，adaptive_cp_algo，hybrid_adaptive_cp_algo |
+| --context-parallel-algo | 长序列并行算法选项，当设置为`megatron_cp_algo`时开启Ring Attention。 | 是 | 默认值为ulysses_cp_algo，其他取值可为megatron_cp_algo，hybrid_cp_algo，adaptive_cp_algo，hybrid_adaptive_cp_algo |
 | --megatron-cp-in-bnsd | 开启后，FA使用BNSD计算。 | 是 | 默认为True |
 | --cp-window-size [int] | 使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。 | 是 | 默认为1 |
 
 具体使用方式参考如下示例：
 
-1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录
-2. 修改 `tests_extend/system_tests/feature_tests/ring_attention.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径， 并 设置 `cp-window-size`为1
+1. 拷贝`MindSpeed`目录下的`tests_extend`文件夹到`Megatron`目录中，并进入`Megatron`目录
+2. 修改`tests_extend/system_tests/feature_tests/ring_attention.sh`文件中`TOKENIZER_MODEL`和`DATA_PATH`为本地路径，并设置`--cp-window-size`为1
 3. 执行如下命令：
 
 ```shell
@@ -185,7 +186,7 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 + 在8k的序列长度情况下，由于计算的时间缩短，cp功能分割之后的send receive的时间反而会长于计算时间，造成性能的下降，所以建议配置 seq-length / context-parallel-size > 8k 以获取最佳效果。具体公式参考：S/(Talpha) >= 1/(Wbeta)，其中，S=seq-length / context-parallel-size， T表示芯片的理论算力，alpha表示计算效率，W表示理论通信带宽，beta表示带宽利用率。
 + 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
 
-### 2.3 Ascend Double Ring Attention长序列并行
+### Ascend Double Ring Attention长序列并行
 
 #### 算法思路
 
@@ -193,16 +194,16 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 
 #### 使用场景
 
-Ring Attention的训练场景开启后，使能方式可参考[Ring Attention长序列并行](../features/ring-attention-context-parallel.md)。
+Ring Attention的训练场景开启后，使用方式可参考[Ring Attention长序列并行](../features/ring-attention-context-parallel.md)。
 
 #### 使用方法
 
-开启Ring Attention的训练场景中，将`--cp-window-size`设置为大于1的整数，即可使能Double Ring Attention算法，优化原始Ring Attention性能。--cp-window-size [int]默认为`1`，即使用原始的Ring Attention算法，将`--cp-window-size`设置为大于1的整数，即可使能Double Ring Attention算法，该参数为Double Ring Attention算法中双层Ring Attention的内层窗口大小。
+开启Ring Attention的训练场景中，将`--cp-window-size`设置为大于1的整数，即可启用Double Ring Attention算法，优化原始Ring Attention性能。`--cp-window-size [int]`默认为`1`，即使用原始的Ring Attention算法；将其设置为大于1的整数，即可启用Double Ring Attention算法，该参数为Double Ring Attention算法中双层Ring Attention的内层窗口大小。
 
 具体使用方式参考如下示例：
 
-1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录。
-2. 修改 `tests_extend/system_tests/feature_tests/ring_attention.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径， 并设置 `cp-window-size`为2。
+1. 拷贝`MindSpeed`目录下的`tests_extend`文件夹到`Megatron`目录中，并进入`Megatron`目录。
+2. 修改`tests_extend/system_tests/feature_tests/ring_attention.sh`文件中`TOKENIZER_MODEL`和`DATA_PATH`为本地路径， 并设置`--cp-window-size`为2。
 3. 执行如下命令：
 
 ```shell
@@ -218,7 +219,7 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 + 需要确保`--context-parallel-size`能被`--cp-window-size`整除。
 + 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
 
-### 2.4 Ascend 混合长序列并行
+### Ascend 混合长序列并行
 
 目前流行的序列并行方案，Ulysses和Ring Attention存在各自的局限性。
 
@@ -240,31 +241,31 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 设置`--context-parallel-size`，默认为1，根据用户需求配置。
 
-设置`--context-parallel-algo hybrid_cp_algo`，以使能混合序列并行。
+设置`--context-parallel-algo hybrid_cp_algo`，以启用混合序列并行。
 
 设置`--ulysses-degree-in-cp`，需要确保`--context-parallel-size`可以被该参数整除且大于1。例如当设置`--context-parallel-size=8`时，可以设置`--ulysses-degree-in-cp=2`或`--ulysses-degree-in-cp=4`。
 
-同时需要确保`--ulysses-degree-in-cp`可以被attention head数整除。
+同时需要确保`--num-attention-heads`可以被`--ulysses-degree-in-cp`与`--tensor-model-parallel-size`的乘积整除。
 
 混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置。
 
 具体使用方式参考如下示例：
 
-1. 拷贝 `MindSpeed` 目录下的 `tests_extend` 文件夹到 `Megatron` 目录中，并进入 `Megatron` 目录。
-2. 修改 `tests_extend/system_tests/feature_tests/hybrid.sh` 文件中 `TOKENIZER_MODEL` 和 `DATA_PATH` 为本地路径。
+1. 拷贝`MindSpeed`目录下的`tests_extend`文件夹到`Megatron`目录中，并进入`Megatron`目录。
+2. 修改`tests_extend/system_tests/feature_tests/hybrid.sh`文件中`TOKENIZER_MODEL`和`DATA_PATH`为本地路径。
 3. 执行如下命令：
 
-```shell
-bash tests_extend/system_tests/feature_tests/hybrid.sh
-```
+    ```shell
+    bash tests_extend/system_tests/feature_tests/hybrid.sh
+    ```
 
 #### 使用效果
 
 利用多个计算设备对输入序列进行并行切分，降低单设备的内存消耗。相比不开启序列并行单步耗时增加；相比重计算，计算效率提升。
 
-## 三、性能调优实践
+## 性能调优实践
 
-### 3.1 算法选择指南
+### 算法选择指南
 
 根据不同场景选择合适的序列并行算法：
 
@@ -275,7 +276,7 @@ bash tests_extend/system_tests/feature_tests/hybrid.sh
 | 需要进一步优化Ring Attention性能 | Double Ring Attention | 双环结构提升效率 |
 | 需要兼顾Ulysses和Ring Attention优势 | 混合序列并行 | 融合两种算法优点 |
 
-### 3.2 常见优化策略
+### 常见优化策略
 
 | 瓶颈类型 | 优化策略 | 适用场景 |
 | --- | --- | --- |
@@ -284,10 +285,10 @@ bash tests_extend/system_tests/feature_tests/hybrid.sh
 | 内存瓶颈 | 使用序列并行、激活值卸载 | 长序列训练、大模型训练 |
 | 数据加载瓶颈 | 使用异步数据加载、预取机制 | I/O密集型场景 |
 
-### 3.3 最佳实践建议
+### 最佳实践建议
 
-1. **先诊断后优化**：在进行任何优化之前，先通过profiling工具定位性能瓶颈
-2. **从简单开始**：先尝试调整并行策略，再考虑复杂的优化方案
-3. **逐步验证**：每次只调整一个参数，验证效果后再进行下一步
-4. **关注整体效率**：不要只关注单步耗时，要关注整体训练吞吐量
-5. **结合硬件特性**：根据昇腾芯片的特性选择合适的优化策略
+1. **先诊断后优化**：在进行任何优化之前，先通过profiling工具定位性能瓶颈。
+2. **从简单开始**：先尝试调整并行策略，再考虑复杂的优化方案。
+3. **逐步验证**：每次只调整一个参数，验证效果后再进行下一步。
+4. **关注整体效率**：不要只关注单步耗时，要关注整体训练吞吐量。
+5. **结合硬件特性**：根据昇腾芯片的特性选择合适的优化策略。

@@ -4,19 +4,46 @@
 
 ## 环境准备
 
-1. 请先参考[MindSpeed安装指导](install_guide.md)进行环境准备。
+1. 请单击[MindSpeed快速安装](https://www.hiascend.com/developer/software/mindspeed/download)根据引导进行环境搭建，详细安装说明请参考[MindSpeed软件安装](install_guide.md)。
 
-2. 在Megatron-LM中导入MindSpeed适配器。
+2. 安装MegatronAdaptor（MA）和TransformerEngineNPU（TENPU）。MA提供NPU基础适配，TENPU提供Transformer Engine接口的NPU实现。MA与TENPU为基础训练必选组件，MindSpeed为可选加速组件。本手册演示启用MindSpeed加速，因此在同一Python环境中先安装MA和TENPU，再安装MindSpeed；已完成安装指导中的对应步骤时，无须重复安装。
 
-    在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下新增一行“import megatron_adaptor”代码，即如下修改：
+    ```shell
+    git clone --branch core_r0.18.0 https://gitcode.com/Ascend/MegatronAdaptor.git
+    python -m pip install -e MegatronAdaptor
+    git clone --branch main https://gitcode.com/Ascend/TransformerEngineNPU.git
+    python -m pip install -e TransformerEngineNPU --no-build-isolation
+    # 可选加速：在源码仓的同级目录安装当前版本MindSpeed
+    python -m pip install -e MindSpeed
+    ```
+
+   > [!NOTE]
+   >
+   > TENPU与原生TransformerEngine共用`transformer_engine`模块名，不能在同一环境中同时安装。若已安装原生TransformerEngine，请先执行`pip uninstall transformer_engine`，再安装TENPU。
+
+3. 在Megatron-LM中导入MA适配器。
+
+    在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下导入MegatronAdaptor适配器，并放在Megatron模块导入之前：
 
     ```Python
     import torch
-    import megatron_adaptor # 新增代码行
+    import megatron_adaptor  # NPU基础适配及增强特性
     from functools import partial
     from contextlib import nullcontext
     import inspect
     ```
+
+> [!NOTE]
+>
+> MindSpeed Core支持<term>Ascend 950 系列产品</term>、<term>Atlas A3 训练系列产品</term>和<term>Atlas A2 训练系列产品</term>，且要求单NPU的片上内存为64GB及以上
+>
+> 当前示例脚本中`NPUS_PER_NODE=8`表示需要8个NPU，如果实际情况低于此配置，可能遇到OOM问题。
+
+开发者入门基础：
+
+- 具备基础的PyTorch使用经验
+- 具备初级的Python开发经验
+- 对[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)有基本的了解
 
 ## 数据准备
 
@@ -26,11 +53,11 @@
 
     新建“Megatron-LM/gpt-tokenizer”目录，并将vocab.json和merges.txt文件下载至该目录。
 
-2. 下载数据集，以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例
-
     >[!NOTE]
     >
-    >用户需要自行设置代理，以便访问或下载数据集。
+    >用户需要自行设置代理，以便访问或下载资源。如无法顺利访问HuggingFace社区下载资源，推荐前往ModelScope下载，需关注待下载文件的正确性与安全性。
+
+2. 下载数据集，以[Alpaca数据集](https://huggingface.co/datasets/tatsu-lab/alpaca/resolve/main/data/train-00000-of-00001-a09b74b3ef9c3b56.parquet)为例
 
 3. 语料格式转换
 
@@ -87,7 +114,7 @@
     |`--tokenizer-type`|tokenizer类型|
     |`--vocab-file`|tokenizer文件|
     |`--merge-file`|tokenizer文件|
-    |`--append-eod`|添加<-eod>结尾token|
+    |`--append-eod`|添加\<eod>结尾token|
     |`--log-interval`|log迭代数|
     |`--workers`|并行数|
 
