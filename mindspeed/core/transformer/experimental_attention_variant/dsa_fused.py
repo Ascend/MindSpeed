@@ -403,7 +403,9 @@ def fused_lightning_indexer(q: torch.Tensor,
         weights = weights.to(torch.bfloat16)
     else:
         q = rearrange(q, 's b h d -> b s h d').to(torch.bfloat16)
-        k = rearrange(k, 's b h d -> b s h d').to(torch.bfloat16)
+        k_slice = rearrange(k, 's b h d -> b s h d').to(torch.bfloat16)
+        # npu_lightning_indexer requires a contiguous key.
+        k = k_slice.reshape(-1).reshape(k_slice.shape)
         weights = rearrange(weights, 's b d -> b s d').to(torch.bfloat16)
 
     topk_indices, topk_score = torch_npu.npu_lightning_indexer(
@@ -435,6 +437,7 @@ def fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope
         actual_seq_qlen = packed_seq_params.cu_seqlens_q.to(torch.int32)
         actual_seq_kvlen = packed_seq_params.cu_seqlens_kv.to(torch.int32)
         layout = 'TND'
+        key_contiguous = key
     else:
         query, key, value = [
             rearrange(x, 's b n d -> b s n d')
@@ -443,6 +446,8 @@ def fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope
         query_rope = rearrange(query_rope, 's b h d -> b s h d')
         key_rope = rearrange(key_rope, 's b h d -> b s h d')
         layout = 'BSND'
+        # npu_sparse_flash_attention requires a contiguous key.
+        key_contiguous = key.reshape(-1).reshape(key.shape)
 
         batch_size = query.shape[0]
         seq_len = query.shape[1]
@@ -453,7 +458,7 @@ def fused_npu_sparse_flash_attention(query, key, value, topk_indices, query_rope
         topk_indices = topk_indices.unsqueeze(2)
 
     output, softmax_max, softmax_sum, *_ = torch_npu.npu_sparse_flash_attention(
-        query, key, value,
+        query, key_contiguous, value,
         sparse_indices=topk_indices.to(torch.int32),
         block_table=None,
         actual_seq_lengths_query=actual_seq_qlen,
