@@ -693,8 +693,7 @@ def apply_rotary_pos_emb_thd(
     block_size, bsz = position_ids.shape
     freqs = freqs[position_ids.view(-1)].reshape(block_size, bsz, 1, -1)
 
-    output = apply_rotary_pos_emb_bshd(t.unsqueeze(1), freqs, rotary_interleaved, multi_latent_attention, mscale)
-    return output.squeeze(1)
+    return apply_rotary_pos_emb_bshd(t, freqs, rotary_interleaved, multi_latent_attention, mscale)
 
 
 def Eod_get_rotary_seq_len(
