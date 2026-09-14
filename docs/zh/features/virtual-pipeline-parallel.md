@@ -32,11 +32,13 @@
 ## 使用方法
 
 虚拟流水线并行依赖流水线并行。启用虚拟流水线并行，需在训练脚本中加入以下参数配置：
-`--num-layers-per-virtual-pipeline-stage  N     # N表示每个虚拟流水线阶段的层数`。
+`--num-layers-per-virtual-pipeline-stage N`，N 为每个虚拟流水线阶段的层数；也可使用 `--num-virtual-stages-per-pipeline-rank` 指定每个 PP rank 的虚拟阶段数。
 
 此外，开启该特性时，要求模型总层数L % N == 0，且--pipeline-model-parallel-size大于等于2。
 
 ### 注意
+
+若 `N * PP == num_layers`，应移除 `--num-layers-per-virtual-pipeline-stage`；VPP size 为 1 时退化为普通 PP，并关闭 `overlap-p2p-comm`。
 
 1. Megatron虚拟流水线并行（VPP）对权重的分割模式具有直接影响。在保存或加载权重文件时，务必保持VPP配置参数的一致性，以确保模型权重的准确加载和系统的稳定运行。
 

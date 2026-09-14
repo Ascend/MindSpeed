@@ -1,154 +1,232 @@
-# 特性列表
+# 特性总览
 
- 本手册描述MindSpeed Core相关特性，介绍特性商用版本的发布状态、PyTorch框架支持情况。
-
-> [!NOTE]
->
-> 下表中的“Released”代表商用版本已发布，“✅”代表支持，“❌”代表不支持。
+本手册汇总了MindSpeed Core相关特性，具体分类如下所示。
 
 **表 1**  特性列表
 
-<table style="border-collapse:collapse;border-color:#ccc;border-spacing:0;table-layout: fixed; width: 903px" class="tg"><colgroup><col style="width: 111px"><col style="width: 347px"><col style="width: 104px"><col style="width: 166px"><col style="width: 175px"></colgroup>
-<thead>
-
-<tr><th style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;font-weight:bold;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="font-weight:700;color:#3B3E55;background-color:#F9F9FB">特性类型</span></th>
-
-<th style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;font-weight:bold;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="font-weight:700;color:#3B3E55;background-color:#F9F9FB">特性名称</span></th>
-
-<th style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;font-weight:bold;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="font-weight:700;color:#3B3E55;background-color:#F9F9FB">Released</span></th>
-
-<th style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;font-weight:bold;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="font-weight:700;color:#3B3E55;background-color:#F9F9FB">PyTorch框架支持情况</span></th>
-</tr>
-</thead>
-<tbody>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="13"><span style="color:#3B3E55;background-color:#F9F9FB">Megatron特性</span>
-</td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/data-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 数据并行</span></a></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-</tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/tensor-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 张量并行</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-</tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/pipeline-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 流水并行</span></a></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-</tr>
-<tr>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/virtual-pipeline-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 虚拟流水线并行</span></a></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-</tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/distributed-optimizer.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 分布式优化器</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/sequence-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 序列并行</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/async-ddp.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 异步DDP</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/async-ddp-param-gather.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 权重更新通信隐藏</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/recomputation.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 重计算</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-</tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/dist_ckpt.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 分布式权重</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/custom_fsdp.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron 全分片并行</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/transformer_engine.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron Transformer Engine</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/multi-head-latent-attention.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron Multi-head Latent Attention</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="6"><span style="color:#3B3E55;background-color:#FFF">并行策略特性</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/ulysses-context-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Ulysses 长序列并行</span></a></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/ring-attention-context-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Ring Attention 长序列并行</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/double-ring.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Double Ring Attention 长序列并行</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/hybrid-context-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 混合长序列并行</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/noop-layers.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 自定义空操作层</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/dualpipev.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend DualPipeV</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="9"><span style="color:#3B3E55;background-color:#FFF">内存优化特性</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/activation-function-recompute.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 激活函数重计算</span></a></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/recompute_independent_pipelining.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 重计算流水线独立调度</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/generate-mask.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Mask归一</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/reuse-fp32-param.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend BF16 参数副本复用</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/swap_attention.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend swap_attention</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/norm-recompute.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Norm重计算</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/hccl-group-buffer-set.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Hccl Buffer 自适应</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/swap-optimizer.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Swap Optimizer</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/virtual-optimizer.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Virtual Optimizer</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="9"><span style="color:#3B3E55;background-color:#F9F9FB">亲和计算特性</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/rms_norm.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend rms_norm 融合算子</span></a></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/swiglu.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend swiglu 融合算子</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/rotary-embedding.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend rotary_embedding 融合算子</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/flash-attention.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend flash attention</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/moe-token-permute-and-unpermute.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Moe Token Permute and Unpermute 融合算子</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/npu_matmul_add.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend npu_matmul_add_fp32 梯度累加融合算子</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/communication-over-computation.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 计算通信并行优化</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">❌</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/mc2.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend MC2</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">❌</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/fusion-attn-v2.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend fusion_attention_v2</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">❌</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="2"><span style="color:#3B3E55;background-color:#FFF">通信优化特性</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/hccl-replace-gloo.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Gloo 存档落盘优化</span></a></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/tensor-parallel-2d.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 高维张量并行</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="9"><span style="color:#3B3E55;background-color:#FFF">Mcore MoE特性</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/megatron_moe/megatron-moe-gmm.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Megatron MoE GMM</span></a></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/megatron_moe/megatron-moe-allgather-dispatcher.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Megatron MoE Allgather Dispatcher 性能优化</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/megatron_moe/megatron-moe-alltoall-dispatcher.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Megatron MoE Alltoall Dispatcher 性能优化</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/megatron_moe/megatron-moe-tp-extend-ep.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Megatron MoE TP拓展EP</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/megatron_moe/megatron-moe-alltoall-overlap-comm.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron MoE alltoall dispatcher分支通信隐藏优化</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">❌</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/megatron_moe/megatron-moe-allgather-overlap-comm.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Megatron MoE allgather dispatcher分支通信隐藏优化</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/shared-experts.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 共享专家</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/megatron_moe/megatron-moe-fb-overlap.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">1F1B Overlap</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/balanced_moe.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">专家并行动态负载均衡（数参互寻）</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="2"><span style="color:#3B3E55;background-color:#F9F9FB">关键场景特性</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/eod-reset.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend EOD Reset训练场景</span></a></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/alibi.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend alibi</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">❌</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="6"><span style="color:#3B3E55;background-color:#F9F9FB">多模态特性</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/fused_ema_adamw_optimizer.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend fused ema adamw优化器</span></a></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">❌</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/variable_seq_lengths.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend PP支持动态形状</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/multi_parameter_pipeline.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend PP支持多参数传递</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/multi_parameter_pipeline_and_variable_seq_lengths.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend PP支持多参数传递和动态形状</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/unaligned_linear.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 非对齐线性层</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/unaligned-ulysses-context-parallel.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 非对齐Ulysses长序列并行</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal" rowspan="4"><span style="color:#3B3E55;background-color:#F9F9FB">其它特性</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/ops_flops_cal.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend TFLOPS计算</span></a></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/auto_settings.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend Auto Settings 并行策略自动搜索系统</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">❌</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-<tr><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/npu_deterministic.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend 确定性计算</span></a></td><td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">❌</span></td>
-<td style="background-color:#F9F9FB;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#F9F9FB">✅</span></td></tr>
-<tr><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#2951E0;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;text-decoration:underline;vertical-align:top;word-break:normal"><a href="../features/npu_datadump.md"><span style="text-decoration:underline;color:#2951E0;background-color:transparent">Ascend MindStudio Training Tools 精度对照</span></a></td><td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">❌</span></td>
-<td style="background-color:#FFF;border-color:#333333;border-style:solid;border-width:1px;color:#3B3E55;font-family:Arial, sans-serif;font-size:14px;overflow:hidden;padding:10px 5px;text-align:left;vertical-align:top;word-break:normal"><span style="color:#3B3E55;background-color:#FFF">✅</span></td></tr>
-</tbody></table>
+<table>
+  <thead>
+    <tr>
+      <th>特性类型</th>
+      <th>特性名称</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="12">Megatron特性</td>
+      <td><a href="../features/data-parallel.md">Megatron数据并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/tensor-parallel.md">Megatron张量并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/pipeline-parallel.md">Megatron流水并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/virtual-pipeline-parallel.md">Megatron虚拟流水线并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/distributed-optimizer.md">Megatron分布式优化器</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/sequence-parallel.md">Megatron序列并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/async-ddp.md">Megatron异步DDP</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/async-ddp-param-gather.md">Megatron权重更新通信隐藏</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/recomputation.md">Megatron重计算</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/dist_ckpt.md">Megatron分布式权重</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/transformer_engine.md">Megatron Transformer Engine</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/multi-head-latent-attention.md">Megatron Multi-head Latent Attention</a></td>
+    </tr>
+    <tr>
+      <td rowspan="8">并行策略特性</td>
+      <td><a href="../features/ulysses-context-parallel.md">Ascend Ulysses长序列并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/ring-attention-context-parallel.md">Ascend Ring Attention长序列并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/double-ring.md">Ascend Double Ring Attention长序列并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/hybrid-context-parallel.md">Ascend混合长序列并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/noop-layers.md">Ascend自定义空操作层</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/dualpipev.md">Ascend DualPipeV</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/kvallgather-context-parallel.md">KVAllGather长序列并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/pipeline-model-parallel-layout.md">Megatron 自定义流水线布局</a></td>
+    </tr>
+    <tr>
+      <td rowspan="12">内存优化特性</td>
+      <td><a href="../features/activation-function-recompute.md">Ascend激活函数重计算</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/recompute_independent_pipelining.md">Ascend重计算流水线独立调度</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/generate-mask.md">Ascend Mask归一</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/reuse-fp32-param.md">Ascend BF16参数副本复用</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/swap_attention.md">Ascend swap_attention</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/norm-recompute.md">Ascend Norm重计算</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/hccl-group-buffer-set.md">Ascend Hccl Buffer自适应</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/swap-optimizer.md">Ascend Swap Optimizer</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/virtual-optimizer.md">Virtual Optimizer</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/param-and-grad-buffer-pad.md">参数与梯度 Buffer 对齐</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/swap-layer-input.md">Transformer 层输入卸载</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/compress-tensor.md">compress-activation</a></td>
+    </tr>
+    <tr>
+      <td rowspan="10">亲和计算特性</td>
+      <td><a href="../features/rms_norm.md">Ascend rms_norm 融合算子</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/swiglu.md">Ascend swiglu 融合算子</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/rotary-embedding.md">Ascend rotary_embedding 融合算子</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/flash-attention.md">Ascend Flash Attention</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/moe-token-permute-and-unpermute.md">Ascend Moe Token Permute and Unpermute 融合算子</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/npu_matmul_add.md">Ascend npu_matmul_add_fp32 梯度累加融合算子</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/communication-over-computation.md">Ascend 计算通信并行优化</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/mc2.md">Ascend MC2</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/hif8_dts.md">HiF8 DTS (Delayed Tensor Scaling) 训练</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/te-comparsion-online.md">低精度在线比对</a></td>
+    </tr>
+    <tr>
+      <td rowspan="3">通信优化特性</td>
+      <td><a href="../features/hccl-replace-gloo.md">Ascend Gloo存档落盘优化</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/tensor-parallel-2d.md">Ascend高维张量并行</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/async-log-allreduce.md">异步日志全归约 (Async Log Allreduce)</a></td>
+    </tr>
+    <tr>
+      <td rowspan="9">Mcore MoE特性</td>
+      <td><a href="../features/megatron_moe/megatron-moe-gmm.md">Ascend Megatron MoE GMM</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/megatron_moe/megatron-moe-allgather-dispatcher.md">Ascend Megatron MoE Allgather Dispatcher性能优化</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/megatron_moe/megatron-moe-alltoall-dispatcher.md">Ascend Megatron MoE Alltoall Dispatcher性能优化</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/megatron_moe/megatron-moe-alltoall-overlap-comm.md">Megatron MoE alltoall dispatcher分支通信隐藏优化</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/megatron_moe/megatron-moe-allgather-overlap-comm.md">Megatron MoE Allgather Dispatcher分支通信隐藏优化</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/shared-experts.md">Ascend共享专家</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/megatron_moe/megatron-moe-fb-overlap.md">1F1B Overlap</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/megatron_moe/megatron-moe-zero-memory.md">Megatron MoE alltoall dispatcher分支内存优化</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/megatron_moe/megatron-moe-fix-router.md">MoE 固定路由</a></td>
+    </tr>
+    <tr>
+      <td rowspan="4">关键场景特性</td>
+      <td><a href="../features/eod-reset.md">Ascend EOD Reset训练场景</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/deepseek-sparse-attention.md">DeepSeek Sparse Attention（DSA）</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/gated-delta-net.md">GatedDeltaNet（GDN）</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/preprocess-eod-data.md">pack模式预训练数据集处理</a></td>
+    </tr>
+    <tr>
+      <td rowspan="4">多模态特性</td>
+      <td><a href="../features/variable_seq_lengths.md">Ascend PP支持动态形状</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/multi_parameter_pipeline.md">Ascend PP支持多参数传递</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/multi_parameter_pipeline_and_variable_seq_lengths.md">Ascend PP支持多参数传递和动态形状</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/unaligned_linear.md">Ascend非对齐线性层</a></td>
+    </tr>
+    <tr>
+      <td rowspan="7">其它特性</td>
+      <td><a href="../features/ops_flops_cal.md">Ascend TFLOPS计算</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/npu_deterministic.md">Ascend 确定性计算</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/npu_datadump.md">Ascend MindStudio Training Tools 精度对照</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/muon-optimizer.md">Muon 优化器</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/aiqos.md">AI QoS差异化调度特性说明</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/cache-get-batch-config.md">get_batch 配置缓存</a></td>
+    </tr>
+    <tr>
+      <td><a href="../features/pretrained-from-hf-tokenizer.md">PretrainedFromHF 分词器</a></td>
+    </tr>
+  </tbody>
+</table>

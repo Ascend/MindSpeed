@@ -20,12 +20,16 @@ Flash Attention是一种优化IO访存开销的精确注意力方法，原理如
 
 ## 使用场景
 
+**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+
 本方法适用于self-attention相关模型，尤其适用于长序列输入场景，开启长序列并行时该特性默认开启。
 
 ## 使用方法
 
 设置如下参数即可调用该算法：
 `--use-flash-attn`
+
+`--sparse-mode` 启动参数仅支持 `0`（默认）和 `2`（左上因果压缩）。不同 CP 和 EOD 场景的 mask 支持范围见 [Mask 生成](generate-mask.md#使用场景)。
 
 ## 使用效果
 

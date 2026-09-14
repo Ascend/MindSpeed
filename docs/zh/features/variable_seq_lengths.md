@@ -36,7 +36,9 @@
 
 限制条件：
 
-1. 暂不支持 `--moe-token-dispatcher-type alltoall_seq`和`--moe-token-dispatcher-type allgather`
+1. MoE 场景使用 `--moe-token-dispatcher-type alltoall`；`allgather` 不支持动态序列长度，`flex` 不支持。
+2. CP>1 的 EOD Reset 需要开启本选项，即使未开启 PP；仅支持 `p2p/all_gather + causal`，并设置 `--micro-batch-size 1`，见 [EOD Reset](eod-reset.md)。
+3. 仅支持 decoder 流水线。
 
 ## 使用效果
 

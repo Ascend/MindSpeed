@@ -121,6 +121,8 @@ $$
 
 ## 使用场景
 
+**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+
 当TP通信域需要设置较大时，通信效率较低，需要通过分解通信域来提升其通信效率。
 
 ## 使用方法
@@ -131,13 +133,13 @@ $$
 
 - `--enable-overlap-ag-with-matmul`: 在linear层forward计算时，开启all-gather通信和matmul进行隐藏，以便加速
 - `--enable-overlap-matmul-with-rs`: 在linear层forward计算时，开启matmul计算和reduce-scatter通信进行隐藏，以便加速
-- `--coc-fused-kernel`: 在linear层forward计算时，开启计算通信融合算子，将matmul计算与all-gather、reduce-scatter都进行算子级融合，实现进一步加速（该特性不与前两个特性兼容，依赖ATB加速库）
+- `--coc-fused-kernel`: 在linear层forward计算时，开启计算通信融合算子，将matmul计算与all-gather、reduce-scatter都进行算子级融合，实现进一步加速（依赖ATB加速库）
 - `--enable-backward-overlap-ag-with-matmul`: 在linear层backward计算梯度时，开启all-gather通信和matmul进行隐藏，以便加速（该特性依赖ATB加速库）
 
 上述3个forward计算优化参数`--enable-overlap-ag-with-matmul`、`--enable-overlap-matmul-with-rs`、`--coc-fused-kernel`只能同时开启1个。
 
 注意事项：
-当前高维张量并行特性不与`--sequence-parallel`、`--use-fused-rmsnorm`、MoE等特性相兼容，请根据实际情况调整配置。
+当前高维张量并行特性不与`--sequence-parallel`、MoE等特性相兼容，请根据实际情况调整配置。
 
 ## 使用效果
 

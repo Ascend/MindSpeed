@@ -18,11 +18,10 @@
 需在训练脚本中加入以下参数配置。
 
 `--recompute-norm  # 开启Norm重计算`
-`--recompute-norm-num-layers ${num}   # num表示Norm重计算的层数`
+`--recompute-norm-num-layers ${num}   # num为0到num_layers的整数`
 
 ### 说明
 
-* Norm重计算特性仅支持mcore分支，不支持legacy分支，即仅支持在开启`--use-mcore-models`时，通过`--recompute-norm`使能。
 * Norm重计算兼容激活函数重计算、全重计算同时开启：
     * 同时开启时，仅支持--recompute-method设置为block。
     * 同时开启时，将按照指定的全重计算和Norm重计算的层数做各自类型的重计算，即不会有一层既做全重计算又做Norm重计算。

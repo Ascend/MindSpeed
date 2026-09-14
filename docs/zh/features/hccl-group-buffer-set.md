@@ -27,9 +27,12 @@
 * 手动配置
 `--hccl-group-buffer`
 **注意:**
-    * 配置该参数并指定所需要设定的组以及大小（例如：dp:200;tp:300;exp:400），单位是MB。
+    * 配置该参数并指定所需要设定的组以及大小（例如：`--hccl-group-buffer "dp:200;tp:300;ep:400"`，也支持逗号分隔），单位是 MB，值必须为正整数。
     * 手动配置目前支持的通信组如下：
-["dp", "dp_cp", "cp", "mp", "mp_exp", "tp", "pp", "embd", "tp_dp_cp", "tp_dp", "tp_cp", "tp_exp", "exp", "dp_modulo_exp", "pp_new_stream", "cp2", "cp_ulysses", "cp_ring","cp_ring_intra", "cp_ring_intra_overlap", "nd1_dim1", "ag_x_sd_rcv_overlap", "nd1_dim2", "ag_y_sd_rcv_overlap", "nd2_dim1", "nd2_dim2"]
+["dp", "dp_cp", "cp", "mp", "mp_exp", "tp", "pp", "embd", "tp_dp_cp", "tp_dp", "tp_cp", "tp_exp", "tp_ep_mp", "exp", "ep", "dp_modulo_exp", "pp_new_stream", "cp2", "cp_ulysses", "cp_ring", "cp_ring_intra", "cp_ring_intra_overlap", "nd1_dim1", "ag_x_sd_rcv_overlap", "nd1_dim2", "ag_y_sd_rcv_overlap", "nd2_dim1", "nd2_dim2", "default_group", "ep_dp", "ep_tp", "hcp", "inter_dp_cp", "inter_ep_dp", "inner_dp", "intra_dist_opt_instance", "intra_dp_cp", "intra_ep_dp", "pos_embd", "tp_ep_pp"]
+
+- `--hccl-op-mode` 使用相同的 `组名:整数` 语法，值必须为正整数，例如 `--hccl-op-mode "tp:1,ep:1"`。
+- 配置可与 AI QoS 同时使用。
 
 ## 使用效果
 

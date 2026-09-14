@@ -22,15 +22,23 @@
 
 ## 使用场景
 
+**后端限制：** 开启 Grouped GEMM、Alltoall 通信隐藏或 FB overlap 时，必须设置 `--transformer-impl transformer_engine`。
+
 在使用 mcore MoE 的场景下，开启了 `--moe-token-dispatcher-type alltoall`。
 
 ## 使用方法
 
-开启参数 `--moe-permutation-async-comm`。
+`--moe-token-dispatcher-type` 的类型支持情况如下：
 
-### 注意
+| 类型 | 支持情况 |
+| --- | --- |
+| `alltoall` | 支持；可按约束选择 Alltoall 通信隐藏、FB overlap、MC2 或 permute 融合。 |
+| `allgather` | 支持，默认类型；使用专用的 [Allgather 配置](megatron-moe-allgather-dispatcher.md)，不支持动态序列长度。 |
+| `flex`（`deepep/hybridep`） | 不支持，尚未完成 NPU 适配。 |
 
-由于开启 `--moe-grouped-gemm` 后，专家计算被单一算子合并，因此计算通信并行优化会失效。
+设置 `--moe-token-dispatcher-type alltoall` 选择 Alltoall dispatcher。计算与通信重叠的配置见 [Alltoall 通信隐藏](megatron-moe-alltoall-overlap-comm.md)。
+
+如需使用 `--moe-alltoall-mc2`，须为 dropless 场景，设置 `--expert-tensor-parallel-size 1`，且不设置 `--moe-expert-capacity-factor`。
 
 ## 使用效果
 

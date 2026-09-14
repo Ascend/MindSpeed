@@ -55,4 +55,3 @@
 ## 注意事项
 
 * Megatron原生版本存在生成顺序有误的问题，该异常导致下一轮的前向计算提前。开启该特性后，为了修复此异常，attention层init的顺序会更正为先创建linear_qkv再创建linear_proj。
-* Legacy下，--overlap-param-gather暂不支持和reuse_fp32_param一起使用。

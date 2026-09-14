@@ -18,6 +18,8 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 
 ## 使用场景
 
+**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+
 当使用GPT类模型进行训练，同时数据进MoE层时实际序列长度8K以上。
 
 不同于Ulysses方案，该方案不需要确保head_size被cp_size整除。
@@ -28,15 +30,23 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 
 ## 使用方法
 
+| 训练类型 | 支持的 mask 类型 |
+| --- | --- |
+| 普通训练 | causal、general |
+| EOD Reset | causal，需满足 [EOD Reset 配置约束](eod-reset.md) |
+
+使用 `--cp-comm-type` 选择通信方式。
+
 | 重要参数                                     | 参数说明                                                                                                                                                         |
 |------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | --context-parallel-size [int]            | 开启CP对应的数量，默认为1，根据用户需求配置。                                                                                                                                     |
 | --seq-length [int]                       | 输入序列的长度。                                                                                                                                                     |
 | --use-cp-send-recv-overlap               | 建议开启，开启后支持send receive overlap功能。                                                                                                                            |
-| --attention-mask-type [general/causal]   | 可选，设置Mask计算类型，默认是causal（倒三角）Mask计算，设置general代表全量计算。                                                                                                          |
-| --context-parallel-algo <b>megatron_cp_algo</b> | 长序列并行算法选项，默认项为`megatron_cp_algo`, 开启Ring Attention。                                                                                     |
+| --attention-mask-type [general/causal]   | 可选，默认 causal（因果掩码）；general 为非因果全量计算。EOD Reset 仅支持 causal。                                                                                                          |
+| --cp-comm-type <b>p2p</b> | 长序列并行算法选项，默认项为`p2p`, 开启Ring Attention。                                                                                     |
+| `--use-fused-ring-attention-update` | 开启 TENPU 的融合 Ring 更新，默认关闭；仅支持 `p2p` / `a2a+p2p`。 |
 | --megatron-cp-in-bnsd                    | 开启后，FA使用BNSD计算。                                                          |
-| --cp-window-size [int]                   | 可选，默认为`1`，即使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。|
+| --cp-window-size [int]                   | 可选，默认为`1`，即使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，该值必须小于 CP 度数且能整除 CP 度数。|
 
 ## 使用效果
 
@@ -44,7 +54,7 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 
 ## 注意事项
 
-1. 开启Context Parallel时需要同时开启Flash Attention特性，否则特性不支持。
+1. CP>1 时需设置 `--transformer-impl transformer_engine`，并开启 Flash Attention。EOD Reset 仅支持 causal mask，详见 [EOD Reset](eod-reset.md)。
 2. 在使用GPT类模型进行训练的场景下，建议`attention-mask-type`设置为`causal`。
 3. 在8k的序列长度情况下，由于计算的时间缩短，cp功能分割之后的send receive的时间反而会长于计算时间，造成性能的下降，所以建议配置seq-length / context-parallel-size> 8k以获取最佳效果。具体公式参考：S/(Talpha) >= 1/(Wbeta)，其中，S=seq-length / context-parallel-size， T表示芯片的理论算力，alpha表示计算效率，W表示理论通信带宽，beta表示带宽利用率。
 4. 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如Llama2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。

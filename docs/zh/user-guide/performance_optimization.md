@@ -7,3 +7,6 @@ MindSpeed作为面向昇腾AI处理器的大模型训练加速库，针对上述
 ## Megatron-LM性能优化
 
 基于上述技术积累，MindSpeed进一步针对Megatron-LM框架进行了深度性能优化。通过重构关键计算路径、优化分布式通信模式以及引入昇腾特有的算子加速能力，实现了在大规模集群环境下的高效训练加速。详细内容请参考[Megatron-LM性能优化](./megatron_performance_optimization.md)。
+
+- `--cache-get-batch-config`：缓存 get_batch 首次生成的完整 TransformerConfig，减少重复配置开销，默认关闭，详见 [get_batch 配置缓存](../features/cache-get-batch-config.md)。
+- `--async-log-allreduce`：开启日志异步规约，默认关闭。

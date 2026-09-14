@@ -10,6 +10,8 @@ RoPE (Rotary Positional Embedding，旋转式位置嵌入) 是一种位置编码
 
 ## 使用场景
 
+**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+
 适用于将Rotary Embedding作为位置编码方案的模型架构。
 
 ## 使用方法
@@ -17,8 +19,7 @@ RoPE (Rotary Positional Embedding，旋转式位置嵌入) 是一种位置编码
 * 确保模型配置中已设定以下参数：
 `--position-embedding-type  rope`
 
-* 同时，启用RoPE融合算子需设置如下参数：
-`--use-fused-rotary-pos-emb`
+* RoPE 融合默认开启，使用 `--no-rope-fusion` 关闭。非 RoPE 位置编码会关闭融合。EOD Reset 会关闭该融合。
 
 ## 使用效果
 

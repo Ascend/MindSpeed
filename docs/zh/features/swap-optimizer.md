@@ -29,7 +29,7 @@
 
 ## 使用方法
 
-`--swap-optimizer`： 开启 swap optimizer 特性。
+Adam 使用 `--swap-optimizer --use-distributed-optimizer` 开启；Muon 使用 `--optimizer muon --use-distributed-optimizer --swap-optimizer`，采用 layer-wise distributed optimizer。
 
 `--swap-optimizer-times`： 默认值为16，用于设置 step 更新阶段进行 swap 的次数，越小并行的越多，可减少性能劣化，但会提高显存峰值。
 
@@ -43,5 +43,4 @@ export CPU_AFFINITY_CONF=1,lazy_bind:0
 
 ## 注意事项
 
-1. 本特性仅适用于开启分布式优化器`--use-distributed-optimizer`且`--optimizer-selection`为`fused_adamw`的模型训练场景
-2. 本特性与 `--reuse-fp32-param`、fused ema adamw优化器等其他优化器相关特性暂不兼容。
+1. 支持 `fully_reshardable` 优化器状态的保存与加载。

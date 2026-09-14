@@ -24,7 +24,7 @@
 
 需要添加参数`--swap-attention`。使用前提是开启flash attention融合算子。
 
-可选参数`--swap-modules`：参数类型为string，默认值为"input_norm,self_attention,post_attention_norm"，可根据模型自行配置module，在mcore场景下默认仅预取self_attention module。
+可选参数`--swap-modules`：参数类型为string，默认值为"input_norm,self_attention,post_attention_norm"，可根据模型自行配置module。
 
 ### a. 仅开启预取功能：`--swap-attention`
 
@@ -47,4 +47,4 @@
 
 1. `--recompute-num-layers [int]`中的[int]层数指的是每一个pp stage的层数。[int]的取值应该小于等于num-layers/pipeline-model-parallel-size.
 2. 若出现性能波动，可能是跨NUMA内存访问引起，可尝试通过进程绑核缓解 `export CPU_AFFINITY_CONF=1,lazy_bind:0`
-3. `--swap-attention`暂不兼容LoRA微调。
+3. 如需卸载层输入，使用独立的 [Transformer 层输入卸载](swap-layer-input.md) 开关 `--swap-layer-input`。

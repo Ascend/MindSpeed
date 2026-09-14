@@ -14,6 +14,8 @@
 
 ## 使用场景
 
+**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+
 MLA 解决了标准 Transformer 模型的内存瓶颈，可作为一种通用的模型结构降低显存占用，提高推理效率。
 
 ## 使用方法
@@ -33,6 +35,8 @@ MLA 解决了标准 Transformer 模型的内存瓶颈，可作为一种通用的
 `--v-head-dim`：Dimension of the head in the V projection
 
 `--rotary-scaling-factor`：Rotary scaling factor for the rotary embeddings
+
+DSA 参数见 [DSA](deepseek-sparse-attention.md)。
 
 ## 使用效果
 

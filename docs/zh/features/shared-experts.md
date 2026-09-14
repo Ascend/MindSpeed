@@ -18,7 +18,9 @@
 
 ## 使用场景
 
-MoE场景下使用：`--moe-model-type megatron_moe`
+**后端限制：** 与 Grouped GEMM、Alltoall 通信隐藏或 FB overlap 组合时，必须设置 `--transformer-impl transformer_engine`。
+
+使用 Megatron 原生 MoE。
 
 ## 使用方法
 
@@ -26,13 +28,7 @@ MoE场景下使用：`--moe-model-type megatron_moe`
 
 | 命令参数                     | 参数说明                   |
 |--------------------------|------------------------|
-| `--n-shared-experts [int]` | 共享专家数量                 |
-
-## 注意事项
-
-* 开启共享专家需要在mcore模式下，即没有设置`--use-legacy-models`
-
-* 共享专家中间隐藏层大小的配置命令与路由专家相同：`--ffn-hidden-size [int]`
+| `--moe-shared-expert-intermediate-size N` | 共享专家中间隐藏层大小 |
 
 ## 使用效果
 

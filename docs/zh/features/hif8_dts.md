@@ -127,4 +127,3 @@ HiF8 DTS recipe 提供以下可调参数，用于控制 amax 收集与 scale fac
 ## 相关特性参考
 
 - **[Megatron Transformer-engine](transformer_engine.md)**：TE 模块的整体介绍，包含 HiF8 数据格式、低精度训练 scaling 策略及 TE 模块功能说明。
-- **[MXFP8 零冗余权重特性](mxfp8/Zero_Redundancy_Weight.md)**：另一种 FP8 scaling 策略下的显存优化方案。

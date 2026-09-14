@@ -29,12 +29,21 @@ local_hidden_states = torch.gather(global_hidden_states, 0, self.global_local_ma
 
 ## 使用场景
 
+**后端限制：** 开启本文通信隐藏优化时，必须设置 `--moe-grouped-gemm --transformer-impl transformer_engine`。
+
 本优化策略适用于部署了Mcore MoE（Mixture of Experts）架构的深度学习模型,
 并开启 `--moe-token-dispatcher-type allgather`。
 
 ## 使用方法
 
-开启参数 `--moe-permutation-async-comm`。
+设置 `--moe-token-dispatcher-type allgather` 选择 Allgather dispatcher（默认类型）。各 dispatcher 类型的支持范围见 [类型表](megatron-moe-alltoall-dispatcher.md#使用方法)。
+
+启用异步通信优化时，使用 `--moe-permutation-async-comm`，并按 [Allgather 通信隐藏](megatron-moe-allgather-overlap-comm.md) 同时配置 `--moe-allgather-overlap-comm`、`--moe-grouped-gemm` 和 `--transformer-impl transformer_engine`。
+
+## 使用约束
+
+- 不支持 `--variable-seq-lengths`，包括需要该选项的 CP+EOD 场景；此时应使用 `alltoall`。
+- 不支持 `--moe-permute-fusion` 和 `--moe-shared-expert-overlap`；Allgather 通信隐藏使用上面的专用配置。
 
 ## 使用效果
 

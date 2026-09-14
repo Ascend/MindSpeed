@@ -54,6 +54,8 @@ export CPU_AFFINITY_CONF=1,lazy_bind:0
 
 ## 注意事项
 
+- 仅支持 Adam，不能与 optimizer CPU offload 或 precision-aware optimizer 同时使用。
+
 - 由于驱动限制，申请为虚拟内存的张量无法被直接访问，因此也无法直接打印和保存，当需要保存或打印时可以借助如下函数访问虚拟内存的张量。（注：优化器部分的保存与加载已经适配）
 
 ```python

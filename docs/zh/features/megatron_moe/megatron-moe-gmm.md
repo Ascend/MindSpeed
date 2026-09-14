@@ -10,8 +10,13 @@
 
 ## 使用方法
 
-设置`--moe-grouped-gemm`: 表示开启Grouped GEMM计算。
-支持MoE allgather, alltoall, alltoall_seq dispatcher.
+**后端限制：** 必须设置 `--transformer-impl transformer_engine`，不支持 `local`。
+
+设置 `--transformer-impl transformer_engine --moe-grouped-gemm`，使用 TEGroupedMLP 开启 Grouped GEMM；支持 `allgather`、`alltoall` dispatcher；不支持 `local` 后端或未完成 NPU 适配的 `flex`。
+
+`--te-gmm-mode` 默认 `compatible`；选择 `performance` 时使用打包 grouped weight。
+
+`--gmm-gradient-accumulation-fusion`（别名 `--gemm-gradient-accumulation-fusion`）独立控制专家梯度累加融合。
 
 ## 效果说明
 
@@ -42,7 +47,7 @@
 
 ## 注意事项
 
-1. megatron原生不支持`--moe-grouped-gemm`在开启`--bf16`的场景下使用。
+1. TEGroupedMLP 支持 `--bf16`；梯度累加融合要求 BF16 或 FP16，不能与 FP8/FP4 同时使用。
 2. 通过`--moe-grouped-gemm`参数使能Grouped GEMM计算时会调用npu_gmm融合算子
 
 算子输入输出格式如下：

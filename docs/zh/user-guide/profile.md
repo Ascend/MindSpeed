@@ -1,12 +1,12 @@
 # MindSpeed 中采集Profile数据
 
-📝 MindSpeed 支持命令式开启Profile采集数据，命令配置介绍如下：
+通过 MegatronAdaptor 提供的参数开启 Profile 数据采集，命令配置如下：
 
 | 配置命令                    | 命令含义                                                                                                    |
 |-------------------------|---------------------------------------------------------------------------------------------------------|
 | --profile               | 打开profile开关                                                                                             |
 | --profile-step-start    | 配置开始采集步，未配置时默认为10，配置举例：--profile-step-start 30                                                        |
-| --profile-step-end      | 配置结束采集步，未配置时默认为12，配置举例：--profile-step-end 35                                                          |
+| --profile-step-end      | 配置结束采集步，必须大于开始步，未配置时默认为12，配置举例：--profile-step-end 35                                                          |
 | --profile-level         | 配置采集等级，未配置时默认为level0，可选配置：level0，level1，level2，配置举例：--profile-level level1                        |
 | --profile-with-cpu      | 打开CPU信息采集开关                                                                                             |
 | --profile-with-stack    | 打开stack信息采集开关                                                                                           |

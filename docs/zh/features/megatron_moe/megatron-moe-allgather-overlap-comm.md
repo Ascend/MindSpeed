@@ -11,13 +11,18 @@ MoE中,存在大量的EP通信没有做通信隐藏，端到端时间占比大�
 
 ## 使用方法
 
+**后端限制：** 必须设置 `--transformer-impl transformer_engine`，不支持 `local`。
+
 打开`--moe-allgather-overlap-comm`启用该特性。
 
 同时需要开启：
 
 - `--moe-permutation-async-comm`
 - `--moe-token-dispatcher-type allgather`
-- `--moe-grouped-gemm`，目前仅支持Grouped MLP。
+- `--moe-grouped-gemm`，使用 TEGroupedMLP。
+- `--transformer-impl transformer_engine`。
+
+仅支持 `allgather`，不支持 `alltoall` 或 `flex`。不支持 `--variable-seq-lengths`；`--recompute-activation-function` 不能与 `--hybrid-layer-pattern` 同时使用。
 
 ## 适用场景
 

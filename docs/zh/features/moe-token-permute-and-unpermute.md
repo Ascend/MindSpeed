@@ -15,14 +15,15 @@ Token路由：确定每个token应该由哪个专家处理。这可以通过专�
 
 ## 使用方法
 
+**后端限制：** 与 Grouped GEMM 或 MoE 通信隐藏组合时，必须设置 `--transformer-impl transformer_engine`。
+
 1. 启动脚本添加`--moe-permute-fusion` 或  `--use-fused-moe-token-permute-and-unpermute`。两者等价，但推荐优先使用`--moe-permute-fusion`。
 2. 建议如下配置获得最佳性能，否则某些场景开启该融合算子可能性能劣化。
-(1)`--moe-token-dispatcher-type alltoall`时, 设置`--expert-tensor-parallel-size 1` 
-(2)`--moe-token-dispatcher-type alltoall_seq`时, 开启`--moe-tp-extend-ep`
+设置 `--moe-token-dispatcher-type alltoall --expert-tensor-parallel-size 1`。
 
 ## 使用限制
 
-1.支持的调度器类型：当前仅支持 `--moe-token-dispatcher-type alltoall` 和 `--moe-token-dispatcher-type alltoall_seq`。暂不支持 `--moe-token-dispatcher-type allgather`。
+1. 仅支持 `--moe-token-dispatcher-type alltoall`，不支持 allgather、flex 或 `--moe-router-padding-for-quantization`。
 2.融合算子与专家容量参数的兼容性：若要启用 `--moe-expert-capacity-factor`，必须同时开启 `--moe-pad-expert-input-to-capacity` 方可兼容融合算子。仅开启 `--moe-expert-capacity-factor` 而未开启 `--moe-pad-expert-input-to-capacity` 时，暂不兼容该融合算子。
 3.系统环境要求：仅限于版本标识为 `CANN 8.3.RC1` / `PTA 7.2.RC1`及其后续所有迭代版本的系统环境。
 

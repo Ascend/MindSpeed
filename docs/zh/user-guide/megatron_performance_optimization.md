@@ -106,6 +106,8 @@ MindStudio Insight支持多维度性能分析：
 
 ## 序列并行优化方案
 
+CP>1 时设置 `--transformer-impl transformer_engine`，使用 `--cp-comm-type` 选择通信方式。
+
 ### Ascend Ulysses长序列并行
 
 #### 算法思路
@@ -119,7 +121,7 @@ num_head要能被tp_size*cp_size整除。适合head数较多且能被并行维�
 #### 使用方法
 
 设置`--context-parallel-size`，默认为1，根据用户需求配置。
-同时设置`--context-parallel-algo ulysses_cp_algo`。
+同时设置`--cp-comm-type a2a`。
 
 具体使用方式参考如下示例：
 
@@ -159,10 +161,10 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 | --- | --- | --- | --- |
 | --context-parallel-size [int] | 开启CP对应的数量，根据用户需求配置。 | 是 | 默认为1 |
 | --seq-length [int] | 输入序列的长度。 | 否 | - |
-| --use-cp-send-recv-overlap | 建议开启，开启后支持send receive overlap功能。 | 是 | 默认为True |
+| --use-cp-send-recv-overlap | 开启 ring send/receive overlap，仅适用 p2p 或 a2a+p2p。 | 是 | 默认为False |
 | --attention-mask-type | 设置Mask计算类型。 | 是 | 默认是causal（倒三角）Mask计算，设置general代表全量计算 |
-| --context-parallel-algo | 长序列并行算法选项，当设置为`megatron_cp_algo`时开启Ring Attention。 | 是 | 默认值为ulysses_cp_algo，其他取值可为megatron_cp_algo，hybrid_cp_algo，adaptive_cp_algo，hybrid_adaptive_cp_algo |
-| --megatron-cp-in-bnsd | 开启后，FA使用BNSD计算。 | 是 | 默认为True |
+| --cp-comm-type | 长序列通信类型，`p2p` 开启 Ring Attention；CP>1 使用 transformer_engine。 | 是 | p2p（默认）、a2a、all_gather、a2a+p2p |
+| --megatron-cp-in-bnsd | 开启后，FA使用BNSD计算。 | 是 | 默认为False |
 | --cp-window-size [int] | 使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。 | 是 | 默认为1 |
 
 具体使用方式参考如下示例：
@@ -241,11 +243,11 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 
 设置`--context-parallel-size`，默认为1，根据用户需求配置。
 
-设置`--context-parallel-algo hybrid_cp_algo`，以启用混合序列并行。
+设置`--cp-comm-type a2a+p2p`，以启用混合序列并行。
 
-设置`--ulysses-degree-in-cp`，需要确保`--context-parallel-size`可以被该参数整除且大于1。例如当设置`--context-parallel-size=8`时，可以设置`--ulysses-degree-in-cp=2`或`--ulysses-degree-in-cp=4`。
+设置 `--hierarchical-context-parallel-sizes A R`，其中 A 为 Ulysses 度数，R 为 Ring 度数，A×R 等于 `--context-parallel-size`。例如 `--context-parallel-size 8` 时，可设置 `--hierarchical-context-parallel-sizes 2 4` 或 `--hierarchical-context-parallel-sizes 4 2`。
 
-同时需要确保`--num-attention-heads`可以被`--ulysses-degree-in-cp`与`--tensor-model-parallel-size`的乘积整除。
+同时需要确保 `--num-attention-heads` 可以被 A 与 `--tensor-model-parallel-size` 的乘积整除。
 
 混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置。
 

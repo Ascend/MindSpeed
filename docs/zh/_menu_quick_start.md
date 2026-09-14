@@ -8,5 +8,4 @@
   - [基于FSDP2训练后端](https://gitcode.com/Ascend/MindSpeed-MM/blob/master/docs/zh/pytorch/quickstart_fsdp2.md)
 - [MindSpeed加速库]()
   - [基于Megatron训练后端](./user-guide/quickstart.md)
-  - [基于FSDP2训练后端]()
   - [MindSpeed算子库](https://gitcode.com/Ascend/MindSpeed-Ops/blob/master/docs/zh/quick_start.md)

@@ -10,6 +10,8 @@
 
 ## 使用场景
 
+**后端限制：** FP8/FP4 重计算必须使用 `--transformer-impl transformer_engine`。
+
 在显存不够的情况下可以开启重计算特性，且分为以下两种方式：
 
 * 选择性重计算（推荐）：专注于对Transformer架构内的core_attention组件进行重计算。该策略保留了那些占用较小内存空间但重计算成本较高的激活值，同时，对占用较大内存但重计算成本相对较低的激活值执行激活重计算。此方法在保证模型性能的同时，实现了内存使用的高效管理。
@@ -19,7 +21,7 @@
 ## 使用方法
 
 + 选择性重计算：
-`--recompute-activations   #开启选择性重计算`。
+`--recompute-granularity selective   #开启选择性重计算`。
 
 * 完全重计算：
 `--recompute-granularity full    #开启完全重计算`
@@ -33,11 +35,7 @@
 
 ### 说明
 
-* 同时配置`--recompute-activations` 、`--recompute-granularity full`时，生效选择性重计算。
-
 + 当脚本配置了`--recompute-method block`、`--recompute-granularity full`、`--num-layers-per-virtual-pipeline-stage N`参数时，用户可以通过`--recompute-num-layers N`参数来配置每个vpp stage做多少层重计算，参数`--enable-recompute-layers-per-pp-rank`可用于修改此情况下`--recompute-num-layers N`参数的语义，新的语义表示无视vpp，按每个pp stage来配置重计算层数。
-
-* 注意：在legacy分支下，开启`--use-flash-attn`将无法使用选择性重计算。
 
 ## 使用影响
 

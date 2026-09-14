@@ -17,51 +17,29 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
  
 ## 使用场景
 
+**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+
 可兼容FlashAttention，目前已默认开启FlashAttention。
 
 序列并行维度被分为Ulysses维度和Ring Attention维度，Ulysses维度和Ring Attention维度乘积即为序列并行维度。
 
 ## 使用方法
 
-<table><thead>
-  <tr>
-    <th width='200'>重要参数</th>
-    <th>参数说明</th>
+| 训练类型 | 支持的 mask 类型 |
+| --- | --- |
+| 普通训练 | causal、general |
+| EOD Reset | 不支持 |
 
-  </tr></thead>
-<tbody>
+使用 `--cp-comm-type` 选择通信方式。
 
-  <tr>
-    <td rowspan="7"> --context-parallel-size [int]</td>
-    <td>必选，设置长序列并行大小，默认为1，根据用户需求配置。</td>
+| 重要参数 | 参数说明 |
+| --- | --- |
+| `--transformer-impl transformer_engine` | CP>1 的必需后端。 |
+| `--context-parallel-size C` | 长序列并行大小，默认 1。 |
+| `--cp-comm-type a2a+p2p` | 开启混合长序列并行。 |
+| `--hierarchical-context-parallel-sizes A R` | A 为 Ulysses 度数，R 为 Ring 度数；A×R=C。注意力头数应能被 TP×A 整除。 |
 
-</tr>
-</tbody>
-
-  <tr>
-    <td rowspan="7"> --ulysses-degree-in-cp [int]
-</td>
-    <td>需要确保--context-parallel-size可以被该参数整除且大于1。
-<br>例如当设置--context-parallel-size为8时，可以设置--ulysses-degree-in-cp为2或--ulysses-degree-in-cp为4。
-<br>同时需要确保--ulysses-degree-in-cp可以被num-attention-heads数整除。
-</td>
-</tr>
-<tbody>
-
-  <tr>
-    <td rowspan="7"> --context-parallel-algo<b>    hybrid_cp_algo</b></td>
-    <td>可选，设置长序列并行算法。
-<br>
-ulysses_cp_algo：开启Ulysses长序列并行。
-<br>
-<b>hybrid_cp_algo</b>：开启Hybrid长序列并行。
-<br>
-megatron_cp_algo：开启Ring Attention长序列并行。</td>
-
-  </tr>
-  </tbody></table>
-
-混合长序列并行支持Ring Attention长序列并行相关特性，包括send receive overlap功能、Mask计算类型配置。
+`--attention-mask-type` 可选择 `causal`（默认）或 `general`。支持 `--use-cp-send-recv-overlap`、`--use-fused-ring-attention-update` 和 `--cp-window-size`；窗口大小须小于 Ring 度数 R 且能整除 R。不支持 EOD Reset。
 
 ## 使用效果
 

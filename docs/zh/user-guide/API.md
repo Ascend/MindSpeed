@@ -2,6 +2,8 @@
 
 ## MindSpeedFeature基类
 
+`mindspeed.features_manager.feature.MindSpeedFeature` 继承 MA 的特性基类，使用 MindSpeed 自身的 `patch_manager` 管理补丁归属。特性注册到 MA 的统一 `FeaturesManager` 列表。
+
 - **1. `__init__`**
 
 ```python
@@ -47,14 +49,14 @@ def register_args(self, parser):
 def pre_validate_args(self, args: Namespace)
 ```
 
-**作用**：在Megatron参数校验前临时修改某些参数，绕过原生校验逻辑。
+**作用**：在 Megatron 参数校验前归一化参数及兼容别名。
 
 **典型场景**：
 
 ```python
 def pre_validate_args(self, args):
-    self._saved_cp_size = args.context_parallel_size
-    args.context_parallel_size = 1  # 临时修改绕过校验
+    # ContextParallelFeature 将 context_parallel_algo 转换为 cp_comm_type。
+    self._sync_context_parallel_algo_to_cp_comm_type(args)
 ```
 
 - **4. `validate_args`**
@@ -79,14 +81,7 @@ def validate_args(self, args):
 def post_validate_args(self, args: Namespace)
 ```
 
-**作用**：该方法在 `validate_args` 之后被调用，用于在绕过原生校验后恢复原有参数值。
-
-**典型场景**：
-
-```python
-def post_validate_args(self, args):
-    args.context_parallel_size = self._saved_cp_size  # 恢复原始值
-```
+**作用**：在参数校验后执行依赖最终配置的检查。例如 MoE 前反向重叠在此阶段检查 noop 层的位置。CP 参数归一化应在 `pre_validate_args` 中完成。
 
 - **6. `pre_register_patches`**
 
@@ -177,7 +172,7 @@ def add_parser_argument_choices_value(parser, argument_name, new_choice)
 | 参数 | 类型 | 说明 |
 | ------ | ------ | ------ |
 | parser | ArgumentParser | 参数解析器 |
-| argument_name | str | 目标参数名称（带`--`或不带） |
+| argument_name | str | 已注册的完整选项名，如 `--tokenizer-type` |
 | new_choice | str | 新增的选项值 |
 
 ### MindSpeedPatchesManager类
@@ -216,3 +211,7 @@ def apply_patches()
 **作用**：批量使能所有已注册的patch。
 
 **调用时机**：通常在所有特性初始化完成后统一调用。
+
+- **3. `remove_patches`**
+
+`MindSpeedFeaturesManager.remove_patches()` 移除 MindSpeed 的补丁层并重置相应特性状态，保留 MA 的底层适配。运行时完整参数通过 `mindspeed.args_utils.get_full_args()` 获取。

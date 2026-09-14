@@ -88,13 +88,16 @@ python ./preprocess_data.py \
 pack模式数据集一般在EOD Reset训练场景下使用：
 （1）打开`--reset-attention-mask`选项
 （2）使用`--reset-position-ids`选项，来代表位置编码是否reset
-（3）`--attention-mask-type`可以指定为causal或者general
+（3）CP=1 时 `--attention-mask-type` 可选 `causal` 或 `general`；CP>1 时仅支持 `p2p/all_gather + causal`，需设置 `--transformer-impl transformer_engine --variable-seq-lengths --micro-batch-size 1`。
 
-若预处理时设置了`pad-to-multiple-of`参数，可加速长序列并行中`megatron_cp_algo`选项算法在EOD Reset训练场景下的性能：
+在 CP>1、`--cp-comm-type p2p --attention-mask-type causal` 的 EOD Reset 场景下，预处理的 `pad-to-multiple-of` 可用于减少在线 pad：
 
-* 未设置`pad-to-multiple-of`参数：对于`--attention-mask-type`为causal的情况，因为内部实现的需求，每个子序列的长度会被在线pad到CP*lcm(2, TP)的倍数，其中lcm为最小公倍数
+* 未设置 `pad-to-multiple-of`：每个子序列在线 pad 到 `CP*lcm(2, TP)` 的倍数，其中 lcm 为最小公倍数。
 * 设置`pad-to-multiple-of`参数：对于同样场景，可在预处理时设置`pad-to-multiple-of = CP*lcm(2, TP)`离线将每个子序列pad到需要的长度，节约在线pad的时间，加速训练
 
 ## 注意事项
+
+- 训练时设置 `--tokenizer-type PretrainedFromHF --tokenizer-name-or-path /本地目录`，目录必须存在；`--tokenizer-not-use-fast` 可关闭 fast tokenizer，详见 [HF 分词器](pretrained-from-hf-tokenizer.md)。
+- 本文 `handler-name`、`append-eod`、`pad-to-multiple-of` 为数据预处理工具参数；`append-eod` 不会自动开启训练时的 mask reset、position reset 或 loss mask。该预训练 pack 流程不能与 SFT packed sequence 混用，训练限制见 [EOD Reset](eod-reset.md)。
 
 在构建pack模式数据集时，是否使能`pad-to-multiple-of`参数会导致在线训练时每个批样本中存在一定差异，因此二者在精度上并不能完全对齐

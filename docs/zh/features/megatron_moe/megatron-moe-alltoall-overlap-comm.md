@@ -7,27 +7,27 @@ MoE中,存在大量的EP通信没有做通信隐藏，端到端时间占比大�
 ## 解决方案
 
 在前向过程中，使用异步通信来尽可能与计算做互相掩盖。同时，对整个计算流程进行子图切分，从而在反向过程中也进行通算并行，加速模型训练。
-此特性同时支持两种alltoall dispatcher，根据alltoall与alltoall_seq这两种不同的dispatcher，进行了针对性优化。
+此特性当前支持 alltoall dispatcher。
 此外，alltoall分支中，兼容了megatron的shared_expert_overlap方案，并通过更细粒度的掩盖，可做到较原生方案，性能进一步提升。
 
 ## 使用方法
 
-打开`--moe-alltoall-overlap-comm`启用该特性。
+**后端限制：** 必须设置 `--transformer-impl transformer_engine`，不支持 `local`。
 
-若分支为`alltoall_seq`分支，则同时需要开启：
+使用以下参数启用通信隐藏，并设置 `--expert-model-parallel-size` 大于 1：
 
-- `--moe-permutation-async-comm`。
-- `--moe-token-dispatcher-type alltoall_seq`。
-- `--moe-grouped-gemm`，目前仅支持Grouped MLP。
+```bash
+--moe-alltoall-overlap-comm \
+--transformer-impl transformer_engine \
+--moe-token-dispatcher-type alltoall \
+--moe-grouped-gemm
+```
 
-且在tp>1时，需要同时开启
-`--moe-tp-extend-ep`
-
-若分支为`alltoall`分支，则需要开启：
-
-- `--moe-token-dispatcher-type alltoall`。
-- `--moe-grouped-gemm`，目前仅支持Grouped MLP。
-- 不支持开启`--moe-tp-extend-ep`。如使用该特性，请切换为`alltoall_seq`。
+- 仅支持 `alltoall`；不支持 `allgather` 或 `flex`。
+- 不能同时开启 `--delay-wgrad-compute`、`--overlap-dispatch-backward-with-experts-wgrad` 或 `--overlap-moe-expert-parallel-comm`。
+- `--moe-zero-memory` 仅支持 `disable` 或 `level0`。
+- `--recompute-activation-function` 不能与 `--hybrid-layer-pattern` 同时使用。
+- 支持与 `--overlap-grad-reduce` 同时使用。
 
 ## 适用场景
 

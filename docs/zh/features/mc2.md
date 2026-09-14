@@ -2,6 +2,8 @@
 
 ## 使用前提
 
+**后端限制：** MC2 仅作用于原生 ColumnParallelLinear/RowParallelLinear，不覆盖 TENPU 的 TE Linear。
+
 仅限于版本标识为`CANN 8.0.RC2`和`Ascend HDK 24.1.RC2`及其后续所有迭代版本的系统环境。
 
 若在非指定版本中尝试采用该配置，可能触发系统级的异常行为，包括但不限于运行时错误。
@@ -50,9 +52,9 @@ for name, module in model.named_modules():
 
 ## 使用方法
 
-设置--use-ascend-mc2即可使能MC2算子。
+原生线性层路径设置 `--transformer-impl local --use-ascend-mc2` 使能 MC2 算子。
 
-**同时需要确保开启**`--sequence-parallel`。
+TP 必须大于 1，并开启 `--sequence-parallel`。
 
 ## 使用效果
 
@@ -61,5 +63,5 @@ for name, module in model.named_modules():
 ## 注意事项
 
 1. MoE模型暂不支持开启MC2。
-2. 暂不兼容计算通信并行 CoC 特性 --use-ascend-coc 。
+2. FP8 场景仅支持 `mxfp8` recipe。
 3. 该特性不支持在 Atlas 900 A3 硬件上使用。

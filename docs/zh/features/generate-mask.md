@@ -4,11 +4,11 @@
 
 ### 1. Megatron源码阐述
 
-[1] 各device通过 `pretrain_gpt.py#L93`-`def get_batch` 去获取各项数据，包括AttnMask。
+[1] 各device通过 `pretrain_gpt.py`-`def get_batch` 去获取各项数据，包括AttnMask。
 
-[2] PP的首尾节点通过 `megatron/training/utils.py#L276`-`def get_batch_on_this_tp_rank` 去获取各项数据，包括AttnMask。其他节点直接返回None。
+[2] PP的首尾节点通过 `megatron/core/utils.py`-`def get_batch_on_this_tp_rank` 去获取各项数据，包括AttnMask。其他节点直接返回None。
 
-[3] TP的首节点通过 `megatron/core/datasets/gpt_dataset.py#L675`-`def _get_ltor_masks_and_position_ids` 生成AttnMask。
+[3] TP的首节点通过 `megatron/core/datasets/gpt_dataset.py`-`def _get_ltor_masks_and_position_ids` 生成AttnMask。
 
 [4] TP其他节点，直接生成与首节点相同shape的empty矩阵，通过broadcast获取首节点生成的AttnMask。
 
@@ -34,23 +34,30 @@ Tips: 以上操作默认开启，生成的AttnMask全部为下三角形状，可
 
 ## 使用场景
 
-目前支持FA和非FA的Mask生成，传入AttnMask可以为None和下三角模式。
+**后端限制：** 本文 mask 缓存接口仅用于 `--transformer-impl local`。
 
-FA场景，当序列长度大于2048或使用ring_cp_algo时，默认走压缩模式。
+| 配置 | 支持范围 |
+| --- | --- |
+| `--attention-mask-type causal` | 默认值，因果注意力；支持 Ring、Ulysses、KVAllGather 和混合 CP。 |
+| `--attention-mask-type general` | 普通训练支持 Ring、Ulysses 和混合 CP。EOD Reset 仅 CP=1 可用。 |
+| `--use-flash-attn --sparse-mode 0` | 默认模式，根据传入的 mask 计算。 |
+| `--use-flash-attn --sparse-mode 2` | 左上对齐的因果压缩 mask。 |
 
-其他场景使用完整Mask。
+CP>1 需使用 `--transformer-impl transformer_engine`，与 EOD Reset 组合时仅支持 `p2p/all_gather + causal`，具体约束见 [EOD Reset](eod-reset.md)。`attention-mask-type` 与 `sparse-mode` 是不同参数，TENPU 内部使用的算子模式不等同于启动参数的可选范围。
+
+本地 DotProductAttention 路径在 causal 且传入 mask 为 None 时生成并缓存 mask；FA 默认生成 [2048,2048] 的压缩 mask，`multi_head_latent_attention` 配置使用完整序列长度。非 FA 使用完整 mask。
 
 ## 使用方法
 
 [1] 针对以上问题和思路，在MindSpeed中，直接默认使能AttnMask，不再使用原生mask生成方式。
 
-[2] 提供全局变量 `mindspeed/model/transformer.py`-`global _GLOBAL_ATTN_MASK`。
+[2] 在 `mindspeed/core/transformer/flash_attention/generate_mask/generate_mask.py` 中提供全局变量 `_GLOBAL_ATTN_MASK`。
 
 [3] 提供 `--sparse-mode` 传参，配合FA多种模式调用。`--sparse-mode`的不同模式信息可以参考[torch_npu.npu_fusion_attention算子文档](https://www.hiascend.com/document/detail/zh/Pytorch/60RC2/apiref/apilist/ptaoplist_001095.html)。
 
-[4] 提供 `mindspeed/model/transformer.py`-`def set_attention_mask`、`def get_attention_mask`、`def generate_attention_mask` 三个额外接口，实现正常流程外的设置、获取和生成功能。
+[4] 提供 `mindspeed/core/transformer/flash_attention/generate_mask/generate_mask.py` 中的 `set_attention_mask`、`get_attention_mask`、`generate_attention_mask` 三个额外接口，实现正常流程外的设置、获取和生成功能。
 
-[5] 提供 `mindspeed/model/transformer.py`-`def parallel_transformer_forward_wrapper` 接口，避开get_batch的缺陷，在第一次正向的时候使能generate_attention_mask来生成mask。
+[5] 本地 DotProductAttention 通过 `mindspeed/core/transformer/flash_attention/generate_mask/adaptor.py` 中的 `dot_product_attention_forward_wrapper` 在首次需要时生成 mask；CP 注意力由 TENPU 处理。
 
 ## 使用效果
 
@@ -58,4 +65,4 @@ FA场景，当序列长度大于2048或使用ring_cp_algo时，默认走压缩�
 
 ## 注意事项
 
-当前FA场景仅支持下三角及Band模式，其他自定义AttnMask模式需要手动set_attention_mask，或修改get_attention_mask逻辑。
+自动生成的 FA mask 为因果 mask；设置 `general` 不会自动生成任意自定义 mask。`set_attention_mask` 仅用于设置本地缓存，不改变 CP/EOD 或 `--sparse-mode` 的支持限制。

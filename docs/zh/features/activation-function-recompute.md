@@ -40,13 +40,15 @@ gelu激活函数会产生大量的数据，但本身计算量很小。此时进�
 
 ## 使用场景
 
+**后端限制：** 与 MoE Grouped GEMM、通信隐藏或低精度训练组合时，必须使用 `--transformer-impl transformer_engine`。
+
 主要用于训练场景，用户内存不足或要节省内存时，可以开启激活函数重计算，节省激活函数的输出激活值。
 
 ## 使用方法
 
 脚本中添加：`--recompute-activation-function` 可开启激活函数重计算。
 
-添加：`--recompute-activation-function-num-layers ${num}` 可指定激活函数重计算的层数。
+添加：`--recompute-activation-function-num-layers ${num}` 可指定激活函数重计算的层数，取值为 0 到 num_layers 的整数。
 
 ### 说明
 
@@ -58,7 +60,7 @@ gelu激活函数会产生大量的数据，但本身计算量很小。此时进�
 
 执行优先级是先计算全重计算层，后计算激活函数重计算层。在流水线并行未开启的情况下，全重计算层数和激活函数重计算层数之和应该等于总层数。
 
-* 暂不兼容自适应重计算特性。
+* 与 MoE overlap 同用时，不支持 `--hybrid-layer-pattern`。
 
 ## 使用效果
 

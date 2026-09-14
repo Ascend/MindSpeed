@@ -47,7 +47,7 @@
 
 ## 使用限制
 
-1. 暂不兼容--moe-fb-overlap和dualpipev特性。
+1. 仅支持 decoder 流水线。
 
 ## 使用效果
 

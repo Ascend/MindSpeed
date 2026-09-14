@@ -46,17 +46,19 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 
 ## 使用场景
 
+**后端限制：** 开启 `--moe-fb-overlap` 时，必须设置 `--transformer-impl transformer_engine`。
+
 在Moe场景，All2All通信过长而影响性能时，可以采用DualPipeV和MoE跨microbatch前反向通信掩盖的组合特性来提升性能。
 
 ## 使用方法
 
-在启动脚本中添加`--schedules-method dualpipev`即可开启DualPipeV流水排布。
+在启动脚本中添加 `--schedules-method dualpipev --untie-embeddings-and-output-weights` 开启 DualPipeV 流水排布。
 
 在启动脚本中额外添加`--moe-fb-overlap`来开启MoE跨microbatch前反向通信掩盖。
 
 在启动脚本中额外添加`--dualpipev-dw-detach`来开启cooldown阶段的dw分离。
 
-使用DualPipeV时，模型层数设置应为`PP*2`的倍数。同时每个PP组的micro batch数至少设置为`PP*2`。与VPP等其他流水特性不兼容。与长序列并行、异步DDP、swap-attention、tp_2d等特性暂不兼容。
+要求 PP 大于 1，模型层数至少为 `2 * PP`，每个 PP 组的 microbatch 数至少为 `2 * PP - 1`。
 
 ## 使用效果
 
@@ -66,4 +68,4 @@ DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实�
 
 ## 使用约束
 
-1. 当前`use_custom_fsdp`和`dualpipev`不兼容
+不支持与 FSDP、`--overlap-grad-reduce`、CP、VPP 或 `--pipeline-model-parallel-layout` 同时使用。

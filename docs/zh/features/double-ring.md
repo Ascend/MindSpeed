@@ -15,13 +15,15 @@
 
 ## 使用场景
 
+**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+
 已开启Ring Attention的训练场景
 
 Ring Attention使能方式参考[此处](ring-attention-context-parallel.md)
 
 ## 使用方法
 
-开启Ring Attention的训练场景中，将`--cp-window-size`设置为大于1的整数，即可使能Double Ring Attention算法，优化原始Ring Attention性能。
+在设置 `--transformer-impl transformer_engine --cp-comm-type p2p` 的 [Ring Attention](ring-attention-context-parallel.md) 训练场景中，将`--cp-window-size`设置为大于1的整数，即可使能Double Ring Attention算法，优化原始Ring Attention性能。
 
 | 重要参数                   | 参数说明                                                                                                                                        |
 |------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
@@ -33,6 +35,6 @@ Ring Attention使能方式参考[此处](ring-attention-context-parallel.md)
 
 ## 注意事项
 
-1. 需要确保`--context-parallel-size`能被`--cp-window-size`整除。
-2. 需要确保`--cp-window-size`小于`--context-parallel-size`。
+1. Ring 度数必须能被 `--cp-window-size` 整除；纯 Ring 的度数为 CP，混合 CP 的度数为 `--hierarchical-context-parallel-sizes A R` 中的 R。
+2. `--cp-window-size` 必须小于 Ring 度数。`--use-cp-send-recv-overlap`、`--use-fused-ring-attention-update` 仅支持 `p2p` / `a2a+p2p`。
 3. 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如Llama2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。

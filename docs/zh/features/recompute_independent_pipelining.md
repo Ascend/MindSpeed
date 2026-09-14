@@ -12,6 +12,8 @@
 
 ## 使用场景
 
+**后端限制：** FP8/FP4 重计算必须使用 `--transformer-impl transformer_engine`。
+
 在虚拟流水线调度中，若用户未开启重计算，则可以利用bubble主动插入重计算，以极小的性能代价换取内存峰值的降低，将需要保留激活值的前向计算块的个数减少到PP * VPP（PP表示流水线并行数，VPP表示虚拟流水线并行数）。
 
 ### 图1 未开启重计算调度图
@@ -38,11 +40,9 @@
 
 ### 说明
 
-* --recompute-in-bubble 特性暂不兼容完全重计算uniform、完全重计算block、选择重计算、自适应选择重计算、swap-attention、no-align-grad-reduce和no-overlap-p2p-communication特性，不兼容moe场景下的--moe-adaptive-recompute-activation、--moe-layer-recompute特性。
+* --recompute-in-bubble 特性暂不兼容完全重计算uniform、完全重计算block、选择重计算、no-align-grad-reduce和no-overlap-p2p-communication特性，不兼容moe场景下的--moe-layer-recompute特性。
 
-+ --recompute-in-advance 特性暂不兼容完全重计算uniform、选择重计算、自适应选择重计算、no-align-grad-reduce和no-overlap-p2p-communication特性。
-
-* --recompute-in-bubble和--recompute-in-advance两者不可同时开启。
++ --recompute-in-advance 特性暂不兼容完全重计算uniform、选择重计算、no-align-grad-reduce和no-overlap-p2p-communication特性。
 
 ## 使用效果
 

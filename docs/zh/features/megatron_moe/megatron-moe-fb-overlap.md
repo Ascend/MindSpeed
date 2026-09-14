@@ -47,29 +47,27 @@ MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具�
 
 ## 使用方法
 
+**后端限制：** 必须设置 `--transformer-impl transformer_engine`，不支持 `local`。
+
 请注意当前该特性仅在DeepSeek V3场景进行了验证，在其他MoE模型场景需要进一步验证和适配。
 
-1. 在启动脚本中加入`--moe-fb-overlap`。
+1. 在启动脚本中加入 `--moe-fb-overlap`，并设置 `--transformer-impl transformer_engine`、`--expert-model-parallel-size` 大于 1。
 
 2. 如果需要使用DualpipeV流水，请在启动脚本中加入`--schedules-method dualpipev`
 3. 如果使用megatron VPP，请在启动脚本中配置`--num-layers-per-virtual-pipeline-stage`
 4. 支持非PP，多microbatch场景，请在启动脚本中不配置`--pipeline-model-parallel-size`或者配置`--pipeline-model-parallel-size 1`
+5. 可用 `--moe-unperm2-mem-optim-swap` 换出 unpermute 中间结果。
 
 ## 使用约束
 
-1. 当前仅支持`--moe-token-dispatcher-type=alltoall`, 暂不支持`allgather/alltoall_seq` Dispatcher。
-2. 不建议同时使用`--swap-attention`，开启后性能劣化。
-3. 当前需设置`--expert-tensor-parallel-size=1`，暂不支持专家TP。
-4. 当前暂不支持Megatron MoE Token Drop&Pad模式，支持Dropless及Drop模式。
-5. 当前依赖GroupedMatmul, 确保打开`--moe-grouped-gemm`。
-6. 当前仅支持`--moe-zero-memory=level0`，且不支持`moe-zero-memory-num-layers`配置。
-7. 当前暂不支持异步DP通信掩盖，需关闭`--overlap-grad-reduce`。
-8. 当前仅支持Mcore Models，不能打开`--use_legacy_models`。
-9. 在VPP流水下，存在如下额外约束：
-    - GBS > 1 *DP* PP * MBS
+1. 当前仅支持`--moe-token-dispatcher-type=alltoall`, 不支持 `allgather/flex` Dispatcher。
+2. 当前需设置`--expert-tensor-parallel-size=1`，暂不支持专家TP。
+3. 当前暂不支持Megatron MoE Token Drop&Pad模式，支持Dropless及Drop模式。
+4. 当前依赖GroupedMatmul, 确保打开`--moe-grouped-gemm`。
+5. `--moe-zero-memory` 支持 `disable`（默认）或 `level0`。
+6. 当前暂不支持异步DP通信掩盖，需关闭`--overlap-grad-reduce`。
+7. 自定义 `--pipeline-model-parallel-layout` 不允许空 decoder chunk。
+8. 在VPP流水下，存在如下额外约束：
+    - `GBS // (MBS * PP * DP) > 1`
     - 若使用noop layers，则其需要添加在模型尾部的最后一个VPP stage
-10. 与下列特性冲突，不能同时使用：
-    - `moe-alltoall-overlap-comm`
-    - `moe-hierarchical-alltoallv`
-    - `recompute-in-advance`
-    - `recompute-in-bubble`
+9. 不支持与 `--delay-wgrad-compute` 同时使用。
