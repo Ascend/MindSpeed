@@ -48,6 +48,7 @@ from mindspeed.features_manager.moe.moe_alltoall_mc2 import MoEAlltoAllMC2Featur
 from mindspeed.features_manager.moe.moe_zero_memory import MoEZeroMemoryFeature
 from mindspeed.features_manager.moe.experts_placement import ExpertsPlacementFeature
 from mindspeed.features_manager.moe.moe_fix_router import MoEFixRouterFeature
+from mindspeed.features_manager.moe.moe_npu_fast_ops import MoENpuFastOpsFeature
 
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_adaptive import HcclBufferAdaptiveFeature
 from mindspeed.features_manager.hccl_buffer.hccl_buffer_set import HcclBufferSetFeature
@@ -232,6 +233,7 @@ def add_moe_features(features_list: List[MindSpeedFeature]):
             ExpertsPlacementFeature(),
             MoEAlltoAllMC2Feature(),
             MoEFixRouterFeature(),
+            MoENpuFastOpsFeature(),
         ]
     )
 

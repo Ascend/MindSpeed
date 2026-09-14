@@ -532,6 +532,7 @@ def forward_with_scores(self, x, qr, mask=None, packed_seq_params=None, use_fuse
             actual_seq_klen=actual_seq_klen,
             layout_query=layout,
             layout_key=layout,
+            layout=layout,
             cp_group=cp_group,
         )
     else:
