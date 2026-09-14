@@ -1,8 +1,12 @@
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 # pylint: disable=too-many-lines
 
+from functools import lru_cache
+
+from packaging.version import Version
 import torch
 import torch.nn.functional as F
+from torch_npu.npu.utils import get_cann_version
 
 from ._stride_utils import normalize_dense_strides
 
@@ -24,6 +28,19 @@ _grad_op = None
 _indexer_loss_grad_op = None
 
 
+@lru_cache(maxsize=1)
+def cann_ge_920():
+    version = get_cann_version("CANN")
+    return Version(version).release >= (9, 2, 0)
+
+
+def _resolve_cmp_mask_mode(has_cmp_kv, cmp_mask_mode=None):
+    # CANN 9.2+ requires cmp_mask_mode=0 when compressed KV is absent.
+    if not has_cmp_kv and cann_ge_920():
+        return 0
+    return _CMP_MASK_MODE if cmp_mask_mode is None else cmp_mask_mode
+
+
 class _OfficialSparseFlashMlaOps:
     def __init__(self, metadata_fn, forward_fn):
         self._metadata_fn = metadata_fn
@@ -37,8 +54,12 @@ class _OfficialSparseFlashMlaOps:
 
 
 class _OfficialSparseFlashMlaGradOps:
-    def __init__(self, grad_fn):
+    def __init__(self, metadata_fn, grad_fn):
+        self._metadata_fn = metadata_fn
         self._grad_fn = grad_fn
+
+    def sparse_flash_mla_grad_metadata(self, *args):
+        return self._metadata_fn(*args)
 
     def npu_sparse_flash_mla_grad(self, *args):
         return self._grad_fn(*args)
@@ -77,12 +98,17 @@ def _load_grad_op():
     if _grad_op is None:
         try:
             from cann_ops_transformer.ops import sparse_flash_mla_grad
+            from cann_ops_transformer.ops import sparse_flash_mla_grad_metadata
         except ImportError as err:
             raise RuntimeError(
                 "npu_sparse_flash_mla backward requires the official cann_ops_transformer "
-                "SparseFlashMlaGrad PyTorch extension with torch_npu/CANN support."
+                "SparseFlashMlaGrad and SparseFlashMlaGradMetadata PyTorch extensions with "
+                "torch_npu/CANN support."
             ) from err
-        _grad_op = _OfficialSparseFlashMlaGradOps(sparse_flash_mla_grad)
+        _grad_op = _OfficialSparseFlashMlaGradOps(
+            sparse_flash_mla_grad_metadata,
+            sparse_flash_mla_grad,
+        )
     return _grad_op
 
 
@@ -179,7 +205,7 @@ def infer_sparse_flash_mla_metadata_args(
         "cmp_topk": int(cmp_topk),
         "cmp_ratio": int(cmp_ratio),
         "ori_mask_mode": _ORI_MASK_MODE,
-        "cmp_mask_mode": _CMP_MASK_MODE,
+        "cmp_mask_mode": _resolve_cmp_mask_mode(cmp_kv is not None),
         "ori_win_left": _ORI_WIN_LEFT,
         "ori_win_right": _ORI_WIN_RIGHT,
         "layout_q": layout_q,
@@ -213,7 +239,9 @@ def npu_sparse_flash_mla_metadata(
     layout_kv="BSND",
     has_ori_kv=True,
     has_cmp_kv=True,
+    cmp_mask_mode=None,
 ):
+    cmp_mask_mode = _resolve_cmp_mask_mode(has_cmp_kv, cmp_mask_mode)
     op = _load_forward_op()
     return op.npu_sparse_flash_mla_metadata(
         num_heads_q,
@@ -236,7 +264,7 @@ def npu_sparse_flash_mla_metadata(
         cmp_topk,
         cmp_ratio,
         _ORI_MASK_MODE,
-        _CMP_MASK_MODE,
+        cmp_mask_mode,
         _ORI_WIN_LEFT,
         _ORI_WIN_RIGHT,
         layout_q,
@@ -270,8 +298,10 @@ def npu_sparse_flash_mla_forward(
     layout_q="BSND",
     layout_kv="BSND",
     return_softmax_lse=False,
+    cmp_mask_mode=None,
 ):
     softmax_scale = _resolve_softmax_scale(softmax_scale)
+    cmp_mask_mode = _resolve_cmp_mask_mode(cmp_kv is not None, cmp_mask_mode)
     validate_sparse_flash_mla_inputs(
         q,
         ori_kv=ori_kv,
@@ -302,6 +332,7 @@ def npu_sparse_flash_mla_forward(
         cmp_ratio,
         layout_q,
         layout_kv,
+        cmp_mask_mode,
     )
     op = _load_forward_op()
     return op.npu_sparse_flash_mla(
@@ -326,13 +357,72 @@ def npu_sparse_flash_mla_forward(
         softmax_scale,
         cmp_ratio,
         _ORI_MASK_MODE,
-        _CMP_MASK_MODE,
+        cmp_mask_mode,
         _ORI_WIN_LEFT,
         _ORI_WIN_RIGHT,
         layout_q,
         layout_kv,
         _TOPK_VALUE_MODE,
         return_softmax_lse,
+    )
+
+
+def npu_sparse_flash_mla_grad_metadata(
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
+    batch_size=0,
+    max_seqlen_q=0,
+    max_seqlen_ori_kv=0,
+    max_seqlen_cmp_kv=0,
+    ori_topk=0,
+    cmp_topk=0,
+    cmp_ratio=1,
+    layout_q="BSND",
+    layout_kv="BSND",
+    has_ori_kv=True,
+    has_cmp_kv=True,
+    cmp_mask_mode=None,
+):
+    cmp_mask_mode = _resolve_cmp_mask_mode(has_cmp_kv, cmp_mask_mode)
+    op = _load_grad_op()
+    return op.sparse_flash_mla_grad_metadata(
+        num_heads_q,
+        num_heads_kv,
+        head_dim,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        batch_size,
+        max_seqlen_q,
+        max_seqlen_ori_kv,
+        max_seqlen_cmp_kv,
+        ori_topk,
+        cmp_topk,
+        cmp_ratio,
+        _ORI_MASK_MODE,
+        cmp_mask_mode,
+        _ORI_WIN_LEFT,
+        _ORI_WIN_RIGHT,
+        layout_q,
+        layout_kv,
+        has_ori_kv,
+        has_cmp_kv,
     )
 
 
@@ -360,14 +450,37 @@ def npu_sparse_flash_mla_grad(
     cmp_ratio=1,
     layout_q="BSND",
     layout_kv="BSND",
+    cmp_mask_mode=None,
 ):
     softmax_scale = _resolve_softmax_scale(softmax_scale)
+    cmp_mask_mode = _resolve_cmp_mask_mode(cmp_kv is not None, cmp_mask_mode)
     q = normalize_dense_strides(q)
     dout = normalize_dense_strides(dout)
     attn_out = normalize_dense_strides(attn_out)
     softmax_lse = normalize_dense_strides(softmax_lse)
     ori_kv = normalize_dense_strides(ori_kv)
     cmp_kv = normalize_dense_strides(cmp_kv)
+    metadata = _ensure_grad_metadata(
+        metadata,
+        q,
+        ori_kv,
+        cmp_kv,
+        ori_sparse_indices,
+        cmp_sparse_indices,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        cmp_ratio,
+        layout_q,
+        layout_kv,
+        cmp_mask_mode,
+    )
     op = _load_grad_op()
     return op.npu_sparse_flash_mla_grad(
         q,
@@ -392,7 +505,7 @@ def npu_sparse_flash_mla_grad(
         softmax_scale,
         cmp_ratio,
         _ORI_MASK_MODE,
-        _CMP_MASK_MODE,
+        cmp_mask_mode,
         _ORI_WIN_LEFT,
         _ORI_WIN_RIGHT,
         layout_q,
@@ -437,6 +550,7 @@ def _npu_sparse_flash_mla(
         layout_q,
         layout_kv,
     )
+    cmp_mask_mode = _resolve_cmp_mask_mode(cmp_kv is not None)
 
     return _SparseFlashMlaFunction.apply(
         q,
@@ -460,7 +574,7 @@ def _npu_sparse_flash_mla(
         _resolve_softmax_scale(softmax_scale),
         cmp_ratio,
         _ORI_MASK_MODE,
-        _CMP_MASK_MODE,
+        cmp_mask_mode,
         _ORI_WIN_LEFT,
         _ORI_WIN_RIGHT,
         layout_q,
@@ -603,6 +717,7 @@ def _npu_sparse_flash_mla_with_indexer_loss(
         layout_q,
         layout_kv,
     )
+    cmp_mask_mode = _resolve_cmp_mask_mode(cmp_kv is not None)
 
     return _SparseFlashMlaWithIndexerLossFunction.apply(
         q,
@@ -626,7 +741,7 @@ def _npu_sparse_flash_mla_with_indexer_loss(
         _resolve_softmax_scale(softmax_scale),
         cmp_ratio,
         _ORI_MASK_MODE,
-        _CMP_MASK_MODE,
+        cmp_mask_mode,
         _ORI_WIN_LEFT,
         _ORI_WIN_RIGHT,
         layout_q,
@@ -697,6 +812,7 @@ class _SparseFlashMlaWithIndexerLossFunction(torch.autograd.Function):
             cmp_ratio,
             layout_q,
             layout_kv,
+            cmp_mask_mode,
         )
         attn_out, softmax_lse = npu_sparse_flash_mla_forward(
             q,
@@ -719,6 +835,7 @@ class _SparseFlashMlaWithIndexerLossFunction(torch.autograd.Function):
             layout_q=layout_q,
             layout_kv=layout_kv,
             return_softmax_lse=True,
+            cmp_mask_mode=cmp_mask_mode,
         )
         ctx.save_for_backward(
             q,
@@ -799,6 +916,7 @@ class _SparseFlashMlaWithIndexerLossFunction(torch.autograd.Function):
             cmp_ratio=ctx.cmp_ratio,
             layout_q=ctx.layout_q,
             layout_kv=ctx.layout_kv,
+            cmp_mask_mode=ctx.cmp_mask_mode,
         )
         if not torch.is_tensor(cmp_softmax_l1) or cmp_softmax_l1.numel() == 0:
             raise RuntimeError("SparseFlashMlaGrad did not return cmp_softmax_l1 for indexer loss.")
@@ -933,6 +1051,7 @@ class _SparseFlashMlaFunction(torch.autograd.Function):
             cmp_ratio,
             layout_q,
             layout_kv,
+            cmp_mask_mode,
         )
         attn_out, softmax_lse = npu_sparse_flash_mla_forward(
             q,
@@ -958,6 +1077,7 @@ class _SparseFlashMlaFunction(torch.autograd.Function):
             layout_q=layout_q,
             layout_kv=layout_kv,
             return_softmax_lse=True,
+            cmp_mask_mode=cmp_mask_mode,
         )
         ctx.save_for_backward(
             q,
@@ -1026,6 +1146,7 @@ class _SparseFlashMlaFunction(torch.autograd.Function):
             cmp_ratio=ctx.cmp_ratio,
             layout_q=ctx.layout_q,
             layout_kv=ctx.layout_kv,
+            cmp_mask_mode=ctx.cmp_mask_mode,
         )
 
         grads = [None] * 26
@@ -1034,6 +1155,116 @@ class _SparseFlashMlaFunction(torch.autograd.Function):
         grads[2] = dcmp_kv if ctx.has_cmp_kv else None
         grads[16] = dsinks if ctx.has_sinks else None
         return tuple(grads)
+
+
+def _ensure_grad_metadata(
+    metadata,
+    q,
+    ori_kv,
+    cmp_kv,
+    ori_sparse_indices,
+    cmp_sparse_indices,
+    cu_seqlens_q,
+    cu_seqlens_ori_kv,
+    cu_seqlens_cmp_kv,
+    seqused_q,
+    seqused_ori_kv,
+    seqused_cmp_kv,
+    cmp_residual_kv,
+    ori_topk_length,
+    cmp_topk_length,
+    cmp_ratio,
+    layout_q,
+    layout_kv,
+    cmp_mask_mode,
+):
+    if metadata is not None:
+        return metadata
+
+    metadata_args = infer_sparse_flash_mla_metadata_args(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_ratio=cmp_ratio,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+    )
+    has_cmp_kv = cmp_kv is not None
+    if not has_cmp_kv:
+        max_seqlen_cmp_kv = metadata_args["max_seqlen_ori_kv"] // max(1, int(cmp_ratio))
+    else:
+        max_seqlen_cmp_kv = metadata_args["max_seqlen_cmp_kv"]
+        if cmp_residual_kv is None:
+            cmp_residual_kv = _infer_cmp_residual_kv(
+                q,
+                ori_kv,
+                cu_seqlens_ori_kv,
+                cmp_ratio,
+                layout_kv,
+                metadata_args["batch_size"],
+            )
+
+    return npu_sparse_flash_mla_grad_metadata(
+        metadata_args["num_heads_q"],
+        metadata_args["num_heads_kv"],
+        metadata_args["head_dim"],
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_residual_kv=cmp_residual_kv,
+        ori_topk_length=ori_topk_length,
+        cmp_topk_length=cmp_topk_length,
+        batch_size=metadata_args["batch_size"],
+        max_seqlen_q=metadata_args["max_seqlen_q"],
+        max_seqlen_ori_kv=metadata_args["max_seqlen_ori_kv"],
+        max_seqlen_cmp_kv=max_seqlen_cmp_kv,
+        ori_topk=0,
+        cmp_topk=metadata_args["cmp_topk"] if has_cmp_kv else 0,
+        cmp_ratio=metadata_args["cmp_ratio"],
+        layout_q=metadata_args["layout_q"],
+        layout_kv=metadata_args["layout_kv"],
+        has_ori_kv=metadata_args["has_ori_kv"],
+        has_cmp_kv=has_cmp_kv,
+        cmp_mask_mode=cmp_mask_mode,
+    )
+
+
+def _infer_cmp_residual_kv(
+    q,
+    ori_kv,
+    cu_seqlens_ori_kv,
+    cmp_ratio,
+    layout_kv,
+    batch_size,
+):
+    if ori_kv is None:
+        return None
+    cmp_ratio = int(cmp_ratio)
+    if cmp_ratio <= 0:
+        raise ValueError("cmp_ratio must be a positive integer.")
+    if layout_kv == "TND":
+        if cu_seqlens_ori_kv is None:
+            return None
+        return torch.remainder(torch.diff(cu_seqlens_ori_kv), cmp_ratio).to(dtype=torch.int32)
+    if layout_kv == "BSND":
+        return torch.full(
+            (int(batch_size),),
+            int(ori_kv.shape[1]) % cmp_ratio,
+            dtype=torch.int32,
+            device=q.device,
+        )
+    return None
 
 
 def _ensure_metadata(
@@ -1055,6 +1286,7 @@ def _ensure_metadata(
     cmp_ratio,
     layout_q,
     layout_kv,
+    cmp_mask_mode,
 ):
     if metadata is not None:
         return metadata
@@ -1098,6 +1330,7 @@ def _ensure_metadata(
         layout_kv=metadata_args["layout_kv"],
         has_ori_kv=metadata_args["has_ori_kv"],
         has_cmp_kv=metadata_args["has_cmp_kv"],
+        cmp_mask_mode=cmp_mask_mode,
     )
 
 
