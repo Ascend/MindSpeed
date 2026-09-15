@@ -1,4 +1,5 @@
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.
+# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2025; Huawei Technologies Co., Ltd.  All rights reserved.
 #
 # DSA NPU fused operators (P1 and the P1+P2+P3 bundle).
 #
@@ -128,6 +129,8 @@ def fused_npu_sparse_flash_attention(
         query_rope = rearrange(query_rope, 's b h d -> b s h d')
         key_rope = rearrange(key_rope, 's b h d -> b s h d')
         layout = 'BSND'
+        # npu_sparse_flash_attention requires a contiguous key.
+        key = key.reshape(-1).reshape(key.shape)
 
         batch_size = query.shape[0]
         seq_len = query.shape[1]

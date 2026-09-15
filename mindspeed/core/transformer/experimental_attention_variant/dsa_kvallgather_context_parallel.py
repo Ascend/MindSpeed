@@ -155,7 +155,9 @@ def fused_lightning_indexer_kvallgather(
             cu_q_chunk = split_cu_seqlens_for_q_chunk(rank_cu_seqlens_q, T_local * 2, i, device=k.device)
             cu_kv_chunk = compute_cu_seqlens_for_window(cu_seqlens_kv_full, kv_len)
         else:
-            k_ag_ = k_ag[:, :kv_len, ...]
+            k_slice = k_ag[:, :kv_len, ...]
+            # npu_lightning_indexer requires a contiguous key.
+            k_ag_ = k_slice.reshape(-1).reshape(k_slice.shape)
             cu_q_chunk = actual_seq_qlen
             cu_kv_chunk = actual_seq_klen
 
@@ -284,9 +286,12 @@ def fused_npu_sparse_flash_attention_kvallgather(
                 return_softmax_lse=True,
             )
         else:
+            k_slice = k_ag[:, :kv_len, ...]
+            # npu_sparse_flash_attention requires a contiguous key.
+            k_ag_ = k_slice.reshape(-1).reshape(k_slice.shape)
             attn_outs = torch_npu.npu_sparse_flash_attention(
                 q[i],
-                k_ag[:, :kv_len, ...],
+                k_ag_,
                 v_ag[:, :kv_len, ...],
                 sparse_indices=topk_indices[i].to(torch.int32),
                 block_table=None,
