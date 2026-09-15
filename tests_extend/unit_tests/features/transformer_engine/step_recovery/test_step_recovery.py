@@ -8,6 +8,8 @@ controller logic can be exercised deterministically on CPU.
 """
 
 import random
+from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import NamedTuple, Optional
 from unittest import mock
 
@@ -313,6 +315,49 @@ class TestRNGStateManager:
 
 
 class TestFeatureWiring:
+    def test_te_recipe_registers_w4a16_fp4_recipe(self):
+        import argparse
+
+        from mindspeed.features_manager.transformer_engine.te_recipe import (
+            TeRecipeFeature,
+        )
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--fp4-recipe", choices=("nvfp4", "custom"))
+        TeRecipeFeature().register_args(parser)
+        assert "w4a16" in parser._option_string_actions["--fp4-recipe"].choices
+
+    @pytest.mark.parametrize("scope", [None, "all", "moe-only", "linear-only", "close"])
+    def test_fp4_recipe_wrapper_returns_w4a16_recipe(self, scope):
+        from mindspeed.core.transformer_engine import transformer_engine as te_patch
+
+        @dataclass
+        class FakeScopedRecipe:
+            quantization_scope: str = "all"
+
+        class FakeW4A16BlockScaling(FakeScopedRecipe):
+            pass
+
+        fake_te = SimpleNamespace(
+            common=SimpleNamespace(
+                recipe=SimpleNamespace(
+                    ScopedRecipe=FakeScopedRecipe,
+                    W4A16BlockScaling=FakeW4A16BlockScaling,
+                ),
+            ),
+        )
+        fallback = mock.Mock()
+        config = SimpleNamespace(fp4_recipe="w4a16")
+        if scope is not None:
+            config.qat_scope = scope
+
+        with mock.patch.object(te_patch, "transformer_engine", fake_te, create=True):
+            actual = te_patch.get_fp4_recipe_wrapper(fallback)(config)
+
+        assert isinstance(actual, FakeW4A16BlockScaling)
+        assert actual.quantization_scope == (scope or "all")
+        fallback.assert_not_called()
+
     def test_te_recipe_registers_no_hif8_step_recovery_arg(self):
         import argparse
 
@@ -430,6 +475,36 @@ class TestFeatureWiring:
 
         with pytest.raises(ValueError, match="hif8_delayed recipe requires"):
             TeRecipeFeature().validate_args(args)
+
+    @pytest.mark.parametrize(
+        ("override", "message"),
+        [
+            ({"fp4": None}, "--fp4-format e2m1"),
+            ({"transformer_impl": "local"}, "--transformer-impl transformer_engine"),
+            ({"fp4_param_gather": True}, "--fp4-param-gather"),
+            ({"qat_scheme": "w4a16-mxfp4"}, "--qat-scheme"),
+        ],
+    )
+    def test_w4a16_recipe_rejects_incompatible_args(self, override, message):
+        from argparse import Namespace
+
+        from mindspeed.features_manager.transformer_engine.te_recipe import (
+            TeRecipeFeature,
+        )
+
+        values = {
+            "fp8": None,
+            "fp8_recipe": "delayed",
+            "fp4": "e2m1",
+            "fp4_recipe": "w4a16",
+            "fp4_param_gather": False,
+            "transformer_impl": "transformer_engine",
+            "qat_scheme": None,
+        }
+        values.update(override)
+
+        with pytest.raises(ValueError, match=message):
+            TeRecipeFeature().validate_args(Namespace(**values))
 
 
 # ---------------------------------------------------------------------------

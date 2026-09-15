@@ -4,9 +4,10 @@
 
 Provides NPU-specific wrappers for TransformerEngine-related functions:
   - FP8 recipe with HiF8 format support
-  - FP4 recipe with MXFP4 support
+  - FP4 recipes with MXFP4 and W4A16 support
 """
 
+from dataclasses import replace
 from functools import wraps
 
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -77,14 +78,38 @@ def get_fp8_recipe_wrapper(fn):
     return wrapper
 
 
+def core_transformer_config_from_args_wrapper(fn):
+    """Propagate the MindSpeed QAT scope into the model configuration."""
+
+    @wraps(fn)
+    def wrapper(args, *pos_args, **kwargs):
+        config = fn(args, *pos_args, **kwargs)
+        config.qat_scope = getattr(args, "qat_scope", "all")
+        return config
+
+    return wrapper
+
+
 def get_fp4_recipe_wrapper(fn):
-    """Wrap get_fp4_recipe to support MXFP4 format."""
+    """Wrap get_fp4_recipe to support NPU FP4 recipes."""
 
     @wraps(fn)
     def wrapper(config):
-        if getattr(config.fp4_recipe, "value", config.fp4_recipe) == "mxfp4":
-            return transformer_engine.common.recipe.MXFP4BlockScaling()
-
-        return fn(config)
+        fp4_recipe = getattr(config.fp4_recipe, "value", config.fp4_recipe)
+        recipe_cls_name = {
+            "mxfp4": "MXFP4BlockScaling",
+            "w4a16": "W4A16BlockScaling",
+        }.get(fp4_recipe)
+        recipes = transformer_engine.common.recipe
+        scope = getattr(config, "qat_scope", "all")
+        if recipe_cls_name is not None:
+            recipe = getattr(recipes, recipe_cls_name)()
+        else:
+            recipe = fn(config)
+        if isinstance(recipe, recipes.ScopedRecipe):
+            return replace(recipe, quantization_scope=scope)
+        if scope != "all":
+            raise ValueError(f"{fp4_recipe} does not support --qat-scope.")
+        return recipe
 
     return wrapper

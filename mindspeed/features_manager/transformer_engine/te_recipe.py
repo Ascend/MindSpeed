@@ -2,7 +2,7 @@
 """TeRecipeFeature: TransformerEngine NPU recipe enhancements.
 
 This feature registers:
-  - HiF8/MXFP4 recipe choices extension on --fp8-format, --fp8-recipe, --fp4-recipe
+  - HiF8/MXFP4/W4A16 recipe choices extension on --fp8-format, --fp8-recipe, --fp4-recipe
   - HiF8 config CLI arguments (--hif8-input-margin, --hif8-weight-margin, etc.)
   - FP8/FP4 recipe wrapper patches (get_fp8_recipe, get_fp4_recipe)
   - HiF8 step recovery (train_step wrapper with NaN/Inf detection + retry)
@@ -16,7 +16,7 @@ logger = logging.getLogger("mindspeed.te_recipe")
 
 
 class TeRecipeFeature(MindSpeedFeature):
-    """TransformerEngine NPU recipe enhancements (HiF8, MXFP4, step recovery)."""
+    """TransformerEngine NPU recipe enhancements (HiF8, MXFP4, W4A16, step recovery)."""
 
     def __init__(self):
         super().__init__('te-recipe', optimization_level=0)
@@ -25,13 +25,18 @@ class TeRecipeFeature(MindSpeedFeature):
         # Extend fp8 / fp8_recipe choices for HiF8 support.
         self.add_parser_argument_choices_value(parser, "--fp8-format", "hif8")
         self.add_parser_argument_choices_value(parser, "--fp8-recipe", "hif8_delayed")
-        # Extend fp4_recipe choices for MXFP4 support.
+        # Extend fp4_recipe choices for MXFP4/W4A16 support.
         self.add_parser_argument_choices_value(parser, "--fp4-recipe", "mxfp4")
+        self.add_parser_argument_choices_value(parser, "--fp4-recipe", "w4a16")
 
-        # HiF8 config fields. These are automatically injected onto
-        # TransformerConfig by transformer_config_init_wrapper, so we only
-        # need to register them with argparse here.
         group = parser.add_argument_group(title="te-recipe")
+        group.add_argument(
+            '--qat-scope',
+            choices=['all', 'moe-only', 'linear-only', 'close'],
+            default='all',
+            help='Quantization scope: all modules, GroupedLinear only, Linear only, '
+            'or close to disable all quantization for debugging.',
+        )
         group.add_argument(
             '--hif8-input-margin',
             type=int,
@@ -86,13 +91,31 @@ class TeRecipeFeature(MindSpeedFeature):
             if args.fp8_recipe not in ('tensorwise', 'delayed', 'hif8_delayed'):
                 raise ValueError("hif8 only support tensorwise, delayed and hif8_delayed scaling type")
 
+        fp4_recipe_arg = getattr(args, "fp4_recipe", None)
+        fp4_recipe = getattr(fp4_recipe_arg, "value", fp4_recipe_arg)
+        if fp4_recipe == "w4a16":
+            if getattr(args, "fp4", None) != "e2m1":
+                raise ValueError("w4a16 recipe requires --fp4-format e2m1.")
+            if getattr(args, "transformer_impl", None) != "transformer_engine":
+                raise ValueError("w4a16 recipe requires --transformer-impl transformer_engine.")
+            if getattr(args, "fp4_param_gather", False):
+                raise ValueError("w4a16 recipe does not support --fp4-param-gather.")
+            if getattr(args, "qat_scheme", None) is not None:
+                raise ValueError("w4a16 recipe cannot be used together with --qat-scheme.")
+
     def register_patches(self, patch_manager, args):
         """TransformerEngine NPU patches: FP8/FP4 recipe wrappers + HiF8 step recovery."""
         try:
             from mindspeed.core.transformer_engine.transformer_engine import (
                 HAVE_TE,
+                core_transformer_config_from_args_wrapper,
                 get_fp4_recipe_wrapper,
                 get_fp8_recipe_wrapper,
+            )
+
+            patch_manager.register_patch(
+                "megatron.training.arguments.core_transformer_config_from_args",
+                core_transformer_config_from_args_wrapper,
             )
 
             if HAVE_TE:
