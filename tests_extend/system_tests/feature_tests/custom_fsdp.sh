@@ -1,6 +1,7 @@
 #!/bin/bash
 
 source "tests_extend/system_tests/env_npu.sh"
+unset CUDA_DEVICE_MAX_CONNECTIONS
 
 NPUS_PER_NODE=8
 MASTER_ADDR=localhost
@@ -67,7 +68,7 @@ TRAIN_ARGS="
     --bf16 \
     --train-iters ${TRAIN_ITERS} \
     --seq-length ${SEQ_LENGTH} \
-    --transformer-impl local \
+    --transformer-impl transformer_engine \
 "
 
 MODEL_PARALLEL_ARGS="
@@ -99,7 +100,6 @@ GPT_ARGS="
     --use-fused-rmsnorm \
     --use-fused-rotary-pos-emb \
     --attention-softmax-in-fp32 \
-    --no-gradient-accumulation-fusion \
     --group-query-attention \
     --num-query-groups 4 \
 "
@@ -119,7 +119,8 @@ OUTPUT_ARGS="
 "
 
 FSDP_ARGS="
-    --use-custom-fsdp \
+    --use-megatron-fsdp \
+    --ckpt-format fsdp_dtensor \
     --data-parallel-sharding-strategy optim_grads_params \
     --no-gradient-accumulation-fusion \
 "
@@ -134,7 +135,7 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     $OPTIMIZE_ARGS \
     $TRAIN_ARGS \
     $MODEL_PARALLEL_ARGS \
-    --exit-interval 50
-    --distributed-backend nccl \
+    --exit-interval 50 \
+    --distributed-backend nccl
 
 set +x
