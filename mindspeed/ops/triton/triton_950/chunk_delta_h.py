@@ -10,7 +10,7 @@ import triton.language as tl
 
 from fla.ops.utils import prepare_chunk_indices, prepare_chunk_offsets
 from fla.ops.utils.op import exp, exp2
-from fla.utils import IS_NVIDIA_HOPPER, USE_CUDA_GRAPH, autotune_cache_kwargs, check_shared_mem
+from fla.utils import IS_NVIDIA_HOPPER, autotune_cache_kwargs, check_shared_mem
 
 from .fla_ops_backends import dispatch
 
@@ -50,7 +50,6 @@ def _select_block_k(
         for BV in ([32, 64] if check_shared_mem('ada') else [32])
     ],
     key=['H', 'HV', 'K', 'V', 'BT', 'USE_EXP2', 'TRANSPOSE_STATE'],
-    use_cuda_graph=USE_CUDA_GRAPH,
     **autotune_cache_kwargs,
 )
 @triton.jit(do_not_specialize=['T'])
@@ -356,7 +355,6 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
         for BV in ([32, 64] if check_shared_mem('ada') else [32])
     ],
     key=['H', 'HV', 'V', 'BT', 'USE_EXP2', 'TRANSPOSE_STATE'],
-    use_cuda_graph=USE_CUDA_GRAPH,
     **autotune_cache_kwargs,
 )
 @triton.jit(do_not_specialize=['T'])
@@ -505,7 +503,6 @@ def chunk_gated_delta_rule_fwd_kernel_h_k128_blockdim128(
         for BV in ([32, 64] if check_shared_mem('ada') else [32])
     ],
     key=['H', 'HV', 'V', 'BT', 'BV', 'USE_G', 'USE_EXP2', 'TRANSPOSE_STATE'],
-    use_cuda_graph=USE_CUDA_GRAPH,
     **autotune_cache_kwargs,
 )
 @triton.jit(do_not_specialize=['T'])
@@ -670,7 +667,6 @@ def chunk_gated_delta_rule_bwd_kernel_dhu_k128_blockdim128(
         for BV in ([32, 64] if check_shared_mem('ada') else [32])
     ],
     key=['H', 'HV', 'K', 'V', 'BT', 'BV', 'USE_G', 'USE_EXP2', 'TRANSPOSE_STATE'],
-    use_cuda_graph=USE_CUDA_GRAPH,
     **autotune_cache_kwargs,
 )
 @triton.jit(do_not_specialize=['T'])
