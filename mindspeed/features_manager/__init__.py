@@ -12,7 +12,6 @@ from mindspeed.features_manager.functional.tflops_calculate import TflopsCalcula
 
 
 from mindspeed.features_manager.fusions.fused_bias_swiglu import FusedSwigluFeature
-from mindspeed.features_manager.fusions.fused_softmax import FusedSoftmaxFeature
 from mindspeed.features_manager.fusions.fused_rope import FusedRoPEFeature
 from mindspeed.features_manager.fusions.fused_moe_permute import FusedMoEPermuteFeature
 from mindspeed.features_manager.affinity.affinity import AffinityFeature
@@ -129,7 +128,6 @@ def add_fusions_features(features_list: List[MindSpeedFeature]):
     features_list.extend(
         [
             FusedSwigluFeature(),
-            FusedSoftmaxFeature(),
             FusedRoPEFeature(),
             FusedMoEPermuteFeature(),
         ]

@@ -234,18 +234,6 @@ class NpuEnhancementFeature(MindSpeedFeature):
         except ImportError:
             pass
 
-        # Avoid async save issues
-        try:
-            from mindspeed.core.megatron_basic.megatron_basic import preload_tensors
-
-            patch_manager.register_patch(
-                'megatron.core.dist_checkpointing.strategies.filesystem_async.FileSystemWriterAsync.preload_tensors',
-                preload_tensors,
-            )
-            logger.debug("Bugfix: async save registered")
-        except ImportError:
-            pass
-
         # Avoid incorrect weight_decay override in resume
         try:
             from mindspeed.core.megatron_basic.megatron_basic import dist_optim_load_state_dict
@@ -279,15 +267,3 @@ class NpuEnhancementFeature(MindSpeedFeature):
             logger.debug("Non-mcore args patches registered")
         except ImportError as e:
             logger.debug("Non-mcore args patches skipped: %s", e)
-
-        try:
-            from mindspeed.core.megatron_basic.megatron_basic import _compile_dependencies, get_device_wrapper
-
-            patch_manager.register_patch('megatron.training.initialize._compile_dependencies', _compile_dependencies)
-            patch_manager.register_patch('megatron.training.dist_signal_handler.get_device', get_device_wrapper)
-            from mindspeed.core.megatron_basic.megatron_basic import get_device_arch_version
-
-            patch_manager.register_patch('megatron.training.utils.get_device_arch_version', get_device_arch_version)
-            logger.debug("Non-mcore init patches registered")
-        except ImportError as e:
-            logger.debug("Non-mcore init patches skipped: %s", e)

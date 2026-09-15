@@ -15,8 +15,8 @@
 ## 使用方法
 
 要启用此功能，在脚本中加入`--npu-datadump`即可。使用前请先进行下述config.json的修改。默认状态下，采集RANK0、STEP0下的statistics精度。
-通过调整`mindspeed\functional\npu_datadump\config.json`，可以进行整网dump时各选项的调整。
-通过调整`mindspeed\functional\npu_datadump\compare.json`，可以利用mstt进行各dump数据的精度比对。
+> 注意：该功能已随架构拆分迁移至 MegatronAdaptor（MA），config.json 位于 MA 仓对应的 npu_datadump 补丁目录下。
+通过调整 MA 补丁目录中的`config.json`，可以进行整网dump时各选项的调整，并可配置利用 mstt 进行各 dump 数据的精度比对。
 关于config设置的更多细节，请参考mstt官方使用教程：[<td><a href="https://gitcode.com/Ascend/mstt/tree/master/debug/accuracy_tools/msprobe">link</a></td>]
 
 - 暂不支持Lite后端。

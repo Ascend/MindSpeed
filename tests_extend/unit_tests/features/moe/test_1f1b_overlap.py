@@ -32,7 +32,7 @@ from megatron.training.utils import unwrap_model
 from megatron.core.transformer import TransformerConfig
 from megatron.core.tensor_parallel import model_parallel_cuda_manual_seed
 
-from mindspeed.functional.npu_deterministic.npu_deterministic import extend_seed_all
+from mindspeed.utils import extend_seed_all
 
 from mindspeed.core.transformer.moe.moe_feature.fb_overlap.transformer_block import (
     transformer_block_backward,
