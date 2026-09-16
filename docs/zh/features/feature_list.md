@@ -41,7 +41,7 @@
       <td><a href="../features/recomputation.md">Megatron重计算</a></td>
     </tr>
     <tr>
-      <td><a href="../features/dist_ckpt.md">Megatron分布式权重</a></td>
+      <td><a href="../features/custom_fsdp.md">Megatron全分片数据并行</a></td>
     </tr>
     <tr>
       <td><a href="../features/transformer_engine.md">Megatron Transformer Engine</a></td>
@@ -50,17 +50,11 @@
       <td><a href="../features/multi-head-latent-attention.md">Megatron Multi-head Latent Attention</a></td>
     </tr>
     <tr>
-      <td rowspan="8">并行策略特性</td>
+      <td rowspan="6">并行策略特性</td>
       <td><a href="../features/ulysses-context-parallel.md">Ascend Ulysses长序列并行</a></td>
     </tr>
     <tr>
       <td><a href="../features/ring-attention-context-parallel.md">Ascend Ring Attention长序列并行</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/double-ring.md">Ascend Double Ring Attention长序列并行</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/hybrid-context-parallel.md">Ascend混合长序列并行</a></td>
     </tr>
     <tr>
       <td><a href="../features/noop-layers.md">Ascend自定义空操作层</a></td>
@@ -75,11 +69,8 @@
       <td><a href="../features/pipeline-model-parallel-layout.md">Megatron 自定义流水线布局</a></td>
     </tr>
     <tr>
-      <td rowspan="12">内存优化特性</td>
+      <td rowspan="10">内存优化特性</td>
       <td><a href="../features/activation-function-recompute.md">Ascend激活函数重计算</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/recompute_independent_pipelining.md">Ascend重计算流水线独立调度</a></td>
     </tr>
     <tr>
       <td><a href="../features/generate-mask.md">Ascend Mask归一</a></td>
@@ -107,9 +98,6 @@
     </tr>
     <tr>
       <td><a href="../features/swap-layer-input.md">Transformer 层输入卸载</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/compress-tensor.md">compress-activation</a></td>
     </tr>
     <tr>
       <td rowspan="10">亲和计算特性</td>
@@ -143,11 +131,8 @@
       <td><a href="../features/te-comparsion-online.md">低精度在线比对</a></td>
     </tr>
     <tr>
-      <td rowspan="3">通信优化特性</td>
+      <td rowspan="2">通信优化特性</td>
       <td><a href="../features/hccl-replace-gloo.md">Ascend Gloo存档落盘优化</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/tensor-parallel-2d.md">Ascend高维张量并行</a></td>
     </tr>
     <tr>
       <td><a href="../features/async-log-allreduce.md">异步日志全归约 (Async Log Allreduce)</a></td>
@@ -192,19 +177,6 @@
     </tr>
     <tr>
       <td><a href="../features/preprocess-eod-data.md">pack模式预训练数据集处理</a></td>
-    </tr>
-    <tr>
-      <td rowspan="4">多模态特性</td>
-      <td><a href="../features/variable_seq_lengths.md">Ascend PP支持动态形状</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/multi_parameter_pipeline.md">Ascend PP支持多参数传递</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/multi_parameter_pipeline_and_variable_seq_lengths.md">Ascend PP支持多参数传递和动态形状</a></td>
-    </tr>
-    <tr>
-      <td><a href="../features/unaligned_linear.md">Ascend非对齐线性层</a></td>
     </tr>
     <tr>
       <td rowspan="7">其它特性</td>

@@ -266,7 +266,7 @@ MindSpeed 特性由七大模块组成，分别为：Megatron特性支持、并�
 
 - 当前大模型训练主要使用bf16数据类型，以下特性若无特殊声明原则上兼容fp16，如使用其它数据类型遇到问题可提交issue，我们会快速响应。🛰️
 
-- 注意❗：在Megatron_core_r0.9.0后，alltoall dispatcher进行了调整，原版本alltoall dispatcher重命名为alltoall_seq。MindSpeed MoE特性对各分支的支持情况，见各特性说明。
+- 注意❗：在Megatron_core_r0.18.0后，alltoall dispatcher进行了调整，alltoall_seq不再支持。MindSpeed MoE特性对各分支的支持情况，见各特性说明。
 
 各特性支持情况请查看[MindSpeed Core 特性支持情况](./docs/zh/features/feature_list.md)。
 
