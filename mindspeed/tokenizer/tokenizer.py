@@ -15,11 +15,13 @@
 
 """Megatron tokenizers. just using huggingface implementation."""
 
+import json
+from collections import OrderedDict
 from functools import wraps
 
 from transformers import AutoTokenizer
+from megatron.core.tokenizers.base_tokenizer import MegatronTokenizerBase
 from megatron.core.tokenizers.utils.build_tokenizer import vocab_size_with_padding
-from megatron.core.tokenizers.megatron_tokenizer import MegatronTokenizer
 
 
 def build_tokenizer_wrapper(build_tokenizer):
@@ -64,12 +66,11 @@ def build_tokenizer_wrapper(build_tokenizer):
     return wrapper
 
 
-class _AutoTokenizer(MegatronTokenizer):
+class _AutoTokenizer(MegatronTokenizerBase):
     """AutoTokenizer for Hf Pretrained model loading."""
 
     def __init__(self, tokenizer_name_or_path, vocab_extra_ids, model_max_length, use_fast, **kwargs):
-        name = tokenizer_name_or_path
-        super().__init__(name)
+        super().__init__(path=tokenizer_name_or_path, config={"library": "huggingface"})
         hf_tokenizer_kwargs = kwargs
         if vocab_extra_ids > 0:
             hf_tokenizer_kwargs["additional_special_tokens"] = [f"<extra_id_{_id}>" for _id in range(vocab_extra_ids)]
@@ -78,6 +79,13 @@ class _AutoTokenizer(MegatronTokenizer):
         hf_tokenizer_kwargs["use_fast"] = use_fast
         hf_tokenizer_kwargs["trust_remote_code"] = False
         hf_tokenizer_kwargs["local_files_only"] = True
+        # Dataset cache serialization still requires tokenizer identifiers in MCore 0.18.
+        self.unique_identifiers = OrderedDict(
+            [("class", type(self).__name__), ("tokenizer_path", [tokenizer_name_or_path])]
+        )
+        for key in sorted(hf_tokenizer_kwargs):
+            self.unique_identifiers[key] = str(hf_tokenizer_kwargs[key])
+        self.unique_description = json.dumps(self.unique_identifiers, indent=4)
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path, **hf_tokenizer_kwargs)
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
@@ -107,6 +115,9 @@ class _AutoTokenizer(MegatronTokenizer):
 
     def detokenize(self, token_ids):
         return self.tokenizer.decode(token_ids)
+
+    def apply_chat_template(self, conversation, **kwargs):
+        return self.tokenizer.apply_chat_template(conversation, **kwargs)
 
     @property
     def eod(self):

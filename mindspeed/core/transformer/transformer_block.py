@@ -8,10 +8,11 @@ from megatron.core import tensor_parallel, parallel_state, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
-from megatron.core.extensions.transformer_engine import TENorm
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.core.tensor_parallel.comm_autograd_function import auto_grad_sync_gather_along_last_dim, \
-    auto_grad_sync_gather_along_first_dim
+from mindspeed.core.tensor_parallel.comm_autograd_function import (
+    auto_grad_sync_gather_along_last_dim,
+    auto_grad_sync_gather_along_first_dim,
+)
 from mindspeed.core.tensor_parallel.comm_group_api import TPXCollectiveComm, TPYCollectiveComm
 
 from mindspeed.deprecate import Deprecated, MEGATRON_ADAPTOR_DEPRECATED_TIME
@@ -101,14 +102,14 @@ def transformer_block_checkpointed_forward(
         # checkpoint the input activation of each divided chunk.
         # A method to further reduce memory usage reducing checkpoints.
         if not global_args.swap_attention:
-            l = 0
-            while l < self.num_layers_per_pipeline_rank:
-                hidden_states = checkpoint_handler(custom(l, l + 1))
+            layer_idx = 0
+            while layer_idx < self.num_layers_per_pipeline_rank:
+                hidden_states = checkpoint_handler(custom(layer_idx, layer_idx + 1))
 
-                l += self.config.recompute_num_layers
+                layer_idx += self.config.recompute_num_layers
         else:
-            for l in range(self.num_layers_per_pipeline_rank):
-                hidden_states, context = custom(l, l + 1)(
+            for layer_idx in range(self.num_layers_per_pipeline_rank):
+                hidden_states, context = custom(layer_idx, layer_idx + 1)(
                     hidden_states,
                     attention_mask,
                     context,
@@ -122,7 +123,7 @@ def transformer_block_checkpointed_forward(
             vpp_rank = 0
         if vpp_size is None or not global_args.enable_recompute_layers_per_pp_rank:
             vpp_size = 1
-        for l in range(self.num_layers_per_pipeline_rank):
+        for layer_idx in range(self.num_layers_per_pipeline_rank):
             # The number of layers each pipeline rank recomputes is self.recompute_num_layers.
             # If self.recompute_num_layers cannot divide exactly  the number of layers in each pp rank,
             # we try to balance the number of recomputed layers in each model chunk.
@@ -132,19 +133,22 @@ def transformer_block_checkpointed_forward(
             # Stage 1: [2, 3]   [6, 7]
             # With self.recompute_num_layers = 2, we will recompute layers 0,4 for stage 0, and 2,6 for stage 1.
             # With self.recompute_num_layers = 3, we will recompute layers 0,1,4 for stage 0, and 2,3,6 for stage 1.
-            def should_recompute():
+            def should_recompute(layer_index):
                 if getattr(global_args, 'reduce_recompute_for_last_chunk', False):
+
                     def is_last_layer():
-                        return (l == self.num_layers_per_pipeline_rank - 1) and mpu.is_pipeline_last_stage()
+                        return (layer_index == self.num_layers_per_pipeline_rank - 1) and mpu.is_pipeline_last_stage()
 
-                    return ((l * vpp_size + vpp_rank) < self.config.recompute_num_layers) and not is_last_layer()
+                    return (
+                        (layer_index * vpp_size + vpp_rank) < self.config.recompute_num_layers
+                    ) and not is_last_layer()
                 else:
-                    return (l * vpp_size + vpp_rank) < self.config.recompute_num_layers
+                    return (layer_index * vpp_size + vpp_rank) < self.config.recompute_num_layers
 
-            if should_recompute() and not global_args.swap_attention:
-                hidden_states, context = checkpoint_handler(custom(l, l + 1))
+            if should_recompute(layer_idx) and not global_args.swap_attention:
+                hidden_states, context = checkpoint_handler(custom(layer_idx, layer_idx + 1))
             else:
-                hidden_states, context = custom(l, l + 1)(
+                hidden_states, context = custom(layer_idx, layer_idx + 1)(
                     hidden_states,
                     attention_mask,
                     context,
@@ -160,19 +164,29 @@ class NoopTransformerLayer(MegatronModule):
         super().__init__(None)
         self.layer_number = layer_number
 
-    def forward(self, hidden_states, attention_mask, context, context_mask, rotary_pos_emb, rotary_pos_cos=None,
-                rotary_pos_sin=None, inference_params=None, attention_bias=None, inference_context=None,
-                packed_seq_params=None, sequence_len_offset=None):
+    def forward(
+        self,
+        hidden_states,
+        attention_mask,
+        context,
+        context_mask,
+        rotary_pos_emb,
+        rotary_pos_cos=None,
+        rotary_pos_sin=None,
+        inference_params=None,
+        attention_bias=None,
+        inference_context=None,
+        packed_seq_params=None,
+        sequence_len_offset=None,
+    ):
         return hidden_states.clone(), context
 
 
-def _get_layer_offset(args):
+def _get_layer_offset(args, vp_rank=None):
     num_layers = args.num_layers
     pipeline_rank = parallel_state.get_pipeline_model_parallel_rank()
 
-    num_layers_per_pipeline_rank = (
-        num_layers // parallel_state.get_pipeline_model_parallel_world_size()
-    )
+    num_layers_per_pipeline_rank = num_layers // parallel_state.get_pipeline_model_parallel_world_size()
 
     if args.schedules_method == "dualpipev":
         num_layers_per_dualpipe_chunk = num_layers_per_pipeline_rank // 2
@@ -181,7 +195,6 @@ def _get_layer_offset(args):
         else:
             offset = args.num_layers - (pipeline_rank + 1) * num_layers_per_dualpipe_chunk
     elif parallel_state.get_virtual_pipeline_model_parallel_world_size() is not None:
-        vp_rank = parallel_state.get_virtual_pipeline_model_parallel_rank()
         vp_size = parallel_state.get_virtual_pipeline_model_parallel_world_size()
 
         total_num_layers = num_layers
@@ -210,17 +223,23 @@ def _build_layers(self):
     args = get_args()
 
     def build_layer(layer_spec, layer_number):
-        global_layer_number = _get_layer_offset(args) + layer_number
-        if (hasattr(args, 'noop_layers') and isinstance(args.noop_layers, set)
-            and global_layer_number - 1 in args.noop_layers):
+        global_layer_number = _get_layer_offset(args, vp_rank=self.vp_stage) + layer_number
+        if (
+            hasattr(args, 'noop_layers')
+            and isinstance(args.noop_layers, set)
+            and global_layer_number - 1 in args.noop_layers
+        ):
             return NoopTransformerLayer(global_layer_number)
-        return build_module(layer_spec, config=self.config, layer_number=layer_number, )
+        return build_module(
+            layer_spec,
+            config=self.config,
+            layer_number=layer_number,
+            pg_collection=self.pg_collection,
+            vp_stage=self.vp_stage,
+        )
 
     self.layers = torch.nn.ModuleList(
-        [
-            build_layer(layer_spec, i + 1)
-            for i, layer_spec in enumerate(self.submodules.layer_specs)
-        ]
+        [build_layer(layer_spec, i + 1) for i, layer_spec in enumerate(self.submodules.layer_specs)]
     )
 
     if self.submodules.layer_norm and self.post_process and self.post_layer_norm:
