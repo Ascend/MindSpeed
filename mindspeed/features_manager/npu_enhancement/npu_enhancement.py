@@ -144,10 +144,9 @@ class NpuEnhancementFeature(MindSpeedFeature):
     def register_patches(self, patch_manager, args):
         # ================================================================
         self._configure_te_comparison(args)
-        # Step 2: GDN — replace GatedDeltaNet with MindSpeed subclass
-        #  in favour of MindSpeed Triton-accelerated implementations)
+        # Step 2: GDN — replace GatedDeltaNet with the MindSpeed backend subclass.
         # ================================================================
-        self._register_gdn_patch(patch_manager)
+        self._register_gdn_patch(patch_manager, args)
 
         # ================================================================
         # Step 3: Norm patches (PTNorm)
@@ -179,19 +178,34 @@ class NpuEnhancementFeature(MindSpeedFeature):
     # ================================================================
     # Internal patch methods
     # ================================================================
-    def _register_gdn_patch(self, patch_manager):
-        """Replace GatedDeltaNet with MindSpeed Triton-accelerated subclass.
+    def _register_gdn_patch(self, patch_manager, args):
+        """Replace GatedDeltaNet with the MindSpeed-accelerated subclass.
 
         MA has already created dummy FLA modules so that Megatron's
         ``HAVE_FLA`` check passes.  We force_patch the entire class so
-        that MindSpeed's subclass — which imports its own Triton operators
-        directly — takes effect regardless of whether CP is enabled.
+        that MindSpeed's subclass takes effect regardless of whether CP
+        is enabled.
         """
+        is_gdn = getattr(args, 'experimental_attention_variant', None) == 'gated_delta_net'
+        if is_gdn:
+            from mindspeed.core.ssm.gdn_backend import load_gdn_operators
+
+            load_gdn_operators()
+
         try:
-            from mindspeed.core.ssm.gated_delta_net import GatedDeltaNet
+            from mindspeed.core.ssm.gated_delta_net import (
+                GatedDeltaNet,
+                gdn_transformer_config_post_init_wrapper,
+            )
+
+            if is_gdn and getattr(args, 'variable_seq_lengths', False):
+                patch_manager.register_patch(
+                    'megatron.core.transformer.transformer_config.TransformerConfig.__post_init__',
+                    gdn_transformer_config_post_init_wrapper,
+                )
 
             patch_manager.register_patch('megatron.core.ssm.gated_delta_net.GatedDeltaNet', GatedDeltaNet)
-            logger.debug("GDN GatedDeltaNet patch registered (MindSpeed Triton)")
+            logger.debug("GDN GatedDeltaNet patch registered (MindSpeed backend)")
         except ImportError as e:
             logger.debug("GDN GatedDeltaNet patch skipped: %s", e)
 

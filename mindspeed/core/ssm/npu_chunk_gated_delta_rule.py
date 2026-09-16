@@ -1,33 +1,65 @@
-# Copyright (c) 2023-2025, Songlin Yang, Yu Zhang
-# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
-"""MindSpeed chunk_gated_delta_rule — Triton-accelerated with torch fallback.
+"""FLA-NPU AscendC/Triton GDR adapter for GatedDeltaNet.
 
-Provides a ``chunk_gated_delta_rule`` function matching the FLA signature.
-The forward path dispatches to MindSpeed's 7-kernel Triton pipeline; the
-backward path uses a custom ``torch.autograd.Function`` for efficient
-gradient computation.  Falls back to Megatron-LM's built-in
-``torch_chunk_gated_delta_rule`` when Triton is unavailable or when an
-``initial_state`` is provided.
+The public API uses sequence-first ``[B, T, H, D]``. FLA-NPU cumsum retains
+sequence-first gates, while KKT and AscendC tensor inputs use head-first
+``[B, H, T, D]`` tensors.
 """
 
 import warnings
 
 import torch
 
-from mindspeed.ops.triton.l2norm import l2norm_fwd, l2norm_bwd
-from mindspeed.ops.triton.chunk_delta_h import chunk_gated_delta_rule_bwd_dhu, chunk_gated_delta_rule_fwd_h
-from mindspeed.ops.triton.chunk_o import chunk_bwd_dqkwg, chunk_bwd_dv_local, chunk_fwd_o
-from mindspeed.ops.triton.chunk_scaled_dot_kkt import chunk_scaled_dot_kkt_fwd
-from mindspeed.ops.triton.wy_fast import prepare_wy_repr_bwd, recompute_w_u_fwd
-from mindspeed.ops.triton.solve_tril import solve_tril
-from mindspeed.ops.triton.cumsum import chunk_local_cumsum
-from mindspeed.ops.triton.utils import autocast_custom_bwd, autocast_custom_fwd, input_guard
+from fla_npu.ops.ascendc import (
+    npu_chunk_bwd_dqkwg,
+    npu_chunk_bwd_dv_local,
+    npu_chunk_fwd_o,
+    npu_chunk_gated_delta_rule_bwd_dhu,
+    npu_chunk_gated_delta_rule_fwd_h,
+    npu_prepare_wy_repr_bwd_da,
+    npu_prepare_wy_repr_bwd_full,
+    npu_recompute_w_u_fwd,
+    npu_solve_tri,
+)
+from fla_npu.ops.triton import (
+    autocast_custom_bwd,
+    autocast_custom_fwd,
+    chunk_local_cumsum,
+    chunk_scaled_dot_kkt_fwd,
+    input_guard,
+    l2norm_bwd,
+    l2norm_fwd,
+)
 
 
-# =========================================================================
-# Forward / backward pipelines
-# =========================================================================
+def _as_int_list(cu_seqlens):
+    return [int(value) for value in cu_seqlens.detach().cpu().tolist()]
+
+
+def _next_power_of_2(value):
+    return 1 << (value - 1).bit_length()
+
+
+def _chunk_index_pairs(cu_seqlens_list, chunk_size):
+    pairs = []
+    for seq_idx, (start, end) in enumerate(zip(cu_seqlens_list, cu_seqlens_list[1:])):
+        for chunk_idx in range((end - start + chunk_size - 1) // chunk_size):
+            pairs.append((seq_idx, chunk_idx))
+    return pairs
+
+
+def _prepare_packed_metadata(cu_seqlens, g, chunk_size):
+    if cu_seqlens is None:
+        return None, None, None, None
+    cu_seqlens = cu_seqlens.to(device=g.device, dtype=torch.int64)
+    cu_list = _as_int_list(cu_seqlens)
+    chunk_pairs = _chunk_index_pairs(cu_list, chunk_size)
+    chunk_indices = [value for pair in chunk_pairs for value in pair]
+    cumsum_block_t = _next_power_of_2((1 << 17) // (g.shape[-1] * chunk_size))
+    chunk_indices_out = {}
+    for size in dict.fromkeys((chunk_size, cumsum_block_t)):
+        pairs = chunk_pairs if size == chunk_size else _chunk_index_pairs(cu_list, size)
+        chunk_indices_out[str(size)] = torch.tensor(pairs, device=cu_seqlens.device, dtype=torch.int64).reshape(-1, 2)
+    return cu_seqlens, cu_list, chunk_indices, chunk_indices_out
 
 
 def _chunk_gated_delta_rule_fwd(
@@ -40,47 +72,82 @@ def _chunk_gated_delta_rule_fwd(
     initial_state,
     output_final_state,
     cu_seqlens,
+    cu_seqlens_list,
+    chunk_indices,
+    chunk_indices_out,
     chunk_size,
 ):
-    g = chunk_local_cumsum(g, chunk_size=chunk_size, cu_seqlens=cu_seqlens, head_first=False)
+    g_cum = chunk_local_cumsum(
+        g,
+        chunk_size=chunk_size,
+        cu_seqlens=cu_seqlens,
+        chunk_indices_out=chunk_indices_out,
+        head_first=False,
+    )
+    k_h = k.transpose(1, 2).contiguous()
     A = chunk_scaled_dot_kkt_fwd(
-        k=k,
-        g=g,
+        k=k_h,
+        g=g_cum,
         beta=beta,
         cu_seqlens=cu_seqlens,
+        chunk_indices=(chunk_indices_out[str(chunk_size)] if chunk_indices_out is not None else None),
         chunk_size=chunk_size,
         output_dtype=torch.float32,
     )
-    A = solve_tril(A=A, cu_seqlens=cu_seqlens, output_dtype=k.dtype)
-    w, u = recompute_w_u_fwd(
-        k=k,
-        v=v,
-        beta=beta,
-        A=A,
-        g=g,
-        cu_seqlens=cu_seqlens,
+    if cu_seqlens_list is None:
+        A = npu_solve_tri(A.to(k.dtype).contiguous(), layout="bsnd")
+    else:
+        A = npu_solve_tri(
+            A.squeeze(0).to(k.dtype).contiguous(),
+            cu_seqlens=cu_seqlens_list,
+            chunk_indices=chunk_indices,
+            layout="tnd",
+        ).unsqueeze(0)
+
+    q_h = q.transpose(1, 2).contiguous()
+    v_h = v.transpose(1, 2).contiguous()
+    g_h = g_cum.transpose(1, 2).contiguous()
+    beta_h = beta.transpose(1, 2).contiguous().float()
+    A_h = A.transpose(1, 2).contiguous()
+    w, u = npu_recompute_w_u_fwd(
+        k_h,
+        v_h,
+        beta_h,
+        A_h,
+        chunk_size,
+        g=g_h,
+        gk=None,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
     )
-    h, v_new, final_state = chunk_gated_delta_rule_fwd_h(
-        k=k,
-        w=w,
-        u=u,
-        g=g,
+    h, v_new, final_state = npu_chunk_gated_delta_rule_fwd_h(
+        k_h,
+        w,
+        u,
+        g=g_h,
+        gk=None,
         initial_state=initial_state,
         output_final_state=output_final_state,
         chunk_size=chunk_size,
-        cu_seqlens=cu_seqlens,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
     )
-    o = chunk_fwd_o(
-        q=q,
-        k=k,
-        v=v_new,
-        h=h,
-        g=g,
-        scale=scale,
-        cu_seqlens=cu_seqlens,
+    if not output_final_state:
+        final_state = None
+    o_h = npu_chunk_fwd_o(
+        q_h,
+        k_h,
+        v_new,
+        h,
+        scale,
+        g=g_h,
+        g_gamma=None,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
         chunk_size=chunk_size,
+        transpose_state_layout=False,
     )
-    return g, o, A, final_state
+    return g_cum, o_h.transpose(1, 2).contiguous(), A_h, final_state
 
 
 def _chunk_gated_delta_rule_bwd(
@@ -91,88 +158,135 @@ def _chunk_gated_delta_rule_bwd(
     beta,
     A,
     scale,
-    initial_state,
+    _initial_state,
     do,
-    dht,
+    _dht,
     cu_seqlens,
+    cu_seqlens_list,
+    chunk_indices,
+    chunk_indices_out,
     chunk_size,
 ):
-    w, u = recompute_w_u_fwd(
-        k=k,
-        v=v,
-        beta=beta,
-        A=A,
-        g=g,
-        cu_seqlens=cu_seqlens,
+    q_h = q.transpose(1, 2).contiguous()
+    k_h = k.transpose(1, 2).contiguous()
+    v_h = v.transpose(1, 2).contiguous()
+    g_h = g.transpose(1, 2).contiguous()
+    beta_h = beta.transpose(1, 2).contiguous().float()
+    w, u = npu_recompute_w_u_fwd(
+        k_h,
+        v_h,
+        beta_h,
+        A,
+        chunk_size,
+        g=g_h,
+        gk=None,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
     )
-    h, v_new, _ = chunk_gated_delta_rule_fwd_h(
-        k=k,
-        w=w,
-        u=u,
-        g=g,
-        initial_state=initial_state,
+    h, v_new, _ = npu_chunk_gated_delta_rule_fwd_h(
+        k_h,
+        w,
+        u,
+        g=g_h,
+        gk=None,
+        initial_state=None,
         output_final_state=False,
-        cu_seqlens=cu_seqlens,
         chunk_size=chunk_size,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
     )
-    dv = chunk_bwd_dv_local(
-        q=q,
-        k=k,
-        g=g,
-        do=do,
+    do_h = do.transpose(1, 2).contiguous()
+    dv = npu_chunk_bwd_dv_local(
+        q_h,
+        k_h,
+        do_h,
+        g_h,
+        scale,
+        chunk_size,
+        g_gamma=None,
+        A=None,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
+    )
+    dh, _, dv = npu_chunk_gated_delta_rule_bwd_dhu(
+        q_h,
+        k_h,
+        w,
+        do_h,
+        dv,
+        scale,
+        chunk_size,
+        g=g_h,
+        gK=None,
+        h0=None,
+        dht=None,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
+        use_exp2=False,
+        transpose_state_layout=False,
+    )
+    dq_h, dk_h, dw, dg_h = npu_chunk_bwd_dqkwg(
+        q_h,
+        k_h,
+        v_new,
+        g_h,
+        h,
+        do_h,
+        dh,
+        dv,
+        chunk_size,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
+        w=None,
+        g_gamma=None,
         scale=scale,
-        cu_seqlens=cu_seqlens,
-        chunk_size=chunk_size,
+        use_exp2=False,
+        transpose_state_layout=False,
     )
-    dh, dh0, dv = chunk_gated_delta_rule_bwd_dhu(
-        q=q,
-        k=k,
-        w=w,
-        g=g,
-        h0=initial_state,
-        dht=dht,
-        do=do,
-        dv=dv,
-        scale=scale,
-        cu_seqlens=cu_seqlens,
+    dA = npu_prepare_wy_repr_bwd_da(
+        k_h,
+        v_h,
+        beta_h.float(),
+        A,
+        dw,
+        dv,
+        g_h.float(),
         chunk_size=chunk_size,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
     )
-    dq, dk, dw, dg = chunk_bwd_dqkwg(
-        q=q,
-        k=k,
-        v=v_new,
-        w=w,
-        g=g,
-        h=h,
-        dv=dv,
-        do=do,
-        dh=dh,
-        chunk_size=chunk_size,
-        scale=scale,
-        cu_seqlens=cu_seqlens,
+    dk2_h, dv_h, dbeta_h, dg2_h = npu_prepare_wy_repr_bwd_full(
+        k_h,
+        v_h,
+        beta_h,
+        A,
+        dA,
+        dw,
+        dv,
+        g_h,
+        chunk_size,
+        cu_seqlens=cu_seqlens_list,
+        chunk_indices=chunk_indices,
     )
-    dk2, dv, db, dg2 = prepare_wy_repr_bwd(
-        k=k,
-        v=v,
-        beta=beta,
-        g=g,
-        A=A,
-        dw=dw,
-        du=dv,
-        cu_seqlens=cu_seqlens,
-        chunk_size=chunk_size,
-    )
-    dk.add_(dk2)
-    dg.add_(dg2)
+    dk_h = dk_h + dk2_h
+    dg = dg_h.transpose(1, 2).contiguous() + dg2_h.transpose(1, 2).contiguous()
     if dg.dtype != torch.float32:
         raise ValueError(f"dg current type is {dg.dtype}, should be float32")
-    dg = chunk_local_cumsum(dg, chunk_size=chunk_size, reverse=True, cu_seqlens=cu_seqlens, head_first=False)
-    return dq, dk, dv, db, dg, dh0
-
-
-# =========================================================================
-# Autograd function
-# =========================================================================
+    dg = chunk_local_cumsum(
+        dg,
+        chunk_size=chunk_size,
+        reverse=True,
+        cu_seqlens=cu_seqlens,
+        chunk_indices_out=chunk_indices_out,
+        head_first=False,
+    )
+    return (
+        dq_h.transpose(1, 2).contiguous(),
+        dk_h.transpose(1, 2).contiguous(),
+        dv_h.transpose(1, 2).contiguous(),
+        dg,
+        dbeta_h.transpose(1, 2).contiguous(),
+    )
 
 
 class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
@@ -187,7 +301,9 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
             k, k_rstd = l2norm_fwd(k)
         else:
             q_rstd, k_rstd = None, None
-
+        cu_seqlens, cu_seqlens_list, chunk_indices, chunk_indices_out = _prepare_packed_metadata(
+            cu_seqlens, g, chunk_size
+        )
         g_cum, o, A, final_state = _chunk_gated_delta_rule_fwd(
             q,
             k,
@@ -198,9 +314,19 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
             initial_state,
             output_final_state,
             cu_seqlens,
+            cu_seqlens_list,
+            chunk_indices,
+            chunk_indices_out,
             chunk_size,
         )
-        ctx.save_for_backward(q, q_rstd, k, k_rstd, v, g_cum, beta, A, initial_state, cu_seqlens)
+        ctx.save_for_backward(q, k, v, g_cum, beta, A)
+        ctx.q_rstd = q_rstd
+        ctx.k_rstd = k_rstd
+        ctx.initial_state = initial_state
+        ctx.cu_seqlens = cu_seqlens
+        ctx.cu_seqlens_list = cu_seqlens_list
+        ctx.chunk_indices = chunk_indices
+        ctx.chunk_indices_out = chunk_indices_out
         ctx.scale = scale
         ctx.use_qk_l2norm_in_kernel = use_qk_l2norm_in_kernel
         ctx.chunk_size = chunk_size
@@ -210,8 +336,8 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
     @input_guard
     @autocast_custom_bwd
     def backward(ctx, do, dht):
-        q, q_rstd, k, k_rstd, v, g, beta, A, initial_state, cu_seqlens = ctx.saved_tensors
-        dq, dk, dv, db, dg, dh0 = _chunk_gated_delta_rule_bwd(
+        q, k, v, g, beta, A = ctx.saved_tensors
+        dq, dk, dv, dg, dbeta = _chunk_gated_delta_rule_bwd(
             q,
             k,
             v,
@@ -219,24 +345,26 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
             beta,
             A,
             ctx.scale,
-            initial_state,
+            ctx.initial_state,
             do,
             dht,
-            cu_seqlens,
+            ctx.cu_seqlens,
+            ctx.cu_seqlens_list,
+            ctx.chunk_indices,
+            ctx.chunk_indices_out,
             ctx.chunk_size,
         )
         if ctx.use_qk_l2norm_in_kernel:
-            dq = l2norm_bwd(q, q_rstd, dq)
-            dk = l2norm_bwd(k, k_rstd, dk)
-        return dq.to(q), dk.to(k), dv.to(v), dg.to(g), db.to(beta), None, dh0, None, None, None, None
+            dq = l2norm_bwd(q, ctx.q_rstd, dq)
+            dk = l2norm_bwd(k, ctx.k_rstd, dk)
+        return dq.to(q), dk.to(k), dv.to(v), dg.to(g), dbeta.to(beta), None, None, None, None, None, None
 
 
-# =========================================================================
-# Validation
-# =========================================================================
-
-
-def _validate_inputs(q, k, v, g, beta, cu_seqlens, initial_state):
+def _validate_inputs(q, k, v, g, beta, cu_seqlens, initial_state, output_final_state):
+    if initial_state is not None:
+        raise NotImplementedError("initial_state is not supported by the AscendC GDR adapter")
+    if output_final_state:
+        raise NotImplementedError("output_final_state is not supported by the AscendC GDR adapter")
     if q.dtype != k.dtype or k.dtype != v.dtype:
         raise ValueError(
             f"q current type is {q.dtype}, k current type is {k.dtype}, v current type is {v.dtype}, should be equal"
@@ -246,33 +374,19 @@ def _validate_inputs(q, k, v, g, beta, cu_seqlens, initial_state):
     if len(beta.shape) != 3:
         raise ValueError(
             f"beta current shape len is {len(beta.shape)}, "
-            f"beta must be of shape [B, T, H] if head_first=False, "
-            f"or [B, H, T] otherwise."
+            "beta must be of shape [B, T, H] if head_first=False, or [B, H, T] otherwise."
         )
     if q.shape[1] < q.shape[2]:
         warnings.warn(
-            f"Input tensor shape suggests format mismatch: seq_len ({q.shape[1]}) "
-            f"< num_heads ({q.shape[2]}). "
+            f"Input tensor shape suggests format mismatch: seq_len ({q.shape[1]}) < num_heads ({q.shape[2]}). "
             "Please verify your input tensor format matches the expected shape [B, T, H, ...]."
         )
     if cu_seqlens is not None:
         if q.shape[0] != 1:
             raise ValueError(
-                f"The batch size is expected to be 1 rather than {q.shape[0]} "
-                f"when using `cu_seqlens`. "
-                f"Please flatten variable-length inputs before processing."
+                f"The batch size is expected to be 1 rather than {q.shape[0]} when using `cu_seqlens`. "
+                "Please flatten variable-length inputs before processing."
             )
-        if initial_state is not None and initial_state.shape[0] != len(cu_seqlens) - 1:
-            raise ValueError(
-                f"The number of initial states is expected to be equal to the "
-                f"number of input sequences, i.e., {len(cu_seqlens) - 1} "
-                f"rather than {initial_state.shape[0]}."
-            )
-
-
-# =========================================================================
-# Public API
-# =========================================================================
 
 
 @torch.compiler.disable
@@ -290,61 +404,22 @@ def chunk_gated_delta_rule(
     chunk_size=64,
     head_first=False,
 ):
-    """Chunked gated delta rule — Triton-accelerated with torch fallback.
-
-    FLA-compatible signature.  Uses the MindSpeed 7-kernel Triton pipeline
-    for forward/backward when ``initial_state is None``; falls back to
-    Megatron-LM's ``torch_chunk_gated_delta_rule`` otherwise.
-
-    Args:
-        q: ``[B, T, H, K]``
-        k: ``[B, T, H, K]``
-        v: ``[B, T, H, V]``
-        g: ``[B, T, H]`` (forget gate, in log space)
-        beta: ``[B, T, H]``
-        scale: default ``1/sqrt(K)``
-        initial_state: ``[N, H, K, V]`` or ``None``
-        output_final_state: return final state if True
-        use_qk_l2norm_in_kernel: apply L2 norm internally if True
-        cu_seqlens: ``[N+1]`` cumulative lengths or ``None``
-        chunk_size: chunk size (default 64)
-        head_first: deprecated
-
-    Returns:
-        ``(o, final_state)`` where *o* is ``[B, T, H, V]``.
-    """
-    _validate_inputs(q, k, v, g, beta, cu_seqlens, initial_state)
-
+    """Run GDR with BTHD public tensors and AscendC raw main operators."""
+    if head_first:
+        raise ValueError("Only head_first=False is supported.")
+    _validate_inputs(q, k, v, g, beta, cu_seqlens, initial_state, output_final_state)
     if scale is None:
         scale = k.shape[-1] ** -0.5
-
-    if initial_state is None:
-        o, final_state = ChunkGatedDeltaRuleFunction.apply(
-            q,
-            k,
-            v,
-            g,
-            beta,
-            scale,
-            initial_state,
-            output_final_state,
-            cu_seqlens,
-            use_qk_l2norm_in_kernel,
-            chunk_size,
-        )
-        return o, final_state
-
-    # Fallback to Megatron's pure-torch implementation
-    from megatron.core.ssm.gated_delta_net import torch_chunk_gated_delta_rule
-
-    return torch_chunk_gated_delta_rule(
+    return ChunkGatedDeltaRuleFunction.apply(
         q,
         k,
         v,
-        g=g,
-        beta=beta,
-        chunk_size=chunk_size,
-        initial_state=initial_state,
-        output_final_state=output_final_state,
-        use_qk_l2norm_in_kernel=use_qk_l2norm_in_kernel,
+        g,
+        beta,
+        scale,
+        initial_state,
+        output_final_state,
+        cu_seqlens,
+        use_qk_l2norm_in_kernel,
+        chunk_size,
     )
