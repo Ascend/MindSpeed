@@ -360,8 +360,8 @@ def core_transformer_config_from_args_wrapper(fn):
     """A decorator for transformer config."""
 
     @wraps(fn)
-    def wrapper(args):
-        config = fn(args)
+    def wrapper(args, *positional, **kwargs):
+        config = fn(args, *positional, **kwargs)
         if args.use_multiparameter_pipeline_model_parallel:
             config.deallocate_pipeline_outputs = False
         return config

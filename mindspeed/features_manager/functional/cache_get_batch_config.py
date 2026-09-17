@@ -96,17 +96,9 @@ def make_get_batch_config_cache_wrapper(original_factory, get_batch_func):
 
     get_batch_code = getattr(get_batch_func, "__code__", None)
     cached_configs = {}
-    unspecified_config_class = object()
-
-    def call_original(args, config_class):
-        # Entry points may provide a one-argument factory. Preserve omission
-        # instead of injecting an extra positional None into that factory.
-        if config_class is unspecified_config_class:
-            return original_factory(args)
-        return original_factory(args, config_class)
 
     @functools.wraps(original_factory)
-    def cached_factory(args, config_class=unspecified_config_class):
+    def cached_factory(args, config_class=None):
         frame = inspect.currentframe()
         try:
             caller_code = (
@@ -115,7 +107,7 @@ def make_get_batch_config_cache_wrapper(original_factory, get_batch_func):
         finally:
             del frame
         if caller_code is not get_batch_code:
-            return call_original(args, config_class)
+            return original_factory(args, config_class)
 
         cache_key = (
             id(args),
@@ -124,7 +116,7 @@ def make_get_batch_config_cache_wrapper(original_factory, get_batch_func):
             getattr(args, "heterogeneous_layers_config_path", None),
         )
         if cache_key not in cached_configs:
-            cached_configs[cache_key] = call_original(args, config_class)
+            cached_configs[cache_key] = original_factory(args, config_class)
         return cached_configs[cache_key]
 
     cached_factory._mindspeed_get_batch_config_cached = True
