@@ -86,9 +86,11 @@ def linear_backward_wgrad_detach(ctx, grad_output):
         if ctx.gradient_accumulation_fusion:
             if wgrad_compute:
                 if weight.main_grad.dtype == torch.float32:
-                    from mindspeed.ops.npu_matmul_add import npu_matmul_add_fp32
+                    import fused_weight_gradient_mlp_cuda
 
-                    npu_matmul_add_fp32(total_input, grad_output, weight.main_grad)
+                    # Match Megatron and deferred wgrad's adapted backend. Calling
+                    # MindSpeed's ATB op here changes the kernel on A2/A3 when FB overlap is enabled.
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(total_input, grad_output, weight.main_grad)
                 elif weight.main_grad.dtype in (torch.float16, torch.bfloat16):
                     raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
 
