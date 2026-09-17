@@ -73,7 +73,9 @@ def fused_lightning_indexer(
         weights = weights.to(torch.bfloat16).contiguous()
     else:
         q = rearrange(q, 's b h d -> b s h d').to(torch.bfloat16).contiguous()
-        k = rearrange(k, 's b h d -> b s h d').to(torch.bfloat16).contiguous()
+        k_slice = rearrange(k, 's b h d -> b s h d').to(torch.bfloat16)
+        # Normalize singleton-dimension strides as well; contiguous() may be a no-op.
+        k = k_slice.reshape(-1).reshape(k_slice.shape)
         weights = rearrange(weights, 's b d -> b s d').to(torch.bfloat16).contiguous()
 
     sparse_mode = 3
