@@ -499,6 +499,12 @@ def topk_softmax_with_capacity(
         return final_probs, final_map, tokens_per_expert
 
 
+def get_fixed_router_indices(logits: torch.Tensor, topk: int) -> torch.Tensor:
+    """Build deterministic round-robin expert indices for fixed routing."""
+    num_tokens, num_experts = logits.shape
+    return torch.arange(num_tokens * topk, device=logits.device, dtype=torch.int64).view(num_tokens, topk) % num_experts
+
+
 def topk_routing_with_score_function_wrapper(fn):
     """Replace Megatron 0.18 Top-K expert indices with deterministic round-robin indices."""
 
@@ -533,11 +539,8 @@ def topk_routing_with_score_function_wrapper(fn):
             dense_output=True,
         )
 
-        num_tokens, num_experts = logits.shape
-        top_indices = (
-            torch.arange(num_tokens * topk, device=logits.device, dtype=torch.int64).view(num_tokens, topk)
-            % num_experts
-        )
+        num_tokens = logits.shape[0]
+        top_indices = get_fixed_router_indices(logits, topk)
 
         if dense_output:
             return probs, top_indices
@@ -576,23 +579,27 @@ def compute_routing_scores_for_aux_loss_wrapper(fn):
         if fused:
             raise ValueError("--fix-router does not support --moe-router-fusion")
 
-        _, scores = fn(
-            logits,
-            topk,
-            score_function,
-            fused=fused,
-            padding_mask=padding_mask,
-        )
+        if score_function == "softmax":
+            scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
+        elif score_function == "sigmoid":
+            scores = torch.sigmoid(logits.float())
+            scores = scores / (scores.sum(dim=-1, keepdim=True) + 1e-20)
+        elif score_function == "sqrtsoftplus":
+            scores = torch.nn.functional.softplus(logits.float()).sqrt()
+            scores = scores / (scores.sum(dim=-1, keepdim=True) + 1e-20)
+        else:
+            raise ValueError(f"Invalid score_function: {score_function}")
 
-        num_tokens, num_experts = logits.shape
-        top_indices = (
-            torch.arange(num_tokens * topk, device=logits.device, dtype=torch.int64).view(num_tokens, topk)
-            % num_experts
-        )
+        # Execute the same Top-K workload as the regular router. Only the
+        # indices used for token assignment are replaced by fixed indices.
+        torch.topk(scores, k=topk, dim=1)
+        top_indices = get_fixed_router_indices(logits, topk)
         routing_map = torch.zeros_like(logits).int().scatter(1, top_indices, 1).bool()
 
         if padding_mask is not None:
-            routing_map = routing_map & (~padding_mask).unsqueeze(-1)
+            valid_mask = (~padding_mask).unsqueeze(-1)
+            routing_map = routing_map * valid_mask
+            scores = scores * valid_mask
 
         return routing_map, scores
 
