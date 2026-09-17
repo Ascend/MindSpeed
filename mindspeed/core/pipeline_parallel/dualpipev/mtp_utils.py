@@ -1,6 +1,7 @@
 # Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
 import logging
+from functools import wraps
 
 import torch
 
@@ -202,6 +203,23 @@ def model_provider_mtp(pre_process=True, post_process=True, use_dualpipe_mtp=Fal
     )
 
     return model
+
+
+def dualpipev_mtp_on_this_rank_wrapper(mtp_on_this_rank):
+    """Place MTP on DualPipeV's first PP stage, where the return chunk ends."""
+
+    @wraps(mtp_on_this_rank)
+    def wrapper(layout=None, mtp_num_layers=None, ignore_virtual=True, vp_stage=None):
+        if getattr(get_args(), 'schedules_method', None) != 'dualpipev':
+            return mtp_on_this_rank(
+                layout=layout, mtp_num_layers=mtp_num_layers, ignore_virtual=ignore_virtual, vp_stage=vp_stage
+            )
+        # The model provider supplies an MTP spec only to the return chunk.
+        # GPTModel additionally checks this rank predicate in Megatron 0.18;
+        # the native physical-last-rank check would discard that valid spec.
+        return bool(mtp_num_layers) and mpu.is_pipeline_first_stage(ignore_virtual=True)
+
+    return wrapper
 
 
 def dualpipev_get_mtp_num_layers_to_build(config: TransformerConfig, vp_stage=None, pp_rank=None) -> int:

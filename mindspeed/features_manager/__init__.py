@@ -87,6 +87,7 @@ from mindspeed.features_manager.disable_gloo_group.disable_gloo_group_feature im
 
 from mindspeed.features_manager.memory.swap_attention import SwapAttentionFeature
 from mindspeed.features_manager.transformer.multi_head_latent_attention.mla_feature import MLAFeature
+from mindspeed.features_manager.transformer.multi_token_prediction import MultiTokenPredictionFeature
 from mindspeed.features_manager.transformer.experimental_attention_variant.dsa import DeepSeekSparseAttention
 from mindspeed.features_manager.npu_enhancement import NpuEnhancementFeature
 from mindspeed.features_manager.transformer_engine import TeRecipeFeature
@@ -211,6 +212,7 @@ def add_transformer_features(features_list: List[MindSpeedFeature]):
             GenerateMaskFeature(),
             ResetAttentionMaskFeature(),
             MLAFeature(),
+            MultiTokenPredictionFeature(),
             MegatronMcoreRearrangeFeature(),
             DeepSeekSparseAttention(),
         ]

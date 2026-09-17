@@ -57,6 +57,7 @@ class DualpipeVFeature(MindSpeedFeature):
         from mindspeed.core.pipeline_parallel.dualpipev.mtp_utils import (
             setup_embeddings_and_output_layer_with_mtp,
             dualpipev_get_mtp_num_layers_to_build,
+            dualpipev_mtp_on_this_rank_wrapper,
         )
 
         if args.schedules_method == "dualpipev":
@@ -97,4 +98,8 @@ class DualpipeVFeature(MindSpeedFeature):
                 patch_manager.register_patch(
                     "megatron.core.transformer.multi_token_prediction.get_mtp_num_layers_to_build",
                     dualpipev_get_mtp_num_layers_to_build,
+                )
+                patch_manager.register_patch(
+                    "megatron.core.transformer.multi_token_prediction.mtp_on_this_rank",
+                    dualpipev_mtp_on_this_rank_wrapper,
                 )

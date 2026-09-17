@@ -469,7 +469,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
         if pre_process:
             hidden_states = hc_repeat(hidden_states, enable_mhc, getattr(args, 'hc_mult', 1))
         hidden_states, _, _ = MTPTransformerLayer.apply(
-            self.transformer_layer,
+            self.mtp_model_layer,
             self.config,
             hidden_states,
             attention_mask,
