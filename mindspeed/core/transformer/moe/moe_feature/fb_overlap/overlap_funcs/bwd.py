@@ -115,6 +115,8 @@ def transformer_layer_backward_moe(layer_output_grad, layer_graph):
             if shared_experts_grad is not None:
                 self.pre_mlp_layernorm_graph[1].grad = shared_experts_grad
 
+    torch.npu.current_stream().wait_stream(dispatcher.overlap_stream)
+
     (perm1_out_grad, handle), (perm1_prob_out_grad, prob_handle) = dispatcher.backward_async_dispatch_comm(
         self.perm_a2a_graph[1][0].grad,
         self.perm_a2a_graph[1][1].grad,
