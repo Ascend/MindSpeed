@@ -23,7 +23,7 @@ MindSpeed基于昇腾硬件特点，设计实现了一套高性能的MoE跨micro
 
 MindSpeed实现的1F1B细粒度计算和通信流水排布如下图：
 ![跨microbatch间A2A通信掩盖](../../figures/fb_overlap_npu.png)
-通过分离调度专家和Attention部分反向的dw和dx计算，可实现1F1B阶段的A2A全掩盖。同时，由于昇腾硬件上通信行为由AICPU下发，不会消耗cube计算单元资源，因此计算和通信的并发对计算效率的影响很低。另外，使用了Attention部分的dw计算掩盖了PP的通信，从而实现1F1B阶段通信的全掩盖。
+通过分离调度专家和Attention部分反向的dw和dx计算，可实现1F1B阶段的A2A全掩盖。同时，由于昇腾硬件上通信行为由AI CPU下发，不会消耗cube计算单元资源，因此计算和通信的并发对计算效率的影响很低。另外，使用了Attention部分的dw计算掩盖了PP的通信，从而实现1F1B阶段通信的全掩盖。
 
 下图是真实671B DeepSeekV3模型使用该特性时，单层内的A2A通信掩盖profiling示意图：
 
