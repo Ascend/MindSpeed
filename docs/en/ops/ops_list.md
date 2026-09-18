@@ -1,6 +1,6 @@
 # Custom Operators
 
-This document describes the release status of custom operators and their support in the PyTorch and MindSpore frameworks.
+This document describes the release status of custom operators and their support in the PyTorch framework.
 
 > [!NOTE]
 >

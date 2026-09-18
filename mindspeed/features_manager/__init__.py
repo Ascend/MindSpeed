@@ -105,8 +105,6 @@ from mindspeed.features_manager.distributed.layerzero import LayerZeroFeature
 from mindspeed.features_manager.optimizer.swap_optimizer_feature import SwapOptimizerFeature
 from mindspeed.features_manager.optimizer.low_precision_optimizer_feature import LowPrecisionOptimizerFeature
 
-from mindspeed.features_manager.ai_framework.ms_patch_feature import MindSporePatchFeature
-
 from mindspeed.features_manager.auto_settings.auto_settings_feature import AutoSettingsFeature
 from mindspeed.features_manager.ckpt_acceleration.ckpt_acceleration import CkptAccelerationFeature
 
@@ -326,10 +324,6 @@ def add_swap_optimizer_feature(features_list: List[MindSpeedFeature]):
     )
 
 
-def add_ai_framework_feature(features_list: List[MindSpeedFeature]):
-    features_list.extend([MindSporePatchFeature()])
-
-
 def add_auto_settings_feature(features_list: List[MindSpeedFeature]):
     features_list.extend(
         [
@@ -399,7 +393,6 @@ def create_features_list():
     add_disable_gloo_group_feature(features_list)
     add_swap_optimizer_feature(features_list)
     add_transformer_features(features_list)
-    add_ai_framework_feature(features_list)
     add_auto_settings_feature(features_list)
     add_ckpt_acceleration_feature(features_list)
     add_aiqos_feature(features_list)

@@ -6,7 +6,6 @@
 # copied from https://github.com/microsoft/DeepSpeed/blob/master/tests/conftest.py
 # reworked/refactored some parts to make it run.
 import os
-import sys
 from multiprocessing.pool import RUN
 import pytest
 
@@ -106,15 +105,7 @@ def pytest_fixture_setup(fixturedef, request):
         dist_fixture_class(request)
 
 
-TESTS_EXTEND_DIR = os.path.dirname(__file__)
-MINDSPORE_TESTS_DIR = os.path.join(TESTS_EXTEND_DIR, "mindspore", "unit_tests")
-
-if MINDSPORE_TESTS_DIR not in sys.path:
-    sys.path.insert(0, MINDSPORE_TESTS_DIR)
-
-
 def pytest_addoption(parser):
-    parser.addoption("--ai-framework", action="store", default=None, help="Specify AI framework, e.g., mindspore")
     parser.addoption(
         "--run-all",
         action="store_true",

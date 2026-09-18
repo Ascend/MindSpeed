@@ -102,14 +102,6 @@ MindSpeed/
 │   │   ├── memory/                      # Memory, providing Lite version memory management
 │   │   ├── ops/                         # Operators, providing Lite version operator implementations
 │   │   └── utils/                       # Utilities, providing Lite version helper functions
-│   ├── mindspore/                       # MindSpore framework adaptation, providing MindSpore framework support
-│   │   ├── mindspore_adaptor.py         # MindSpore adaptor, implementing MindSpore framework adaptation
-│   │   ├── core/                        # Core features, providing MindSpore core feature implementations
-│   │   ├── model/                       # Models, providing MindSpore model implementations
-│   │   ├── ops/                         # Operators, providing MindSpore operator implementations
-│   │   ├── optimizer/                   # Optimizers, providing MindSpore optimizer implementations
-│   │   ├── op_builder/                  # Operator builder, providing custom operator build functionality for MindSpore
-│   │   ├── third_party/                 # Third-party libraries, providing MindSpore-supported third-party libraries
 │   ├── model/                           # Model definitions, providing general model definitions and interfaces
 │   ├── moe/                             # MoE Mixture of Experts, providing Mixture of Experts model implementations
 │   ├── multi_modal/                     # Multimodal support, providing multimodal model training support
