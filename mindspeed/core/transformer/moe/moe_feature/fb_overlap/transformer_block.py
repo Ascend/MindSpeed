@@ -207,12 +207,12 @@ def transformer_block_forward(
     )
 
     rng_context = nullcontext()
-    fp8_context = get_fp8_context(self.config) if self.config.fp8 else nullcontext()
+    fp8_context = get_fp8_context(self.config)
 
     assert not self.config.enable_cuda_graph
     layer_graphs = []
 
-    with rng_context and fp8_context:
+    with rng_context, fp8_context:
         for l_no, layer in enumerate(self.layers):
             checkpoint = False
             if self.config.recompute_granularity == 'full' and self.training:
@@ -334,7 +334,7 @@ def transformer_block_forward_backward_overlaping(
     )
 
     rng_context = nullcontext()
-    fp8_context = get_fp8_context(self.config) if self.config.fp8 else nullcontext()
+    fp8_context = get_fp8_context(self.config)
 
     assert not fwd_block.config.enable_cuda_graph
     fwd_layer_graphs = []
@@ -343,7 +343,7 @@ def transformer_block_forward_backward_overlaping(
     bwd_unperm_a2a_handle = None
 
     fwd_hidden_states, fwd_context = hidden_states, context
-    with rng_context and fp8_context:
+    with rng_context, fp8_context:
         for l_no, fwd_layer in enumerate(fwd_block.layers):
             checkpoint = False
             if fwd_block.config.recompute_granularity == 'full' and fwd_block.training:

@@ -12,7 +12,7 @@ import torch
 from torch import Tensor
 
 from megatron.core import tensor_parallel
-from megatron.core.fp8_utils import get_fp8_context
+from mindspeed.core.fp8_utils import get_fp8_context
 from megatron.core.tensor_parallel import (
     all_gather_last_dim_from_tensor_parallel_region,
     scatter_to_sequence_parallel_region,
@@ -304,7 +304,7 @@ def dualpipev_fb_overlap_mtp_layer_forward_te_without_overlap(
     else:
         rng_context = nullcontext()
 
-    if self.config.fp8:
+    if self.config.fp8 or getattr(self.config, 'fp4', None):
         fp8_context = get_fp8_context(self.config)
     else:
         fp8_context = nullcontext()

@@ -50,18 +50,12 @@ class MindSpeedFbOverlapGmmExperts(TEGroupedMLP):
             unsupported.append("activation_func_clamp_value")
         if getattr(self.config, "use_te_activation_func", False):
             unsupported.append("use_te_activation_func")
-        if getattr(self.config, "fp8", None):
-            unsupported.append("fp8")
-        if getattr(self.config, "fp4", None):
-            unsupported.append("fp4")
         if getattr(self.config, "transformer_impl", None) == "inference_optimized":
             unsupported.append("transformer_impl=inference_optimized")
         if self.offload_expert_fc1:
             unsupported.append("fine_grained_activation_offloading=expert_fc1")
         if self.offload_moe_act:
             unsupported.append("fine_grained_activation_offloading=moe_act")
-        if self.activation_recompute:
-            unsupported.append("recompute_modules=moe_act")
         if unsupported:
             raise ValueError("MindSpeed FB-overlap TE grouped experts do not support: " + ", ".join(unsupported) + ".")
 
@@ -117,9 +111,13 @@ class MindSpeedFbOverlapGmmExperts(TEGroupedMLP):
                 "moe-zero-memory=disable or level0, but not level1."
             )
 
-        is_recompute_activation = args.moe_zero_memory == "level0" or should_recompute_activation(
-            self.layer_number,
-            vp_stage=getattr(self, "vp_stage", None),
+        is_recompute_activation = (
+            self.activation_recompute
+            or args.moe_zero_memory == "level0"
+            or should_recompute_activation(
+                self.layer_number,
+                vp_stage=getattr(self, "vp_stage", None),
+            )
         )
         group_metadata = self.linear_fc1.make_grouped_linear_metadata(tokens_per_expert)
         if permuted_probs is None:

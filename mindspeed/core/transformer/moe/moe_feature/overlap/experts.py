@@ -163,10 +163,6 @@ class AlltoAllOverLapGmmExpertsImpl(TEGroupedMLP):
             unsupported.append("activation_func_clamp_value")
         if getattr(self.config, "use_te_activation_func", False):
             unsupported.append("use_te_activation_func")
-        if getattr(self.config, "fp8", None):
-            unsupported.append("fp8")
-        if getattr(self.config, "fp4", None):
-            unsupported.append("fp4")
         if getattr(self.config, "fine_grained_activation_offloading", False):
             unsupported.append("fine_grained_activation_offloading")
         if getattr(self.config, "transformer_impl", None) == "inference_optimized":
@@ -212,11 +208,15 @@ class AlltoAllOverLapGmmExpertsImpl(TEGroupedMLP):
                 fc2_input = fc2_input.to(original_dtype)
             return fc2_input
 
-        is_recompute_activation = self.config.moe_zero_memory == "level0" or (
-            not getattr(self, "is_mtp_layer", False)
-            and should_recompute_activation(
-                self.layer_number,
-                vp_stage=getattr(self, "vp_stage", None),
+        is_recompute_activation = (
+            self.activation_recompute
+            or self.config.moe_zero_memory == "level0"
+            or (
+                not getattr(self, "is_mtp_layer", False)
+                and should_recompute_activation(
+                    self.layer_number,
+                    vp_stage=getattr(self, "vp_stage", None),
+                )
             )
         )
         if is_recompute_activation:

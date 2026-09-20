@@ -126,11 +126,12 @@ class NpuEnhancementFeature(MindSpeedFeature):
         if args.use_ascend_mc2 and args.fp8 and args.fp8_recipe != 'mxfp8':
             raise AssertionError('MC2 is supported only by the mxfp8 recipe in fp8.')
         if args.use_gmm_fp8:
-            if args.fp8_recipe not in ('mxfp8', 'tensorwise', 'delayed'):
+            if args.fp8_recipe not in ('mxfp8', 'tensorwise', 'delayed', 'hif8_delayed'):
                 warnings.warn(
-                    f"gmm fp8 only supports tensorwise, mxfp8, and delayed recipe, "
-                    f"but {args.fp8_recipe} provided, using bf16 gmm instead."
+                    f"gmm fp8 supports tensorwise, mxfp8, delayed and hif8_delayed recipes, "
+                    f"but {args.fp8_recipe} was provided; using bf16 gmm instead."
                 )
+                args.use_gmm_fp8 = False
         if getattr(args, "fp8_reuse_quantized_weight", False) and not args.fp8:
             raise ValueError("fp8_reuse_quantized_weight is only valid when FP8 training is enabled")
 

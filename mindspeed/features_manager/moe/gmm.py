@@ -109,6 +109,25 @@ def tenpu_grouped_linear_init_wrapper(fn):
     return wrapper
 
 
+def te_grouped_linear_forward_wrapper(fn):
+    """Honor the expert precision switch in regular and overlap TE experts."""
+
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        from mindspeed.args_utils import get_full_args
+        from transformer_engine.pytorch import fp8_autocast
+        from transformer_engine.pytorch.quantization import FP8GlobalStateManager
+
+        options = get_full_args()
+        quantized = FP8GlobalStateManager.is_fp8_enabled()
+        if quantized and not getattr(options, 'use_gmm_fp8', True):
+            with fp8_autocast(enabled=False):
+                return fn(self, *args, **kwargs)
+        return fn(self, *args, **kwargs)
+
+    return wrapper
+
+
 class MoEGmmFeature(MindSpeedFeature):
     def __init__(self):
         super().__init__('moe-grouped-gemm', 2)
@@ -127,11 +146,6 @@ class MoEGmmFeature(MindSpeedFeature):
         if args.gemm_gradient_accumulation_fusion:
             if not args.moe_grouped_gemm:
                 raise AssertionError('`--gmm-gradient-accumulation-fusion` only support with `--moe-grouped-gemm`.')
-            if getattr(args, 'fp8', None) or getattr(args, 'fp4', None):
-                raise NotImplementedError(
-                    'MindSpeed grouped GEMM gradient accumulation fusion currently '
-                    'supports only non-FP8/non-FP4 training.'
-                )
             if not (getattr(args, 'fp16', False) or getattr(args, 'bf16', False)):
                 raise NotImplementedError(
                     'MindSpeed grouped GEMM gradient accumulation fusion currently requires FP16 or BF16 activations.'
@@ -141,6 +155,10 @@ class MoEGmmFeature(MindSpeedFeature):
 
     def register_patches(self, patch_manager, args):
         if args.moe_grouped_gemm:
+            patch_manager.register_patch(
+                'megatron.core.extensions.transformer_engine.TEGroupedLinear.forward',
+                te_grouped_linear_forward_wrapper,
+            )
             patch_manager.register_patch(
                 'megatron.core.models.gpt.moe_module_specs.get_moe_module_spec_for_backend',
                 get_moe_module_spec_gmm_wrapper,

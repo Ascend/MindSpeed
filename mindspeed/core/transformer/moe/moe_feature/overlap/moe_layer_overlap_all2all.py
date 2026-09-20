@@ -3,6 +3,7 @@
 import torch
 
 from mindspeed.args_utils import get_full_args
+from mindspeed.core.transformer.moe.moe_feature.overlap.recomputed_input import restore_expert_input
 from megatron.core.transformer.moe.moe_utils import MoEAuxLossAutoScaler
 from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import (
     async_all_to_all,
@@ -352,7 +353,9 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         if ctx.expert_activation_checkpoint is not None:
             recomputed_fc2_input = ctx.expert_activation_checkpoint.recompute(True, return_output=True)
             ctx.expert_activation_checkpoint = None
-            ctx.moe_layer.experts.linear_fc2.set_recomputed_input_for_delayed_wgrad(recomputed_fc2_input)
+            # CheckpointWithoutOutput restores the original FC2 input storage.
+            # Quantized TE backward already owns its forward-time operand and
+            # scales; do not enqueue a BF16 replacement into its wgrad queue.
 
         # TE computes both dgrads now and queues both wgrads.
         backward_func(experts_graph, unpermute1_input_detach.grad)
@@ -410,7 +413,7 @@ class MoELayerOverlapAllToAll(torch.autograd.Function):
         recompute_state = None
         ctx.level0_fc1_reorder_index = None
         if recomputed_fc1_input is not None:
-            ctx.moe_layer.experts.linear_fc1.set_recomputed_input_for_delayed_wgrad(recomputed_fc1_input)
+            restore_expert_input(ctx.moe_layer.experts.linear_fc1, expert_input_detach, recomputed_fc1_input)
         ctx.moe_layer.experts.linear_fc1.backward_dw()
         unpermute1_input_detach.grad.untyped_storage().resize_(0)
         if ctx.moe_zero_memory == "level0":

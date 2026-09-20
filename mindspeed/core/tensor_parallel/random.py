@@ -16,7 +16,12 @@ from megatron.core.tensor_parallel.utils import gather_split_1d_tensor
 from megatron.core.utils import safely_set_viewless_tensor_data
 
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.core.fp8_checkpoint import activation_recompute_forward
+from mindspeed.core.fp8_checkpoint import (
+    FP8RecomputeState,
+    TENPU_FP8GlobalStateManager,
+    activation_recompute_forward,
+    get_fp8_autocast_context,
+)
 from mindspeed.core.tensor_parallel.checkpoint_manager import get_pipeline_checkpoint_manager
 
 
@@ -87,7 +92,7 @@ class CheckpointFunctionWithoutOutput(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_function, checkpoint, *args):
         with torch.no_grad():
-            with activation_recompute_forward(activation_recompute=True, recompute_phase=False):
+            with activation_recompute_forward(True, False, state=checkpoint.fp8_recompute_state):
                 outputs = run_function(*args)
 
         # Store everything
@@ -113,9 +118,11 @@ class CheckpointWithoutOutput:
         self.fwd_cuda_rng_state = None
         self.fwd_cuda_rng_state_tracker = None
         self.outputs = None
+        self.fp8_recompute_state = FP8RecomputeState()
 
     def checkpoint(self, run_function, distribute_saved_activations, *args):
         self.run_function = run_function
+        self.autocast_state = TENPU_FP8GlobalStateManager.get_fp8_autocast_state()
 
         if distribute_saved_activations:
             raise RuntimeError("CheckpointFunctionWithoutOutput does not support distribute_saved_activations")
@@ -150,17 +157,21 @@ class CheckpointWithoutOutput:
         _set_cuda_rng_state(self.fwd_cuda_rng_state)
         get_cuda_rng_tracker().set_states(self.fwd_cuda_rng_state_tracker)
 
-        with torch.enable_grad(), activation_recompute_forward(activation_recompute=True, recompute_phase=True):
-            outputs = self.run_function(*self.ctx.saved_tensors)  # pylint: disable=access-member-before-definition
+        try:
+            with (
+                torch.enable_grad(),
+                get_fp8_autocast_context(self.autocast_state),
+                activation_recompute_forward(True, True, state=self.fp8_recompute_state),
+            ):
+                outputs = self.run_function(*self.ctx.saved_tensors)  # pylint: disable=access-member-before-definition
+        finally:
+            torch.set_rng_state(cur_cpu_rng_state)
+            _set_cuda_rng_state(cur_cuda_rng_state)
+            get_cuda_rng_tracker().set_states(cur_cuda_rng_state_tracker)
         self.run_function = None
         self.fwd_cpu_rng_state = None
         self.fwd_cuda_rng_state = None
         self.fwd_cuda_rng_state_tracker = None
-
-        # Set the states back to what it was at the start of this function.
-        torch.set_rng_state(cur_cpu_rng_state)
-        _set_cuda_rng_state(cur_cuda_rng_state)
-        get_cuda_rng_tracker().set_states(cur_cuda_rng_state_tracker)
 
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)

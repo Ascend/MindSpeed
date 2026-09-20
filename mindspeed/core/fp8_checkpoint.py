@@ -9,7 +9,7 @@ Replaced mindspeed.core.fp8.* imports with TENPU direct calls.
 
 import warnings
 from contextlib import AbstractContextManager, ContextDecorator
-from typing import List, Callable, Tuple, Dict, Any, Union
+from typing import Callable, Tuple, Dict, Any, Union
 
 import torch
 from torch.utils.checkpoint import noop_context_fn, detach_variable
@@ -18,18 +18,29 @@ from megatron.core.tensor_parallel.random import _get_cuda_rng_state
 from megatron.core.utils import safely_set_viewless_tensor_data
 from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
-    get_tensor_model_parallel_world_size,
 )
 from transformer_engine.pytorch import fp8_autocast
+from transformer_engine.pytorch import distributed as te_distributed
 from transformer_engine.pytorch.quantization.manager import (
     FP8GlobalStateManager as TENPU_FP8GlobalStateManager,
 )
 
-_FP8_ACTIVATION_RECOMPUTE_ENABLED = False
-_FP8_ACTIVATION_RECOMPUTE_PHASE = False
+
+class FP8RecomputeState:
+    """State owned by one checkpoint, independent of microbatch execution order."""
+
+    def __init__(self):
+        self.is_first_module = None
+
+
+def get_fp8_autocast_context(state):
+    """Restore even a disabled context when nested inside a quantized forward."""
+    enabled, calibrating, recipe, group, _, graph = state
+    return fp8_autocast(enabled=enabled, fp8_recipe=recipe, calibrating=calibrating, fp8_group=group, _graph=graph)
 
 
 # ---- Inlined from mindspeed/core/fp8/utils.py ----
+
 
 def _get_tensor_model_parallel_group_if_none(tp_group, is_expert=False, check_initialized=True):
     """Return default TP group if tp_group is None."""
@@ -42,6 +53,7 @@ def _get_tensor_model_parallel_group_if_none(tp_group, is_expert=False, check_in
             # For expert TP, use get_expert_tensor_parallel_group if available
             try:
                 from megatron.core.parallel_state import get_expert_tensor_parallel_group
+
                 tp_group = get_expert_tensor_parallel_group(check_initialized=check_initialized)
             except ImportError:
                 pass
@@ -73,14 +85,13 @@ def _gather_split_1d_tensor(tensor, tp_group=None):
     """Gather values from tensor model parallel ranks."""
     tp_group = _get_tensor_model_parallel_group_if_none(tp_group)
     numel_gathered = torch.numel(tensor) * tp_group.size()
-    gathered = torch.empty(
-        numel_gathered, dtype=tensor.dtype, device=torch.npu.current_device(), requires_grad=False
-    )
+    gathered = torch.empty(numel_gathered, dtype=tensor.dtype, device=torch.npu.current_device(), requires_grad=False)
     torch.distributed._all_gather_base(gathered, tensor, group=tp_group)
     return gathered
 
 
 # ---- Context manager ----
+
 
 class activation_recompute_forward(AbstractContextManager, ContextDecorator):
     """Context manager for FP8 activation recompute coordination.
@@ -88,55 +99,79 @@ class activation_recompute_forward(AbstractContextManager, ContextDecorator):
     Sets global flags so FP8 modules know whether they are in the first
     forward pass or the recompute (backward) forward pass.
     """
-    _is_first_fp8_module: List = []
 
-    def __init__(self, activation_recompute: bool = False, recompute_phase: bool = False):
+    def __init__(self, activation_recompute: bool = False, recompute_phase: bool = False, state=None):
         super().__init__()
         self.activation_recompute = activation_recompute
         self.recompute_phase = recompute_phase
+        self.state = state
 
     def __enter__(self):
-        global _FP8_ACTIVATION_RECOMPUTE_ENABLED, _FP8_ACTIVATION_RECOMPUTE_PHASE
-        _FP8_ACTIVATION_RECOMPUTE_ENABLED = self.activation_recompute
-        _FP8_ACTIVATION_RECOMPUTE_PHASE = self.recompute_phase
-
-        if self.activation_recompute and not self.recompute_phase:
-            activation_recompute_forward._is_first_fp8_module.append(
-                TENPU_FP8GlobalStateManager.quantization_state.is_first_fp8_module)
-        if self.activation_recompute and self.recompute_phase:
-            TENPU_FP8GlobalStateManager.quantization_state.is_first_fp8_module = \
-                activation_recompute_forward._is_first_fp8_module.pop(0)
+        if self.state is not None and self.activation_recompute and self.recompute_phase:
+            if self.state.is_first_module is None:
+                raise RuntimeError("FP8 recompute requires the matching checkpoint forward state.")
+        self.previous = (
+            te_distributed.is_fp8_activation_recompute_enabled(),
+            te_distributed.in_fp8_activation_recompute_phase(),
+        )
+        qstate = TENPU_FP8GlobalStateManager.quantization_state
+        self.previous_first_module = qstate.is_first_fp8_module
+        if self.state is None:
+            self.backend_context = te_distributed.activation_recompute_forward(
+                self.activation_recompute, self.recompute_phase
+            )
+            self.backend_context.__enter__()
+        else:
+            # TE modules read these flags from TE's distributed module. A second
+            # MindSpeed copy silently skips delayed-scaling snapshot/restore.
+            te_distributed._FP8_ACTIVATION_RECOMPUTE_ENABLED = self.activation_recompute
+            te_distributed._FP8_ACTIVATION_RECOMPUTE_PHASE = self.recompute_phase
+            if self.activation_recompute:
+                if self.recompute_phase:
+                    qstate.is_first_fp8_module = self.state.is_first_module
+                else:
+                    self.state.is_first_module = qstate.is_first_fp8_module
+        return self
 
     def __exit__(self, *exc_details):
-        global _FP8_ACTIVATION_RECOMPUTE_ENABLED, _FP8_ACTIVATION_RECOMPUTE_PHASE
-        _FP8_ACTIVATION_RECOMPUTE_ENABLED = False
-        _FP8_ACTIVATION_RECOMPUTE_PHASE = False
+        if self.state is None:
+            self.backend_context.__exit__(*exc_details)
+        (
+            te_distributed._FP8_ACTIVATION_RECOMPUTE_ENABLED,
+            te_distributed._FP8_ACTIVATION_RECOMPUTE_PHASE,
+        ) = self.previous
+        if self.recompute_phase:
+            TENPU_FP8GlobalStateManager.quantization_state.is_first_fp8_module = self.previous_first_module
 
 
 def get_activation_recompute_contexts():
     """Returns context objects for the checkpointed forward pass and the forward recompute phase."""
+    state = FP8RecomputeState()
     forward_ctx = activation_recompute_forward(
         activation_recompute=True,
         recompute_phase=False,
+        state=state,
     )
     recompute_ctx = activation_recompute_forward(
         activation_recompute=True,
         recompute_phase=True,
+        state=state,
     )
     return forward_ctx, recompute_ctx
 
 
 def is_fp8_activation_recompute_enabled() -> bool:
     """Return global boolean for FP8 activation recompute enabled state."""
-    return _FP8_ACTIVATION_RECOMPUTE_ENABLED
+    return te_distributed.is_fp8_activation_recompute_enabled()
 
 
 def in_fp8_activation_recompute_phase() -> bool:
     """Return global boolean for FP8 activation recompute phase."""
-    return _FP8_ACTIVATION_RECOMPUTE_PHASE
+    return te_distributed.in_fp8_activation_recompute_phase()
 
 
 # ---- Checkpoint function ----
+
 
 def checkpoint(
     function: Callable,
@@ -148,8 +183,7 @@ def checkpoint(
     Adapted from TransformerEngine's checkpoint to support FP8
     activation recompute via activation_recompute_forward contexts.
     """
-    global _USE_REENTRANT_ACTIVATION_RECOMPUTE
-    _USE_REENTRANT_ACTIVATION_RECOMPUTE = kwargs.pop("use_reentrant", True)
+    use_reentrant = kwargs.pop("use_reentrant", True)
     distribute_saved_activations = kwargs.pop("distribute_saved_activations", False)
     tp_group = kwargs.pop("tp_group", None)
     get_rng_state_tracker = kwargs.pop("get_rng_state_tracker", None)
@@ -178,7 +212,7 @@ def checkpoint(
     debug = kwargs.pop("debug", False)
 
     del determinism_check, debug
-    if _USE_REENTRANT_ACTIVATION_RECOMPUTE:
+    if use_reentrant:
         if distribute_saved_activations:
             assert torch.distributed.is_initialized(), "torch.distributed is not initialized."
             tp_group = torch.distributed.GroupMember.WORLD if tp_group is None else tp_group
@@ -204,15 +238,14 @@ def checkpoint(
     user_forward_ctx, user_recompute_ctx = context_fn()
     te_forward_ctx, te_recompute_ctx = get_activation_recompute_contexts()
 
-    fp8 = TENPU_FP8GlobalStateManager.is_fp8_enabled()
-    fp8_recipe = TENPU_FP8GlobalStateManager.get_fp8_recipe() if fp8 else None
+    autocast_state = TENPU_FP8GlobalStateManager.get_fp8_autocast_state()
 
     def recompute_fn(*args, **kwargs):
         with (
             torch.autograd.enable_grad(),
+            get_fp8_autocast_context(autocast_state),
             te_recompute_ctx,
             user_recompute_ctx,
-            fp8_autocast(enabled=fp8, fp8_recipe=fp8_recipe),
         ):
             function(*args, **kwargs)
 
@@ -259,8 +292,10 @@ class _CheckpointFunction(torch.autograd.Function):
         else:
             forward_ctx, recompute_ctx = noop_context_fn()
 
+        ctx.fp8_recompute_state = FP8RecomputeState()
+        ctx.autocast_state = TENPU_FP8GlobalStateManager.get_fp8_autocast_state()
         with torch.no_grad(), forward_ctx:
-            with activation_recompute_forward(activation_recompute=True, recompute_phase=False):
+            with activation_recompute_forward(True, False, state=ctx.fp8_recompute_state):
                 outputs = run_function(*args, **kwargs)
 
         if distribute_saved_activations:
@@ -311,18 +346,19 @@ class _CheckpointFunction(torch.autograd.Function):
             get_rng_state_tracker().set_states(ctx.fwd_cuda_rng_state_tracker)
 
         detached_inputs = detach_variable(inputs)
-        with (
-            torch.enable_grad(),
-            ctx.recompute_ctx,
-            activation_recompute_forward(activation_recompute=True, recompute_phase=True),
-            fp8_autocast(enabled=ctx.fp8, fp8_recipe=ctx.fp8_recipe),
-        ):
-            outputs = ctx.run_function(*detached_inputs, **ctx.kwargs)
-
-        torch.set_rng_state(bwd_cpu_rng_state)
-        _set_cuda_rng_state(bwd_cuda_rng_state, graph_safe=False)
-        if get_rng_state_tracker is not None:
-            get_rng_state_tracker().set_states(bwd_cuda_rng_state_tracker)
+        try:
+            with (
+                torch.enable_grad(),
+                get_fp8_autocast_context(ctx.autocast_state),
+                activation_recompute_forward(True, True, state=ctx.fp8_recompute_state),
+                ctx.recompute_ctx,
+            ):
+                outputs = ctx.run_function(*detached_inputs, **ctx.kwargs)
+        finally:
+            torch.set_rng_state(bwd_cpu_rng_state)
+            _set_cuda_rng_state(bwd_cuda_rng_state, graph_safe=False)
+            if get_rng_state_tracker is not None:
+                get_rng_state_tracker().set_states(bwd_cuda_rng_state_tracker)
 
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)
@@ -380,7 +416,6 @@ class _CheckpointFrame:
 
 
 class _recomputation_hook(torch.autograd.graph.saved_tensors_hooks):
-
     def __init__(self, frame):
         def pack_hook(x):
             frame.recomputed.append(x.detach())
@@ -393,7 +428,6 @@ class _recomputation_hook(torch.autograd.graph.saved_tensors_hooks):
 
 
 class _checkpoint_hook(torch.autograd.graph.saved_tensors_hooks):
-
     def __init__(self, frame, args, kwargs):
         def pack_hook(x):
             del x
@@ -405,9 +439,11 @@ class _checkpoint_hook(torch.autograd.graph.saved_tensors_hooks):
             if not frame.recomputed:
                 frame.cache_rng_states(forward=False)
                 frame.restore_rng_states(forward=True)
-                with _recomputation_hook(frame):
-                    frame.recompute_fn(*args, **kwargs)
-                frame.restore_rng_states(forward=False)
+                try:
+                    with _recomputation_hook(frame):
+                        frame.recompute_fn(*args, **kwargs)
+                finally:
+                    frame.restore_rng_states(forward=False)
 
             activation = frame.recomputed[idx]
             frame.recomputed[idx] = None

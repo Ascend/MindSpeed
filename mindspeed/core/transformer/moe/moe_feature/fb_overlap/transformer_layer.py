@@ -5,13 +5,16 @@ from contextlib import nullcontext
 import torch
 from torch import Tensor
 
-from transformer_engine.pytorch import fp8_autocast
 from transformer_engine.pytorch.quantization.manager import FP8GlobalStateManager
 
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.fp8_utils import get_fp8_context
 from mindspeed.core.pipeline_parallel.noop_layers.adaptor import NoopTransformerLayer
-from mindspeed.core.fp8_checkpoint import activation_recompute_forward
+from mindspeed.core.fp8_checkpoint import (
+    FP8RecomputeState,
+    activation_recompute_forward,
+    get_fp8_autocast_context,
+)
 from mindspeed.core.transformer.moe.moe_feature import (
     InferenceParams,
     tensor_parallel,
@@ -36,24 +39,17 @@ from .overlap_funcs import (
 )
 
 
-def _record_fp8_recompute_state(layer_graph):
+def _record_fp8_recompute_state(layer_graph, recompute_state):
     layer_graph.fp8_autocast_state = FP8GlobalStateManager.get_fp8_autocast_state()
     layer_graph.fp8_activation_recompute_enabled = layer_graph.checkpointed
+    layer_graph.fp8_recompute_state = recompute_state
 
 
 def _get_fp8_recompute_context(layer_graph):
     fp8_state = getattr(layer_graph, 'fp8_autocast_state', None)
-    if fp8_state is None or not fp8_state[0]:
+    if fp8_state is None:
         return nullcontext()
-
-    enabled, fp8_recipe, calibrating, fp8_group, _, fp8_graph = fp8_state
-    return fp8_autocast(
-        enabled=enabled,
-        fp8_recipe=fp8_recipe,
-        fp8_group=fp8_group,
-        calibrating=calibrating,
-        _graph=fp8_graph,
-    )
+    return get_fp8_autocast_context(fp8_state)
 
 
 def _get_activation_recompute_context(layer_graph, recompute_phase):
@@ -62,7 +58,26 @@ def _get_activation_recompute_context(layer_graph, recompute_phase):
     return activation_recompute_forward(
         activation_recompute=True,
         recompute_phase=recompute_phase,
+        state=layer_graph.fp8_recompute_state,
     )
+
+
+def _run_overlap_with_recompute_state(fn, *args, **kwargs):
+    """Record the forward microbatch even when it overlaps another backward."""
+    checkpoint = kwargs.get('checkpoint', False)
+    state = FP8RecomputeState() if checkpoint else None
+    context = activation_recompute_forward(True, False, state=state) if checkpoint else nullcontext()
+    with _layer_quantization_context(args[0]), context:
+        out = fn(*args, **kwargs)
+        if checkpoint:
+            _record_fp8_recompute_state(out[2], state)
+    return out
+
+
+def _layer_quantization_context(layer):
+    if getattr(getattr(layer, 'config', None), 'first_last_layers_bf16', False):
+        return get_fp8_context(layer.config, layer.layer_number - 1)
+    return nullcontext()
 
 
 class bwd_synchronize_check(torch.autograd.Function):
@@ -78,14 +93,15 @@ class bwd_synchronize_check(torch.autograd.Function):
 
 def transformer_layer_forward(*args, **kwargs):
     self = args[0]
+    recompute_state = FP8RecomputeState()
     if kwargs['checkpoint']:
         checkpoint_context = torch.no_grad()
-        activation_recompute_context = activation_recompute_forward(activation_recompute=True, recompute_phase=False)
+        activation_recompute_context = activation_recompute_forward(True, False, state=recompute_state)
     else:
         checkpoint_context = nullcontext()
         activation_recompute_context = nullcontext()
 
-    with checkpoint_context, activation_recompute_context:
+    with _layer_quantization_context(self), checkpoint_context, activation_recompute_context:
         layer_forward_func = None
         if isinstance(self, NoopTransformerLayer):
             layer_forward_func = transformer_layer_forward_noop
@@ -101,9 +117,8 @@ def transformer_layer_forward(*args, **kwargs):
             layer_forward_func = transformer_layer_forward_dense
 
         out = layer_forward_func(*args, **kwargs)
-
-    if len(out) > 2 and kwargs['checkpoint']:
-        _record_fp8_recompute_state(out[2])
+        if len(out) > 2 and kwargs['checkpoint']:
+            _record_fp8_recompute_state(out[2], recompute_state)
     return out
 
 
@@ -117,8 +132,8 @@ def transformer_layer_backward(
             if layer_graph.layer.layer_number > 1:
                 layer_graph.layer_input = detach_tensor(layer_graph.layer_input)
             with (
-                _get_activation_recompute_context(layer_graph, recompute_phase=True),
                 _get_fp8_recompute_context(layer_graph),
+                _get_activation_recompute_context(layer_graph, recompute_phase=True),
             ):
                 _, _, restored_layer_graph = transformer_layer_forward(
                     layer_graph.layer, layer_graph.layer_input, *layer_graph.layer_inputs, checkpoint=False
@@ -312,14 +327,15 @@ def transformer_layer_forward_backward_overlaping(
             if bwd_layer_graph.layer.layer_number > 1:
                 bwd_layer_graph.layer_input = detach_tensor(bwd_layer_graph.layer_input)
             with (
-                _get_activation_recompute_context(bwd_layer_graph, recompute_phase=True),
                 _get_fp8_recompute_context(bwd_layer_graph),
+                _get_activation_recompute_context(bwd_layer_graph, recompute_phase=True),
             ):
                 _, _, bwd_layer_graph = transformer_layer_forward(
                     bwd_layer_graph.layer, bwd_layer_graph.layer_input, *bwd_layer_graph.layer_inputs, checkpoint=False
                 )
 
-        out = fb_overlap_func(
+        out = _run_overlap_with_recompute_state(
+            fb_overlap_func,
             fwd_layer,
             hidden_states,
             attention_mask,
@@ -430,7 +446,7 @@ def dualpipev_fb_overlap_mtp_layer_forward(
     else:
         rng_context = nullcontext()
 
-    if self.config.fp8:
+    if self.config.fp8 or getattr(self.config, 'fp4', None):
         fp8_context = get_fp8_context(self.config)
     else:
         fp8_context = nullcontext()
