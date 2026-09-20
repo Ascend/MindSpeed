@@ -8,14 +8,14 @@
 
 |产品|是否支持（训练场景）|
 |--|:-:|
-|<term>Ascend 950 系列产品</term>|√|
-|<term>Atlas A3 训练系列产品</term>|√|
-|<term>Atlas A3 推理系列产品</term>|x|
-|<term>Atlas A2 训练系列产品</term>|√|
-|<term>Atlas A2 推理系列产品</term>|x|
-|<term>Atlas 200I/500 A2 推理产品</term>|x|
-|<term>Atlas 推理系列产品</term>|x|
-|<term>Atlas 训练系列产品</term>|x|
+|<term>Ascend 950PR&950DT系列产品</term>|√|
+|<term>Atlas A3训练系列产品</term>|√|
+|<term>Atlas A3推理系列产品</term>|x|
+|<term>Atlas A2训练系列产品</term>|√|
+|<term>Atlas A2推理系列产品</term>|x|
+|<term>Atlas 200I/500 A2推理产品</term>|x|
+|<term>Atlas推理系列产品</term>|x|
+|<term>Atlas训练系列产品</term>|x|
 
 > [!NOTE]
 >
@@ -51,19 +51,19 @@
 
    最新镜像均配套[MindSpeed Core的26.1.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1)，请按需[获取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
    <!-- npu="950" id5 -->
-   - <term>Ascend 950 系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
+   - <term>Ascend 950PR&950DT系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
 
-   - <term>Ascend 950 系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.12
+   - <term>Ascend 950PR&950DT系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.12
    <!-- end id5 -->
    <!-- npu="A3" id4 -->
-   - <term>Atlas A3 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   - <term>Atlas A3训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
 
-   - <term>Atlas A3 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.12
+   - <term>Atlas A3训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.12
    <!-- end id4 -->
    <!-- npu="910b" id3 -->
-   - <term>Atlas A2 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.12
+   - <term>Atlas A2训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.12
 
-   - <term>Atlas A2 训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.12
+   - <term>Atlas A2训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.12
    <!-- end id3 -->
    以镜像v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12为例：
 

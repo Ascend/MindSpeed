@@ -2,7 +2,7 @@
 
 ## 注意事项
 
-Atlas A2 训练系列产品 / Atlas A3 训练系列产品支持此接口，而 Ascend 950 系列产品不支持此接口。
+Atlas A2训练系列产品 / Atlas A3训练系列产品支持此接口，而Ascend 950PR&950DT系列产品不支持此接口。
 
 ## matmul_all_reduce接口
 
@@ -57,7 +57,7 @@ def initialize_model_parallel(
         pipeline_model_parallel_split_rank=pipeline_model_parallel_split_rank,
         context_parallel_size=context_parallel_size,
     )
-    
+
 
 def test_coc_matmul_all_reduce(rank, world_size, master_ip, master_port):
     torch_npu.npu.set_device(rank)
@@ -65,7 +65,7 @@ def test_coc_matmul_all_reduce(rank, world_size, master_ip, master_port):
     dist.init_process_group(backend='hccl', rank=rank, world_size=world_size, init_method=init_method)
     initialize_model_parallel(world_size)
     from mindspeed.ops.lcal_functional import coc_ops
-    
+
     m, k, n = 2048, 4096, 8192
     dtype = torch.float16
     input1 = torch.rand(m, k, dtype=dtype, device=torch.npu.current_device())
