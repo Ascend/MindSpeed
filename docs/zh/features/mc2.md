@@ -2,7 +2,7 @@
 
 ## 使用前提
 
-**后端限制：** MC2 仅作用于原生 ColumnParallelLinear/RowParallelLinear，不覆盖 TENPU 的 TE Linear。
+**后端限制：** MC2 仅作用于原生 ColumnParallelLinear/RowParallelLinear，不覆盖 TE 路径（`--transformer-impl transformer_engine`，昇腾上由 TENPU 提供实现）下的线性层。
 
 仅限于版本标识为`CANN 8.0.RC2`和`Ascend HDK 24.1.RC2`及其后续所有迭代版本的系统环境。
 
@@ -37,7 +37,7 @@ MC2算子接口参见[mc2_opraters_api](https://www.hiascend.com/document/detail
 ```python
 # 举例1:冻结所有参数
 for param in model.parameters():
-    param.requires_grad = False  
+    param.requires_grad = False
 ```
 
 ```python
@@ -49,6 +49,45 @@ for name, module in model.named_modules():
         for param in module.parameters():
             param.requires_grad = False
 ```
+
+> [!NOTE]
+>
+> **适用范围**：举例2只适用于`--transformer-impl local`路径。在`--transformer-impl transformer_engine`路径下，线性层是Megatron的TE封装类，不是`ColumnParallelLinear` / `RowParallelLinear`的子类，`isinstance`恒为`False` —— **冻结静默失效：不报错、不打印、不冻任何参数**。
+
+两条路径下线性层的类：
+
+| 模块 | `local` | `transformer_engine` |
+| --- | --- | --- |
+| `self_attention.linear_qkv` | `ColumnParallelLinear` | `TELayerNormColumnParallelLinear` |
+| `mlp.linear_fc1` | `ColumnParallelLinear` | `TELayerNormColumnParallelLinear` |
+| `self_attention.linear_proj` | `RowParallelLinear` | `TERowParallelLinear` |
+| `mlp.linear_fc2` | `RowParallelLinear` | `TERowParallelLinear` |
+
+- `local`：线性层为Megatron原生实现；开启`--use-ascend-mc2`后替换为`MindSpeedMC2Column/RowParallelLinear`，仍继承原生类，举例2 的`isinstance`照样命中。
+- `transformer_engine`：昇腾上由TENPU（环境中的`transformer_engine`包）提供实现；模型线性层是Megatron的TE封装类，位于`megatron.core.extensions.transformer_engine`，继承TENPU的`te.pytorch.Linear` / `LayerNormLinear`。
+- `TELayerNormColumnParallelLinear`融合了LayerNorm且不继承`TELinear`，需单独匹配，其`layer_norm_weight`保留可训练。
+
+```python
+# 举例3:冻结所有 column + row 线性层，两条路径通用
+from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, TERowParallelLinear
+from megatron.core.extensions.transformer_engine import TELayerNormColumnParallelLinear
+
+FREEZE_TYPES = (ColumnParallelLinear, RowParallelLinear,
+                TEColumnParallelLinear, TERowParallelLinear, TELayerNormColumnParallelLinear)
+for name, module in model.named_modules():
+    if 'output_layer' in name or not isinstance(module, FREEZE_TYPES):
+        continue
+    for param_name, param in module.named_parameters(recurse=False):
+        if 'norm' in param_name:  # 融合进线性层的 LayerNorm，保留可训练
+            continue
+        param.requires_grad = False
+    print(f'rank:{torch.distributed.get_rank()}, frozen: {name}')
+```
+
+举例3必须从`megatron.core.extensions.transformer_engine`导入TE封装类（模型实例就是这一层的类）；`transformer_engine.pytorch.*`是TENPU的基类，模型里没有这种实例，TENPU改成不继承后会再次静默失效。
+
+失效是静默的，建议保留打印并在CI断言条数：`rank数 × (num_layers / pipeline_model_parallel_size) × 4`（8卡/8层/PP=2时=128，只冻row=64）。
 
 ## 使用方法
 
