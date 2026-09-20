@@ -97,6 +97,9 @@
       <td><a href="../features/swap-optimizer.md">Ascend Swap Optimizer</a></td>
     </tr>
     <tr>
+      <td><a href="../features/block_swap.md">Ascend block_swap</a></td>
+    </tr>
+    <tr>
       <td><a href="../features/virtual-optimizer.md">Virtual Optimizer</a></td>
     </tr>
     <tr>
