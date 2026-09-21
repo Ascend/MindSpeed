@@ -3,11 +3,58 @@
 from functools import wraps, partial
 
 import inspect
-import torch
+
+
+def _get_optimizer_bucket_groups(model_chunk, optimizer_buckets):
+    """Select complete DDP bucket groups owned by the current optimizer."""
+    optimizer_bucket_groups = []
+    for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
+        num_owned_buckets = 0
+        for bucket in bucket_group.buckets:
+            if bucket in optimizer_buckets:
+                num_owned_buckets += 1
+
+        # Skip empty groups and groups owned by another optimizer.
+        if num_owned_buckets == 0:
+            continue
+        if num_owned_buckets != len(bucket_group.buckets):
+            raise RuntimeError("A parameter all-gather bucket group spans multiple distributed optimizers")
+
+        optimizer_bucket_groups.append(bucket_group)
+
+    return optimizer_bucket_groups
+
+
+def start_param_sync_for_bucket_group_subset(self) -> None:
+    """Sync only the DDP buckets owned by this distributed optimizer.
+
+    Dense and expert optimizers share model chunks, but receive different
+    buffers. Use bucket identity instead of the position in ChainedOptimizer
+    so virtual pipeline chunks and grouped buffers keep their ownership.
+    """
+    if self.is_stub_optimizer:
+        return
+
+    from megatron.core.optimizer.layer_wise_optimizer import _bucket_is_managed_by_layer_wise_optimizer
+
+    # MCore buckets use object identity for equality and hashing.
+    optimizer_buckets = set()
+    for buffer in self.buffers:
+        optimizer_buckets.update(buffer.buckets)
+
+    for model_chunk in self.model_chunks:
+        bucket_groups = _get_optimizer_bucket_groups(model_chunk, optimizer_buckets)
+        for bucket_group in bucket_groups:
+            if _bucket_is_managed_by_layer_wise_optimizer(bucket_group.buckets[0], default_for_untagged=False):
+                continue
+            # Keep MCore's post-all-gather processing, including quantized weights.
+            model_chunk._start_bucket_group_param_sync(bucket_group, force_sync=False)
 
 
 # fix duplicate all-gather
-def start_param_sync(self, *unused, force_sync: bool = False, force_dispatch: bool = False, dense_or_moe_group: str = None):
+def start_param_sync(
+    self, *unused, force_sync: bool = False, force_dispatch: bool = False, dense_or_moe_group: str = None
+):
     """
     Initiates param sync (all-gather) communication operations for all model parameters.
 
@@ -32,6 +79,8 @@ def start_param_sync(self, *unused, force_sync: bool = False, force_dispatch: bo
         bucket_groups = self.bucket_groups
     elif dense_or_moe_group == 'moe':
         bucket_groups = self.expert_parallel_bucket_groups
+    else:
+        raise ValueError(f'Unsupported dense_or_moe_group: {dense_or_moe_group!r}')
 
     for bucket_group in bucket_groups:
         bucket_group.start_param_sync(force_sync=force_sync)
@@ -57,13 +106,13 @@ def step_with_ready_grads_distrib_opti_wrapper(func):
                 model_chunk.start_param_sync = model_chunk.start_param_sync.func
 
         return update_successful
+
     return wrapper
 
 
 def get_megatron_optimizer_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-
         chained_optimizer = func(*args, **kwargs)
 
         if hasattr(chained_optimizer, 'chained_optimizers'):
@@ -73,7 +122,7 @@ def get_megatron_optimizer_wrapper(func):
                 model_chunks = args[1]
             else:
                 return chained_optimizer
-        
+
             for optimizer in chained_optimizer.chained_optimizers:
                 optimizer.is_moe_param = 'dense'
 
@@ -90,7 +139,6 @@ def get_megatron_optimizer_wrapper(func):
                         ddp_config.use_custom_fsdp
                         and ddp_config.data_parallel_sharding_strategy == "optim_grads_params"
                     ):
-                        param_shard = param
                         param = param.orig_param
 
                     if not param.requires_grad:
@@ -106,4 +154,5 @@ def get_megatron_optimizer_wrapper(func):
                 chained_optimizer.chained_optimizers[-1].is_moe_param = 'moe'
 
         return chained_optimizer
+
     return wrapper

@@ -230,11 +230,19 @@ class NpuEnhancementFeature(MindSpeedFeature):
         """Bug fix patches (migrated from MegatronBasicFeature)."""
         # Fix duplicate all-gather
         try:
-            from mindspeed.core.optimizer.fix_duplicate_allgather import start_param_sync
+            from mindspeed.core.optimizer.fix_duplicate_allgather import (
+                start_param_sync,
+                start_param_sync_for_bucket_group_subset,
+            )
 
             patch_manager.register_patch(
                 'megatron.core.distributed.distributed_data_parallel.DistributedDataParallel.start_param_sync',
                 start_param_sync,
+            )
+            patch_manager.register_patch(
+                'megatron.core.optimizer.distrib_optimizer.'
+                'DistributedOptimizer.start_param_sync_for_bucket_group_subset',
+                start_param_sync_for_bucket_group_subset,
             )
             logger.debug("Bugfix: duplicate allgather registered")
         except ImportError:

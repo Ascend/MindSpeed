@@ -18,6 +18,7 @@ from mindspeed.features_manager.affinity.affinity import AffinityFeature
 from mindspeed.features_manager.qat.qat_quant_engine import QATQuantEngineFeature
 from mindspeed.features_manager.pipeline_parallel import NoopLayersFeature
 from mindspeed.features_manager.pipeline_parallel import PipelineModelParallelLayoutFeature
+from mindspeed.features_manager.pipeline_parallel.defer_p2p_send_wait import DeferP2PSendWaitFeature
 from mindspeed.features_manager.pipeline_parallel.optimize_p2p_comm import OptimizeP2PCommFeature
 from mindspeed.features_manager.pipeline_parallel.ripipe_schedules_feature import (
     RiPipeSchedulesBubbleFeature,
@@ -201,6 +202,7 @@ def add_pipeline_parallel_features(features_list: List[MindSpeedFeature]):
             PipelineModelParallelLayoutFeature(),
             UnalignedPipelineFeature(),
             DualpipeVFeature(),
+            DeferP2PSendWaitFeature(),
         ]
     )
 

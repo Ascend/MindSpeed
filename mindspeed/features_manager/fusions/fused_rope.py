@@ -36,9 +36,16 @@ class FusedRoPEFeature(MindSpeedFeature):
         return
 
     def register_patches(self, patch_manager, args: Namespace):
-        from mindspeed.core.fusions.fused_rope import apply_rotary_pos_emb_bshd
+        from mindspeed.core.fusions.fused_rope import (
+            apply_rotary_pos_emb_bshd,
+            fused_apply_rotary_pos_emb_wrapper,
+        )
 
         patch_manager.register_patch(
             "megatron.core.models.common.embeddings.rope_utils._apply_rotary_pos_emb_bshd",
             apply_rotary_pos_emb_bshd,
+        )
+        patch_manager.register_patch(
+            "megatron.core.extensions.transformer_engine.fused_apply_rotary_pos_emb",
+            fused_apply_rotary_pos_emb_wrapper,
         )
