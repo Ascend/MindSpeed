@@ -1,4 +1,5 @@
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 # pylint: skip-file
 
 import os
