@@ -8,6 +8,7 @@ from copy import copy
 from dataclasses import replace
 from logging import getLogger
 from functools import partial, wraps
+from inspect import signature
 import torch
 from torch import Tensor
 
@@ -25,6 +26,7 @@ from mindspeed.args_utils import get_full_args as get_args
 from .modules.experts import MindSpeedFbOverlapGmmExperts
 from .modules.shared_experts import SharedExpertMLPFbOverlap
 from .modules.moe_layer import MindSpeedFbOverlapMoELayer
+from .modules.te_attention_wgrad import AttentionWeightGradStore, configure_attention_wgrad
 from .vpp_schedules import forward_backward_pipelining_with_interleaving
 from .no_pipelining_schedules import forward_backward_no_pipelining
 
@@ -78,6 +80,11 @@ def _make_backward_post_hook(self, param: torch.nn.Parameter):
     def hook(*unused):
         if is_graph_capturing():
             return
+        attention_store = getattr(param, '_mindspeed_fb_attention_wgrad_store', None)
+        if attention_store is not None and attention_store.skip_autograd_post_hook():
+            # The dgrad backward has not produced this weight's gradient yet.
+            # Accumulate/reduce it once, from the later TE backward_dw callback.
+            return
         if param in self.param_to_bucket_group:
             if not getattr(param, 'skip_grad_accum', False):
                 assert param.requires_grad
@@ -99,26 +106,35 @@ def _make_backward_post_hook(self, param: torch.nn.Parameter):
 
 
 def fb_overlap_ddp_init_wrapper(fn):
-    """Attach DDP hooks to the two TE linears whose wgrad is delayed by FB overlap."""
+    """Attach hooks to expert and attention wgrad owned by FB overlap."""
+
+    fn_signature = signature(fn)
 
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
+        bound_args = fn_signature.bind(self, *args, **kwargs)
+        configure_attention_wgrad(bound_args.arguments['module'])
         result = fn(self, *args, **kwargs)
         if self.ddp_config.delay_wgrad_compute:
             raise RuntimeError(
-                'MindSpeed FB overlap owns the TE expert delayed-wgrad schedule '
+                'MindSpeed FB overlap owns the TE expert and attention delayed-wgrad schedule '
                 'and cannot be combined with global DDP delay_wgrad_compute.'
             )
 
         marker = '_mindspeed_fb_overlap_delayed_wgrad_hook_registered'
-        for experts in self.module.modules():
-            if not isinstance(experts, MindSpeedFbOverlapGmmExperts):
+        for owner in self.module.modules():
+            attention_store = getattr(owner, 'wgrad_store', None)
+            if isinstance(attention_store, AttentionWeightGradStore):
+                modules = (owner,)
+            elif isinstance(owner, MindSpeedFbOverlapGmmExperts):
+                modules = (owner.linear_fc1, owner.linear_fc2)
+            else:
                 continue
-
-            for module in (experts.linear_fc1, experts.linear_fc2):
+            for module in modules:
+                is_attention = isinstance(getattr(module, 'wgrad_store', None), AttentionWeightGradStore)
                 if not (
                     hasattr(module, 'need_backward_dw')
-                    and module.need_backward_dw()
+                    and (is_attention or module.need_backward_dw())
                     and hasattr(module, 'register_wgrad_accumulation_and_reduce_hooks')
                 ):
                     raise RuntimeError(f'MindSpeed FB overlap requires delayed-wgrad hooks on {type(module).__name__}.')
@@ -127,6 +143,7 @@ def fb_overlap_ddp_init_wrapper(fn):
                     if not (
                         param.requires_grad
                         and getattr(param, 'skip_backward_post_hook', False)
+                        and (not is_attention or hasattr(param, '_mindspeed_fb_attention_wgrad_store'))
                         and getattr(param, marker, None) != id(self)
                     ):
                         continue

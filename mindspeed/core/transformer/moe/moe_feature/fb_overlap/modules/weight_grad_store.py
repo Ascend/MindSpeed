@@ -35,6 +35,7 @@ def gather(input_slice, stream):
 class WeightGradStore:
     cache = []
     te_expert_cache = []
+    te_linear_cache = []
     weight_grad_queue = queue.Queue()
     store_grad_cache = []
     grad_store = []
@@ -56,9 +57,17 @@ class WeightGradStore:
 
     @classmethod
     def flush_chunk_grad(cls):
-        cls.weight_grad_queue.put((cls.cache, cls.te_expert_cache))
+        cls.weight_grad_queue.put((cls.cache, cls.te_expert_cache, cls.te_linear_cache))
         cls.cache = []
         cls.te_expert_cache = []
+        cls.te_linear_cache = []
+
+    @classmethod
+    def put_te_linear(cls, store):
+        """Queue one actual attention wgrad, in autograd execution order."""
+        if not cls.is_decoupleBlock:
+            raise RuntimeError('TE attention wgrad must be queued inside FB decoupling.')
+        cls.te_linear_cache.append(store)
 
     @classmethod
     def start_decouple(cls):
@@ -133,7 +142,7 @@ class WeightGradStore:
 
     @classmethod
     def pop(cls, experts_only=False):
-        if len(cls.cache) == 0 and len(cls.te_expert_cache) == 0:
+        if not cls.cache and not cls.te_expert_cache and (experts_only or not cls.te_linear_cache):
             return
 
         if experts_only:
@@ -150,6 +159,8 @@ class WeightGradStore:
 
         if len(cls.cache) == 0:
             cls._pop_te_experts()
+            if not experts_only:
+                cls._pop_te_linears()
             return
 
         if cls.gather_stream is None:
@@ -176,6 +187,14 @@ class WeightGradStore:
 
         cls.store_grad_cache = None
         cls._pop_te_experts()
+        if not experts_only:
+            cls._pop_te_linears()
+
+    @classmethod
+    def _pop_te_linears(cls):
+        """Run after P2P launch, never at the earlier experts-only boundary."""
+        while cls.te_linear_cache:
+            cls.te_linear_cache.pop(0).backward_dw()
 
     @classmethod
     def _pop_te_experts(cls):
@@ -189,9 +208,11 @@ class WeightGradStore:
         if cls.weight_grad_queue.empty():
             return
 
-        cache_list, te_expert_cache = cls.weight_grad_queue.get()
+        cache_list, te_expert_cache, te_linear_cache = cls.weight_grad_queue.get()
         assert len(cls.cache) == 0
         assert len(cls.te_expert_cache) == 0
+        assert len(cls.te_linear_cache) == 0
         cls.cache = cache_list
         cls.te_expert_cache = te_expert_cache
+        cls.te_linear_cache = te_linear_cache
         cls.pop()
