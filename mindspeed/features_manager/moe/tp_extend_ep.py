@@ -33,11 +33,6 @@ class MoETpExtendEpFeature(MindSpeedFeature):
                 )
             if args.moe_expert_capacity_factor is not None:
                 raise AssertionError('`--moe-tp-extend-ep` only support when moe_expert_capacity_factor is None.')
-            if args.transformer_impl != "local":
-                raise ValueError("--moe-tp-extend-ep requires --transformer-impl local.")
-            # Dispatcher names are not credentials.
-            if args.moe_token_dispatcher_type != "alltoall_seq":  # nosec B105
-                raise ValueError("--moe-tp-extend-ep requires alltoall_seq dispatch.")
 
     def register_patches(self, patch_manager, args):
         if not args.moe_tp_extend_ep:
