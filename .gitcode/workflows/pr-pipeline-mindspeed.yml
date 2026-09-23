@@ -21,11 +21,15 @@ on:
 env:
   TARGET_BRANCH: ${{ atomgit.base_ref || 'master' }}
   pr_id: ${{ atomgit.event.pull_request.number || atomgit.event.issue.number || '0' }}
+  org_name: "Ascend"
 
 permissions:
+  project: read
   repository: read
   id-token: write
   pr: write
+  note: write
+  action: read
 
 stages:
   stage1:
@@ -34,7 +38,7 @@ stages:
     jobs:
       Detect_file_changes:
         name: Detect_file_changes
-        runs-on: [ self-hosted, x86, cpu=32 ]
+        runs-on: [ self-hosted, default, x86, cpu=16 ]
         container:
           image: swr.cn-north-4.myhuaweicloud.com/pytorch_images_x86/pytorchx86:v_03
         outputs:
@@ -53,7 +57,7 @@ stages:
               base: ${{ atomgit.event.pull_request.base.ref }}
               repo: ${{ atomgit.repository }}
               number: ${{ env.pr_id }}
-              token: ${{ atomgit.token }}
+              token: ${{ secrets.GIT_TOKEN }}
               list-files: json
               predicate-quantifier: every
               filters: |
@@ -83,44 +87,59 @@ stages:
       associate_pr_comment:
         name: associate_pr_comment
         select: selected_by_default
-        runs-on: [ self-hosted, x86, cpu=32 ]
+        runs-on: [ self-hosted, default, x86, cpu=16 ]
         steps:
           - name: associate-pr-comment
             uses: associate-pr-comment
+          - name: pre_pipeline
+            id: pre_pipeline
+            uses: cann/.gitcode/actions/pre-pipeline@689551d6b29a77d8c2a005b8f1b3883db24820ef
+            with:
+              owner: ${{ env.org_name }}
+              repo: ${{ atomgit.event.repository.name }}
+              pr_number: ${{ atomgit.event.pull_request.number }}
+              token: ${{ secrets.GIT_TOKEN }}
+              apply_label: 'true'
+              run_url: https://gitcode.com/${{ env.org_name }}/${{ atomgit.event.repository.name }}/actions/runs/${{ atomgit.workflow_run_id }}
 
   stage2:
     name: CodeCheck
     select: selected_by_default
     jobs:
       CodeCheck_pre_commit:
-        name: CodeCheck_pre_commit
+        name: pre-commit
         if : ${{ jobs.Detect_file_changes.outputs.need_build_ut == 'yes' }}
-        runs-on: [ self-hosted, x86, cpu=32 ]
+        runs-on: [ self-hosted, default, x86, cpu=16 ]
         container:
-          image: swr.cn-north-4.myhuaweicloud.com/pytorch_images_x86/pytorchx86:v_03
+          image: swr.cn-north-4.myhuaweicloud.com/atlas-ci/common:latest
         steps:
           - name: checkout
             uses: checkout
             with:
               ref: refs/merge-requests/${{ env.pr_id }}/merge
-          - name: setup-python310
-            uses: setup-python
-            with:
-              python-version: "3.10.20"
+              allow-unsafe-pr-checkout: true
+          - name: setup-python311
+            run: |
+              PYTHON311_BIN=$(dirname "$(which python3.11)")
+              ln -sf "$(which python3.11)" "$PYTHON311_BIN/python"
+              echo "$PYTHON311_BIN" >> "$ATOMGIT_PATH"
+              python --version
           - name: install gitleaks
             run: |
               cd ${ATOMGIT_WORKSPACE}
               wget --no-host-directories -c --no-check-certificate https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta-codecheck/gitleaks
               chmod +x gitleaks
               cd -
-          - name: pre-commit
-            uses: openlibing-pre-commit-action
+          - name: Run pre-commit
+            uses: openlibing/pre-commit-action@v1.0.0
+            env:
+              SKIP: clang-tidy
 
       Compatibility_Interface:
         name: Compatibility_Interface
         if : ${{ jobs.Detect_file_changes.outputs.need_build_ut == 'yes' }}
         select: selected_by_default
-        runs-on: [ self-hosted, x86, cpu=32 ]
+        runs-on: [ self-hosted, default, x86, cpu=16 ]
         container:
           image: swr.cn-north-4.myhuaweicloud.com/pytorch_images_x86/pytorchx86:v_03
         steps:
@@ -175,7 +194,7 @@ stages:
 
       sca-pr:
         if : ${{ jobs.Detect_file_changes.outputs.need_build_ut == 'yes' }}
-        runs-on: [ self-hosted, x86, cpu=32 ]
+        runs-on: [ self-hosted, default, x86, cpu=16 ]
         steps:
           - name: checkout
             uses: checkout
@@ -186,7 +205,7 @@ stages:
 
       malicious-scan:
         if : ${{ jobs.Detect_file_changes.outputs.need_build_ut == 'yes' }}
-        runs-on: [ self-hosted, x86, cpu=32 ]
+        runs-on: [ self-hosted, default, x86, cpu=16 ]
         steps:
           - name: checkout
             uses: checkout
@@ -246,3 +265,18 @@ stages:
               set -e
               echo "start mindspeed st"
               bash ci/run_ci_st.sh "${ATOMGIT_WORKSPACE}" "${{ env.pr_id }}" "${TARGET_BRANCH}"
+
+post:
+  jobs:
+    query_pipeline:
+      steps:
+        - name: query_pipeline
+          id: query_pipeline
+          uses: cann/.gitcode/actions/query-pipeline@689551d6b29a77d8c2a005b8f1b3883db24820ef
+          with:
+            owner: ${{ env.org_name }}
+            repo: ${{ atomgit.event.repository.name }}
+            run_id: ${{ atomgit.workflow_run_id }}
+            token: ${{ secrets.GIT_TOKEN }}
+            pr_number: ${{ atomgit.event.pull_request.number }}
+            apply_label: 'true'
