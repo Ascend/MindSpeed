@@ -98,6 +98,7 @@ MindSpeed/
 | MindSpeed Core 分支    | core_r0.18.0 |
 | MegatronAdaptor      | core_r0.18.0 |
 | TransformerEngineNPU | main         |
+| MindSpeed-Ops        | master       |
 | Megatron-LM 版本       | 0.18.0       |
 | CANN 版本              | 9.1.0        |
 | PyTorch              | 2.7.1        |
@@ -110,17 +111,19 @@ MindSpeed/
 
 ---
 
-MindSpeed Core 当前版本基于 MA + TENPU + MindSpeed 三层架构，依赖关系如下：
+MindSpeed Core 当前版本基于 MA + TENPU + MindSpeed 三层架构，并按使用场景引入独立的 MindSpeed-Ops 算子包，依赖关系如下：
 
 ```text
 MegatronAdaptor (MA)           ← NPU 基础适配，使 Megatron-LM 能运行
-  └→ TransformerEngineNPU      ← TE 算子的 NPU 实现，依赖 MA 完成设备初始化
-       └→ MindSpeed Core       ← 昇腾独有加速，依赖 MA + TENPU 提供基础能力
+  ├→ TransformerEngineNPU      ← TE 算子的 NPU 实现，依赖 MA 完成设备初始化
+  │    └→ MindSpeed Core       ← 昇腾独有加速，依赖 MA + TENPU 提供基础能力
+  └→ MindSpeed-Ops             ← 默认训练的权重梯度融合算子，按使用场景安装
 ```
 
 > **关键约束**：
 >
 > - **安装顺序必须为 MA → TENPU → MindSpeed**，三者缺一不可。
+> - Megatron-LM 默认开启权重梯度融合累加；默认参数训练还需单独安装 MindSpeed-Ops。MindSpeed 不会自动安装该独立算子包。
 > - TransformerEngineNPU 与原生 [TransformerEngine](https://github.com/NVIDIA/TransformerEngine) 库模块名相同（均为 `transformer_engine`），**严禁在同一环境中同时安装两者**。如果已安装原生 TE，请先执行 `pip uninstall transformer_engine` 卸载。
 > - MA 和 TENPU 各自有版本分支要求，请按下方步骤拉取对应分支，版本不匹配会导致运行时错误。
 
@@ -171,6 +174,28 @@ cd ..
 pip install -e MindSpeed
 ```
 
+### 按场景安装 MindSpeed-Ops（默认参数训练需要）
+
+Megatron-LM 默认开启 `gradient_accumulation_fusion`。该路径在 NPU 上调用 MindSpeed-Ops 提供的 MatmulAdd 接口，因此是否需要安装取决于实际场景：
+
+| 使用场景 | 是否需要安装 MindSpeed-Ops |
+|---------|--------------------------|
+| 默认参数训练，且模型包含 Megatron 原生张量并行 Linear（如 output layer） | 需要 |
+| 训练参数包含 `--no-gradient-accumulation-fusion` | 不需要 |
+| 纯推理或评估，不执行反向传播 | 不需要 |
+
+默认参数训练请执行：
+
+```shell
+git clone https://gitcode.com/Ascend/MindSpeed-Ops.git
+cd MindSpeed-Ops
+pip install -e . --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple --no-build-isolation --no-deps
+python -c "from mindspeed_ops.api.atb.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16; print('MindSpeed-Ops MatmulAdd API loaded successfully')"
+cd ..
+```
+
+> Atlas A2/A3 训练系列产品的 fp32 主梯度路径使用 ATB JIT 融合算子，需要安装 CANN-NNAL、加载 `nnal/atb/set_env.sh` 并提供 C++/Ninja 编译工具链。详细说明请参见 [MindSpeed-Ops 软件安装](https://gitcode.com/Ascend/MindSpeed-Ops/blob/master/docs/zh/install_guide.md)。
+
 ### 环境验证
 
 安装完成后，可在Python中验证各组件是否正确安装：
@@ -184,6 +209,9 @@ import transformer_engine   # 无报错即 TENPU 正常（非原生 TE）
 
 # 验证 MindSpeed
 import mindspeed.megatron_adaptor  # 无报错即 MindSpeed 正常加载
+
+# 默认参数训练还需验证 MindSpeed-Ops MatmulAdd API
+from mindspeed_ops.api.atb.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16
 ```
 
 具体请参考 [部署文档](./docs/zh/user-guide/install_guide.md) 了解硬件/OS 兼容性、CANN/PyTorch/torch_npu 安装等详细前置步骤。
@@ -215,7 +243,7 @@ MindSpeed LLM和MindSpeed MM的快速上手指导可参考：
 - 大语言模型训练
   - [基于PyTorch框架](https://gitcode.com/Ascend/MindSpeed-LLM/blob/master/docs/zh/pytorch/training/quick_start.md)
 - 多模态模型训练
-  - [基于PyTorch框架](https://gitcode.com/Ascend/MindSpeed-MM/blob/master/docs/zh/pytorch/quickstart.md)
+  - [基于PyTorch框架](https://gitcode.com/Ascend/MindSpeed-MM/blob/master/docs/zh/guides/practices/quickstart.md)
 
 # 加速特性分级说明
 

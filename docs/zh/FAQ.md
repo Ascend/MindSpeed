@@ -141,3 +141,31 @@ ve. Device: 5, node: node-15-11
 ### 解决方案
 
 在`--tokenizer-type PretrainedFromHF`模式下，不使用`--append-eod`生成数据集。
+
+## 训练报MindSpeed-Ops无法导入
+
+### 问题现象
+
+默认参数训练在首次反向传播时报错：
+
+```text
+RuntimeError: Fused wgrad GEMM accumulation on NPU is provided by the MindSpeed-Ops
+ATB MatmulAdd operator, but the mindspeed_ops package or its atb api cannot be imported.
+Install MindSpeed-Ops, or disable the fused path with the Megatron-LM argument
+--no-gradient-accumulation-fusion.
+```
+
+### 问题根因
+
+Megatron-LM默认开启`gradient_accumulation_fusion`。MA将其权重梯度融合累加接口补丁到MindSpeed-Ops的MatmulAdd实现，但MindSpeed-Ops是独立安装包，不会随MindSpeed自动安装。安装和导入MindSpeed本身不会触发该惰性依赖；模型在首次反向传播真实调用融合接口时，环境中没有`mindspeed_ops`或其`api.atb`子模块，才会抛出错误。
+
+### 解决方案
+
+二选一：
+
+- **安装MindSpeed-Ops（推荐）**：按照[软件安装](user-guide/install_guide.md)完成安装并执行精确API导入验证，以保留权重梯度融合路径。
+- **关闭融合路径**：训练参数增加`--no-gradient-accumulation-fusion`。该方式无需MindSpeed-Ops，但会引入中间梯度张量和额外累加操作。
+
+<!-- npu="A3,910b" id1 -->
+<term>Atlas A2训练系列产品</term>、<term>Atlas A3训练系列产品</term>且主梯度为fp32时，还需确认CANN-NNAL环境已加载、`ATB_HOME_PATH`有效，并具备C++/Ninja编译工具链。
+<!-- end id1 -->

@@ -15,11 +15,18 @@
     python -m pip install -e TransformerEngineNPU --no-build-isolation
     # 可选加速：在源码仓的同级目录安装当前版本MindSpeed
     python -m pip install -e MindSpeed
+
+    # 默认参数训练需要MindSpeed-Ops提供权重梯度融合算子
+    git clone https://gitcode.com/Ascend/MindSpeed-Ops.git
+    python -m pip install -e MindSpeed-Ops --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple --no-build-isolation --no-deps
+    python -c "from mindspeed_ops.api.atb.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16; print('MindSpeed-Ops MatmulAdd API loaded successfully')"
     ```
 
    > [!NOTE]
    >
    > TENPU与原生TransformerEngine共用`transformer_engine`模块名，不能在同一环境中同时安装。若已安装原生TransformerEngine，请先执行`pip uninstall transformer_engine`，再安装TENPU。
+   >
+   > Megatron-LM默认开启`gradient_accumulation_fusion`，因此本手册的训练场景需要安装MindSpeed-Ops。纯推理，或训练时增加`--no-gradient-accumulation-fusion`关闭权重梯度融合时，可以不安装。详细场景和依赖说明请参见[软件安装](install_guide.md#方式二源码安装)。
 
 3. 在Megatron-LM中导入MA适配器。
 

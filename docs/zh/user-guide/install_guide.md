@@ -166,7 +166,38 @@
    pip install -e MindSpeed
    ```
 
-6. 获取Megatron-LM源码并切换至0.18.0版本
+6. 按场景安装MindSpeed-Ops
+
+   Megatron-LM的权重梯度融合累加接口在NPU上的实现由[MindSpeed-Ops](https://gitcode.com/Ascend/MindSpeed-Ops)的MatmulAdd算子提供，MA负责将该实现补丁到Megatron-LM。MindSpeed-Ops是独立安装包，不会随MindSpeed自动安装。
+
+   | 使用场景 | 是否需要安装 |
+   |---------|------------|
+   | 默认参数训练（Megatron-LM默认开启`gradient_accumulation_fusion`，且模型包含Megatron原生张量并行Linear，如output layer） | 需要 |
+   | 传入`--no-gradient-accumulation-fusion`的训练 | 不需要 |
+   | 纯推理或评估（不执行反向传播） | 不需要 |
+
+   默认参数训练请执行以下命令：
+
+   ```shell
+   git clone https://gitcode.com/Ascend/MindSpeed-Ops.git
+   cd MindSpeed-Ops
+   pip install -e . --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple --no-build-isolation --no-deps
+   python -c "from mindspeed_ops.api.atb.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16; print('MindSpeed-Ops MatmulAdd API loaded successfully')"
+   cd ..
+   ```
+
+   > [!NOTE]
+   >
+   > - 未安装MindSpeed-Ops时，安装MindSpeed、导入`megatron_adaptor`以及构建模型均不会报错；默认训练会在首次反向传播调用融合接口时显式报错。此时应安装MindSpeed-Ops，或增加`--no-gradient-accumulation-fusion`关闭融合路径。
+   > <!-- npu="A3,910b" id1 -->
+   > - <term>Atlas A2训练系列产品</term>、<term>Atlas A3训练系列产品</term>且主梯度为fp32时使用ATB JIT融合路径，需要第1步已安装CANN-NNAL并加载`nnal/atb/set_env.sh`，同时提供C++/Ninja编译工具链。首次调用会执行JIT编译，产物缓存后可复用。
+   > <!-- end id1 -->
+   ><!-- npu="950" id2 -->
+   > - fp16/bf16主梯度和<term>Ascend 950PR&950DT系列产品</term>fp32场景使用`addmm_`路径，但接口仍由`mindspeed_ops`包提供；只要开启权重梯度融合，仍需安装MindSpeed-Ops。
+   ><!-- end id2 -->
+   > - 完整依赖和芯片编译说明请参见[MindSpeed-Ops软件安装](https://gitcode.com/Ascend/MindSpeed-Ops/blob/master/docs/zh/install_guide.md)。
+
+7. 获取Megatron-LM源码并切换至0.18.0版本
 
    ```shell
    git clone https://github.com/NVIDIA/Megatron-LM.git
@@ -175,7 +206,7 @@
    cd ..
    ```
 
-   Megatron-LM上游版本标签为`core_v0.18.0`，与MA配套分支`core_r0.18.0`的命名不同。安装后请参考[快速入门](quickstart.md)准备数据并启动训练。
+   Megatron-LM上游版本标签为`core_v0.18.0`，与MA配套分支`core_r0.18.0`的命名不同。安装后请参考[快速入门](quickstart.md#环境准备)准备数据并启动训练。
 
 ## 卸载MindSpeed
 
@@ -183,4 +214,12 @@
 
 ```shell
 pip uninstall -y mindspeed #注意命令中为小写mindspeed
+```
+
+## 卸载MindSpeed Ops
+
+如已安装MindSpeed Ops，可执行以下命令卸载：
+
+```shell
+pip uninstall -y mindspeed_ops #注意命令中为小写mindspeed_ops
 ```

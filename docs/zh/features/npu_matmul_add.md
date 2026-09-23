@@ -14,9 +14,17 @@ LLaMA及GPT大模型均可使用。
 
 ## 使用方法
 
-融合算子使能要求安装ATB（Ascend Transformer Boost），请参考[软件安装](../user-guide/install_guide.md)完成安装。
+Megatron-LM默认开启`gradient_accumulation_fusion`。去掉`--no-gradient-accumulation-fusion`即可调用MatmulAdd融合路径；该路径的NPU接口由独立的MindSpeed-Ops包提供，不会随MindSpeed自动安装。
 
-去掉`--no-gradient-accumulation-fusion`即可调用Matmul_Add融合算子。
+默认参数训练需要按[软件安装](../user-guide/install_guide.md)安装MindSpeed-Ops，并确认接口可以导入：
+
+```shell
+python -c "from mindspeed_ops.api.atb.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16; print('MindSpeed-Ops MatmulAdd API loaded successfully')"
+```
+
+纯推理或评估不执行反向传播，无需安装；训练时也可通过`--no-gradient-accumulation-fusion`关闭融合路径，此时权重梯度由普通路径计算和累加。
+
+Atlas A3训练系列产品和Atlas A2训练系列产品的fp32主梯度场景使用ATB（Ascend Transformer Boost）JIT融合算子，需要安装CANN-NNAL、加载`nnal/atb/set_env.sh`并提供C++/Ninja编译工具链。fp16/bf16主梯度以及Ascend 950PR&950DT系列产品 fp32场景走`addmm_`路径，但开启权重梯度融合时仍需要安装MindSpeed-Ops以提供Python接口。
 
 ### 说明
 
