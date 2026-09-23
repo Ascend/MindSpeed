@@ -202,7 +202,11 @@ def transformer_layer_forward_dense_backward_moe_overlaping(
 
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
-    WeightGradStore.put_te_expert(bwd_layer_graph.layer.mlp.experts)
+    WeightGradStore.put_te_expert(
+        bwd_layer_graph.layer.mlp.experts,
+        bwd_layer_graph.perm2_graph[0][0],
+        bwd_layer_graph.grouped_mlp_graph[1].grad,
+    )
     WeightGradStore.end_decouple()
 
     run_graph_backward(bwd_layer_graph.perm2_graph, keep_graph=True)  # keep for dw
@@ -1085,7 +1089,11 @@ def transformer_layer_forward_moe_backward_moe_overlaping(
 
     WeightGradStore.start_decouple()
     run_graph_backward(bwd_layer_graph.grouped_mlp_graph, keep_grad=True)  # keep for dw
-    WeightGradStore.put_te_expert(bwd_layer_graph.layer.mlp.experts)
+    WeightGradStore.put_te_expert(
+        bwd_layer_graph.layer.mlp.experts,
+        bwd_layer_graph.perm2_graph[0][0],
+        bwd_layer_graph.grouped_mlp_graph[1].grad,
+    )
     WeightGradStore.end_decouple()
 
     with checkpoint_context:

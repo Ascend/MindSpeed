@@ -47,13 +47,17 @@ class WeightGradStore:
         cls.cache.append((total_input, grad_output, weight, sequence_parallel, in_row))
 
     @classmethod
-    def put_te_expert(cls, experts):
-        """Queue one TE expert backward_dw call at the existing FB-overlap wgrad boundary."""
+    def put_te_expert(cls, experts, permuted_input, grad_output):
+        """Queue dW and the graph-owned operands for this particular microbatch."""
         if not cls.is_decoupleBlock:
             raise RuntimeError('TE expert wgrad must be queued while FB-overlap decoupling is active.')
         if not hasattr(experts, 'backward_dw'):
             raise TypeError(f'TE FB-overlap experts must provide backward_dw(), got {type(experts)!r}.')
-        cls.te_expert_cache.append(experts)
+        # Capture tensors now: the same expert module may have several pending
+        # microbatches when the schedule flushes and later consumes this queue.
+        # Keep references, not copies: level0 restores the original FC1 input
+        # storage before dW. A module attribute would overwrite older batches.
+        cls.te_expert_cache.append((experts, permuted_input, grad_output))
 
     @classmethod
     def flush_chunk_grad(cls):
@@ -199,9 +203,11 @@ class WeightGradStore:
     @classmethod
     def _pop_te_experts(cls):
         """Execute TE delayed wgrad in the same FIFO order as expert graph backward."""
+        # Match each TE task with its own graph aliases so cleanup cannot
+        # release operands belonging to another pending microbatch.
         while cls.te_expert_cache:
-            experts = cls.te_expert_cache.pop(0)
-            experts.backward_dw()
+            experts, permuted_input, grad_output = cls.te_expert_cache.pop(0)
+            experts.backward_dw(permuted_input=permuted_input, grad_output=grad_output)
 
     @classmethod
     def pop_single(cls):

@@ -35,6 +35,29 @@ class MindSpeedFbOverlapGmmExperts(TEGroupedMLP):
             )
         self.layer_number = None
 
+    def backward_dw(self, *, permuted_input=None, grad_output=None):
+        """Release FB graph storage after each operand's last expert dW use."""
+        # This class rejects the TE op-fuser path and owns two GroupedLinear
+        # children. Keep their normal backward_dw calls, including DDP hooks.
+        # Only release an operand after its consumer succeeds; a failed dW
+        # must leave the unconsumed operand intact.
+        self.linear_fc2.backward_dw()
+        if grad_output is not None:
+            # keep_grad=True leaves the same storage in grouped_mlp_graph's
+            # detached output .grad, even after TE has consumed its queue.
+            # FC1 dW does not use this FC2 output gradient, so release it now
+            # rather than retaining it throughout the FC1 dW allocation window.
+            grad_output.untyped_storage().resize_(0)
+
+        self.linear_fc1.backward_dw()
+        if permuted_input is not None:
+            # perm2_graph and its detached leaf alias outlive dW. For level0,
+            # the scheduler has restored this storage before reaching dW.
+            # FC1 dW is the last reader. Clearing the shared storage also
+            # invalidates its graph aliases; none may read their data afterward.
+            # Match native FB cleanup without adding a device synchronization.
+            permuted_input.untyped_storage().resize_(0)
+
     def _validate_fb_overlap_config(self):
         """Reject options whose semantics are not represented by the thin FB forward."""
         unsupported = []

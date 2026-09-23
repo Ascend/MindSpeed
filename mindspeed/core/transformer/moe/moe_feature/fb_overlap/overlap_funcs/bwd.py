@@ -102,7 +102,7 @@ def transformer_layer_backward_moe(layer_output_grad, layer_graph):
 
     WeightGradStore.start_decouple()
     run_graph_backward(self.grouped_mlp_graph, keep_grad=True)  # keep for dw commputation
-    WeightGradStore.put_te_expert(self.layer.mlp.experts)
+    WeightGradStore.put_te_expert(self.layer.mlp.experts, self.perm2_graph[0][0], self.grouped_mlp_graph[1].grad)
     if not in_detach_stage:
         WeightGradStore.end_decouple()
     run_graph_backward(self.perm2_graph, keep_graph=True)  # keep for dw commutation
