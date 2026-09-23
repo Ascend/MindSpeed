@@ -1,6 +1,6 @@
 # MindSpeed Core
 
-- [MindSpeed Core简介](introduction.md)
+- [简介](introduction.md)
 - [软件安装](./user-guide/install_guide.md)
 - [特性说明]()
   - [特性总览](./features/feature_list.md)

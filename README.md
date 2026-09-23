@@ -127,7 +127,7 @@ MindSpeed LLM和MindSpeed MM的快速上手指导可参考：
 - 大语言模型训练
   - [基于PyTorch框架](https://gitcode.com/Ascend/MindSpeed-LLM/blob/master/docs/zh/pytorch/training/quick_start.md)
 - 多模态模型训练
-  - [基于PyTorch框架](https://gitcode.com/Ascend/MindSpeed-MM/blob/master/docs/zh/pytorch/quickstart.md)
+  - [基于PyTorch框架](https://gitcode.com/Ascend/MindSpeed-MM/blob/master/docs/zh/guides/practices/quickstart.md)
 
 # 加速特性分级说明
 

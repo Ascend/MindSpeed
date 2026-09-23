@@ -22,7 +22,7 @@ MindSpeed Core整体架构如下图，整体分为三个层次：
 
 图1 MindSpeed架构图
 
-![MindSpeed Core架构图](./figures/01_architecture_mindspeed_core.png)
+<img src="./figures/01_architecture_mindspeed_core.png" width="60%"/>
 
 ## 功能特性
 
