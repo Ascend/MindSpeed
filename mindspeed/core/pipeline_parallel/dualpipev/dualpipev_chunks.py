@@ -44,6 +44,8 @@ try:
 except ImportError:
     HAVE_FSDP2 = False
 
+from megatron_adaptor.patches.megatron.profile import profile_step
+
 from mindspeed.args_utils import get_full_args as get_args
 from mindspeed.core.pipeline_parallel.dualpipev.dualpipev_schedules import get_dualpipe_chunk
 from mindspeed.core.pipeline_parallel.dualpipev.mtp_utils import model_provider_mtp
@@ -585,6 +587,10 @@ def train_step(
     # Empty unused memory.
     if args.empty_unused_memory_level >= 2:
         torch.cuda.empty_cache()
+
+    # Full replacement of train_step shadows the profile feature's wrapper on
+    # the same target; drive the profiler explicitly.
+    profile_step()
 
     dualpipevlaststage = mpu.is_pipeline_first_stage(ignore_virtual=True)
     if dualpipevlaststage:

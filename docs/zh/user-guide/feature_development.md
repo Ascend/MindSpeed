@@ -83,6 +83,7 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 - 参数校验完整性：充分利用`pre_validate_args`、`validate_args`、`post_validate_args`三个阶段确保参数合法性。
 - 兼容性检查：使用`incompatible_check`和`dependency_check`确保特性组合的正确性。
 - patch幂等性：确保patch注册不会相互冲突，必要时使用`force_patch`参数。`MindSpeedFeaturesManager.remove_patches` 只移除 MindSpeed 自己的补丁层。
+- 完整替换`train_step`的约定：直接替换模式会把 MegatronAdaptor 已安装的 wrapper 链整体覆盖。如替换目标是`megatron.training.training.train_step`，必须在每个训练步正常返回前显式调用一次 MegatronAdaptor 的稳定接口 `profile_step()`（`from megatron_adaptor.patches.megatron.profile import profile_step`），否则 NPU Profiling 的采集窗口将不再推进。该调用在未开启 profiling 时零开销返回，可无条件调用。参考实现：`mindspeed.core.pipeline_parallel.dualpipev.dualpipev_chunks.train_step`、`mindspeed.core.data_parallel.async_log_allreduce.train_step`。
 - 参数获取：使用 `mindspeed.args_utils.get_full_args` 获取完整参数。
 
 ### 创建新特性的Checklist

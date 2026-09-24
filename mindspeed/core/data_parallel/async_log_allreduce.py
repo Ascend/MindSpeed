@@ -21,6 +21,7 @@ import torch
 import megatron.training.training as megatron_training
 
 from megatron.core import mpu
+from megatron_adaptor.patches.megatron.profile import profile_step
 from mindspeed.args_utils import get_full_args as get_args
 from megatron.core.num_microbatches_calculator import get_num_microbatches
 from megatron.training import get_timers
@@ -255,6 +256,10 @@ def train_step(
     # Empty unused memory.
     if args.empty_unused_memory_level >= 2:
         torch.cuda.empty_cache()
+
+    # Full replacement of train_step shadows the profile feature's wrapper on
+    # the same target; drive the profiler explicitly.
+    profile_step()
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = finish_async_loss_reductions(pending_loss_reductions)
