@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from transformers import AutoTokenizer, BertTokenizer
+from transformers import AutoTokenizer
 
 from megatron.core.tokenizers.base_tokenizer import MegatronTokenizerBase
 
@@ -28,8 +28,11 @@ def builder(request):
 def tokenizer_path(tmp_path):
     vocab_file = tmp_path / "vocab.txt"
     vocab_file.write_text("[PAD]\n[UNK]\n[CLS]\n[SEP]\n[MASK]\nhello\nworld\n", encoding="utf-8")
-    tokenizer = BertTokenizer(vocab_file=str(vocab_file), eos_token="[SEP]")
-    tokenizer.save_pretrained(tmp_path)
+    # Load a standard HF directory: the BertTokenizer constructor changed in v5.
+    (tmp_path / "tokenizer_config.json").write_text(
+        json.dumps({"tokenizer_class": "BertTokenizer", "eos_token": "[SEP]", "do_lower_case": True}),
+        encoding="utf-8",
+    )
     return str(tmp_path)
 
 
@@ -78,8 +81,11 @@ def test_pretrained_hf_preserves_loading_and_encoding(builder, tokenizer_path, u
 
     assert isinstance(tokenizer, MegatronTokenizerBase)
     assert tokenizer.path == tokenizer_path
-    assert tokenizer.tokenizer.is_fast == use_fast
+    # v5 may use the same backend for both use_fast values; preserve HF's behavior.
+    assert tokenizer.tokenizer.is_fast == reference.is_fast
     assert tokenizer.tokenizer.model_max_length == 32
+    assert tokenizer.tokenize("hello world") == [2, 5, 6, 3]
+    assert tokenizer.tokenize("Hello world") == [2, 1, 6, 3]
     for text in ("hello world", "Hello world", "<extra_id_0> hello"):
         assert tokenizer.tokenize(text) == reference.encode(text)
         assert tokenizer.detokenize(reference.encode(text)) == reference.decode(reference.encode(text))
@@ -93,7 +99,7 @@ def test_pretrained_hf_preserves_loading_and_encoding(builder, tokenizer_path, u
     assert tokenizer.cls == reference.cls_token_id
     assert tokenizer.sep == reference.sep_token_id
     assert tokenizer.mask == reference.mask_token_id
-    assert tokenizer.additional_special_tokens_ids == reference.additional_special_tokens_ids
+    assert tokenizer.additional_special_tokens_ids == list(range(7, 7 + extra_ids))
     assert args.padded_vocab_size == 16
 
     conversation = [{"role": "user", "content": "hello world"}]
@@ -103,6 +109,30 @@ def test_pretrained_hf_preserves_loading_and_encoding(builder, tokenizer_path, u
         assert tokenizer.apply_chat_template(conversation, **kwargs) == reference.apply_chat_template(
             conversation, **kwargs
         )
+
+
+@pytest.mark.parametrize("use_fast", [False, True])
+def test_saved_added_tokens_are_preserved(builder, tokenizer_path, use_fast):
+    reference = AutoTokenizer.from_pretrained(
+        tokenizer_path,
+        use_fast=use_fast,
+        additional_special_tokens=["<saved_special>"],
+        local_files_only=True,
+    )
+    reference.add_tokens(["ordinary_added"])
+    reference.save_pretrained(tokenizer_path)
+
+    tokenizer = builder(make_args(tokenizer_path, tokenizer_not_use_fast=use_fast))
+
+    assert tokenizer.vocab == reference.get_vocab()
+    assert tokenizer.vocab_size == len(reference) == 9
+    assert tokenizer.inv_vocab == {v: k for k, v in reference.get_vocab().items()}
+    assert tokenizer.encoder == tokenizer.vocab
+    assert tokenizer.decoder == tokenizer.inv_vocab
+    assert tokenizer.additional_special_tokens_ids == [7]
+    assert tokenizer.vocab["<saved_special>"] == 7
+    assert tokenizer.vocab["ordinary_added"] == 8
+    assert tokenizer.tokenize("hello <saved_special> ordinary_added") == [2, 5, 7, 8, 3]
 
 
 @pytest.mark.parametrize(

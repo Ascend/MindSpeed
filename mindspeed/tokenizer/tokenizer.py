@@ -98,13 +98,8 @@ class _AutoTokenizer(MegatronTokenizerBase):
 
     @property
     def vocab(self):
-        return {
-            **{
-                special_token: self.tokenizer.convert_tokens_to_ids(special_token)
-                for special_token in self.tokenizer.additional_special_tokens
-            },
-            **self.tokenizer.vocab,
-        }
+        # get_vocab includes base and added tokens in both Transformers 4 and 5.
+        return self.tokenizer.get_vocab()
 
     @property
     def inv_vocab(self):
@@ -163,8 +158,12 @@ class _AutoTokenizer(MegatronTokenizerBase):
 
     @property
     def additional_special_tokens_ids(self):
-        """All the additional special tokens you may want to use (list of strings)."""
-        return self.tokenizer.additional_special_tokens_ids
+        """Return additional special token IDs using the Megatron interface."""
+        token_ids = getattr(self.tokenizer, "additional_special_tokens_ids", None)
+        if token_ids is not None:
+            return token_ids
+        # Transformers 5 renamed the underlying attribute.
+        return self.tokenizer.extra_special_tokens_ids
 
     @staticmethod
     def _check_token_candidate(candidate):
