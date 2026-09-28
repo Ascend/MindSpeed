@@ -78,6 +78,7 @@ MindSpeed/
 
 - [May 21, 2025]: 🚀 MindSpeed Core 支持Mcore 0.12.1版本。
 - [Aug 7, 2026]: 🚀 MindSpeed Core 完成Megatron-LM 0.18.0基础适配，架构分层解耦为MA + TENPU + MindSpeed，配合MegatronAdaptor 和 TransformerEngineNPU使用。
+- [Sep 20, 2026]: 🚀 MindSpeed Core 完成Megatron-LM 0.18.0 NPU加速特性适配，新增特性修复新版本的显存及性能问题，具体新增及变更特性参见[兼容性变更](./docs/zh/version_update.md)。
 
 > 注： 当前版本初步支持两种版本的Transformer实现。如需回溯老版本Transformer实现，需要用户配置参数`--transformer-impl local`。
 
