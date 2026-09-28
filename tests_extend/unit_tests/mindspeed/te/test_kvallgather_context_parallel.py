@@ -73,16 +73,21 @@ def _get_combined_kv_prefix_index(cu_seqlens, cp_size, rank, device):
     "cp_size,cu_seqlens",
     [
         (2, [16, 40, 72]),
+        (2, [0, 16, 40, 72]),
         (4, [32, 80, 144]),
+        (4, [0, 32, 80, 144]),
     ],
 )
 def test_thd_load_balanced_cp_metadata(cp_size, cu_seqlens):
+    seq_endpoints = cu_seqlens[1:] if cu_seqlens[0] == 0 else cu_seqlens
     full_token_ids = torch.arange(cu_seqlens[-1])
     rank_major_token_ids = torch.cat(
         [
             full_token_ids.index_select(
                 0,
-                _get_local_token_index(cu_seqlens, cp_size, rank, torch.device("cpu")),
+                _get_local_token_index(
+                    seq_endpoints, cp_size, rank, torch.device("cpu")
+                ),
             )
             for rank in range(cp_size)
         ]
@@ -99,7 +104,7 @@ def test_thd_load_balanced_cp_metadata(cp_size, cu_seqlens):
         expected_q_lens = []
         expected_kv_lens = []
         seq_start = 0
-        for seq_end in cu_seqlens:
+        for seq_end in seq_endpoints:
             chunk_len = (seq_end - seq_start) // (2 * cp_size)
             expected_q_lens.extend((chunk_len, chunk_len))
             expected_kv_lens.extend(
@@ -115,7 +120,7 @@ def test_thd_load_balanced_cp_metadata(cp_size, cu_seqlens):
 
         kv_index = metadata["kv_index_in_rank_major"]
         expected_kv_index = _get_combined_kv_prefix_index(
-            cu_seqlens, cp_size, rank, torch.device("cpu")
+            seq_endpoints, cp_size, rank, torch.device("cpu")
         )
         assert torch.equal(
             rank_major_token_ids.index_select(0, kv_index),
@@ -141,7 +146,7 @@ def test_thd_load_balanced_cp_metadata(cp_size, cu_seqlens):
 
 def test_thd_metadata_tensor_identity_cache_avoids_reconversion():
     clear_thd_load_balanced_cp_metadata_cache()
-    cu_seqlens = torch.tensor([16, 40, 72])
+    cu_seqlens = torch.tensor([0, 16, 40, 72])
     tensor_metadata_cache = kvallgather_cp._get_thd_load_balanced_cp_metadata_for_tensor
     metadata = kvallgather_cp._get_thd_load_balanced_cp_metadata_cached(
         cu_seqlens, 2, 0, torch.device("cpu")
@@ -221,8 +226,9 @@ class TestKVAllGatherContextParallelTHD(DistributedTest):
         set_random_seed(1234)
 
         rank = dist.get_rank()
-        cu_seqlens = [16, 40]
-        total_tokens = cu_seqlens[-1]
+        seq_endpoints = [16, 40]
+        cu_seqlens = [0] + seq_endpoints
+        total_tokens = seq_endpoints[-1]
         softmax_scale = 1.0 / math.sqrt(qk_head_dim)
 
         q_ref = torch.randn(
@@ -275,13 +281,13 @@ class TestKVAllGatherContextParallelTHD(DistributedTest):
             keep_prob=1.0,
             inner_precise=0,
             sparse_mode=3,
-            actual_seq_qlen=cu_seqlens,
-            actual_seq_kvlen=cu_seqlens,
+            actual_seq_qlen=seq_endpoints,
+            actual_seq_kvlen=seq_endpoints,
         )[0]
         out_ref.backward(dout)
 
         local_index = _get_local_token_index(
-            cu_seqlens, self.world_size, rank, torch.device("npu")
+            seq_endpoints, self.world_size, rank, torch.device("npu")
         )
         q = q_ref.detach().index_select(0, local_index).requires_grad_(True)
         k = k_ref.detach().index_select(0, local_index).requires_grad_(True)

@@ -452,6 +452,9 @@ def get_cu_seqlens_qkv_before_attn(cu_seqlens_q, cp_size, rank):
 def get_thd_load_balanced_cp_metadata(cu_seqlens, cp_size, rank, device):
     """Build token indices for EOD load-balanced KVAllGather THD attention.
 
+    ``cu_seqlens`` accepts either cumulative sequence endpoints or cumulative
+    sequence boundaries with an explicit leading zero.
+
     Each packed subsequence is divided into ``2 * cp_size`` chunks. Rank ``r`` owns
     chunk ``r`` and chunk ``2 * cp_size - r - 1``. K/V all-gather produces a
     rank-major tensor, while TND attention requires each logical sequence to be
@@ -474,9 +477,11 @@ def get_thd_load_balanced_cp_metadata(cu_seqlens, cp_size, rank, device):
     if cached_metadata is not None and cached_metadata["cu_seqlens"] == cu_seqlens:
         return cached_metadata["metadata"]
 
-    seq_starts = (0,) + cu_seqlens[:-1]
-    seq_lens = [end - start for start, end in zip(seq_starts, cu_seqlens)]
-    if any(seq_len <= 0 for seq_len in seq_lens):
+    seq_boundaries = cu_seqlens if cu_seqlens[0] == 0 else (0,) + cu_seqlens
+    seq_lens = [
+        end - start for start, end in zip(seq_boundaries[:-1], seq_boundaries[1:])
+    ]
+    if not seq_lens or any(seq_len <= 0 for seq_len in seq_lens):
         raise AssertionError(
             "Each packed subsequence must have a positive sequence length."
         )
