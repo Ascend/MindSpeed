@@ -680,16 +680,39 @@ def apply_rotary_pos_emb_thd(
     """A baseline implementation of applying RoPE for `thd` format.
 
     Args:
-        t (Tensor): Input tensor T is of shape [t, h, d]
+        t (Tensor): Input tensor T is either packed [t, h, d] or unpacked
+            [s, b, h, d].
         cu_seqlens(Tensor):  Cumulative sum of sequence lengths in a batch for `t`,
         with shape [b + 1] and dtype torch.int32.
         freqs (Tensor): Rotary Positional embedding tensor freq is of shape [max_s, 1, 1, d]
 
     Returns:
-        Tensor: Shape [t, h, d]. The input tensor after applying RoPE.
+        Tensor: The input tensor after applying RoPE, with the same shape as
+        ``t``.
     """
 
     position_ids = cu_seqlens.position_ids
+    if t.dim() == 3:
+        if position_ids.dtype not in (torch.int32, torch.int64):
+            raise AssertionError(f'THD RoPE position_ids must use an integral dtype, got {position_ids.dtype}.')
+
+        flat_position_ids = position_ids.reshape(-1).to(
+            device=freqs.device, dtype=torch.long, non_blocking=True
+        )
+        if flat_position_ids.numel() != t.shape[0]:
+            raise AssertionError(
+                f'THD RoPE needs position_ids numel ({flat_position_ids.numel()}) to match token count ({t.shape[0]}).'
+            )
+        if torch.any(flat_position_ids < 0) or torch.any(flat_position_ids >= freqs.shape[0]):
+            raise AssertionError(
+                f'THD RoPE position_ids exceed the generated frequency table: freqs length={freqs.shape[0]}.'
+            )
+
+        freqs = freqs[flat_position_ids]
+        return apply_rotary_pos_emb_bshd(
+            t.unsqueeze(1), freqs, rotary_interleaved, multi_latent_attention, mscale
+        ).squeeze(1)
+
     block_size, bsz = position_ids.shape
     freqs = freqs[position_ids.view(-1)].reshape(block_size, bsz, 1, -1)
 
