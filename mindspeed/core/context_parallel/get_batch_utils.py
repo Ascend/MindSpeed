@@ -122,7 +122,7 @@ def get_batch_on_this_cp_rank(batch):
 
     cp_expanded_by_2d_tp = args.tp_y > 1
     if args.reset_attention_mask and args.attention_mask_type == 'causal':
-        if args.context_parallel_algo in ['ulysses_cp_algo', 'deepseek_v4_cp_algo']:
+        if args.context_parallel_algo in ['ulysses_cp_algo', 'kvallgather_cp_algo', 'deepseek_v4_cp_algo']:
             batch = _get_batch_on_this_cp_rank_in_ulysses_cp(batch)
         else:
             batch = _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, get_actual_seq_len())
@@ -484,7 +484,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             if (
                 args.attention_mask_type == 'causal'
                 and args.context_parallel_size > 1
-                and args.context_parallel_algo in ['megatron_cp_algo', 'kvallgather_cp_algo']
+                and args.context_parallel_algo == 'megatron_cp_algo'
             ):
                 actual_seq_len = pad_data(
                     actual_seq_len, batch, args.context_parallel_size, args.tensor_model_parallel_size
@@ -556,7 +556,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             if (
                 args.attention_mask_type == 'causal'
                 and args.context_parallel_size > 1
-                and args.context_parallel_algo in ['megatron_cp_algo', 'kvallgather_cp_algo']
+                and args.context_parallel_algo == 'megatron_cp_algo'
             ):
                 actual_seq_len = pad_data(
                     actual_seq_len, batch, args.context_parallel_size, args.tensor_model_parallel_size

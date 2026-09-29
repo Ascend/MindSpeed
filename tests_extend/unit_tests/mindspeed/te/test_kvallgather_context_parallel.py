@@ -1,6 +1,7 @@
 # Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
 
 import math
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -10,10 +11,13 @@ import torch_npu
 from megatron.core import mpu
 
 from mindspeed.core.context_parallel import get_batch_utils
+from mindspeed.te.pytorch.attention.dot_product_attention import context_parallel
 from mindspeed.te.pytorch.attention.dot_product_attention import kvallgather_context_parallel as kvallgather_cp
 from mindspeed.te.pytorch.attention.dot_product_attention.kvallgather_context_parallel import (
     AttnFuncWithCPAndKVAllGatherForTHD,
+    AttnFuncWithCPAndKVAllGatherForTHDNonLoadBalanced,
     clear_thd_load_balanced_cp_metadata_cache,
+    get_cu_seqlens_qkv_before_attn,
     get_thd_load_balanced_cp_metadata,
 )
 from tests_extend.commons import initialize_model_parallel, set_random_seed
@@ -152,6 +156,91 @@ def test_thd_metadata_tensor_mutation_invalidates_identity_cache():
     assert updated_metadata["full_total_len"] == 80
 
 
+@pytest.mark.parametrize(
+    "rank,expected_q,expected_kv,expected_range",
+    [
+        (0, [16, 20], [16, 20], [0, 20]),
+        (1, [20], [24], [16, 40]),
+    ],
+)
+def test_thd_non_load_balanced_cp_metadata(rank, expected_q, expected_kv, expected_range):
+    actual_q, actual_kv, kv_range = get_cu_seqlens_qkv_before_attn([16, 40], 2, rank)
+
+    assert actual_q == expected_q
+    assert actual_kv == expected_kv
+    assert kv_range == expected_range
+
+
+def test_kvallgather_eod_batch_uses_contiguous_partition(monkeypatch):
+    args = SimpleNamespace(
+        context_parallel_size=2,
+        tp_2d=False,
+        tp_y=1,
+        reset_attention_mask=True,
+        attention_mask_type='causal',
+        context_parallel_algo='kvallgather_cp_algo',
+    )
+    batch = {"tokens": object()}
+    contiguous_batch = {"partition": "contiguous"}
+
+    monkeypatch.setattr(get_batch_utils, "get_args", lambda: args)
+    monkeypatch.setattr(
+        get_batch_utils,
+        "_get_batch_on_this_cp_rank_in_ulysses_cp",
+        lambda _: contiguous_batch,
+    )
+
+    def fail_load_balanced_partition(*_args, **_kwargs):
+        raise AssertionError("KVAllGather must not use the EOD load-balanced partition")
+
+    monkeypatch.setattr(
+        get_batch_utils,
+        "_get_batch_on_this_cp_rank_in_megatron_cp_eod_padding",
+        fail_load_balanced_partition,
+    )
+
+    assert get_batch_utils.get_batch_on_this_cp_rank(batch) is contiguous_batch
+
+
+def test_kvallgather_strategy_routes_thd_to_non_load_balanced_attention(monkeypatch):
+    captured_args = []
+
+    class FakeNonLoadBalancedAttention:
+        @staticmethod
+        def apply(*args):
+            captured_args.extend(args)
+            return "non-load-balanced-output"
+
+    monkeypatch.setattr(
+        context_parallel,
+        "AttnFuncWithCPAndKVAllGatherForTHDNonLoadBalanced",
+        FakeNonLoadBalancedAttention,
+    )
+
+    query = torch.empty(8, 4, 16)
+    strategy = context_parallel.KVAllGatherCPStrategy(softmax_scale=0.25)
+    output = strategy.forward(
+        query,
+        query,
+        query,
+        attention_mask=None,
+        qkv_format='thd',
+        cu_seqlens_q=torch.tensor([4, 8]),
+        cu_seqlens_kv=torch.tensor([4, 8]),
+        attn_mask_type='causal',
+        max_seqlen_q=4,
+        max_seqlen_kv=4,
+        cp_group=None,
+        cp_global_ranks=None,
+        cp_stream=None,
+    )
+
+    assert output == "non-load-balanced-output"
+    assert captured_args[3] == 4
+    assert captured_args[11] == [4, 8]
+    assert captured_args[12] == [4, 8]
+
+
 class TestKVAllGatherContextParallelTHD(DistributedTest):
     world_size = 2
 
@@ -284,6 +373,116 @@ class TestKVAllGatherContextParallelTHD(DistributedTest):
         if dtype == torch.bfloat16:
             tolerances = {"atol": 2.5e-2, "rtol": 2.5e-2}
 
+        assert torch.allclose(out, out_ref.detach().index_select(0, local_index), **tolerances)
+        assert torch.allclose(q.grad, q_ref.grad.index_select(0, local_index), **tolerances)
+        assert torch.allclose(k.grad, k_ref.grad.index_select(0, local_index), **tolerances)
+        assert torch.allclose(v.grad, v_ref.grad.index_select(0, local_index), **tolerances)
+
+    @pytest.mark.parametrize(
+        "query_heads,kv_heads,qk_head_dim,v_head_dim",
+        [
+            pytest.param(4, 4, 128, 128, id="mha"),
+            pytest.param(8, 2, 128, 128, id="gqa"),
+            pytest.param(4, 4, 192, 128, id="mla"),
+        ],
+    )
+    def test_non_load_balanced_forward_and_backward_match_non_cp_reference(
+        self,
+        query_heads,
+        kv_heads,
+        qk_head_dim,
+        v_head_dim,
+    ):
+        initialize_model_parallel(context_parallel_size=self.world_size)
+        set_random_seed(1234)
+
+        rank = dist.get_rank()
+        cu_seqlens = [16, 40]
+        total_tokens = cu_seqlens[-1]
+        local_tokens = total_tokens // self.world_size
+        dtype = torch.float16
+        softmax_scale = 1.0 / math.sqrt(qk_head_dim)
+
+        q_ref = torch.randn(
+            total_tokens,
+            query_heads,
+            qk_head_dim,
+            dtype=dtype,
+            device="npu",
+            requires_grad=True,
+        )
+        k_ref = torch.randn(
+            total_tokens,
+            kv_heads,
+            qk_head_dim,
+            dtype=dtype,
+            device="npu",
+            requires_grad=True,
+        )
+        v_ref = torch.randn(
+            total_tokens,
+            kv_heads,
+            v_head_dim,
+            dtype=dtype,
+            device="npu",
+            requires_grad=True,
+        )
+        dout = torch.randn(
+            total_tokens,
+            query_heads,
+            v_head_dim,
+            dtype=dtype,
+            device="npu",
+        )
+        attention_mask = ~torch.tril(torch.ones((2048, 2048), dtype=torch.bool, device="npu"))
+
+        out_ref = torch_npu.npu_fusion_attention(
+            q_ref,
+            k_ref,
+            v_ref,
+            query_heads,
+            "TND",
+            pse=None,
+            padding_mask=None,
+            atten_mask=attention_mask,
+            scale=softmax_scale,
+            pre_tockens=65536,
+            next_tockens=0,
+            keep_prob=1.0,
+            inner_precise=0,
+            sparse_mode=3,
+            actual_seq_qlen=cu_seqlens,
+            actual_seq_kvlen=cu_seqlens,
+        )[0]
+        out_ref.backward(dout)
+
+        local_index = torch.arange(
+            rank * local_tokens,
+            (rank + 1) * local_tokens,
+            device="npu",
+        )
+        q = q_ref.detach().index_select(0, local_index).requires_grad_(True)
+        k = k_ref.detach().index_select(0, local_index).requires_grad_(True)
+        v = v_ref.detach().index_select(0, local_index).requires_grad_(True)
+
+        out = AttnFuncWithCPAndKVAllGatherForTHDNonLoadBalanced.apply(
+            q,
+            k,
+            v,
+            query_heads,
+            attention_mask,
+            "thd",
+            "causal",
+            0.0,
+            softmax_scale,
+            False,
+            mpu.get_context_parallel_group(),
+            cu_seqlens,
+            cu_seqlens,
+        )
+        out.backward(dout.index_select(0, local_index))
+
+        tolerances = {"atol": 5e-3, "rtol": 5e-3}
         assert torch.allclose(out, out_ref.detach().index_select(0, local_index), **tolerances)
         assert torch.allclose(q.grad, q_ref.grad.index_select(0, local_index), **tolerances)
         assert torch.allclose(k.grad, k_ref.grad.index_select(0, local_index), **tolerances)

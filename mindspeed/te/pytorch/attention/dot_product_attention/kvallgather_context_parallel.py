@@ -648,3 +648,191 @@ class AttnFuncWithCPAndKVAllGatherForTHD(torch.autograd.Function):
             None,
             None,
         )
+
+
+def get_cu_seqlens_qkv_before_attn(cu_seqlens_q, cp_size, rank):
+    """Build TND sequence metadata for a contiguous, non-load-balanced CP shard."""
+    if cp_size < 1:
+        raise AssertionError("context_parallel_size must be greater than zero.")
+    if rank < 0 or rank >= cp_size:
+        raise AssertionError("context parallel rank must be in [0, context_parallel_size).")
+
+    cu_seqlens_q = tuple(int(seq_len) for seq_len in cu_seqlens_q)
+    if not cu_seqlens_q:
+        raise AssertionError("cu_seqlens must contain at least one sequence endpoint.")
+
+    seq_starts = (0,) + cu_seqlens_q[:-1]
+    if any(seq_end <= seq_start for seq_start, seq_end in zip(seq_starts, cu_seqlens_q)):
+        raise AssertionError("Each packed subsequence must have a positive sequence length.")
+
+    total_length = cu_seqlens_q[-1]
+    if total_length % cp_size != 0:
+        raise AssertionError("The packed sequence length must be divisible by context_parallel_size.")
+
+    chunk_size = total_length // cp_size
+    start = rank * chunk_size
+    end = start + chunk_size
+
+    rank_cu_seqlens_q = []
+    rank_cu_seqlens_kv = []
+    cur_len_q = 0
+    cur_len_kv = 0
+    kv_seq_range = [start, end]
+
+    for seq_start, seq_end in zip(seq_starts, cu_seqlens_q):
+        if seq_end <= start:
+            continue
+        if seq_start >= end:
+            break
+
+        overlap_len_q = min(seq_end, end) - max(seq_start, start)
+        if overlap_len_q > 0:
+            cur_len_q += overlap_len_q
+            rank_cu_seqlens_q.append(cur_len_q)
+
+        overlap_len_kv = min(seq_end, end) - seq_start
+        if overlap_len_kv > 0:
+            cur_len_kv += overlap_len_kv
+            rank_cu_seqlens_kv.append(cur_len_kv)
+
+        if seq_start < start:
+            kv_seq_range[0] = seq_start
+
+    return rank_cu_seqlens_q, rank_cu_seqlens_kv, kv_seq_range
+
+
+class AttnFuncWithCPAndKVAllGatherForTHDNonLoadBalanced(torch.autograd.Function):
+    """KVAllGather THD attention using the original contiguous CP partition."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        q,
+        k,
+        v,
+        n_head,
+        attention_mask,
+        qkv_format,
+        attn_mask_type,
+        attention_dropout,
+        softmax_scale,
+        deterministic,
+        cp_group,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+    ):
+        if softmax_scale is None:
+            softmax_scale = q.shape[-1] ** (-0.5)
+
+        cp_size = get_distributed_world_size(cp_group)
+        rank = get_distributed_rank(cp_group)
+
+        if 'causal' not in attn_mask_type:
+            raise AssertionError("Only causal mask is supported for AllGatherContextParallel.")
+        _validate_thd_attention_shapes(q, k, v, n_head)
+        if q.shape[0] != k.shape[0] or q.shape[0] != v.shape[0]:
+            raise AssertionError("Q, K and V must have the same local token count for THD self-attention.")
+
+        cu_seqlens_q = tuple(int(seq_len) for seq_len in cu_seqlens_q)
+        cu_seqlens_kv = tuple(int(seq_len) for seq_len in cu_seqlens_kv)
+        if cu_seqlens_q != cu_seqlens_kv:
+            raise AssertionError("cu_seqlens_q and cu_seqlens_kv must be the same for THD format.")
+
+        actual_seq_qlen, actual_seq_kvlen, kv_seq_range = get_cu_seqlens_qkv_before_attn(cu_seqlens_q, cp_size, rank)
+        if q.shape[0] != actual_seq_qlen[-1]:
+            raise AssertionError("The local THD token count does not match the contiguous CP partition.")
+
+        k_ag, _ = gather_along_first_dim(k, cp_group)
+        v_ag, _ = gather_along_first_dim(v, cp_group)
+        seq_start_idx, seq_end_idx = kv_seq_range
+        k_attn = k_ag[seq_start_idx:seq_end_idx]
+        v_attn = v_ag[seq_start_idx:seq_end_idx]
+
+        attn_outs = torch_npu.npu_fusion_attention(
+            q,
+            k_attn,
+            v_attn,
+            n_head,
+            'TND',
+            pse=None,
+            padding_mask=None,
+            atten_mask=attention_mask,
+            scale=softmax_scale,
+            pre_tockens=65536,
+            next_tockens=0,
+            keep_prob=1 - attention_dropout,
+            inner_precise=0,
+            sparse_mode=3,
+            actual_seq_qlen=actual_seq_qlen,
+            actual_seq_kvlen=actual_seq_kvlen,
+        )
+        out, softmax_max, softmax_sum = attn_outs[:3]
+
+        ctx.save_for_backward(q, k, v, out, softmax_max, softmax_sum)
+        ctx.cp_group = cp_group
+        ctx.n_head = n_head
+        ctx.attention_dropout = attention_dropout
+        ctx.softmax_scale = softmax_scale
+        ctx.attention_mask = attention_mask
+        ctx.kv_seq_range = kv_seq_range
+        ctx.actual_seq_qlen = actual_seq_qlen
+        ctx.actual_seq_kvlen = actual_seq_kvlen
+        return out
+
+    @staticmethod
+    def backward(ctx, dout):
+        cp_size = get_distributed_world_size(ctx.cp_group)
+        q, k, v, out, softmax_max, softmax_sum = ctx.saved_tensors
+
+        k_ag, _ = gather_along_first_dim(k, ctx.cp_group)
+        v_ag, _ = gather_along_first_dim(v, ctx.cp_group)
+        seq_start_idx, seq_end_idx = ctx.kv_seq_range
+        k_attn = k_ag[seq_start_idx:seq_end_idx]
+        v_attn = v_ag[seq_start_idx:seq_end_idx]
+
+        dk = torch.zeros((k.shape[0] * cp_size, *k.shape[1:]), dtype=k.dtype, device=k.device)
+        dv = torch.zeros((v.shape[0] * cp_size, *v.shape[1:]), dtype=v.dtype, device=v.device)
+
+        attn_grad_outs = torch_npu.npu_fusion_attention_grad(
+            q,
+            k_attn,
+            v_attn,
+            dout,
+            ctx.n_head,
+            "TND",
+            pse=None,
+            padding_mask=None,
+            atten_mask=ctx.attention_mask,
+            softmax_max=softmax_max,
+            softmax_sum=softmax_sum,
+            attention_in=out,
+            scale_value=ctx.softmax_scale,
+            pre_tockens=65536,
+            next_tockens=0,
+            sparse_mode=3,
+            keep_prob=1 - ctx.attention_dropout,
+            actual_seq_qlen=ctx.actual_seq_qlen,
+            actual_seq_kvlen=ctx.actual_seq_kvlen,
+        )
+        dq = attn_grad_outs[0]
+        dk[seq_start_idx:seq_end_idx].copy_(attn_grad_outs[1])
+        dv[seq_start_idx:seq_end_idx].copy_(attn_grad_outs[2])
+
+        dk, _ = reduce_scatter_along_first_dim(dk, ctx.cp_group)
+        dv, _ = reduce_scatter_along_first_dim(dv, ctx.cp_group)
+
+        return (
+            dq,
+            dk,
+            dv,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
