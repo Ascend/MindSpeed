@@ -51,7 +51,7 @@ pip install -r requirements.txt
 
 You can refer to the [one-click adaptation command script](https://gitcode.com/Ascend/MindSpeed-Core-MS/#one-click-adaptation) provided in the MindSpeed-Core-MS directory to pull and adapt the corresponding versions of MindSpeed, Megatron-LM, and MSAdapter.
 
-If you use the one-click adaptation command script in the MindSpeed-Core-MS directory (such as [auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)), you can skip the subsequent steps.
+If you use the one-click adaptation command script in the MindSpeed-Core-MS directory (such as auto_convert.sh), you can skip the subsequent steps.
 
 ### Obtaining and Adapting the Corresponding Versions of MindSpeed, Megatron-LM, and MSAdapter
 
@@ -68,7 +68,7 @@ If you use the one-click adaptation command script in the MindSpeed-Core-MS dire
    git clone https://openi.pcl.ac.cn/OpenI/MSAdapter.git -b master
    ```
 
-   For specific version mapping, refer to the [one-click adaptation command script](https://gitcode.com/Ascend/MindSpeed-Core-MS/#one-click-adaptation) under MindSpeed-Core-MS, such as [auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh).
+   For specific version mapping, refer to the [one-click adaptation command script](https://gitcode.com/Ascend/MindSpeed-Core-MS/#one-click-adaptation) under MindSpeed-Core-MS, such as auto_convert.sh.
 
 2. Set environment variables:
 

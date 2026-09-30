@@ -17,7 +17,7 @@
 要启用此功能，在脚本中加入`--npu-datadump`即可。使用前请先进行下述config.json的修改。默认状态下，采集RANK0（仅采集0号卡）、STEP0（仅采集第0步）下的statistics精度（统计量级精度数据类型）。
 通过调整`mindspeed/functional/npu_datadump/config.json`，可以进行整网dump时各选项的调整。
 通过调整`mindspeed/functional/npu_datadump/compare.json`，可以利用msprobe进行各dump数据的精度对照。
-关于config设置的更多细节，请参考[msprobe官方使用教程](https://gitcode.com/Ascend/msprobe/blob/master/docs/zh/user_guide/dump/config_json_introduct.md)。
+关于config设置的更多细节，请参考[msprobe官方使用教程](https://gitcode.com/Ascend/msprobe/blob/26.1.0/docs/zh/user_guide/dump/config_json_introduct.md)。
 
 - 暂不支持Lite后端。
 - dump数据默认保存在Megatron-LM目录下。
