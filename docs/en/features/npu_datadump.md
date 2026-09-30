@@ -17,7 +17,7 @@ When precision comparison or reproduction of specific scenarios is required.
 To enable this feature, add `--npu-datadump` to the script. Before use, modify the `config.json` file as described below. By default, statistics precision data for `RANK0` and `STEP0` is collected.
 You can adjust various options for full-network dumping by modifying `mindspeed/functional/npu_datadump/config.json`.
 You can use msProbe to compare the precision of dumped data by modifying `mindspeed/functional/npu_datadump/compare.json`.
-For more details on config settings, refer to [the official msProbe tutorial](https://gitcode.com/Ascend/msprobe/blob/master/docs/en/dump/config_json_introduct.md).
+For more details on config settings refer to [the official msProbe tutorial](https://gitcode.com/Ascend/msprobe/blob/master/docs/en/user_guide/dump/config_json_introduct.md).
 
 - The Lite backend is not currently supported.
 - The dumped data is saved in the Megatron-LM directory by default.
