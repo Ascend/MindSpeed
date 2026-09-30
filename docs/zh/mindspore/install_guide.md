@@ -100,7 +100,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=0 # 修改为实际安装
       pip install -r requirements.txt
       ```
 
-   2. 使用MindSpeed-Core-MS目录下的一键适配命令脚本[auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh)，即可完成安装。
+   2. 使用MindSpeed-Core-MS目录下的一键适配命令脚本auto_convert.sh，即可完成安装。
 
       ```bash
       bash auto_convert.sh

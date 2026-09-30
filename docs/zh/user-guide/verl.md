@@ -8,7 +8,7 @@
 
 ### 2. Verl 安装
 
-请参见[Verl Ascend Quickstart](https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/quick_start/ascend_quick_start.rst)，下载安装对应的软件版本。
+请参见[Verl Ascend Quickstart](https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/zh/get_start/quick_start.rst)，下载安装对应的软件版本。
 
 > [!NOTE]
 > 若使用的CANN版本高于8.3.RC1，vllm和vllm-ascend安装版本须大于等于0.9.1，0.9.1版本vllm安装可参考[vllm-ascend安装](https://docs.vllm.ai/projects/vllm-ascend-cn/zh-cn/latest/installation.html)。

@@ -101,7 +101,7 @@ For MindSpore, we provide a one-click conversion tool, MindSpeed-Core-MS, which 
    pip install -r requirements.txt
    ```
 
-2. Use the one-click adaptation script [auto_convert.sh](https://gitcode.com/Ascend/MindSpeed-Core-MS/blob/master/auto_convert.sh) in the MindSpeed-Core-MS directory to complete the installation.
+2. Use the one-click adaptation script auto_convert.sh in the MindSpeed-Core-MS directory to complete the installation.
 
    ```bash
    bash auto_convert.sh

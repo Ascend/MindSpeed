@@ -125,8 +125,8 @@ For specific operations, refer to the [Quick Start Guide](./docs/en/user-guide/q
 Quick start guides for MindSpeed LLM and MindSpeed MM can be found at:
 
 - Large Language Model Training
-  - [Based on PyTorch Framework](https://gitcode.com/Ascend/MindSpeed-LLM/blob/master/docs/en/pytorch/training/quick_start.md)
-  - [Based on MindSpore Framework](https://gitcode.com/Ascend/MindSpeed-LLM/blob/master/docs/en/mindspore/quick_start.md)
+  - [Based on PyTorch Framework](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.0.0/docs/en/pytorch/training/quick_start.md)
+  - [Based on MindSpore Framework](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.0.0/docs/en/mindspore/quick_start.md)
 - Multimodal model training
   - [Based on PyTorch framework](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.0.0/docs/zh/pytorch/quickstart.md)
   - [Based on MindSpore framework](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.0.0/docs/zh/mindspore/quickstart_ms.md)
@@ -188,7 +188,7 @@ For the support status of each feature, refer to [MindSpeed Core Feature List](.
 
 Custom operators for Ascend training are uniformly provided through the torch_npu API. The following APIs are estimated to enter End of Maintenance starting Q4 2025. Prioritize using the custom operators provided by torch_npu. If you have new requirements or encounter issues, you can submit an issue for feedback, and we will respond as soon as possible.
 
-Some custom operators are set as Public APIs. For instructions on Public API settings, refer to the [Public API Statement](docs/en/SECURITYNOTE.md#Open API Statement) in the MindSpeed Security Statement. For specific external API details, refer to the links corresponding to the following operators.
+Some custom operators are set as Public APIs. For instructions on Public API settings, refer to the [Public API Statement](docs/en/SECURITYNOTE.md) in the MindSpeed Security Statement. For specific external API details, refer to the links corresponding to the following operators.
 
 For the supported custom operators, check [MindSpeed Core Custom Operator List](./docs/en/ops_list.md).
 
