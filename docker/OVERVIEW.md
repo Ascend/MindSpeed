@@ -136,3 +136,8 @@ For any use of pre-built images, it is the image user's responsibility to ensure
 ## Disclaimer
 
 The released Ascend software images are community versions and are not intended for commercial accountability. They are provider solely as references for production practices.
+
+## Security Risks
+
+Please be aware of the following security risks when running in Docker containers:
+Running as the root user: Containers run as the root user by default, which may introduce security risks. It is recommended to create a non-privileged user for running applications in production environments.
