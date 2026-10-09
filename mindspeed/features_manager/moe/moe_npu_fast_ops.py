@@ -18,6 +18,7 @@ def fast_ops_conflicts(args):
         "moe_pad_expert_input_to_capacity",
         "enable_cuda_graph",
         "external_cuda_graph",
+        "num_zero_experts",
     )
     conflicts = [name for name in flags if getattr(args, name, False)]
     if getattr(args, "cuda_graph_impl", None) not in (None, "none"):

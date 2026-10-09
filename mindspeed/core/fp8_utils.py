@@ -8,6 +8,7 @@ from contextlib import nullcontext
 from functools import wraps
 
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.core.fp8_utils import get_fp8_context as megatron_fp8_context
 
 
 def quantize_param_shard(
@@ -38,8 +39,6 @@ def get_fp8_context(config: TransformerConfig, layer_no: int = -1, is_init: bool
 
             return fp8_autocast(enabled=False)
     if getattr(config, "fp8", None) or (is_init and getattr(config, "fp8_param", False)):
-        from megatron.core.fp8_utils import get_fp8_context as megatron_fp8_context
-
         return megatron_fp8_context(config, layer_no, is_init)
     if getattr(config, "fp4", None) or (is_init and getattr(config, "fp4_param", False)):
         from megatron.core.fp4_utils import get_fp4_context
