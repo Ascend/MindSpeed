@@ -171,7 +171,7 @@ def test_thd_non_load_balanced_cp_metadata(rank, expected_q, expected_kv, expect
     assert kv_range == expected_range
 
 
-def test_kvallgather_eod_batch_uses_contiguous_partition(monkeypatch):
+def test_kvallgather_eod_batch_uses_load_balanced_partition(monkeypatch):
     args = SimpleNamespace(
         context_parallel_size=2,
         tp_2d=False,
@@ -181,40 +181,36 @@ def test_kvallgather_eod_batch_uses_contiguous_partition(monkeypatch):
         context_parallel_algo='kvallgather_cp_algo',
     )
     batch = {"tokens": object()}
-    contiguous_batch = {"partition": "contiguous"}
+    load_balanced_batch = {"partition": "load-balanced"}
 
     monkeypatch.setattr(get_batch_utils, "get_args", lambda: args)
     monkeypatch.setattr(
         get_batch_utils,
-        "_get_batch_on_this_cp_rank_in_ulysses_cp",
-        lambda _: contiguous_batch,
+        "_get_batch_on_this_cp_rank_in_megatron_cp_eod_padding",
+        lambda *_args: load_balanced_batch,
     )
-
-    def fail_load_balanced_partition(*_args, **_kwargs):
-        raise AssertionError("KVAllGather must not use the EOD load-balanced partition")
-
     monkeypatch.setattr(
         get_batch_utils,
-        "_get_batch_on_this_cp_rank_in_megatron_cp_eod_padding",
-        fail_load_balanced_partition,
+        "_get_batch_on_this_cp_rank_in_ulysses_cp",
+        lambda _: pytest.fail("KVAllGather EOD batch must use the load-balanced partition"),
     )
 
-    assert get_batch_utils.get_batch_on_this_cp_rank(batch) is contiguous_batch
+    assert get_batch_utils.get_batch_on_this_cp_rank(batch) is load_balanced_batch
 
 
-def test_kvallgather_strategy_routes_thd_to_non_load_balanced_attention(monkeypatch):
+def test_kvallgather_strategy_routes_thd_to_load_balanced_attention(monkeypatch):
     captured_args = []
 
-    class FakeNonLoadBalancedAttention:
+    class FakeLoadBalancedAttention:
         @staticmethod
         def apply(*args):
             captured_args.extend(args)
-            return "non-load-balanced-output"
+            return "load-balanced-output"
 
     monkeypatch.setattr(
         context_parallel,
-        "AttnFuncWithCPAndKVAllGatherForTHDNonLoadBalanced",
-        FakeNonLoadBalancedAttention,
+        "AttnFuncWithCPAndKVAllGatherForTHD",
+        FakeLoadBalancedAttention,
     )
 
     query = torch.empty(8, 4, 16)
@@ -235,10 +231,10 @@ def test_kvallgather_strategy_routes_thd_to_non_load_balanced_attention(monkeypa
         cp_stream=None,
     )
 
-    assert output == "non-load-balanced-output"
+    assert output == "load-balanced-output"
     assert captured_args[3] == 4
-    assert captured_args[11] == [4, 8]
-    assert captured_args[12] == [4, 8]
+    assert captured_args[11].tolist() == [4, 8]
+    assert captured_args[12].tolist() == [4, 8]
 
 
 class TestKVAllGatherContextParallelTHD(DistributedTest):

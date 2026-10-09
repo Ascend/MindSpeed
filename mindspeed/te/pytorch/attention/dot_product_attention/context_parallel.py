@@ -7,7 +7,7 @@ import torch
 
 from .kvallgather_context_parallel import (
     AttnFuncWithCPAndKVAllGatherForSBHD,
-    AttnFuncWithCPAndKVAllGatherForTHDNonLoadBalanced,
+    AttnFuncWithCPAndKVAllGatherForTHD,
 )
 from .hamilton_context_parallel import AttnFuncWithCPAndKVA2AForSBHD, AttnFuncWithCPAndKVA2AForTHD
 
@@ -147,9 +147,9 @@ class KVAllGatherCPStrategy(BaseCPStrategy):
             )
 
         elif qkv_format == 'thd':
-            n_head, cu_seqlens_q, cu_seqlens_kv = prepare_thd_format(query_layer, cu_seqlens_q, cu_seqlens_kv)
+            _, n_head, _ = query_layer.shape
 
-            return AttnFuncWithCPAndKVAllGatherForTHDNonLoadBalanced.apply(
+            return AttnFuncWithCPAndKVAllGatherForTHD.apply(
                 query_layer,
                 key_layer,
                 value_layer,
