@@ -114,6 +114,10 @@ def _grouped_linear_forward(cls, ctx, input_tensor, m_split, reuse_identity, *we
 def _grouped_linear_backward(cls, ctx, grad_outputs):
     group_list = ctx.group_list
     inp = ctx.saved_tensors[0]
+    if inp.shape[0] == 0:
+        # Avoid zero-K MXFP8 GMM tiling while keeping all upstream autograd edges active.
+        grad_weight = inp.new_zeros((group_list.numel(), inp.shape[1], grad_outputs.shape[1]))
+        return torch.empty_like(inp), None, None, *grad_weight
     # quantized weight is saved in MXFP8GMMFunction/MXFP832x32GMMFunction, so None is given
     grad = cls.op_dx(ctx, grad_outputs, None, group_list)[0]
     grad_weight = cls.op_dw(ctx, inp, grad_outputs, group_list)[0]
