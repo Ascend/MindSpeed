@@ -14,7 +14,7 @@
 
 ![alt text](../figures/virtual-pipeline.PNG)
 
-[原文链接](https://people.eecs.berkeley.edu/~matei/papers/2021/sc_megatron_lm.pdf)
+[原文链接](https://dl.acm.org/doi/10.1145/3458817.3476209)
 
 例如，假设模型总层数为16，张量并行大小为1，流水线并行大小为4，虚拟流水线并行大小为2，则模型将被划分为4 * 2 = 8个阶段，每个阶段包含16 / 8 = 2个层。如下所示：
 

@@ -1,6 +1,10 @@
 # <p align="center"> <img src="docs/LOGO.png" height="172px" width="598px"> </p>
 
 <p align="center">
+   <a href="./README_en.md"> English </a> | 简体中文
+</p>
+
+<p align="center">
     <a> <img src="https://img.shields.io/badge/python-3.12-green"> </a>
     <a> <img src="https://img.shields.io/badge/build-passing-green"> </a>
     <a href="https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE">
@@ -94,17 +98,16 @@ MindSpeed/
 
 当前版本推荐配套表如下：
 
-| 软件                   | 版本           |
-|----------------------|--------------|
-| MindSpeed Core 分支    | core_r0.18.0 |
-| MegatronAdaptor      | core_r0.18.0 |
-| TransformerEngineNPU | main         |
-| MindSpeed-Ops        | master       |
-| Megatron-LM 版本       | 0.18.0       |
-| CANN 版本              | 9.1.0        |
-| PyTorch              | 2.7.1        |
-| torch_npu 版本         | 26.1.0       |
-| Python 版本            | Python3.12.x |
+| 软件                   | 版本                   |
+|----------------------|----------------------|
+| MindSpeed Core 分支    | 26.2.0_core_r0.18.0  |
+| MegatronAdaptor      | 26.2.0_core_r0.18.0  |
+| TransformerEngineNPU | 26.2.0_release_v2.17 |
+| Megatron-LM 版本       | core_v0.18.0               |
+| CANN 版本              | 9.2.0                |
+| PyTorch              | 2.10.0               |
+| torch_npu 版本         | 26.2.0               |
+| Python 版本            | Python3.12.x         |
 
 更多具体说明请参考：[版本配套表](./docs/zh/release_notes_core.md#版本配套说明)。
 
@@ -130,12 +133,12 @@ MegatronAdaptor (MA)           ← NPU 基础适配，使 Megatron-LM 能运行
 
 ## 使用源码安装
 
-获取并切换Megatron-LM版本至 core_r0.18.0 版本，可参考：
+获取并切换Megatron-LM版本至 core_v0.18.0 版本，可参考：
 
 ```shell
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout core_r0.18.0
+git checkout core_v0.18.0
 ```
 
 ### 安装 MegatronAdaptor（NPU 基础适配层）
@@ -143,7 +146,7 @@ git checkout core_r0.18.0
 ```shell
 git clone https://gitcode.com/Ascend/MegatronAdaptor.git
 cd MegatronAdaptor
-git checkout core_r0.18.0
+git checkout 26.2.0_core_r0.18.0
 cd ..
 pip install -e MegatronAdaptor
 ```
@@ -158,7 +161,10 @@ pip uninstall -y transformer_engine
 
 # 安装 TENPU
 git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
-pip install -e TransformerEngineNPU
+cd TransformerEngineNPU
+git checkout 26.2.0_release_v2.17
+cd ..
+pip install -e TransformerEngineNPU --no-build-isolaton
 ```
 
 > **验证**：执行 `pip show transformer_engine`，确认显示的路径为 `TransformerEngineNPU` 目录。
@@ -170,7 +176,7 @@ pip install -e TransformerEngineNPU
 ```shell
 git clone https://gitcode.com/Ascend/MindSpeed.git
 cd MindSpeed
-git checkout core_r0.18.0
+git checkout 26.2.0_core_r0.18.0
 cd ..
 pip install -e MindSpeed
 ```
