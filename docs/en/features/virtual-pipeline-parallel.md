@@ -14,7 +14,7 @@ Figure 1 Virtual pipeline parallelism
 
 ![VPP diagram](../figures/virtual-pipeline.PNG)
 
-For more details, see the paper [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://people.eecs.berkeley.edu/~matei/papers/2021/sc_megatron_lm.pdf).
+For more details, see the paper [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://dl.acm.org/doi/10.1145/3458817.3476209).
 
 For example, assuming the model has a total of 16 layers, tensor parallelism size is 1, pipeline parallelism size is 4, and virtual pipeline parallelism size is 2, the model will be divided into 4 * 2 = 8 stages, with each stage containing 16/8 = 2 layers, as shown below:
 
