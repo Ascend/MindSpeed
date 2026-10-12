@@ -14,7 +14,7 @@ The core of Virtual Pipeline Parallelism (VPP) lies in further subdividing the m
 
 ![alt text](../figures/virtual-pipeline.PNG)
 
-[Original Link](https://people.eecs.berkeley.edu/~matei/papers/2021/sc_megatron_lm.pdf)
+[Original Link](https://dl.acm.org/doi/10.1145/3458817.3476209)
 
 For example, assuming the model has a total of 16 layers, tensor parallelism size is 1, pipeline parallelism size is 4, and virtual pipeline parallelism size is 2, the model will be divided into 4 * 2 = 8 stages, with each stage containing 16 / 8 = 2 layers. As shown below:
 
