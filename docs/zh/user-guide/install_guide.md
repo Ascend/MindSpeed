@@ -45,11 +45,11 @@
 > - 使用镜像前，请先确认机器型号。最新镜像支持aarch64及X86_64架构，可通过uname -a命令确认当前环境是否符合要求。
 > - 配套镜像已预装配套的CANN 9.1.0软件及TorchNPU 26.1.0插件，可根据需要选用。
 > - 若当前环境与提供的镜像不兼容，请选择[方式二：源码安装](#方式二源码安装)。
-> - master分支后续会更新新的镜像，如果需要自定义构建镜像请参见[镜像概述](../../../docker/OVERVIEW.zh.md)。
+> - 如果需要自定义构建镜像请参见[镜像概述](../../../docker/OVERVIEW.zh.md)。
 
 1. 获取镜像
 
-   最新镜像均配套[MindSpeed Core的26.1.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1)，请按需[获取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
+   最新镜像均配套[MindSpeed Core的26.2.0_core_r0.18.0分支](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.18.0)，请按需[获取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
    <!-- npu="950" id5 -->
    - <term>Ascend 950PR&950DT系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
 
@@ -175,7 +175,16 @@
    cd ..
    ```
 
-   Megatron-LM上游版本标签为`core_v0.18.0`，与MA配套分支`core_r0.18.0`的命名不同。安装后请参考[快速入门](quickstart.md#环境准备)准备数据并启动训练。
+7. 安装Triton-Ascend
+
+   安装配套版本的Triton-Ascend，请参考《[Triton-Ascend安装指南](https://triton-ascend.readthedocs.io/zh-cn/latest/installation_guide.html#piptriton-ascend)》，获取配套版本的Triton-Ascend安装指令。
+
+   可参考如下安装命令：
+
+   ```shell
+   # 注意：triton-ascend 3.2.0 及以下 Triton-Ascend和Triton 不能同时存在。需要先卸载社区 Triton，再安装 Triton-Ascend。
+   pip install triton-ascend==3.2.2 --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
+   ```
 
 ## 卸载MindSpeed
 
