@@ -106,7 +106,7 @@ run_st() {
     fi
 
     # --- Resolve Megatron-LM branch from README.md ---
-    checkout_lines=$(grep "git checkout" "${code_dir}/README.md" | awk '{print substr($0, index($0,$3))}' | tail -n 1 || true)
+    checkout_lines="core_r0.18.0"
     echo "Resolved Megatron-LM ref: ${checkout_lines}"
     if [ -z "$checkout_lines" ]; then
         echo "ERROR: No valid git checkout line found in README.md"

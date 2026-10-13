@@ -12,7 +12,8 @@ class PipelineModelParallelLayoutFeature(MindSpeedFeature):
 
     _STATE_ATTR = "_mindspeed_pipeline_model_parallel_layout_state"
 
-    def __init__(
+    # Override the base defaults; isolated pylint cannot resolve the MegatronAdaptor base.
+    def __init__(  # pylint: disable=useless-parent-delegation
         self,
         feature_name: str = "pipeline-model-parallel-layout",
         optimization_level: int = 0,
@@ -28,6 +29,13 @@ class PipelineModelParallelLayoutFeature(MindSpeedFeature):
             or not isinstance(args, Namespace)
             or not hasattr(args, "pipeline_model_parallel_size")
         ):
+            return
+
+        from megatron.core.transformer.transformer_config import TransformerConfig
+
+        # Native layout support (including core_r0.18.0) derives VPP directly
+        # from the layout and rejects the legacy VPP option injected below.
+        if "pipeline_model_parallel_layout" in TransformerConfig.__dataclass_fields__:
             return
 
         setattr(
@@ -177,13 +185,11 @@ class PipelineModelParallelLayoutFeature(MindSpeedFeature):
             return
 
         from mindspeed.core.pipeline_parallel.pipeline_model_parallel_layout.adaptor import (
-            LayerType,
             get_num_layers_to_build_wrapper,
             get_transformer_layer_offset_wrapper,
             transformer_config_post_init_wrapper,
         )
 
-        patch_manager.register_patch("megatron.core.transformer.enums.LayerType", LayerType)
         patch_manager.register_patch(
             "megatron.core.transformer.transformer_config.TransformerConfig.__post_init__",
             transformer_config_post_init_wrapper,
