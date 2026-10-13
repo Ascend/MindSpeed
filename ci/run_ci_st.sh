@@ -93,25 +93,18 @@ run_st() {
     export PYTHONPATH="${PYTHONPATH}:${code_dir}"
     cd "${workspace}"
 
-    # --- Legacy branch support: TransformerEngineNPU + MegatronAdaptor ---
-    if [ "$branch" == "core_r0.17.0" ] || [ "$branch" == "core_r0.18.0" ]; then
-        git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
-        rm -rf TransformerEngineNPU/pyproject.toml
-        pip install -e TransformerEngineNPU -v
-        git clone https://gitcode.com/Ascend/MegatronAdaptor.git
-        cd MegatronAdaptor
-        git checkout "$branch"
-        pip install -e .
-        cd ..
-    fi
+    git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
+    rm -rf TransformerEngineNPU/pyproject.toml
+    pip install -e TransformerEngineNPU -v
+    git clone https://gitcode.com/Ascend/MegatronAdaptor.git
+    cd MegatronAdaptor
+    git checkout "$branch"
+    pip install -e .
+    cd ..
 
     # --- Resolve Megatron-LM branch from README.md ---
-    checkout_lines=$(grep "git checkout" "${code_dir}/README.md" | awk '{print substr($0, index($0,$3))}' | tail -n 1 || true)
+    checkout_lines=core_v0.18.0
     echo "Resolved Megatron-LM ref: ${checkout_lines}"
-    if [ -z "$checkout_lines" ]; then
-        echo "ERROR: No valid git checkout line found in README.md"
-        exit 1
-    fi
 
     # --- Prepare Megatron-LM ---
     cd "${workspace}"
@@ -146,7 +139,7 @@ run_st() {
     # ST 2: MindSpeed-LLM (DeepSeek) – skip on legacy branches
     # ============================================
     echo "Branch: $branch"
-    local skip_llm_branches=("26.0.0_core_r0.12.1" "core_r0.14.0" "core_r0.15.3" "core_r0.16.0" "core_r0.17.0" "core_r0.18.0")
+    local skip_llm_branches=("26.0.0_core_r0.12.1" "core_r0.14.0" "core_r0.15.3" "core_r0.16.0" "core_r0.17.0" "core_r0.18.0" "26.2.0_core_r0.18.0")
     local skip_llm=false
     for skip in "${skip_llm_branches[@]}"; do
         if [[ "$checkout_lines" == *"$skip"* ]] || [[ "$branch" == *"$skip"* ]]; then
@@ -187,7 +180,8 @@ run_st() {
     if [ -f "${code_dir}/mindspeed/args_utils.py" ] && \
        [[ "$branch" != "core_r0.15.3" ]] && \
        [[ "$branch" != "core_r0.17.0" ]] && \
-       [[ "$branch" != "core_r0.18.0" ]]; then
+       [[ "$branch" != "core_r0.18.0" ]] && \
+       [[ "$branch" != "26.2.0_core_r0.18.0" ]]; then
         cd "${workspace}"
         cp -rf "${VERL_DIR}" ./
         cd verl

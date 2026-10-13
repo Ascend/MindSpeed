@@ -89,25 +89,18 @@ run_ut() {
     export PYTHONPATH="${PYTHONPATH}:${code_dir}"
     cd "${workspace}"
 
-    # --- Legacy branch support: TransformerEngineNPU + MegatronAdaptor ---
-    if [ "$branch" == "core_r0.17.0" ] || [ "$branch" == "core_r0.18.0" ]; then
-        git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
-        rm -rf TransformerEngineNPU/pyproject.toml
-        pip install -e TransformerEngineNPU -v
-        git clone https://gitcode.com/Ascend/MegatronAdaptor.git
-        cd MegatronAdaptor
-        git checkout "$branch"
-        pip install -e .
-        cd ..
-    fi
+    git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
+    rm -rf TransformerEngineNPU/pyproject.toml
+    pip install -e TransformerEngineNPU -v
+    git clone https://gitcode.com/Ascend/MegatronAdaptor.git
+    cd MegatronAdaptor
+    git checkout "$branch"
+    pip install -e .
+    cd ..
 
     # --- Resolve Megatron-LM branch from README.md ---
-    checkout_lines=$(grep "git checkout" "${code_dir}/README.md" | awk '{print substr($0, index($0,$3))}' | tail -n 1 || true)
+    checkout_lines=core_v0.18.0
     echo "Resolved Megatron-LM ref: ${checkout_lines}"
-    if [ -z "$checkout_lines" ]; then
-        echo "ERROR: No valid git checkout line found in README.md"
-        exit 1
-    fi
 
     # --- Prepare Megatron-LM ---
     cd "${workspace}"
