@@ -36,7 +36,7 @@ CP>1 时需保证各层的 CP 通信类型一致。
 | `--reset-position-ids` | 可开可关；开启后各文档的位置编码重新计数，关闭后保持连续。 |
 | `--eod-mask-loss` | 可选，屏蔽 EOD token 对应位置的 loss；DSA 不支持该选项。 |
 | `--fix-sub-seq-length N` | 默认 -1，按 EOD 边界划分；0<N≤seq-length 时改用固定子序列长度，最后一段保留余长；其他取值仍按 EOD 边界划分。 |
-| `--variable-seq-lengths` | CP>1 时必需；CP=1 不因 EOD Reset 强制要求开启。 |
+| `--variable-seq-lengths` | CP>1 时必须设置；CP=1 不因 EOD Reset 强制要求开启。 |
 
 ### 3. 注意事项
 

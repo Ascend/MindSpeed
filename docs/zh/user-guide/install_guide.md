@@ -146,8 +146,11 @@
 4. 安装TransformerEngineNPU（TENPU）
 
    ```shell
-   git clone --branch main https://gitcode.com/Ascend/TransformerEngineNPU.git
-   pip install -e TransformerEngineNPU --no-build-isolation
+   git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
+   cd TransformerEngineNPU
+   git checkout main
+   pip install -e . --no-build-isolation
+   cd ..
    ```
 
    > [!NOTE]
@@ -166,12 +169,12 @@
    pip install -e MindSpeed
    ```
 
-6. 获取Megatron-LM源码并切换至0.18.0版本
+6. 获取Megatron-LM源码并切换至0.18.2版本
 
    ```shell
    git clone https://github.com/NVIDIA/Megatron-LM.git
    cd Megatron-LM
-   git checkout core_v0.18.0
+   git checkout core_v0.18.2
    cd ..
    ```
 

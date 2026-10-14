@@ -133,12 +133,12 @@ MegatronAdaptor (MA)           ← NPU 基础适配，使 Megatron-LM 能运行
 
 ## 使用源码安装
 
-获取并切换Megatron-LM版本至 core_v0.18.0 版本，可参考：
+获取并切换Megatron-LM版本至 core_v0.18.2 版本，可参考：
 
 ```shell
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout core_v0.18.0
+git checkout core_v0.18.2
 ```
 
 ### 安装 MegatronAdaptor（NPU 基础适配层）
@@ -396,16 +396,7 @@ MindSpeed docs目录下的文档适用CC-BY 4.0许可证，具体请参见[LICEN
 
 ---
 
-🔎 MindSpeed-Core 由华为公司的下列部门联合贡献 ：
-
-华为公司：
-
-- 昇腾计算产品部
-- 计算算法部
-- 计算软件平台部
-- 计算技术开发部
-- 公共开发部：NAIE
-- 网络技术实验室
+🔎 MindSpeed-Core 由华为技术有限公司与开发者联合贡献，
 
 此外，MindSpeed-Core 感谢以下团队对项目的贡献：
 
