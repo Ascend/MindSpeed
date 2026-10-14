@@ -79,11 +79,11 @@ MindSpeed/
 
 | 软件               | 版本                       |
 |------------------|--------------------------|
-| MindSpeed Core分支 | master                   |
+| MindSpeed Core分支 | 26.2.0_core_r0.12.1                   |
 | Mcore版本          | 0.12.1                   |
-| CANN版本           | 9.0.0                  |
-| PyTorch          | 2.7.1             |
-| TorchNPU版本      | 26.0.0                  |
+| CANN版本           | 9.2.0                  |
+| PyTorch          | 2.10.0             |
+| TorchNPU版本      | 26.2.0                  |
 | Python版本         | Python3.10.x |
 
 更多具体说明请参考：[版本配套表](./docs/zh/release_notes_core.md#版本配套说明)。
@@ -277,16 +277,7 @@ MindSpeed docs目录下的文档适用CC-BY 4.0许可证，具体请参见[LICEN
 
 ---
 
-🔎 MindSpeed-Core 由华为公司的下列部门联合贡献 ：
-
-华为公司：
-
-- 昇腾计算产品部
-- 计算算法部
-- 计算软件平台部
-- 计算技术开发部
-- 公共开发部：NAIE
-- 网络技术实验室
+🔎 MindSpeed-Core 由华为技术有限公司与开发者联合贡献，
 
 此外，MindSpeed-Core 感谢以下团队对项目的贡献：
 
