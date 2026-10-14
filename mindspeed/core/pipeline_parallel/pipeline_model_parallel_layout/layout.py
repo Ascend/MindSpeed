@@ -2,23 +2,13 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd. All rights reserved.
 
 import copy
-import enum
 import logging
 import re
 from functools import lru_cache
 from typing import Optional
 
 from megatron.core import parallel_state
-
-
-class LayerType(enum.Enum):
-    """Layer type used by custom pipeline parallel layout."""
-
-    embedding = 1
-    loss = 2
-    encoder = 3
-    decoder = 4
-    mtp = 5
+from megatron.core.transformer.enums import LayerType
 
 
 logger = logging.getLogger(__name__)

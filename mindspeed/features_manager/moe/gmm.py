@@ -68,7 +68,7 @@ def get_moe_module_spec_gmm_wrapper(fn):
 
 
 def te_grouped_linear_init_wrapper(fn):
-    """Map MindSpeed GMM options into Megatron's TE-NPU grouped-weight config."""
+    """Select grouped-weight layout by TE-GMM mode, independently of fused wgrad."""
     fn_signature = signature(fn)
 
     @wraps(fn)
@@ -79,10 +79,7 @@ def te_grouped_linear_init_wrapper(fn):
         parallel_mode = bound_args.arguments.get('parallel_mode')
         config = bound_args.arguments.get('config')
         mindspeed_args = get_full_args()
-        legacy_performance_mode = getattr(mindspeed_args, 'te_gmm_mode', 'compatible') == 'performance'
-
-        if legacy_performance_mode or getattr(config, 'gemm_gradient_accumulation_fusion', False):
-            config.moe_single_grouped_weight = True
+        config.moe_single_grouped_weight = getattr(mindspeed_args, 'te_gmm_mode', 'compatible') == 'performance'
 
         fn(self, *args, **kwargs)
 
@@ -96,14 +93,20 @@ def te_grouped_linear_init_wrapper(fn):
 
 
 def tenpu_grouped_linear_init_wrapper(fn):
-    """Use TE-NPU's packed-weight backend for fused grouped wgrad accumulation."""
+    """Preserve explicit layout, or supply TE-GMM mode when MCore omits it."""
     fn_signature = signature(fn)
 
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
+        from mindspeed.args_utils import get_full_args
+
         bound_args = fn_signature.bind(self, *args, **kwargs)
-        if bound_args.arguments.get('fuse_wgrad_accumulation', False):
-            bound_args.arguments['single_grouped_weight'] = True
+        # MCore only forwards this argument for TE >= 2.14, whereas TE-NPU
+        # already supports it at 2.13. Keep performance mode working there.
+        if 'single_grouped_weight' not in bound_args.arguments:
+            bound_args.arguments['single_grouped_weight'] = (
+                getattr(get_full_args(), 'te_gmm_mode', 'compatible') == 'performance'
+            )
         return fn(*bound_args.args, **bound_args.kwargs)
 
     return wrapper
