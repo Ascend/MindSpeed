@@ -182,11 +182,16 @@
 ### 删除特性
 
 - 删除特性Ascend Double Ring Attention长序列并行
+- 删除特性Ascend混合长序列并行
 - 删除特性Ascend重计算流水线独立调度
+- 删除特性Ascend高维张量并行
+- 删除特性Ascend Megatron MoE TP拓展EP
+- 删除特性专家并行动态负载均衡（数参互寻）
 - 删除特性Ascend PP支持动态形状
 - 删除特性Ascend PP支持多参数传递
 - 删除特性Ascend PP支持多参数传递和动态形状
 - 删除特性Ascend非对齐线性层
+- 删除特性Ascend非对齐Ulysses长序列并行
 
 ### 接口变更说明
 
