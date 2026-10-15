@@ -2,7 +2,7 @@
 
 ## 背景与挑战
 
-MoE类模型一直以来存在All2All通信耗时占比高和显存开销大等关键问题。为了更好地进行All2All通信掩盖，DeepSeek提出了DualPipe流水排布和MoE跨microbatch前反向通信掩盖[1](https://github.com/deepseek-ai/DualPipe)。
+MoE类模型一直以来存在All2All通信耗时占比高和显存开销大等关键问题。为了更好的进行All2All通信掩盖，DeepSeek提出了DualPipe流水排布和MoE跨microbatch前反向通信掩盖[1](https://github.com/deepseek-ai/DualPipe)。
 
 DualPipe流水不仅可以创造跨microbatch计算通信并行的条件，实现稳定阶段的All2All全掩盖，在空泡比率和warmup阶段激活显存上相比传统方案也有更好地综合表现。在warmup和cooldown阶段，DualPipe都采取了Zero Bubble思想中的dw分离来进一步压缩气泡。同时，该流水排布天然亲和MTP模型结构，由于首尾stage都在同一张卡上，该流水也可以更方便地调整PP间的负载均衡策略。缺点是每张卡上需要的参数量翻倍。
 

@@ -5,7 +5,7 @@
 在大模型的预训练任务中，一个训练批次中的输入序列通常由多个文档拼接而成。默认情况下，模型会将这些文档视为一个连续的序列，不会对它们之间的self attention进行遮挡，这意味着不同文档之间可以相互建立上下文依赖。
 
 然而，在某些特定场景下，不同文档之间需要相互独立，不能共享上下文信息。例如，当文档之间存在语义不相关性或需要保持训练目标隔离时，必须禁止它们之间的 self attention。此时，模型需要在每个文档的结束位置（EOD）处，
-重新设置attention mask和position ids，以实现文档级别的注意力隔离。为提升token的利用率，预训练过程中可以采用pack技术，即将多个较短的样本拼接成一个完整的训练序列。在此过程中，模型无法自动识别不同样本的边界，因此需要在每条样本末尾显示插入EOD token，以标识边界并指导后续的attention mask构建。
+重新设置attention mask和position ids，以实现文档级别的注意力隔离。为提升token的利用率，预训练过程中可以采用pack技术，即将多个较短的样本拼接成一个完整的训练序列。在此过程中，模型无法自动识别不同样本的边界，因此需要在每条样本末尾显式插入EOD token，以标识边界并指导后续的attention mask构建。
 
 ## 解决方案
 
@@ -66,7 +66,7 @@ python ./preprocess_data.py \
     --json-keys text input output
     ```
 
-- `append-eod`：该参数的作用是将文档结束标记`EOD`显示地添加到每条数据的末尾，防止模型学习无意义的关联
+- `append-eod`：该参数的作用是将文档结束标记`EOD`显式地添加到每条数据的末尾，防止模型学习无意义的关联
 - `pad-to-multiple-of`：该参数的作用是将每条数据的长度pad到pad-to-multiple-of的倍数
 
 `append-eod`和`pad-to-multiple-of`参数使能后的效果如下：

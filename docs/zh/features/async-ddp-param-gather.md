@@ -15,7 +15,7 @@
 
 ### b. 同时启用分布式优化器与梯度通信重叠,即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce`
 
-在打开`--use-distributed-optimizer`的同时打开`--overlap-grad-reduce`，运行流程如下图所示。对梯度的reduce-scatter过程与反向计算过程并行，从而避免了额外的reduce-scatter时间，显著提高了计算与通信的并行效率，如下图所示。
+在打开`--use-distributed-optimizer`的同时打开`--overlap-grad-reduce`，运行流程如下图所示。梯度的reduce-scatter过程与反向计算过程并行，从而避免了额外的reduce-scatter时间，显著提高了计算与通信的并行效率，如下图所示。
 <p align="center"> <img src="../figures/async_ddp_param_gather_b.png" height="350px" width="880px"></p>
 
 ### c. 启用分布式优化器、梯度通信重叠与参数聚合重叠，即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce` 和 `--overlap-param-gather`

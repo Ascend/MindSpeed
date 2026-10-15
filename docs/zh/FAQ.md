@@ -128,8 +128,7 @@ self.start grad sync()
 File “/home/Megatron-LM/megatron/core/distributed/param and grad buffer.py", Line 114, in start_grad_s
 ync
 assert not norm.isnan( ), (
-AssertionError: Rank 13: found NaN in local grad norm in backward pass before data-parallel communication collectie
-ve. Device: 5, node: node-15-11
+AssertionError: Rank 13: found NaN in local grad norm in backward pass before data-parallel communication collectieve. Device: 5, node: node-15-11
 ```
 
 ### 问题根因

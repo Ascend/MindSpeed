@@ -24,8 +24,8 @@
 ## 使用影响
 
 1.由于fused_ema_adamw优化器在训练时需要额外维护```ema_params```状态，内存开销会有所增加。<br>
-2.权重保存时，优化器的```ema_params```优化器状态将会存储在distrib_optim.pt文件中。<br>
-3.权重保存时，ema模型权重数据将会存储在model_optim_rng.pt文件中的```ema_model```字段中。<br>
+2.权重保存时，优化器的```ema_params```状态将会存储在distrib_optim.pt文件中。<br>
+3.权重保存时，ema模型权重数据将会存储在model_optim_rng.pt文件的```ema_model```字段中。<br>
 
 ## 注意事项
 

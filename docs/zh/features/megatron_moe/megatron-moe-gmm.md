@@ -23,7 +23,7 @@
 典型场景：
 
 - EP变小导致单卡专家数量增大 & DeepSeek MoE专家数量较多等场景。
-- DeepSeek MoE finegrained expert单个专家较小 & FFN规模不大 & TP变大导致单卡切分的计算变小。
+- DeepSeek MoE fine-grained expert单个专家较小 & FFN规模不大 & TP变大导致单卡切分的计算变小。
 
 1. 随着FFN规模提升，计算不再细碎，单专家计算效率提升，Grouped GEMM 收益变小。
 
@@ -37,7 +37,7 @@
 
 2. TP越大，EP越小，收益更大。
    
-    表2：Mixtral8*7B模型配置不同性能收益
+    表2：Mixtral 8x7B模型配置不同性能收益
 
     |配置| tp4 ep2 16expert | tp4 ep2 8expert | tp2 ep4 16expert| tp2 ep4 8expert|
     |--|--|--|--|--|

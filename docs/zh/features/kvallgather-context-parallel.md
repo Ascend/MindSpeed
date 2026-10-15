@@ -20,7 +20,7 @@ KVAllGather通过收集完整的key、value计算本地query对应的attention�
 
 在GQA（Grouped-Query Attention）、MQA（Multi-Query Attention）等场景下，由于对key和value进行all-gather通信所需的时间远少于整体计算时间，因此该方案带来的收益更为显著。
 
-该方案可与FlashAttention完全兼容，目前已默认启用FlashAttention进行加速计算。
+该方案可与Flash Attention完全兼容，目前已默认启用Flash Attention进行加速计算。
 
 ## 使用方法
 
