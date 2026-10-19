@@ -9,9 +9,12 @@ concurrency:
     events: [mr_id]
 
 on:
+  pr_comment:
+    types: [created]
+    keyword: '^compile$'
   pull_request_comment:
     types: [created]
-    branches: [ 'master', '26.1.0_core_r0.12.1' ]
+    branches: [ '*' ]
     comments: [ '^compile$' ]
 
 env:
