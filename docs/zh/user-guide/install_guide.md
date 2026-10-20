@@ -23,7 +23,7 @@
 
 - 各硬件产品对应物理机部署场景支持的操作系统请参考[兼容性查询助手](https://www.hiascend.com/hardware/compatibility)。
 
-- 各硬件产品对应虚拟机及容器部署场景支持的操作系统请参考《CANN 软件安装》的“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/910/softwareinst/instg/instg_0101.html?OS=openEuler&InstallType=netyum)”章节。
+- 各硬件产品对应虚拟机及容器部署场景支持的操作系统请参考《CANN 软件安装》的“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/920/softwareinst/instg/instg_0101.html?OS=openEuler&InstallType=netyum)”章节。
 
 ## 安装前准备
 
@@ -183,7 +183,7 @@
 
    ```shell
    # 注意：triton-ascend 3.2.0 及以下 Triton-Ascend和Triton 不能同时存在。需要先卸载社区 Triton，再安装 Triton-Ascend。
-   pip install triton-ascend==3.2.2 --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
+   pip install triton-ascend==3.6.0 --extra-index-url=https://mirrors.huaweicloud.com/ascend/repos/pypi
    ```
 
 ## 卸载MindSpeed
