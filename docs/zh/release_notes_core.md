@@ -76,14 +76,14 @@
     <tr>
       <th>7.2.0</th>
       <th>7.3.0</th>
-      <th>26.0.0</th>
+      <th>26.0.X</th>
       <th>26.1.X</th>
       <th>26.2.X</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0_core_r0.12.1</td>
+      <td>26.0.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -91,7 +91,7 @@
       <td>Y</td>
     </tr>
     <tr>
-      <td>26.1.0_core_r0.12.1</td>
+      <td>26.1.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -99,7 +99,7 @@
       <td>Y</td>
     </tr>
         <tr>
-      <td>26.2.0_core_r0.12.1</td>
+      <td>26.2.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -127,7 +127,7 @@
     </tr>
     <tr>
       <th>8.3.RCX</th>
-      <th>8.5.X</th>
+      <th>8.5.0</th>
       <th>9.0.X</th>
       <th>9.1.X</th>
       <th>9.2.X</th>
@@ -135,7 +135,7 @@
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0_core_r0.12.1</td>
+      <td>26.0.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -143,7 +143,7 @@
       <td>Y</td>
     </tr>
         <tr>
-      <td>26.1.0_core_r0.12.1</td>
+      <td>26.1.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -151,7 +151,7 @@
       <td>Y</td>
     </tr>
     <tr>
-      <td>26.2.0_core_r0.12.1</td>
+      <td>26.2.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
