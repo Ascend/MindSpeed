@@ -46,9 +46,9 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
 **表 1**  MindSpeed Core软件版本配套表
 
 |MindSpeed Core代码分支名称|CANN版本|TorchNPU版本|Python版本|PyTorch版本|MegatronAdaptor|TransformerEngineNPU|Triton-Ascend版本|
-|--|--|--|--|--|--|--|
+|--|--|--|--|--|--|--|-|
 |26.2.0_core_r0.18.0|9.2.0|26.2.0|Python3.12|2.10.0|26.2.0_core_r0.18.0|26.2.0_release_v2.17|3.6.0|
-|26.1.0_core_r0.12.1|9.1.0|26.1.0|Python3.10|2.7.1|/|/|3.2.2|
+|26.1.0_core_r0.12.1|9.1.0|26.1.0|Python3.10|2.7.1|/|/|/|
 |26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|/|/|/|
 
 >[!NOTE]
@@ -80,14 +80,14 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
     <tr>
       <th>7.2.0</th>
       <th>7.3.0</th>
-      <th>26.0.0</th>
+      <th>26.0.X</th>
       <th>26.1.X</th>
       <th>26.2.X</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0_core_r0.12.1</td>
+      <td>26.0.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -95,7 +95,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
       <td>Y</td>
     </tr>
     <tr>
-      <td>26.1.0_core_r0.12.1</td>
+      <td>26.1.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -103,7 +103,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
       <td>Y</td>
     </tr>
         <tr>
-      <td>26.2.0_core_r0.18.0</td>
+      <td>26.2.X_core_r0.18.0</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -131,7 +131,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
     </tr>
     <tr>
       <th>8.3.RCX</th>
-      <th>8.5.X</th>
+      <th>8.5.0</th>
       <th>9.0.X</th>
       <th>9.1.X</th>
       <th>9.2.X</th>
@@ -139,7 +139,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
   </thead>
   <tbody>
     <tr>
-      <td>26.0.0_core_r0.12.1</td>
+      <td>26.0.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -147,7 +147,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
       <td>Y</td>
     </tr>
         <tr>
-      <td>26.1.0_core_r0.12.1</td>
+      <td>26.1.X_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -155,7 +155,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
       <td>Y</td>
     </tr>
     <tr>
-      <td>26.2.0_core_r0.18.0</td>
+      <td>26.2.X_core_r0.18.0</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
