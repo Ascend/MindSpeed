@@ -80,7 +80,11 @@ def apply_qos_to_pg_options(pg_options, parallel_type):
 
     qos_config = {}
     args = get_args()
-    if get_npu_version() in (NPUVersion.A3, NPUVersion.A5):
+    npu_version = get_npu_version()
+    if npu_version == NPUVersion.A5:
+        qos_config['hccl_sdma_qos'] = hccl_qos
+        log_rank_0(LOG.info, f"{parallel_type} hccl_qos: {hccl_qos}")
+    elif npu_version == NPUVersion.A3:
         qos_config['hccl_sdma_qos'] = hccl_qos
         if args.aiqos_enable_roce:
             qos_config['qos_service_level'] = roce_qos

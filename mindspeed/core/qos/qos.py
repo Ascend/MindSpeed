@@ -200,6 +200,21 @@ class Qos:
             get_expert_parallel_comm_domain(),
             get_context_parallel_comm_domain(),
         ]
+
+        if get_npu_version() == NPUVersion.A5:
+            from mindspeed.core.qos.a5_node_qos import cal_a5_auto_qos
+
+            time_overlap = get_overlap_time_dict()
+            qos_res = cal_a5_auto_qos(
+                parallel_comm_domain_list,
+                time_overlap,
+                tuple(self.hccl_queue_list),
+                queue_nums=len(self.hccl_queue_list),
+            )
+            for parallel_type, qos in qos_res.items():
+                self.hccl_aiqos_schedule[parallel_type] = qos
+            return
+
         domain_partition_information = {
             key: domain.rank_list for key, domain in zip(domains, parallel_comm_domain_list)
         }
@@ -272,18 +287,17 @@ class Qos:
             self.hccl_aiqos_schedule['tp-ep-pp'] = self.hccl_aiqos_schedule['pp']
             self.hccl_aiqos_schedule['tp-ep-mp'] = max(self.hccl_aiqos_schedule['pp'], self.hccl_aiqos_schedule['tp'])
 
-        if self.args.aiqos_enable_roce:
-            if self.args.num_experts is None:
-                self.roce_aiqos_schedule['dp-cp'] = self.roce_aiqos_schedule['dp']
-                self.roce_aiqos_schedule['mp'] = self.roce_aiqos_schedule['pp']
-            else:
-                self.roce_aiqos_schedule['dp-cp'] = self.roce_aiqos_schedule['dp']
-                self.roce_aiqos_schedule['ep-dp'] = self.roce_aiqos_schedule['dp']
-                self.roce_aiqos_schedule['mp'] = self.roce_aiqos_schedule['pp']
-                self.roce_aiqos_schedule['tp-ep-pp'] = self.roce_aiqos_schedule['pp']
-                self.roce_aiqos_schedule['tp-ep-mp'] = max(
-                    self.roce_aiqos_schedule['pp'], self.roce_aiqos_schedule['tp']
-                )
+        if not self.args.aiqos_enable_roce or not self.roce_aiqos_schedule:
+            return
+        if self.args.num_experts is None:
+            self.roce_aiqos_schedule['dp-cp'] = self.roce_aiqos_schedule['dp']
+            self.roce_aiqos_schedule['mp'] = self.roce_aiqos_schedule['pp']
+            return
+        self.roce_aiqos_schedule['dp-cp'] = self.roce_aiqos_schedule['dp']
+        self.roce_aiqos_schedule['ep-dp'] = self.roce_aiqos_schedule['dp']
+        self.roce_aiqos_schedule['mp'] = self.roce_aiqos_schedule['pp']
+        self.roce_aiqos_schedule['tp-ep-pp'] = self.roce_aiqos_schedule['pp']
+        self.roce_aiqos_schedule['tp-ep-mp'] = max(self.roce_aiqos_schedule['pp'], self.roce_aiqos_schedule['tp'])
 
 
 def generate_distributions(m, n):
