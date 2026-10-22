@@ -87,8 +87,9 @@ class ConvertFp32BF16Distrib:
                     exp_avg_sq_state.data.copy_(meta.quantization(exp_avg_sq_fp32))
 
 
-def _copy_model_params_to_main_params():
-    pass
+def _copy_model_params_to_main_params(state_dict=None):
+    if state_dict is not None:
+        raise NotImplementedError("Initialize main params from state dict is not supported with reuse-fp32-param")
 
 
 def load_parameter_state_from_dp_zero(*args, **kwargs):

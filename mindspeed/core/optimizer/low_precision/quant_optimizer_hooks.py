@@ -358,8 +358,9 @@ def reuse_fp32_param_init_wrapper(init_func):
     return reuse_fp32_param_init
 
 
-def _copy_model_params_to_main_params():
-    pass
+def _copy_model_params_to_main_params(state_dict=None):
+    if state_dict is not None:
+        raise NotImplementedError("Initialize main params from state dict is not supported with quant optimizer")
 
 
 def init_and_reuse_storage_of_tensors(fp32_tensor, bf16_fp32_tensor, res_tensor, bf16_tensor, int32_tensor):

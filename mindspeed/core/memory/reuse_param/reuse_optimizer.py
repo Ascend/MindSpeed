@@ -1,25 +1,15 @@
-import os
-import types
-from functools import wraps
-
 import torch
 
 TRANSPOSE_BF16_BIT = 32768
 
 
-def _copy_model_params_to_main_params():
-    pass
+def _copy_model_params_to_main_params(state_dict=None):
+    if state_dict is not None:
+        raise NotImplementedError("Initialize main params from state dict is not supported with reuse-fp32-param")
 
 
 class ConvertFp32BF16:
-    def init_and_reuse_storage_of_tensors(
-            self,
-            fp32_tensor,
-            bf16_fp32_tensor,
-            res_tensor,
-            bf16_tensor,
-            int32_tensor
-    ):
+    def init_and_reuse_storage_of_tensors(self, fp32_tensor, bf16_fp32_tensor, res_tensor, bf16_tensor, int32_tensor):
         """
         init a list of tensor with length of 2*fp32_tensor.numel() in bf16 to share the same storage.
         Args:
@@ -32,6 +22,7 @@ class ConvertFp32BF16:
             int32_tensors: a list of int32 tensors share the same storages with original list of fp32 tensors.
         """
         from mindspeed.op_builder import AlgorithmOpBuilder
+
         reuse_data_ptr = AlgorithmOpBuilder().load().reuse_data_ptr
         reuse_data_ptr(bf16_fp32_tensor, fp32_tensor, 0)
         reuse_data_ptr(int32_tensor, fp32_tensor, 0)
@@ -41,22 +32,26 @@ class ConvertFp32BF16:
 
     def fp16_tensor_convert_to_fp32_tensor_deterministic(self, ctx):
         for int32_float32_group, float16_param_group, fp32_from_float16_group in zip(
-            ctx.int32_float32_groups, ctx.float16_float32_groups, ctx.fp32_from_float16_groups):
-            self.bf16_tensors_to_fp32_tensors_deterministic(int32_float32_group, float16_param_group, fp32_from_float16_group, ctx.optimizer)
+            ctx.int32_float32_groups, ctx.float16_float32_groups, ctx.fp32_from_float16_groups
+        ):
+            self.bf16_tensors_to_fp32_tensors_deterministic(
+                int32_float32_group, float16_param_group, fp32_from_float16_group, ctx.optimizer
+            )
 
     def fp32_tensor_convert_to_fp16_tensor_deterministic(self, ctx):
         for int32_float32_param_group, float16_param_group, fp32_from_float16_group in zip(
-            ctx.int32_float32_groups, ctx.float16_float32_groups, ctx.fp32_from_float16_groups):
-            self.fp32_tensors_to_bf16_tensors_deterministic(int32_float32_param_group, float16_param_group, fp32_from_float16_group, ctx.optimizer)
+            ctx.int32_float32_groups, ctx.float16_float32_groups, ctx.fp32_from_float16_groups
+        ):
+            self.fp32_tensors_to_bf16_tensors_deterministic(
+                int32_float32_param_group, float16_param_group, fp32_from_float16_group, ctx.optimizer
+            )
 
     def fp16_tensor_convert_to_fp32_tensor(self, ctx):
-        for int32_float32_group, float16_param_group in zip(
-                ctx.int32_float32_groups, ctx.float16_float32_groups):
+        for int32_float32_group, float16_param_group in zip(ctx.int32_float32_groups, ctx.float16_float32_groups):
             self.bf16_tensors_to_fp32_tensors(int32_float32_group, float16_param_group)
 
     def fp32_tensor_convert_to_fp16_tensor(self, ctx):
-        for int32_float32_param_group, float16_param_group in zip(
-            ctx.int32_float32_groups, ctx.float16_float32_groups):
+        for int32_float32_param_group, float16_param_group in zip(ctx.int32_float32_groups, ctx.float16_float32_groups):
             self.fp32_tensors_to_bf16_tensors(int32_float32_param_group, float16_param_group)
 
     def fp32_tensors_to_bf16_tensors(self, int32_tensors, bf16_fp32_tensors):
@@ -71,7 +66,7 @@ class ConvertFp32BF16:
         """
         for int32_tensor, bf16_fp32_tensor in zip(int32_tensors, bf16_fp32_tensors):
             if bf16_fp32_tensor.numel() == 0:
-                return  
+                return
             int32_tensor.add_(TRANSPOSE_BF16_BIT)
             bf16_fp32_tensor.copy_(bf16_fp32_tensor.view(-1, 2).transpose(1, 0).reshape(-1).contiguous())
 
@@ -94,7 +89,7 @@ class ConvertFp32BF16:
     def fp32_tensors_to_bf16_tensors_deterministic(self, int32_tensors, bf16_fp32_tensors, fp32_tensors, optimizer):
         for int32_tensor, bf16_fp32_tensor, fp32_tensor in zip(int32_tensors, bf16_fp32_tensors, fp32_tensors):
             if bf16_fp32_tensor.numel() == 0:
-                return  
+                return
             odd_even_tensor = ((int32_tensor & 131071) == TRANSPOSE_BF16_BIT).int()
             int32_tensor.add_(TRANSPOSE_BF16_BIT)
             self.optimizer_exp_avg_save_sign(optimizer, fp32_tensor, int32_tensor, odd_even_tensor)
