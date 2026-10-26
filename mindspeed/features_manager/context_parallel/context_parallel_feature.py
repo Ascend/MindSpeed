@@ -109,6 +109,9 @@ class ContextParallelFeature(MindSpeedFeature):
 
         # kvallgather context parallel
         if args.context_parallel_size > 1 and args.context_parallel_algo == 'kvallgather_cp_algo':
+            if getattr(args, 'transformer_impl', 'transformer_engine') != 'transformer_engine':
+                raise AssertionError('Only transformer engine supports kvallgather_cp_algo')
+
             if args.attention_mask_type != "causal":
                 raise AssertionError("kvallgather_cp_algo only supports causal attention mask type")
 
