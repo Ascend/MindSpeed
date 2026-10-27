@@ -161,7 +161,7 @@ git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
 cd TransformerEngineNPU
 git checkout 26.2.0_release_v2.17
 cd ..
-pip install -e TransformerEngineNPU --no-build-isolaton
+pip install -e TransformerEngineNPU --no-build-isolation
 ```
 
 > **验证**：执行 `pip show transformer_engine`，确认显示的路径为 `TransformerEngineNPU` 目录。

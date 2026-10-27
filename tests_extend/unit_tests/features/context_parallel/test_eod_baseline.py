@@ -83,7 +83,7 @@ def test_p2p_eod_uses_document_aware_ring_layout(monkeypatch):
     assert torch.equal(result['tokens'], torch.tensor([[0, 1, 6, 7, 8, 9, 14, 15]]))
 
 
-def test_all_gather_eod_keeps_megatron_as_the_only_batch_slice_owner(monkeypatch):
+def test_all_gather_eod_uses_contiguous_batch_slicing(monkeypatch):
     args = Namespace(
         reset_attention_mask=True,
         attention_mask_type='causal',
@@ -91,18 +91,21 @@ def test_all_gather_eod_keeps_megatron_as_the_only_batch_slice_owner(monkeypatch
         context_parallel_algo='kvallgather_cp_algo',
     )
     monkeypatch.setattr(utils, 'get_args', lambda: args)
+    monkeypatch.setattr(utils.mpu, 'get_context_parallel_world_size', lambda: 2)
+    monkeypatch.setattr(utils.mpu, 'get_context_parallel_rank', lambda: 1)
     calls = []
 
-    def megatron_slicer(batch, cp_group=None):
+    def megatron_slicer(batch, is_hybrid_cp, cp_group=None, hybrid_cp_group_func=None):
         calls.append(cp_group)
         return batch
 
-    batch = {'position_ids': torch.tensor([[0, 1, 2, 3]])}
-    cp_group = object()
-    result = utils.get_batch_on_this_cp_rank_wrapper(megatron_slicer)(batch, cp_group)
+    batch = {'tokens': torch.arange(8).reshape(1, 8), 'position_ids': torch.arange(8).reshape(1, 8)}
+    result = utils.get_batch_on_this_cp_rank_wrapper(megatron_slicer)(batch, False)
 
     assert result is batch
-    assert calls == [cp_group]
+    assert calls == []
+    assert torch.equal(result['tokens'], torch.tensor([[4, 5, 6, 7]]))
+    assert torch.equal(result['position_ids'], torch.tensor([[4, 5, 6, 7]]))
 
 
 def test_attention_wrapper_folds_only_inside_attention_and_restores_batch():
