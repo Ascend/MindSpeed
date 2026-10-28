@@ -130,12 +130,12 @@ MegatronAdaptor (MA)           ← NPU 基础适配，使 Megatron-LM 能运行
 
 ## 使用源码安装
 
-获取并切换Megatron-LM版本至 core_r0.18.0 版本，可参考：
+获取并切换Megatron-LM版本至 core_v0.18.2 版本，可参考：
 
 ```shell
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout core_v0.18.0
+git checkout core_v0.18.2
 ```
 
 ### 安装 MegatronAdaptor（NPU 基础适配层）
@@ -210,9 +210,8 @@ import mindspeed.megatron_adaptor  # 无报错即 MindSpeed 正常加载
   ```python
     import torch
     import megatron_adaptor # 新增代码行
-    from functools import partial
-    from contextlib import nullcontext
-    import inspect
+    from gpt_builders import gpt_builder
+    from megatron.core import mpu
   ```
 
 具体操作可以参考[快速上手指导](./docs/zh/user-guide/quickstart.md)。
