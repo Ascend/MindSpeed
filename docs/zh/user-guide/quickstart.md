@@ -35,9 +35,8 @@
     ```Python
     import torch
     import megatron_adaptor  # NPU基础适配及增强特性
-    from functools import partial
-    from contextlib import nullcontext
-    import inspect
+    from gpt_builders import gpt_builder
+    from megatron.core import mpu
     ```
 
 > [!NOTE]

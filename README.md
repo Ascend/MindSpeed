@@ -238,9 +238,8 @@ from mindspeed_ops.api.atb.npu_matmul_add import npu_matmul_add_fp32, npu_matmul
   ```python
     import torch
     import megatron_adaptor # 新增代码行
-    from functools import partial
-    from contextlib import nullcontext
-    import inspect
+    from gpt_builders import gpt_builder
+    from megatron.core import mpu
   ```
 
 具体操作可以参考[快速上手指导](./docs/zh/user-guide/quickstart.md)。
