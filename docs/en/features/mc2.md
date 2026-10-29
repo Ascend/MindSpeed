@@ -35,7 +35,7 @@ You can freeze weights by setting the `requires_grad` attribute to `False`.
 ```python
 # Example 1: freeze all parameters
 for param in model.parameters():
-    param.requires_grad = False
+    param.requires_grad = False  
 ```
 
 ```python

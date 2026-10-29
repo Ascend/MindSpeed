@@ -44,7 +44,7 @@ In MindSpeed, the entry point for LayerZero is a configuration file. By generati
 --layerzero-config config.yml
 ```
 
-Configurable items in config.yml:
+Configurable items in `config.yml`:
 
 ```yaml
     zero3_size: int  # Size of the ZeRO3 communication group, a positive integer. ZeRO3 is typically performed within a node

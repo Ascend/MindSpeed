@@ -48,20 +48,23 @@ Please note that this feature has currently only been validated in the DeepSeek 
 
 - Add `--moe-fb-overlap` to the launch script.
 - If you need to use the DualPipeV pipeline, add `--schedules-method dualpipev` to the launch script.
-- If using Megatron VPP, configure `--num-layers-per-virtual-pipeline-stage` in the launch script.
+- If you need to disable the weight gradient detachment of the regular TP Linear in the backward pass, add `--disable-fb-overlap-linear-dw-detach`. This parameter saves memory but causes a performance loss.
+- If you need to enable activation recomputation for the FC1 output of the MLP in the Dense layer, add `--recompute-dense-mlp`. This parameter reduces activation memory usage but adds one extra Dense FC1 forward computation.
+- If you need to asynchronously swap out the FC1 output of the MLP in the Dense layer to the CPU and restore it to the NPU before the backward computation, add `--swap-dense-mlp`. This parameter cannot be used together with `--recompute-dense-mlp`.
+- If Megatron VPP is used, configure `--num-layers-per-virtual-pipeline-stage` in the launch script, for example, set it to `1` or adjust it according to the model structure.
 - Non-PP, multi-microbatch scenarios are supported. Do not configure `--pipeline-model-parallel-size` in the launch script, or set `--pipeline-model-parallel-size 1`.
 
-## Usage Constraints
+**Usage Constraints**
 
-- Only `--moe-token-dispatcher-type=alltoall` is supported. The `allgather/alltoall_seq` dispatcher is not yet supported.
-- Using `--swap-attention` simultaneously is not recommended, as it causes performance degradation.
-- `--expert-tensor-parallel-size=1` must be set, and expert TP is not yet supported.
-- The Megatron MoE Token Drop & Pad mode is not supported. Dropless and Drop modes are supported.
-- This depends on GroupedMatmul. Ensure that `--moe-grouped-gemm` is enabled.
-- Only `--moe-zero-memory=level0` is supported, and the `moe-zero-memory-num-layers` configuration is not supported.
-- Asynchronous DP communication overlap is not supported, and `--overlap-grad-reduce` must be disabled.
-- only Mcore models are supported. Do not enable `--use_legacy_models`.
-- Under VPP pipeline, the following additional constraints apply:
+- Currently only `--moe-token-dispatcher-type=alltoall` is supported; the `allgather/alltoall_seq` dispatcher is not yet supported.
+- It is not recommended to enable `--swap-attention` at the same time, as it causes performance degradation.
+- Currently `--expert-tensor-parallel-size=1` must be set, and expert TP is not yet supported.
+- The Megatron MoE Token Drop&Pad mode is not currently supported; Dropless and Drop modes are supported.
+- This feature currently depends on GroupedMatmul. Ensure that `--moe-grouped-gemm` is enabled.
+- Currently only `--moe-zero-memory=level0` is supported, and the `moe-zero-memory-num-layers` configuration is not supported.
+- Asynchronous DP communication overlap is not currently supported; `--overlap-grad-reduce` must be disabled.
+- Currently only Mcore models are supported; `--use_legacy_models` cannot be enabled.
+- Under the VPP pipeline, the following additional constraints apply:
     - GBS > 1 \* DP \* PP \* MBS
     - If noop layers are used, they must be added to the last VPP stage at the end of the model.
 - Conflicts with the following features and cannot be used simultaneously:

@@ -41,11 +41,11 @@ The executor consists of two parts: a fine-grained hierarchical expert migration
 
 * The parameters involved in the expert migration operation include expert parameters, optimizer master parameters, and optimizer states (first-order and second-order gradient momentum), etc. It supports features such as distributed optimizer and parameter replica reuse, and performs inter-device parameter exchange through all-to-all communication.
 
-1. Expert parameter exchange is relatively simple, requiring only parameter extraction, alltoall exchange, and update operations.
+(1) Expert parameter exchange is relatively simple, requiring only parameter extraction, alltoall exchange, and update operations.
 
-    <p align="center"> <img src="../figures/expert_load_balance2_en.png"></p>
+<p align="center"> <img src="../figures/expert_load_balance2_en.png"></p>
 
-2. Main steps for optimizer state exchange:
+(2) Main steps for optimizer state exchange:
 Perform the following operations on the master parameters and first/second-order momentums
 
 ```txt

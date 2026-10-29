@@ -65,7 +65,7 @@ def validate_args(self, args: Namespace)
 
 **Purpose**: The core method for parameter validation, used to validate parsed arguments against business rules.
 
-**Usage Example:**
+**Usage Example**:
 
 ```python
 def validate_args(self, args):

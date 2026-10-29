@@ -14,13 +14,13 @@ A new recomputation method is implemented through torch's `saved_tensors_hooks`,
 
 In virtual pipeline scheduling, if the user has not enabled recomputation, recomputation can be actively inserted using bubbles to reduce the memory peak at a very small performance cost, reducing the number of forward computation blocks that need to retain activations to PP × VPP (PP stands for the number of pipeline parallelism stages, and VPP stands for the number of virtual pipeline parallelism stages).
 
-Figure 1: Scheduling with recomputation disabled
+**Figure 1** Scheduling with recomputation disabled
 
 <p align="center"> <img src="../figures/ripipe_a.png" height="154px" width="972px"></p>
 
 In virtual pipeline scheduling, if the user has enabled recomputation, performance can be improved by breaking the dependency between recomputation and the backward computation of the subsequent stage to perform recomputation earlier, as well as by removing the recomputation of the model's last layer.
 
-Figure 2 Scheduling with recomputation enabled
+**Figure 2** Scheduling with recomputation enabled
 
 <p align="center"> <img src="../figures/ripipe_b.png" height="122px" width="954px"></p>
 

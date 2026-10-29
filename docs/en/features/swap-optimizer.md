@@ -24,10 +24,9 @@ Model training scenarios that use the distributed optimizer `--use-distributed-o
 ## Usage
 
 - `--swap-optimizer`: Enables the swap optimizer feature.
+- `--swap-optimizer-times`: The default value is 16. It specifies the number of swaps performed during the step update phase. A smaller value means more parallelism, which reduces performance degradation but increases peak memory usage.
 
-- `--swap-optimizer-times`: Default value is 16. Sets the number of swap operations during the step update phase. A larger value increases parallelism, which can reduce performance degradation but will increase peak memory usage.
-
-Recommended Configuration:
+Recommended Configuration
 
 ```bash
 export CPU_AFFINITY_CONF=1,lazy_bind:0

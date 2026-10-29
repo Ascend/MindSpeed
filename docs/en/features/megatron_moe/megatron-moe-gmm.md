@@ -59,7 +59,7 @@ y = npu_gmm(x, weight, bias=None, group_list=None, group_type=0, gemm_fusion=Fal
     - gemm_fusion: optional input; data type: bool; value: True, False. Used to enable the GMM+ADD fused operator when accumulating gradients in the backward pass. Default value: False.
     - original_weight: optional input; a tensor; data type: float16, bfloat16, float32. Used to obtain the main_grad of the weight before view for gradient accumulation in GMM+ADD; Default value: None.
 - Output:
-  - y: required output; data type: float16, bfloat16, float32
+    - y: required output; data type: float16, bfloat16, float32
 
 In non-quantized scenarios, this operator only supports the following combinations of input and output types. Specifying unsupported types for parameters may cause operator errors and affect training efficiency:
 

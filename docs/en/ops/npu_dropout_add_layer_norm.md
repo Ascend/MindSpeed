@@ -16,7 +16,7 @@ def npu_dropout_add_layer_norm(x0,
                                return_dropout_mask=False):
 
 # computation logic
-# norm_result = RmsNorm(Dropout(x0 * rowscale * layerscale) + residual)
+# norm_result = RmsNorm(Dropout(x0 * rowscale * layerscale) + residual)   
 def npu_dropout_add_rms_norm(x0,
                              residual,
                              weight,
@@ -27,7 +27,7 @@ def npu_dropout_add_rms_norm(x0,
                              layerscale=None,
                              prenorm=False,
                              residual_in_fp32=False,
-                             return_dropout_mask=False):
+                             return_dropout_mask=False):         
 ```
 
 Inputs:
@@ -115,9 +115,9 @@ epsilon = 1e-5
 prenorm, residual_in_fp32, return_dropout_mask = True, True, True
 
 # Forward interface example
-norm_result, pre_norm_result, mask_result = npu_dropout_add_layer_norm(x0, residual, weight,
+norm_result, pre_norm_result, mask_result = npu_dropout_add_layer_norm(x0, residual, weight, 
                                                                        bias, dropout_p, epsilon,
-                                                                       rowscale, layerscale, prenorm,
+                                                                       rowscale, layerscale, prenorm, 
                                                                        residual_in_fp32, return_dropout_mask)
 
 g = torch.randn_like(norm_result)

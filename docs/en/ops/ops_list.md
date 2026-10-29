@@ -1,12 +1,12 @@
 # Custom Operators
 
-This document describes the release status of custom operators and their support in the PyTorch framework.
+ This document describes the release status of custom operators and their support in the PyTorch and MindSpore frameworks.
 
 > [!NOTE]
 >
 > In the table below, "Released" means the commercial version has been released, "✅" means supported, and "❌" means not supported.
 
-**Table 1**  Custom operator list
+**Table 1** Custom operator list
 
 <table style="border-collapse:collapse;border-spacing:0;table-layout: fixed; width: 727px" class="tg"><colgroup><col style="width: 89px"><col style="width: 248px"><col style="width: 73px"><col style="width: 150px"><col style="width: 167px"></colgroup>
 <thead>

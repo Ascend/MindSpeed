@@ -19,19 +19,19 @@ MLA addresses the memory bottleneck of standard Transformer models. It can be us
 
 To enable MLA, add the following parameter configuration to your training script:
 
-`--multi-latent-attention`：Use Multi-Head Latent Attention
+`--multi-latent-attention`: Use Multi-Head Latent Attention
 
-`--q-lora-rank`：Rank of Query tensor's low rank representation
+`--q-lora-rank`: Rank of Query tensor's low rank representation
 
-`--kv-lora-rank`：Rank of Key and Value tensors' low rank representation
+`--kv-lora-rank`: Rank of Key and Value tensors' low rank representation
 
-`--qk-head-dim`：Dimension of the head in the QK projection. q_head_dim = qk_head_dim + qk_pos_emb_head_dim
+`--qk-head-dim`: Dimension of the head in the QK projection. q_head_dim = qk_head_dim + qk_pos_emb_head_dim
 
-`--qk-pos-emb-head-dim`：Dimension of the position embedding in the QK projection
+`--qk-pos-emb-head-dim`: Dimension of the position embedding in the QK projection
 
-`--v-head-dim`：Dimension of the head in the V projection
+`--v-head-dim`: Dimension of the head in the V projection
 
-`--rotary-scaling-factor`：Rotary scaling factor for the rotary embeddings
+`--rotary-scaling-factor`: Rotary scaling factor for the rotary embeddings
 
 ## Performance
 

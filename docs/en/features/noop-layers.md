@@ -20,17 +20,19 @@ This feature is particularly useful when users encounter performance bottlenecks
 
 ## Usage
 
-To enable this feature, users need to set target layers as no-op layers through command-line parameters. For example, suppose the original model has 126 layers, with the model parameter `--num-layers 126`, meaning there are 126 layers that perform actual computation. If one no-op Layer is added at both the beginning and the end of this model, the model parameter should be set to `--num-layers 128 --noop-layers 0,127`, indicating a total of 128 layers, where the first and last layers (layer 0 and layer 127, with layer numbering starting from 0) are no-op layers that do not perform actual computation, and the middle 126 layers are the layers that perform actual computation.
+To enable this feature, users need to set the target layers as no-op layers through command-line parameters. For example, the original model has 126 layers in total, and its model parameter is `--num-layers 126`, meaning there are 126 layers that perform actual computation.
+
+If one no-op layer is added at both the beginning and the end of the model, the model parameters should be set to `--num-layers 128 --noop-layers 0,127`, which means there are 128 layers in total, where the first and last layers (layer 0 and layer 127, with layers counted from 0) are no-op layers that perform no actual computation, and the middle 126 layers are layers that perform actual computation.
 
 ## Effects
 
-By implementing the strategy of custom addition of no-op layers, it is expected that pipeline bubbles can be significantly reduced, thereby optimizing the computation flow and improving system performance. This not only helps accelerate the model training process but also maximizes hardware resource utilization.
+By implementing the strategy of adding custom no-op layers, pipeline bubbles are expected to be significantly reduced, thereby optimizing the computation flow and improving system performance. This not only helps accelerate model training but also maximizes hardware resource utilization.
 
-- Reduced pipeline bubbles: By redistributing computationally intensive tasks to different stages of the pipeline, idle time caused by high computational load in certain stages is reduced, improving the overall system throughput.
+* Reduced pipeline bubbles: By redistributing computation-intensive tasks to different stages of the pipeline, the idle time caused by excessive computational load on certain stages is reduced, improving the overall throughput of the system.
 
-- Optimized computation flow: Ensures that computing and communication resources are utilized more fully, avoiding idle waste caused by synchronization barriers and enabling each computing unit to work efficiently.
+* Optimized computation flow: Computing and communication resources are utilized more fully, avoiding idle waste caused by synchronization barriers, so that every compute unit can work efficiently.
 
-According to actual test results, in MoE models at the scale of tens of billions of parameters, such as DeepSeekV2, where performance bottlenecks arise from uneven computational load caused by the terminal logits layer, using custom no-op layers can achieve over 10% end-to-end training performance improvement.
+According to actual test results, in MoE models at the scale of tens of billions of parameters, such as DeepSeekV2, where performance bottlenecks arise from unbalanced computational load caused by the logit layer in the terminal stage, using custom no-op layers can deliver over 10% end-to-end training performance improvement.
 
 > [!NOTE]
 >

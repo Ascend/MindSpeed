@@ -8,7 +8,7 @@ In large-model training, traditional [Megatron data parallelism](./data-parallel
 
 To overcome this bottleneck, we introduce an asynchronous distributed data parallel (DDP) optimization mechanism. It decomposes computation and communication into finer-grained subtasks, enabling pipelined overlap of the two and significantly improving resource utilization. The core principle is illustrated below:
 
-Figure 1 Asynchronous DDP computation
+**Figure 1** Asynchronous DDP computation
 
 <p align="left"> <img src="../figures/async_ddp_en.png" height="250px" width="680px" style="display:block;"></p>
 

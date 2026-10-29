@@ -58,8 +58,8 @@ For Llama-7b, FSDP2 achieves higher MFU compared to FSDP1, reduces peak memory b
 
 2. When FSDP2 training is enabled, the model weight save format `ckpt-format` only supports `torch_dist` or `torch_dcp`.
 
-    - When configured as `torch_dist`, the model must implement the `sharded_state_dict()` method by inheriting from `MegatronModule` or through custom implementation; additionally, the 0-dimension size of all weights in the model must be greater than or equal to sharding_size.
+   - When configured as `torch_dist`, the model must implement the `sharded_state_dict()` method by inheriting from `MegatronModule` or through custom implementation; additionally, the 0-dimension size of all weights in the model must be greater than or equal to sharding_size.
 
-    - When configured as `torch_dcp`, the model must implement the `state_dict_for_save_checkpoint()` method by inheriting from `MegatronModule` or through custom implementation, and the weight dictionary returned by this method must be consistent with the return value of `model.state_dict()`.
+   - When configured as `torch_dcp`, the model must implement the `state_dict_for_save_checkpoint()` method by inheriting from `MegatronModule` or through custom implementation, and the weight dictionary returned by this method must be consistent with the return value of `model.state_dict()`.
 
 3. When FSDP2 training is enabled, recomputation-related configurations must be disabled, including `--recompute-granularity`, `--recompute-method`, and `--recompute-num-layers`.

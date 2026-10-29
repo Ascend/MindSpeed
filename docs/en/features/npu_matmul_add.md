@@ -25,8 +25,8 @@ Remove `--no-gradient-accumulation-fusion` to call the Matmul_Add fused operator
 Root cause of the precision difference:
 After the small operator's matmul operation is completed, the result is first downcast (from fp32 to bf16) and then upcast (from bf16 to fp32) before the final add operation. This downcast-then-upcast process loses some precision, whereas the fused operator skips this step and performs the accumulation directly, resulting in a precision difference.<br>
 The specific change process is as follows:
-  * Small operator dtype change process: `bf16*bf16=fp32->bf16->fp32+fp32=fp32`
-  * Fused operator dtype change process: `bf16*bf16=fp32+fp32=fp32`
+    * Small operator dtype change process: `bf16*bf16=fp32->bf16->fp32+fp32=fp32`
+    * Fused operator dtype change process: `bf16*bf16=fp32+fp32=fp32`
 
 ## Effects
 

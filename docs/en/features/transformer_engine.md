@@ -60,7 +60,7 @@ When model training, inference, and third-party frameworks need to use related A
 > - Currently, low-precision communication-computation fusion is not supported.
 > - When using transformer_engine, `--use-flash-attn` must also be enabled
 
-## Parameter Combination Restrictions
+**Parameter Combination Restrictions**
 
 <table>
   <thead>
@@ -69,8 +69,8 @@ When model training, inference, and third-party frameworks need to use related A
       <th>Combination</th>
       <th>Supported</th>
     </tr>
-  </thead>
-  <tbody>
+ </thead>
+ <tbody>
     <tr>
       <td>Low-precision training</td>
       <td><code>--transformer-impl transformer_engine</code>
@@ -95,6 +95,6 @@ When model training, inference, and third-party frameworks need to use related A
   </tbody>
 </table>
 
-## Related Feature References
+**Related Feature References**
 
 The TE module provides the underlying low-precision (FP8) computation foundation for models. If you are focusing on the overall solution for low-precision training or low-precision adaptation under specific parallel architectures, please refer to[MindSpeed FP8 Zero-Redundancy Weight](mxfp8/Zero_Redundancy_Weight.md) to learn how to further release BF16 weights based on TE to save memory.

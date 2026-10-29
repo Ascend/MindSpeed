@@ -57,8 +57,8 @@
 ### 手动模式
 
 &#12288;&#12288;训练脚本中添加：
-&#12288;&#12288;--aiqos&#12288;&#12288;# AI QoS特性开关
-&#12288;&#12288;--aiqos-mode manual&#12288;&#12288;# 配置AI QoS模式为手动模式
+&#12288;&#12288;--aiqos&#12288;&#12288;  # AI QoS特性开关
+&#12288;&#12288;--aiqos-mode manual&#12288;&#12288;  # 配置AI QoS模式为手动模式
 &#12288;&#12288;--aiqos-schedule {tp:high,pp:middle,dp:low}&#12288;&#12288;# 配置不同并行策略的QoS优先级
 &#12288;&#12288;如上例所示，TP优先级设置为高，PP优先级设置为中，DP优先级设置为低。
 &#12288;&#12288;手动模式当前支持dp、dp-cp、intra-dp-cp、inter-dp-cp、cp、mp、tp、pp、embd、pos-embd、tp-dp-cp、tp-dp、tp-cp、ep、ep-tp、tp-ep-mp、tp-ep-pp、ep-dp、hcp并行策略

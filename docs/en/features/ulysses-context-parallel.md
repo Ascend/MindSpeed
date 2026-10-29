@@ -22,7 +22,7 @@ First, Ulysses partitions each sample along the sequence dimension across the pa
 
 For specific details, refer to the paper [DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/pdf/2309.14509). The execution flow is shown in the following figure:
 
-Figure 1 Ulysses partitioning principle
+**Figure 1** Ulysses partitioning principle
 
 <p align="left"> <img src="../figures/ulysses.png" height="350px" width="800px"></p>
 

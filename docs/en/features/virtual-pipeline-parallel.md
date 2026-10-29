@@ -10,7 +10,7 @@ To address this issue, virtual pipeline parallelism technology was proposed, aim
 
 The core of Virtual Pipeline Parallelism (VPP) lies in further subdividing the model into more stages without increasing the number of devices, trading increased communication volume for a lower bubble ratio. With the same number of devices, more pipeline stages are created, exchanging more communication for a reduced bubble ratio.
 
-Figure 1 Virtual pipeline parallelism
+**Figure 1** Virtual pipeline parallelism
 
 ![VPP diagram](../figures/virtual-pipeline.PNG)
 

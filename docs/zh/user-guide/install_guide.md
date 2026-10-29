@@ -136,7 +136,7 @@
       ```shell
         git clone https://gitcode.com/Ascend/MindSpeed.git
         cd MindSpeed
-        git checkout master
+        git checkout 26.2.0_core_r0.12.1
         cd ..
       ```
 

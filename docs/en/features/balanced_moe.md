@@ -99,14 +99,14 @@ To ensure the stable operation and performance of EP dynamic load balancing, the
 
 - `--balanced-moe-experts`: Master switch for enabling the dynamic load balancing algorithm.
 - `--balanced-moe-hot-expert-num <N>`: Specifies the number of hot experts `N` (a positive integer) dynamically maintained per layer. Based on this parameter and the real-time load status, the system selects the `N` experts with the highest load for parameter broadcast and load balancing scheduling.
-  - Default value: `3`
-  - Important recommendations and restrictions:
-    1. `N` must be less than or equal to the number of local experts on each EP rank. The formula for calculating the number of local experts is: `num_local_experts = num_experts / expert_model_parallel_size`. For example, if the total number of experts is 64 and the EP degree is 8, each rank has 8 local experts, and the maximum value for `--balanced-moe-hot-expert-num` can only be set to `8`.
-    2. Setting `N` too large (exceeding the number of local experts) not only provides no additional benefit, but also increases unnecessary parameter broadcast overhead and memory usage, potentially degrading performance. It is recommended to set `N` based on the actual degree of load imbalance (typically between 3 and 8) to strike a balance between overhead and benefit.
+    - Default value: `3`
+    - Important recommendations and restrictions:
+        1. `N` must be less than or equal to the number of local experts on each EP rank. The formula for calculating the number of local experts is: `num_local_experts = num_experts / expert_model_parallel_size`. For example, if the total number of experts is 64 and the EP degree is 8, each rank has 8 local experts, and the maximum value for `--balanced-moe-hot-expert-num` can only be set to `8`.
+        2. Setting `N` too large (exceeding the number of local experts) not only provides no additional benefit, but also increases unnecessary parameter broadcast overhead and memory usage, potentially degrading performance. It is recommended to set `N` based on the actual degree of load imbalance (typically between 3 and 8) to strike a balance between overhead and benefit.
 
 - `--trans-hot-expert-group-num <M>`: Specifies the number of groups `M` (a positive integer) when transmitting hot expert parameters. This controls the concurrency of hot expert parameter broadcast, helping to reduce communication time.
-  - Default value: `3`
-  - Important restriction: `M` must satisfy: `1 ≤ M ≤ N` (where `N` is the value of `--balanced-moe-hot-expert-num`).
+    - Default value: `3`
+    - Important restriction: `M` must satisfy: `1 ≤ M ≤ N` (where `N` is the value of `--balanced-moe-hot-expert-num`).
 
 ## Effects
 

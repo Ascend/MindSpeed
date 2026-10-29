@@ -6,11 +6,11 @@ MindSpeed delivers strong support for foundation model training with outstanding
 
 ## Overall Architecture
 
-**Figure 1**  MindSpeed overall architecture
+**Figure 1** MindSpeed overall architecture
 
 ![MindSpeed architecture](./figures/01_architecture_mindspeed_en.png)
 
-**Table 1**  Component overview
+**Table 1** Component overview
 
 |Component|Description|
 |--|--|

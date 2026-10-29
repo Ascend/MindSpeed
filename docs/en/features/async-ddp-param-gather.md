@@ -33,7 +33,7 @@ This feature is designed for data-parallel training scenarios, particularly wher
 
 1. To enable weight update communication overlap, add the following parameters to the training configuration.
 
-   ```bash
+    ```bash
     --overlap-param-gather
     ```
 

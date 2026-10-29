@@ -10,7 +10,7 @@ The npu_apply_fused_ema_adamw API is used to update four parameters in the fused
 
 ```python
 # Example of the internal calculation logic of the API
-def npu_apply_fused_ema_adamw(grad, var, m, v, s, step, lr, ema_decay,
+def npu_apply_fused_ema_adamw(grad, var, m, v, s, step, lr, ema_decay, 
                               beta1, beta2, eps, mode, bias_correction,
                               weight_decay):
     beta1_correction = 1 - torch.pow(beta1, step) * bias_correction
@@ -24,7 +24,7 @@ def npu_apply_fused_ema_adamw(grad, var, m, v, s, step, lr, ema_decay,
     update = next_m / denom + weight_decay * var * mode
     var_ = var - lr * update
     s_ = ema_decay * s + (1 - ema_decay) * var_
-    return var_, m_, v_, s_
+    return var_, m_, v_, s_       
 ```
 
 ## Input

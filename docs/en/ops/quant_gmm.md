@@ -12,27 +12,27 @@ Compared with the [npu_quant_gmm] interface, [npu_quant_gmm_v2] differs in the m
 
 Inputs:
 
-- x: Required Input, Parameter Type tensor, Data Type int8;
-- weight: Required Input, Parameter Type tensor, Data Type int8;
-- scale: Required Input, Parameter Type tensor, Data Type int64, bfloat16, float32;
-- offset: Reserved parameter, currently not enabled;
-- per_token_scale: Optional parameter, Parameter Type is tensor, Data Type is float32, Default Value is None;
-- bias: Optional Input, Parameter Type is tensor, Data Type is int32, Default Value is None;
-- group_list: Optional Input, Parameter Type is tensor, Data Type is int64, Default Value is None. The numerical definition varies across different interfaces; see the interface descriptions above for details;
-- output_dtype: Optional Input, Parameter Type is torch.dtype, optional values are: torch.int8, torch.bfloat16, torch.float16, used to specify the output data type. Default Value is None, in which case the output Type is torch.float16;
-- act_type: Optional parameter, Parameter Type is int, used to specify the activation function type. Default Value is 0. The supported activation function types are as follows:
-  - 0: No activation function;
-  - 1: relu;
-  - 2: gelu_tanh;
-  - 3: gelu_err_func (not yet supported);
-  - 4: fast_gelu;
-  - 5: silu.
+- x: Required, tensor, int8
+- weight: Required, tensor, int8
+- scale: Required, tensor, int64/ bfloat16/float32
+- offset: Reserved parameter, currently not enabled
+- per_token_scale: Optional, tensor, float32, None (default value)
+- bias: Optional, tensor, int32, None (default value)
+- group_list: Optional, tensor, int64, None (default value). The numerical definition varies across different interfaces; see the interface descriptions above for details.
+- output_dtype: Optional, torch.dtype. Optional values are: torch.int8, torch.bfloat16, torch.float16. Used to specify the output data type. The default Value is None, in which case the output type is torch.float16.
+- act_type: Optional, int, used to specify the activation function type. The default Value is 0. The supported activation function types are as follows:
+  - 0: No activation function
+  - 1: relu
+  - 2: gelu_tanh
+  - 3: gelu_err_func (not yet supported)
+  - 4: fast_gelu
+  - 5: silu
 
 Outputs:
 
-- y: Required output, data type int8, float16, bfloat16.
+- y: Required, int8/float16/bfloat16
 
-Constraints and Limitations:
+Constraints and limitations:
 
 - In the npu_quant_gmm interface, group_list must be a non-negative monotonically non-decreasing sequence, and its length cannot be 1;
 - In the npu_quant_gmm_v2 interface, group_list must be a non-negative sequence, its length cannot be 1, and its data type only supports tensor;

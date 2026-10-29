@@ -65,7 +65,7 @@ ReduceScatter scenario along the C axis, i.e., when shard_type is 1:
 
 - x: (E/ep, ep\*tp\*C/tp, M/tp)
 - weight: (E/ep, M/tp, H)
-- bias: (E/ep, 1, H)    For two dimensions: (E/ep, H)
+- bias: (E/ep, 1, H). For two dimensions: (E/ep, H)
 - out: (E, C/tp, H)
 
 Data relationship description:
@@ -78,7 +78,7 @@ Data relationship description:
 - Both ep and tp only support 2, 4, 8, 16, and 32;
 - The names of group_ep and group_tp cannot be the same;
 - C must be greater than 0, with the upper limit being the operator's device memory limit. When shard_type is 1, C must be an integer multiple of tp;
-- Cross-supernode is not supported; only intra-supernode is supported.
+- Cross-SuperPoD is not supported; only intra-SuperPoD is supported.
 
 ## Example Call of the npu_bmm_reducescatter_alltoall Class (to be verified)
 
@@ -155,7 +155,7 @@ def test_npu_bmm_reducescatter_alltoall(dtype, y_shard_type, transpose_weight):
     weight_shape = (E / ep_size, M / tp_size, H)
     if transpose_weight == True:
         weight_shape = (E / ep_size, H, M / tp_size)
-
+    
     x_shape = tuple(int(item) for item in x_shape)
     weight_shape = tuple(int(item) for item in weight_shape)
     bias_shape = tuple(int(item) for item in bias_shape)
@@ -170,7 +170,7 @@ def test_npu_bmm_reducescatter_alltoall(dtype, y_shard_type, transpose_weight):
         print(f'!!!!after transpose, weight_npu.size()={weight_npu.size()}')
         print(f'!!!!after transpose, weight_npu.is_contiguous()={weight_npu.is_contiguous()}')
     bias_npu = bias.npu().to(dtype)
-
+    
     y = npu_bmm_reducescatter_alltoall(x_npu,
                                        weight_npu,
                                        ep_group,

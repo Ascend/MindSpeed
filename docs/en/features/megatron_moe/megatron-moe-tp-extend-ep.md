@@ -16,8 +16,8 @@ Fine-grained small experts, similar to DeepSeek-V2 models, where each expert has
 
 - Enable `--moe-tp-extend-ep` to use this feature.
 - The following must also be enabled:
-  - `--moe-permutation-async-comm`
-  -`--moe-grouped-gemm`, currently only supports Grouped MLP.
+    - `--moe-permutation-async-comm`
+    - `--moe-grouped-gemm` (note: only Grouped MLP is currently supported)
 - Configuration constraint: Ensure that `--num-experts` is divisible by the product of `--tensor-model-parallel-size` and `--expert-model-parallel-size`.
 
 > [!NOTE]

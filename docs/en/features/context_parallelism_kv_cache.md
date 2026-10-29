@@ -29,7 +29,7 @@ A key point in the backward process is that inter-rank communication requires se
 
 The flexible caching strategy is as follows:
 
-1. Support configuring the layer interval for caching K and V: partial caching of K and V can be achieved by caching across different layers, controlled by adding a parameter `interval` to specify the interval of layers to cache. For example, when `interval=1`, K and V will be cached in layers numbered 0, 2, 4, ..., and so on. The cache interval supports starting from 0 and must not exceed the number of layers on the rank. The default value of the interval is 0.
+1. Support configuring the layer interval for caching K and V: partial caching of K and V can be achieved by caching across different layers, controlled by adding a parameter `interval` to specify the interval of layers to cache. For example, when `interval=1`, K and V will be cached in layers numbered 0, 2, 4,..., and so on. The cache interval supports starting from 0 and must not exceed the number of layers on the rank. The default value of the interval is 0.
 
 2. Support caching a portion of K and V: on each layer, caching only K (K and V have the same size) is supported. This method is controlled by a parameter. When the parameter value is `half`, only K is cached; when configured as `full`, both K and V are cached. The default is to cache both K and V. This configuration and the layer interval-based cache configuration can be enabled simultaneously. The caching effects after configuration are cumulative and do not conflict with each other.
 

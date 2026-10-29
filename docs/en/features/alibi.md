@@ -17,15 +17,15 @@ To see the paper, click [https://arxiv.org/pdf/2108.12409](https://arxiv.org/pdf
 
 ## Usage
 
-1. The alibi feature only supports Flash Attention v2. Ensure that `--use-fusion-attn-v2` is enabled.
+(1) The alibi feature only supports Flash Attention v2. Ensure that `--use-fusion-attn-v2` is enabled.
 
-2. When the `--use-fusion-attn-v2` feature is enabled, you need to set `--position-embedding-type alibi` and `--alibi-fusion-attn-type 2`. `--alibi-fusion-attn-type` only supports values of 0 or 2.
+(2) When the `--use-fusion-attn-v2` feature is enabled, you need to set `--position-embedding-type alibi` and `--alibi-fusion-attn-type 2`. `--alibi-fusion-attn-type` only supports values of 0 or 2.
 0 means the alibi is generated and then passed in, 1 is not yet available, and 2 means in-kernel generation.
 If you want to set alibi to be diagonally symmetric negation, you need to set `alibi_diagonal_opposite`; otherwise (which is also the default case and consistent with in-kernel generation when set to 2), no setting is required.
 
-3. The alibi positional encoding supports ring-attention long-sequence parallelism, but only for scenarios where the mask is causal and `--alibi-fusion-attn-type` is set to the compressed mode of 2. It does not yet support Ulysses long-sequence parallelism or hybrid long- sequence parallelism.
+(3) The alibi positional encoding supports ring-attention long-sequence parallelism, but only for scenarios where the mask is causal and `--alibi-fusion-attn-type` is set to the compressed mode of 2. It does not yet support Ulysses long-sequence parallelism or hybrid long- sequence parallelism.
 
-4. When the `--use-fusion-attn-v2` feature and long-sequence parallelism are enabled, alibi encoding does not support enabling dropout.
+(4) When the `--use-fusion-attn-v2` feature and long-sequence parallelism are enabled, alibi encoding does not support enabling dropout.
 
 ## Effects
 

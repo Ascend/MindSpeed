@@ -49,7 +49,7 @@ python ./preprocess_data.py \
     --pad-to-multiple-of 8 \
     --json-keys text \
     --workers 4 \
-    --log-interval 1000
+    --log-interval 1000  
 ```
 
 #### Parameter Description
@@ -90,15 +90,14 @@ During pre-training, simply pass the dataset path `--data-path` parameter as `./
 ## Application Scenario
 
 The pack mode dataset is generally used in EOD Reset training scenarios:
+(1) Enable the `--reset-attention-mask` option
+(2) Use the `--reset-position-ids` option to indicate whether position encoding is reset
+(3) `--attention-mask-type` can be specified as causal or general
 
-  1. Enable the `--reset-attention-mask` option
-  2. Use the `--reset-position-ids` option to indicate whether position encoding is reset
-  3. `--attention-mask-type` can be specified as causal or general
+If the `pad-to-multiple-of` parameter is set during preprocessing, the performance of the `megatron_cp_algo` algorithm in long-sequence parallelism can be accelerated in EOD Reset training scenarios:
 
-If the `pad-to-multiple-of` parameter is set during pre-processing, it can accelerate the performance of the `megatron_cp_algo` option algorithm in long sequence parallelism under EOD Reset training scenarios:
-
-- Without setting the `pad-to-multiple-of` parameter: For cases where `--attention-mask-type` is causal, due to internal implementation requirements, the length of each subsequence will be padded online to a multiple of CP*LCM(2, TP), where LCM is the least common multiple.
-- Setting the `pad-to-multiple-of` parameter: For the same scenario, you can set `pad-to-multiple-of = CP*LCM(2, TP)` during preprocessing to pad each subsequence to the required length offline, saving online padding time and accelerating training.
+* The `pad-to-multiple-of` parameter is not set: For the case where `--attention-mask-type` is causal, each subsequence is padded online to a multiple of CP*lcm(2, TP) due to internal implementation requirements, where lcm is the least common multiple.
+* Setting the `pad-to-multiple-of` parameter: for the same scenario, you can set `pad-to-multiple-of = CP*lcm(2, TP)` during preprocessing to pad each subsequence to the required length offline, saving online padding time and accelerating training.
 
 ## Notes
 

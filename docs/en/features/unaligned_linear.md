@@ -21,7 +21,7 @@ Add `--unaligned-linear` to the model parameters.
 > [!NOTE]
 >
 > - Unaligned linear layers will cause load imbalance across TPs
-> - This feature does not support mc2, 2D tensor parallelism, CP (requires `TP*CP` to be divisible by the number of attention heads), etc.
+> - This feature does not support mc2, 2D TP, CP (requires `TP*CP` to be divisible by the number of attention heads), etc.
 > - Special model architectures require special adaptation for this feature. Currently, MHA and GQA architectures are adapted, while MOE, MLA, and other architectures are not yet supported
 
 To enable unaligned linear layer, add the following parameter to the training script"

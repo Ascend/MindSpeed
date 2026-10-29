@@ -168,7 +168,7 @@ if __name__ == '__main__':
     if transpose_weight == True:
         weight_shape = (E / ep_size, M / tp_size, H)
     bias_shape = (E / ep_size, 1, M / tp_size)
-
+    
     x_shape = tuple(int(item) for item in x_shape)
     weight_shape = tuple(int(item) for item in weight_shape)
     bias_shape = tuple(int(item) for item in bias_shape)
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     bias_npu = bias.npu().to(dtype)
     # Assigning None can verify the scenario where bias is empty
     bias_npu = None
-
+    
     y_npu = npu_alltoall_allgather_bmm(x_npu,
                                        weight_npu,
                                        ep_group,

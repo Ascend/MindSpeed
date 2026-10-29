@@ -105,23 +105,23 @@ def get_hcomm_info(world_size, rank):
 def run(rank, n_device):
     torch_npu.npu.set_device(rank)
     dist, hcomm_info = get_hcomm_info(n_device, rank)
-
+  
     x1 = torch.randn(32, 256, dtype=torch.float16)
     x1_npu = x1.npu()
     w1 = torch.randn(256, 32, dtype=torch.float16)
     w1_npu = w1.npu()
-
+  
     x2 = torch.randn(64, 128, dtype=torch.float16)
     x2_npu = x2.npu()
     w2 = torch.randn(128, 64, dtype=torch.float16)
     w2_npu = w2.npu()
-
+  
     group_list = None
     split_item = 0
     hccl_group = hcomm_info
     reduce_op = "sum"
     comm_turn = 0
-
+  
     # Forward call example
     x1_npu.requires_grad = False
     x2_npu.requires_grad = False

@@ -51,7 +51,7 @@ self.num_attn_layers_per_stage = 1  # Specifies the granularity of SwapStage par
 
 ```cpp
 // Example: mindspeed/ops/csrc/cann/gmm.cpp
-#include "NPUSwapManager.h"  // NOTE: Add header fileeader file
+#include "NPUSwapManager.h"  // NOTE: Add header file
 // ...
 std::vector<at::Tensor> npu_gmm(...)
 {

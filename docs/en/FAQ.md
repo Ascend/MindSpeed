@@ -98,7 +98,7 @@ In Megatron-LM 0.7.0, when using the MindSpeed custom `--tokenizer-type Pretrain
 
 ```bash
 2024-09-18 11:14:247 iteration 427/ 5000  consumed samples: 6832 elapsed time per iteration (
-ms): 209.8 | Learning rate: 1.229919E-06 | global batch size:   16 | Lm loss: 8.567080E+00 | loss scale: 1.0 | grad norm: 35.518 | number of skipped iterations:   О | number of nan iterations: 0
+ms): 209.8 | Learning rate: 1.229919E-06 | global batch size:   16 | Lm loss: 8.567080E+00 | loss scale: 1.0 | grad norm: 35.518 | number of skipped iterations:   О | number of nan iterations: 0 
 [2024-09-18 11:14:25] iteration 428/   5000] consumed samples: 6848 elapsed time per iteration (
 ms): 210.5 | Learning rate: 1.229826E-06 | global batch size: _ 16 | lm loss: 7.180392E+00 | loss scale: 1.0 | grad norm: 36.838 ] number of skipped iterations:   О | number of nan iterations:
 Traceback (most recent call last):
@@ -125,7 +125,7 @@ bucket.finish grad sync()
 File "/home/Megatron-LM/megatron/core/distributed/param and_grad buffer.py", Line 151, in finish_grad
 sync
 self.start grad sync()
-File “/home/Megatron-LM/megatron/core/distributed/param and grad buffer.py", Line 114, in start_grad_s
+File "/home/Megatron-LM/megatron/core/distributed/param and grad buffer.py", Line 114, in start_grad_s
 ync
 assert not norm.isnan( ), (
 AssertionError: Rank 13: found NaN in local grad norm in backward pass before data-parallel communication collectie

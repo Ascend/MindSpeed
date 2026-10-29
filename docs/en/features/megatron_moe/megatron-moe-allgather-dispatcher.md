@@ -2,7 +2,7 @@
 
 ## Background and Challenges
 
-### Gather/Scatter Replacement
+**Gather and Scatter Operator Replacement**
 
 In the Allgather branch of Megatron MoE, gather/scatter operations are used. The gather/scatter functionality performs element-wise value retrieval/assignment along a dimension axis based on indices. This operation involves a large number of random memory addresses, which significantly impacts performance.
 
@@ -13,17 +13,17 @@ self.global_local_map = global_local_map.view(-1, 1).expand(-1, hidden_states.sh
 local_hidden_states = torch.gather(global_hidden_states, 0, self.global_local_map)
 ```
 
-### Asynchronous Communication
+**Asynchronous Communication**
 
 In the Allgather dispatcher branch, the permute function performs allgather communication on three data items—hidden_states, max_ind, and max_prob—at the beginning. These operations are serial, but there is no serial dependency between the individual computation tasks.
 
 ## Solution
 
-### Gather/Scatter Replacement
+**Gather and Scatter Operator Replacement**
 
 Since index is expanded via expand, the content in each of its rows is identical. There is no need to use gather/scatter for element-wise operations. Instead, the index and indexput operators can be used for row-wise operations, achieving an equivalent substitution for gather/scatter.
 
-### Asynchronous Communication
+**Asynchronous Communication**
 
 By reordering communication tasks and issuing them asynchronously using the async=True parameter, computation and communication can be overlapped.
 

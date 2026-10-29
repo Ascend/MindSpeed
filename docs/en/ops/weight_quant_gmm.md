@@ -56,7 +56,7 @@ result = weight_quant_gmm.npu_weight_quant_gmm(x, weight, antiquant_scale, antiq
 
 # weight transpose example
 weight_trans = torch.randint(-128, 128, (num_expert, out_channel, hidden_dim), dtype=torch.int8).npu()
-result = weight_quant_gmm.npu_weight_quant_gmm(x, weight_trans.transpose(-1,-2), antiquant_scale,
+result = weight_quant_gmm.npu_weight_quant_gmm(x, weight_trans.transpose(-1,-2), antiquant_scale, 
                                                antiquant_offset=antiquant_offset, bias=None, group_list=group_list)
 ```
 
@@ -76,11 +76,11 @@ weight = torch.randint(-128, 128, (num_expert, hidden_dim, out_channel), dtype=t
 antiquant_scale = torch.rand(num_expert, out_channel, dtype=torch.float16).npu()
 antiquant_offset = torch.rand(num_expert, out_channel, dtype=torch.float16).npu()
 
-result = weight_quant_gmm.npu_weight_quant_gmm_v2(x, weight, antiquant_scale, antiquant_offset=antiquant_offset,
+result = weight_quant_gmm.npu_weight_quant_gmm_v2(x, weight, antiquant_scale, antiquant_offset=antiquant_offset, 
                                                   bias=None, group_list=group_list)
 
 # weight transpose example
 weight_trans = torch.randint(-128, 128, (num_expert, out_channel, hidden_dim), dtype=torch.int8).npu()
-result = weight_quant_gmm.npu_weight_quant_gmm_v2(x, weight_trans.transpose(-1,-2), antiquant_scale,
+result = weight_quant_gmm.npu_weight_quant_gmm_v2(x, weight_trans.transpose(-1,-2), antiquant_scale, 
                                                   antiquant_offset=antiquant_offset, bias=None, group_list=group_list)
 ```

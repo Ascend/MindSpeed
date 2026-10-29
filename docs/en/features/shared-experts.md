@@ -12,7 +12,7 @@ Some experts are designated as shared experts to capture and integrate common kn
 
 For more information about shared experts, see [DeepSeekMoE: Towards Ultimate Expert Specialization in Mixture-of-Experts Language Models](https://arxiv.org/pdf/2401.06066).
 
-Figure 1 Shared expert isolation
+**Figure 1** Shared expert isolation
 
 ![img](../figures/shared-experts.png)
 

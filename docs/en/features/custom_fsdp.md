@@ -14,7 +14,7 @@ When DP > 1, the model weights occupy a large amount of memory, and you want to 
 
 ## Usage
 
-To enable fully sharded data parallelism, add the following configuration:
+1. To enable fully sharded data parallelism, add the following configuration:
 
     ```bash
     --use-custom-fsdp
@@ -23,7 +23,7 @@ To enable fully sharded data parallelism, add the following configuration:
     --use-distributed-optimizer
     ```
 
-You need to disable `CUDA_DEVICE_MAX_CONNECTIONS`.
+2. You need to disable `CUDA_DEVICE_MAX_CONNECTIONS`.
 
     ```bash
     unset CUDA_DEVICE_MAX_CONNECTIONS

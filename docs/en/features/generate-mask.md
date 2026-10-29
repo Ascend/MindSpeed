@@ -44,7 +44,7 @@ Tips: The above operations are enabled by default, and all generated AttnMasks a
 
 - A global variable `mindspeed/model/transformer.py`-`global _GLOBAL_ATTN_MASK` is provided.
 
-- The `--sparse-mode` parameter is provided to work with multiple FA modes. For information on the different modes of `--sparse-mode`, refer to the [torch_npu.npu_fusion_attention operator documentation](https://www.hiascend.com/document/detail/zh/Pytorch/60RC2/apiref/apilist/ptaoplist_001095.html).
+- The `--sparse-mode` parameter is provided to work with multiple FA modes. For information on the different modes of `--sparse-mode`, refer to the [torch_npu.npu_fusion_attention operator documentation](https://www.hiascend.com/document/detail/en/Pytorch/60RC2/apiref/apilist/ptaoplist_001095.html).
 
 - Three additional APIs `def set_attention_mask`, `def get_attention_mask`, and `def generate_attention_mask` are provided in `mindspeed/model/transformer.py` to implement setting, getting, and generation functions outside the normal flow.
 

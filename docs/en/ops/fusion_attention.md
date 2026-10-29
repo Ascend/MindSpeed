@@ -33,20 +33,20 @@ npu_fusion_attention(
 
 Inputs:
 
-- query: Required Input, a tensor on the Device side. Data Type supports FLOAT16 and BFLOAT16. Data Format supports ND.
-- key: Required Input, a tensor on the Device side. Data Type supports FLOAT16 and BFLOAT16. Data Format supports ND.
-- value: Required Input, a tensor on the Device side. Data Type supports FLOAT16 and BFLOAT16. Data Format supports ND.
+- query: Required Input, a tensor on the device side. Data Type supports FLOAT16 and BFLOAT16. Data Format supports ND.
+- key: Required Input, a tensor on the device side. Data Type supports FLOAT16 and BFLOAT16. Data Format supports ND.
+- value: Required Input, a tensor on the device side. Data Type supports FLOAT16 and BFLOAT16. Data Format supports ND.
 - atten_mask: Optional Input, Data Type bool, default None. The mask for dropout before softmax.
-- pse: Optional input, a tensor on the Device side, optional parameter, representing positional encoding. Data types supported: FLOAT16, BFLOAT16. Data format supported: ND. In non-varlen scenarios, four-dimensional input is supported, including BNSS format, BN1Skv format, and 1NSS format. If Sq is greater than 1024 in non-varlen scenarios, or in varlen scenarios where Sq and Skv of each batch are equal and it is a lower triangular mask scenario with sparse_mode 0, 2, or 3, alibi positional encoding compression can be enabled. In this case, only the last 1024 rows of the original PSE need to be input for memory optimization, i.e., alibi_compress = ori_pse[:, :, -1024:, :]. When the parameter differs for each batch, input BNHSkv (H=1024); when it is the same for each batch, input 1NHSkv (H=1024). If pse_type is 2 or 3, slope data of data type float32 must be passed in, and the slope data supports two shapes: BN or N.
-- padding_mask: Optional input, a tensor on the Device side. This parameter is not currently supported.
-- atten_mask: A tensor on the Device side, optional parameter. A value of 1 indicates that the position does not participate in the calculation (not effective), and a value of 0 indicates that the position participates in the calculation. Data types supported: BOOL, UINT8. Data format supported: ND format. Input shape types supported: BNSS format, B1SS format, 11SS format, SS format. In varlen scenarios, only the SS format is supported, where SS represents maxSq and maxSkv respectively.
-- prefix: An int array on the Host side, optional parameter, representing the N value for each batch in the prefix sparse calculation scenario. Data type supported: INT64. Data format supported: ND.
-- actual_seq_qlen: An int array on the Host side, optional parameter. This parameter must be passed in varlen scenarios. It represents the cumulative sum length of each S in the query. Data type supported: INT64. Data format supported: ND.
-For example, if the actual S length list is: 2 2 2 2 2, then actual_seq_qlen is passed as: 2 4 6 8 10.
-- actual_seq_kvlen: An int array on the Host side, optional parameter, required in varlen scenarios. It represents the cumulative sum length of each S for key/value. The supported data type is INT64, and the supported data format is ND.
-For example, if the actual S length list is: 2 2 2 2 2, then actual_seq_kvlen is passed as: 2 4 6 8 10.
-- sparse_mode: An int on the Host side, indicating the sparse mode, optional parameter. Supported data type: INT64. Default value: 0. Supported configuration values are 0, 1, 2, 3, 4, 5, 6, 7, 8. When the atten_mask is the same across the entire network and its shape is smaller than 2048*2048, it is recommended to use the defaultMask mode to reduce memory usage.
-For details, refer to the Ascend Community documentation at <https://www.hiascend.com/document/detail/zh/Pytorch/60RC1/apiref/apilist/ptaoplist_000005.html>.
+- pse: Optional input, a tensor on the device side, optional parameter, representing positional encoding. Data types supported: FLOAT16, BFLOAT16. Data format supported: ND. In non-varlen scenarios, four-dimensional input is supported, including BNSS format, BN1Skv format, and 1NSS format. If Sq is greater than 1024 in non-varlen scenarios, or in varlen scenarios where Sq and Skv of each batch are equal and it is a lower triangular mask scenario with sparse_mode 0, 2, or 3, alibi positional encoding compression can be enabled. In this case, only the last 1024 rows of the original PSE need to be input for memory optimization, i.e., alibi_compress = ori_pse[:, :, -1024:, :]. When the parameter differs for each batch, input BNHSkv (H=1024); when it is the same for each batch, input 1NHSkv (H=1024). If pse_type is 2 or 3, slope data of data type float32 must be passed in, and the slope data supports two shapes: BN or N.
+- padding_mask: Optional input, a tensor on the device side. This parameter is not currently supported.
+- atten_mask: A tensor on the device side, optional parameter. A value of 1 indicates that the position does not participate in the calculation (not effective), and a value of 0 indicates that the position participates in the calculation. Data types supported: BOOL, UINT8. Data format supported: ND format. Input shape types supported: BNSS format, B1SS format, 11SS format, SS format. In varlen scenarios, only the SS format is supported, where SS represents maxSq and maxSkv respectively.
+- prefix: An int array on the host side, optional parameter, representing the N value for each batch in the prefix sparse calculation scenario. Data type supported: INT64. Data format supported: ND.
+- actual_seq_qlen: An int array on the host side, optional parameter. This parameter must be passed in varlen scenarios. It represents the cumulative sum length of each S in the query. Data type supported: INT64. Data format supported: ND.
+  For example, if the actual S length list is: 2 2 2 2 2, then actual_seq_qlen is passed as: 2 4 6 8 10.
+- actual_seq_kvlen: An int array on the host side, optional parameter, required in varlen scenarios. It represents the cumulative sum length of each S for key/value. The supported data type is INT64, and the supported data format is ND.
+  For example, if the actual S length list is: 2 2 2 2 2, then actual_seq_kvlen is passed as: 2 4 6 8 10.
+- sparse_mode: An int on the host side, indicating the sparse mode, optional parameter. Supported data type: INT64. Default value: 0. Supported configuration values are 0, 1, 2, 3, 4, 5, 6, 7, 8. When the atten_mask is the same across the entire network and its shape is smaller than 2048*2048, it is recommended to use the defaultMask mode to reduce memory usage.
+  For details, refer to the Ascend Community documentation at <https://www.hiascend.com/document/detail/en/Pytorch/60RC1/apiref/apilist/ptaoplist_000005.html>.
 - q_start_idx: An int array on the host side, an optional parameter, which is an int array of length 1. When pse_type is configured as 2 or 3, it indicates the number of cells to shift the internally generated alibi encoding in the Sq direction, where a positive number means the zero diagonal moves upward. The default value is 0, indicating no shift.
 - kv_start_idx: An int array on the host side, an optional parameter, which is an int array of length 1. When pse_type is configured as 2 or 3, it indicates the number of cells to shift the internally generated alibi encoding in the Skv direction, where a positive number means the zero diagonal moves leftward. The default value is 0, indicating no shift.
 
@@ -63,18 +63,18 @@ Output:
 
 Attributes:
 
-- scale: Optional attribute, a double on the Host side, representing the scaling factor used as the scalar value for the Muls operation in the computation flow. The data type supports DOUBLE. Default value: 1.
-- pse_type: Optional attribute, an int on the Host side. The data type supports INT64. Default value: 1. The supported range is 0-3.
+- scale: Optional attribute, a double on the host side, representing the scaling factor used as the scalar value for the Muls operation in the computation flow. The data type supports DOUBLE. Default value: 1.
+- pse_type: Optional attribute, an int on the host side. The data type supports INT64. Default value: 1. The supported range is 0-3.
 - When pse_type is configured as 0, pse is passed in externally, and the computation flow first performs mul scale and then add pse.
 - When pse_type is configured as 1, pse is passed in externally, and the computation flow first performs add pse and then mul scale.
 - When pse_type is configured as 2, pse is generated internally, producing standard alibi position information. The 0th line of the internally generated alibi matrix aligns with the top-left corner of Q@K^T.
 - When pse_type is configured as 3, pse is generated internally, producing alibi position information that is the square root of the standard version. The 0th line of the internally generated alibi matrix aligns with the top-left corner of Q@K^T.
-- head_num: Required attribute, an int on the Host side, representing the number of heads. Data type supports INT64.
-- input_layout: Required attribute, a string on the Host side, representing the data layout format of the input query, key, and value. Supports BSH, SBH, BSND, BNSD, TND (actual_seq_qlen/actual_seq_kvlen must be passed); in subsequent chapters, unless otherwise specified, S represents the sequence length of query or key/value, Sq represents the sequence length of query, Skv represents the sequence length of key/value, and SS represents Sq*Skv.
+- head_num: Required attribute, an int on the host side, representing the number of heads. Data type supports INT64.
+- input_layout: Required attribute, a string on the host side, representing the data layout format of the input query, key, and value. Supports BSH, SBH, BSND, BNSD, TND (actual_seq_qlen/actual_seq_kvlen must be passed); in subsequent chapters, unless otherwise specified, S represents the sequence length of query or key/value, Sq represents the sequence length of query, Skv represents the sequence length of key/value, and SS represents Sq*Skv.
 - keep_prob: Optional attribute, data type float, default value is 1.0. The retention ratio after softmax.
-- pre_tokens: Optional attribute, int on the Host side, parameter for sparse computation, optional parameter, data type supports INT64, default value is 2147483647.
-- next_tokens: Optional attribute, int on the Host side, parameter for sparse computation, optional parameter, data type supports INT64, default value is 2147483647.
-- inner_precise: Optional attribute, int on the Host side, used to improve precision, data type supports INT64, default value is 0.
+- pre_tokens: Optional attribute, int on the host side, parameter for sparse computation, optional parameter, data type supports INT64, default value is 2147483647.
+- next_tokens: Optional attribute, int on the host side, parameter for sparse computation, optional parameter, data type supports INT64, default value is 2147483647.
+- inner_precise: Optional attribute, int on the host side, used to improve precision, data type supports INT64, default value is 0.
 - gen_mask_parallel: Debug parameter, control switch for DSA generating the dropout random number vector mask, default value is True: parallel with AICORE computation, False: serial with AICORE computation
 - sync: Debug parameter, control switch for DSA generating the dropout random number vector mask, default value is False: dropout mask generated asynchronously, True: dropout mask generated synchronously
 

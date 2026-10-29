@@ -40,7 +40,7 @@ To enable "multi-parameter pipeline" and "variable sequence lengths", add the fo
 - Support for VPP scenarios
 
 ```shell
-# PP >= 2, num-layers-per-virtual-pipeline-stage不为None
+# PP >= 2, num-layers-per-virtual-pipeline-stage is not None
 --pipeline-model-parallel-size ${PP} \
 --num-layers-per-virtual-pipeline-stage 1 \
 --use-multiparameter-pipeline-model-parallel \

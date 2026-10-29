@@ -1,6 +1,6 @@
 # MindSpeed Core
 
-- [MindSpeed Core Introduction](introduction.md)
+- [Introduction](introduction.md)
 - [Installation Guide](./user-guide/install_guide.md)
 - [Feature Documentation]()
   - [Feature Overview](./features/feature_list.md)

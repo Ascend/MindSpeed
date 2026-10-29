@@ -20,7 +20,7 @@ This guide walks you through installation and then helps you run Megatron-LM eff
 
 > [!NOTE]
 >
-> MindSpeed Core supports<term>Ascend 950 products</term>, <term>Atlas A3 training products</term>, and <term>Atlas A2 training products</term>, and requires a single NPU with on-chip memory of 64GB or higher.
+> MindSpeed Core supports <term>Ascend 950PR&950DT products</term>, <term>Atlas A3 training products</term>, and <term>Atlas A2 training products</term>, and requires a single NPU with on-chip memory of 64 GB or higher.
 >
 > n the current example script, `NPUS_PER_NODE=8` indicates that 8 NPUs are required. If the actual configuration is lower than this, OOM issues may occur.
 
@@ -78,7 +78,7 @@ Refer to the [official Megatron-LM documentation](https://github.com/NVIDIA/Mega
 
     Create the `Megatron-LM/gpt_pretrain_data` directory. By running the `preprocess_data.py` script, you can further process the converted JSON file into a binary format suitable for Megatron-LM pretraining.
 
-     ```python
+    ```python
     python tools/preprocess_data.py \
         --input alpaca_json.json \
         --output-prefix ./gpt_pretrain_data/alpaca \

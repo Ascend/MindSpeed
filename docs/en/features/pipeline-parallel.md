@@ -14,7 +14,7 @@ The specific implementation strategies for pipeline parallelism are as follows:
 * Relay-style parallelism: A relay-style parallel computation approach is adopted between stages, where the computation result of the current stage serves as the input for the next stage, forming a continuous forward and backward computation flow.
 * Warm-up and cool-down: At the beginning of pipeline parallel training, a warm-up phase is required to initialize the computation flow; at the end of training, a cool-down phase ensures that all computation tasks across stages are completed.
 
-Figure 1 Pipeline parallelism scheduling diagram
+**Figure 1** Pipeline parallelism scheduling diagram
 
 ![PP scheduling](../figures/pipedream1F1B.png)
 

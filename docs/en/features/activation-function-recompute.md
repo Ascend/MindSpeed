@@ -12,7 +12,7 @@ Consider the following computation flow within a model:
 
 * Backward pass: Backward of module A (which depends on the GELU output activations) → GELU backward (which is tightly coupled with recomputation)
 
-The GELU activation function is computationally lightweight but produces a large amount of data. Recomputing it would reduce memory usage with minimal performance cost. However, in the existing recomputation framework, this approach is not feasible for the GELU module: during the backward pass, the activation values required by module A become available before the GELU recomputation takes place. As a result, the forward pass is forced to retain the GELU outputs, making them unsaveable.
+The GELU activation function is computationally lightweight but produces a large amount of data. Recomputing it would reduce memory usage with minimal performance cost. However, in the existing recomputation framework, this approach is not feasible for the GELU module: during the backward pass, the activation values required by module A become available before the GELU recomputation takes place. As a result, the forward pass is forced to retain the GELU outputs, making them unsavable.
 
 ## Solution
 
@@ -67,11 +67,11 @@ The performance gains of activation function recomputation under different param
 
 | Model Parameters | Number of Devices | Memory Benefit |
 | --- | --- | --- |
-| seq-length=12288、micro-batch-size=2、TP=4、DP=2  | 8 devices (single node)   | 8.05GB   |
-| seq-length=8096、micro-batch-size=2、TP=4、DP=2   | 8 devices (single node)   | 5.31GB   |
-| seq-length=16384、micro-batch-size=2、TP=4、DP=2  | 8 devices (single node)   | 12.49GB  |
-| seq-length=12288、micro-batch-size=1、TP=4、DP=2  | 8 devices (single node)   | 4.04GB   |
-| seq-length=12288、micro-batch-size=2、TP=8、DP=1  | 8 devices (single node)   | 4.02GB   |
+| seq-length=12288, micro-batch-size=2, TP=4, DP=2  | 8 devices (single node)   | 8.05 GB   |
+| seq-length=8096, micro-batch-size=2, TP=4, DP=2   | 8 devices (single node)   | 5.31 GB   |
+| seq-length=16384, micro-batch-size=2, TP=4, DP=2  | 8 devices (single node)   | 12.49 GB  |
+| seq-length=12288, micro-batch-size=1, TP=4, DP=2  | 8 devices (single node)   | 4.04 GB   |
+| seq-length=12288, micro-batch-size=2, TP=8, DP=1  | 8 devices (single node)   | 4.02 GB   |
 
 **Extended Usage**
 

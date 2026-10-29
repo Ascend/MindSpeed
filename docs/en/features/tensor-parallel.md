@@ -19,7 +19,7 @@ The model is partitioned along the column dimension of the parameter matrix, in 
   * During the forward pass of the column-wise partitioning strategy, the complete input matrix is fed into each model partition. After each partition completes its computation independently, the output results from all partitions are concatenated via an All-Gather operation to form the final forward computation output.
   * During the backward pass of the column-wise partitioning strategy, the gradient of the final output is first split proportionally and passed to the output gradients of each model partition. Subsequently, the gradients of the input matrices from all partitions are aggregated via an All-Reduce operation to obtain the gradient of the initial input matrix.
 
-Figure 1 TP diagram
+**Figure 1** TP diagram
 
 <p align="left"> <img src="../figures/tensor-parallel.png" height="480px" width="570px" style="display:block;"> </p>
 
