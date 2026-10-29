@@ -9,9 +9,12 @@ Traditional Transformer models typically use the multi-head attention (MHA) mech
 Unlike the traditional KV cache, MLA does not directly store the complete key and value matrices. Instead, it represents keys and values through a compressed latent vector, reducing the KV cache via low-rank compression techniques. During training, the query also undergoes low-rank compression to reduce activation memory. The following figure compares the working mechanisms of MLA with MHA, Grouped-Query Attention (GQA), and Multi-Query Attention (MQA).
 ![multi-head-latent-attention.png](../figures/multi-head-latent-attention.png)
 
-For more details on MLA, see the paper [DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model](<https://arxiv.org/abs/2405.04434>).
+For more details on MLA, see the original paper:
+> DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model (<https://arxiv.org/abs/2405.04434>)
 
 ## Application Scenario
+
+**Backend limitation:** When CP>1, `--transformer-impl transformer_engine` must be set.
 
 MLA addresses the memory bottleneck of standard Transformer models. It can be used as a general model architecture to reduce memory usage and improve inference efficiency.
 
@@ -19,19 +22,21 @@ MLA addresses the memory bottleneck of standard Transformer models. It can be us
 
 To enable MLA, add the following parameter configuration to your training script:
 
-`--multi-latent-attention`：Use Multi-Head Latent Attention
+`--multi-latent-attention`: Use Multi-Head Latent Attention
 
-`--q-lora-rank`：Rank of Query tensor's low rank representation
+`--q-lora-rank`: Rank of Query tensor's low rank representation
 
-`--kv-lora-rank`：Rank of Key and Value tensors' low rank representation
+`--kv-lora-rank`: Rank of Key and Value tensors' low rank representation
 
-`--qk-head-dim`：Dimension of the head in the QK projection. q_head_dim = qk_head_dim + qk_pos_emb_head_dim
+`--qk-head-dim`: Dimension of the head in the QK projection. q_head_dim = qk_head_dim + qk_pos_emb_head_dim
 
-`--qk-pos-emb-head-dim`：Dimension of the position embedding in the QK projection
+`--qk-pos-emb-head-dim`: Dimension of the position embedding in the QK projection
 
-`--v-head-dim`：Dimension of the head in the V projection
+`--v-head-dim`: Dimension of the head in the V projection
 
-`--rotary-scaling-factor`：Rotary scaling factor for the rotary embeddings
+`--rotary-scaling-factor`: Rotary scaling factor for the rotary embeddings
+
+For DSA parameters, see [DSA](deepseek-sparse-attention.md).
 
 ## Performance
 

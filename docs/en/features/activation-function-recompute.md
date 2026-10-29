@@ -10,9 +10,9 @@ Consider the following computation flow within a model:
 
 * Forward pass: GELU activation → subsequent module A
 
-* Backward pass: Backward of module A (which depends on the GELU output activations) → GELU backward (which is tightly coupled with recomputation)
++ Backward pass: Backward of module A (which depends on the GELU output activations) → GELU backward (which is tightly coupled with recomputation)
 
-The GELU activation function is computationally lightweight but produces a large amount of data. Recomputing it would reduce memory usage with minimal performance cost. However, in the existing recomputation framework, this approach is not feasible for the GELU module: during the backward pass, the activation values required by module A become available before the GELU recomputation takes place. As a result, the forward pass is forced to retain the GELU outputs, making them unsaveable.
+The GELU activation function is computationally lightweight but produces a large amount of data. Recomputing it would reduce memory usage with minimal performance cost. However, in the existing recomputation framework, this approach is not feasible for the GELU module: during the backward pass, the activation values required by module A become available before the GELU recomputation takes place. As a result, the forward pass is forced to retain the GELU outputs, making them unsavable.
 
 ## Solution
 
@@ -22,17 +22,17 @@ GELU recomputation → backward of module A
 
 Since the GELU outputs are now generated before module A's backward pass, there is no need to retain them during the forward pass.
 
-In contrast, traditional recomputation can save the output activations during a forward computation, but it still needs to retain those output activations until the recomputation is complete.
+In contrast, traditional recomputation can save the input optimizer states during a forward computation, but it still needs to retain the output activations.
 
 To address this, we design a mechanism that accepts a recomputation function for each module. It discards the physical storage of the recomputed module's output at the appropriate time while retaining only a logical view. During the backward pass, `register_hook` inserts the recomputation logic at the right moment, and the provided function is called to re-execute the computation and retrieve the results.
 
-**Figure 1** Recomputation and backward binding
+### Figure 1 Recomputation and backward binding
 
 ![Existing framework](../figures/activation_function_a.png)
 
-For example, the position of GELU in the MLP is shown in Figure 1. Backward computation requires a, b, c, and d generated during the forward pass. Among them, the shapes of b and c are (`batch`, `seq`, `4hidden_size`), and GELU is an activation function with minimal computation. Therefore, tensor c can be released, and recomputed before the backward pass of `4h->h`.
+For example, the position of GELU in the MLP is shown in Figure 1. Backward computation requires a, b, c, and d generated during the forward pass. Among them, the shapes of b and c are (batch, seq , 4hidden_size), and GELU is an activation function with minimal computation. Therefore, tensor c can be released, and recomputed before the backward pass of `4h->h`.
 
-**Figure 2** Flexible insertion of recomputation
+#### Figure 2 Flexible insertion of recomputation
 
 ![New framework](../figures/activation_function_b.png)
 
@@ -40,40 +40,44 @@ After the forward `4h->h` computation is completed, c is released while retainin
 
 ## Application Scenario
 
+**Backend limitation:** When combined with MoE Grouped GEMM, communication overlap, or low-precision training, `--transformer-impl transformer_engine` must be used.
+
 Primarily used in training scenarios. When users encounter insufficient memory or want to save memory, they can enable activation function recomputation to save the output activation values of activation functions.
 
 ## Usage
 
-1. Add `--recompute-activation-function` to the script to enable activation function recomputation.
+Add `--recompute-activation-function` to the script to enable activation function recomputation.
 
-2. Add `--recompute-activation-function-num-layers ${num}` to specify the number of layers for activation function recomputation.
+Add `--recompute-activation-function-num-layers ${num}` to specify the number of layers for activation function recomputation; the value is an integer from 0 to num_layers.
 
-> [!NOTE]
->
-> Activation function recompute can be enabled together with full recomputation:
->
-> * When both are enabled, `--recompute-method` is required to be set to `block`.
-> * When both are enabled, full recompute and activation function recomputation will be applied to their specified numbers of layers respectively — meaning no single layer will be recomputed by both methods.
-> * The execution priority is: full recomputation layers are processed first, followed by activation function recomputation layers. When pipeline parallelism is not enabled, the sum of full recomputation layers and activation function recomputation layers must equal the total number of layers.
-> * This feature is currently not compatible with the adaptive recomputation feature.
+### Note
+
+Activation function recomputation can be enabled together with full recomputation:
+
+* When both are enabled, only `--recompute-method = block` is supported
+
+* When both are enabled, full recomputation and activation function recomputation will be applied to their specified numbers of layers respectively — meaning no single layer will be recomputed by both methods.
+
+The execution priority is: full recomputation layers are processed first, followed by activation function recomputation layers. When pipeline parallelism is not enabled, the sum of full recomputation layers and activation function recomputation layers must equal the total number of layers.
+
+* When used together with MoE overlap, `--hybrid-layer-pattern` is not supported.
 
 ## Effects
 
 After enabling activation function recomputation, the output activation values of activation functions no longer need to be saved, reducing memory usage. At the same time, since the computation cost of activation functions is very small, training performance only degrades slightly.
 
-In the Llama-2-7b scenario, the benefits of activation function recomputation vary depending on the model configuration.
-
+In the llama2-7B scenario, the benefits of activation function recomputation vary depending on the model configuration.
 The performance gains of activation function recomputation under different parameter settings are as follows:
 
 | Model Parameters | Number of Devices | Memory Benefit |
-| --- | --- | --- |
-| seq-length=12288、micro-batch-size=2、TP=4、DP=2  | 8 devices (single node)   | 8.05GB   |
-| seq-length=8096、micro-batch-size=2、TP=4、DP=2   | 8 devices (single node)   | 5.31GB   |
-| seq-length=16384、micro-batch-size=2、TP=4、DP=2  | 8 devices (single node)   | 12.49GB  |
-| seq-length=12288、micro-batch-size=1、TP=4、DP=2  | 8 devices (single node)   | 4.04GB   |
-| seq-length=12288、micro-batch-size=2、TP=8、DP=1  | 8 devices (single node)   | 4.02GB   |
+|-----------------------------------------------------------------------------|----------|-------------|
+| seq-length=12288, micro-batch-size=2, TP=4, DP=2  | 8 devices (single node)   | 8.05G   |
+| seq-length=8096, micro-batch-size=2, TP=4, DP=2   | 8 devices (single node)   | 5.31G   |
+| seq-length=16384, micro-batch-size=2, TP=4, DP=2  | 8 devices (single node)   | 12.49G  |
+| seq-length=12288, micro-batch-size=1, TP=4, DP=2  | 8 devices (single node)   | 4.04G   |
+| seq-length=12288, micro-batch-size=2, TP=8, DP=1  | 8 devices (single node)   | 4.02G   |
 
-**Extended Usage**
+## Extended Usage
 
 The `CheckpointWithoutOutput` class introduced by this feature allows you to customize recomputation for any module and perform recomputation recovery at the appropriate time.
 

@@ -6,20 +6,25 @@ In MoE, a large amount of EP communication is not hidden, accounting for a signi
 
 ## Solution
 
-During the forward pass, asynchronous communication is used to overlap with computation as much as possible. At the same time, the entire computation flow is split into subgraphs, enabling communication-computation overlap during the backward pass as well, thereby accelerating model training. This feature is specifically optimized for the `allgather dispatcher`.
+During the forward pass, asynchronous communication is used to overlap with computation as much as possible. At the same time, the entire computation flow is split into subgraphs, enabling communication-computation overlap during the backward pass as well, thereby accelerating model training.
+This feature is specifically optimized for the `allgather` dispatcher.
 
 ## Usage
 
-- Enable this feature by turning on `--moe-allgather-overlap-comm`.
-- The following must also be enabled:
-    - `--moe-permutation-async-comm`
-    - `--moe-token-dispatcher-type allgather`
-    - `--moe-grouped-gemm`, currently only supports Grouped MLP.
+**Backend limitation:** `--transformer-impl transformer_engine` must be set, and `local` is not supported.
+
+Enable this feature by turning on `--moe-allgather-overlap-comm`.
+
+The following must also be enabled:
+
+- `--moe-permutation-async-comm`
+- `--moe-token-dispatcher-type allgather`
+- `--moe-grouped-gemm`, using TEGroupedMLP.
+- `--transformer-impl transformer_engine`.
+
+Only `allgather` is supported; `alltoall` and `flex` are not supported. `--variable-seq-lengths` is not supported; `--recompute-activation-function` cannot be used together with `--hybrid-layer-pattern`.
 
 ## Application Scenario
 
 Applicable to megatron-moe, specifically the dropless scheme branch, when EP communication becomes a bottleneck and communication overlap for EP communication is needed.
-
-> [!NOTE]
->
-> Enabling this feature will increase memory usage, which is expected behavior.
+Enabling this feature will increase memory usage, which is expected behavior.

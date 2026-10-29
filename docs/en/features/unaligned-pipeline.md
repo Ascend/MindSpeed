@@ -26,12 +26,12 @@ Add `--pipeline-num-transformer-layers` to the model parameters, using a two-dim
 Assume `pipeline_num_transformer_layers = [[0,1],[1,1]*4,[1,0]]`, `pp_rank = 0`, and `vpp_rank = 1`, then `pipeline_num_transformer_layers[pp_rank][vpp_rank]`contains only 1 layer.
 If VPP is not configured, it can be set as `pipeline_num_transformer_layers = [[1],[2]*4,[1]]`. If `pp_rank = 1`, then `pipeline_num_transformer_layers[pp_rank]` contains 2 layers.
 
-### Precautions
+**Precautions:**
 
 - Ensure that the total number of layers in the array matches the value in the `--num-layers` configuration item.
 - Since the default VPP in the framework is evenly split, the content of a single PP stage must be divisible by `--num-layers-per-virtual-pipeline-stage`. The actual effective configuration is controlled by the number of layers in the array.
 
-### Setting Training Script Parameters
+**Setting Training Script Parameters**
 
 ```shell
 # Enable non-aligned PP/VPP

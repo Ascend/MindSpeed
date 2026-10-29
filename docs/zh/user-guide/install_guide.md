@@ -138,7 +138,7 @@
    ```shell
    git clone https://gitcode.com/Ascend/MegatronAdaptor.git
    cd MegatronAdaptor
-   git checkout core_r0.18.0
+   git checkout 26.2.0_core_r0.18.0
    cd ..
    pip install -e MegatronAdaptor
    ```
@@ -146,8 +146,11 @@
 4. 安装TransformerEngineNPU（TENPU）
 
    ```shell
-   git clone --branch main https://gitcode.com/Ascend/TransformerEngineNPU.git
-   pip install -e TransformerEngineNPU --no-build-isolation
+   git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
+   cd TransformerEngineNPU
+   git checkout 26.2.0_release_v2.17
+   pip install -e . --no-build-isolation
+   cd ..
    ```
 
    > [!NOTE]
@@ -161,7 +164,7 @@
    ```shell
    git clone https://gitcode.com/Ascend/MindSpeed.git
    cd MindSpeed
-   git checkout core_r0.18.0
+   git checkout 26.2.0_core_r0.18.0
    cd ..
    pip install -e MindSpeed
    ```

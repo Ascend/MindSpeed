@@ -14,11 +14,11 @@ The specific implementation strategies for pipeline parallelism are as follows:
 * Relay-style parallelism: A relay-style parallel computation approach is adopted between stages, where the computation result of the current stage serves as the input for the next stage, forming a continuous forward and backward computation flow.
 * Warm-up and cool-down: At the beginning of pipeline parallel training, a warm-up phase is required to initialize the computation flow; at the end of training, a cool-down phase ensures that all computation tasks across stages are completed.
 
-Figure 1 Pipeline parallelism scheduling diagram
+### Figure 1 Pipeline parallelism scheduling diagram
 
-![PP scheduling](../figures/pipedream1F1B.png)
+![alt text](../figures/pipedream1F1B.png)
 
-For details, refer to the paper [PipeDream: Fast and Efficient Pipeline Parallel DNN Training](https://arxiv.org/pdf/1806.03377).
+For details, refer to the paper [original link](https://arxiv.org/pdf/1806.03377)
 
 ## Application Scenario
 
@@ -31,11 +31,7 @@ Pipeline parallelism is suitable for the following scenarios:
 ## Usage
 
 To enable pipeline parallelism, add the following parameter configuration to the training script:
-
-```bash
---pipeline-model-parallel-size N      # N represents the number of pipeline stages, i.e., the number of NPUs participating in parallel training
-```
-
+`--pipeline-model-parallel-size  N      # N represents the number of pipeline stages, i.e., the number of NPUs participating in parallel training`
 Configure this according to actual needs. The default value is `1`.
 
 ## Effects

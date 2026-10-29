@@ -139,8 +139,8 @@ This guide provides the complete steps for batch path replacement using the `rep
 
     > Note: The current MindSpeed code does not directly call this interface; this is provided only as an adaptation note. If upper-layer services or O&M scripts rely on the return value of this interface to determine the chip model, ensure that the return value is `A2G3` or `A2G4`; otherwise, model-related logic branches may be affected.
 
-    For verification methods, refer to
-    [dcmi_get_device_chip_info](https://support.huawei.com/enterprise/zh/doc/EDOC1100568435/8739bb5a).
+    <!-- For verification methods, refer to
+    [dcmi_get_device_chip_info](<>). -->
 
 4. Conduct smoke testing for core feature.
 

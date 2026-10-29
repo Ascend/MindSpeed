@@ -1,11 +1,11 @@
 # <p align="center"> <img src="docs/LOGO.png" height="172px" width="598px"> </p>
 
 <p align="center">
-    English | <a href="./README.md">简体中文</a>
+   <a href="./README.md"> 简体中文 </a> | English
 </p>
 
 <p align="center">
-    <a> <img src="https://img.shields.io/badge/python-3.8%7C3.9%7C3.10-green"> </a>
+    <a> <img src="https://img.shields.io/badge/python-3.12-green"> </a>
     <a> <img src="https://img.shields.io/badge/build-passing-green"> </a>
     <a href="https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE">
         <img alt="Badge" src="https://img.shields.io/badge/License-MIT-blue.svg">
@@ -27,7 +27,26 @@ MindSpeed Core is a large model acceleration library for Huawei [Ascend devices]
 Large model training is a highly complex process involving many technologies and challenges, among which the large amount of memory resources required by large model training poses considerable challenges to computing cards.
 To enable computation across multiple computing cards when the memory resources of a single computing card are insufficient, the industry has introduced third-party large model acceleration libraries such as Megatron and DeepSpeed, which partition models, input data, and so on, distribute them to different computing cards, and finally aggregate the results through collective communication.
 
-Ascend provides MindSpeed Core, enabling customers' large model workloads to be quickly migrated to Ascend devices, while also supporting Ascend-proprietary algorithms to ensure out-of-the-box usability. For more information, refer to [MindSpeed Core Introduction](./docs/en/introduction.md).
+Ascend provides MindSpeed Core, enabling customers' large model workloads to be quickly migrated to Ascend devices, while also supporting Ascend-proprietary algorithms to ensure out-of-the-box usability.
+
+## Architecture
+
+The current version of MindSpeed Core (based on Megatron-LM 0.18.x) decouples the architecture into layers and extracts the original Megatron/TE native adaptation content into independent components, so that MindSpeed focuses on Ascend NPU-specific acceleration features:
+
+| Component | Role | Description |
+|------|------|------|
+| [MegatronAdaptor](https://gitcode.com/Ascend/MegatronAdaptor) (MA) | Basic NPU adaptation layer | Provides basic NPU adaptation such as RNG, softmax, device detection, and the TE virtual module, enabling Megatron-LM to run on Ascend devices |
+| [TransformerEngineNPU](https://gitcode.com/Ascend/TransformerEngineNPU) (TENPU) | NPU implementation of the TE API | Provides NPU implementations of core Transformer Engine operators such as Linear, LayerNorm, DotProductAttention, and FP8 basic |
+| MindSpeed Core | NPU-specific enhancement features | Provides Ascend-specific acceleration capabilities such as enhanced FP8 recipes, communication fusion, weight reuse, and affinity fusion operators |
+
+```text
+Megatron-LM
+  → MegatronAdaptor (basic NPU adaptation)
+  → TransformerEngineNPU (NPU implementation of the TE API)
+  → MindSpeed Core (NPU-specific acceleration)
+```
+
+For more information, refer to [MindSpeed Core Introduction](./docs/en/introduction.md).
 
 In addition, based on MindSpeed Core, acceleration libraries for large language model and multimodal model suites are also provided:
 
@@ -48,7 +67,7 @@ MindSpeed/
 │   ├── ops/                      # Operator modules, including efficient implementations of fusion operators and custom operators
 │   ├── args_utils.py             # Argument utilities, providing parameter parsing and validation functionality
 │   ├── arguments.py              #  Argument definitions, including distributed training-related parameters
-│   ├── megatron_adapter.py       #  Megatron-LM adapter, enabling integration with the Megatron framework
+│   ├── megatron_adapter.py       # MindSpeed enhanced adapter entry, used together with MegatronAdaptor
 │   ├── patch_utils.py            # Patch utilities, providing dynamic code patching functionality
 │   ├── train.py                  # Training module, providing training flow control
 │   └── ...                       # Other modules and utilities
@@ -62,6 +81,7 @@ MindSpeed/
 ---
 
 - [May 21, 2025]: 🚀 MindSpeed Core now supports Mcore 0.12.1.
+- [Aug 7, 2026]: 🚀 MindSpeed Core completes basic adaptation for Megatron-LM 0.18.0, with the architecture decoupled into MA + TENPU + MindSpeed, and used together with MegatronAdaptor and TransformerEngineNPU.
 
 > Note: The current version provides preliminary support for two Transformer implementations. To fall back to the legacy Transformer implementation, you need to configure the parameter `--transformer-impl local`.
 
@@ -77,14 +97,16 @@ MindSpeed/
 
 The table below lists recommended versions:
 
-| Software               | Version                       |
-|------------------|--------------------------|
-| MindSpeed Core Branch | master                   |
-| Mcore          | 0.12.1                   |
-| CANN           | 9.0.0                  |
-| PyTorch          | 2.7.1             |
-| TorchNPU      | 26.1.0                  |
-| Python        | Python3.10.x |
+| Software               | Version                |
+|----------------------|----------------------|
+| MindSpeed Core Branch    | 26.2.0_core_r0.18.0  |
+| MegatronAdaptor      | 26.2.0_core_r0.18.0  |
+| TransformerEngineNPU | 26.2.0_release_v2.17 |
+| Megatron-LM Version     | core_v0.18.2               |
+| CANN Version            | 9.2.0                |
+| PyTorch              | 2.10.0               |
+| torch_npu Version       | 26.2.0               |
+| Python Version          | Python3.12.x         |
 
 For more details, refer to: [Version Compatibility Table](./docs/en/release_notes_core.md#version-compatibility-information).
 
@@ -92,17 +114,86 @@ For more details, refer to: [Version Compatibility Table](./docs/en/release_note
 
 ---
 
-## Install from Source
+The current version of MindSpeed Core is based on the three-layer architecture of MA + TENPU + MindSpeed, with the following dependencies:
 
-After pulling the MindSpeed Core source code, install it using the `pip` command: `pip install -e MindSpeed`. For details, refer to the [Installation Guide](./docs/en/user-guide/install_guide.md) to install the specified branch of MindSpeed Core and its dependencies.
+```text
+MegatronAdaptor (MA)           ← Basic NPU adaptation, enabling Megatron-LM to run
+  └→ TransformerEngineNPU      ← NPU implementation of TE operators, relying on MA to complete device initialization
+       └→ MindSpeed Core       ← Ascend-specific acceleration, relying on MA + TENPU to provide basic capabilities
+```
 
-To obtain and switch the Megatron-LM version to core_v0.12.1, refer to the following:
+> **Key Constraints**:
+>
+> - **The installation order must be MA → TENPU → MindSpeed**, and none of the three can be omitted.
+> - TransformerEngineNPU and the native [TransformerEngine](https://github.com/NVIDIA/TransformerEngine) library have the same module name (both are `transformer_engine`); **it is strictly forbidden to install both in the same environment**. If the native TE is already installed, first run `pip uninstall transformer_engine` to uninstall it.
+> - MA and TENPU each have their own version branch requirements. Pull the corresponding branches as described in the steps below; a version mismatch will cause runtime errors.
 
- ```shell
- git clone https://github.com/NVIDIA/Megatron-LM.git
- cd Megatron-LM
- git checkout core_v0.12.1
- ```
+## Installation from Source
+
+To obtain and switch the Megatron-LM version to core_v0.18.2, refer to the following:
+
+```shell
+git clone https://github.com/NVIDIA/Megatron-LM.git
+cd Megatron-LM
+git checkout core_v0.18.2
+```
+
+### Installing MegatronAdaptor (Basic NPU Adaptation Layer)
+
+```shell
+git clone https://gitcode.com/Ascend/MegatronAdaptor.git
+cd MegatronAdaptor
+git checkout 26.2.0_core_r0.18.0
+cd ..
+pip install -e MegatronAdaptor
+```
+
+### Installing TransformerEngineNPU (NPU Implementation of the TE API)
+
+TENPU provides implementations of TE core operators such as Linear, LayerNorm, DotProductAttention, and FP8 basic on Ascend devices. **Before installation, confirm that the native TransformerEngine does not exist in the environment**:
+
+```shell
+# Uninstall the native TE (if present)
+pip uninstall -y transformer_engine
+
+# Install TENPU
+git clone https://gitcode.com/Ascend/TransformerEngineNPU.git
+cd TransformerEngineNPU
+git checkout 26.2.0_release_v2.17
+cd ..
+pip install -e TransformerEngineNPU --no-build-isolation
+```
+
+> **Verification**: Run `pip show transformer_engine` and confirm that the displayed path is the `TransformerEngineNPU` directory.
+
+### Installing MindSpeed Core
+
+After MA and TENPU are installed, install MindSpeed:
+
+```shell
+git clone https://gitcode.com/Ascend/MindSpeed.git
+cd MindSpeed
+git checkout 26.2.0_core_r0.18.0
+cd ..
+pip install -e MindSpeed
+```
+
+### Environment Verification
+
+After installation, you can verify in Python whether each component is correctly installed:
+
+```python
+# Verify MA
+import megatron_adaptor     # If no error is reported, MA is loaded correctly
+
+# Verify TENPU
+import transformer_engine   # If no error is reported, TENPU is working correctly (not the native TE)
+
+# Verify MindSpeed
+import mindspeed.megatron_adaptor  # If no error is reported, MindSpeed is loaded correctly
+```
+
+For details, refer to the [Installation Guide](./docs/en/user-guide/install_guide.md) to learn about hardware/OS compatibility, CANN/PyTorch/torch_npu installation, and other detailed prerequisite steps.
 
 # Quick Start
 
@@ -110,15 +201,15 @@ To obtain and switch the Megatron-LM version to core_v0.12.1, refer to the follo
 
 ## Overview
 
-To use MindSpeed Core, you only need to add one line of code to run Megatron-LM on Ascend training devices, and then refer to [Feature Introduction](#feature-introduction) to enable the various acceleration features of MindSpeed.
+To use MindSpeed Core, you only need to add one line of code to run Megatron-LM on Ascend training devices with the layered MA + TENPU + MindSpeed architecture, and then refer to [Feature Introduction](#feature-introduction) to enable the various acceleration features of MindSpeed.
 
 ## Usage
 
-Take the GPT model as an example: in the Megatron-LM directory, modify the `pretrain_gpt.py` file and add a new line under `import torch`: `import mindspeed.megatron_adaptor`, as shown in the following modification:
+Take the GPT model as an example: in the Megatron-LM directory, modify the `pretrain_gpt.py` file and add a new line under `import torch`: `import megatron_adaptor`, as shown in the following modification:
 
   ```python
     import torch
-    import mindspeed.megatron_adaptor # // Add the new code line.
+    import megatron_adaptor # Add the new code line.
     from functools import partial
     from contextlib import nullcontext
     import inspect
@@ -129,9 +220,9 @@ For specific operations, refer to [Quick Start](./docs/en/user-guide/quickstart.
 For the quick start guides of MindSpeed LLM and MindSpeed MM, refer to:
 
 - LLM training
-  - [Based on the PyTorch framework](https://gitcode.com/Ascend/MindSpeed-LLM/blob/master/docs/en/pytorch/training/quick_start.md)
+  - [Based on the PyTorch framework](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.2.0/docs/en/pytorch/training/quick_start.md)
 - Multimodal model training
-  <!-- - [Based on the PyTorch framework](https://gitcode.com/Ascend/MindSpeed-MM/blob/master/docs/en/pytorch/quickstart.md)-->
+<!--  - [Based on the PyTorch framework](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.2.0/docs/en/guides/practices/quickstart.md) -->
 
 # Acceleration Feature Layers
 
@@ -182,7 +273,7 @@ MindSpeed features consist of seven major modules: Megatron, parallel strategy, 
 
 - Current large model training mainly uses the bf16 data type. Unless otherwise stated, the following features are in principle compatible with fp16. If you encounter problems when using other data types, you can submit an issue, and we will respond in a timely manner. 🛰️
 
-- Note❗: After `Megatron_core_r0.9.0`, `alltoall dispatcher` has been adjusted, and the original `alltoall dispatcher` has been renamed to `alltoall_seq`. For the support status of MindSpeed MoE features across branches, see the description of each feature.
+- Note❗: After `Megatron_core_r0.18.0`, `alltoall dispatcher` has been adjusted, and `alltoall_seq` is no longer supported. For the support status of MindSpeed MoE features across branches, see the description of each feature.
 
 For details, see [MindSpeed Core Feature Support](./docs/en/features/feature_list.md).
 
@@ -234,10 +325,10 @@ For FAQs, see [MindSpeed FAQs](./docs/en/FAQ.md).
 
 # Reference
 
+---
+
 - [MindSpeed Accelerates Million-Level Ultra-Long Sequence Large Model Training](https://mp.weixin.qq.com/s/8q4MxCkosLn0yoneuxzynw)  🚀🚀
-
 - [MindSpeed Accelerates Trillion-Parameter MoE Large Model Training](https://mp.weixin.qq.com/s/HQRzYzSUNNMonv5d1AP0OQ)  🚀🚀
-
 - [Struggling with Large Model Training Memory Optimization? MindSpeed Has Solutions](https://mp.weixin.qq.com/s/lwjVgM67hwsgtOKp06zYPg) 🚀🚀
 
 # Security Statement
@@ -265,7 +356,7 @@ Welcome to contribute to MindSpeed Core! Please refer to the [Contribution Guide
 
 ## To Data Owners
 
-If you do not wish your model or dataset to be mentioned in MindSpeed, or if you wish to update the relevant descriptions in MindSpeed, please submit an issue on Gitee. We will remove or update the relevant descriptions according to your issue requirements. We sincerely appreciate your understanding of and contribution to MindSpeed.
+In addition, we appreciate the following teams for their contributions to the project:
 
 ## License Statement
 

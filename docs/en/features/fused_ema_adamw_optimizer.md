@@ -10,7 +10,7 @@ During training, the fused_ema_adamw optimizer maintains an `ema_params` state f
 
     ema_params = ema_decay * ema_params + (1 - ema_decay) * model_params
 
-```model_params``` represents the model parameters, and `ema_decay` is a hyperparameter. The `--ema-decay` can be specified in the training script using `--ema-decay <value>`. If not specified in the script, the default `ema_decay` is `0.9999`.<br>
+`model_params` represents the model parameters, and `ema_decay` is a hyperparameter. The `--ema-decay` can be specified in the training script using `--ema-decay <value>`. If not specified in the script, the default `ema_decay` is `0.9999`.<br>
 
 ## Application Scenario
 

@@ -9,10 +9,8 @@ When training models on large-scale datasets, a single computing device often ca
 The data parallelism (DP) strategy divides the dataset into multiple batches and distributes them evenly across computing devices, so that each device is only responsible for processing a specific batch of data.
 
 The implementation of this scheme requires the following two key elements:
-
-- The model structure and parameters deployed on each computing device must remain completely identical.
-- The data batches processed by each device must be different from one another, ensuring the parallelism and efficiency of the training process.
-
+The model structure and parameters deployed on each computing device must remain completely identical.
+The data batches processed by each device must be different from one another, ensuring the parallelism and efficiency of the training process.
 The overall approach of this scheme is as follows:
 
 * Model replication: Store a complete model replica on each computing device.
@@ -33,14 +31,14 @@ Enabling and configuring data parallelism primarily depends on the following met
 * World size: The total number of NPUs participating in parallel training.
 * Tensor model parallel size: The number of parallel partitions for model weights.
 * Pipeline model parallel size: The degree of pipeline parallelism for the model architecture.
-* Context parallel size: The parallel strategy for processing long sequence data.
+* Long sequence parallel size: The parallel strategy for processing long sequence data.
 
 data_parallel_size = world_size // (tensor_model_parallel_size \* pipeline_model_parallel_size \* context_parallel_size)
 
-> [!NOTE]
->
-> The total number of model layers must be divisible by the pipeline parallelism size.
-> `global_batch_size` must be divisible by `data_parallel_size`.
+### Notes
+
+* The total number of model layers must be divisible by the pipeline parallelism size.
+* `global_batch_size` must be divisible by `data_parallel_size`.
 
 ## Effects
 

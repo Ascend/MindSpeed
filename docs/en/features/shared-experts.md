@@ -1,6 +1,6 @@
 # Shared Experts
 
-## Background and Challenges
+## Solution Introduction
 
 Large language models face significant computational cost issues when scaling parameter sizes. With the evolution of Mixture of Experts (MoE) models, the concepts of routed experts and shared experts have emerged. For routed experts, input data passes through a routing module that selects experts with higher probabilities for computation; for shared experts, input data does not need to go through the routing module—all data is processed by the shared experts. The computation results of routed experts and shared experts are summed to produce the final output of the MoE module.
 
@@ -12,13 +12,15 @@ Some experts are designated as shared experts to capture and integrate common kn
 
 For more information about shared experts, see [DeepSeekMoE: Towards Ultimate Expert Specialization in Mixture-of-Experts Language Models](https://arxiv.org/pdf/2401.06066).
 
-Figure 1 Shared expert isolation
+### Figure 1 Shared expert isolation
 
 ![img](../figures/shared-experts.png)
 
 ## Application Scenario
 
-Usage in MoE scenarios: `--moe-model-type megatron_moe`.
+**Backend limitation:** When combined with Grouped GEMM, Alltoall communication overlap, or FB overlap, `--transformer-impl transformer_engine` must be set.
+
+Use the native Megatron MoE.
 
 ## Usage
 
@@ -26,12 +28,7 @@ Shared expert-related commands and parameter descriptions:
 
 | Command Parameter                     | Description                   |
 |--------------------------|------------------------|
-| `--n-shared-experts [int]` | Number of shared experts                 |
-
-> [!NOTE]
->
-> * Enabling shared experts requires mcore mode, meaning `--use-legacy-models` is not set.
-> * The command parameter for configuring the intermediate hidden layer size of shared experts is the same as that for routed experts: `--ffn-hidden-size [int]`
+| `--moe-shared-expert-intermediate-size N` | Intermediate hidden layer size of shared experts |
 
 ## Effects
 

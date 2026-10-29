@@ -1,12 +1,12 @@
 # Data Profiling in MindSpeed
 
-📝 MindSpeed supports enabling of data profiling through commands. The command configurations are as follows:
+Enable data profiling through the parameters provided by MegatronAdaptor. The command configurations are as follows:
 
 | Command Configuration    | Command Description                                                                                                                                                                                                 |
 |-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `--profile`               | Enables the profiling switch                                                                                                                                                                                          |
 | `--profile-step-start`    | Configures the start step for profiling. When not configured, it defaults to `10`. Configuration example: `--profile-step-start 30`                                                                                   |
-| `--profile-step-end`      | Configures the end step for profiling. When not configured, it defaults to `12`. Configuration example: `--profile-step-end 35`                                                                                       |
+| `--profile-step-end`      | Configures the end step for profiling. It must be greater than the start step. When not configured, it defaults to `12`. Configuration example: `--profile-step-end 35` |
 | `--profile-level`         | Configures the profiling level. When not configured, it defaults to level0. Optional configurations: `level0`, `level1`, `level2`. Configuration example: `--profile-level level1`                                        |
 | `--profile-with-cpu`      | Enables the CPU information profiling switch                                                                                                                                                                       |
 | `--profile-with-stack`    | Enables the stack information profiling switch                                                                                                                                                                     |

@@ -4,7 +4,7 @@
 
 + CANN
 + CANN-NNAL (Ascend-Transformer-Boost)
-+ TorchNPU
++ torch_npu
 
 ## Compilation and Installation
 
@@ -24,7 +24,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh
 
 ### 2. Included Header Files
 
-+ Latest TorchNPU version
++ Latest torch_npu version
 + Latest CANN version
 
 ### 3. Installation Scripts

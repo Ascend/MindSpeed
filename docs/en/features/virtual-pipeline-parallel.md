@@ -10,11 +10,11 @@ To address this issue, virtual pipeline parallelism technology was proposed, aim
 
 The core of Virtual Pipeline Parallelism (VPP) lies in further subdividing the model into more stages without increasing the number of devices, trading increased communication volume for a lower bubble ratio. With the same number of devices, more pipeline stages are created, exchanging more communication for a reduced bubble ratio.
 
-Figure 1 Virtual pipeline parallelism
+### Figure 1 Virtual Pipeline Parallelism Diagram
 
-![VPP diagram](../figures/virtual-pipeline.PNG)
+![alt text](../figures/virtual-pipeline.PNG)
 
-For more details, see the paper [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://dl.acm.org/doi/10.1145/3458817.3476209).
+[Link to the original paper](https://dl.acm.org/doi/10.1145/3458817.3476209)
 
 For example, assuming the model has a total of 16 layers, tensor parallelism size is 1, pipeline parallelism size is 4, and virtual pipeline parallelism size is 2, the model will be divided into 4 * 2 = 8 stages, with each stage containing 16/8 = 2 layers, as shown below:
 
@@ -32,17 +32,17 @@ Given the performance bottlenecks in current data processing and model training,
 ## Usage
 
 Virtual pipeline parallelism depends on pipeline parallelism. To enable virtual pipeline parallelism, add the following parameter configuration to the training script:
-
-```bash
---num-layers-per-virtual-pipeline-stage  N     # N represents the number of layers per virtual pipeline stage
-```
+`--num-layers-per-virtual-pipeline-stage N`, where N is the number of layers per virtual pipeline stage; you can also use `--num-virtual-stages-per-pipeline-rank` to specify the number of virtual stages for each PP rank.
 
 Additionally, when enabling this feature, the total number of model layers `L % N == 0` must hold, and `--pipeline-model-parallel-size` must be greater than or equal to `2`.
 
-> [!NOTE]
->
-> * Megatron virtual pipeline parallelism (VPP) directly affects how weights are partitioned. When saving or loading weight files, you must maintain consistency in VPP configuration parameters to ensure accurate model weight loading and stable system operation.
-> * When training with the verl framework, mbridge is currently incompatible with VPP. Please use this feature when mbridge is not enabled.
+### Notes
+
+If `N * PP == num_layers`, remove `--num-layers-per-virtual-pipeline-stage`; when the VPP size is 1, it degrades to normal PP, and `overlap-p2p-comm` is disabled.
+
+1. Megatron virtual pipeline parallelism (VPP) directly affects how weights are partitioned. When saving or loading weight files, you must maintain consistency in VPP configuration parameters to ensure accurate model weight loading and stable system operation.
+
+2. When training with the verl framework, mbridge is currently incompatible with VPP. Please use this feature when mbridge is not enabled.
 
 ## Effects
 

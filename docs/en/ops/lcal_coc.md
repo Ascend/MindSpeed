@@ -2,7 +2,7 @@
 
 ## Note
 
-This API is supported by Atlas A2/A3 training products, and not supported by Ascend 950 products.
+This API is supported by Atlas A2 training products/Atlas A3 training products, but not supported by Ascend 950PR&950DT products.
 
 ## matmul_all_reduce
 

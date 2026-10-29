@@ -17,14 +17,14 @@ The auto settings feature relies entirely on data modeling derived from profilin
 
 ### White-Box Search
 
-- **Phase 1**: Launch auto settings on a small number of machines. This feature scales down the network size, generates multiple profiling configurations, and automatically launches them multiple times. These profiling runs are primarily used for black-box analysis, such as analyzing which tensors are partitioned, how the shapes of certain operators change, and which operators are added or removed when the configuration changes. After profiling is complete, the result files are parsed to extract the information needed for subsequent black-box modeling.
-- **Phase 2**: Perform black-box modeling based on the profiling results. For memory, it automatically analyzes how each tensor is partitioned under different configurations. For performance, it infers how operators are added or removed and how their shapes change with different configurations, and regresses the efficiency of intra-node and inter-node communication. In addition to basic performance and memory modeling, it also analyzes the performance and memory of each candidate recomputation module, enabling the subsequent search to estimate which modules should be selected for recomputation and their impact on performance and memory.
-- **Phase 3**: Search for configurations based on the models derived in Phase 2, providing the expected performance and memory for each configuration. This step also relies on an operator performance knowledge base to query the performance of operators with different shapes. Any unseen operators generated during profiling are added to the operator performance knowledge base. If the proportion of operators covered by the knowledge base for a given configuration falls below a threshold, an additional profiling run is launched. This profiling can also simulate large-scale scenarios with smaller setups by simultaneously reducing the network scale and parallelism parameters to obtain operators with the same shapes. If the operator coverage is insufficient to infer performance, the performance of the few uncovered operators is estimated through regression. After the search is complete, the top three configurations with the best performance that meet memory requirements are recommended.
+- **Phase 1:** Launch auto settings on a small number of machines. This feature scales down the network size, generates multiple profiling configurations, and automatically launches them multiple times. These profiling runs are primarily used for black-box analysis, such as analyzing which tensors are partitioned, how the shapes of certain operators change, and which operators are added or removed when the configuration changes. After profiling is complete, the result files are parsed to extract the information needed for subsequent black-box modeling.
+- **Phase 2:** Perform black-box modeling based on the profiling results. For memory, it automatically analyzes how each tensor is partitioned under different configurations. For performance, it infers how operators are added or removed and how their shapes change with different configurations, and regresses the efficiency of intra-node and inter-node communication. In addition to basic performance and memory modeling, it also analyzes the performance and memory of each candidate recomputation module, enabling the subsequent search to estimate which modules should be selected for recomputation and their impact on performance and memory.
+- **Phase 3:** Search for configurations based on the models derived in Phase 2, providing the expected performance and memory for each configuration. This step also relies on an operator performance knowledge base to query the performance of operators with different shapes. Any unseen operators generated during profiling are added to the operator performance knowledge base. If the proportion of operators covered by the knowledge base for a given configuration falls below a threshold, an additional profiling run is launched. This profiling can also simulate large-scale scenarios with smaller setups by simultaneously reducing the network scale and parallelism parameters to obtain operators with the same shapes. If the operator coverage is insufficient to infer performance, the performance of the few uncovered operators is estimated through regression. After the search is complete, the top three configurations with the best performance that meet memory requirements are recommended.
 
 ### Black-Box Search
 
-- **Phase 1**: Same as Phase 1 of white-box search, performs modeling and pruning the search space.
-- **Phase 2**: Profiles each configuration in the search space to obtain the corresponding memory usage, operator time, and communication time, thereby selecting the most suitable configuration.
+- **Phase 1:** Same as Phase 1 of white-box search, performs modeling and pruning the search space.
+- **Phase 2:** Profiles each configuration in the search space to obtain the corresponding memory usage, operator time, and communication time, thereby selecting the most suitable configuration.
 
 ### Mixed Search
 
@@ -48,7 +48,7 @@ Supported features:
 - [x] ZeRO1
 - [x] VPP
 - [x] CP (ring attention)
-- [x] EP (DeepSpeed-MOE)
+- [x] EP (Deepspeed-MOE)
 - [x] MicroBatchSize
 - [x] Token rearrangement
 - [x] Recomputation
@@ -75,7 +75,7 @@ Add the following configuration to the parameter list of the training script to 
 --target-nnodes $NNODES \                         # Number of nodes launched for profiling, consistent with the baseline training script
 --nproc-per-node $GPUS_PER_NODE \               # Number of processes running on each node, typically equal to the number of devices per node, consistent with the baseline training script
 --master-addr $MASTER_ADDR \                    # Master node IP, keep consistent with the baseline training script
---master-port 6005 \                           # Master node port, set a port different from the baseline script
+--master-port 6005    \                       # Master node port, set a port different from the baseline script
 --node-rank $NODE_RANK \                        # Keep consistent with the baseline training script
 ```
 

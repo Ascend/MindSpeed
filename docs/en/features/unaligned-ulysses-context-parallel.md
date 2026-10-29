@@ -24,7 +24,7 @@ The "Unaligned Ulysses" feature is suitable for the following typical scenarios:
 
 To leverage the "Unaligned Ulysses" feature, users can pass in a custom Calculator based on the `GatherSizeCalculator` base class according to business requirements, or directly use the predefined `DynamicGatherSizeCalculator`. The basic steps are as follows:
 
-1. Configure the context parallel size to be greater than 1 in the launch script, for example, `--context-parallel-size [int]`. Also configure `--context-parallel-algo ulysses_cp_algo`.
+1. Configure the context parallel size to be greater than 1 in the launch script, `--context-parallel-size [int]`.<!-- Also configure `--context-parallel-algo ulysses_cp_algo`. -->
 2. Create a custom calculator class that inherits from `GatherSizeCalculator` and implement the `calculate()` method. When initializing the `UlyssesContextAttention` object, pass the custom `gather_size_calculator` instance through the constructor parameter.
 3. If complex custom logic is not required, you can directly use `DynamicGatherSizeCalculator`, which automatically calculates the gather size based on the attention mask sequence length of the current batch.
 
@@ -53,7 +53,7 @@ ulysses_attention = UlyssesContextAttention(core_attention, ps.get_context_paral
 
 By introducing "Unaligned Ulysses", the system improves its adaptability to different input lengths. This not only resolves the issues encountered by traditional Ulysses when processing dynamic or irregular input sequences, but also maintains good scalability.
 
-> [!NOTE]
->
-> - Unaligned Ulysses long-sequence parallelism does not support use on the legacy branch, meaning it cannot be enabled simultaneously with `--use-legacy-models`.
-> - Unaligned Ulysses long-sequence parallelism is currently incompatible with Ulysses long-sequence parallelism KV cache optimization. If the launch script sets `--context-parallel-kv-cache-policy` to `full` or `half`, the system will automatically fall back to using the aligned Ulysses long-sequence parallelism.
+## Notes
+
+1. Unaligned Ulysses long-sequence parallelism does not support use on the legacy branch, meaning it cannot be enabled simultaneously with `--use-legacy-models`.
+2. Unaligned Ulysses long-sequence parallelism is currently incompatible with Ulysses long-sequence parallelism KV cache optimization. If the launch script sets --context-parallel-kv-cache-policy to full or half, the system will automatically fall back to using the aligned Ulysses long-sequence parallelism.

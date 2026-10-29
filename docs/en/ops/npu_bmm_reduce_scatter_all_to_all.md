@@ -78,7 +78,7 @@ Data relationship description:
 - Both ep and tp only support 2, 4, 8, 16, and 32;
 - The names of group_ep and group_tp cannot be the same;
 - C must be greater than 0, with the upper limit being the operator's device memory limit. When shard_type is 1, C must be an integer multiple of tp;
-- Cross-supernode is not supported; only intra-supernode is supported.
+- Cross-SuperPoD is not supported; only intra-SuperPoD is supported.
 
 ## Example Call of the npu_bmm_reducescatter_alltoall Class (to be verified)
 

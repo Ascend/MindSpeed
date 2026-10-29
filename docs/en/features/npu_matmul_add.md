@@ -30,4 +30,4 @@ The specific change process is as follows:
 
 ## Effects
 
-When memory is not fully utilized, enabling the Matmul_Add fused operator will improve model training performance. For the Llama2-7b model, the performance gain is approximately 2%.
+When memory is not fully used or filled, enabling the Matmul_Add fused operator will improve model training performance. For the LLaMA2-7B model, the performance gain is approximately 2%.

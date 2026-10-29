@@ -23,7 +23,8 @@ The intended readers of this manual are mainly researchers, engineers, and devel
 
 ### What Is Model Migration
 
-Model migration refers to migrating a deep learning model that originally runs on GPU or other hardware platform to NPU, while ensuring that the model runs with high-performance execution within an acceptable accuracy tolerance.
+Model migration refers to migrating a deep learning model that originally runs on GPU or other hardware platform to NPU,
+while ensuring that the model runs with high-performance execution within an acceptable accuracy tolerance.
 
 ### Why Perform Model Migration
 
@@ -32,10 +33,12 @@ a series of adaptation operations from the lower layers to the upper layers are 
 Taking GPU as an example, the reasons why a model needs adaptation when migrating to NPU can be divided into three aspects:
 
 - Differences in hardware characteristics and performance features
-Because NPU and GPU differ in hardware characteristics and performance features, the model may require further performance tuning and optimization on NPU to fully unleash the potential of NPU.
+Because NPU and GPU differ in hardware characteristics and performance features,
+the model may require further performance tuning and optimization on NPU to fully unleash the potential of NPU.
 
 - Differences in computing architecture
-NVIDIA GPUs adopt Compute Unified Device Architecture (CUDA) parallel computing architecture, while Huawei NPUs adopt Compute Architecture for Neural Networks (CANN) heterogeneous computing architecture.
+NVIDIA GPUs adopt Compute Unified Device Architecture (CUDA) parallel computing architecture,
+while Huawei NPUs adopt Compute Architecture for Neural Networks (CANN) heterogeneous computing architecture.
 
 - Differences in deep learning frameworks
 To support NPU hardware, the `Megatron-LM` framework must be adapted through `MindSpeed`, including adapting tensor operations, automatic differentiation, and other functions so that they can be executed efficiently on NPUs.
@@ -66,7 +69,7 @@ With just a single line of code, you can easily use the various features of `Min
 
  2. In the root directory of the `Megatron-LM` repository, modify the `pretrain_gpt.py` file and add a new line below `import torch`:
 
-    `import mindspeed.megatron_adaptor`
+    `import megatron_adaptor`
 
     This completes the adaptation of the `Megatron-LM` model.
 
@@ -75,7 +78,7 @@ With just a single line of code, you can easily use the various features of `Min
     ```python
     import os
     import torch
-    import mindspeed.megatron_adaptor # Add the code line.
+    import megatron_adaptor # Add the code line.
     from functools import partial
     from typing import Union
     ```
@@ -94,12 +97,14 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
  1. Download `vocab.json` and `merges.txt` from [gpt-3.5-turbo](https://huggingface.co/Xenova/gpt-3.5-turbo/tree/main). Place the downloaded files into a newly created `gpt-tokenizer` directory under the root directory of the `Megatron-LM` repository, and rename them to `gpt2-vocab.json` and `gpt2-merges.txt`, respectively.
 
-    If the download is too slow or inaccessible, configure an available proxy for accessing overseas websites or an available domestic HuggingFace mirror and retry.
+    If the download is too slow or inaccessible,
+    configure an available proxy for accessing overseas websites or an available domestic HuggingFace mirror and retry.
     If you cannot access HuggingFace community resources smoothly, it is recommended to download from ModelScope instead, while paying attention to the correctness and security of the files to be downloaded.
 
  2. Download the Alpaca dataset file [train-00000-of-00001-a09b74b3ef9c3b56.parquet](https://huggingface.co/datasets/tatsu-lab/alpaca) from HuggingFace and place it in any directory on the server, for example `/home/datasets/Alpaca`.
 
-    If the download is too slow or inaccessible, configure an available proxy for accessing overseas websites or an available domestic HuggingFace mirror and retry.
+    If the download is too slow or inaccessible,
+    configure an available proxy for accessing overseas websites or an available domestic HuggingFace mirror and retry.
     If you cannot access HuggingFace community resources smoothly, it is recommended to download from ModelScope instead, while paying attention to the correctness and security of the files to be downloaded.
 
  3. Read the raw corpus of the Alpaca dataset in parquet format and convert it to JSON format for subsequent processing.
@@ -114,7 +119,8 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     python convert_parquet.py
     ```
 
-    Here, `convert_parquet.py` is a newly created file in the `/home/datasets/Alpaca/` directory, and its specific code is as follows:
+    Here, `convert_parquet.py` is a newly created file in the `/home/datasets/Alpaca/` directory,
+    and its specific code is as follows:
 
     ```python
     import json
@@ -231,11 +237,15 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
     **Follow-up Procedure**
 
-    - The `pretrain_single.sh` script configures the model saving path by default. If you need to load a model for retraining, refer to the [Model Saving and Loading](#model-saving-and-loading) section to perform secondary training of the model.
+    - The `pretrain_single.sh` script configures the model saving path by default.
+    If you need to load a model for retraining,
+    refer to the [Model Saving and Loading](#model-saving-and-loading) section to perform secondary training of the model.
 
-    - Some CUDA errors reported during training may be caused by unsupported APIs (operator APIs or framework APIs). You can go to the [Ascend MindSpeed open-source community](https://gitcode.com/Ascend/MindSpeed) to submit an ISSUE for assistance.
+    - Some CUDA errors reported during training may be caused by unsupported APIs (operator APIs or framework APIs).
+    You can go to the [Ascend MindSpeed open-source community](https://gitcode.com/Ascend/MindSpeed) to submit an ISSUE for assistance.
 
-    - Starting from `core_r0.10.0`, `Megatron-LM` and `MindSpeed` make extensive use of type annotations that rely on newer syntax, such as:
+    - Starting from `core_r0.10.0`,
+    `Megatron-LM` and `MindSpeed` make extensive use of type annotations that rely on newer syntax, such as:
 
         ```python
         hierarchical_context_parallel_sizes: Optional[list[int]] = None
@@ -336,7 +346,9 @@ Select one server as the primary node.
 
  2. `Megatron-LM` supports setting `data_cache_path` to specify a path for sharing data across multiple servers. If `data_cache_path` is not set, the shared storage feature is not used.
 
-    If shared storage is **not used**, you need to modify `gpt_dataset.py` under `megatron/core/datasets/` in the `Megatron-LM` repository on both nodes. The specific modifications are as shown below.
+    If shared storage is **not used**,
+    you need to modify `gpt_dataset.py` under `megatron/core/datasets/` in the `Megatron-LM` repository on both nodes,
+    and the specific modifications are as shown below.
 
     ```python
     # Original
@@ -353,13 +365,15 @@ Select one server as the primary node.
 
  3. Set the IP information of the two nodes to ensure distributed communication.
 
-    On both the **primary and secondary nodes**, set `HCCL_IF_IP` to the local IP. The setting command is as follows:
+    On both the **primary and secondary nodes**, set `HCCL_IF_IP` to the local IP.
+    The setting command is as follows:
 
     ```shell
     export HCCL_IF_IP=xxx.xxx.xxx.xxx
     ```
 
-    On both the **primary and secondary nodes**, use `ifconfig` to check the network interface corresponding to the local IP. For example, if the network interface found on the server is `enp189s0f0`, set it as follows:
+    On both the **primary and secondary nodes**, use `ifconfig` to check the network interface corresponding to the local IP.
+    For example, if the network interface found on the server is `enp189s0f0`, set it as follows:
 
     ```shell
     export GLOO_SOCKET_IFNAME=enp189s0f0
@@ -400,17 +414,19 @@ Select one server as the primary node.
     **Follow-up Procedure**
 
     - The `pretrain_distributed.sh` script configures the model saving path by default.
-
     If you need to load the model for retraining,
     refer to the [Model Saving and Loading](#model-saving-and-loading) section to perform secondary training of the model.
 
-    - Some CUDA errors reported during training may be caused by unsupported APIs (operator APIs or framework APIs). You can go to the [Ascend MindSpeed open-source community](https://gitcode.com/Ascend/MindSpeed) to submit an ISSUE for assistance.
+    - Some CUDA errors reported during training may be caused by unsupported APIs (operator APIs or framework APIs).
+    You can go to the [Ascend MindSpeed open-source community](https://gitcode.com/Ascend/MindSpeed) to submit an ISSUE for assistance.
 
 ## Model Saving and Loading
 
 **Model Saving**
 
-The `Megatron-LM` acceleration library integrates the model saving functionality. You can use the `--save` parameter to specify the save path and `--save-interval` to specify the save interval.
+The `Megatron-LM` acceleration library integrates the model saving functionality.
+You can use the `--save` parameter to specify the save path,
+and `--save-interval` to specify the save interval.
 
 In the `pretrain_single.sh` script configured in the [Single-Node Multi-Device Training](#single-node-multi-device-training) section, the configuration related to model saving is as follows:
 
@@ -426,13 +442,18 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
     --ckpt-format torch
 ```
 
-After single-node multi-device training is executed, files similar to `latest_checkpointed_iteration.txt` and `iter_00000010/mp_rank_00/model_optim_rng.pt` are generated in the `ckpt` folder under the root directory of the `Megatron-LM` repository, indicating that the model has been saved successfully.
+After single-node multi-device training is executed,
+files similar to `latest_checkpointed_iteration.txt` and
+`iter_00000010/mp_rank_00/model_optim_rng.pt` are generated in the `ckpt` folder under the root directory of the `Megatron-LM` repository, indicating that the model has been saved successfully.
 
-The specific file path for the saved model may vary slightly depending on the user's configuration. As long as files at a similar hierarchy level as described above appear, the model has been saved successfully.
+The specific file path for the saved model may vary slightly depending on the user's configuration.
+As long as files at a similar hierarchy level as described above appear, the model has been saved successfully.
 
 **Model Loading**
 
-If you need to use the saved model to continue training, you can use the `--load` parameter to load the model from the specified path. For example, modify the configured `pretrain_single.sh` in [single-Node multi-Device training](#single-node-multi-device-training) as follows:
+If you need to use the saved model to continue training,
+you can use the `--load` parameter to load the model from the specified path.
+For example, modify the configured `pretrain_single.sh` in [Single-Node Multi-Device Training](#single-node-multi-device-training) as follows:
 
 ```shell
 #!/bin/bash

@@ -15,10 +15,7 @@ When the DP size is greater than 1, the optimizer states are evenly distributed 
 ## Usage
 
 To deploy the distributed optimizer, simply add the following configuration to your script:
-
-```bash
---use-distributed-optimizer      #  Enable the distributed optimizer feature
-```
+`--use-distributed-optimizer      # Enable the distributed optimizer feature`
 
 ## Effects
 

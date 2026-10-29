@@ -90,10 +90,6 @@ MindSpeed/
 │   │   ├── quantization/                # Quantization, providing FSDP quantization support
 │   │   └── utils/                       # Utilities, providing FSDP-related helper functions
 │   ├── functional/                      # Functional interfaces, providing NPU-related functional APIs
-│   │   ├── npu_datadump/                # NPU data dump, providing NPU data export and debugging functionality
-│   │   ├── npu_deterministic/           # NPU deterministic computation, ensuring deterministic NPU computation
-│   │   ├── profile/                     # Performance profiling, providing performance analysis and diagnostic tools
-│   │   ├── profiler/                    # Profiler, providing detailed performance analysis functionality
 │   │   └── tflops_calculate/            # TFLOPS calculation, computing training throughput and performance metrics
 │   ├── lite/                            # Lite lightweight version, providing lightweight training support
 │   │   ├── mindspeed_lite_config.py     # Lite configuration, providing Lite version configuration management

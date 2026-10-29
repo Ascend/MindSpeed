@@ -2,6 +2,8 @@
 
 ## MindSpeedFeature Base Class
 
+`mindspeed.features_manager.feature.MindSpeedFeature` inherits MA's feature base class and uses MindSpeed's own `patch_manager` to manage patch ownership. Features are registered to MA's unified `FeaturesManager` list.
+
 - **1. `__init__`**
 
 ```python
@@ -47,14 +49,14 @@ def register_args(self, parser):
 def pre_validate_args(self, args: Namespace)
 ```
 
-**Purpose**: Temporarily modify certain arguments before Megatron argument validation to bypass the native validation logic.
+**Purpose**: Normalize arguments and make aliases compatible before Megatron argument validation.
 
 **Typical Scenarios**:
 
 ```python
 def pre_validate_args(self, args):
-    self._saved_cp_size = args.context_parallel_size
-    args.context_parallel_size = 1  # Temporarily modify to bypass validation.
+    # ContextParallelFeature converts context_parallel_algo to cp_comm_type.
+    self._sync_context_parallel_algo_to_cp_comm_type(args)
 ```
 
 - **4. `validate_args`**
@@ -79,14 +81,7 @@ def validate_args(self, args):
 def post_validate_args(self, args: Namespace)
 ```
 
-**Purpose**: This method is called after `validate_args` and is used to restore the original parameter values after bypassing the native validation.
-
-**Typical Scenario**:
-
-```python
-def post_validate_args(self, args):
-    args.context_parallel_size = self._saved_cp_size  # Restore the original value
-```
+**Purpose**: Perform checks that depend on the final configuration after argument validation. For example, MoE forward-backward overlap checks the position of noop layers at this stage. CP argument normalization should be completed in `pre_validate_args`.
 
 - **6. `pre_register_patches`**
 
@@ -177,7 +172,7 @@ def add_parser_argument_choices_value(parser, argument_name, new_choice)
 | Name | Type | Description |
 | ------ | ------ | ------ |
 | `parser` | ArgumentParser | Argument parser |
-| `argument_name` | str | Target argument name (with or without `--`) |
+| `argument_name` | str | Full registered option name, such as `--tokenizer-type` |
 | `new_choice` | str | New option value to add |
 
 ### MindSpeedPatchesManager Class
@@ -216,3 +211,7 @@ def apply_patches()
 **Purpose**: Enable all registered patches in batch.
 
 **Invocation timing**: Typically invoked uniformly after all features have been initialized.
+
+- **3. `remove_patches`**
+
+`MindSpeedFeaturesManager.remove_patches()` removes MindSpeed's patch layer and resets the corresponding feature states, while retaining MA's underlying adaptation. The complete runtime arguments can be obtained via `mindspeed.args_utils.get_full_args()`.

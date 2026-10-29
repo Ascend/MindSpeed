@@ -31,80 +31,9 @@ This feature is particularly suitable for the following scenarios:
 
 ## Usage
 
-1. Add the parameter `--async-log-allreduce` to the startup bash script
-2. Replace the `loss_func` function in ``pretrain_gpt.py` as follows.
+Add `--async-log-allreduce` to the training script; it is disabled by default. Use the loss interface of `pretrain_gpt.py`; there is no need to manually initiate the log all-reduce in `loss_func`.
 
-```python
-def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
-    """Loss function.
-
-    Args:
-        loss_mask (torch.Tensor): Used to mask out some portions of the loss
-        output_tensor (torch.Tensor): The tensor with the losses
-
-    Returns:
-        the loss scalar for this micro-batch
-        the number of non-padded tokens in this microbatch
-        a dict containing reporting metrics on the loss and number of tokens across
-            the data parallel ranks
-    """
-    args = get_args()
-
-    losses = output_tensor.float()
-    loss_mask = loss_mask.view(-1).float()
-    total_tokens = loss_mask.sum()
-    loss = torch.cat([torch.sum(losses.view(-1) * loss_mask).view(1), total_tokens.view(1)])
-
-    if args.context_parallel_size > 1:
-        torch.distributed.all_reduce(loss, group=mpu.get_context_parallel_group())
-
-    # Check individual rank losses are not NaN prior to DP all-reduce.
-    rerun_state_machine = get_rerun_state_machine()
-    if args.check_for_nan_in_loss_and_grad:
-        rerun_state_machine.validate_result(
-            result=loss[0],
-            rejection_func=torch.isnan,
-            message="found NaN in local forward loss calculation",
-            tolerance=0.0,        # forward pass calculations are deterministic
-            fatal=True,
-        )
-        rerun_state_machine.validate_result(
-            result=loss[0],
-            rejection_func=torch.isinf,
-            message="found Inf in local forward loss calculation",
-            tolerance=0.0,        # forward pass calculations are deterministic
-            fatal=True,
-        )
-    # Check for spiky loss
-    if args.check_for_spiky_loss:
-        rerun_state_machine.validate_result(
-            result=loss[0],
-            rejection_func=partial(
-                rerun_state_machine.is_unexpectedly_large,
-                threshold=SPIKY_LOSS_FACTOR,
-                context="loss",
-            ),
-            message="Spiky loss",
-            tolerance=0.0,        # forward pass calculations are deterministic
-            fatal=False,
-        )
-    # Reduce loss for logging.
-    reporting_loss = loss.clone().detach()
-    allreduce_handle = torch.distributed.all_reduce(
-        reporting_loss, group=mpu.get_data_parallel_group(), async_op=True
-    )
-
-    # loss[0] is a view of loss, so it has ._base not None, which triggers assert error
-    # in core/pipeline_parallel/schedule.py::deallocate_output_tensor, calling .clone()
-    # on loss[0] fixes this
-    local_num_tokens = loss[1].clone().detach().to(torch.int)
-    return (
-        loss[0].clone(),
-        local_num_tokens,
-        ({'lm loss': (reporting_loss[0], reporting_loss[1])}, allreduce_handle),
-    )
-
-```
+The third return value of a custom loss function should be a metrics dictionary: each entry is either a two-element Tensor containing the "loss sum, token count" or a scalar Tensor that has already been reduced. The metric names and shapes must be consistent across different microbatches.
 
 ## Effects
 

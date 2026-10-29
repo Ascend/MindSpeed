@@ -6,7 +6,7 @@ Precision issues are often difficult to locate in model training. To improve the
 
 ## Solution
 
-The low-precision online comparison feature helps users inspect the precision differences of low-precision operations (including cast and quantmatmul) in real time by comparing computation results across different hardware (NPU, CPU) and different precisions (BF16). When this feature is enabled, computations are performed on both NPU and CPU/BF16 simultaneously, and the error values are output, allowing users to detect potential precision issues conveniently.
+The low-precision online comparison feature helps users inspect the precision differences of low-precision operations (including cast and quant_matmul) in real time by comparing computation results across different hardware (NPU, CPU) and different precisions (BF16). When this feature is enabled, computations are performed on both NPU and CPU/BF16 simultaneously, and the error values are output, allowing users to detect potential precision issues conveniently.
 
 ## Application Scenario
 
@@ -19,4 +19,4 @@ This feature is applicable to models that have low-precision training enabled.
 
 ## Effects
 
-During low-precision computation, the error between the `cast` and `quant_matmul` operations on NPU and the precision benchmark (CPU or BF16) will be output at each step. If the error exceeds the preset range, an error will be reported and the training process will be terminated.
+During low-precision computation, the error between the cast and quant_matmul operations on NPU and the precision benchmark (CPU or BF16) will be output at each step. If the error exceeds the preset range, an error will be reported and the training process will be terminated.

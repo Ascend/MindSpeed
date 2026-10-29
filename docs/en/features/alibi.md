@@ -11,7 +11,7 @@ Alibi positional encoding is supported to improve the model's extrapolation abil
 ### Approach
 
 The Alibi algorithm adds a preset linear bias matrix to the attention score (as shown in the figure below), enabling the model to understand the relative positional relationships between inputs. Since the positional information acts directly on the attention score, positional differences are highlighted, giving the model strong extrapolation ability.
-<p align="center"> <img src="../figures/alibi.png" height="180px" width="400px" alt="alibi"></p>
+<p align="center"> <img src="../figures/alibi.png" height="180px" width="400px"></p>
 
 To see the paper, click [https://arxiv.org/pdf/2108.12409](https://arxiv.org/pdf/2108.12409).
 
@@ -23,7 +23,7 @@ To see the paper, click [https://arxiv.org/pdf/2108.12409](https://arxiv.org/pdf
 0 means the alibi is generated and then passed in, 1 is not yet available, and 2 means in-kernel generation.
 If you want to set alibi to be diagonally symmetric negation, you need to set `alibi_diagonal_opposite`; otherwise (which is also the default case and consistent with in-kernel generation when set to 2), no setting is required.
 
-3. The alibi positional encoding supports ring-attention long-sequence parallelism, but only for scenarios where the mask is causal and `--alibi-fusion-attn-type` is set to the compressed mode of 2. It does not yet support Ulysses long-sequence parallelism or hybrid long- sequence parallelism.
+3. The alibi positional encoding supports ring-attention long-sequence parallelism, but only for scenarios where the mask is causal and `--alibi-fusion-attn-type` is set to the compressed mode of 2. It does not yet support Ulysses long-sequence parallelism or hybrid long-sequence parallelism.
 
 4. When the `--use-fusion-attn-v2` feature and long-sequence parallelism are enabled, alibi encoding does not support enabling dropout.
 

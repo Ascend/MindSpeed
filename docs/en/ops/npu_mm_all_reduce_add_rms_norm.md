@@ -92,10 +92,10 @@ Outputs:
 - ``residual`` only supports three dimensions, with dimensions ``(b, s, n)``. When ``x1`` is two-dimensional, ``(b * s)`` of ``residual`` equals ``s`` of ``x1``; when ``x1`` is three-dimensional, ``(b * s)`` of ``residual`` equals ``(b * s)`` of ``x1``. The last dimension of ``residual`` is equal to the last dimension of ``x2``
 - ``gamma`` only supports one dimension, with dimensions ``(n)``. The last dimension of ``gamma`` is equal to the last dimension of ``residual``
 - ``reduce_op`` only supports ``sum``
-- 昇腾 Atlas A2 AI processors support 1, 2, 4, and 8 cards, and only support hccs link all-mesh networking
-- 昇腾 Atlas A2 AI processors support empty tensors where ``(b * s)`` and ``n`` are 0, but do not support empty tensors where ``k`` is 0
+- Ascend Atlas A2 AI processors support 1, 2, 4, and 8 cards, and only support hccs link all-mesh networking
+- Ascend Atlas A2 AI processors support empty tensors where ``(b * s)`` and ``n`` are 0, but do not support empty tensors where ``k`` is 0
 - In the non-quantization scenario, the data types of the compute inputs ``x1``, ``x2``, ``bias`` (if supported), ``residual``, and ``gamma`` must be consistent
-- For 昇腾 Atlas A2 AI processors, in the non-quantization scenario, the range of ``(b * s)``, ``k``, and ``n`` is ``[1, 2147483647]``
+- For Ascend Atlas A2 AI processors, in the non-quantization scenario, the range of ``(b * s)``, ``k``, and ``n`` is ``[1, 2147483647]``
 - In the full quantization scenario, if the output ``residual`` type is ``FLOAT16``, the type of ``dequant_scale`` is ``INT64`` or ``UINT64`` (``dequant_scale`` needs to be processed through the ``torch_npu.npu_trans_quant_param()`` interface); if the output ``residual`` type is ``BFLOAT16``, the type of ``dequant_scale`` is ``BFLOAT16``. ``dequant_scale`` supports two modes:
     - ``per_tensor`` mode: ``(1,)``
     - ``per_channel`` mode: ``(1, n)`` or ``(n,)``

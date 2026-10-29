@@ -1,4 +1,4 @@
-# Flash Attention
+# Flash attention 
 
 ## Background and Challenges
 
@@ -8,27 +8,28 @@ In the field of deep learning, Transformer models are widely used in various dom
 
 To overcome the above challenges, Flash Attention technology was introduced. Flash Attention is an efficient attention mechanism designed to significantly reduce the computation time and memory overhead of Transformer models when processing long sequences while maintaining model performance. The key to accelerating attention lies in optimizing IO memory access, i.e., reducing the number of read/write operations on on-chip memory.
 
-Flash Attention is an exact attention method that optimizes IO memory access overhead. Its principle is shown in Figure 1. It reduces the number of memory reads/writes between high-bandwidth memory (on-chip memory) and SRAM through techniques such as Tiling, recomputation, and Kernel Fusion.
+Flash Attention is an exact attention method that optimizes IO memory access overhead. Its principle is shown in Figure 1. It reduces the number of memory reads/writes between high-bandwidth memory (on-chip memory) and SRAM through techniques such as Tiling, recomputation, and Kernel Fusion. The NPU side provides the same solution. For the detailed interface and usage instructions of this fusion operator, see the fusion_attention interface in the fusion operator API list.
 
 * Tiling: Uses faster SRAM instead of on-chip memory. However, SRAM has limited memory capacity and cannot complete the full attention computation for all data at once, so block-wise computation is required.
 * Recomputation: Discards intermediate results from being written back and recomputes them when needed, trading computation for memory access.
 * Kernel fusion: Fuses multiple operations into a single operation, using one kernel to complete the entire computation based on Tiling.
 
-<p align="left"> <img src="../figures/flash_attention.png" height="280px" width="850px"></p>
+<p align="center"> <img src="../figures/flash_attention.png" height="280px" width="850px"></p>
 
 For more information about Flash Attention, see [FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness](https://arxiv.org/pdf/2205.14135).
 
 ## Application Scenario
+
+**Backend limitation:** When CP>1, `--transformer-impl transformer_engine` must be set.
 
 This method is applicable to self-attention related models, especially for long sequence input scenarios. This feature is enabled by default when long sequence parallelism is turned on.
 
 ## Usage
 
 Set the following parameter to call this algorithm:
+`--use-flash-attn`
 
-```bash
---use-flash-attn
-```
+The `--sparse-mode` launch parameter only supports `0` (default) and `2` (top-left causal compression). For the mask support scope in different CP and EOD scenarios, see [Mask Generation](generate-mask.md#application-scenario).
 
 ## Effects
 

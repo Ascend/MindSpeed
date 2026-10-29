@@ -42,30 +42,30 @@ def npu_apply_fused_adamw_v2(var, grad, m, v, max_grad_norm, step, lr, beta1, be
          lr, beta1, beta2, weight_decay, eps, amsgrad, maximize) = args
         dtype1 = param.dtype
         dtype2 = grad.dtype
-
+    
         lr = np.float32(lr)
         beta1 = np.float32(beta1)
         beta2 = np.float32(beta2)
         weight_decay = np.float32(weight_decay)
         eps = np.float32(eps)
-
+    
         if dtype1 != dtype2:
             grad = grad.to(dtype1)
             max_exp_avg_sq = max_exp_avg_sq.to(dtype1)
         if maximize:
             grad = -grad
-
+    
         step = step_t
         step = step.item()
-
+    
         param = param * (1 - lr * weight_decay)
-
+    
         exp_avg.lerp_(grad, 1 - beta1)
         exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-
+    
         bias_correction1 = 1 - beta1 ** step
         bias_correction2 = 1 - beta2 ** step
-
+    
         step_size = lr / bias_correction1
         bias_correction2_sqrt = math.sqrt(bias_correction2)
         if amsgrad:
@@ -73,13 +73,13 @@ def npu_apply_fused_adamw_v2(var, grad, m, v, max_grad_norm, step, lr, beta1, be
             denom = (max_exp_avg_sq.sqrt() / bias_correction2_sqrt) + eps
         else:
             denom = (exp_avg_sq.sqrt() / bias_correction2_sqrt) + eps
-
+    
         param.addcdiv_(exp_avg, denom, value=-step_size)
-
+    
         if dtype1 != dtype2:
             max_exp_avg_sq = max_exp_avg_sq.to(dtype2)
         return param, exp_avg, exp_avg_sq, max_exp_avg_sq
-
+    
     res_var, res_m, res_v, res_max_grad_norm = single_tensor_adamw(*adamw_params)
 
     if is_var_dtype_bf16_fp16:

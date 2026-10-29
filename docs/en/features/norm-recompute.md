@@ -6,7 +6,8 @@ Large model training often encounters insufficient memory issues.
 
 ## Solution
 
-Similar to activation recomputation, this feature supports recomputation of Norm layers. It utilizes the checkpoint mechanism from the activation recomputation feature to perform recomputation on Norm layers. For details, refer to [Accelerating the Training of Large Language Models using Efficient Activation Rematerialization and Optimal Hybrid Parallelism](https://www.usenix.org/conference/atc24/presentation/yuan).
+Similar to activation recomputation, this feature supports recomputation of Norm layers. It utilizes the checkpoint mechanism from the activation recomputation feature to perform recomputation on Norm layers.
+For details, refer to [Accelerating the Training of Large Language Models using Efficient Activation Rematerialization and Optimal Hybrid Parallelism](https://www.usenix.org/conference/atc24/presentation/yuan).
 
 ## Application Scenario
 
@@ -16,18 +17,16 @@ Primarily used in training scenarios when users encounter insufficient memory or
 
 The following parameter configurations need to be added to the training script.
 
-```bash
---recompute-norm  # Enable Norm recomputation
---recompute-norm-num-layers ${num}   # num indicates the number of layers for Norm recomputation
-```
+`--recompute-norm  # Enable Norm recomputation`
+`--recompute-norm-num-layers ${num}   # num is an integer from 0 to num_layers`
 
-> [!NOTE]
->
-> * The norm recomputation feature is only supported on the mcore branch, not the legacy branch. That is, it can only be enabled via `--recompute-norm` when `--use-mcore-models` is turned on.
-> * Norm recomputation is compatible with simultaneous activation recomputation and full recomputation:
->   * When enabled simultaneously, only `--recompute-method` set to `block` is supported.
->   * When enabled simultaneously, each type of recomputation will be applied to the specified number of layers for full recomputation and norm recomputation respectively. That is, no single layer will undergo both full recomputation and norm recomputation.
-> * Execution priority: full recomputation layers are calculated first, followed by norm recomputation layers.
+### Notes
+
+* Norm recomputation is compatible with simultaneous activation recomputation and full recomputation:
+    * When enabled simultaneously, only --recompute-method set to block is supported.
+    * When enabled simultaneously, each type of recomputation will be applied to the specified number of layers for full recomputation and norm recomputation respectively. That is, no single layer will undergo both full recomputation and norm recomputation.
+
+* Execution priority: full recomputation layers are calculated first, followed by norm recomputation layers.
 
 ## Effects
 

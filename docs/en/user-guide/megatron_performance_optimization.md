@@ -41,7 +41,7 @@ Collect profile data → Analyze operator time consumption → Analyze communica
 
 ### Performance Data Collection
 
-Collecting performance data is a key step in analyzing performance issues and identifying performance bottlenecks. MindSpeed supports profile data collection based on Ascend chips.
+Collecting performance data is a key step in analyzing performance issues and identifying performance bottlenecks. MindSpeed supports data profiling based on Ascend chips.
 
 The commonly used parameters for enabling profiling are as follows:
 
@@ -73,7 +73,7 @@ python your_train_script.py \
 
 ### Performance Analysis Process
 
-After collecting profile data, you can use MindStudio Insight <!-- ](https://www.hiascend.com/document/detail/en/mindstudio/2610/GUI_baseddevelopmenttool/MindStudioInsight/docs/en/user_guide/overview.md) --> to perform visual analysis on the performance data and locate performance bottlenecks.
+After collecting profile data, you can use [MindStudio Insight](https://www.hiascend.com/document/detail/en/mindstudio/2600/GUI_baseddevelopmenttool/MindStudioInsight/docs/en/user_guide/overview.md) --> to perform visual analysis on the performance data and locate performance bottlenecks.
 
 #### Analysis Dimension
 
@@ -106,6 +106,8 @@ Based on the analysis results, performance bottlenecks can be classified into th
 
 ## Sequence Parallelism Optimization
 
+When CP > 1, set `--transformer-impl transformer_engine` and use `--cp-comm-type` to select the communication mode.
+
 ### Ascend Ulysses
 
 #### Algorithm Approach
@@ -119,7 +121,7 @@ Ulysses partitions each sample along the sequence dimension across the participa
 #### Usage
 
 Set `--context-parallel-size`, which defaults to `1`, according to your requirements.
-Also set `--context-parallel-algo ulysses_cp_algo`.
+Also set `--cp-comm-type a2a`.
 
 Refer to the following example for specific usage:
 
@@ -149,7 +151,7 @@ This approach is used when training GPT-style models and the data enters the MoE
 
 Unlike the Ulysses approach, this approach does not require `head_size` to be divisible by `cp_size`.
 
-It is compatible with FlashAttention, which is currently enabled by default.
+It is compatible with Flash Attention, which is currently enabled by default.
 
 To allow computation and communication to overlap with each other, in theory it is necessary to ensure that the sequence length assigned to each computation block satisfies $c \geq F/B$, where F is the FLOPS of each device and B is the bandwidth between devices. For the detailed derivation, refer to the original paper. In practice, it is necessary to ensure that the sequence length assigned to each computation block is sufficiently large to achieve good overlap.
 
@@ -159,16 +161,16 @@ To allow computation and communication to overlap with each other, in theory it 
 | --- | --- | --- | --- |
 | `--context-parallel-size` [int] | The number of CP to enable, configured according to user requirements. | Yes | Default: `1` |
 | `--seq-length` [int] | The length of the input sequence. | No | - |
-| `--use-cp-send-recv-overlap` | Recommended to enable. When enabled, the send receive overlap feature is supported. | Yes | Default: `True` |
+<!-- | `--use-cp-send-recv-overlap` | Enables ring send/receive overlap; applicable only to p2p or a2a+p2p. | Yes | Default: `False` | -->
 | `--attention-mask-type` | Mask computation type. | Yes | Default: causal (lower triangular) Mask computation. Setting it to general represents full computation |
-| `--context-parallel-algo` | The Long Sequence Parallelism algorithm option. When set to `megatron_cp_algo`, Ring Attention is enabled. | Yes | Default: `ulysses_cp_algo`. Other values can be `megatron_cp_algo`, `hybrid_cp_algo`, `adaptive_cp_algo`, or `hybrid_adaptive_cp_algo` |
-| `--megatron-cp-in-bnsd` | When enabled, FA uses BNSD computation. | Yes | Default: True |
-| `--cp-window-size` [int] | Uses the original Ring Attention algorithm. When set to a value greater than `1`, the Double Ring Attention algorithm is used to optimize the performance of the original Ring Attention. `--cp-window-size` is the inner window size of the double-layer Ring Attention in the algorithm, and it is necessary to ensure that `cp_size` is divisible by this parameter. | Yes | Default: `1` |
+| `--cp-comm-type` | Long sequence communication type; `p2p` enables Ring Attention; CP>1 uses transformer_engine. | Yes | p2p (default), a2a, all_gather, a2a+p2p |
+| `--megatron-cp-in-bnsd` | When enabled, FA uses BNSD computation. | Yes | Default: False |
+<!-- | `--cp-window-size` [int] | Uses the original Ring Attention algorithm. When set to a value greater than `1`, the Double Ring Attention algorithm is used to optimize the performance of the original Ring Attention. `--cp-window-size` is the inner window size of the double-layer Ring Attention in the algorithm, and it is necessary to ensure that `cp_size` is divisible by this parameter. | Yes | Default: `1` | -->
 
 Refer to the following example for specific usage:
 
 1. Copy the `tests_extend` folder under the `MindSpeed` directory to the `Megatron` directory, and enter the `Megatron` directory
-2. Modify `TOKENIZER_MODEL` and `DATA_PATH` in the `tests_extend/system_tests/feature_tests/ring_attention.sh` file to local paths, and set `--cp-window-size` to 1
+2. Modify `TOKENIZER_MODEL` and `DATA_PATH` in the `tests_extend/system_tests/feature_tests/ring_attention.sh` file to local paths
 3. Run the following command:
 
 ```shell
@@ -181,12 +183,12 @@ By splitting the input sequence in parallel across multiple compute devices, the
 
 #### Precautions
 
-+ When enabling Context Parallel, the FlashAttention feature must be enabled at the same time; otherwise, the feature is not supported.
++ When enabling Context Parallel, the Flash Attention feature must be enabled at the same time; otherwise, the feature is not supported.
 + When training GPT-type models, it is recommended to set `attention-mask-type` to `causal`.
 + At a sequence length of 8k, because the computation time is shortened, the send/receive time after CP splitting may become longer than the computation time, causing performance degradation. Therefore, it is recommended to configure seq-length / context-parallel-size > 8k for optimal results. For the specific formula, refer to: S/(Talpha) >= 1/(Wbeta), where S = seq-length / context-parallel-size, T represents the theoretical computing power of the chip, alpha represents the computation efficiency, W represents the theoretical communication bandwidth, and beta represents the bandwidth utilization.
-+ When the inner window `--cp-window-size` increases, the degree of concurrency between communication and computation becomes higher. However, when computation and communication run concurrently, the overall efficiency may decrease due to contention for on-chip memory bandwidth. It needs to be tuned according to the actual scenario. For example, for the LLaMA2 pruned model with a 32k sequence length, CP of 16, and no other parallel splitting, the measured performance is optimal when the inner window size is 2.
+<!-- + When the inner window `--cp-window-size` increases, the degree of concurrency between communication and computation becomes higher. However, when computation and communication run concurrently, the overall efficiency may decrease due to contention for on-chip memory bandwidth. It needs to be tuned according to the actual scenario. For example, for the LLaMA2 pruned model with a 32k sequence length, CP of 16, and no other parallel splitting, the measured performance is optimal when the inner window size is 2. -->
 
-### Ascend Double Ring Attention
+<!-- ### Ascend Double Ring Attention
 
 #### Algorithm Approach
 
@@ -198,12 +200,12 @@ After Ring Attention training is enabled, refer to [Ring Attention](../features/
 
 #### Usage
 
-In a training scenario where Ring Attention is enabled, set `--cp-window-size` to an integer greater than 1 to enable the Double Ring Attention algorithm and optimize the performance of the original Ring Attention. `--cp-window-size [int]` defaults to `1`, which means the original Ring Attention algorithm is used. Setting it to an integer greater than 1 enables the Double Ring Attention algorithm. This parameter specifies the inner window size of the two-level Ring Attention in the Double Ring Attention algorithm.
+<!-- In a training scenario where Ring Attention is enabled, set `--cp-window-size` to an integer greater than 1 to enable the Double Ring Attention algorithm and optimize the performance of the original Ring Attention. `--cp-window-size [int]` defaults to `1`, which means the original Ring Attention algorithm is used. Setting it to an integer greater than 1 enables the Double Ring Attention algorithm. This parameter specifies the inner window size of the two-level Ring Attention in the Double Ring Attention algorithm. 
 
 Refer to the following example for specific usage:
 
 1. Copy the `tests_extend` folder under the `MindSpeed` directory to the `Megatron` directory, and enter the `Megatron` directory.
-2. Modify `TOKENIZER_MODEL` and `DATA_PATH` in the `tests_extend/system_tests/feature_tests/ring_attention.sh` file to local paths, and set `--cp-window-size` to `2`.
+2. Modify `TOKENIZER_MODEL` and `DATA_PATH` in the `tests_extend/system_tests/feature_tests/ring_attention.sh` file to local paths
 3. Run the following command:
 
 ```shell
@@ -217,7 +219,7 @@ The input sequence is split in parallel across multiple compute devices, and com
 #### Precautions
 
 + Ensure that `--context-parallel-size` is divisible by `--cp-window-size`.
-+ As the inner window `--cp-window-size` increases, the degree of concurrency between communication and computation becomes higher. However, when computation and communication run concurrently, on-chip memory bandwidth contention may reduce overall efficiency. Therefore, tuning is required based on the actual scenario. For example, for the LLaMA2 pruned model with a 32k sequence length, cp of 16, and no other parallel partitioning, the measured performance is optimal when the inner window size is 2.
++ As the inner window `--cp-window-size` increases, the degree of concurrency between communication and computation becomes higher. However, when computation and communication run concurrently, on-chip memory bandwidth contention may reduce overall efficiency. Therefore, tuning is required based on the actual scenario. For example, for the LLaMA2 pruned model with a 32k sequence length, cp of 16, and no other parallel partitioning, the measured performance is optimal when the inner window size is 2.  -->
 
 ### Ascend Hybrid Long Sequence Parallelism
 
@@ -233,7 +235,7 @@ Fuse Ulysses and Ring Attention to implement hybrid sequence parallelism, thereb
 
 #### Use Cases
 
-It is compatible with FlashAttention, which is now enabled by default.
+It is compatible with Flash Attention, which is now enabled by default.
 
 The sequence parallelism is divided into the Ulysses dimension and the Ring Attention dimension. The product of the Ulysses dimension and the Ring Attention dimension is the sequence parallelism dimension.
 
@@ -241,11 +243,11 @@ The sequence parallelism is divided into the Ulysses dimension and the Ring Atte
 
 Set `--context-parallel-size`, which defaults to `1`, according to your requirements.
 
-Set `--context-parallel-algo hybrid_cp_algo` to enable hybrid sequence parallelism.
+Set `--cp-comm-type a2a+p2p` to enable hybrid sequence parallelism.
 
-Set `--ulysses-degree-in-cp`, and ensure that `--context-parallel-size` is divisible by this parameter and greater than 1. For example, when `--context-parallel-size=8` is set, `--ulysses-degree-in-cp=2` or `--ulysses-degree-in-cp=4` can be set.
+Set `--hierarchical-context-parallel-sizes A R`, where A is the Ulysses degree and R is the Ring degree, and A x R equals `--context-parallel-size`. For example, when `--context-parallel-size 8` is set, you can set `--hierarchical-context-parallel-sizes 2 4` or `--hierarchical-context-parallel-sizes 4 2`.
 
-At the same time, ensure that `--num-attention-heads` is divisible by the product of `--ulysses-degree-in-cp` and `--tensor-model-parallel-size`.
+At the same time, ensure that `--num-attention-heads` is divisible by the product of A and `--tensor-model-parallel-size`.
 
 Hybrid Long Sequence Parallelism supports the Ring Attention Long Sequence Parallelism related features, including the send receive overlap function and Mask computation type configuration.
 
@@ -280,7 +282,7 @@ Select the appropriate sequence parallelism algorithm based on different scenari
 
 | Bottleneck Type | Optimization Strategy | Applicable Scenario |
 | --- | --- | --- |
-| Compute Bottleneck | Enable FlashAttention and use FP8 mixed precision | Compute-intensive scenarios |
+| Compute Bottleneck | Enable Flash Attention and use FP8 mixed precision | Compute-intensive scenarios |
 | Communication Bottleneck | Adjust the parallelism strategy and enable communication-computation overlap | Multi-card/multi-node training |
 | Memory Bottleneck | Use Sequence Parallelism and activation offloading | Long-sequence training and large-model training |
 | Data Loading Bottleneck | Use asynchronous data loading and prefetching mechanisms | I/O-intensive scenarios |

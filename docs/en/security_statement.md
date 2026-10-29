@@ -6,6 +6,11 @@ The security hardening measures listed in this document are basic hardening reco
 
 |Component|Address|
 |:---|:---|
-|MindSpeed LLM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.1.0/docs/en/SECURITYNOTE.md)| 
-|MindSpeed MM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.1.0/SECURITYNOTE_en.md)|
+|MindSpeed LLM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-LLM/blob/26.2.0/docs/en/SECURITYNOTE.md)|
+|MindSpeed MM|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-MM/blob/26.2.0/SECURITYNOTE_en.md)|
+|MindSpeed Bridge|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-Bridge/blob/26.2.0_v0.5.0/docs/en/SECURITYNOTE.md)|
+|TransformerEngineNPU|See [Security Statement](https://gitcode.com/Ascend/TransformerEngineNPU/blob/26.2.0_release_v2.17/docs/en/SECURITYNOTE.md)|
+|MegatronAdaptor|See [Security Statement](https://gitcode.com/Ascend/MegatronAdaptor/blob/26.2.0_core_r0.18.0/docs/en/SECURITYNOTE.md)|
+|FSDPTurbo|See [Security Statement](https://gitcode.com/Ascend/FSDPTurbo/blob/26.2.0/docs/en/SECURITYNOTE.md)|
 |MindSpeed Core|See [Security Statement](./SECURITYNOTE.md)|
+|MindSpeed Ops|See [Security Statement](https://gitcode.com/Ascend/MindSpeed-Ops/blob/26.2.0/docs/en/SECURITYNOTE.md)|

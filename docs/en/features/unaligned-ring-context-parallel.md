@@ -12,9 +12,9 @@ To address the limitations of traditional Ring sequence parallelism when process
 
 The "Unaligned Ring" feature is applicable to the following typical scenarios:
 
-- Multimodal learning: When processing various types of data such as images, videos, and text, the sequence lengths of different data types vary significantly, making it difficult to unify them to a fixed CP size.
-- Real-time data analysis: When processing streaming data, the arrival time of data is uncertain, resulting in potentially different sequence lengths for each processing operation.
-- Personalized recommendation systems: The sequence lengths of user behavior data are usually different, and in such cases, support for unaligned operations is also required.
+- **Multimodal learning**: When processing various types of data such as images, videos, and text, the sequence lengths of different data types vary significantly, making it difficult to unify them to a fixed CP size.
+- **Real-time data analysis**: When processing streaming data, the arrival time of data is uncertain, resulting in potentially different sequence lengths for each processing operation.
+- **Personalized recommendation systems**: The sequence lengths of user behavior data are usually different, and in such cases, support for unaligned operations is also required.
 
 ## Usage
 

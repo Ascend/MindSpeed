@@ -22,10 +22,6 @@ wget https://huggingface.co/datasets/tatsu-lab/alpaca/blob/main/data/train-00000
 cd ..
 ```
 
->[!NOTE]
->
-> If you are unable to successfully download resources from the Hugging Face community, it is recommended to download them from ModelScope instead. Please ensure the correctness and security of the files to be downloaded.
-
 ### Dataset Processing
 
 #### Pre-training Dataset Processing Method
@@ -90,16 +86,18 @@ During pre-training, simply pass the dataset path `--data-path` parameter as `./
 ## Application Scenario
 
 The pack mode dataset is generally used in EOD Reset training scenarios:
+(1) Enable the `--reset-attention-mask` option
+(2) Use the `--reset-position-ids` option to indicate whether position encoding is reset
+(3) When CP=1, `--attention-mask-type` can be `causal` or `general`; when CP>1, only `p2p/all_gather + causal` is supported, and `--transformer-impl transformer_engine --variable-seq-lengths --micro-batch-size 1` must be set.
 
-  1. Enable the `--reset-attention-mask` option
-  2. Use the `--reset-position-ids` option to indicate whether position encoding is reset
-  3. `--attention-mask-type` can be specified as causal or general
+In the EOD Reset scenario with CP>1 and `--cp-comm-type p2p --attention-mask-type causal`, the `pad-to-multiple-of` parameter in preprocessing can be used to reduce online padding:
 
-If the `pad-to-multiple-of` parameter is set during pre-processing, it can accelerate the performance of the `megatron_cp_algo` option algorithm in long sequence parallelism under EOD Reset training scenarios:
-
-- Without setting the `pad-to-multiple-of` parameter: For cases where `--attention-mask-type` is causal, due to internal implementation requirements, the length of each subsequence will be padded online to a multiple of CP*LCM(2, TP), where LCM is the least common multiple.
-- Setting the `pad-to-multiple-of` parameter: For the same scenario, you can set `pad-to-multiple-of = CP*LCM(2, TP)` during preprocessing to pad each subsequence to the required length offline, saving online padding time and accelerating training.
+* Without setting `pad-to-multiple-of`: each subsequence is padded online to a multiple of `CP*lcm(2, TP)`, where lcm is the least common multiple.
+* Setting the `pad-to-multiple-of` parameter: for the same scenario, you can set `pad-to-multiple-of = CP*lcm(2, TP)` during preprocessing to pad each subsequence to the required length offline, saving online padding time and accelerating training.
 
 ## Notes
+
+- During training, set `--tokenizer-type PretrainedFromHF --tokenizer-name-or-path /local directory`; the directory must exist; `--tokenizer-not-use-fast` can disable the fast tokenizer. For details, see [HF Tokenizer](pretrained-from-hf-tokenizer.md).
+- In this document, `handler-name`, `append-eod`, and `pad-to-multiple-of` are data preprocessing tool parameters; `append-eod` does not automatically enable mask reset, position reset, or loss mask during training. This pre-training pack workflow cannot be mixed with SFT packed sequences; for training constraints, see [EOD Reset](eod-reset.md).
 
 When building a pack mode dataset, whether the `pad-to-multiple-of` parameter is enabled will cause certain differences in each batch sample during online training, so the two approaches cannot be fully aligned in terms of accuracy.

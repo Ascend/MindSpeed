@@ -7,3 +7,6 @@ MindSpeed, as a large model training acceleration library designed for Ascend AI
 ## Megatron-LM Performance Optimization
 
 Building on the above technical foundation, MindSpeed further performs in-depth performance optimization for the Megatron-LM framework. By restructuring critical computation paths, optimizing distributed communication patterns, and introducing Ascend-specific operator acceleration capabilities, it achieves efficient training acceleration in large-scale cluster environments. For details, refer to [Megatron-LM Performance Optimization](./megatron_performance_optimization.md).
+
+- `--cache-get-batch-config`: Caches the complete `TransformerConfig` generated on the first `get_batch` call to reduce repeated configuration overhead. Disabled by default. For details, see [get_batch Configuration Cache](../features/cache-get-batch-config.md).
+- `--async-log-allreduce`: Enables asynchronous log allreduce. Disabled by default.

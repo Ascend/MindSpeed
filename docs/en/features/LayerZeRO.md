@@ -40,13 +40,13 @@ In multimodal scenarios where long-sequence activations are much larger than mod
 In MindSpeed, the entry point for LayerZero is a configuration file. By generating a configuration file and passing command-line arguments, you can use this feature.
 
 ```bash
---layerzero
---layerzero-config config.yml
+--layerzero \
+--layerzero-config config.yml \
 ```
 
-Configurable items in config.yml:
+Configurable items in `config.yml`:
 
-```yaml
+```bash
     zero3_size: int  # Size of the ZeRO3 communication group, a positive integer. ZeRO3 is typically performed within a node
     transformer_layers:  Optional[Iterable[torch.nn.Module]] = None   # Class hierarchy name of the wrapped layer: module.submodule.class
     param_dtype: Optional[Literal["fp16", "bf16", "fp32"]] = "fp16"   # Mixed precision related: runtime parameter precision
@@ -63,7 +63,7 @@ Notes:
 1. Supports TP, CP, PP (1F1B), gradient accumulation, and gradient offloading.
 2. The model wrapper is replaced from MegatronModule to LayerZeRO. Parts of the model development that depend on MegatronModule may become invalid.
 3. For OpenSoraPlan1.3, you need to additionally set `ignored_modules` to ignore some modules (of type `nn.Module`) to avoid parameter reconstruction for the VAE and `text_encoder` parts. This configuration option extracts the corresponding modules from the model, and you only need to provide the attribute name.
-4. Checkpoint serialization uses the pickle component. Unauthorized users must not have write permissions to the UnderFS storage directory and its parent directories. Otherwise, it may lead to checkpoint tampering, which could cause pickle deserialization.
+4. Checkpoint serialization uses the pickle component. Unauthorized users must not have write permissions to the UnderFS storage directory and its parent directories. Otherwise, it may lead to checkpoint tampering, which causes pickle tampering and thus risks pickle deserialization injection.
 
 ## Effects
 
