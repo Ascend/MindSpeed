@@ -7,15 +7,7 @@ import torch
 
 
 def roll_tensor_packed_seq_wrapper(roll_packed_seq):
-    """Vectorize Megatron's CP=1 packed roll, retaining its boundary semantics.
-
-    Cumulative boundaries must be ordered and nonnegative, as required by
-    PackedSeqParams. Repeated boundaries represent empty documents.
-    Keep the prefix before the first boundary and suffix after the last one
-    unchanged, just like Megatron's clone-and-slice implementation. In
-    particular, do not silently prepend zero to MindSpeed EOD endpoints: that
-    would change existing MTP inputs, losses and gradients.
-    """
+    """Vectorize CP=1 packed roll, adapting MindSpeed endpoints locally for MTP."""
 
     @wraps(roll_packed_seq)
     def wrapper(tensor, shifts, dims, packed_seq_params, cp_group=None):
@@ -29,6 +21,10 @@ def roll_tensor_packed_seq_wrapper(roll_packed_seq):
             or cu_seqlens.dtype not in (torch.int32, torch.int64)
         ):
             return roll_packed_seq(tensor, shifts, dims, packed_seq_params, cp_group)
+
+        # Keep attention's shared endpoint view intact; normalize even a single segment.
+        if getattr(packed_seq_params, '_mindspeed_endpoints', False):
+            cu_seqlens = torch.cat((cu_seqlens.new_zeros(1), cu_seqlens))
 
         # Preserve output layout as well as values so the final sum uses the
         # same layout as the original implementation, including strided inputs.

@@ -137,6 +137,31 @@ def test_input_gradient_is_bitwise_unchanged(dtype, layout, boundaries):
     _assert_bits_equal(actual_grad, expected_grad)
 
 
+@pytest.mark.parametrize(
+    'endpoints,expected_labels,expected_mask',
+    [
+        ([3, 6], [2, 3, 0, 5, 6, 0], [1, 1, 0, 1, 1, 0]),
+        ([6], [2, 3, 4, 5, 6, 0], [1, 1, 1, 1, 1, 0]),
+    ],
+)
+def test_mindspeed_endpoints_shift_first_segment_without_changing_attention(endpoints, expected_labels, expected_mask):
+    cu = torch.tensor(endpoints, dtype=torch.int64)
+    packed = SimpleNamespace(cu_seqlens_q=cu, cu_seqlens_kv=cu, _mindspeed_endpoints=True)
+    labels = torch.tensor([[1, 2, 3, 4, 5, 6]])
+    mask = torch.ones(1, 6)
+
+    actual_labels, _ = optimized(labels, -1, -1, packed)
+    actual_mask, num_tokens = optimized(mask, -1, -1, packed)
+
+    assert torch.equal(actual_labels, torch.tensor([expected_labels]))
+    assert torch.equal(actual_mask, torch.tensor([expected_mask], dtype=mask.dtype))
+    assert num_tokens.item() == sum(expected_mask)
+    assert packed.cu_seqlens_q is cu and packed.cu_seqlens_kv is cu
+    assert cu.tolist() == endpoints
+    assert torch.equal(labels, torch.tensor([[1, 2, 3, 4, 5, 6]]))
+    assert torch.equal(mask, torch.ones(1, 6))
+
+
 def test_masked_loss_and_logits_gradient_match_across_mtp_depths():
     labels = torch.arange(16).reshape(1, -1) % 7
     mask = torch.tensor([[1, 1, 0, 1] * 4], dtype=torch.float32)

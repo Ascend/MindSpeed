@@ -217,6 +217,8 @@ def gpt_forward_wrapper(fn):
             set_position_ids(position_ids.transpose(0, 1).contiguous())
 
         packed_seq_params = PackedSeqParams(qkv_format='thd', cu_seqlens_q=actual_seq_len, cu_seqlens_kv=actual_seq_len)
+        # Attention uses exclusive endpoints; MTP needs the implicit initial zero.
+        packed_seq_params._mindspeed_endpoints = True
 
         # When megatron_cp_algo with cp_size > 1 is in use, ``actual_seq_len``
         # has been divided by ``get_ring_degree()`` (== cp_size) in the data
