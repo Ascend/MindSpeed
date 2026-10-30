@@ -27,6 +27,7 @@ from .modules.utils import (
     prefetch_dense_fc1_swap_in,
 )
 from .transformer_layer import transformer_layer_backward, transformer_layer_forward_backward_overlaping
+from .packed_mtp import mtp_block_packed_forward
 
 
 def mtp_block_fb_overlap_forward_wrapper(fwd):
@@ -70,6 +71,13 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
         pp_comm_params: P2PCommParams = None,
         bwd_pp_comm_params: P2PCommParams = None,
     ):
+        if packed_seq_params is not None and pre_post_process_kwargs.intersection(fwd_parameters):
+            # Extended forwards can also change input preparation and layer norms.
+            # Dropping their extra arguments would not preserve those semantics.
+            raise NotImplementedError(
+                'FB-overlap packed MTP supports the native core 0.12 block forward; '
+                'forwards with pre_process/post_process (such as MindSpeed-LLM/MHC) require separate adaptation.'
+            )
         if extra_block_kwargs is not None:
             extra_block_kwargs = {
                 key: value
@@ -109,7 +117,8 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
         if 'post_process' in fwd_parameters:
             fwd_kwargs['post_process'] = post_process
 
-        hidden_states_main_model = fwd(self, **fwd_kwargs)
+        forward = mtp_block_packed_forward if packed_seq_params is not None else fwd
+        hidden_states_main_model = forward(self, **fwd_kwargs)
 
         return hidden_states_main_model
 

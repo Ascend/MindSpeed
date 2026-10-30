@@ -442,6 +442,13 @@ def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
 
 def get_batch_on_this_tp_rank(data_iterator):
     args = get_args()
+    is_dualpipev = getattr(args, 'schedules_method', None) == 'dualpipev'
+    # DualPipeV's first physical stage also computes the output loss. Preserve
+    # the existing last-stage MTP inputs when sharing the reset-mask batch path.
+    needs_full_batch = args.pipeline_model_parallel_size == 1 or (
+        is_dualpipev
+        and (mpu.is_pipeline_first_stage() or (mpu.is_pipeline_last_stage() and args.mtp_num_layers is not None))
+    )
 
     if mpu.get_tensor_model_parallel_rank() == 0:
         if data_iterator is not None:
@@ -457,7 +464,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             'position_ids': data["position_ids"].cuda(non_blocking=True),
         }
 
-        if args.pipeline_model_parallel_size == 1:
+        if needs_full_batch:
             _broadcast(batch['tokens'])
             _broadcast(batch['labels'])
             _broadcast(batch['loss_mask'])
@@ -514,7 +521,7 @@ def get_batch_on_this_tp_rank(data_iterator):
             (args.micro_batch_size, args.seq_length), dtype=torch.int64, device=torch.cuda.current_device()
         )
 
-        if args.pipeline_model_parallel_size == 1:
+        if needs_full_batch:
             _broadcast(tokens)
             _broadcast(labels)
             _broadcast(loss_mask)
