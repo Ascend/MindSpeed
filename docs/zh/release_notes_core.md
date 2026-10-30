@@ -20,7 +20,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>版本类型</p></th>
-      <td class="cellrowborder" valign="top" width="73.75%"><p>release版本</p></td>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>Release版本</p></td>
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>组件名称</p></th>
@@ -28,7 +28,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>发布时间</p></th>
-      <td class="cellrowborder" valign="top" width="73.75%"><p>2026年9月</p></td>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>2026年10月</p></td>
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>维护周期</p></th>

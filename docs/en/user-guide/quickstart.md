@@ -37,7 +37,7 @@ This guide walks you through installation and then helps you run Megatron-LM eff
 >
 > MindSpeed Core supports <term>Ascend 950PR&950DT products</term>, <term>Atlas A3 training products</term>, and <term>Atlas A2 training products</term>, and requires a single NPU with on-chip memory of 64GB or higher.
 >
-> n the current example script, `NPUS_PER_NODE=8` indicates that 8 NPUs are required. If the actual configuration is lower than this, OOM issues may occur.
+> In the current example script, `NPUS_PER_NODE=8` indicates that 8 NPUs are required. If the actual configuration is lower than this, OOM issues may occur.
 
 Developer getting started prerequisites:
 

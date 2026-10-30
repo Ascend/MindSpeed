@@ -21,7 +21,7 @@ In the Allgather dispatcher branch, the permute function performs allgather comm
 
 ### 1. Gather/Scatter Replacement
 
-Since index is expanded via expand, the content in each of its rows is identical. There is no need to use gather/scatter for element-wise operations. Instead, the index and indexput operators can be used for row-wise operations, achieving an equivalent substitution for gather/scatter.
+Since index is expanded via expand, the content in each of its rows is identical. There is no need to use gather/scatter for element-wise operations. Instead, the index and index_put operators can be used for row-wise operations, achieving an equivalent substitution for gather/scatter.
 
 ### 2. Asynchronous Communication
 

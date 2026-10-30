@@ -23,7 +23,7 @@ MindSpeed has designed and implemented a high-performance MoE cross-microbatch A
 
 The fine-grained computation and communication pipeline orchestration for the 1F1B phase implemented by MindSpeed is illustrated below:
 ![Cross-microbatch A2A communication overlap](../../figures/fb_overlap_npu.png)
-By decoupling the dw and dx computations for the dispatch experts and the Attention backward pass, full A2A overlap can be achieved during the 1F1B phase. Additionally, since communication operations on Ascend hardware are issued by the AICPU and do not consume cube computation unit resources, the concurrency of computation and communication has minimal impact on computational efficiency. Furthermore, the dw computation of the Attention component is used to overlap PP communication, thereby achieving full communication overlap during the 1F1B phase.
+By decoupling the dw and dx computations for the dispatch experts and the Attention backward pass, full A2A overlap can be achieved during the 1F1B phase. Additionally, since communication operations on Ascend hardware are issued by the AI CPU and do not consume cube computation unit resources, the concurrency of computation and communication has minimal impact on computational efficiency. Furthermore, the dw computation of the Attention component is used to overlap PP communication, thereby achieving full communication overlap during the 1F1B phase.
 
 The following diagram shows a profiling illustration of A2A communication overlap within a single layer when this feature is used with the real 671B DeepSeekV3 model.
 

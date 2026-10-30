@@ -21,7 +21,7 @@ local_hidden_states = torch.gather(global_hidden_states, 0, self.global_local_ma
 
 ### 1. gather & scatter 算子替换
 
-由于 index 是通过 expand 进行扩展的，因此它的每一行中的内容都是一致，而我们没有必要使用 gather/scatter 进行逐元素的操作，可通过 index 算子以及 indexput 算子进行逐行操作，对 gather/scatter 进行等价替换。
+由于 index 是通过 expand 进行扩展的，因此它的每一行中的内容都是一致，而我们没有必要使用 gather/scatter 进行逐元素的操作，可通过 index 算子以及 index_put 算子进行逐行操作，对 gather/scatter 进行等价替换。
 
 ### 2. 异步通信
 

@@ -43,7 +43,7 @@ Set `--use-ascend-coc` to enable the computation-communication parallelism featu
 
 ```shell
 --use-ascend-coc
---coc-parallel-num 2 # or 4, or 8r 8
+--coc-parallel-num 2 # or 4, or 8
 ```
 
 ### 2. Using the CoC feature enabled by fused operators

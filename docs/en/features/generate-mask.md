@@ -18,7 +18,7 @@ Tips: The above operations are enabled by default, and all generated AttnMasks a
 
 [1] Ascend's FA requires an externally generated AttnMask, so in addition to the basic lower triangular mode, an additional interface is needed to generate custom AttnMasks.
 
-[2] The AttnMask of non-PP head and tail nodes is `Non`e, which prevents FA acceleration from being enabled.
+[2] The AttnMask of non-PP head and tail nodes is `None`, which prevents FA acceleration from being enabled.
 
 [3] The generation, copying, and broadcasting of AttnMask are repeated with `get_batch` at each `micro_step`.
 

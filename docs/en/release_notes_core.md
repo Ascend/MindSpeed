@@ -28,7 +28,7 @@ MindSpeed Core adapts to Megatron-LM core v0.18.0, decouples MindSpeed, Megatron
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Release Date</p></th>
-      <td class="cellrowborder" valign="top" width="73.75%"><p>Sep, 2026</p></td>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>October, 2026</p></td>
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Maintenance Period</p></th>
@@ -39,7 +39,7 @@ MindSpeed Core adapts to Megatron-LM core v0.18.0, decouples MindSpeed, Megatron
 
 > [!NOTE]
 >
-> For MindSpeed version maintenance, see the [Branch Maintenance Policy](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.18.0#%E5%88%86%E6%94%AF%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5).
+> For MindSpeed version maintenance, see the [Branch Maintenance Policy](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.18.0#branch-maintenance-policy).
 
 ### Related Product Version Mapping
 
