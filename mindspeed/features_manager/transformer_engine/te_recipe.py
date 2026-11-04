@@ -24,7 +24,6 @@ class TeRecipeFeature(MindSpeedFeature):
     def register_args(self, parser):
         # Extend fp8 / fp8_recipe choices for HiF8 support.
         self.add_parser_argument_choices_value(parser, "--fp8-format", "hif8")
-        self.add_parser_argument_choices_value(parser, "--fp8-recipe", "hif8_delayed")
         # Extend fp4_recipe choices for MXFP4/W4A16 support.
         self.add_parser_argument_choices_value(parser, "--fp4-recipe", "mxfp4")
         self.add_parser_argument_choices_value(parser, "--fp4-recipe", "w4a16")
@@ -79,17 +78,15 @@ class TeRecipeFeature(MindSpeedFeature):
             '--no-hif8-step-recovery',
             action='store_true',
             default=False,
-            help='Disable HiF8 NaN/Inf step recovery when using --fp8-recipe hif8_delayed. '
-            'By default, step recovery is enabled when using hif8_delayed recipe.',
+            help='Disable HiF8 NaN/Inf step recovery when using --fp8-format hif8 with '
+            '--fp8-recipe delayed. By default, step recovery is enabled when the HiF8 '
+            'policy is selected.',
         )
 
     def validate_args(self, args):
-        if args.fp8_recipe == 'hif8_delayed' and args.fp8 != 'hif8':
-            raise ValueError("hif8_delayed recipe requires --fp8-format hif8.")
-
         if args.fp8 == 'hif8':
-            if args.fp8_recipe not in ('tensorwise', 'delayed', 'hif8_delayed'):
-                raise ValueError("hif8 only support tensorwise, delayed and hif8_delayed scaling type")
+            if args.fp8_recipe not in ('tensorwise', 'delayed'):
+                raise ValueError("hif8 only supports tensorwise and delayed scaling")
 
         fp4_recipe_arg = getattr(args, "fp4_recipe", None)
         fp4_recipe = getattr(fp4_recipe_arg, "value", fp4_recipe_arg)
@@ -130,7 +127,7 @@ class TeRecipeFeature(MindSpeedFeature):
 
             # HiF8 step recovery: wraps train_step with NaN/Inf detection + retry.
             # The wrapper itself short-circuits to the original train_step when
-            # --fp8-recipe hif8_delayed is not used or --no-hif8-step-recovery is set,
+            # the HiF8 policy is not selected or --no-hif8-step-recovery is set,
             # so it is safe to register unconditionally.
             from mindspeed.core.transformer_engine.step_recovery.patch import (
                 train_step_recovery_wrapper,

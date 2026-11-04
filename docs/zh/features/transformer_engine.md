@@ -49,14 +49,14 @@ TransformerEngineNPU 提供昇腾 NPU 上的 TE 接口，MindSpeed 提供 HiF8 /
 
 安装配套 TransformerEngineNPU 和 MegatronAdaptor 后，使用 `--transformer-impl transformer_engine`（默认值）启用 TE。
 设置`--fp8-format e4m3`，选择低精度数据格式，目前支持`e4m3`、`hybrid`和`hif8`，开启`hybrid`时，前向训练采用E4M3数据格式，反向传播采用E5M2数据格式。
-设置`--fp8-recipe delayed` 选择低精度训练scaling策略，目前支持`tensorwise`、`delayed`、`hif8_delayed`、`mxfp8`和`blockwise`，默认值为`delayed`。
+设置`--fp8-recipe delayed` 选择低精度训练scaling策略，目前支持`tensorwise`、`delayed`、`mxfp8`和`blockwise`，默认值为`delayed`。
 
 **注意**
 
 - `--use-ascend-mc2` 替换模型中的原生线性层，不覆盖 TENPU TE Linear，详见 [MC2](mc2.md)。Grouped GEMM 的配置见 [MoE GMM](megatron_moe/megatron-moe-gmm.md)。
-- 低精度 GMM 当前仅使用 tensorwise、mxfp8、delayed recipe；其他 recipe（含 blockwise、hif8_delayed）回退 BF16 GMM，如不需要启用，可使能参数`--no-use-gmm-fp8`
+- 低精度 GMM 当前仅使用 tensorwise、mxfp8、delayed recipe（`--fp8-format hif8 --fp8-recipe delayed` 同样走 FP8 GMM）；其他 recipe（含 blockwise）回退 BF16 GMM，如不需要启用，可使能参数`--no-use-gmm-fp8`
 - FP8 不支持 `--transformer-impl local`。
-- HiF8 数据格式支持 `--fp8-recipe tensorwise`、`delayed` 或 `hif8_delayed`；`hif8_delayed` 必须搭配 `--fp8-format hif8`，默认启用 step recovery，使用 `--no-hif8-step-recovery` 关闭，详见 [HiF8 DTS](hif8_dts.md)。
+- HiF8 数据格式通过 `--fp8-format hif8` 选择：使用 `--fp8-recipe delayed`（按 delayed 调度，单个外层量化上下文）；`tensorwise` 为逐张量 current scaling。HiF8 默认启用 step recovery，使用 `--no-hif8-step-recovery` 关闭，详见 [HiF8 DTS](hif8_dts.md)。
 - MXFP4 使用 `--fp4-format e2m1 --fp4-recipe mxfp4`。
 - `--fp8-reuse-quantized-weight` 仅在启用 FP8 时有效。
 - FP8 通算融合仅支持 MXFP8 recipe 配合 MC2。
@@ -75,7 +75,7 @@ TransformerEngineNPU 提供昇腾 NPU 上的 TE 接口，MindSpeed 提供 HiF8 /
     <td rowspan="5"> 低精度训练</td>
     <td rowspan="5">--transformer-impl transformer_engine
     <br> --fp8-format e4m3/hybrid/hif8
-    <br> --fp8-recipe tensorwise/delayed/hif8_delayed/mxfp8/blockwise </td>
+    <br> --fp8-recipe tensorwise/delayed/mxfp8/blockwise </td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 </tbody>

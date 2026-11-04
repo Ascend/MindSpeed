@@ -383,7 +383,7 @@ class TestFeatureWiring:
         registered_targets = [call.args[0] for call in mock_pm.register_patch.call_args_list]
         assert "megatron.training.training.train_step" in registered_targets
 
-    def test_wrapper_passthrough_when_recipe_not_hif8_delayed(self):
+    def test_wrapper_passthrough_when_recipe_not_hif8(self):
         from mindspeed.core.transformer_engine.step_recovery.patch import (
             train_step_recovery_wrapper,
         )
@@ -422,7 +422,8 @@ class TestFeatureWiring:
         wrapped = train_step_recovery_wrapper(fake_train_step)
 
         fake_args = type("ns", (), {
-            "fp8_recipe": "hif8_delayed",
+            "fp8": "hif8",
+            "fp8_recipe": "delayed",
             "no_hif8_step_recovery": True,
         })()
         with mock.patch(
@@ -433,7 +434,7 @@ class TestFeatureWiring:
         assert len(called) == 1
         assert not result.skipped_iter
 
-    def test_wrapper_active_when_hif8_delayed_recipe(self):
+    def test_wrapper_active_when_hif8_format_uses_delayed_recipe(self):
         from mindspeed.core.transformer_engine.step_recovery.patch import (
             train_step_recovery_wrapper,
         )
@@ -444,7 +445,8 @@ class TestFeatureWiring:
         wrapped = train_step_recovery_wrapper(fake_train_step)
 
         fake_args = type("ns", (), {
-            "fp8_recipe": "hif8_delayed",
+            "fp8": "hif8",
+            "fp8_recipe": "delayed",
             "no_hif8_step_recovery": False,
         })()
         with mock.patch(
@@ -458,23 +460,6 @@ class TestFeatureWiring:
             mock_runner_cls.return_value = mock_runner
             wrapped(None, iter([]), None, None, None, None, None, iteration=0)
         mock_runner.run_train_step.assert_called_once()
-
-    def test_hif8_delayed_requires_hif8_format(self):
-        from argparse import Namespace
-
-        from mindspeed.features_manager.transformer_engine.te_recipe import (
-            TeRecipeFeature,
-        )
-
-        args = Namespace(
-            fp8='e4m3',
-            fp8_recipe='hif8_delayed',
-            use_gmm_fp8=False,
-            fp8_reuse_quantized_weight=False,
-        )
-
-        with pytest.raises(ValueError, match="hif8_delayed recipe requires"):
-            TeRecipeFeature().validate_args(args)
 
     @pytest.mark.parametrize(
         ("override", "message"),

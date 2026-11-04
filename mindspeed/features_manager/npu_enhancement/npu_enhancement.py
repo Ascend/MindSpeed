@@ -126,9 +126,9 @@ class NpuEnhancementFeature(MindSpeedFeature):
         if args.use_ascend_mc2 and args.fp8 and args.fp8_recipe != 'mxfp8':
             raise AssertionError('MC2 is supported only by the mxfp8 recipe in fp8.')
         if args.use_gmm_fp8:
-            if args.fp8_recipe not in ('mxfp8', 'tensorwise', 'delayed', 'hif8_delayed'):
+            if args.fp8_recipe not in ('mxfp8', 'tensorwise', 'delayed'):
                 warnings.warn(
-                    f"gmm fp8 supports tensorwise, mxfp8, delayed and hif8_delayed recipes, "
+                    f"gmm fp8 supports tensorwise, mxfp8 and delayed recipes, "
                     f"but {args.fp8_recipe} was provided; using bf16 gmm instead."
                 )
                 args.use_gmm_fp8 = False

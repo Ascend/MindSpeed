@@ -33,11 +33,11 @@ MindSpeed 为 HiF8 DTS 训练提供了 **Step Recovery** 特性，在框架层�
 
 每次 `all_reduce` 的 payload 仅为 2 个 int32（8 字节），开销可忽略。这两个同步点确保任意 rank 发现异常时，所有 rank 都能在 optimizer commit 前一致地停止并重试。
 
-在非 `hif8_delayed` recipe 场景下，wrapper 直接短路到原始 `train_step`，无任何额外开销。
+在非 HiF8 DTS 策略（`--fp8-format hif8` 且 `--fp8-recipe delayed`）场景下，wrapper 直接短路到原始 `train_step`，无任何额外开销。
 
 ## 使用场景
 
-- 使用 `--fp8-format hif8 --fp8-recipe hif8_delayed` 进行 HiF8 DTS 低精度训练时，Step Recovery 默认启用。
+- 使用 `--fp8-format hif8 --fp8-recipe delayed` 进行 HiF8 DTS 低精度训练时，Step Recovery 默认启用。
 - 训练过程中偶发的 NaN/Inf（如异常数据、梯度爆炸）需要自动恢复而不中断训练的场景。
 - 对训练数据流连续性有要求、不希望跳过批次的场景。
 
@@ -50,7 +50,7 @@ HiF8 DTS 训练通过以下参数组合启用，Step Recovery 随之自动激活
 ```bash
 --transformer-impl transformer_engine
 --fp8-format hif8
---fp8-recipe hif8_delayed
+--fp8-recipe delayed
 ```
 
 ### 显式禁用 Step Recovery
@@ -80,12 +80,12 @@ HiF8 DTS recipe 提供以下可调参数，用于控制 amax 收集与 scale fac
 - **训练连续性**：Step Recovery 在检测到 NaN/Inf 后重试同一批次而非跳过，保证训练数据流连续，避免收敛偏移。
 - **数值稳定性**：通过重置 HiF8 amax 历史，消除被污染的 scale factor 对后续 step 的影响，避免级联失败。
 - **确定性**：通过恢复完整的 RNG 状态，使重试 attempt 尽可能复现原始 attempt 的随机行为（dropout、mask、routing 等）。
-- **开销**：仅在检测到 NaN/Inf 时产生额外开销（清理、重置、RNG 恢复、批次重放、一次额外前向反向）。正常 step 的额外开销仅为两次 2 x int32 的 `all_reduce(MAX)`，开销可忽略。wrapper 在非 `hif8_delayed` 场景下直接短路。
+- **开销**：仅在检测到 NaN/Inf 时产生额外开销（清理、重置、RNG 恢复、批次重放、一次额外前向反向）。正常 step 的额外开销仅为两次 2 x int32 的 `all_reduce(MAX)`，开销可忽略。wrapper 在非 HiF8 策略场景下直接短路。
 - **重试限制**：每个 step 最多重试一次。若重试仍失败，训练将中止并输出结构化诊断日志（包含 iteration、reason、rank、loss、grad_norm）。
 
 ## 参数组合限制
 
-`hif8_delayed` recipe 仅允许与 `--fp8-format hif8` 组合使用。其他 fp8-format（如 `e4m3`）与 `hif8_delayed` 组合会在参数校验阶段报错。
+`--fp8-recipe delayed` 仅允许与 `--fp8-format hif8` 组合使用。其他 fp8-format（如 `e4m3`）与 HiF8 策略组合会在参数校验阶段报错。
 
 <table><thead>
   <tr>
@@ -98,7 +98,7 @@ HiF8 DTS recipe 提供以下可调参数，用于控制 amax 收集与 scale fac
     <td rowspan="3">HiF8 DTS 训练</td>
     <td rowspan="3">--transformer-impl transformer_engine
     <br> --fp8-format hif8
-    <br> --fp8-recipe hif8_delayed </td>
+    <br> --fp8-recipe delayed </td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
 </tbody>
@@ -107,7 +107,7 @@ HiF8 DTS recipe 提供以下可调参数，用于控制 amax 收集与 scale fac
     <td rowspan="3">HiF8 DTS + Step Recovery</td>
     <td rowspan="3">--transformer-impl transformer_engine
     <br> --fp8-format hif8
-    <br> --fp8-recipe hif8_delayed
+    <br> --fp8-recipe delayed
     <br>（默认启用，无需额外参数）</td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>
@@ -117,7 +117,7 @@ HiF8 DTS recipe 提供以下可调参数，用于控制 amax 收集与 scale fac
     <td rowspan="3">HiF8 DTS + 显式禁用 Step Recovery</td>
     <td rowspan="3">--transformer-impl transformer_engine
     <br> --fp8-format hif8
-    <br> --fp8-recipe hif8_delayed
+    <br> --fp8-recipe delayed
     <br> --no-hif8-step-recovery </td>
     <td style="text-align: center; vertical-align: middle">✅</td>
   </tr>

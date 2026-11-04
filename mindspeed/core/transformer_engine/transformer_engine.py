@@ -11,7 +11,6 @@ from dataclasses import replace
 from functools import wraps
 
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.core.extensions.transformer_engine import TEDelayedScaling
 
 HAVE_TE = False
 try:
@@ -48,26 +47,25 @@ def get_fp8_recipe_wrapper(fn):
         if config.fp8 == "hif8":
             fp8_format = transformer_engine.common.recipe.Format.HIF8
             if fp8_recipe == "delayed":
-                return TEDelayedScaling(
-                    config=config,
+                # Megatron schedules fp8_recipe="delayed" with a single outer
+                # quantization context per model chunk; the recipe itself keeps
+                # the independent HiF8 policy.
+                if getattr(config, "qat_scope", "all") != "all":
+                    raise ValueError("HiF8 recipes do not support --qat-scope.")
+                return transformer_engine.common.recipe.HIF8DelayedScaling(
                     fp8_format=fp8_format,
+                    amax_compute_algo=config.fp8_amax_compute_algo,
+                    amax_history_len=getattr(config, "hif8_amax_history_len", 128),
                     override_linear_precision=(False, False, not config.fp8_wgrad),
+                    hif8_input_margin=getattr(config, "hif8_input_margin", 11),
+                    hif8_weight_margin=getattr(config, "hif8_weight_margin", 12),
+                    hif8_grad_margin=getattr(config, "hif8_grad_margin", 11),
+                    amax_collect_interval=getattr(config, "hif8_amax_collect_interval", 5),
+                    scale_update_interval=getattr(config, "hif8_scale_update_interval", 10),
                 )
             if fp8_recipe == "tensorwise":
                 return transformer_engine.common.recipe.Float8CurrentScaling(
                     fp8_format=fp8_format, fp8_dpa=config.fp8_dot_product_attention
-                )
-            if fp8_recipe == "hif8_delayed":
-                return transformer_engine.common.recipe.HIF8DelayedScaling(
-                    fp8_format=fp8_format,
-                    amax_compute_algo=config.fp8_amax_compute_algo,
-                    amax_history_len=config.hif8_amax_history_len,
-                    override_linear_precision=(False, False, not config.fp8_wgrad),
-                    hif8_input_margin=config.hif8_input_margin,
-                    hif8_weight_margin=config.hif8_weight_margin,
-                    hif8_grad_margin=config.hif8_grad_margin,
-                    amax_collect_interval=config.hif8_amax_collect_interval,
-                    scale_update_interval=config.hif8_scale_update_interval,
                 )
             raise ValueError(
                 "DelayedScaling, Float8CurrentScaling and HIF8DelayedScaling are the only supported HIF8 recipes."
@@ -78,13 +76,28 @@ def get_fp8_recipe_wrapper(fn):
     return wrapper
 
 
+_HIF8_CONFIG_FIELDS = (
+    "hif8_amax_history_len",
+    "hif8_input_margin",
+    "hif8_weight_margin",
+    "hif8_grad_margin",
+    "hif8_amax_collect_interval",
+    "hif8_scale_update_interval",
+)
+
+
 def core_transformer_config_from_args_wrapper(fn):
-    """Propagate the MindSpeed QAT scope into the model configuration."""
+    """Propagate MindSpeed-only arguments into the model configuration."""
 
     @wraps(fn)
     def wrapper(args, *pos_args, **kwargs):
         config = fn(args, *pos_args, **kwargs)
         config.qat_scope = getattr(args, "qat_scope", "all")
+        # TransformerConfig has no HiF8 fields, so copy them explicitly;
+        # get_fp8_recipe consumes these attributes.
+        for name in _HIF8_CONFIG_FIELDS:
+            if hasattr(args, name):
+                setattr(config, name, getattr(args, name))
         return config
 
     return wrapper

@@ -2,8 +2,9 @@
 """Patch that wraps ``megatron.training.training.train_step`` with the
 HiF8 pre-commit recovery runner.
 
-When ``--fp8-recipe hif8_delayed`` is used, step recovery is enabled by
-default.  Use ``--no-hif8-step-recovery`` to explicitly disable it.
+When ``--fp8-format hif8`` is used with ``--fp8-recipe delayed`` (the HiF8
+policy scheduled like delayed scaling), step recovery is enabled by default.
+Use ``--no-hif8-step-recovery`` to explicitly disable it.
 When the feature is disabled, the wrapper short-circuits to the original
 ``train_step`` without any overhead.
 
@@ -36,8 +37,11 @@ def train_step_recovery_wrapper(fn):
 
         fp8_recipe = getattr(args, "fp8_recipe", None)
         fp8_recipe = getattr(fp8_recipe, "value", fp8_recipe)
+        fp8_format = getattr(args, "fp8", None)
+        fp8_format = getattr(fp8_format, "value", fp8_format)
 
-        if fp8_recipe != "hif8_delayed" or getattr(args, "no_hif8_step_recovery", False):
+        is_hif8_policy = fp8_recipe == "delayed" and fp8_format == "hif8"
+        if not is_hif8_policy or getattr(args, "no_hif8_step_recovery", False):
             return fn(
                 forward_step_func,
                 data_iterator,
