@@ -1,0 +1,72 @@
+name: Test_nightly_smoke
+
+on:
+  workflow_call:
+    inputs:
+      testcase_config_file:
+        required: false
+        type: string
+        default: "resources/pytest_mindspeed_core.ini"
+        description: "pytest-infra 中的 MindSpeed Core 冒烟用例配置"
+      image_label:
+        required: true
+        type: string
+        description: "stage_0 本次发布的 Nightly 镜像完整地址"
+
+permissions:
+  repository: read
+  id-token: write
+
+jobs:
+  JOB_test_nightly:
+    name: Test_nightly_smoke
+    select: selected_by_default
+    runs-on: [self-hosted, arch=x86, k8s=public]
+    outputs:
+      pipeline-id: ${{ steps.run-nightly-smoke.outputs.pipeline-id }}
+      job-run-id: ${{ steps.run-nightly-smoke.outputs.job-run-id }}
+      testcase-file: ${{ steps.run-nightly-smoke.outputs.testcase-file }}
+      env-log-file: ${{ steps.run-nightly-smoke.outputs.env-log-file }}
+    steps:
+      - name: fast_checkout
+        uses: checkout
+
+      - name: run nightly smoke test
+        id: run-nightly-smoke
+        uses: openlibing/test-action/pytest-orch@v1.0.8
+        continue-on-error: true
+        with:
+          testcase-config-file: ${{ inputs.testcase_config_file }}
+          scheduler-secret: ${{ secrets.SCHEDULER_SECRET }}
+          testcase-repo: AscendTest/pytest-infra
+          testcase-branch: main
+          image-label: ${{ inputs.image_label }}
+          env-deploy-model: Dislocated
+          max-workers: "2"
+          oidc-config: ${{ secrets.OIDC_CONFIG }}
+
+      - name: upload nightly smoke result
+        id: upload-nightly-smoke-result
+        identifier: upload-nightly-smoke-result
+        if: ${{ steps.run-nightly-smoke.outputs.testcase-file != '' }}
+        uses: upload-artifact
+        continue-on-error: true
+        with:
+          name: nightly-smoke-artifact
+          path: ${{ steps.run-nightly-smoke.outputs.testcase-file }}
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: upload nightly environment log
+        id: upload-nightly-environment-log
+        identifier: upload-nightly-environment-log
+        if: ${{ steps.run-nightly-smoke.outputs.env-log-file != '' }}
+        uses: upload-artifact
+        continue-on-error: true
+        with:
+          name: nightly-smoke-environment-log
+          path: ${{ steps.run-nightly-smoke.outputs.env-log-file }}
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
