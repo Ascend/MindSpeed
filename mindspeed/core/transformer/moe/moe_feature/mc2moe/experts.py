@@ -3,10 +3,13 @@
 # This implementation is combined with Megatron's GroupedMLP through adaptor.py.
 # pylint: disable=no-member,relative-beyond-top-level
 
+import copy
+
 import torch.nn.functional as F
 from megatron.core.transformer.moe.moe_utils import get_default_pg_collection
 from mindspeed.core.fusions.fused_bias_swiglu import fused_swiglu
 from mindspeed.core.tensor_parallel.random import CheckpointWithoutOutput
+from mindspeed.core.transformer.moe.grouped_mlp import GroupedMLP
 from mindspeed.model.transformer import should_recompute_activation
 from mindspeed.core.transformer.moe.moe_feature import parallel_state
 from .mc2_fuse_a2a import AlltoallvPermuteGmm, GmmUnpermuteAlltoallv
@@ -39,8 +42,33 @@ class GmmExpertsMC2Impl:
             assert self.config.activation_func == F.silu, 'Activation function must be silu when using fused_swiglu.'
             self.activation_func = fused_swiglu
 
+        def activation_func_with_probs(x, probs):
+            dtype = x.dtype
+            res = self.activation_func(x) * probs
+            return res.to(dtype)
+
+        self.activation_func_with_probs = activation_func_with_probs
+
+    @staticmethod
+    def _validate_supported_config(config):
+        """Relax the basic GMM checks for the MC2 hif8 path.
+
+        With fp8 == 'hif8' the routed experts run through TransformerEngine's
+        fused quant + AllToAll + grouped GEMM wrappers (see forward), not the
+        basic NPU GMM path, so the fp8 restriction does not apply. Other fp8
+        formats keep being rejected by the base validation.
+        """
+        if getattr(config, 'fp8', None) == 'hif8':
+            config = copy.copy(config)
+            config.fp8 = None
+        GroupedMLP._validate_supported_config(config)
+
     def forward(
-        self, permuted_local_hidden_states_af_weight1, tokens_per_expert, permuted_probs=None, moe_layer_dispatcher=None
+        self,
+        permuted_local_hidden_states_af_weight1,
+        tokens_per_expert,
+        permuted_probs=None,
+        moe_layer_dispatcher=None,
     ):
         """Forward of GroupedMLP
 
@@ -56,8 +84,11 @@ class GmmExpertsMC2Impl:
         Return:
             output (torch.Tensor): The output of the local experts.\
 
-        Warning:Due to kernal BUG, shared_expert in gmmmc2 is unused now.
-                With shared_expert, Megatron's Shared_expert_overlap will work.
+        Warning: Shared experts always run through the dispatcher's overlap
+                path (bf16 GEMMs on a separate stream), for both bf16 and
+                hif8. Under hif8 only the routed experts use the
+                TransformerEngine fused quant+AllToAll+grouped GEMM
+                wrappers, which assume expert-side TP=1.
 
         """
         is_recompute_activation = (
@@ -69,17 +100,40 @@ class GmmExpertsMC2Impl:
         w1 = self.weight1.view(self.num_local_experts, self.config.hidden_size, -1)
         w2 = self.weight2.view(self.num_local_experts, -1, self.config.hidden_size)
 
-        mm1_out, shared_expert_mm1_out = AlltoallvPermuteGmm.apply(
-            permuted_local_hidden_states_af_weight1,
-            w1,
-            parallel_state.get_expert_model_parallel_group(),
-            tokens_per_expert,
-            None,
-            None,
-            None,
-            moe_layer_dispatcher.send_counts,
-            moe_layer_dispatcher.recv_counts,
-        )
+        ep_group = parallel_state.get_expert_model_parallel_group()
+        if self.config.fp8 == 'hif8':
+            # HiFloat8 per-tensor path: fused quant + AllToAll + grouped GEMM
+            # from TransformerEngine (dispatch: fc1, combine: fc2). The
+            # dispatcher's counts are per-global-expert (expert-major), which
+            # matches the wrappers' flattened rank-major layout; they are
+            # passed as flat CPU lists, exactly what the TE wrappers take.
+            # Shared experts are NOT fused here: they keep running through
+            # the dispatcher's overlap hooks (bf16), same as the bf16 path.
+            from transformer_engine.pytorch.mc2 import (
+                moe_ep_alltoallv_quant_gmm,
+                moe_ep_quant_gmm_alltoallv,
+            )
+
+            mm1_out = moe_ep_alltoallv_quant_gmm(
+                permuted_local_hidden_states_af_weight1,
+                w1,
+                ep_group,
+                moe_layer_dispatcher.send_counts,
+                moe_layer_dispatcher.recv_counts,
+            )
+            shared_expert_mm1_out = None
+        else:
+            mm1_out, shared_expert_mm1_out = AlltoallvPermuteGmm.apply(
+                permuted_local_hidden_states_af_weight1,
+                w1,
+                ep_group,
+                tokens_per_expert,
+                None,
+                None,
+                None,
+                moe_layer_dispatcher.send_counts,
+                moe_layer_dispatcher.recv_counts,
+            )
 
         if not is_recompute_activation:
             intermediate_parallel = self.activation_func_with_probs(mm1_out, permuted_probs.unsqueeze(-1))
@@ -99,16 +153,25 @@ class GmmExpertsMC2Impl:
             if intermediate_parallel.requires_grad:
                 intermediate_parallel.register_hook(self.activation_checkpoint_manager.recompute)
 
-        up_out, shared_expert_mm2_out = GmmUnpermuteAlltoallv.apply(
-            intermediate_parallel,
-            w2,
-            parallel_state.get_expert_model_parallel_group(),
-            tokens_per_expert,
-            None,
-            None,
-            None,
-            moe_layer_dispatcher.send_counts,
-            moe_layer_dispatcher.recv_counts,
-        )
+        if self.config.fp8 == 'hif8':
+            up_out = moe_ep_quant_gmm_alltoallv(
+                intermediate_parallel,
+                w2,
+                ep_group,
+                moe_layer_dispatcher.send_counts,
+                moe_layer_dispatcher.recv_counts,
+            )
+        else:
+            up_out, shared_expert_mm2_out = GmmUnpermuteAlltoallv.apply(
+                intermediate_parallel,
+                w2,
+                parallel_state.get_expert_model_parallel_group(),
+                tokens_per_expert,
+                None,
+                None,
+                None,
+                moe_layer_dispatcher.send_counts,
+                moe_layer_dispatcher.recv_counts,
+            )
 
         return up_out, None

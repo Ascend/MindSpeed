@@ -595,7 +595,32 @@ class StepRecovery:
         self._hif8.reset_after_failed_step()
         if self._rng_snapshot is not None:
             self._rng.restore(self._rng_snapshot)
+        self._reset_rerun_state()
         self._replay.rollback()
+
+    def _reset_rerun_state(self) -> None:
+        """Reset Megatron's rerun state machine after an aborted attempt.
+
+        The RetryableStepError is raised inside ``optimizer.step()``, i.e.
+        after ``should_run_forward_backward()`` already flipped the state
+        machine to ``INITIAL_RUN`` and before the closing call that resets
+        it back to ``NOT_RUNNING_YET``.  Without this reset the retry
+        ``train_step`` silently skips the forward-backward pass and the
+        optimizer would commit zero grads.
+        """
+        try:
+            from megatron.core.rerun_state_machine import (
+                RerunState,
+                get_rerun_state_machine,
+            )
+
+            rsm = get_rerun_state_machine()
+            if getattr(rsm, "state", None) != RerunState.NOT_RUNNING_YET:
+                rsm.state = RerunState.NOT_RUNNING_YET
+                if _is_rank_zero():
+                    LOG.info("[StepRecovery] rerun state machine reset after aborted attempt")
+        except Exception:
+            LOG.debug("[StepRecovery] failed to reset rerun state machine", exc_info=True)
 
     def get_retry_iterator(self) -> Any:
         """Return the iterator to feed into the retry attempt."""

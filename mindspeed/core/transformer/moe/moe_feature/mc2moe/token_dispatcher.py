@@ -30,7 +30,13 @@ class MoEAlltoAllMC2TokenDispatcher:
     (3) token_unpermutation(): sort_chunk(if num_local_experts>1)->RS(TP)->A2A(EP)->unpermute
     """
 
-    def __init__(self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig) -> None:
+    def __init__(
+        self,
+        num_local_experts: int,
+        local_expert_indices: List[int],
+        config: TransformerConfig,
+        pg_collection=None,
+    ) -> None:
         """
         Initialize the AlltoAll token dispatcher.
 
@@ -38,11 +44,12 @@ class MoEAlltoAllMC2TokenDispatcher:
             num_local_experts (int): Number of local experts on the current device.
             local_expert_indices (List[int]): Indices of local experts on the current device.
             config (TransformerConfig): Configuration for the transformer model.
+            pg_collection: Process groups for MoE operations (Megatron 0.18+).
         """
         self.num_local_experts = num_local_experts
         self.config = config
         self.local_expert_indices = local_expert_indices
-        super().__init__(num_local_experts, local_expert_indices, config)
+        super().__init__(num_local_experts, local_expert_indices, config, pg_collection=pg_collection)
 
     def preprocess(self, routing_map: torch.Tensor) -> torch.Tensor:
         """
