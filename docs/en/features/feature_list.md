@@ -128,7 +128,7 @@ This document describes the features related to MindSpeed Core.
       <td><a href="../features/hif8_dts.md">HiF8 DTS (Delayed Tensor Scaling) Training</a></td>
     </tr>
     <tr>
-      <td><a href="../features/te-comparsion-online.md">Low-Precision Online Comparison</a></td>
+      <td><a href="../features/te-comparison-online.md">Low-Precision Online Comparison</a></td>
     </tr>
     <tr>
       <td rowspan="2">Communication Optimization</td>

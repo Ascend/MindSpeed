@@ -45,7 +45,7 @@
     - [Ascend Computation-Communication Parallel Optimization](./features/communication-over-computation.md)
     - [Ascend MC2](./features/mc2.md)
     - [HiF8 DTS (Delayed Tensor Scaling) Training](./features/hif8_dts.md)
-    - [Low-Precision Online Comparison](./features/te-comparsion-online.md)
+    - [Low-Precision Online Comparison](./features/te-comparison-online.md)
     - [Ascend Flash Attention](./features/flash-attention.md)
   - [Communication Optimization Features]()
     - [Async Log Allreduce](./features/async-log-allreduce.md)
