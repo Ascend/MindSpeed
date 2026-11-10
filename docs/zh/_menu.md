@@ -1,5 +1,7 @@
 # MindSpeed Core
 
+<!-- markdownlint-disable MD042 -->
+
 - [简介](introduction.md)
 - [快速入门](./user-guide/quickstart.md)
 - [软件安装](./user-guide/install_guide.md)
@@ -45,7 +47,7 @@
     - [Ascend 计算通信并行优化](./features/communication-over-computation.md)
     - [Ascend MC2](./features/mc2.md)
     - [HiF8 DTS (Delayed Tensor Scaling) 训练](./features/hif8_dts.md)
-    - [低精度在线比对](./features/te-comparsion-online.md)
+    - [低精度在线比对](./features/te-comparison-online.md)
     - [Ascend Flash Attention](./features/flash-attention.md)
   - [通信优化特性]()
     - [异步日志全归约 (Async Log Allreduce)](./features/async-log-allreduce.md)

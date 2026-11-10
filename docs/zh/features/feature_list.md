@@ -128,7 +128,7 @@
       <td><a href="../features/hif8_dts.md">HiF8 DTS (Delayed Tensor Scaling) 训练</a></td>
     </tr>
     <tr>
-      <td><a href="../features/te-comparsion-online.md">低精度在线比对</a></td>
+      <td><a href="../features/te-comparison-online.md">低精度在线比对</a></td>
     </tr>
     <tr>
       <td rowspan="2">通信优化特性</td>
