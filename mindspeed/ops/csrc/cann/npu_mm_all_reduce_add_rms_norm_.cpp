@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Huawei Technologies Co., Ltd
+// Copyright 2024 Huawei Technologies Co., Ltd.
 // Copyright (c) 2019, Facebook CORPORATION.
 // All rights reserved.
 //

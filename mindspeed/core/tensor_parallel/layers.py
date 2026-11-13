@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright 2024 Huawei Technologies Co., Ltd.
 # Copyright (c) 2024, Bytedance Inc. All rights reserved.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #

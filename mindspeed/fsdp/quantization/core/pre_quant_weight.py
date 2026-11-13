@@ -1,4 +1,4 @@
-# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright 2025 Huawei Technologies Co., Ltd.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # All rights reserved.

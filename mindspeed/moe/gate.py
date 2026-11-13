@@ -1,4 +1,5 @@
 # coding=utf-8
+# Copyright 2026 Huawei Technologies Co., Ltd.
 # Copyright (c) Microsoft Corporation.
 #
 # This source code is licensed under the Apache license found in the

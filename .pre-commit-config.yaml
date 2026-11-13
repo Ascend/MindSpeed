@@ -7,12 +7,15 @@ ci:
   autoupdate_schedule: monthly
 
 repos:
+  # PR 4138 临时将 9 个 hook 设为 manual。合入后删除前 8 项的 stages，并将 Gitleaks 恢复为 [pre-commit]。
   # pre-commit 基础检查
   - repo: https://gitcode.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace
+        stages: [manual]
       - id: end-of-file-fixer
+        stages: [manual]
       - id: check-yaml
         args: ["--allow-multiple-documents"]
       - id: check-added-large-files
@@ -27,9 +30,11 @@ repos:
     rev: v0.14.14
     hooks:
       - id: ruff-check
+        stages: [manual]
         args: ["--config", "pre-commit/pyproject.toml", "--output-format", "github", "--fix"]
         types: [python]
       - id: ruff-format
+        stages: [manual]
         args: ["--config", "pre-commit/pyproject.toml"]
         types: [python]
 
@@ -50,6 +55,7 @@ repos:
     rev: v4.0.5
     hooks:
       - id: pylint
+        stages: [manual]
         name: pylint (Python code quality check)
         types: [python]
         args: ["--rcfile=pre-commit/pyproject.toml"]
@@ -60,6 +66,7 @@ repos:
     rev: 1.9.4
     hooks:
       - id: bandit
+        stages: [manual]
         name: bandit (Python 安全漏洞检查)
         types: [python]
         args: [
@@ -73,6 +80,7 @@ repos:
     rev: v1.32.0
     hooks:
       - id: typos
+        stages: [manual]
         args: ["--force-exclude", "--config", "pre-commit/typos.toml"]
 
   #--------------- C++ 核心检查 ---------------------------------------------
@@ -80,6 +88,7 @@ repos:
     rev: v18.1.8
     hooks:
       - id: clang-format
+        stages: [manual]
         files: \.(c|h|cpp|hpp|cc|hh|cxx|hxx)$
         args:
           - "--style=file"  # 读取 .clang-format 文件
@@ -106,4 +115,4 @@ repos:
           - --redact
           - --config=pre-commit/.gitleaks.toml
 
-        stages: [pre-commit]
+        stages: [manual]

@@ -1,5 +1,5 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright 2022 Huawei Technologies Co., Ltd.
 # SPDX-License-Identifier: BSD-3-Clause OR Apache-2.0 OR MIT
 
 from argparse import ArgumentParser, Namespace

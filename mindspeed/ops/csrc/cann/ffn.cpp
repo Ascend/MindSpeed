@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Huawei Technologies Co., Ltd
+// Copyright 2024 Huawei Technologies Co., Ltd.
 // All rights reserved.
 //
 // Licensed under the BSD 3-Clause License  (the "License");

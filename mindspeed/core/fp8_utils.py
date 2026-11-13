@@ -1,4 +1,4 @@
-# Copyright (c) 2025, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright 2025 Huawei Technologies Co., Ltd.
 # Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause OR Apache-2.0 OR MIT

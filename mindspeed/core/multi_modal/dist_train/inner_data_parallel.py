@@ -1,5 +1,5 @@
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) 2025, Huawei Technologies Co., Ltd.  All rights reserved.
+# Copyright 2022 Huawei Technologies Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 import torch
 from mindspeed.core.tensor_parallel.comm_utils import (

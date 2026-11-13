@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
-# Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
+# Copyright 2022 Huawei Technologies Co., Ltd.
 import contextlib
 from typing import Callable, Iterator, List, Optional, Union, Tuple
 import torch

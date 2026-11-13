@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright 2024 Huawei Technologies Co., Ltd.
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 from abc import ABC, abstractmethod

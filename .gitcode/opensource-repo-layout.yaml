@@ -1,0 +1,536 @@
+project: Ascend/MindSpeed
+directories:
+  - path: "./mindspeed/"
+    type: source
+  - path: "./mindspeed/auto_settings/module/black/patch/experts.py"
+    type: upstream
+  - path: "./mindspeed/checkpointing.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/dot_product_attention.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/get_batch_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/model_parallel_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/ring_context_parallel/ring_context_parallel.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/rotary_pos_embedding_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/ulysses_context_parallel/ulysses_context_parallel.py"
+    type: upstream
+  - path: "./mindspeed/core/context_parallel/utils.py"
+    type: upstream
+  - path: "./mindspeed/core/data_parallel/async_log_allreduce.py"
+    type: upstream
+  - path: "./mindspeed/core/data_parallel/distributed_data_parallel.py"
+    type: upstream
+  - path: "./mindspeed/core/datasets/gpt_dataset.py"
+    type: upstream
+  - path: "./mindspeed/core/distill/logits_kl_loss.py"
+    type: upstream
+  - path: "./mindspeed/core/distill/teacher_model_manager.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/buffer_pad/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/custom_fsdp/param_and_grad_buffer.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/config.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/megatron_adaptor/optimizer/clip.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/megatron_adaptor/optimizer/misc.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/megatron_adaptor/optimizer/sharded_grad_scaler.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/megatron_adaptor/optimizer/zero.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/runtime/_forward.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/runtime/_initialize.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/runtime/_root_forward.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/runtime/_shard.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/runtime/_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/runtime/hook.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/state/mga_checkpoint.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/state/optim_state.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/state/scripts/convert_to_megatron.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/state/state_dict.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/_common_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/_exec_order_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/_init_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/_traversal_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/_wrap_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/api.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/flat_param.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/fsdp.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/layerzero/zero3/wrap.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/param_and_grad_buffer.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/reset_bucket_group_order_feature/distributed_data_parallel.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/torch_fully_sharded_data_parallel/checkpointing.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/torch_fully_sharded_data_parallel/training.py"
+    type: upstream
+  - path: "./mindspeed/core/distributed/torch_fully_sharded_data_parallel/utils.py"
+    type: upstream
+  - path: "./mindspeed/core/fp8_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/fusions/fused_moe_permute.py"
+    type: upstream
+  - path: "./mindspeed/core/fusions/fused_rms_norm.py"
+    type: upstream
+  - path: "./mindspeed/core/fusions/fused_rope.py"
+    type: upstream
+  - path: "./mindspeed/core/megatron_basic/get_megatron_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/megatron_basic/megatron_basic.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/common.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/compress/compress_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/compress_dense/mlp_forward.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/recompute/activation/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/recompute/norm/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/recompute/norm/norm_recompute_forward.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/reuse_param/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/memory/reuse_param/reuse_distrib_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/models/common/embeddings/language_model_embedding.py"
+    type: upstream
+  - path: "./mindspeed/core/models/common/embeddings/rotary_pos_embedding.py"
+    type: upstream
+  - path: "./mindspeed/core/models/gpt/gpt_model.py"
+    type: upstream
+  - path: "./mindspeed/core/models/multimodal/llava_model.py"
+    type: upstream
+  - path: "./mindspeed/core/multi_modal/dist_train/dist_parallel_state.py"
+    type: upstream
+  - path: "./mindspeed/core/multi_modal/dist_train/dist_schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/multi_modal/dist_train/inner_data_parallel.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/distrib_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/fix_duplicate_allgather.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/fused_ema_adamw/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/low_precision/finalize_model_grads.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/low_precision/quant_distributed_hooks.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/low_precision/quant_grad_clip.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/checkpointing.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/emerging_optimizers.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/layer_wise_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/muon.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/muon_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/optimizer_config.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/optimizer_param_scheduler.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/orthogonalized_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/param_and_grad_buffer.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/muon/utils.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/swap_muon/swap_muon.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/swap_optimizer/swap_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/core/optimizer/virtual_optimizer/virtual_adam.py"
+    type: upstream
+  - path: "./mindspeed/core/parallel_state.py"
+    type: upstream
+  - path: "./mindspeed/core/performance/auto_pipeline_perf/schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/dualpipev/dualpipev_chunks.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/dualpipev/dualpipev_schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/dualpipev/mtp_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/flexible_schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/multiparameter_schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/p2p_communication.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/pipeline_model_parallel_layout/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/pipeline_model_parallel_layout/layout.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/ripipe_schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/pipeline_parallel/schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/qat/layers.py"
+    type: upstream
+  - path: "./mindspeed/core/qos/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/qos/domain_info.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/ascend_turbo/initialize.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/coc_feature/coc_column_parallel_linear.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/coc_feature/coc_row_parallel_linear.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/layers.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/mapping.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/mc2_feature/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/mc2_feature/linear_function.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/mc2_feature/mc2_column_parallel_linear.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/mc2_feature/mc2_row_parallel_linear.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/random.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/tp_2d/schedules_2d.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/tp_2d/transformer_config.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/unaligned_layers/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/unaligned_layers/unaligned_column_parallel_linear.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/unaligned_layers/unaligned_row_parallel_linear.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/unaligned_layers/unaligned_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/vocab_parallel/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/tensor_parallel/vocab_parallel/vocab_parallel.py"
+    type: upstream
+  - path: "./mindspeed/core/training.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/attention.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/deepseek_v4/indexer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/deepseek_v4/indexer_loss.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/dot_product_attention.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/alibi/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/alibi/alibi.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/alibi/alibi_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/alibi/dot_product_attention.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/flash_attention/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/generate_mask/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/generate_mask/generate_mask.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/reset_attention_mask/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/flash_attention/reset_attention_mask/utils.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/mlp.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/expert_placement/executor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/experts.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/grouped_gemm_util.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/layers.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/legacy_a2a_token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/__init__.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/balanced_moe/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/balanced_moe/communication.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/balanced_moe/modules/moe_layer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/balanced_moe/modules/token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/balanced_moe/overlap_funcs/fwd.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/balanced_moe/parallel_state.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/balanced_moe/utils.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/common.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/gpt_model.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/modules/attention.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/modules/layers.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/modules/moe_layer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/modules/shared_experts.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/modules/token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/no_pipelining_schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/overlap_funcs/fwd.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/packed_mtp.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/transformer_block.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/transformer_layer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/fb_overlap/vpp_schedules.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/mc2moe/legacy_a2a_token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/mc2moe/moe_layer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/mc2moe/token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/comm_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/experts.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/mlp_layers.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/moe_common.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/moe_layer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/moe_layer_overlap_all2allseq.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/moe_layer_overlap_allgather.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/overlap/unpermute_without_activation.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/tp_extend_ep/moe_layer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_feature/tp_extend_ep/token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_layer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/moe_utils.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/router.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/token_dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/moe/unpermute_without_activation.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/multi_head_latent_attention/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/transformer.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/transformer_block.py"
+    type: upstream
+  - path: "./mindspeed/core/transformer/transformer_config.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/data_parallel/async_log_allreduce.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/moe/moe_allgather_overlap.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/optimizer/muon_optimizer_feature.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/pipeline_parallel/pipeline_model_parallel_layout_feature.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/pipeline_parallel/ripipe_schedules_feature.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/transformer/flash_attention/alibi_feature.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/transformer/flash_attention/fusion_attention_v1_feature.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/transformer/flash_attention/fusion_attention_v2_feature.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/transformer/flash_attention/generate_mask_feature.py"
+    type: upstream
+  - path: "./mindspeed/features_manager/transformer/multi_head_latent_attention/mla_feature.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/distributed/dist_ops.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/distributed/expert_parallel/dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/distributed/expert_parallel/utils.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/quantization/converter/model_converter.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/quantization/converter/mx_converter.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/quantization/converter/utils.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/quantization/core/post_quant_weight.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/quantization/core/pre_quant_weight.py"
+    type: upstream
+  - path: "./mindspeed/fsdp/quantization/module/linear_mxfp8.py"
+    type: upstream
+  - path: "./mindspeed/functional/profile/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/lite/distributed/dist_ops.py"
+    type: upstream
+  - path: "./mindspeed/lite/distributed/expert_parallel/dispatcher.py"
+    type: upstream
+  - path: "./mindspeed/lite/distributed/expert_parallel/utils.py"
+    type: upstream
+  - path: "./mindspeed/lite/ops/triton/fused_norm_gate.py"
+    type: upstream
+  - path: "./mindspeed/lite/ops/triton/sinkhorn.py"
+    type: upstream
+  - path: "./mindspeed/lite/ops/triton/sort_chunks_by_idx.py"
+    type: upstream
+  - path: "./mindspeed/lite/ops/triton/utils.py"
+    type: upstream
+  - path: "./mindspeed/model/transformer.py"
+    type: upstream
+  - path: "./mindspeed/moe/experts.py"
+    type: upstream
+  - path: "./mindspeed/moe/gate.py"
+    type: upstream
+  - path: "./mindspeed/moe/mixtral_parallel_mlpbm.py"
+    type: upstream
+  - path: "./mindspeed/moe/moe.py"
+    type: upstream
+  - path: "./mindspeed/moe/moe_layer.py"
+    type: upstream
+  - path: "./mindspeed/moe/router.py"
+    type: upstream
+  - path: "./mindspeed/moe/utils.py"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/atb/groupmatmul_add.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/atb/lcal_coc.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/atb/matmul_add.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/atb/rms_norm.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/atb/swiglu.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/cann/fusion_attention_v2.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/cann/npu_bmm_reduce_scatter_all_to_all.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/cann/npu_dropout_add_layer_norm.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/cann/npu_mm_all_reduce_add_rms_norm.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/cann/npu_mm_all_reduce_add_rms_norm_.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/flop_counter/flop_counter.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/pluggable_allocator/smart_swap/DeviceCachingAllocator.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/csrc/pluggable_allocator/smart_swap/common.cpp"
+    type: upstream
+  - path: "./mindspeed/ops/triton/chunk_delta_h.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/chunk_o.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/chunk_scaled_dot_kkt.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/cumsum.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/l2norm.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/solve_tril.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/sort_chunks_by_idx.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/utils.py"
+    type: upstream
+  - path: "./mindspeed/ops/triton/wy_fast.py"
+    type: upstream
+  - path: "./mindspeed/optimizer/distrib_optimizer.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/attention/dot_product_attention/backend.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/attention/dot_product_attention/dot_product_attention.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/attention/dot_product_attention/kvallgather_context_parallel.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/attention/dot_product_attention/ulysses_context_parallel.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/attention/dot_product_attention/utils.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/fp8/checkpoint.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/fp8/fp8.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/fp8/state_manager.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/fp8/tensor/float8_tensor.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/fp8/tensor/float8_tensor_cpu.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/fp8/tensor/mxfp8_tensor.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/fp8/tensor/mxfp8_tensor_cpu.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/module/checkpoint.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/module/grouped_linear.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/module/layernorm_column_parallel_linear.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/module/linear.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/module/performance_grouped_linear.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/permutation.py"
+    type: upstream
+  - path: "./mindspeed/te/pytorch/utils.py"
+    type: upstream
+  - path: "./mindspeed/tokenizer/build_tokenizer/adaptor.py"
+    type: upstream
+  - path: "./mindspeed/training.py"
+    type: upstream
+  - path: "./mindspeed/utils.py"
+    type: upstream
