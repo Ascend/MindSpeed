@@ -227,6 +227,8 @@ class ColumnParallelSeq(torch.autograd.Function):
             BackwardStateStorage.save(ctx, input_, weight, weight)
         ctx.input_size = input_.size()
 
+        if bias is not None:
+            output_parallel = output_parallel + bias
         return output_parallel
 
     @staticmethod
