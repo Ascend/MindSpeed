@@ -238,10 +238,8 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
             Fp8Recipe.mxfp8_32x32,
         ):
             group_list_type = 1
-            self.total_weight_T = [w.T.contiguous() for w in self.total_weight]
-            output = MindSpeedTEGroupedLinearGMM.apply(
-                x, m_splits, group_list_type, self.total_weight, *self.total_weight_T
-            )
+            weight_input = [w.T.contiguous() for w in self.total_weight]
+            output = MindSpeedTEGroupedLinearGMM.apply(x, m_splits, group_list_type, self.total_weight, *weight_input)
         elif getattr(args, "fp8_recipe", False) == Fp8Recipe.mxfp8:
             output = MindSpeedTEGroupedLinearMXFP8GMM.apply(
                 x, m_splits, self.total_weight, *[w.T.contiguous() for w in self.total_weight]
