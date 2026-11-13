@@ -16,6 +16,16 @@ from mindspeed.core.transformer.moe.comm_utils import async_all_to_all, async_al
 PREMUTE_FINISH_EVENT = None
 
 
+def _unpermute_expert_outputs(tokens, indices, *, restore_shape, routing_map, fused, drop_and_pad):
+    """Restore the already-weighted expert rows returned by the FB combine communication."""
+    if fused:
+        return unpermute(
+            tokens, indices, restore_shape=restore_shape, routing_map=routing_map, fused=True, drop_and_pad=drop_and_pad
+        )
+    output = tokens.new_zeros(restore_shape)
+    return output.scatter_add_(0, indices.unsqueeze(1).expand_as(tokens), tokens)
+
+
 class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
     OVERLAP_STREAM = None
 
@@ -490,7 +500,7 @@ class MindSpeedMOEAlltoAllFbOverlapTokenDispatcher(MoEAlltoAllTokenDispatcher):
 
     def token_unpermute2(self, permutated_local_input_tokens):
         # Unpermutation 1: AlltoAll output to output
-        output = unpermute(
+        output = _unpermute_expert_outputs(
             permutated_local_input_tokens,
             self.reversed_local_input_permutation_mapping,
             restore_shape=self.hidden_shape_before_permute,
