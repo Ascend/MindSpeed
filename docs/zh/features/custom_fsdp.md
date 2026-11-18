@@ -59,12 +59,29 @@ DP 大于 1，模型权重、梯度和优化器状态占用较多显存，希望
 
 上述“已接入”表示源码完成基础适配，不表示所有组合已通过 NPU 端到端测试。TENPU 的 CPU 本地分片验证不能替代 HCCL 训练和真实检查点恢复验收。
 
+## AG 流与起始同步预取优化
+
+为与 master 分支的显存行为对齐，可开启 `--fsdp-memory-compatibility`，同时启用以下两项优化。该参数默认关闭，要求启用 Megatron FSDP 且 optimization level >= 2。
+
+```bash
+--use-megatron-fsdp \
+--fsdp-memory-compatibility
+```
+
+也可使用 `--use-custom-fsdp` 启用 FSDP，其余配置参见上文[使用方法](#使用方法)。
+
+### 1：AG 使用动态当前流
+
+MCore 0.18 为参数 All Gather（AG）创建独立执行流。计算和 AG 使用不同流时，缓存分配器的内存复用可能受到影响，导致 reserved 显存增加。
+
+开启后，向 `AllGatherPipeline` 传入 `ag_stream=None`，使每次 AG 使用调用时的当前 NPU 流，避免固定使用独立 AG 流或捕获初始化阶段的临时流。RS 流、HCCL 内部通信流及 HSDP outer AG 流保持原行为。
+
+### 2：取消起始同步中的额外预取
+
+`start_param_sync` 可在优化器更新后、下一次前向开始前聚合首桶参数。MCore 0.18 在此阶段还可能预取后续参数桶，使完整参数提前驻留并增加显存峰值。
+
+开启后，仅在正常异步 `start_param_sync` 内将该实例的前向参数聚合设为 `prefetch=False`，保留首桶聚合及原等待方式，以对齐 master 的起始同步行为。普通前向和反向预取、强制同步、AG 预取阈值及 RS 队列容量保持原行为。
+
 ## 使用效果
 
-权重、梯度和优化器状态进一步分片后，可降低常驻训练状态的显存占用。按需收集参数会增加通信，独立 reduce-scatter 输出和通信 dtype 转换也会使用临时缓冲区；实际显存峰值与迭代耗时应在目标模型和并行配置下测量。
-
-> [!NOTE]
->
-> 复用 master 的已有 [custom_fsdp.sh 脚本](../../../tests_extend/system_tests/feature_tests/custom_fsdp.sh)，未新增测试用例。运行前需修改数据和 tokenizer 路径。
->
-> 默认脚本在第 50 步退出，而保存间隔为 2000 步，且包含 `--no-load-optim` 和 `--no-load-rng`，不能用一次默认运行证明完整断点恢复。验证恢复时，应在同一已有用例中配置 save/load 目录和合适的保存间隔，并移除这两个不加载选项，比较恢复后的下一步参数、优化器状态和 loss。
+权重、梯度和优化器状态进一步分片后，可降低常驻训练状态的显存占用。

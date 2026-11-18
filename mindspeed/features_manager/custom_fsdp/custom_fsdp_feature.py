@@ -12,6 +12,14 @@ class CustomFSDPFeature(MindSpeedFeature):
         for flag in ('--use-megatron-fsdp', '--use-custom-fsdp'):
             if not self._is_arg_registered(parser, flag):
                 parser.add_argument(flag, action='store_true', help='Enable Megatron FSDP.')
+        flag = '--fsdp-memory-compatibility'
+        if not self._is_arg_registered(parser, flag):
+            parser.add_argument(
+                flag,
+                action='store_true',
+                help='Run Megatron FSDP parameter all-gather on the calling stream '
+                'and disable extra prefetch during start_param_sync.',
+            )
 
     def is_need_apply(self, args):
         enabled = getattr(args, 'use_megatron_fsdp', False) or getattr(args, 'use_custom_fsdp', False)
@@ -20,6 +28,11 @@ class CustomFSDPFeature(MindSpeedFeature):
         )
 
     def pre_validate_args(self, args):
+        if getattr(args, 'fsdp_memory_compatibility', False) and not self.is_need_apply(args):
+            raise ValueError(
+                '--fsdp-memory-compatibility requires --use-megatron-fsdp '
+                '(or --use-custom-fsdp) and optimization level >= 2.'
+            )
         if getattr(args, 'use_custom_fsdp', False) or getattr(args, 'use_megatron_fsdp', False):
             # MCore 0.18 selects the model, optimizer and checkpoint paths using
             # use_megatron_fsdp. Normalize the legacy flag before its validation.
@@ -37,3 +50,19 @@ class CustomFSDPFeature(MindSpeedFeature):
         patch_manager.register_patch(
             f'{target}.GradReducePipeline._bucket_group_gradient_reduce', bucket_group_gradient_reduce
         )
+        if getattr(args, 'fsdp_memory_compatibility', False):
+            from mindspeed.core.distributed.custom_fsdp.memory_compatibility import (
+                all_gather_pipeline_init_on_current_stream_wrapper,
+                all_gather_ready_no_extra_prefetch_wrapper,
+                start_param_sync_no_extra_prefetch_wrapper,
+            )
+
+            patch_manager.register_patch(
+                f'{target}.AllGatherPipeline.__init__',
+                all_gather_pipeline_init_on_current_stream_wrapper,
+            )
+            fsdp = 'megatron.core.distributed.fsdp.src.megatron_fsdp.megatron_fsdp.MegatronFSDP'
+            patch_manager.register_patch(f'{fsdp}.start_param_sync', start_param_sync_no_extra_prefetch_wrapper)
+            patch_manager.register_patch(
+                f'{fsdp}.all_gather_and_wait_parameters_ready', all_gather_ready_no_extra_prefetch_wrapper
+            )
