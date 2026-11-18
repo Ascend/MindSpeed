@@ -25,7 +25,6 @@ ARG MINDSPEED_LLM_BRANCH=master
 ARG VLLM_VERSION=v0.18.0
 ARG VLLM_ASCEND_VERSION=releases/v0.18.0
 ARG VERL_VERSION=v0.7.0
-ARG SOC_VERSION=ascend910b1
 
 # ============================================
 # System dependencies
@@ -164,7 +163,6 @@ RUN ARCH=$(uname -m) && \
     VLLM_TARGET_DEVICE=empty pip install ${PIP_EXTRA} -v -e . && cd .. && \
     cd /mindspeed_ci_deps/vllm-ascend && \
     pip install ${PIP_EXTRA} -r requirements.txt && \
-    export SOC_VERSION=${SOC_VERSION} && \
     export COMPILE_CUSTOM_KERNELS=1 && \
     pip install ${PIP_EXTRA} --no-build-isolation --no-deps -v -e . && cd .. && \
     rm -rf /tmp/* /var/tmp/* && \
