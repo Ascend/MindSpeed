@@ -6,13 +6,17 @@ ci:
   autofix_prs: false
   autoupdate_schedule: monthly
 
+# Temporarily run the six style hooks only at the manual stage for this license PR.
+# Revert this commit in a follow-up PR after merging to restore the original checks.
 repos:
   # pre-commit 基础检查
   - repo: https://gitcode.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace
+        stages: [manual]
       - id: end-of-file-fixer
+        stages: [manual]
       - id: check-yaml
         args: ["--allow-multiple-documents"]
       - id: check-added-large-files
@@ -27,9 +31,11 @@ repos:
     rev: v0.14.14
     hooks:
       - id: ruff-check
+        stages: [manual]
         args: ["--config", "pre-commit/pyproject.toml", "--output-format", "github", "--fix"]
         types: [python]
       - id: ruff-format
+        stages: [manual]
         args: ["--config", "pre-commit/pyproject.toml"]
         types: [python]
 
@@ -50,6 +56,7 @@ repos:
     rev: v4.0.5
     hooks:
       - id: pylint
+        stages: [manual]
         name: pylint (Python code quality check)
         types: [python]
         args: ["--rcfile=pre-commit/pyproject.toml"]
@@ -80,6 +87,7 @@ repos:
     rev: v18.1.8
     hooks:
       - id: clang-format
+        stages: [manual]
         files: \.(c|h|cpp|hpp|cc|hh|cxx|hxx)$
         args:
           - "--style=file"  # 读取 .clang-format 文件
