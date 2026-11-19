@@ -8,7 +8,7 @@
 | 源码仓库 | [https://gitcode.com/Ascend/MindSpeed](https://gitcode.com/Ascend/MindSpeed) |
 | Dockerfile 路径 | `docker/Dockerfile` |
 | 默认场景 | MindSpeed Core 训练与开发 |
-| 基础镜像 | 可配置 CANN 镜像，默认 `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-910b-openeuler24.03-py3.11` |
+| 基础镜像 | 可配置 CANN 镜像，默认 `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12` |
 | 默认工作目录 | `/MindSpeed` |
 
 ## 镜像 Tag 关键字段描述
@@ -19,25 +19,27 @@
 
 镜像 tag 和 CANN 基础镜像名中的“NPU 类型”必须使用小写：`a3`、`910b` 或 `950`。完整 `--base-image` 会原样传入，因此其中的 tag 必须与已发布的 CANN 镜像名完全一致。
 
+使用非标准基础镜像（包括`-devel`变体、digest或其他仓库来源）时，必须通过`--image-name`指定独立的产物名称，避免复用默认镜像tag。
+
 示例：
 
-- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11`
-- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11`
+- `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12`
+- `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12`
 
-## 最新版本 CANN 9.1.0
+## 最新版本 CANN 9.2.0
 
-如下所示是支持 CANN 最新发布的 9.1.0 版本的所有镜像。
+如下所示是支持 CANN 最新发布的 9.2.0 版本的所有镜像。
 
 | Tag | Dockerfile | Content |
 | ------ | ------ | ------ |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
 
-> 上表中的最新 Tag 为多架构镜像（x86 与 aarch64 二合一）。该 Dockerfile 实际构建完成后会生成带架构后缀的 Tag，例如 `-aarch64` / `-x86_64` 后缀（如 `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11-aarch64`）。历史版本所有 Tag 请参考 [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/support_tags.md)。
+> 上表中的最新 Tag 为多架构镜像（x86 与 aarch64 二合一）。该 Dockerfile 实际构建完成后会生成带架构后缀的 Tag，例如 `-aarch64` / `-x86_64` 后缀（如 `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`）。历史版本所有 Tag 请参考 [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/support_tags.md)。
 
 ## 构建参数
 
@@ -48,15 +50,17 @@
 | `-t, --npu-type` | NPU 类型：`a3`、`910b` 或 `950` | `910b` |
 | `-o, --os` | 操作系统：`openeuler24.03` 或 `ubuntu22.04` | `openeuler24.03` |
 | `-a, --arch` | 目标架构：`aarch64` 或 `x86_64` | 当前宿主机架构 |
-| `--base-image-version` | CANN 基础镜像版本 | `9.1.0` |
+| `--base-image-version` | CANN 基础镜像版本 | `9.2.0` |
 | `--base-image` | 完整 CANN 基础镜像名，优先级高于 `--base-image-version`；会原样传入 | 空 |
-| `--python-version` | CANN 基础镜像中的 Python 标签 | `3.11` |
-| `--torch-version` | PyTorch 版本 | `2.7.1` |
-| `--torch-npu-version` | torch_npu 版本 | `2.7.1.post8` |
-| `--numpy-version` | 所有依赖安装完成后恢复的 NumPy 版本 | `1.26.0` |
-| `--mindspeed-branch` | 克隆 MindSpeed 使用的分支、标签或 ref | `v26.1.0_core_r0.12.1` |
-| `--megatron-branch` | checkout Megatron-LM 使用的分支、标签或 ref | `core_v0.12.1` |
-| `--image-version` | 默认镜像 tag 中使用的 MindSpeed 版本字段 | `v26.1.0_core_r0.12.1` |
+| `--python-version` | CANN 基础镜像中的 Python 标签 | `3.12` |
+| `--torch-version` | PyTorch 版本 | `2.10.0` |
+| `--torch-npu-version` | torch_npu 版本 | `2.10.0.post7` |
+| `--numpy-version` | 所有依赖安装完成后恢复的 NumPy 版本 | `1.26.4` |
+| `--mindspeed-branch` | 克隆 MindSpeed 使用的分支、标签或 ref | `v26.2.0_core_r0.18.0` |
+| `--megatron-branch` | checkout Megatron-LM 使用的分支、标签或 ref | `core_v0.18.2` |
+| `--megatron-adaptor-branch` | checkout MegatronAdaptor 使用的分支、标签或 ref | `v26.2.0_core_r0.18.0` |
+| `--transformer-engine-npu-branch` | checkout TransformerEngineNPU 使用的分支、标签或 ref | `v26.2.0_release_v2.17` |
+| `--image-version` | 默认镜像 tag 中使用的 MindSpeed 版本字段 | `v26.2.0_core_r0.18.0` |
 
 宿主机设置了 `http_proxy`、`https_proxy`、`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` 或 `no_proxy` 时，脚本会自动将其作为 Docker 构建参数转发；这些值不会保留在最终镜像中。
 
@@ -69,7 +73,7 @@ cd docker
 bash build.sh
 ```
 
-构建 a3 + openEuler + aarch64 + CANN 9.1.0 基础镜像：
+构建 a3 + openEuler + aarch64 + CANN 9.2.0 基础镜像：
 
 ```bash
 cd docker
@@ -82,13 +86,13 @@ bash build.sh -t a3 -o openeuler24.03 -a aarch64
 cd docker
 bash build.sh \
   --arch aarch64 \
-  --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-910b-openeuler24.03-py3.11
+  --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12
 ```
 
 下载镜像：
 
 ```bash
-docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11
+docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
 ```
 
 运行镜像：
@@ -107,23 +111,26 @@ docker run -it -d \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
   -v {path-to-data}:/data \
   -v {path-to-weights}:/weights \
-  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11 \
-  bin/bash
+  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 \
+  /bin/bash
 ```
 
 进入已启动容器：
 
 ```bash
 docker exec -it mindspeed-core /bin/bash
+source /usr/local/Ascend/cann/set_env.sh
+source /usr/local/Ascend/cann/share/info/ascendnpu-ir/bin/set_env.sh
+source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1
 ```
 
 ## 兼容性说明
 
 - 当前版本采用统一 Dockerfile + 构建脚本结构，支持可配置的 CANN 基础镜像选择。
-- 默认基础镜像使用 CANN 9.1.0、910b、openEuler 24.03、Python 3.11。
+- 默认基础镜像使用 CANN 9.2.0、910b、openEuler 24.03、Python 3.12。
 - 可以通过 `docker/build.sh` 切换操作系统、NPU 类型（`a3`、`910b` 或 `950`）、目标架构或 CANN 基础镜像版本。
-- MindSpeed 克隆到 `/MindSpeed`，Megatron-LM 克隆到 `/Megatron-LM`。
-- 镜像安装 PyTorch、TorchNPU、MindSpeed Core、Megatron-LM 以及 `requirements.txt` 中的 Python 依赖，随后恢复并校验配置的 PyTorch、TorchNPU 和 NumPy 版本。
+- MindSpeed 克隆到 `/MindSpeed`，Megatron-LM 克隆到 `/Megatron-LM`，MegatronAdaptor 克隆到 `/MegatronAdaptor`，TransformerEngineNPU 克隆到 `/TransformerEngineNPU`。
+- 镜像安装 PyTorch、TorchNPU、MindSpeed Core、Megatron-LM、MegatronAdaptor、TransformerEngineNPU 以及 `requirements.txt` 中的 Python 依赖，随后恢复并校验配置的 PyTorch、TorchNPU 和 NumPy 版本。
 
 ## 许可证
 
@@ -136,3 +143,13 @@ MindSpeed 基于 Apache License 2.0 许可证发布。详见 [LICENSE](https://g
 ## 免责声明
 
 发布的*昇腾*软件镜像均是社区版本，不对商业负责、仅作为生产实践的参考。
+
+## 安全风险
+
+在运行容器时，需要注意以下安全风险：
+
+- 使用 `root` 用户运行：容器默认以 `root` 用户身份运行，可能带来安全隐患。建议在生产环境中创建非特权用户来运行应用程序。
+
+- 缺少 CPU 和内存资源限制：未设置资源限制可能导致容器消耗过多系统资源，影响宿主机性能。建议使用 `--cpus` 和 `--memory` 参数限制资源使用。
+
+- 设备使用 `rwm` 权限：为 NPU 设备分配了读写和 `mknod` 权限，虽然功能运行需要，但在安全敏感环境中应谨慎评估权限范围。

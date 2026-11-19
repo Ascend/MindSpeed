@@ -43,7 +43,7 @@
 > [!NOTE]
 >
 > - 使用镜像前，请先确认机器型号。最新镜像支持aarch64及X86_64架构，可通过uname -a命令确认当前环境是否符合要求。
-> - 配套镜像已预装配套的CANN 9.1.0软件及TorchNPU 26.1.0插件，可根据需要选用。
+> - 配套镜像已预装CANN 9.2.0、TorchNPU 26.2.0、MindSpeed Core、Megatron-LM、MegatronAdaptor（MA）和TransformerEngineNPU（TENPU），可根据需要选用。
 > - 若当前环境与提供的镜像不兼容，请选择[方式二：源码安装](#方式二源码安装)。
 > - 如果需要自定义构建镜像请参见[镜像概述](../../../docker/OVERVIEW.zh.md)。
 
@@ -51,24 +51,24 @@
 
    最新镜像均配套[MindSpeed Core的26.2.0_core_r0.18.0分支](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.18.0)，请按需[获取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
    <!-- npu="950" id5 -->
-   - <term>Ascend 950PR&950DT系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
+   - <term>Ascend 950PR&950DT系列产品</term>：v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12
 
-   - <term>Ascend 950PR&950DT系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.12
+   - <term>Ascend 950PR&950DT系列产品</term>：v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12
    <!-- end id5 -->
    <!-- npu="A3" id4 -->
-   - <term>Atlas A3训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   - <term>Atlas A3训练系列产品</term>：v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
 
-   - <term>Atlas A3训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.12
+   - <term>Atlas A3训练系列产品</term>：v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12
    <!-- end id4 -->
    <!-- npu="910b" id3 -->
-   - <term>Atlas A2训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.12
+   - <term>Atlas A2训练系列产品</term>：v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12
 
-   - <term>Atlas A2训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.12
+   - <term>Atlas A2训练系列产品</term>：v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12
    <!-- end id3 -->
-   以镜像v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12为例：
+   以镜像v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12为例：
 
    ```bash
-   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
    ```
 
 2. 确认是否成功拉取镜像
@@ -93,7 +93,7 @@
       -v /etc/ascend_install.info:/etc/ascend_install.info \
       -v {path-to-data}:/data \
       -v {path-to-weights}:/weights \
-      swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12 \
+      swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 \
       /bin/bash
    ```
 
@@ -102,6 +102,9 @@
    ```bash
     # 加载容器
     docker exec -it 容器名 bash
+    source /usr/local/Ascend/cann/set_env.sh
+    source /usr/local/Ascend/cann/share/info/ascendnpu-ir/bin/set_env.sh
+    source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1
     # 确认NPU是否可以正常使用
     npu-smi info
    ```

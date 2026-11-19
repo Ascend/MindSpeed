@@ -8,7 +8,7 @@
 | Source repository | [https://gitcode.com/Ascend/MindSpeed](https://gitcode.com/Ascend/MindSpeed) |
 | Dockerfile path | `docker/Dockerfile` |
 | Default scenario | MindSpeed Core training and development |
-| Base image | Configurable CANN image, defaulted to `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-910b-openeuler24.03-py3.11` |
+| Base image | Configurable CANN image, defaulted to `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12` |
 | Default working directory | `/MindSpeed` |
 
 ## Key Field Description of Image Tags
@@ -19,25 +19,27 @@ Recommended tag template:
 
 The NPU type in the image tag and CANN base image name must be in lowercase: `a3`, `910b`, or `950`. The complete `--base-image` is passed through as-is, so its tag must exactly match the published CANN image name.
 
+When using a nonstandard base image (including a `-devel` variant, digest, or another registry), specify a distinct output name with `--image-name` to avoid reusing the default image tag.
+
 Examples:
 
-- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11`
-- `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11`
+- `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12`
+- `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12`
 
-## Latest CANN 9.1.0
+## Latest CANN 9.2.0
 
-All images that support the latest CANN 9.1.0 release are listed below.
+All images that support the latest CANN 9.2.0 release are listed below.
 
 | Tag | Dockerfile | Content |
 | ------ | ------ | ------ |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.11 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
+| v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
 
-> The latest tags in the table above are multi-architecture images (x86 and aarch64 combined). Once actually built, this Dockerfile generates tags with architecture suffixes such as `-aarch64` / `-x86_64` (for example, `v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.11-aarch64`). For all tags of historical versions, see [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/support_tags.md).
+> The latest tags in the table above are multi-architecture images (x86 and aarch64 combined). Once actually built, this Dockerfile generates tags with architecture suffixes such as `-aarch64` / `-x86_64` (for example, `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`). For all tags of historical versions, see [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/support_tags.md).
 
 ## Build Parameters
 
@@ -48,15 +50,17 @@ It is recommended to use `docker/build.sh` as the build entry point. The script 
 | `-t, --npu-type` | NPU type: `a3`, `910b`, or `950` | `910b` |
 | `-o, --os` | Operating system: `openeuler24.03` or `ubuntu22.04` | `openeuler24.03` |
 | `-a, --arch` | Target architecture: `aarch64` or `x86_64` | Current host architecture |
-| `--base-image-version` | CANN base image version | `9.1.0` |
+| `--base-image-version` | CANN base image version | `9.2.0` |
 | `--base-image` | Full CANN base image name, which takes precedence over `--base-image-version`; it is passed through as-is | Empty |
-| `--python-version` | Python tag in the CANN base image | `3.11` |
-| `--torch-version` | PyTorch version | `2.7.1` |
-| `--torch-npu-version` | TorchNPU version | `2.7.1.post8` |
-| `--numpy-version` | NumPy version restored after all dependency installation steps | `1.26.0` |
-| `--mindspeed-branch` | MindSpeed branch/tag/ref to clone | `v26.1.0_core_r0.12.1` |
-| `--megatron-branch` | Megatron-LM branch/tag/ref to checkout | `core_v0.12.1` |
-| `--image-version` | MindSpeed version field used in the default image tag | `v26.1.0_core_r0.12.1` |
+| `--python-version` | Python tag in the CANN base image | `3.12` |
+| `--torch-version` | PyTorch version | `2.10.0` |
+| `--torch-npu-version` | TorchNPU version | `2.10.0.post7` |
+| `--numpy-version` | NumPy version restored after all dependency installation steps | `1.26.4` |
+| `--mindspeed-branch` | MindSpeed branch/tag/ref to clone | `v26.2.0_core_r0.18.0` |
+| `--megatron-branch` | Megatron-LM branch/tag/ref to checkout | `core_v0.18.2` |
+| `--megatron-adaptor-branch` | MegatronAdaptor branch/tag/ref to checkout | `v26.2.0_core_r0.18.0` |
+| `--transformer-engine-npu-branch` | TransformerEngineNPU branch/tag/ref to checkout | `v26.2.0_release_v2.17` |
+| `--image-version` | MindSpeed version field used in the default image tag | `v26.2.0_core_r0.18.0` |
 
 If `http_proxy`, `https_proxy`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, or `no_proxy` is set on the host, the script automatically forwards it as a Docker build argument. These values are not persisted in the final image.
 
@@ -69,7 +73,7 @@ cd docker
 bash build.sh
 ```
 
-Build the A3 + openEuler + aarch64 + CANN 9.1.0 base image:
+Build the A3 + openEuler + aarch64 + CANN 9.2.0 base image:
 
 ```bash
 cd docker
@@ -82,13 +86,13 @@ Build using the full base image name. The script will try to automatically ident
 cd docker
 bash build.sh \
   --arch aarch64 \
-  --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-910b-openeuler24.03-py3.11
+  --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12
 ```
 
 Download the image:
 
 ```bash
-docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11
+docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
 ```
 
 Run image:
@@ -107,23 +111,26 @@ docker run -it -d \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
   -v {path-to-data}:/data \
   -v {path-to-weights}:/weights \
-  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.11 \
-  bin/bash
+  swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 \
+  /bin/bash
 ```
 
 Enter the started container:
 
 ```bash
 docker exec -it mindspeed-core /bin/bash
+source /usr/local/Ascend/cann/set_env.sh
+source /usr/local/Ascend/cann/share/info/ascendnpu-ir/bin/set_env.sh
+source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1
 ```
 
 ## Compatibility Notes
 
 - The current version uses a unified Dockerfile plus build script structure, supporting configurable CANN base image selection.
-- The default base image uses CANN 9.1.0, 910B, openEuler 24.03, and Python 3.11.
+- The default base image uses CANN 9.2.0, 910B, openEuler 24.03, and Python 3.12.
 - You can switch the operating system, NPU type (`a3`, `910b`, or `950`), target architecture, or CANN base image version via `docker/build.sh`.
-- MindSpeed is cloned to `/MindSpeed`, and Megatron-LM is cloned to `/Megatron-LM`.
-- The image installs PyTorch, TorchNPU, MindSpeed Core, Megatron-LM, and the Python dependencies in `requirements.txt`, then restores and verifies the configured PyTorch, TorchNPU, and NumPy versions.
+- MindSpeed is cloned to `/MindSpeed`, Megatron-LM to `/Megatron-LM`, MegatronAdaptor to `/MegatronAdaptor`, and TransformerEngineNPU to `/TransformerEngineNPU`.
+- The image installs PyTorch, TorchNPU, MindSpeed Core, Megatron-LM, MegatronAdaptor, TransformerEngineNPU, and the Python dependencies in `requirements.txt`, then restores and verifies the configured PyTorch, TorchNPU, and NumPy versions.
 
 ## License
 
@@ -136,3 +143,13 @@ For any use of pre-built images, it is the image user's responsibility to ensure
 ## Disclaimer
 
 The released Ascend software images are community versions and are not intended for commercial accountability. They are provider solely as references for production practices.
+
+## Security Risks
+
+When running containers with these images, be aware of the following security risks:
+
+- Running as the `root` user: Containers run as the `root` user by default, which can introduce security risks. In production environments, it is recommended to create a non-privileged user to run the application.
+
+- Lack of CPU and memory resource limits: Not setting resource limits may cause a container to consume excessive system resources and affect host performance. It is recommended to use the `--cpus` and `--memory` parameters to limit resource usage.
+
+- Device use with `rwm` permissions: The NPU device is assigned read, write, and `mknod` permissions. Although these are required for functionality, the scope of permissions should be carefully evaluated in security-sensitive environments.

@@ -1,14 +1,14 @@
 # ============================================
 # MindSpeed Core Docker Image
-# NPU Type: Configurable (910b, a3, etc.)
+# NPU Type: Configurable (a3, 910b, 950)
 # Supports: x86_64 and aarch64
 # Supports: Ubuntu and openEuler CANN base images
 # ============================================
 
 ARG OS=openeuler24.03
-ARG BASE_IMAGE_VERSION=9.0.0-beta.2
+ARG BASE_IMAGE_VERSION=9.2.0
 ARG NPU_TYPE=910b
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 ARG BASE_IMAGE=""
 
 FROM ${BASE_IMAGE:-swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${BASE_IMAGE_VERSION}-${NPU_TYPE}-${OS}-py${PYTHON_VERSION}}
@@ -16,11 +16,14 @@ FROM ${BASE_IMAGE:-swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${BASE_IMAGE_
 USER root
 SHELL ["/bin/bash", "-c"]
 
-ARG OS_FAMILY=ubuntu
-ARG TORCH_VERSION=2.7.1
-ARG TORCH_NPU_VERSION=2.7.1
-ARG MINDSPEED_BRANCH=master
-ARG MEGATRON_BRANCH=core_v0.12.1
+ARG OS_FAMILY=openeuler
+ARG TORCH_VERSION=2.10.0
+ARG TORCH_NPU_VERSION=2.10.0.post7
+ARG NUMPY_VERSION=1.26.4
+ARG MINDSPEED_BRANCH=v26.2.0_core_r0.18.0
+ARG MEGATRON_BRANCH=core_v0.18.2
+ARG MEGATRON_ADAPTOR_BRANCH=v26.2.0_core_r0.18.0
+ARG TRANSFORMER_ENGINE_NPU_BRANCH=v26.2.0_release_v2.17
 
 # Prepare required system dependencies
 COPY configure_repo.sh /tmp/configure_repo.sh
@@ -72,16 +75,20 @@ RUN echo "Installing system dependencies for ${OS_FAMILY}..." && \
         exit 1; \
     fi && \
     rm -rf /tmp/* /var/tmp/* && \
-    pip install --upgrade pip packaging setuptools==80.10.2 && \
+    pip install --upgrade pip 'packaging>=26.2' setuptools==80.10.2 && \
     pip cache purge
 
-# Prepare MindSpeed source and Megatron-LM
+# Prepare MindSpeed, Megatron-LM, MegatronAdaptor and TransformerEngineNPU sources
 RUN git clone https://gitcode.com/Ascend/MindSpeed.git && \
     cd MindSpeed && git checkout ${MINDSPEED_BRANCH} && cd .. && \
     git clone https://github.com/NVIDIA/Megatron-LM.git && \
-    cd Megatron-LM && git checkout ${MEGATRON_BRANCH} && cd ..
+    cd Megatron-LM && git checkout ${MEGATRON_BRANCH} && cd .. && \
+    git clone https://gitcode.com/Ascend/MegatronAdaptor.git && \
+    cd MegatronAdaptor && git checkout ${MEGATRON_ADAPTOR_BRANCH} && cd .. && \
+    git clone https://gitcode.com/Ascend/TransformerEngineNPU.git && \
+    cd TransformerEngineNPU && git checkout ${TRANSFORMER_ENGINE_NPU_BRANCH} && cd ..
 
-# Install MindSpeed and Megatron-LM
+# Install MindSpeed, Megatron-LM, MegatronAdaptor and TransformerEngineNPU
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
         pip config set global.extra-index-url "https://download.pytorch.org/whl/cpu/"; \
@@ -90,15 +97,24 @@ RUN ARCH=$(uname -m) && \
     if [ -n "$DEVLIB_DIR" ]; then \
         export LD_LIBRARY_PATH="${DEVLIB_DIR}:${LD_LIBRARY_PATH}"; \
     fi && \
-    source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
-    if [ -f /usr/local/Ascend/nnal/atb/set_env.sh ]; then \
-        source /usr/local/Ascend/nnal/atb/set_env.sh; \
-    fi && \
+    source /usr/local/Ascend/cann/set_env.sh && \
+    source /usr/local/Ascend/cann/share/info/ascendnpu-ir/bin/set_env.sh && \
+    source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && \
     pip install torch==${TORCH_VERSION} torch_npu==${TORCH_NPU_VERSION} && \
     pip install -r /MindSpeed/requirements.txt && \
-    pip install -e /MindSpeed && \
     pip install -e /Megatron-LM && \
+    pip install -e /MegatronAdaptor && \
+    pip install einops nvdlfw-inspect && \
+    pip install triton==3.6.0 triton-ascend==3.6.0 \
+        --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
+    pip install -e /TransformerEngineNPU --no-build-isolation && \
+    pip install -e /MindSpeed && \
     pip install transformers==4.57.1 && \
+    pip install --no-deps \
+        torch==${TORCH_VERSION} \
+        torch_npu==${TORCH_NPU_VERSION} \
+        numpy==${NUMPY_VERSION} && \
+    python -c "from importlib.metadata import version; from packaging.version import Version; expected = {'torch': '${TORCH_VERSION}', 'torch_npu': '${TORCH_NPU_VERSION}', 'numpy': '${NUMPY_VERSION}', 'triton': '3.6.0', 'triton-ascend': '3.6.0'}; actual = {name: version(name) for name in expected}; mismatched = {name: (expected[name], actual[name]) for name in expected if Version(actual[name]).public != Version(expected[name]).public}; assert not mismatched, f'Version mismatch: {mismatched}'; print(f'Pinned versions verified: {actual}')" && \
     rm -rf /tmp/* /var/tmp/* && \
     pip cache purge
 
