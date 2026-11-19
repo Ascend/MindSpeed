@@ -7,15 +7,15 @@ DOCKERFILE="${SCRIPT_DIR}/Dockerfile"
 NPU_TYPE="910b"
 OS="openeuler24.03"
 ARCH=""
-BASE_IMAGE_VERSION="9.1.0"
+BASE_IMAGE_VERSION="9.2.0"
 BASE_IMAGE=""
-PYTHON_VERSION="3.11"
-TORCH_VERSION="2.7.1"
-TORCH_NPU_VERSION="2.7.1.post8"
-NUMPY_VERSION="1.26.0"
-MINDSPEED_BRANCH="v26.1.0_core_r0.12.1"
+PYTHON_VERSION="3.12"
+TORCH_VERSION="2.10.0"
+TORCH_NPU_VERSION="2.10.0.post7"
+NUMPY_VERSION="1.26.4"
+MINDSPEED_BRANCH="v26.2.0_core_r0.12.1"
 MEGATRON_BRANCH="core_v0.12.1"
-IMAGE_VERSION="v26.1.0_core_r0.12.1"
+IMAGE_VERSION="v26.2.0_core_r0.12.1"
 IMAGE_NAME=""
 NO_CACHE=""
 CLEANUP_ON_FAIL=false
@@ -50,15 +50,15 @@ Options:
     -a, --arch ARCH           Architecture: aarch64 or x86_64 (default: current host architecture)
     -i, --image-name NAME     Image name (default: mindspeed-core:{version}-cann{cann_ver}-torch_npu{torch_npu_ver}-{chip}-{os}-py{py_ver}-{arch})
     -n, --no-cache            Build without cache
-    --base-image-version VER  Base image CANN version (default: 9.1.0)
+    --base-image-version VER  Base image CANN version (default: 9.2.0)
     --base-image IMAGE        Full base image name (higher priority than --base-image-version; passed through unchanged)
-    --python-version VER      Python tag in the CANN base image (default: 3.11)
-    --torch-version VER       PyTorch version (default: 2.7.1)
-    --torch-npu-version VER   torch_npu version (default: 2.7.1.post8)
-    --numpy-version VER       NumPy version (default: 1.26.0)
-    --mindspeed-branch REF    MindSpeed branch/tag/ref to clone (default: v26.1.0_core_r0.12.1)
+    --python-version VER      Python tag in the CANN base image (default: 3.12)
+    --torch-version VER       PyTorch version (default: 2.10.0)
+    --torch-npu-version VER   torch_npu version (default: 2.10.0.post7)
+    --numpy-version VER       NumPy version (default: 1.26.4)
+    --mindspeed-branch REF    MindSpeed branch/tag/ref to clone (default: v26.2.0_core_r0.12.1)
     --megatron-branch REF     Megatron-LM branch/tag/ref to checkout (default: core_v0.12.1)
-    --image-version VERSION   MindSpeed version field used in the default image tag (default: v26.1.0_core_r0.12.1)
+    --image-version VERSION   MindSpeed version field used in the default image tag (default: v26.2.0_core_r0.12.1)
     --cleanup-on-fail         Clean dangling images/containers if build fails
     -h, --help                Show help
 
@@ -66,7 +66,7 @@ Examples:
     bash $0
     bash $0 -t a3 -o openeuler24.03 -a aarch64
     bash $0 -t 950 -o ubuntu22.04 -a x86_64
-    bash $0 --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-910b-openeuler24.03-py3.11
+    bash $0 --base-image swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12
 
 Note:
     CANN base image tags use lowercase chip names: a3, 910b, and 950. A full --base-image value is used exactly as provided.
@@ -180,6 +180,11 @@ case "$ARCH" in
         exit 1
         ;;
 esac
+if [ -n "$BASE_IMAGE" ] && [ -z "$IMAGE_NAME" ] && \
+    [ "$BASE_IMAGE" != "swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${BASE_IMAGE_VERSION}-${NPU_TYPE_LOWER}-${OS}-py${PYTHON_VERSION}" ]; then
+    echo "Error: a custom base image requires --image-name to distinguish the output image"
+    exit 1
+fi
 if [ -z "$IMAGE_NAME" ]; then
     TAG_VERSION=$(echo "$IMAGE_VERSION" | tr '/:' '--')
     IMAGE_NAME="mindspeed-core:${TAG_VERSION}-cann${BASE_IMAGE_VERSION}-torch_npu${TORCH_NPU_VERSION}-${NPU_TYPE_LOWER}-${OS}-py${PYTHON_VERSION}-${ARCH_NAME}"

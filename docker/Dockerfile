@@ -6,9 +6,9 @@
 # ============================================
 
 ARG OS=openeuler24.03
-ARG BASE_IMAGE_VERSION=9.1.0
+ARG BASE_IMAGE_VERSION=9.2.0
 ARG NPU_TYPE=910b
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 ARG BASE_IMAGE=""
 
 FROM ${BASE_IMAGE:-swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:${BASE_IMAGE_VERSION}-${NPU_TYPE}-${OS}-py${PYTHON_VERSION}}
@@ -17,10 +17,10 @@ USER root
 SHELL ["/bin/bash", "-c"]
 
 ARG OS_FAMILY=openeuler
-ARG TORCH_VERSION=2.7.1
-ARG TORCH_NPU_VERSION=2.7.1.post8
-ARG NUMPY_VERSION=1.26.0
-ARG MINDSPEED_BRANCH=v26.1.0_core_r0.12.1
+ARG TORCH_VERSION=2.10.0
+ARG TORCH_NPU_VERSION=2.10.0.post7
+ARG NUMPY_VERSION=1.26.4
+ARG MINDSPEED_BRANCH=v26.2.0_core_r0.12.1
 ARG MEGATRON_BRANCH=core_v0.12.1
 
 # Prepare required system dependencies
@@ -91,7 +91,7 @@ RUN ARCH=$(uname -m) && \
     if [ -n "$DEVLIB_DIR" ]; then \
         export LD_LIBRARY_PATH="${DEVLIB_DIR}:${LD_LIBRARY_PATH}"; \
     fi && \
-    source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
+    source /usr/local/Ascend/cann/set_env.sh && \
     if [ -f /usr/local/Ascend/nnal/atb/set_env.sh ]; then \
         source /usr/local/Ascend/nnal/atb/set_env.sh; \
     fi && \
@@ -100,11 +100,13 @@ RUN ARCH=$(uname -m) && \
     pip install -e /MindSpeed && \
     pip install -e /Megatron-LM && \
     pip install transformers==4.57.1 && \
+    pip install triton==3.6.0 triton-ascend==3.6.0 \
+        --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
     pip install --no-deps \
         torch==${TORCH_VERSION} \
         torch_npu==${TORCH_NPU_VERSION} \
         numpy==${NUMPY_VERSION} && \
-    python -c "from importlib.metadata import version; from packaging.version import Version; expected = {'torch': '${TORCH_VERSION}', 'torch_npu': '${TORCH_NPU_VERSION}', 'numpy': '${NUMPY_VERSION}'}; actual = {name: version(name) for name in expected}; mismatched = {name: (expected[name], actual[name]) for name in expected if Version(actual[name]).public != Version(expected[name]).public}; assert not mismatched, f'Version mismatch: {mismatched}'; print(f'Pinned versions verified: {actual}')" && \
+    python -c "from importlib.metadata import version; from packaging.version import Version; expected = {'torch': '${TORCH_VERSION}', 'torch_npu': '${TORCH_NPU_VERSION}', 'numpy': '${NUMPY_VERSION}', 'triton': '3.6.0', 'triton-ascend': '3.6.0'}; actual = {name: version(name) for name in expected}; mismatched = {name: (expected[name], actual[name]) for name in expected if Version(actual[name]).public != Version(expected[name]).public}; assert not mismatched, f'Version mismatch: {mismatched}'; print(f'Pinned versions verified: {actual}')" && \
     rm -rf /tmp/* /var/tmp/* && \
     pip cache purge
 

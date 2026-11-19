@@ -49,26 +49,26 @@
 
 1. 获取镜像
 
-   最新镜像均配套[MindSpeed Core的26.1.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1)，请按需[获取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
+   最新镜像均配套[MindSpeed Core的26.2.0_core_r0.12.1分支](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.12.1)，请按需[获取镜像](https://www.hiascend.com/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a)。
    <!-- npu="950" id5 -->
-   - <term>Ascend 950PR&950DT系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
+   - <term>Ascend 950PR&950DT系列产品</term>：v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12
 
-   - <term>Ascend 950PR&950DT系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.12
+   - <term>Ascend 950PR&950DT系列产品</term>：v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12
    <!-- end id5 -->
    <!-- npu="A3" id4 -->
-   - <term>Atlas A3训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   - <term>Atlas A3训练系列产品</term>：v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
 
-   - <term>Atlas A3训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.12
+   - <term>Atlas A3训练系列产品</term>：v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12
    <!-- end id4 -->
    <!-- npu="910b" id3 -->
-   - <term>Atlas A2训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.12
+   - <term>Atlas A2训练系列产品</term>：v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12
 
-   - <term>Atlas A2训练系列产品</term>：v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.12
+   - <term>Atlas A2训练系列产品</term>：v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12
    <!-- end id3 -->
-   以镜像v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12为例：
+   以镜像v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12为例：
 
    ```bash
-   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
    ```
 
 2. 确认是否成功拉取镜像
@@ -93,7 +93,7 @@
       -v /etc/ascend_install.info:/etc/ascend_install.info \
       -v {path-to-data}:/data \
       -v {path-to-weights}:/weights \
-      swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12 \
+      swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 \
       /bin/bash
    ```
 

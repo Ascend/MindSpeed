@@ -43,25 +43,25 @@ See [Related Product Version Mapping](../release_notes_core.md#related-product-v
 > [!NOTE]
 >
 > - Before using an image, confirm the machine model. The latest images support both AArch64 and X86_64 architectures. Run the `uname -a` command to check whether the current environment meets the requirements.
-> - The matching images contain CANN 9.1.0 and TorchNPU 26.1.0. Select an image as required.
+> - The matching images contain CANN 9.2.0 and TorchNPU 26.2.0. Select an image as required.
 > - If your current environment is incompatible with the provided image, choose [Method 2: Installation from Source](#method-2-installation-from-source).
 > - The master branch will have new images updated in the future. If you need to build custom images, please refer to [Image Overview](../../../docker/OVERVIEW.md).
 
 1. Pull the image.
 
-   The latest image bundles the [26.1.0_core_r0.12.1 branch of MindSpeed Core](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1). Pull the image as needed from [Ascend Hub](https://www.hiascend.com/en/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a).
+   The latest image bundles the [26.2.0_core_r0.12.1 branch of MindSpeed Core](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.12.1). Pull the image as needed from [Ascend Hub](https://www.hiascend.com/en/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a).
 
-   - <term>Ascend 950 products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
+   - <term>Ascend 950 products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12
 
-   - <term>Ascend 950 products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.12
+   - <term>Ascend 950 products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12
 
-   - <term>Atlas A3 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12 
+   - <term>Atlas A3 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
 
-   - <term>Atlas A3 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.12
-   
-   - <term>Atlas A2 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.12
+   - <term>Atlas A3 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12
 
-   - <term>Atlas A2 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.12
+   - <term>Atlas A2 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12
+
+   - <term>Atlas A2 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12
 
    ```bash
    # Check whether the image is pulled successfully
@@ -82,7 +82,7 @@ See [Related Product Version Mapping](../release_notes_core.md#related-product-v
     Download the image:
 
       ```bash
-      docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+      docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
       ```
 
     Run image:
@@ -101,7 +101,7 @@ See [Related Product Version Mapping](../release_notes_core.md#related-product-v
          -v /etc/ascend_install.info:/etc/ascend_install.info \
          -v {path-to-data}:/data \
          -v {path-to-weights}:/weights \
-         swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12 \
+         swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 \
          /bin/bash
       ```
 
