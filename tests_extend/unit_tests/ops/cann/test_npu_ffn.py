@@ -6,7 +6,6 @@ import torchair as tng
 from torchair.configs.compiler_config import CompilerConfig
 from tests_extend.unit_tests.common import DistributedTest
 from mindspeed.ops import ffn
-from mindspeed.op_builder import FFNOpBuilder
 
 os.environ["ENABLE_ACLNN"] = "true"
 config = CompilerConfig()
@@ -24,22 +23,45 @@ class FFNModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, weight1, weight2, activation, expert_tokens=None, expert_tokens_index=None,
-                bias1=None, bias2=None, scale=None, offset=None, deq_scale1=None, deq_scale2=None,
-                antiquant_scale1=None, antiquant_scale2=None, antiquant_offset1=None, antiquant_offset2=None,
-                inner_precise=0):
-        return ffn.npu_ffn(x, weight1, weight2, activation,
-            expert_tokens=expert_tokens, expert_tokens_index=expert_tokens_index,
-            bias1=bias1, bias2=bias2, inner_precise=inner_precise)
+    def forward(
+        self,
+        x,
+        weight1,
+        weight2,
+        activation,
+        expert_tokens=None,
+        expert_tokens_index=None,
+        bias1=None,
+        bias2=None,
+        scale=None,
+        offset=None,
+        deq_scale1=None,
+        deq_scale2=None,
+        antiquant_scale1=None,
+        antiquant_scale2=None,
+        antiquant_offset1=None,
+        antiquant_offset2=None,
+        inner_precise=0,
+    ):
+        return ffn.npu_ffn(
+            x,
+            weight1,
+            weight2,
+            activation,
+            expert_tokens=expert_tokens,
+            expert_tokens_index=expert_tokens_index,
+            bias1=bias1,
+            bias2=bias2,
+            inner_precise=inner_precise,
+        )
 
 
 class TestNPUFFN(DistributedTest):
-
     @staticmethod
     def relu(x):
         x0 = torch.zeros_like(x)
         return torch.maximum(x, x0)
-    
+
     @staticmethod
     def activation(x):
         return TestNPUFFN.relu(x)
@@ -65,7 +87,7 @@ class TestNPUFFN(DistributedTest):
         if expert_tokens is not None:
             offset = 0
             for idx, tokens in enumerate(expert_tokens):
-                xe = x[offset: offset + tokens]
+                xe = x[offset : offset + tokens]
                 w1 = weight1[idx]
                 w2 = weight2[idx]
                 b1 = bias1[idx]
@@ -76,7 +98,7 @@ class TestNPUFFN(DistributedTest):
         elif expert_tokens_index is not None:
             prev_offset = 0
             for idx, offset in enumerate(expert_tokens_index):
-                xe = x[prev_offset: offset]
+                xe = x[prev_offset:offset]
                 w1 = weight1[idx]
                 w2 = weight2[idx]
                 b1 = bias1[idx]
@@ -87,11 +109,19 @@ class TestNPUFFN(DistributedTest):
         result = torch.cat(y_list)
         return result
 
-    def custom_op_exec(self, x, weight1, weight2, *, expert_tokens=None, expert_tokens_index=None,
-        bias1=None, bias2=None):
-        return ffn.npu_ffn(x, weight1, weight2, ACTIVATION_TYPE,
-            expert_tokens=expert_tokens, expert_tokens_index=expert_tokens_index,
-            bias1=bias1, bias2=bias2)
+    def custom_op_exec(
+        self, x, weight1, weight2, *, expert_tokens=None, expert_tokens_index=None, bias1=None, bias2=None
+    ):
+        return ffn.npu_ffn(
+            x,
+            weight1,
+            weight2,
+            ACTIVATION_TYPE,
+            expert_tokens=expert_tokens,
+            expert_tokens_index=expert_tokens_index,
+            bias1=bias1,
+            bias2=bias2,
+        )
 
     @pytest.mark.skip(reason='for inference env')
     @pytest.mark.parametrize('tokens_mode', [EXPERT_TOKENS_MODE_NONE, EXPERT_TOKENS_MODE_TOKENS])
@@ -134,8 +164,15 @@ class TestNPUFFN(DistributedTest):
             expert_tokens_index = [64, 128, 192, 256, 320, 384, 448, 512]
             expert_tokens_index = torch.tensor(expert_tokens_index, dtype=torch.int64)
 
-        y_golden = self.supported_op_exec(x, weight1, weight2, bias1=bias1, bias2=bias2,
-            expert_tokens=expert_tokens, expert_tokens_index=expert_tokens_index)
+        y_golden = self.supported_op_exec(
+            x,
+            weight1,
+            weight2,
+            bias1=bias1,
+            bias2=bias2,
+            expert_tokens=expert_tokens,
+            expert_tokens_index=expert_tokens_index,
+        )
 
         x = x.npu()
         weight1 = weight1.npu()
@@ -151,10 +188,25 @@ class TestNPUFFN(DistributedTest):
         if is_graph_mode:
             model = FFNModel().npu()
             model = torch.compile(model, backend=npu_backend, dynamic=True)
-            y = model(x, weight1, weight2, ACTIVATION_TYPE, expert_tokens=expert_tokens, 
-                expert_tokens_index=expert_tokens_index, bias1=bias1, bias2=bias2)
+            y = model(
+                x,
+                weight1,
+                weight2,
+                ACTIVATION_TYPE,
+                expert_tokens=expert_tokens,
+                expert_tokens_index=expert_tokens_index,
+                bias1=bias1,
+                bias2=bias2,
+            )
         else:
-            y = self.custom_op_exec(x, weight1, weight2, expert_tokens=expert_tokens,
-                expert_tokens_index=expert_tokens_index, bias1=bias1, bias2=bias2)
+            y = self.custom_op_exec(
+                x,
+                weight1,
+                weight2,
+                expert_tokens=expert_tokens,
+                expert_tokens_index=expert_tokens_index,
+                bias1=bias1,
+                bias2=bias2,
+            )
 
         assert torch.allclose(y.cpu(), y_golden.to(dtype), rtol=0.005, atol=0.005)
