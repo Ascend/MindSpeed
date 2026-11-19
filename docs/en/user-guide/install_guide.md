@@ -49,26 +49,26 @@ Click [Driver and Firmware](https://hiascend.com/en/hardware/firmware-drivers) t
 
 1. Pull the image.
 
-   The latest image bundles the [26.1.0_core_r0.12.1 branch of MindSpeed Core](https://gitcode.com/Ascend/MindSpeed/tree/26.1.0_core_r0.12.1). Pull the image as needed from [Ascend Hub](https://www.hiascend.com/en/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a).
+   The latest image bundles the [26.2.0_core_r0.12.1 branch of MindSpeed Core](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.12.1). Pull the image as needed from [Ascend Hub](https://www.hiascend.com/en/developer/ascendhub/detail/4ad248a439a44b4bb72e0534bfda8e2a).
    <!-- npu="950" id5 -->
-   - <term>Ascend 950PR&950DT products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-openeuler24.03-py3.12
+   - <term>Ascend 950PR&950DT products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12
 
-   - <term>Ascend 950PR&950DT products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-950-ubuntu22.04-py3.12
+   - <term>Ascend 950PR&950DT products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12
    <!-- end id5 -->
    <!-- npu="A3" id4 -->
-   - <term>Atlas A3 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   - <term>Atlas A3 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
 
-   - <term>Atlas A3 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-ubuntu22.04-py3.12
+   - <term>Atlas A3 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12
    <!-- end id4 -->
    <!-- npu="910b" id3 -->
-   - <term>Atlas A2 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-openeuler24.03-py3.12
+   - <term>Atlas A2 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12
 
-   - <term>Atlas A2 training products</term>: v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-910b-ubuntu22.04-py3.12
+   - <term>Atlas A2 training products</term>: v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12
    <!-- end id3 -->
-   Take the image v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12 as an example:
+   Take the image v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 as an example:
 
    ```bash
-   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12
+   docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12
    ```
 
 2. Check whether the image is pulled successfully.
@@ -93,7 +93,7 @@ Click [Driver and Firmware](https://hiascend.com/en/hardware/firmware-drivers) t
       -v /etc/ascend_install.info:/etc/ascend_install.info \
       -v {path-to-data}:/data \
       -v {path-to-weights}:/weights \
-      swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.1.0_core_r0.12.1-cann9.1.0-torch_npu2.7.1.post8-a3-openeuler24.03-py3.12 \
+      swr.cn-south-1.myhuaweicloud.com/ascendhub/mindspeed-core:v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 \
       /bin/bash
    ```
 
