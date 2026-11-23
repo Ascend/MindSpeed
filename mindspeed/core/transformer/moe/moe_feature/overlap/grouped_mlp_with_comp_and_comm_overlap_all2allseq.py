@@ -18,7 +18,6 @@ from mindspeed.core.transformer.moe.grouped_matmul_util import GmmContext, get_g
 from mindspeed.core.transformer.moe.moe_feature import parallel_state, permute, sort_chunks_by_idxs
 from mindspeed.core.transformer.moe.moe_feature.overlap.comm_utils import async_all_to_all
 from mindspeed.core.transformer.moe.moe_feature.overlap.moe_common import (
-    backward_func,
     forward_func,
     get_gemm_backward_need_tensors,
     only_recompute_activation,
@@ -233,8 +232,19 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
             mm1_inputs_grad = torch.matmul(act_inputs.grad, weights1.t())
 
         probs.untyped_storage().resize_(0)
-        # backward for probs.
-        backward_func(permute2_prob_graph, permuted_probs_inputs_detach.grad)
+        # Backward permute2 tokens and probs together since both originate from one SortChunksByIdxs node.
+        permute2_pairs = [
+            (tensor, grad)
+            for tensor, grad in (
+                (permute2_graph, mm1_inputs_grad),
+                (permute2_prob_graph, permuted_probs_inputs_detach.grad),
+            )
+            if tensor is not None and grad is not None and tensor.grad_fn is not None
+        ]
+        if permute2_pairs:
+            permute2_tensors, permute2_grads = zip(*permute2_pairs)
+            torch.autograd.backward(list(permute2_tensors), grad_tensors=list(permute2_grads))
+        mm1_inputs_grad.untyped_storage().resize_(0)
 
         _, permute1_prob_backward_input, bw_permute1_prob_all2all_handle = async_all_to_all(
             permute2_prob_detach.grad,
@@ -242,10 +252,6 @@ class GroupedMlpWithCompAndCommOverlapAll2AllSeq(torch.autograd.Function):
             output_splits,
             ep_group,
         )
-
-        # backward for expert.
-        backward_func(permute2_graph, mm1_inputs_grad)
-        mm1_inputs_grad.untyped_storage().resize_(0)
 
         if moe_zero_memory == "level0" or (moe_zero_memory == "level1" and is_only_recompute_activation):
             permute1_ep_all_to_all_handle.wait()
