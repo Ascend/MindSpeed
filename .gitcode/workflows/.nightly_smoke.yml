@@ -23,10 +23,15 @@ jobs:
     select: selected_by_default
     runs-on: [self-hosted, arch=x86, k8s=public]
     outputs:
+      testcase-obs-url: ${{ steps.run-nightly-smoke.outputs.testcase-obs-url }}
       pipeline-id: ${{ steps.run-nightly-smoke.outputs.pipeline-id }}
       job-run-id: ${{ steps.run-nightly-smoke.outputs.job-run-id }}
       testcase-file: ${{ steps.run-nightly-smoke.outputs.testcase-file }}
       env-log-file: ${{ steps.run-nightly-smoke.outputs.env-log-file }}
+      case-logs: ${{ steps.run-nightly-smoke.outputs.case-logs }}
+      case-env-log: ${{ steps.run-nightly-smoke.outputs.case-env-log }}
+      case-logs-fail: ${{ steps.run-nightly-smoke.outputs.case-logs-fail }}
+      case-env-log-fail: ${{ steps.run-nightly-smoke.outputs.case-env-log-fail }}
     steps:
       - name: fast_checkout
         uses: checkout
@@ -44,29 +49,71 @@ jobs:
           env-deploy-model: Dislocated
           max-workers: "2"
           oidc-config: ${{ secrets.OIDC_CONFIG }}
+          archive-log-dir: /tmp/pytest-orch/workspace/nightly-artifacts
 
-      - name: upload nightly smoke result
-        id: upload-nightly-smoke-result
-        identifier: upload-nightly-smoke-result
-        if: ${{ steps.run-nightly-smoke.outputs.testcase-file != '' }}
+      - name: 上传所有用例执行日志
+        id: upload-case-logs
+        identifier: upload-case-logs
+        if: ${{ steps.run-nightly-smoke.outputs.case-logs != '' }}
         uses: upload-artifact
         continue-on-error: true
         with:
-          name: nightly-smoke-artifact
-          path: ${{ steps.run-nightly-smoke.outputs.testcase-file }}
+          name: 所有用例执行日志
+          path: ${{ steps.run-nightly-smoke.outputs.case-logs }}
           overwrite: true
           if-no-files-found: error
           retention-days: 7
 
-      - name: upload nightly environment log
-        id: upload-nightly-environment-log
-        identifier: upload-nightly-environment-log
-        if: ${{ steps.run-nightly-smoke.outputs.env-log-file != '' }}
+      - name: 上传所有用例环境日志
+        id: upload-case-env-log
+        identifier: upload-case-env-log
+        if: ${{ steps.run-nightly-smoke.outputs.case-env-log != '' }}
         uses: upload-artifact
         continue-on-error: true
         with:
-          name: nightly-smoke-environment-log
-          path: ${{ steps.run-nightly-smoke.outputs.env-log-file }}
+          name: 所有用例环境日志
+          path: ${{ steps.run-nightly-smoke.outputs.case-env-log }}
           overwrite: true
           if-no-files-found: error
           retention-days: 7
+
+      - name: 上传所有失败用例执行日志
+        id: upload-case-logs-fail
+        identifier: upload-case-logs-fail
+        if: ${{ steps.run-nightly-smoke.outputs.case-logs-fail != '' }}
+        uses: upload-artifact
+        continue-on-error: true
+        with:
+          name: 所有失败用例执行日志
+          path: ${{ steps.run-nightly-smoke.outputs.case-logs-fail }}
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 上传所有失败用例环境日志
+        id: upload-case-env-log-fail
+        identifier: upload-case-env-log-fail
+        if: ${{ steps.run-nightly-smoke.outputs.case-env-log-fail != '' }}
+        uses: upload-artifact
+        continue-on-error: true
+        with:
+          name: 所有失败用例环境日志
+          path: ${{ steps.run-nightly-smoke.outputs.case-env-log-fail }}
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: cleanup case-logs dirs
+        continue-on-error: true
+        env:
+          CASE_LOGS: ${{ steps.run-nightly-smoke.outputs.case-logs }}
+          CASE_ENV_LOG: ${{ steps.run-nightly-smoke.outputs.case-env-log }}
+          CASE_LOGS_FAIL: ${{ steps.run-nightly-smoke.outputs.case-logs-fail }}
+          CASE_ENV_LOG_FAIL: ${{ steps.run-nightly-smoke.outputs.case-env-log-fail }}
+        run: |
+          for d in "$CASE_LOGS" "$CASE_ENV_LOG" "$CASE_LOGS_FAIL" "$CASE_ENV_LOG_FAIL"; do
+            if [ -n "$d" ]; then
+              echo "removing: $d"
+              rm -rf "$d" || true
+            fi
+          done

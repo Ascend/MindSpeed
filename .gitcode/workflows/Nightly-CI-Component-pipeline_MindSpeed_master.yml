@@ -3,7 +3,7 @@ name: Nightly-CI-Component-pipeline_MindSpeed_master
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 3 * * *'
 
 env:
   NIGHTLY_IMAGE: "swr.cn-north-4.myhuaweicloud.com/atlas-ci/mindspeed-core-nightly"
@@ -36,8 +36,8 @@ stages:
     name: 镜像构建
     select: selected_by_default
     jobs:
-      Build_nightly_image:
-        name: Build_nightly_image
+      image_update:
+        name: image_update
         uses: pipelineascode/buildkit-dev/.gitcode/workflows/reusable-build-image.yml@v1.0.1
         with:
           dockerfile_url: "https://gitcode.com/AscendTest/pytest-infra/blob/main/resources/dockerfile/Dockerfile.mindspeed_core"
