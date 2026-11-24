@@ -1,11 +1,15 @@
 # MindSpeed Core Docker Image Overview
 
+## MindSpeed Core
+
+MindSpeed Core is a library that accelerates large model training on Huawei Atlas devices. It helps users migrate existing large model workloads to Atlas devices and provides Atlas-specific training optimizations out of the box.
+
 ## Quick Reference
 
 | Name | Description |
 | ------ | ------ |
 | Image name | `mindspeed-core` |
-| Source repository | [https://gitcode.com/Ascend/MindSpeed](https://gitcode.com/Ascend/MindSpeed) |
+| Source repository | [https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.12.1](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.12.1) |
 | Dockerfile path | `docker/Dockerfile` |
 | Default scenario | MindSpeed Core training and development |
 | Base image | Configurable CANN image, defaulted to `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12` |
@@ -32,14 +36,14 @@ All images that support the latest CANN 9.2.0 release are listed below.
 
 | Tag | Dockerfile | Content |
 | ------ | ------ | ------ |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
 
-> The latest tags in the table above are multi-architecture images (x86 and aarch64 combined). Once actually built, this Dockerfile generates tags with architecture suffixes such as `-aarch64` / `-x86_64` (for example, `v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`). For all tags of historical versions, see [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/support_tags.md).
+> The latest tags in the table above are multi-architecture images (x86 and aarch64 combined). Once actually built, this Dockerfile generates tags with architecture suffixes such as `-aarch64` / `-x86_64` (for example, `v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`). For all tags of historical versions, see [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/support_tags.md).
 
 ## Build Parameters
 
@@ -129,7 +133,7 @@ docker exec -it mindspeed-core /bin/bash
 
 ## License
 
-MindSpeed is released under the Apache License 2.0. For details, see the [LICENSE](https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE) file.
+MindSpeed is released under the Apache License 2.0. For details, see the [LICENSE](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/LICENSE) file.
 
 As with all Docker images, these images may also contain other software that is subject to other licenses (such as Bash from the base distribution, and any direct or indirect dependencies of the primary software being included).
 
@@ -137,7 +141,7 @@ For any use of pre-built images, it is the image user's responsibility to ensure
 
 ## Disclaimer
 
-The released Ascend software images are community versions and are not intended for commercial accountability. They are provider solely as references for production practices.
+The released Atlas software images are community versions and are not intended for commercial accountability. They are provided solely as references for production practices.
 
 ## Security Risks
 

@@ -1,11 +1,15 @@
 # MindSpeed Core Docker 镜像概述
 
+## MindSpeed Core
+
+MindSpeed Core是针对华为昇腾设备的大模型加速库。昇腾提供 MindSpeed Core 加速库，使客户大模型业务能快速迁移至昇腾设备，并且支持昇腾专有算法，确保开箱可用。
+
 ## 快速参考
 
 | 项目 | 说明 |
 | ------ | ------ |
 | 镜像名称 | `mindspeed-core` |
-| 源码仓库 | [https://gitcode.com/Ascend/MindSpeed](https://gitcode.com/Ascend/MindSpeed) |
+| 源码仓库 | [https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.12.1](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.12.1) |
 | Dockerfile 路径 | `docker/Dockerfile` |
 | 默认场景 | MindSpeed Core 训练与开发 |
 | 基础镜像 | 可配置 CANN 镜像，默认 `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12` |
@@ -32,14 +36,14 @@
 
 | Tag | Dockerfile | Content |
 | ------ | ------ | ------ |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
-| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-a3-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
+| v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/Dockerfile) | MindSpeed-Core/Megatron-LM |
 
-> 上表中的最新 Tag 为多架构镜像（x86 与 aarch64 二合一）。该 Dockerfile 实际构建完成后会生成带架构后缀的 Tag，例如 `-aarch64` / `-x86_64` 后缀（如 `v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`）。历史版本所有 Tag 请参考 [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/master/docker/support_tags.md)。
+> 上表中的最新 Tag 为多架构镜像（x86 与 aarch64 二合一）。该 Dockerfile 实际构建完成后会生成带架构后缀的 Tag，例如 `-aarch64` / `-x86_64` 后缀（如 `v26.2.0_core_r0.12.1-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`）。历史版本所有 Tag 请参考 [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/docker/support_tags.md)。
 
 ## 构建参数
 
@@ -129,7 +133,7 @@ docker exec -it mindspeed-core /bin/bash
 
 ## 许可证
 
-MindSpeed 基于 Apache License 2.0 许可证发布。详见 [LICENSE](https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE) 文件。
+MindSpeed 基于 Apache License 2.0 许可证发布。详见 [LICENSE](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.12.1/LICENSE) 文件。
 
 与所有 Docker 镜像一样，这些镜像可能还包含受其他许可证约束的其他软件（例如基础发行版中的 Bash，以及所包含主要软件的任何直接或间接依赖项）。
 
