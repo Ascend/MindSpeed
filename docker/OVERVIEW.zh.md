@@ -1,5 +1,9 @@
 # MindSpeed Core Docker 镜像概述
 
+## MindSpeed Core
+
+MindSpeed Core是针对华为昇腾设备的大模型加速库。昇腾提供 MindSpeed Core 加速库，使客户大模型业务能快速迁移至昇腾设备，并且支持昇腾专有算法，确保开箱可用。
+
 ## 快速参考
 
 | 项目 | 说明 |

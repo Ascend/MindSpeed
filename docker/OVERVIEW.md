@@ -1,5 +1,9 @@
 # MindSpeed Core Docker Image Overview
 
+## MindSpeed Core
+
+MindSpeed Core is a library that accelerates large model training on Huawei Atlas devices. It helps users migrate existing large model workloads to Atlas devices and provides Atlas-specific training optimizations out of the box.
+
 ## Quick Reference
 
 | Name | Description |
@@ -137,7 +141,7 @@ For any use of pre-built images, it is the image user's responsibility to ensure
 
 ## Disclaimer
 
-The released Ascend software images are community versions and are not intended for commercial accountability. They are provider solely as references for production practices.
+The released Atlas software images are community versions and are not intended for commercial accountability. They are provided solely as references for production practices.
 
 ## Security Risks
 
