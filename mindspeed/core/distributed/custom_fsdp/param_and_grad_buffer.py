@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Copyright (c) 2026, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright 2026 Huawei Technologies Co., Ltd.
 
 from typing import List
 

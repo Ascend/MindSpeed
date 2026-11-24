@@ -1,4 +1,4 @@
-# Copyright (c) 2024, Huawei Technologies.
+# Copyright 2024 Huawei Technologies Co., Ltd.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

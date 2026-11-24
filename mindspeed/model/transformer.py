@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright (c) 2024, Huawei Technologies Co., Ltd. All rights reserved.
+# Copyright 2024 Huawei Technologies Co., Ltd.
 # Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) 2023 Alibaba PAI and Nvidia Megatron-LM Team. All rights reserved.
 #

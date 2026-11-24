@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 Huawei Technologies Co., Ltd
+# Copyright 2025 Huawei Technologies Co., Ltd.
 # Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
 # Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 #
