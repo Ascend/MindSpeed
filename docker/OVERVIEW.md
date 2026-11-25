@@ -1,11 +1,18 @@
-# MindSpeed Core Docker Image Overview
+# ma_tenpu_mindspeed-core Docker Image Overview
+
+## MindSpeed Core
+
+MindSpeed Core accelerates large model training on Huawei Atlas devices with Atlas-specific optimizations. This image uses Megatron-LM as the training framework and includes MindSpeed Core 0.18.0, MegatronAdaptor (MA), and TransformerEngineNPU (TENPU) to help users migrate existing Megatron-LM training workloads to Atlas devices.
+
+- **MegatronAdaptor (MA)** provides the NPU adaptations required to run Megatron-LM on Huawei Atlas devices.
+- **TransformerEngineNPU (TENPU)** implements Transformer Engine for Huawei Atlas devices to accelerate Transformer model training and inference.
 
 ## Quick Reference
 
 | Name | Description |
 | ------ | ------ |
-| Image name | `mindspeed-core` |
-| Source repository | [https://gitcode.com/Ascend/MindSpeed](https://gitcode.com/Ascend/MindSpeed) |
+| Image name | `ma_tenpu_mindspeed-core` |
+| Source repository | [https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.18.0](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.18.0) |
 | Dockerfile path | `docker/Dockerfile` |
 | Default scenario | MindSpeed Core training and development |
 | Base image | Configurable CANN image, defaulted to `swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.2.0-910b-openeuler24.03-py3.12` |
@@ -28,7 +35,7 @@ Examples:
 
 ## Latest CANN 9.2.0
 
-All images that support the latest CANN 9.2.0 release are listed below.
+The following image tags use CANN 9.2.0.
 
 | Tag | Dockerfile | Content |
 | ------ | ------ | ------ |
@@ -39,7 +46,7 @@ All images that support the latest CANN 9.2.0 release are listed below.
 | v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-openeuler24.03-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
 | v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-950-ubuntu22.04-py3.12 | [Dockerfile](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/Dockerfile) | MindSpeed-Core/Megatron-LM/MegatronAdaptor/TransformerEngineNPU |
 
-> The latest tags in the table above are multi-architecture images (x86 and aarch64 combined). Once actually built, this Dockerfile generates tags with architecture suffixes such as `-aarch64` / `-x86_64` (for example, `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`). For all tags of historical versions, see [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/support_tags.md).
+> The latest tags in the table above are multi-architecture images (x86 and aarch64 combined). Once actually built, this Dockerfile generates tags with architecture suffixes such as `-aarch64` / `-x86_64` (for example, `v26.2.0_core_r0.18.0-cann9.2.0-torch_npu2.10.0.post7-910b-openeuler24.03-py3.12-aarch64`). See [Supported Tags](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/docker/support_tags.md) for the image tag list.
 
 ## Build Parameters
 
@@ -134,7 +141,7 @@ source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1
 
 ## License
 
-MindSpeed is released under the Apache License 2.0. For details, see the [LICENSE](https://gitcode.com/Ascend/MindSpeed/blob/master/LICENSE) file.
+MindSpeed is released under the Apache License 2.0. For details, see the [LICENSE](https://gitcode.com/Ascend/MindSpeed/blob/26.2.0_core_r0.18.0/LICENSE) file.
 
 As with all Docker images, these images may also contain other software that is subject to other licenses (such as Bash from the base distribution, and any direct or indirect dependencies of the primary software being included).
 
@@ -142,7 +149,7 @@ For any use of pre-built images, it is the image user's responsibility to ensure
 
 ## Disclaimer
 
-The released Ascend software images are community versions and are not intended for commercial accountability. They are provider solely as references for production practices.
+The released Atlas software images are community versions and are not intended for commercial accountability. They are provided solely as references for production practices.
 
 ## Security Risks
 
