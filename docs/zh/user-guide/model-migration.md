@@ -1,5 +1,7 @@
 # 模型迁移指南
 
+本文档介绍将Megatron-LM模型迁移至昇腾平台的方法，涵盖模型选取、模型迁移适配、模型训练与模型保存加载等完整流程，适用于具有一定Megatron-LM模型训练基础、需要将GPU上训练的模型迁移到NPU的研究人员、工程师和开发者。
+
 ## 概述
 
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)是NVIDIA提出的一种分布式训练加速库，
@@ -17,7 +19,7 @@
 
 - 了解深度学习的基本概念和技术，能够使用Python编程语言、Megatron-LM框架进行深度学习模型开发和调试；
 
-- 对深度学习模型的训练和优化有一定的了解，包括训练任务执行与评估，分布式训练，性能数据采集及分析等；
+- 对深度学习模型的训练和优化有一定的了解，包括训练任务执行与评估、分布式训练、性能数据采集及分析等；
 
 - 对常见的系统性能优化手段有基本认知，例如并行化、编译优化等。
 
@@ -50,9 +52,9 @@ NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架�
 
 ## 模型迁移总体流程
 
-基于Megatron-LM的模型迁移主要流程如下所示。
+基于Megatron-LM的模型迁移主要流程如下所示：
 
-![procedure](../figures/model-migration-procedure.png)
+![Megatron-LM模型迁移流程图](../figures/model-migration-procedure.png)
 
 ## 模型选取
 
@@ -73,7 +75,7 @@ NVIDIA GPU采用CUDA（Compute Unified Device Architecture）的并行计算架�
 
     即可完成对`Megatron-LM`模型的适配。
 
-    具体修改如下所示。
+    具体修改如下所示：
 
     ```python
     import os
@@ -157,7 +159,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
 #### 单机多卡训练
 
- 1. 在`Megatron-LM`仓库根目录下，新建训练脚本`pretrain_single.sh`。`pretrain_single.sh`的脚本内容如下所示。
+ 1. 在`Megatron-LM`仓库根目录下，新建训练脚本`pretrain_single.sh`。`pretrain_single.sh`的脚本内容如下所示：
 
     ```shell
     #!/bin/bash
@@ -233,7 +235,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
  2. 在终端下运行`bash pretrain_single.sh`。出现如下每步迭代结果的训练日志表明迁移训练成功。
 
-    ![iter_result](../figures/iter_result.png)
+    ![日志回显](../figures/iter_result.png)
 
     **后续处理**
 
@@ -245,7 +247,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     用户可进入[昇腾MindSpeed开源社区](https://gitcode.com/Ascend/MindSpeed)提出ISSUE求助。
 
     - 从core_r0.10.0版本开始，
-    `Megatron-LM`和`MindSpeed`大量使用高版本语法的类型注解（Type Annotations），如:
+    `Megatron-LM`和`MindSpeed`大量使用高版本语法的类型注解（Type Annotations），如：
 
         ```python
         hierarchical_context_parallel_sizes: Optional[list[int]] = None
@@ -266,11 +268,11 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 **前提条件**
 
 在训练前确保两台服务器之间通信正常，无其它进程干扰。
-确保环境一致（包括conda环境、cann环境等），代码一致，
+确保环境一致（包括conda环境、CANN环境等），代码一致，
 均能正常进行单机训练。
 确定选择一台机器作为主节点。
 
- 1. 在两台机器的`Megatron-LM`仓库根目录下，各自新建训练脚本`pretrain_distributed.sh`。`pretrain_distributed.sh`脚本内容如下所示。
+ 1. 在两台机器的`Megatron-LM`仓库根目录下，各自新建训练脚本`pretrain_distributed.sh`。`pretrain_distributed.sh`脚本内容如下所示：
 
     ```shell
     #!/bin/bash
@@ -347,8 +349,8 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
  2. `Megatron-LM`支持通过设置`data_cache_path`命令行参数设置多台机器共享数据的路径，未设置`data_cache_path`则表示不使用共享存储功能。
 
     如果**未使用**共享存储，
-    需要修改两台节点下的`Megatron-LM`仓库的`megatron/core/datasets/gpt_dataset.py`，
-    具体修改如下所示。
+    需要修改两个节点下的`Megatron-LM`仓库的`megatron/core/datasets/gpt_dataset.py`，
+    具体修改如下所示：
 
     ```python
     # 原始
@@ -365,7 +367,7 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
 
  3. 设置两个节点的IP信息，保证能进行分布式通信。
 
-    在**主、从节点**上分别设置`HCCL_IF_IP`为本机IP,
+    在**主、从节点**上分别设置`HCCL_IF_IP`为本机IP，
     设置命令为：
 
     ```shell
@@ -394,10 +396,10 @@ source ${CANN_INSTALL_PATH}/ascend-toolkit/set_env.sh
     在从节点终端标准输出上观察到下图所示每步迭代结果的训练日志说明多机多卡训练适配完成，
     可以停止训练。
 
-    ![iter_result](../figures/iter_result.png)
+    ![加载ckpt后重新训练时终端输出的每步迭代训练日志回显](../figures/iter_result.png)
 
     从core_r0.10.0版本开始，
-    Megatron-LM和MindSpeed大量使用高版本语法的类型注解（Type Annotations），如:
+    Megatron-LM和MindSpeed大量使用高版本语法的类型注解（Type Annotations），如：
 
     ```python
     hierarchical_context_parallel_sizes: Optional[list[int]] = None
@@ -531,10 +533,10 @@ torchrun $DISTRIBUTED_ARGS pretrain_gpt.py \
 
 在终端下运行`bash pretrain_single.sh`。
 
-终端标准输出上出现如下ckpt加载日志表示执行了模型加载，
+终端标准输出上出现如下ckpt加载日志表示执行了模型加载：
 
-![model_load](../figures/model-load.png)
+![模型加载日志回显](../figures/model-load.png)
 
 同时终端标准输出出现每步迭代结果的训练日志表明加载模型后正常重新训练成功。
 
-![iter_result](../figures/iter_result.png)
+![训练日志回显](../figures/iter_result.png)

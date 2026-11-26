@@ -25,7 +25,7 @@
 
     在“Megatron-LM”目录下修改**pretrain_gpt.py**文件，在“import torch”下导入MegatronAdaptor适配器，并放在Megatron模块导入之前：
 
-    ```Python
+    ```python
     import torch
     import megatron_adaptor  # NPU基础适配及增强特性
     from gpt_builders import gpt_builder
@@ -34,7 +34,7 @@
 
 > [!NOTE]
 >
-> MindSpeed Core支持<term>Ascend 950PR&950DT系列产品</term>、<term>Atlas A3训练系列产品</term>和<term>Atlas A2训练系列产品</term>，且要求单NPU的片上内存为64GB及以上
+> MindSpeed Core支持<term>Ascend 950PR&950DT系列产品</term>、<term>Atlas A3训练系列产品</term>和<term>Atlas A2训练系列产品</term>，且要求单NPU的片上内存为64GB及以上。
 >
 > 当前示例脚本中`NPUS_PER_NODE=8`表示需要8个NPU，如果实际情况低于此配置，可能遇到OOM问题。
 

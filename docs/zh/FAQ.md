@@ -45,7 +45,7 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 
 在`megatron/core/datasets/helpers.cpp`文件里的`build_sample_idx()`函数中创建了`sample_idx`的int32数组去记录每个sample的index，
 而每个sample的index又是以`doc_idx_index`这个int64的变量去计算，在`sample_idx[2 * sample_index] = doc_idx_index;`这个赋值操作中存在溢出的可能。
-在数据集中的句子较短，而要求`训练的步数 * Global Batch Size * Sequence Length`较大的情况下就会出现`doc_idx_index`超过int32的表达范围而导致最终的index溢出。
+在数据集中的句子较短，而要求`训练的步数 * Global Batch Size * Sequence Length`较大的情况下就会出现`doc_idx_index`超过int32的表示范围而导致最终的index溢出。
 
 ### 解决方案
 
@@ -68,7 +68,7 @@ RuntimeError: stack expects each tensor to be equal size, but got [8193] at entr
 
 在模型运行时，卡在如下场景，且等待十几分钟无反应。
 
-```bash
+```output
 Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
@@ -88,7 +88,7 @@ Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 
 ### 解决方案
 
-删除模型运行对应python版本的`~/.cache/torch_extensions/py3xx_cpu`文件夹后，重新启动程序。
+删除模型运行对应Python版本的`~/.cache/torch_extensions/py3xx_cpu`文件夹后，重新启动程序。
 
 ## Megatron-LM 0.7.0版本长稳测试出现GradNorm为NaN
 
@@ -96,7 +96,7 @@ Using ~/.cache/torch_extensions/py38_cpu as PyTorch extensions root...
 
 在Megatron-LM 0.7.0版本中，采用mindspeed自定义`--tokenizer-type PretrainedFromHF`，长稳测试一定步数后发现loss抖动异常最终出现grad norm为nan的问题，报错示例如下：
 
-```bash
+```output
 2024-09-18 11:14:247 iteration 427/ 5000  consumed samples: 6832 elapsed time per iteration (
 ms): 209.8 | Learning rate: 1.229919E-06 | global batch size:   16 | Lm loss: 8.567080E+00 | loss scale: 1.0 | grad norm: 35.518 | number of skipped iterations:   О | number of nan iterations: 0
 [2024-09-18 11:14:25] iteration 428/   5000] consumed samples: 6848 elapsed time per iteration (
@@ -134,7 +134,7 @@ AssertionError: Rank 13: found NaN in local grad norm in backward pass before da
 ### 问题根因
 
 - 问题场景使用的数据集生成时，增加了`--append-eod`参数，这会让每个数据sample末尾增加一个eos结束标志位。
-- megatron0.7.0对数据集提取过程增加了pad功能（在`class GPTDataset`类中），`PretrainedFromHF`模式下，会将pad标志位与eos标志位配成相同值（`pad_token_id == eos_token_id`）。loss_mask中会去掉pad标志位，但实际去掉的都是eos标志位。
+- Megatron-LM 0.7.0对数据集提取过程增加了pad功能（在`class GPTDataset`类中），`PretrainedFromHF`模式下，会将pad标志位与eos标志位配成相同值（`pad_token_id == eos_token_id`）。loss_mask中会去掉pad标志位，但实际去掉的都是eos标志位。
 - 以上两个原因综合导致了grad norm为nan的问题，这个问题是megatron原生问题，相同配置下实测GPU中也会报错。
 
 ### 解决方案

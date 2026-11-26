@@ -8,7 +8,7 @@
 
 ### 2. 计算通信并行
 
-在 alltoall 分支中的 permutation 函数最后会进行 allgather 操作，对所有 tokens 被切分的 H 维进行补全，然后再对数据分块进行专家计算。此项操作为串行操作，但各专家间的 tokens 并没有存在依赖关系，可修改为并行操作。
+在 alltoall 分支中的 permutation 函数最后会进行 allgather 操作，对所有 tokens 被切分的 H 维进行补全，然后再对数据分块进行专家计算。此项操作为串行操作，但各专家间的 tokens 并不存在依赖关系，可修改为并行操作。
 
 ## 解决方案
 
@@ -18,7 +18,7 @@
 
 ### 2. 计算通信并行
 
-可按照每个专家需要的 tokens 进行切分，然后逐个对 tokens 进行 allgather 通信 + 专家计算，由于第一个专家计算只依赖第一个通信，专家之间无依赖关系，因此在做第一个专家计算的时候可同步进行第二专家的通信，达到计算和通信并行。
+可按照每个专家需要的 tokens 进行切分，然后逐个对 tokens 进行 allgather 通信 + 专家计算，由于第一个专家计算只依赖第一个通信，专家之间无依赖关系，因此在做第一个专家计算的时候可同步进行第二个专家的通信，达到计算和通信并行。
 
 ## 使用场景
 
@@ -36,7 +36,7 @@
 | `allgather` | 支持，默认类型；使用专用的 [Allgather 配置](megatron-moe-allgather-dispatcher.md)，不支持动态序列长度。 |
 | `flex`（`deepep/hybridep`） | 不支持，尚未完成 NPU 适配。 |
 
-设置 `--moe-token-dispatcher-type alltoall` 选择 Alltoall dispatcher。计算与通信重叠的配置见 [Alltoall 通信隐藏](megatron-moe-alltoall-overlap-comm.md)。
+设置 `--moe-token-dispatcher-type alltoall` 选择 Alltoall Dispatcher。计算与通信重叠的配置见 [Alltoall 通信隐藏](megatron-moe-alltoall-overlap-comm.md)。
 
 如需使用 `--moe-alltoall-mc2`，须为 dropless 场景，设置 `--expert-tensor-parallel-size 1`，且不设置 `--moe-expert-capacity-factor`。
 

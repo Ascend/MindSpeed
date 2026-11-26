@@ -14,13 +14,13 @@
 
 ### 图1 共享专家隔离
 
-![img](../figures/shared-experts.png)
+![共享专家隔离原理示意图](../figures/shared-experts.png)
 
 ## 使用场景
 
-**后端限制：** 与 Grouped GEMM、Alltoall 通信隐藏或 FB overlap 组合时，必须设置 `--transformer-impl transformer_engine`。
+**后端限制：** 与Grouped GEMM、Alltoall通信隐藏或FB overlap组合时，必须设置 `--transformer-impl transformer_engine`。
 
-使用 Megatron 原生 MoE。
+使用Megatron原生MoE。
 
 ## 使用方法
 

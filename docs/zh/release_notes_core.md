@@ -39,21 +39,24 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
 
 > [!NOTE]
 >
-> 有关MindSpeed的版本维护，具体请参见[分支维护策略](https://gitcode.com/Ascend/MindSpeed/tree/26.2.0_core_r0.18.0#%E5%88%86%E6%94%AF%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5)。
+> 有关MindSpeed的版本维护，具体请参见[分支维护策略](https://gitcode.com/Ascend/MindSpeed/tree/core_r0.18.0#%E5%88%86%E6%94%AF%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5)。
 
 ### 相关产品版本配套说明
 
-**表 1**  MindSpeed Core软件版本配套表
+**表 1** MindSpeed Core软件版本配套表
 
 |MindSpeed Core代码分支名称|CANN版本|TorchNPU版本|Python版本|PyTorch版本|MegatronAdaptor|TransformerEngineNPU|Triton-Ascend版本|
-|--|--|--|--|--|--|--|-|
+|--|--|--|--|--|--|--|--|
+|core_r0.18.0（在研版本）|在研版本|在研版本|Python3.12|2.10.0|在研版本|在研版本|3.6.0|
 |26.2.0_core_r0.18.0|9.2.0|26.2.0|Python3.12|2.10.0|26.2.0_core_r0.18.0|26.2.0_release_v2.17|3.6.0|
 |26.1.0_core_r0.12.1|9.1.0|26.1.0|Python3.10|2.7.1|/|/|/|
 |26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|/|/|/|
 
->[!NOTE]
+> [!NOTE]
 >
->用户可根据需要选择MindSpeed代码分支下载源码并进行安装。
+>- 用户可根据需要选择MindSpeed代码分支下载源码并进行安装。
+>
+>- Triton-Ascend版本与CANN版本强绑定，Triton-Ascend的使用应该与CANN版本一一对应，详见[Triton-Ascend兼容性](https://triton-ascend.readthedocs.io/zh-cn/latest/release_note.html#id13)。
 
 ## 版本兼容性说明
 
@@ -61,7 +64,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
 >
 > 本节表格中“/”表示不可配套，“Y”表示可配套。
 
-**表 2**  MindSpeed Core与TorchNPU版本兼容
+**表 2** MindSpeed Core与TorchNPU版本兼容
 
 <table style="table-layout: fixed; width: 750px ; text-align:center">
   <colgroup>
@@ -113,7 +116,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
   </tbody>
 </table>
 
-**表 3**  MindSpeed Core与CANN版本兼容
+**表 3** MindSpeed Core与CANN版本兼容
 
 <table style="table-layout: fixed; width: 750px ; text-align:center">
   <colgroup>
@@ -162,7 +165,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
       <td>Y</td>
       <td>Y</td>
     </tr>
-    
+
   </tbody>
 </table>
 
@@ -176,7 +179,7 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
 
 - 适配Megatron-LM core_r0.18.0版本
 - 解耦MindSpeed、MegatronAdaptor和TransformerEngineNPU
-- 新增get_batch 配置缓存特性
+- 新增get_batch配置缓存特性
 
 ### 删除特性
 
@@ -188,7 +191,6 @@ MindSpeed Core适配 Megatron-LM core v0.18.0，解耦 MindSpeed、MegatronAdapt
 - 删除特性专家并行动态负载均衡（数参互寻）
 - 删除特性Ascend PP支持动态形状
 - 删除特性Ascend PP支持多参数传递
-- 删除特性Ascend PP支持多参数传递和动态形状
 - 删除特性Ascend非对齐线性层
 - 删除特性Ascend非对齐Ulysses长序列并行
 

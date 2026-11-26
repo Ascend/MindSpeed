@@ -18,7 +18,7 @@
 
 各组成成分介绍如下：
 
-- **数据加载时间**：模型在加载自身所需要的数据（如图片、视频和文本等）的时间，包括将数据从硬件存储设备读取到CPU（Central Processing Unit）中、CPU中数据的预处理（编解码等操作）、CPU数据放到device上的时间。对于一些需要切分在若干张卡上的模型，数据加载还包括从数据加载卡广播到其他卡上的时间。
+- **数据加载时间**：模型在加载自身所需要的数据（如图片、视频和文本等）的时间，包括将数据从硬件存储设备读取到CPU（Central Processing Unit）中、CPU中数据的预处理（编解码等操作）、CPU数据放到Device上的时间。对于一些需要切分在若干张卡上的模型，数据加载还包括从数据加载卡广播到其他卡上的时间。
 - **模型前反向时间**：深度学习模型的前向过程和反向过程的时间，即Forward和Backward过程，包含前向的数据计算和反向的数据微分求导的时间。
 - **优化器时间**：模型参数更新时间。
 - **模型后处理时间**：优化器更新后的时间，包括数据的后处理或者一些必要的同步操作，通常取决于模型特有操作。
@@ -147,13 +147,13 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 
 #### 使用场景
 
-当使用GPT类模型进行训练，同时数据进MoE层时，实际序列长度8k以上。
+当使用GPT类模型进行训练，同时数据进入MoE层时，实际序列长度8k以上。
 
-不同于Ulysses方案，该方案不需要确保head_size被cp_size整除。
+此外，不同于Ulysses方案，该方案不需要确保head_size被cp_size整除。
 
 可兼容FlashAttention，目前已默认开启FlashAttention。
 
-如果想要使得计算和通信可以互相掩盖，理论上需要确保每个计算块分到的序列长度$c \geq F/B$。其中F是每个device的FLOPS，B是每个device间的带宽。具体推导过程参见原文。在实践中，需要确保每个计算块分到的序列长度足够大，才能较好掩盖。
+如果想要使得计算和通信可以互相掩盖，理论上需要确保每个计算块分到的序列长度$c \geq F/B$。其中F是每个Device的FLOPS，B是每个Device间的带宽。具体推导过程参见原文。在实践中，需要确保每个计算块分到的序列长度足够大，才能较好掩盖。
 
 #### 使用方法
 
@@ -161,10 +161,10 @@ Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的�
 | --- | --- | --- | --- |
 | --context-parallel-size [int] | 开启CP对应的数量，根据用户需求配置。 | 是 | 默认为1 |
 | --seq-length [int] | 输入序列的长度。 | 否 | - |
-| --use-cp-send-recv-overlap | 开启 ring send/receive overlap，仅适用 p2p 或 a2a+p2p。 | 是 | 默认为False |
+| --use-cp-send-recv-overlap | 开启 ring send/receive overlap，仅适用于p2p或a2a+p2p。 | 是 | 默认为False |
 | --attention-mask-type | 设置Mask计算类型。 | 是 | 默认是causal（倒三角）Mask计算，设置general代表全量计算 |
 | --cp-comm-type | 长序列通信类型，`p2p` 开启 Ring Attention；CP>1 使用 transformer_engine。 | 是 | p2p（默认）、a2a、all_gather、a2a+p2p |
-| --megatron-cp-in-bnsd | 开启后，FA使用BNSD计算。 | 是 | 默认为False |
+| --megatron-cp-in-bnsd | 开启后，FlashAttention使用BNSD计算。 | 是 | 默认为False |
 | --cp-window-size [int] | 使用原始的Ring Attention算法；当设置为大于`1`时，即使用Double Ring Attention算法，优化原始Ring Attention性能，--cp-window-size即为算法中双层Ring Attention的内层窗口大小，需要确保cp_size能被该参数整除。 | 是 | 默认为1 |
 
 具体使用方式参考如下示例：
@@ -185,14 +185,14 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 
 + 开启Context Parallel时需要同时开启FlashAttention特性，否则特性不支持。
 + 在使用GPT类模型进行训练的场景下，建议`attention-mask-type`设置为`causal`。
-+ 在8k的序列长度情况下，由于计算的时间缩短，cp功能分割之后的send receive的时间反而会长于计算时间，造成性能的下降，所以建议配置 seq-length / context-parallel-size > 8k 以获取最佳效果。具体公式参考：S/(Talpha) >= 1/(Wbeta)，其中，S=seq-length / context-parallel-size， T表示芯片的理论算力，alpha表示计算效率，W表示理论通信带宽，beta表示带宽利用率。
-+ 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
++ 在8k的序列长度情况下，由于计算的时间缩短，CP功能分割之后的send receive的时间反而会长于计算时间，造成性能的下降，所以建议配置 seq-length / context-parallel-size > 8k 以获取最佳效果。具体公式参考：S/(Talpha) >= 1/(Wbeta)，其中，S=seq-length / context-parallel-size，T表示芯片的理论算力，alpha表示计算效率，W表示理论通信带宽，beta表示带宽利用率。
++ 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，CP为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
 
 <!-- ### Ascend Double Ring Attention长序列并行
 
 #### 算法思路
 
-原有的Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的完整矩阵情况下进行分块attention计算。 以分块方式执行自注意力和前馈网络计算，跨多个设备分布序列维度。具体地，该方法在进程之间构建注意力计算块的环状通信结构（Ring），每个进程具有一个切分后的本地QKV块。在计算完本地的attention后，通过向后发送和向前获取KV块，遍历进程设备环，以逐块的方式进行注意力和前馈网络计算。同时，本地的attention计算和KV块的通信理想情况下可以互相掩盖，从而消除了额外引入的通信开销。另外该方案在计算attention的过程中全程不需要数据拼接，支持的序列长度理论上可以无限拓展。 在此基础上Double Ring Attention算法采用分布式注意力机制，通过双环结构（Double-Ring-Attention）来优化计算和内存使用。
+原有的Ring Attention借鉴了分块Softmax原理，在不需要获取整个序列的完整矩阵情况下进行分块attention计算。以分块方式执行自注意力和前馈网络计算，跨多个设备分布序列维度。具体地，该方法在进程之间构建注意力计算块的环状通信结构（Ring），每个进程具有一个切分后的本地QKV块。在计算完本地的attention后，通过向后发送和向前获取KV块，遍历进程设备环，以逐块的方式进行注意力和前馈网络计算。同时，本地的attention计算和KV块的通信理想情况下可以互相掩盖，从而消除了额外引入的通信开销。另外该方案在计算attention的过程中全程不需要数据拼接，支持的序列长度理论上可以无限拓展。在此基础上Double Ring Attention算法采用分布式注意力机制，通过双环结构（Double-Ring-Attention）来优化计算和内存使用。
 
 #### 使用场景
 
@@ -219,7 +219,7 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 #### 注意事项
 
 + 需要确保`--context-parallel-size`能被`--cp-window-size`整除。
-+ 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。 -->
++ 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，CP为16且无其他并行切分时，实测内层窗口大小为2时性能最优。 -->
 
 ### Ascend 混合长序列并行
 
@@ -274,7 +274,7 @@ Ring Attention的并行维度不受attention head数限制，因此理论上序�
 | 场景条件 | 推荐算法 | 原因 |
 | --- | --- | --- |
 | head数能被cp_size整除 | Ulysses | 通信效率高 |
-| 序列长度8K以上 | Ring Attention | 无head数限制 |
+| 序列长度8k以上 | Ring Attention | 无head数限制 |
 | 需要进一步优化Ring Attention性能 | Double Ring Attention | 双环结构提升效率 |
 | 需要兼顾Ulysses和Ring Attention优势 | 混合序列并行 | 融合两种算法优点 |
 

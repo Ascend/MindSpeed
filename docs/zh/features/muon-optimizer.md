@@ -2,7 +2,7 @@
 
 ## 背景与挑战
 
-Muon 是一种面向大模型训练的矩阵参数优化器。与 Adam 等逐元素优化器不同，Muon 主要作用于二维权重矩阵，会先维护类似 SGD 的动量更新，再对动量矩阵执行 Newton-Schulz 正交化，使更新方向具备更好的矩阵结构约束。对于 Transformer 中的大量线性层参数，Muon 可以作为矩阵参数的主优化器使用。
+Muon 是一种面向大模型训练的矩阵参数优化器。与 Adam 等逐元素优化器不同，Muon 主要作用于二维权重矩阵，会先维护类似 SGD 的动量更新，再对动量矩阵执行 Newton-Schulz 正交化，使更新方向更好地满足矩阵结构约束。对于 Transformer 中的大量线性层参数，Muon 可以作为矩阵参数的主优化器使用。
 
 大模型训练中，参数并不都适合使用 Muon。二维矩阵权重适合进入 Muon，embedding、输出层、bias、norm 等参数通常仍使用 Adam 等标量优化器。因此，使用 Muon 时需要同时管理两类优化器，并保证它们在学习率、权重衰减、梯度裁剪、状态保存和参数同步等流程中协同工作。
 
@@ -11,7 +11,7 @@ Muon 是一种面向大模型训练的矩阵参数优化器。与 Adam 等逐元
 1. **TP 参数重复过滤**：张量并行下，部分参数在不同 TP rank 上是重复视图。梯度范数、梯度裁剪和 zero count 统计时必须过滤重复参数，否则统计结果会被重复计算。
 2. **TP 分片矩阵正交化**：Muon 的 Newton-Schulz 正交化作用于矩阵更新。矩阵被 TP 切分后，需要知道参数的切分维度和通信 group，才能按正确的全局矩阵形状计算缩放因子，并在需要时进行跨 TP 通信。
 3. **QKV 融合权重处理**：部分模型会将 Q、K、V 权重融合成一个线性层。Muon 直接对融合后的大矩阵做正交化可能不符合预期，需要按 Q/K/V 结构拆分后分别处理。
-4. **MoE/expert parallel 通信组选择**：expert 参数可能使用 expert tensor parallel group，而 dense 参数使用普通 TP group。Muon 必须区分 dense/expert 参数，避免梯度统计和 TP duplicate filter 使用错误 group。
+4. **MoE/expert parallel 通信 group 选择**：expert 参数可能使用 expert tensor parallel group，而 dense 参数使用普通 TP group。Muon 必须区分 dense/expert 参数，避免梯度统计和 TP duplicate filter 使用错误 group。
 5. **ZeRO 参数分片与同步**：启用 `--use-distributed-optimizer` 后，Muon 走 layer-wise distributed optimizer 路径。每个 DP rank 只负责更新部分完整参数，更新后需要将参数同步回所有 rank。
 6. **bf16 master param 属性继承**：bf16 训练中 optimizer 会创建 fp32 master param。Muon 依赖的 `expert_tp`、`is_qkv` 等自定义属性需要从模型参数同步到 master param，否则 TP group 选择和 QKV split 会失效。
 
@@ -45,7 +45,7 @@ Muon 只处理满足条件的二维矩阵参数。对于每个进入 Muon 的参
 
    `TensorParallelMuon` 会根据参数属性选择普通 TP group 或 expert TP group。dense 参数使用普通 TP group，expert 参数使用 expert TP group。
 
-2. **TP duplicate filter**
+2. **TP 参数重复过滤**
 
    MindSpeed patch 了 `param_is_not_tensor_parallel_duplicate`，使其支持显式传入 `tp_group`。梯度范数、梯度裁剪和 zero count 统计时，会基于对应 wrapper 的 `tp_group` 过滤重复参数。
 

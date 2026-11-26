@@ -16,9 +16,9 @@
 
 ### 图1 流水线并行调度示意图
 
-![alt text](../figures/pipedream1F1B.png)
+![流水线并行调度示意图](../figures/pipedream1F1B.png)
 
-具体细节可参考文献 [原文链接](https://arxiv.org/pdf/1806.03377)
+具体细节可参考文献 [原文链接](https://arxiv.org/pdf/1806.03377)。
 
 ## 使用场景
 

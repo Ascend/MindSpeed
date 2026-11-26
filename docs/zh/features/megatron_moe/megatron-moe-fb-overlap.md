@@ -1,15 +1,17 @@
 # MoE跨microbatch间AlltoAll通信掩盖
 
+本文档介绍MoE跨microbatch间AlltoAll通信掩盖，说明MindSpeed如何通过细粒度的计算和通信流水排布实现1F1B阶段A2A通信100%掩盖，适用于在昇腾硬件上训练DeepSeek V3等MoE模型的用户。
+
 ## 背景与挑战
 
-MoE模型训练的关键瓶颈在于高昂的AllToAll(A2A)通信耗时，显著影响训练MFU。另外，相同microbatch内，A2A通信和计算存在依赖，因此A2A通信难掩盖。
+MoE模型训练的关键瓶颈在于AllToAll(A2A)通信耗时高昂，显著影响训练MFU。另外，相同microbatch内，A2A通信和计算存在依赖，因此A2A通信难掩盖。
 
-在DeepSeek V3模型训练中，DeepSeek团队创新性地提出了双向流水跨MicroBatch间AllToAll(A2A)掩盖，即DualPipe算法。
+在DeepSeek V3模型训练中，DeepSeek团队创新性地提出了双向流水跨microbatch间AllToAll(A2A)掩盖，即DualPipe算法。
 Dualpipe从流水线两端同时输入micro batch，同时借鉴ZeroBubble思想进行dw/dx分离，进一步缩减了流水线空泡（bubble）。
 同时，不同micro batch前反向无依赖关系，DualPipe通过双流编排计算通信，实现1F1B阶段A2A通信全掩盖，详情参见：
 > DeepSeek-V3 Technical Report (<https://arxiv.org/abs/2412.19437>)
 
-具体来说，单层内的前向计算和通信按顺序被拆分为Attention(F), Dispatch(F), MLP(F), Combine(F)四个阶段， 单层内的反向计算按顺序被拆分为Combine(B), MLP(B), Dispatch(B), Attention(B)，其中Dispatch和Combine分别为MLP计算前后的A2A通信。通过双流编排正向和反向的计算和通信，实现1F1B阶段A2A通信全掩盖。原理如下图 (<https://github.com/deepseek-ai/profile-data>)
+具体来说，单层内的前向计算和通信按顺序被拆分为Attention(F), Dispatch(F), MLP(F), Combine(F)四个阶段，单层内的反向计算按顺序被拆分为Combine(B), MLP(B), Dispatch(B), Attention(B)，其中Dispatch和Combine分别为MLP计算前后的A2A通信。通过双流编排正向和反向的计算和通信，实现1F1B阶段A2A通信全掩盖。原理如下图 (<https://github.com/deepseek-ai/profile-data>)
 
 ![跨microbatch间A2A通信掩盖](../../figures/fb_overlap.png)
 
@@ -23,13 +25,13 @@ MindSpeed基于昇腾硬件特点，设计实现了一套高性能的MoE跨micro
 
 MindSpeed实现的1F1B细粒度计算和通信流水排布如下图：
 ![跨microbatch间A2A通信掩盖](../../figures/fb_overlap_npu.png)
-通过分离调度专家和Attention部分反向的dw和dx计算，可实现1F1B阶段的A2A全掩盖。同时，由于昇腾硬件上通信行为由AI CPU下发，不会消耗cube计算单元资源，因此计算和通信的并发对计算效率的影响很低。另外，使用了Attention部分的dw计算掩盖了PP的通信，从而实现1F1B阶段通信的全掩盖。
+通过分离调度专家和Attention部分反向的dw和dx计算，可实现1F1B阶段的A2A全掩盖。同时，由于昇腾硬件上通信行为由AI CPU下发，不会消耗Cube计算单元资源，因此计算和通信的并发对计算效率的影响很低。另外，使用了Attention部分的dw计算掩盖了PP的通信，从而实现1F1B阶段通信的全掩盖。
 
 下图是真实671B DeepSeekV3模型使用该特性时，单层内的A2A通信掩盖profiling示意图：
 
-![img.png](../../figures/fb_overlap_profile.png)
+![671B DeepSeek V3模型启用该特性后的单层profiling示意图，4次A2A通信被计算完全掩盖](../../figures/fb_overlap_profile.png)
 
-使用该特性后在1f1b阶段4次A2A通信可被计算完全掩盖。
+使用该特性后在1F1B阶段4次A2A通信可被计算完全掩盖。
 
 ### Warmup/Cooldown阶段A2A自掩盖
 
@@ -37,11 +39,11 @@ MindSpeed实现的1F1B细粒度计算和通信流水排布如下图：
 
 ### 基于DualpipeV和Megatron VPP的跨microbatch间A2A通信掩盖
 
-MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具体细节参见[DualpipeV介绍](../dualpipev.md)。
+MindSpeed基于DualPipe流水实现了MoE跨microbatch间A2A通信掩盖，具体细节参见[DualpipeV介绍](../dualpipev.md)。
 
 另外，我们注意到在传统Megatron VPP（虚拟流水线并行）的基础上，也可以实现MoE跨microbatch间的A2A通信掩盖，只需要在warmup阶段相比于原始VPP多做一个warmup microbatch，具体见下图：
 
-![vpp+moe_fb_overlap](../../figures/vpp_overlap.png)
+![VPP流水下跨microbatch间A2A通信掩盖排布示意图，中间红框部分为可被计算掩盖的A2A通信](../../figures/vpp_overlap.png)
 
 中间红框部分可使用跨microbatch间A2A掩盖。相比于DualpipeV流水，该方案实现上更简单，也同样可实现A2A通信掩盖。
 
@@ -51,22 +53,22 @@ MindSpeed基于dualpipe流水实现了MoE跨microbatch间A2A通信掩盖，具�
 
 请注意当前该特性仅在DeepSeek V3场景进行了验证，在其他MoE模型场景需要进一步验证和适配。
 
-1. 在启动脚本中加入 `--moe-fb-overlap`，并设置 `--transformer-impl transformer_engine`、`--expert-model-parallel-size` 大于 1。
+1. 在启动脚本中加入 `--moe-fb-overlap`，并设置 `--transformer-impl transformer_engine`、`--expert-model-parallel-size` 大于1。
 
-2. 如果需要使用DualpipeV流水，请在启动脚本中加入`--schedules-method dualpipev`
-3. 如果使用megatron VPP，请在启动脚本中配置`--num-layers-per-virtual-pipeline-stage`
-4. 支持非PP，多microbatch场景，请在启动脚本中不配置`--pipeline-model-parallel-size`或者配置`--pipeline-model-parallel-size 1`
-5. 可用 `--moe-unperm2-mem-optim-swap` 换出 unpermute 中间结果。
+2. 如果需要使用DualpipeV流水，请在启动脚本中加入`--schedules-method dualpipev`。
+3. 如果使用megatron VPP，请在启动脚本中配置`--num-layers-per-virtual-pipeline-stage`。
+4. 支持非PP、多microbatch场景，请在启动脚本中不配置`--pipeline-model-parallel-size`或者配置`--pipeline-model-parallel-size 1`。
+5. 可用 `--moe-unperm2-mem-optim-swap` 换出unpermute中间结果。
 
 ## 使用约束
 
-1. 当前仅支持`--moe-token-dispatcher-type=alltoall`, 不支持 `allgather/flex` Dispatcher。
+1. 当前仅支持`--moe-token-dispatcher-type=alltoall`，不支持 `allgather/flex` Dispatcher。
 2. 当前需设置`--expert-tensor-parallel-size=1`，暂不支持专家TP。
 3. 当前暂不支持Megatron MoE Token Drop&Pad模式，支持Dropless及Drop模式。
-4. 当前依赖GroupedMatmul, 确保打开`--moe-grouped-gemm`。
+4. 当前依赖GroupedMatmul，确保打开`--moe-grouped-gemm`。
 5. `--moe-zero-memory` 支持 `disable`（默认）或 `level0`。
 6. 当前暂不支持异步DP通信掩盖，需关闭`--overlap-grad-reduce`。
-7. 自定义 `--pipeline-model-parallel-layout` 不允许空 decoder chunk。
+7. 自定义 `--pipeline-model-parallel-layout` 不允许空decoder chunk。
 8. 在VPP流水下，存在如下额外约束：
     - `GBS // (MBS * PP * DP) > 1`
     - 若使用noop layers，则其需要添加在模型尾部的最后一个VPP stage

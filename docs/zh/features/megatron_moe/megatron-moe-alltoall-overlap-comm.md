@@ -7,14 +7,14 @@ MoE中,存在大量的EP通信没有做通信隐藏，端到端时间占比大�
 ## 解决方案
 
 在前向过程中，使用异步通信来尽可能与计算做互相掩盖。同时，对整个计算流程进行子图切分，从而在反向过程中也进行通算并行，加速模型训练。
-此特性当前支持 alltoall dispatcher。
-此外，alltoall分支中，兼容了megatron的shared_expert_overlap方案，并通过更细粒度的掩盖，可做到较原生方案，性能进一步提升。
+此特性当前支持alltoall dispatcher。
+此外，alltoall分支中，兼容了megatron的shared_expert_overlap方案，并通过更细粒度的掩盖，相较于原生方案，性能进一步提升。
 
 ## 使用方法
 
 **后端限制：** 必须设置 `--transformer-impl transformer_engine`，不支持 `local`。
 
-使用以下参数启用通信隐藏，并设置 `--expert-model-parallel-size` 大于 1：
+使用以下参数启用通信隐藏，并设置 `--expert-model-parallel-size` 大于1：
 
 ```bash
 --moe-alltoall-overlap-comm \
@@ -31,6 +31,6 @@ MoE中,存在大量的EP通信没有做通信隐藏，端到端时间占比大�
 
 ## 适用场景
 
-适用megatron-moe，dropless方案分支，需要提高训练性能的场景。相较基准dispatcher场景，性能可提升10%+。
+适用megatron-moe、dropless方案分支，需要提高训练性能的场景。相较基准dispatcher场景，性能可提升10%+。
 在开启`--moe-shared-expert-overlap`后，仍可提高4%以上的性能。
-启动该特性会导致显存占用增加，属正常现象。此时，可搭配ZeroMemory特性调整显存使用状况。ZeroMemory介绍及设置可参考[此处](megatron-moe-zero-memory.md)。
+启动该特性会导致显存占用增加，属正常现象。此时，可搭配ZeroMemory特性调整显存使用状况。ZeroMemory介绍及设置可参考[Megatron MoE alltoall dispatcher分支内存优化](megatron-moe-zero-memory.md)。

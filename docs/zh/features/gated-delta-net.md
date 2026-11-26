@@ -1,6 +1,6 @@
 # GatedDeltaNet（GDN）
 
-MindSpeed 在 Megatron-Core 的 GatedDeltaNet 基础上提供 `chunk_gated_delta_rule` 和 `l2norm` 的 NPU 实现，因果卷积使用 MA 的基础适配。非确定性模式使用 MindSpeed 的 Triton gated delta rule。
+MindSpeed 在 Megatron-Core 的 GatedDeltaNet 基础上提供 `chunk_gated_delta_rule` 和 `l2norm` 的 NPU 实现，因果卷积使用 `megatron_adaptor` 的基础适配。非确定性模式使用 MindSpeed 的 Triton gated delta rule。
 
 ## 使用方法
 

@@ -11,11 +11,11 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 | `MindSpeedFeature` | 继承 MegatronAdaptor 特性基类，定义生命周期钩子 |
 | `MindSpeedPatchesManager` | 统一管理patch注册与生效 |
 
-开发者只需继承`MindSpeedFeature`，覆写相关方法，即可添加新特性，无需修改核心框架。
+开发者只需继承`MindSpeedFeature`，重写相关方法，即可添加新特性，无需修改核心框架。
 
 ## 开发流程
 
-以AsyncLogAllreduceFeature为例
+以AsyncLogAllreduceFeature为例：
 
 1. 创建特性类
 
@@ -67,12 +67,12 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 
     >[!NOTE]
     >
-    >- 在`register_patches`函数内部进行 import，而非文件顶部导入。这样可以避免循环依赖：如果在文件顶部导入`mindspeed.core.data_parallel.async_log_allreduce`，而该模块又间接导入 `features_manager`，会导致初始化失败。只有当`is_need_apply(args)`返回True时，才会执行到这段代码。
+    >- 在`register_patches`函数内部进行import，而非文件顶部导入。这样可以避免循环依赖：如果在文件顶部导入`mindspeed.core.data_parallel.async_log_allreduce`，而该模块又间接导入 `features_manager`，会导致初始化失败。只有当`is_need_apply(args)`返回True时，才会执行到这段代码。
     >- 注册patch将`megatron.training.training.train_step`替换为自定义实现。
 
 4. 加入统一特性列表
 
-    在 `mindspeed/features_manager/__init__.py` 对应的 `add_*_features` 函数中加入特性实例，由 `create_features_list()` 汇总。`set_default_features_list()` 通过 `FeaturesManager.add_feature(...)` 追加到 MA 的统一列表。
+    在`mindspeed/features_manager/__init__.py`对应的`add_*_features`函数中加入特性实例，由`create_features_list()`汇总。`set_default_features_list()`通过`FeaturesManager.add_feature(...)`追加到MegatronAdaptor的统一列表。
 
 ## 开发实践指南
 
@@ -82,8 +82,8 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 - 默认启用控制：非原生适配特性禁止默认启用，避免影响基础功能稳定性。
 - 参数校验完整性：充分利用`pre_validate_args`、`validate_args`、`post_validate_args`三个阶段确保参数合法性。
 - 兼容性检查：使用`incompatible_check`和`dependency_check`确保特性组合的正确性。
-- patch幂等性：确保patch注册不会相互冲突，必要时使用`force_patch`参数。`MindSpeedFeaturesManager.remove_patches` 只移除 MindSpeed 自己的补丁层。
-- 完整替换`train_step`的约定：直接替换模式会把 MegatronAdaptor 已安装的 wrapper 链整体覆盖。如替换目标是`megatron.training.training.train_step`，必须在每个训练步正常返回前显式调用一次 MegatronAdaptor 的稳定接口 `profile_step()`（`from megatron_adaptor.patches.megatron.profile import profile_step`），否则 NPU Profiling 的采集窗口将不再推进。该调用在未开启 profiling 时零开销返回，可无条件调用。参考实现：`mindspeed.core.pipeline_parallel.dualpipev.dualpipev_chunks.train_step`、`mindspeed.core.data_parallel.async_log_allreduce.train_step`。
+- patch幂等性：确保patch注册不会相互冲突，必要时使用`force_patch`参数。`MindSpeedFeaturesManager.remove_patches` 只移除MindSpeed自己的补丁层。
+- 完整替换`train_step`的约定：直接替换模式会把MegatronAdaptor已安装的wrapper链整体覆盖。如替换目标是`megatron.training.training.train_step`，必须在每个训练步正常返回前显式调用一次MegatronAdaptor的稳定接口 `profile_step()`（`from megatron_adaptor.patches.megatron.profile import profile_step`），否则NPU Profiling的采集窗口将不再推进。该调用在未开启profiling时零开销返回，可无条件调用。参考实现：`mindspeed.core.pipeline_parallel.dualpipev.dualpipev_chunks.train_step`、`mindspeed.core.data_parallel.async_log_allreduce.train_step`。
 - 参数获取：使用 `mindspeed.args_utils.get_full_args` 获取完整参数。
 
 ### 创建新特性的Checklist
@@ -113,7 +113,7 @@ MindSpeed Core采用**插件化**的特性管理架构，核心组件：
 
 - 使用pre_validate_args/post_validate_args的场景。
 
-    `pre_validate_args` 用于在原生校验前归一化参数及兼容别名；`post_validate_args` 用于依赖最终参数值的检查。例如 CP 在前置阶段将 `context_parallel_algo` 转换为 `cp_comm_type`，MoE overlap 在后置阶段检查 noop 层位置。
+    `pre_validate_args` 用于在原生校验前归一化参数及兼容别名；`post_validate_args` 用于依赖最终参数值的检查。例如CP在前置阶段将 `context_parallel_algo` 转换为 `cp_comm_type`，MoE overlap在后置阶段检查noop层位置。
 
 - 装饰器模式和替换模式如何选择？
 
