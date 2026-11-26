@@ -12,51 +12,155 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
+
 import torch
+import torch_npu
 from torch.library import impl
-from mindspeed.op_builder import WeightQuantGMMOpBuilder
 from mindspeed.op_builder.builder import AS_LIBRARY
 from mindspeed.ops import gmm
+from mindspeed.ops._gmm_graph import (
+    Tensor,
+    TensorSpec,
+    DataType,
+    GroupedMatmul,
+    fill_empty_tensor,
+    register_fx_node_ge_converter,
+)
 
 __all__ = ["npu_weight_quant_gmm", "npu_weight_quant_gmm_v2"]
 
 
-op_builder = WeightQuantGMMOpBuilder()
+AS_LIBRARY.define(
+    'npu_weight_quant_gmm(Tensor x, Tensor weight, Tensor antiquant_scale, *, Tensor? '
+    'antiquant_offset=None, Tensor? bias=None, Tensor? group_list=None, int? group_list_type=0, int? '
+    'act_type=0) -> Tensor'
+)
+
+
+@impl(AS_LIBRARY, "npu_weight_quant_gmm", "Meta")
+def npu_weight_quant_gmm_forward(
+    x,
+    weight,
+    antiquant_scale,
+    *,
+    antiquant_offset=None,
+    bias=None,
+    group_list=None,
+    group_list_type=0,
+    act_type=0,
+):
+    BM = x.shape[0]
+    N = weight.shape[-1]
+    output_dtype = x.dtype
+    return x.new_empty((BM, N), dtype=output_dtype)
+
+
+@register_fx_node_ge_converter(torch.ops.mindspeed.npu_weight_quant_gmm.default)
+def conveter_npu_weight_quant_gmm(
+    x: Tensor,
+    weight: Tensor,
+    antiquant_scale: Tensor,
+    *,
+    antiquant_offset: Optional[Tensor] = None,
+    bias: Optional[Tensor] = None,
+    group_list: Optional[Tensor] = None,
+    group_list_type: Optional[int] = 0,
+    act_type: Optional[int] = 0,
+    meta_outputs: TensorSpec = None,
+):
+    x_dtype = x.dtype
+    if bias is None:
+        if x_dtype == DataType.DT_BF16:
+            bias = fill_empty_tensor(DataType.DT_FLOAT)
+        elif x_dtype == DataType.DT_FLOAT16:
+            bias = fill_empty_tensor(DataType.DT_FLOAT16)
+    antiquant_offset = antiquant_offset or fill_empty_tensor(antiquant_scale.dtype)
+    scale = fill_empty_tensor(DataType.DT_UINT64)
+    offset = fill_empty_tensor(DataType.DT_FLOAT)
+
+    return GroupedMatmul(
+        [x],
+        [weight],
+        [bias],
+        [scale],
+        [offset],
+        [antiquant_scale],
+        [antiquant_offset],
+        group_list,
+        split_item=3,
+        group_type=0,
+        group_list_type=group_list_type,
+        act_type=act_type,
+    )[0]
 
 
 @impl(AS_LIBRARY, "npu_weight_quant_gmm", "PrivateUse1")
-def _npu_weight_quant_gmm(x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, group_list=None,
-                          group_list_type=0, act_type=0):
-    bias = [] if bias is None else [bias]
-    antiquant_scale = [] if antiquant_scale is None else [antiquant_scale]
-    antiquant_offset = [] if antiquant_offset is None else [antiquant_offset]
-    outputs = op_builder.load().npu_weight_quant_gmm([x], [weight], antiquant_scale, antiquant_offset, bias, group_list,
-                                                     group_list_type, act_type)
-    return outputs[0]
+def _npu_weight_quant_gmm(
+    x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, group_list=None, group_list_type=0, act_type=0
+):
+    return torch_npu.npu_grouped_matmul.default(
+        [x],
+        [weight],
+        antiquant_scale=[] if antiquant_scale is None else [antiquant_scale],
+        antiquant_offset=[] if antiquant_offset is None else [antiquant_offset],
+        bias=[] if bias is None else [bias],
+        group_list=group_list,
+        split_item=3,
+        group_type=0,
+        group_list_type=group_list_type,
+        act_type=act_type,
+    )[0]
 
 
-def _npu_weight_quant_gmm_common(x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, group_list=None,
-                                 group_list_type=0, act_type=0):
-    if x.dtype != torch.float16 and x.dtype != torch.bfloat16:
+def _npu_weight_quant_gmm_common(
+    x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, group_list=None, group_list_type=0, act_type=0
+):
+    if x.dtype not in (torch.float16, torch.bfloat16):
         raise ValueError(f"Input x only accept float16/fp16, but got x[{x.dtype}]")
     if weight.dtype != torch.int8:
         raise ValueError(f"Weight only support int8, but got weight[{weight.dtype}]")
-    gmm.npu_gmm_param_verification(x, weight, bias=bias, group_list=group_list,
-                                   group_type=0, group_list_type=group_list_type)
+    gmm.npu_gmm_param_verification(
+        x, weight, bias=bias, group_list=group_list, group_type=0, group_list_type=group_list_type
+    )
     gmm.check_optional_tensor(antiquant_scale, x.device, "antiquant_scale")
     gmm.check_optional_tensor(antiquant_offset, x.device, "antiquant_offset")
-    return torch.ops.mindspeed.npu_weight_quant_gmm(x, weight, antiquant_scale, antiquant_offset=antiquant_offset,
-                                                    bias=bias, group_list=group_list, group_list_type=group_list_type, 
-                                                    act_type=act_type)
+    op = torch.ops.mindspeed.npu_weight_quant_gmm if torch.compiler.is_compiling() else _npu_weight_quant_gmm
+    return op(
+        x,
+        weight,
+        antiquant_scale,
+        antiquant_offset=antiquant_offset,
+        bias=bias,
+        group_list=group_list,
+        group_list_type=group_list_type,
+        act_type=act_type,
+    )
 
 
-def npu_weight_quant_gmm(x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, 
-                         group_list=None, act_type=0):
-    return _npu_weight_quant_gmm_common(x, weight, antiquant_scale, antiquant_offset=antiquant_offset, bias=bias,
-                                        group_list=group_list, group_list_type=0, act_type=act_type)
+def npu_weight_quant_gmm(x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, group_list=None, act_type=0):
+    return _npu_weight_quant_gmm_common(
+        x,
+        weight,
+        antiquant_scale,
+        antiquant_offset=antiquant_offset,
+        bias=bias,
+        group_list=group_list,
+        group_list_type=0,
+        act_type=act_type,
+    )
 
 
-def npu_weight_quant_gmm_v2(x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, 
-                            group_list=None, act_type=0):
-    return _npu_weight_quant_gmm_common(x, weight, antiquant_scale, antiquant_offset=antiquant_offset, bias=bias,
-                                        group_list=group_list, group_list_type=1, act_type=act_type)
+def npu_weight_quant_gmm_v2(
+    x, weight, antiquant_scale, *, antiquant_offset=None, bias=None, group_list=None, act_type=0
+):
+    return _npu_weight_quant_gmm_common(
+        x,
+        weight,
+        antiquant_scale,
+        antiquant_offset=antiquant_offset,
+        bias=bias,
+        group_list=group_list,
+        group_list_type=1,
+        act_type=act_type,
+    )

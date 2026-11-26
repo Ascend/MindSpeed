@@ -19,7 +19,7 @@ Inputs:
 - per_token_scale: Optional parameter, Parameter Type is tensor, Data Type is float32, Default Value is None;
 - bias: Optional Input, Parameter Type is tensor, Data Type is int32, Default Value is None;
 - group_list: Optional Input, Parameter Type is tensor, Data Type is int64, Default Value is None. The numerical definition varies across different interfaces; see the interface descriptions above for details;
-- output_dtype: Optional Input, Parameter Type is torch.dtype, optional values are: torch.int8, torch.bfloat16, torch.float16, used to specify the output data type. Default Value is None, in which case the output Type is torch.float16;
+- output_dtype: Optional Input, Parameter Type is torch.dtype, optional values are: torch.int8, torch.bfloat16, torch.float16, used to specify the output data type. Default Value is None, in which case the output Type is torch.bfloat16;
 - act_type: Optional parameter, Parameter Type is int, used to specify the activation function type. Default Value is 0. The supported activation function types are as follows:
   - 0: No activation function;
   - 1: relu;
@@ -39,8 +39,8 @@ Constraints and Limitations:
 - The size of the last dimension of each group tensor in x and weight must be less than 65536. The last dimension of $x_i$ refers to the K axis of $x_i$ when the attribute transpose_x is False, or the M axis of $x_i$ when transpose_x is True. The last dimension of $weight_i$ refers to the N axis of $weight_i$ when the attribute transpose_weight is False, or the K axis of $weight_i$ when transpose_weight is True;
 - The size of each dimension of each group tensor in x and weight, after 32-byte alignment, must be less than the maximum int32 value 2147483647;
 - When the output y data type needs to be int8, specify output_dtype as torch.int8, the scale type as int64, and per_token_scale as empty. In this case, only act_type=0 is supported, meaning no activation function; this scenario currently only supports single-operator mode, and graph mode is not supported;
-- When the output y data type needs to be bfloat16, output_dtype is torch.bfloat16, and the scale type is bfloat16;
-- When the output y data type is float16, output_dtype is torch.float16 or the default parameter None, and the scale type is float32.
+- When the output y data type needs to be bfloat16, output_dtype is torch.bfloat16 or the default parameter None, and the scale type is bfloat16;
+- When the output y data type is float16, output_dtype is torch.float16, and the scale type is float32.
 
 ## Example Call of the gmm Class
 

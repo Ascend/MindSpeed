@@ -20,16 +20,11 @@ from .swiglu_builder import SwigluOpBuilder
 from .lcal_builder import LcalOpBuilder
 from .rms_norm_builder import RmsNormOpBuilder
 from .npu_grouped_mat_mul_all_reduce_builder import GroupedMatMulAllReduceOpBuilder
-from .gmm_builder import GMMOpBuilder, GMMV2OpBuilder
-from .quant_gmm_builder import QuantGMMOpBuilder
-from .weight_quant_gmm_builder import WeightQuantGMMOpBuilder
 from .npu_mm_all_reduce_add_rms_norm_builder import MatmulAllReduceAddRmsNormOpBuilder
 from .npu_inplace_mm_all_reduce_add_rms_norm_builder import InplaceMatmulAllReduceAddRmsNormOpBuilder
 from .npu_ring_attention_update_builder import RingAttentionUpdateOpBuilder
 from .npu_bmm_reduce_scatter_all_to_all_builder import BatchMatMulReduceScatterAlltoAllOpBuilder
 from .npu_all_to_all_all_gather_bmm_builder import AllToAllAllGatherBatchMatMulOpBuilder
-from .matmul_add_builder import MatmulAddOpBuilder
-from .groupmatmul_add_builder import GroupMatmulAddOpBuilder
 from .fused_ema_adamw_builder import FusedEmaAdamWOpBuilder
 from .smart_swap_builder import SmartSwapBuilder
 from .npu_sparse_lightning_indexer_grad_kl_loss_builder import NPUSparseLIGradKlLossOpBuilder
@@ -43,17 +38,11 @@ __all__ = [
     "LcalOpBuilder",
     "RmsNormOpBuilder",
     "GroupedMatMulAllReduceOpBuilder",
-    "GMMOpBuilder",
-    "GMMV2OpBuilder",
-    "QuantGMMOpBuilder",
-    "WeightQuantGMMOpBuilder",
     "MatmulAllReduceAddRmsNormOpBuilder",
     "InplaceMatmulAllReduceAddRmsNormOpBuilder",
     "RingAttentionUpdateOpBuilder",
     "BatchMatMulReduceScatterAlltoAllOpBuilder",
     "AllToAllAllGatherBatchMatMulOpBuilder",
-    "MatmulAddOpBuilder",
-    "GroupMatmulAddOpBuilder",
     "FusedEmaAdamWOpBuilder",
     "SmartSwapBuilder",
     "NPUSparseLIGradKlLossOpBuilder",

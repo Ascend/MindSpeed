@@ -1,39 +1,32 @@
-# npu_groupmatmul_add_fp32对外接口(只支持前向)
+# npu_groupmatmul_add_fp32
 
-输入：
-
-- x：必选输入，维度[m,k], 数据类型float16, bf16
-- weight：必选输入，维度[k,n], 数据类型float16, bf16
-- groupNum：必选输入， 维度[NumGroup], 数据类型int64
-- output：必选输入，维度[w1,w2]，数据类型float32
-
-输出：
-
-- output：必选输出，数据类型float32
-
-## 案例
+此接口计算每组输入的权重梯度，并原地累加到 `grad`。接口直接调用 TorchNPU 的 `npu_grouped_matmul_add_`。
 
 ```python
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
-import pytest
+npu_groupmatmul_add_fp32(x, dy, grouplist, grad, *, group_list_type=0)
+```
+
+- `x`：形状 `[m, k]`，类型为 float16 或 bfloat16。
+- `dy`：形状 `[m, n]`，类型与 `x` 相同。
+- `grouplist`：一维 int64 Tensor 或 Python list；数值含义由 `group_list_type` 指定。
+- `grad`：连续 float32 Tensor，形状 `[groups, k, n]` 或 `[groups * k, n]`。
+- `group_list_type=0`：`grouplist` 保存累计边界。例如 `[16, 64]` 表示两组各有 16、48 行。
+- `group_list_type=1`：`grouplist` 保存每组行数。例如 `[16, 48]`。
+
+接口返回 `None`。接口保留 `grad` 的原始存储。空组的累加值为零。
+
+接口将每组行数转换为累计边界后，调用原地累加算子。
+
+## 示例
+
+```python
 import torch
-import mindspeed.megatron_adaptor
 import torch_npu
-from mindspeed.ops.gmm import GMMFunction
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 
-x = torch.rand((1024, 4096), dtype=torch.float16).npu()
-grads_out = torch.rand((1024, 2048), dtype=torch.float16).npu()
-group_list = torch.tensor([500, 1024], dtype=torch.int64).npu()
-out = torch.rand((8192, 2048), dtype=torch.float32).npu()
-weight = torch.rand((2, 4096, 2048), dtype=torch.float16).npu()
-# 分开算子计算结果
-_, dy, _ = GMMFunction.builder.load().npu_gmm_backward([grads_out], [x], [weight], group_list, 0)
-out_single = out+dy[0].view(*out.shape)
-#融合算子计算结果
-x = x.clone().detach()
-grads_out = grads_out.clone().detach()
-group_list = group_list.clone().detach()
-out = out.clone().detach()
-npu_groupmatmul_add_fp32(x, grads_out, group_list, out)
+x = torch.randn(64, 32, dtype=torch.float16).npu()
+dy = torch.randn(64, 16, dtype=torch.float16).npu()
+groups = torch.tensor([16, 48], dtype=torch.int64).npu()
+grad = torch.zeros(2, 32, 16, dtype=torch.float32).npu()
+npu_groupmatmul_add_fp32(x, dy, groups, grad, group_list_type=1)
 ```

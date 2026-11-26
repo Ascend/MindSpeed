@@ -11,18 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import torch
 import torch_npu
-from mindspeed.op_builder import GroupMatmulAddOpBuilder
-from mindspeed.ops.npu_matmul_add import NPUVersion, check_npu_version
 
 __all__ = ["npu_groupmatmul_add_fp32"]
 
-groupmatmul_add_op_builder = GroupMatmulAddOpBuilder()
 
-
-def npu_groupmatmul_add_fp32(x, dy, grouplist, grad):
-    if check_npu_version(NPUVersion.A5):
-        torch_npu.npu_grouped_matmul_add_(grad.view(grouplist.shape[0], x.shape[-1], dy.shape[-1]), x, dy, grouplist)
+def npu_groupmatmul_add_fp32(x, dy, grouplist, grad, *, group_list_type=0):
+    if group_list_type not in (0, 1):
+        raise ValueError(f"group_list_type must be 0 or 1, but got {group_list_type}.")
+    if isinstance(grouplist, list):
+        grouplist = torch.tensor(grouplist, dtype=torch.int64, device=x.device)
     else:
-        groupmatmul_add_ops = groupmatmul_add_op_builder.load()
-        groupmatmul_add_ops.npu_groupmatmul_add_fp32(x, dy, grouplist.to('npu'), grad)
+        grouplist = grouplist.to(x.device)
+    if group_list_type == 1:
+        grouplist = torch.cumsum(grouplist, dim=0)
+    grouped_grad = grad.view(grouplist.shape[0], x.shape[-1], dy.shape[-1])
+    torch_npu.npu_grouped_matmul_add_(
+        grouped_grad,
+        x,
+        dy,
+        grouplist,
+        group_list_type=0,
+    )

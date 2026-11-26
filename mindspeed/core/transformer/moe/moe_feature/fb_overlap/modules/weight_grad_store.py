@@ -19,7 +19,6 @@ import torch_npu
 
 from megatron.core.parallel_state import get_tensor_model_parallel_group, get_tensor_model_parallel_world_size
 from mindspeed.args_utils import get_full_args as get_args
-from mindspeed.ops.gmm import GMMFunction
 
 
 def gather(input_slice, stream):
@@ -126,9 +125,14 @@ class WeightGradStore:
                 if args.fp8 and args.use_gmm_fp8:
                     grad_weight = (gmm_cls.op_dw(ctx, inputs, grad_output, group_list, group_list_type))[0]
                 else:
-                    grad_weight = GMMFunction.builder.load().npu_gmm([inputs.t()], [grad_output], [], group_list, 2, 0)[
-                        0
-                    ]
+                    grad_weight = torch_npu.npu_grouped_matmul(
+                        [inputs.t()],
+                        [grad_output],
+                        group_list=group_list,
+                        split_item=3,
+                        group_type=2,
+                        group_list_type=group_list_type,
+                    )[0]
                 if not getattr(weight, 'is_hot_experts', False):
                     weight.main_grad.data.add_(grad_weight.view(-1, weight.shape[-1]))
             inputs.untyped_storage().resize_(0)

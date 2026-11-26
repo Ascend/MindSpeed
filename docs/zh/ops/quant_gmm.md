@@ -19,7 +19,7 @@ output_dtype=None, act_type=0)
 - per_token_scale：可选参数，参数类型为tensor，数据类型float32，默认值为None；
 - bias：可选输入，参数类型为tensor，数据类型int32, 默认值为None；
 - group_list：可选输入，参数类型为tensor，数据类型int64，默认值为None。不同接口中的数值定义不同，具体见上述接口说明中描述；
-- output_dtype：可选输入，参数类型为torch.dtype，可选值为：torch.int8，torch.bfloat16，torch.float16，用于指定输出数据类型，默认值为None，此时输出类型为torch.float16;
+- output_dtype：可选输入，参数类型为torch.dtype，可选值为：torch.int8，torch.bfloat16，torch.float16，用于指定输出数据类型，默认值为None，此时输出类型为torch.bfloat16;
 - act_type：可选参数，参数类型为int，用于指定激活函数类型，默认值为0，支持的激活函数类型如下：
   - 0：无激活函数；
   - 1：relu;
@@ -39,8 +39,8 @@ output_dtype=None, act_type=0)
 - x和weight中每一组tensor的最后一维大小都应小于65536.$x_i$的最后一维指当属性transpose_x为False时$x_i$的K轴或当transpose_x为True时$x_i$的M轴。$weight_i$的最后一维指当属性transpose_weight为False时$weight_i$的N轴或当transpose_weight为True时$weight_i$的K轴；
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647；
 - 当需要输出y数据类型为int8时，指定output_dtype为torch.int8，scale类型为int64，per_token_scale为空，此时只支持act_type=0，即无激活函数；该场景当前仅支持单算子模式，图模式不支持；
-- 当需要输出y数据类型为bfloat16时，output_dtype为torch.bfloat16，scale类型为bfloat16；
-- 当需要输出y数据类型为float16时，output_dtype为torch.float16或者默认参数None，scale类型为float32。
+- 当需要输出y数据类型为bfloat16时，output_dtype为torch.bfloat16或者默认参数None，scale类型为bfloat16；
+- 当需要输出y数据类型为float16时，output_dtype为torch.float16，scale类型为float32。
 
 ## gmm 类的调用方式
 

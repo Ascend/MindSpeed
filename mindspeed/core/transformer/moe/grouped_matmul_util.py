@@ -21,7 +21,6 @@ from mindspeed.core.transformer.moe.moe_feature.fb_overlap.modules.weight_grad_s
     WeightGradStore,
 )
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
-from mindspeed.ops.npu_matmul_add import NPUVersion, check_npu_version
 from transformer_engine.common.recipe.base import FormatEnum
 from megatron.core.enums import Fp8Recipe
 from functools import lru_cache
@@ -180,11 +179,6 @@ class BaseGMMFunction(torch.autograd.Function):
 class BF16GMMFunction(BaseGMMFunction):
     @classmethod
     def op_forward(cls, ctx, x, weight, group_list, group_list_type=0, bias=None):
-        if not check_npu_version(NPUVersion.A5):
-            from mindspeed.ops.gmm import GMMFunction
-
-            return GMMFunction.builder.load().npu_gmm([x], [weight], bias or [], group_list, 0, 0)
-
         return torch_npu.npu_grouped_matmul(
             [x],
             [weight],
@@ -201,10 +195,6 @@ class BF16GMMFunction(BaseGMMFunction):
             weight = rearrange(weight, "n h f -> n f h")
         else:
             weight = weight.t()
-        if not check_npu_version(NPUVersion.A5):
-            from mindspeed.ops.gmm import GMMFunction
-
-            return GMMFunction.builder.load().npu_gmm([grad], [weight], bias or [], group_list, 0, 0)
         return torch_npu.npu_grouped_matmul(
             [grad],
             [weight],
@@ -217,10 +207,6 @@ class BF16GMMFunction(BaseGMMFunction):
 
     @classmethod
     def op_dw(cls, ctx, x, grad, group_list, group_list_type=0, bias=None):
-        if not check_npu_version(NPUVersion.A5):
-            from mindspeed.ops.gmm import GMMFunction
-
-            return GMMFunction.builder.load().npu_gmm([x.t()], [grad], bias or [], group_list, 2, 0)
         return torch_npu.npu_grouped_matmul(
             [x.t()],
             [grad],

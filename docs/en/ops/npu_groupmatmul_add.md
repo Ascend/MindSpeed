@@ -1,39 +1,32 @@
-# npu_groupmatmul_add_fp32 (Forward Only)
+# npu_groupmatmul_add_fp32
 
-Inputs:
+This interface computes each group's weight gradient and adds it to `grad` in place. It calls TorchNPU `npu_grouped_matmul_add_`.
 
-- x: Required Input, dimensions [m,k], data type float16, bf16
-- weight: Required Input, dimensions [k,n], data type float16, bf16
-- groupNum: Required Input, dimensions [NumGroup], data type int64
-- output: Required Input, dimensions [w1, w2], Data Type float32
+```python
+npu_groupmatmul_add_fp32(x, dy, grouplist, grad, *, group_list_type=0)
+```
 
-Output:
+- `x`: shape `[m, k]`, float16 or bfloat16.
+- `dy`: shape `[m, n]`, same dtype as `x`.
+- `grouplist`: one-dimensional int64 Tensor or Python list, interpreted according to `group_list_type`.
+- `grad`: contiguous float32 Tensor, shape `[groups, k, n]` or `[groups * k, n]`.
+- `group_list_type=0`: cumulative boundaries. `[16, 64]` describes groups with 16 and 48 rows.
+- `group_list_type=1`: row counts. `[16, 48]` describes the same groups.
 
-- output: Required Output, Data Type float32
+The interface returns `None` and preserves the original storage of `grad`. Empty groups add zero.
+
+Row counts are converted to cumulative boundaries before calling the in-place operator.
 
 ## Example
 
 ```python
-# Copyright (c) 2024, Huawei Technologies Co., Ltd.  All rights reserved.
-import pytest
 import torch
-import mindspeed.megatron_adaptor
 import torch_npu
-from mindspeed.ops.gmm import GMMFunction
 from mindspeed.ops.npu_groupmatmul_add import npu_groupmatmul_add_fp32
 
-x = torch.rand((1024, 4096), dtype=torch.float16).npu()
-grads_out = torch.rand((1024, 2048), dtype=torch.float16).npu()
-group_list = torch.tensor([500, 1024], dtype=torch.int64).npu()
-out = torch.rand((8192, 2048), dtype=torch.float32).npu()
-weight = torch.rand((2, 4096, 2048), dtype=torch.float16).npu()
-# Separate operator computation result
-_, dy, _ = GMMFunction.builder.load().npu_gmm_backward([grads_out], [x], [weight], group_list, 0)
-out_single = out+dy[0].view(*out.shape)
-#Fused operator computation result
-x = x.clone().detach()
-grads_out = grads_out.clone().detach()
-group_list = group_list.clone().detach()
-out = out.clone().detach()
-npu_groupmatmul_add_fp32(x, grads_out, group_list, out)
+x = torch.randn(64, 32, dtype=torch.float16).npu()
+dy = torch.randn(64, 16, dtype=torch.float16).npu()
+groups = torch.tensor([16, 48], dtype=torch.int64).npu()
+grad = torch.zeros(2, 32, 16, dtype=torch.float32).npu()
+npu_groupmatmul_add_fp32(x, dy, groups, grad, group_list_type=1)
 ```

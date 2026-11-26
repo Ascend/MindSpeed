@@ -15,11 +15,8 @@ from enum import IntEnum, unique
 
 from functools import lru_cache
 import torch_npu
-from mindspeed.op_builder import MatmulAddOpBuilder
 
-__all__ = ["npu_matmul_add_fp32"]
-
-matmul_add_op_builder = MatmulAddOpBuilder()
+__all__ = ["npu_matmul_add_fp32", "npu_matmul_add_fp16"]
 
 
 @unique
@@ -70,11 +67,7 @@ def npu_matmul_add_fp32(total_input, grad_output, grad):
     for dim in grad_output.shape:
         if dim == 0:
             return
-    if check_npu_version(NPUVersion.A5):
-        grad.addmm_(grad_output.t(), total_input)
-    else:
-        matmul_add_ops = matmul_add_op_builder.load()
-        matmul_add_ops.npu_matmul_add_fp32(grad_output, total_input, grad)
+    grad.addmm_(grad_output.t(), total_input)
 
 
 def npu_matmul_add_fp16(total_input, grad_output, grad):
