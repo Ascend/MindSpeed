@@ -163,38 +163,95 @@ def get_batch_on_this_cp_rank(batch):
     return batch
 
 
+def get_eod_cp_indices(actual_seq_len_cpu, cp_rank, cp_size):
+    """Indices into the flattened padded batch, in this rank's consumption order."""
+    starts = torch.cat([torch.tensor([0]), actual_seq_len_cpu[:-1]])
+    ends = actual_seq_len_cpu
+    seq_lens = ends - starts
+    if torch.any(seq_lens <= 0):
+        raise AssertionError("Each EOD subsequence must have a positive sequence length.")
+    if torch.any(seq_lens % (2 * cp_size) != 0):
+        raise AssertionError("Each EOD subsequence length must be divisible by 2 * context_parallel_size.")
+    chunk_sizes = seq_lens // (2 * cp_size)
+
+    # Pair an early chunk with its mirror in each document to balance causal attention work.
+    first_starts = starts + cp_rank * chunk_sizes
+    first_ends = first_starts + chunk_sizes
+    second_starts = ends - (cp_rank + 1) * chunk_sizes
+    second_ends = ends - cp_rank * chunk_sizes
+
+    all_indices = []
+    for i in range(actual_seq_len_cpu.shape[0]):
+        all_indices.append(torch.arange(first_starts[i], first_ends[i]))
+        all_indices.append(torch.arange(second_starts[i], second_ends[i]))
+    return torch.cat(all_indices)
+
+
+def get_packed_mtp_cp_layout(input_ids, packed_seq_params):
+    """Return local physical positions and the global valid end for each position."""
+    args = get_args()
+    cp_rank = mpu.get_context_parallel_rank()
+    cp_size = mpu.get_context_parallel_world_size()
+    algo = args.context_parallel_algo
+    eod_split = (
+        args.reset_attention_mask
+        and args.attention_mask_type == 'causal'
+        and algo not in ('ulysses_cp_algo', 'deepseek_v4_cp_algo')
+    )
+    total = input_ids.numel() * cp_size
+    ends = packed_seq_params.cu_seqlens_q.to(device='cpu', dtype=torch.long)
+    padded = getattr(packed_seq_params, 'cu_seqlens_q_padded', None)
+    if ends.ndim != 1 or not ends.numel():
+        raise ValueError('Packed MTP requires a one-dimensional cu_seqlens_q.')
+    # MindSpeed EOD attention can receive endpoints divided by the ring degree.
+    if padded is None and eod_split and ends[-1] != total:
+        ends = ends * get_ring_degree()
+    physical = ends if padded is None else padded.to(device='cpu', dtype=torch.long)
+    if physical.shape != ends.shape or physical[-1] != total:
+        raise ValueError('Packed MTP document endpoints must cover the full CP batch.')
+    physical_lengths = physical.diff(prepend=physical.new_zeros(1))
+    lengths = ends.diff(prepend=ends.new_zeros(1))
+    if torch.any(lengths < 0) or torch.any(physical_lengths < lengths):
+        raise ValueError('Packed MTP document lengths must fit their padded intervals.')
+    # Shifts use padded coordinates. A document starting at offset 8 with 7 real tokens ends at 15 (exclusive).
+    valid_ends = physical - physical_lengths + lengths
+    if eod_split:
+        # Core accepts both [end, ...] and [0, end, ...].
+        indices = get_eod_cp_indices(physical[physical_lengths > 0], cp_rank, cp_size)
+    else:
+        # Keep the batch shape so CP algorithms that split each row see the same layout as the tokens.
+        positions = torch.arange(total, device=input_ids.device).view(input_ids.size(0), -1)
+        batch = {'tokens': positions}
+        if algo in ('ulysses_cp_algo', 'deepseek_v4_cp_algo') or (
+            algo == 'megatron_cp_algo' and args.attention_mask_type == 'general'
+        ):
+            indices = _get_batch_on_this_cp_rank_in_ulysses_cp(batch)['tokens']
+        elif algo == 'hybrid_cp_algo' and args.attention_mask_type != 'general':
+            indices = _get_batch_on_this_cp_rank_in_hybrid_cp(batch)['tokens']
+        elif algo in ('hybrid_cp_algo', 'adaptive_cp_algo', 'hybrid_adaptive_cp_algo'):
+            # These position sharding functions reuse the current batch's CP permutation
+            # without rerunning adaptive scheduling or changing the attention mask.
+            from mindspeed.core.context_parallel.rotary_pos_embedding_utils import get_pos_emb_on_this_cp_rank
+
+            indices = get_pos_emb_on_this_cp_rank(positions, 1)
+        elif algo == 'megatron_cp_algo' and args.tp_y > 1:
+            indices = _get_batch_on_this_tp_y_cp_rank_in_megatron_cp(batch)['tokens']
+        else:
+            indices = _get_batch_on_this_cp_rank_in_megatron_cp(batch)['tokens']
+    indices = indices.reshape(-1).to(input_ids.device)
+    doc = torch.searchsorted(physical.to(indices.device), indices, right=True)
+    return indices, valid_ends.to(indices.device).index_select(0, doc)
+
+
 def _get_batch_on_this_cp_rank_in_megatron_cp_eod_padding(batch, actual_seq_len):
     if actual_seq_len is None or actual_seq_len.numel() == 0:
         raise AssertionError("actual_seq_len must be provided for EOD load-balanced context parallelism.")
-
-    def get_index(actual_seq_len_cpu, cp_rank, cp_size):
-        starts = torch.cat([torch.tensor([0]), actual_seq_len_cpu[:-1]])
-        ends = actual_seq_len_cpu
-        seq_lens = ends - starts
-        if torch.any(seq_lens <= 0):
-            raise AssertionError("Each EOD subsequence must have a positive sequence length.")
-        if torch.any(seq_lens % (2 * cp_size) != 0):
-            raise AssertionError("Each EOD subsequence length must be divisible by 2 * context_parallel_size.")
-        chunk_sizes = seq_lens // (2 * cp_size)
-
-        first_starts = starts + cp_rank * chunk_sizes
-        first_ends = first_starts + chunk_sizes
-        second_starts = ends - (cp_rank + 1) * chunk_sizes
-        second_ends = ends - cp_rank * chunk_sizes
-
-        all_indices = []
-        for i in range(actual_seq_len_cpu.shape[0]):
-            all_indices.append(torch.arange(first_starts[i], first_ends[i]))
-            all_indices.append(torch.arange(second_starts[i], second_ends[i]))
-        index = torch.cat(all_indices)
-
-        return index.to('npu')
 
     cp_rank = mpu.get_context_parallel_rank()
     cp_size = mpu.get_context_parallel_world_size()
     actual_seq_len_tensor = actual_seq_len * get_ring_degree()
     actual_seq_len_cpu = actual_seq_len_tensor.cpu()
-    index = get_index(actual_seq_len_cpu, cp_rank, cp_size)
+    index = get_eod_cp_indices(actual_seq_len_cpu, cp_rank, cp_size).to('npu')
 
     for key, val in batch.items():
         if key == 'attention_mask':
@@ -455,11 +512,12 @@ def _get_batch_on_this_cp_rank_in_hybrid_adaptive_cp(batch):
 def get_batch_on_this_tp_rank(data_iterator):
     args = get_args()
     is_dualpipev = getattr(args, 'schedules_method', None) == 'dualpipev'
-    # DualPipeV's first physical stage also computes the output loss. Preserve
-    # the existing last-stage MTP inputs when sharing the reset-mask batch path.
-    needs_full_batch = args.pipeline_model_parallel_size == 1 or (
-        is_dualpipev
-        and (mpu.is_pipeline_first_stage() or (mpu.is_pipeline_last_stage() and args.mtp_num_layers is not None))
+    # The MTP stage needs input IDs on every TP rank for its embedding.
+    cp_packed_mtp = getattr(args, 'moe_fb_overlap', False) and args.context_parallel_size > 1 and args.mtp_num_layers
+    needs_full_batch = (
+        args.pipeline_model_parallel_size == 1
+        or (is_dualpipev and mpu.is_pipeline_first_stage())
+        or ((is_dualpipev or cp_packed_mtp) and mpu.is_pipeline_last_stage() and args.mtp_num_layers is not None)
     )
 
     if mpu.get_tensor_model_parallel_rank() == 0:

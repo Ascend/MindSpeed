@@ -84,20 +84,21 @@ def test_batch_patch_registration(monkeypatch, dual, reset, reverse_order):
 
 
 @pytest.mark.parametrize(
-    'dual,stage,pp_size',
+    'dual,stage,pp_size,cp_size',
     [
-        (False, 'first', 1),
-        (False, 'first', 4),
-        (False, 'middle', 4),
-        (False, 'last', 4),
-        (True, 'first', 4),
-        (True, 'middle', 4),
-        (True, 'last', 4),
+        (False, 'first', 1, 1),
+        (False, 'first', 4, 1),
+        (False, 'middle', 4, 1),
+        (False, 'last', 4, 1),
+        (True, 'first', 4, 1),
+        (True, 'middle', 4, 1),
+        (True, 'last', 4, 1),
+        (False, 'last', 4, 2),
     ],
 )
-@pytest.mark.parametrize('mtp', [None, 1])
+@pytest.mark.parametrize('mtp', [None, 0, 1])
 @pytest.mark.parametrize('attention_mask', [False, True])
-def test_tp_batch_and_boundaries(monkeypatch, dual, stage, pp_size, mtp, attention_mask):
+def test_tp_batch_and_boundaries(monkeypatch, dual, stage, pp_size, cp_size, mtp, attention_mask):
     args = SimpleNamespace(
         schedules_method='dualpipev' if dual else None,
         pipeline_model_parallel_size=pp_size,
@@ -107,7 +108,9 @@ def test_tp_batch_and_boundaries(monkeypatch, dual, stage, pp_size, mtp, attenti
         seq_length=6,
         create_attention_mask_in_dataloader=attention_mask,
         attention_mask_type='causal',
-        context_parallel_size=1,
+        context_parallel_size=cp_size,
+        context_parallel_algo='ulysses_cp_algo',
+        moe_fb_overlap=True,
     )
     data = {
         'tokens': torch.arange(6).reshape(1, 6),
@@ -167,7 +170,8 @@ def test_tp_batch_and_boundaries(monkeypatch, dual, stage, pp_size, mtp, attenti
     receiver = get_batch(None)
     assert not queue
     assert sent == received
-    full = pp_size == 1 or (dual and (stage == 'first' or (stage == 'last' and mtp is not None)))
+    last_needs_mtp_tokens = (dual and mtp is not None) or (cp_size > 1 and mtp)
+    full = pp_size == 1 or (dual and stage == 'first') or (stage == 'last' and last_needs_mtp_tokens)
     if full:
         expected = ['tokens', 'labels', 'loss_mask', 'attention_mask', 'position_ids']
     elif stage == 'first':

@@ -51,6 +51,7 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
     }
     pre_post_process_kwargs = {'pre_process', 'post_process'}
     fwd_parameters = signature(fwd).parameters
+    extended_forward = bool(pre_post_process_kwargs.intersection(fwd_parameters))
 
     @wraps(fwd)
     def wrapper(
@@ -83,13 +84,6 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
         pp_comm_params: P2PCommParams = None,
         bwd_pp_comm_params: P2PCommParams = None,
     ):
-        if packed_seq_params is not None and pre_post_process_kwargs.intersection(fwd_parameters):
-            # Extended forwards can also change input preparation and layer norms.
-            # Dropping their extra arguments would not preserve those semantics.
-            raise NotImplementedError(
-                'FB-overlap packed MTP supports the native core 0.12 block forward; '
-                'forwards with pre_process/post_process (such as MindSpeed-LLM/MHC) require separate adaptation.'
-            )
         if extra_block_kwargs is not None:
             extra_block_kwargs = {
                 key: value
@@ -129,7 +123,8 @@ def mtp_block_fb_overlap_forward_wrapper(fwd):
         if 'post_process' in fwd_parameters:
             fwd_kwargs['post_process'] = post_process
 
-        forward = mtp_block_packed_forward if packed_seq_params is not None else fwd
+        # Forwards declaring pre_process or post_process own their input preparation even when the flags are unset.
+        forward = mtp_block_packed_forward if packed_seq_params is not None and not extended_forward else fwd
         hidden_states_main_model = forward(self, **fwd_kwargs)
 
         return hidden_states_main_model

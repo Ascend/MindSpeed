@@ -4,12 +4,13 @@ Only loss/gradient comparisons require the core012 forward/autoscaler source.
 Set MEGATRON_CORE_SOURCE in CI to require those comparisons; an invalid explicit
 path fails instead of skipping. Other checks run without any Megatron checkout.
 Small trainable modules replace embedding/transformer/output layers; this does not
-exercise NPU attention, distributed collectives or the FB-overlap scheduler.
+exercise NPU attention or the FB-overlap scheduler. CP tests use real Gloo collectives.
 """
 
 import ast
 import copy
 import os
+from datetime import timedelta
 from functools import wraps
 from inspect import signature
 from itertools import pairwise
@@ -43,7 +44,6 @@ def extract(path, name, namespace, parent=None):
     return namespace[name]
 
 
-@pytest.fixture(name='implementation')
 def build_implementation():
     logs = []
     namespace = {
@@ -56,12 +56,15 @@ def build_implementation():
         ),
     }
     extract(FB / 'packed_mtp.py', 'roll_tensor_packed', namespace)
+    extract(FB / 'packed_mtp.py', '_packed_layer_targets', namespace)
     packed_forward = extract(FB / 'packed_mtp.py', 'mtp_block_packed_forward', namespace)
     wrapper = extract(FB / 'transformer_block.py', 'mtp_block_fb_overlap_forward_wrapper', namespace)
     return SimpleNamespace(env=namespace, logs=logs, forward=packed_forward, wrapper=wrapper)
 
 
-@pytest.fixture(name='core_implementation')
+implementation_fixture = pytest.fixture(name='implementation')(build_implementation)
+
+
 def build_core_implementation(implementation):
     relative = Path('megatron/core/transformer/multi_token_prediction.py')
     configured = os.environ.get('MEGATRON_CORE_SOURCE')
@@ -83,6 +86,9 @@ def build_core_implementation(implementation):
     extract(native, 'roll_tensor', implementation.env)
     implementation.native = extract(native, 'forward', implementation.env, 'MultiTokenPredictionBlock')
     return implementation
+
+
+core_implementation_fixture = pytest.fixture(name='core_implementation')(build_core_implementation)
 
 
 def reference_roll(tensor, packed):
@@ -126,17 +132,24 @@ class ToyLayer(torch.nn.Module):
         return torch.tanh(self.proj(decoder_input) + hidden_states)
 
 
-def run_forward(implementation, forward, modules, packed, depth, per_token, mask):
+def run_forward(
+    implementation, forward, modules, packed, depth, per_token, mask, *, cp_size=1, tokens=None, index=None
+):
     embedding, layers, head = modules
     block = SimpleNamespace(
-        config=SimpleNamespace(context_parallel_size=1, mtp_num_layers=depth, calculate_per_token_loss=per_token),
+        config=SimpleNamespace(context_parallel_size=cp_size, mtp_num_layers=depth, calculate_per_token_loss=per_token),
         layers=layers,
         training=True,
         mtp_loss_scaling_factor=0.3,
     )
-    hidden = torch.arange(24, dtype=torch.float64).reshape(6, 1, 4).div(24).requires_grad_()
+    if tokens is None:
+        tokens = torch.arange(1, 7)
+    if index is None:
+        index = torch.arange(tokens.numel())
+    hidden = torch.arange(tokens.numel() * 4, dtype=torch.float64).reshape(-1, 1, 4).div(tokens.numel() * 4)
+    hidden = hidden[index].requires_grad_()
     seen_inputs, seen_labels, seen_positions = [], [], []
-    position_ids = torch.arange(6).unsqueeze(0)
+    position_ids = index.unsqueeze(0)
 
     def embed(input_ids, position_ids):
         seen_inputs.append(input_ids.clone())
@@ -150,13 +163,13 @@ def run_forward(implementation, forward, modules, packed, depth, per_token, mask
     implementation.logs.clear()
     result = forward(
         block,
-        input_ids=torch.tensor([[1, 2, 3, 4, 5, 6]]),
+        input_ids=tokens[index].unsqueeze(0),
         position_ids=position_ids,
         hidden_states=hidden,
         attention_mask=None,
-        labels=torch.tensor([[2, 3, 4, 5, 6, 7]]),
+        labels=(tokens[index] + 1).remainder(8).unsqueeze(0),
         packed_seq_params=packed,
-        loss_mask=mask,
+        loss_mask=mask.reshape(-1)[index].unsqueeze(0) if mask is not None else None,
         embedding=embed,
         output_layer=lambda value, **kwargs: (head(value), None),
         compute_language_model_loss=loss,
@@ -213,7 +226,7 @@ def test_all_masked_targets_have_finite_zero_auxiliary_gradient(core_implementat
     assert all(loss == 0 for loss in result[2])
 
 
-def test_nonpacked_delegates_and_cp_packed_is_rejected(implementation):
+def test_nonpacked_delegates(implementation):
     calls = []
 
     def native(self, **kwargs):
@@ -227,8 +240,6 @@ def test_nonpacked_delegates_and_cp_packed_is_rejected(implementation):
         == 'native'
     )
     assert calls[0]['extra_block_kwargs'] == {'keep': 1}
-    with pytest.raises(NotImplementedError, match='context_parallel_size=1'):
-        implementation.forward(SimpleNamespace(config=SimpleNamespace(context_parallel_size=2)), None, None, None, None)
 
 
 def test_gpt_endpoints_work_without_changing_attention_metadata(implementation):
@@ -273,15 +284,16 @@ def test_roll_count_is_constant_without_scalar_reads(implementation):
 
 
 @pytest.mark.parametrize('parameter', ['pre_process', 'post_process'])
-def test_extended_forward_is_preserved_nonpacked_and_rejected_packed(implementation, parameter):
+@pytest.mark.parametrize('flag', [None, False, True])
+def test_extended_forward_is_preserved_with_packing(implementation, parameter, flag):
     calls = []
 
     def with_pre_process(self, pre_process=None, **kwargs):
-        calls.append(pre_process)
+        calls.append((pre_process, kwargs))
         return 'extended'
 
     def with_post_process(self, post_process=None, **kwargs):
-        calls.append(post_process)
+        calls.append((post_process, kwargs))
         return 'extended'
 
     # Exercise either extension independently, including a decorated callable.
@@ -292,9 +304,137 @@ def test_extended_forward_is_preserved_nonpacked_and_rejected_packed(implementat
         return extended(*args, **kwargs)
 
     wrapped = implementation.wrapper(decorated)
-    assert wrapped(None, None, None, None, None, **{parameter: True}) == 'extended'
-    assert calls == [True]
     packed = SimpleNamespace(cu_seqlens_q=torch.tensor([3, 6]))
-    with pytest.raises(NotImplementedError, match='require separate adaptation'):
-        wrapped(None, None, None, None, None, packed_seq_params=packed)
-    assert len(calls) == 1
+    for params in (None, packed):
+        assert wrapped(None, None, None, None, None, packed_seq_params=params, **{parameter: flag}) == 'extended'
+        value, kwargs = calls[-1]
+        assert value is flag and kwargs['packed_seq_params'] is params
+    assert len(calls) == 2
+
+
+def check_cp_forward(implementation, rank, cp_size, algo, per_token, all_masked):
+    # Use an independent description of shard order and document ends for the reference.
+    tokens = torch.arange(16) % 7
+    eod = algo != 'ulysses_cp_algo'
+    if eod:
+        chunks = torch.arange(16).reshape(2, 2 * cp_size, -1)
+        index = chunks[:, [rank, 2 * cp_size - rank - 1]].flatten()
+        physical_ends = [8, 16]
+    else:
+        index = torch.arange(16).chunk(cp_size)[rank]
+        physical_ends = [1, 11, 16]
+    cu = torch.tensor(physical_ends)
+    packed = SimpleNamespace(cu_seqlens_q=cu // cp_size if algo == 'megatron_cp_algo' else cu)
+    # Explicit and implicit EOD padding: logits at padded positions must contribute no gradient.
+    valid_ends = physical_ends
+    if algo == 'kvallgather_cp_algo':
+        packed.cu_seqlens_q_padded = cu
+        packed.cu_seqlens_q = torch.tensor([5, 12])  # real lengths 5 and 7
+        valid_ends = [5, 15]
+    mask = torch.zeros(16, dtype=torch.float64)
+    if not all_masked:
+        mask[[2, 9, 10, 11, 13, 14]] = 1
+
+    def reference(tensor, _params):
+        result = torch.zeros_like(tensor)
+        for start, end in zip([0, *physical_ends[:-1]], valid_ends):
+            result[:, start : end - 1] = tensor[:, start + 1 : end]
+        return result
+
+    args = SimpleNamespace(context_parallel_algo=algo, reset_attention_mask=True, attention_mask_type='causal')
+    env = implementation.env
+    env.update(get_args=lambda: args, roll_tensor_packed=reference)
+    env['mpu'] = SimpleNamespace(
+        get_context_parallel_rank=lambda: rank, get_context_parallel_world_size=lambda: cp_size
+    )
+    env['parallel_state'].get_context_parallel_group = lambda: torch.distributed.group.WORLD
+    layout = ROOT / 'mindspeed/core/context_parallel/get_batch_utils.py'
+    for name in (
+        'get_ring_degree',
+        'get_eod_cp_indices',
+        '_get_batch_on_this_cp_rank_in_ulysses_cp',
+        'get_packed_mtp_cp_layout',
+    ):
+        extract(layout, name, env)
+    args.context_parallel_size = cp_size
+
+    # Also compare all three target tensors directly. Ulysses chunks each batch
+    # row separately, so flattening before the rank split would mix up rows.
+    if algo == 'ulysses_cp_algo':
+        positions = torch.arange(16).view(2, 8).chunk(cp_size, dim=1)[rank]
+        batch_ends = torch.tensor([0, 3, 8, 10, 16])
+        batch_params = SimpleNamespace(cu_seqlens_q=batch_ends)
+    else:
+        positions = index.view(1, -1)
+        batch_params = packed
+    full_targets = [tokens, (tokens + 1) % 8, mask]
+    iterator = env['_packed_layer_targets'](
+        *(t[positions] for t in full_targets), batch_params, 2, torch.distributed.group.WORLD
+    )
+    for layer_targets in iterator:
+        if algo == 'ulysses_cp_algo':
+            full_targets = [reference_roll(t, batch_params)[0] for t in full_targets]
+        else:
+            full_targets = [reference(t.view(1, -1), packed).flatten() for t in full_targets]
+        for value, expected in zip(layer_targets, full_targets):
+            assert torch.equal(value, expected[positions])
+
+    torch.manual_seed(17)
+    modules = (
+        torch.nn.Embedding(8, 4, dtype=torch.float64),
+        torch.nn.ModuleList([ToyLayer(), ToyLayer()]),
+        torch.nn.Linear(4, 8, bias=False, dtype=torch.float64),
+    )
+    forward = implementation.wrapper(implementation.native)
+    ref = run_forward(implementation, forward, copy.deepcopy(modules), packed, 2, per_token, mask, tokens=tokens)
+    actual = run_forward(
+        implementation, forward, modules, packed, 2, per_token, mask, cp_size=cp_size, tokens=tokens, index=index
+    )
+
+    torch.testing.assert_close(actual[0], ref[0][index])
+    for value, expected in zip(actual[2], ref[2]):
+        torch.testing.assert_close(value, expected)
+    for local_tensors, full_tensors in zip(actual[3:], ref[3:]):
+        for value, expected in zip(local_tensors, full_tensors):
+            assert torch.equal(value, expected[:, index])
+    # Main hidden gradient is local. Only its auxiliary contribution carries the DDP compensation.
+    main_grad = 2 * actual[0]
+    scale = 1 if per_token else cp_size
+    torch.testing.assert_close((actual[1][0] - main_grad) / scale, ref[1][0][index] - main_grad)
+    for grad, expected in zip(actual[1][1:], ref[1][1:]):
+        torch.distributed.all_reduce(grad)
+        torch.testing.assert_close(grad / scale, expected)
+
+
+def run_cp_worker(rank, cp_size, store_path):
+    torch.set_num_threads(1)
+    store = torch.distributed.FileStore(store_path, cp_size)
+    backend = 'gloo'
+    if os.name == 'nt':
+        # Windows can select an unreachable link-local IPv6 address for the hostname.
+        def local_gloo(store, rank, size, timeout):
+            gloo = torch.distributed.ProcessGroupGloo
+            options = gloo._Options()
+            options._devices = [gloo.create_device(hostname='127.0.0.1')]
+            options._timeout = timeout
+            return gloo(store, rank, size, options)
+
+        backend = 'loopback_gloo'
+        torch.distributed.Backend.register_backend(backend, local_gloo, devices=['cpu'])
+    torch.distributed.init_process_group(
+        backend, store=store, rank=rank, world_size=cp_size, timeout=timedelta(seconds=90)
+    )
+    try:
+        implementation = build_core_implementation(build_implementation())
+        for algo in ('ulysses_cp_algo', 'megatron_cp_algo', 'kvallgather_cp_algo'):
+            for per_token in (False, True):
+                for all_masked in (False, True):
+                    check_cp_forward(implementation, rank, cp_size, algo, per_token, all_masked)
+    finally:
+        torch.distributed.destroy_process_group()
+
+
+@pytest.mark.skipif(not torch.distributed.is_gloo_available(), reason='requires distributed Gloo')
+@pytest.mark.parametrize('cp_size', [2, 4])
+def test_packed_mtp_distributed_matches_segment_reference(core_implementation, tmp_path, cp_size):
+    torch.multiprocessing.spawn(run_cp_worker, (cp_size, str(tmp_path / 'store')), nprocs=cp_size)

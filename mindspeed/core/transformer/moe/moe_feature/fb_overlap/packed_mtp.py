@@ -17,6 +17,7 @@
 import torch
 from megatron.core import parallel_state
 from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler, MTPLossLoggingHelper
+from mindspeed.core.context_parallel.get_batch_utils import get_packed_mtp_cp_layout
 
 
 def roll_tensor_packed(tensor, packed_seq_params):
@@ -31,6 +32,39 @@ def roll_tensor_packed(tensor, packed_seq_params):
     shifted.masked_fill_(ends[1:], 0)
     shifted = shifted.reshape_as(tensor)
     return shifted
+
+
+def _packed_layer_targets(input_ids, labels, loss_mask, packed_seq_params, depth, cp_group):
+    if cp_group is None:
+        for _ in range(depth):
+            input_ids = roll_tensor_packed(input_ids, packed_seq_params)
+            labels = roll_tensor_packed(labels, packed_seq_params)
+            loss_mask = roll_tensor_packed(loss_mask, packed_seq_params)
+            yield input_ids, labels, loss_mask
+        return
+
+    positions, doc_ends = get_packed_mtp_cp_layout(input_ids, packed_seq_params)
+    total = input_ids.numel() * torch.distributed.get_world_size(cp_group)
+
+    def gather(tensor):
+        out = tensor.new_empty(total)
+        torch.distributed.all_gather_into_tensor(out, tensor.reshape(-1).contiguous(), group=cp_group)
+        return out
+
+    # The order of all_gather is CP-rank order. Invert the actual batch
+    # permutation once so a destination can look up a source on any rank.
+    rank_order = gather(positions)
+    global_to_gathered = torch.empty_like(rank_order)
+    global_to_gathered.scatter_(0, rank_order, torch.arange(total, device=positions.device))
+    gathered = [gather(tensor) for tensor in (input_ids, labels, loss_mask)]
+    for offset in range(1, depth + 1):
+        source = positions + offset
+        outside_doc = source >= doc_ends
+        # Clamp at the batch end for a safe lookup, then mask every target past its document's last real token.
+        indices = global_to_gathered.index_select(0, source.clamp_max(total - 1))
+        yield tuple(
+            tensor.index_select(0, indices).masked_fill_(outside_doc, 0).view_as(input_ids) for tensor in gathered
+        )
 
 
 def mtp_block_packed_forward(
@@ -58,15 +92,16 @@ def mtp_block_packed_forward(
     compute_language_model_loss=None,
 ):
     """Keep core 0.12's MTP forward/loss contract, replacing its three whole-sequence shifts."""
-    if self.config.context_parallel_size != 1:
-        raise NotImplementedError('FB-overlap packed MTP currently requires context_parallel_size=1.')
     assert labels is not None, 'labels must be provided for MTP loss.'
     if loss_mask is None:
         loss_mask = torch.ones_like(labels)
 
     hidden_states_main_model = hidden_states
+    cp_size = self.config.context_parallel_size
+    cp_group = parallel_state.get_context_parallel_group() if cp_size > 1 else None
+    targets = _packed_layer_targets(input_ids, labels, loss_mask, packed_seq_params, len(self.layers), cp_group)
     for layer_number, layer in enumerate(self.layers):
-        input_ids = roll_tensor_packed(input_ids, packed_seq_params)
+        input_ids, labels, loss_mask = next(targets)
         # Preserve core 0.12's position_ids and its attention/RoPE convention.
         decoder_input = embedding(input_ids=input_ids, position_ids=position_ids)
         hidden_states = layer(
@@ -82,24 +117,30 @@ def mtp_block_packed_forward(
             **(extra_block_kwargs or {}),
         )
         mtp_logits, _ = output_layer(hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
-        labels = roll_tensor_packed(labels, packed_seq_params)
-        loss_mask = roll_tensor_packed(loss_mask, packed_seq_params)
         num_tokens = loss_mask.sum()
         mtp_loss = compute_language_model_loss(labels, mtp_logits) * loss_mask
+        if cp_group is not None:
+            torch.distributed.all_reduce(num_tokens, group=cp_group)
         # Short segments can have no valid targets left at a deeper MTP layer.
         safe_num_tokens = num_tokens.clamp_min(1)
         if self.training:
+            # CP shards can have different valid token counts. Sum their losses before computing the logged mean.
+            loss_sum = mtp_loss.detach().sum()
+            if cp_group is not None:
+                torch.distributed.all_reduce(loss_sum, group=cp_group)
             MTPLossLoggingHelper.save_loss_to_tracker(
-                mtp_loss.sum() / safe_num_tokens,
+                loss_sum / safe_num_tokens,
                 layer_number,
                 self.config.mtp_num_layers,
                 avg_group=parallel_state.get_tensor_and_context_parallel_group(),
             )
         mtp_loss_scale = self.mtp_loss_scaling_factor / self.config.mtp_num_layers
         if self.config.calculate_per_token_loss:
+            # Core applies per-token normalization in finalize_model_grads.
             hidden_states_main_model = MTPLossAutoScaler.apply(hidden_states_main_model, mtp_loss_scale * mtp_loss)
         else:
+            # num_tokens already covers all CP shards. The cp_size factor offsets Core 0.12's DP x CP gradient average.
             hidden_states_main_model = MTPLossAutoScaler.apply(
-                hidden_states_main_model, mtp_loss_scale * mtp_loss / safe_num_tokens
+                hidden_states_main_model, (mtp_loss_scale * cp_size) * mtp_loss / safe_num_tokens
             )
     return hidden_states_main_model
