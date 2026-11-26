@@ -1,7 +1,5 @@
 # MindSpeed Core
 
-<!-- markdownlint-disable MD042 -->
-
 - [简介](introduction.md)
 - [快速入门](./user-guide/quickstart.md)
 - [软件安装](./user-guide/install_guide.md)

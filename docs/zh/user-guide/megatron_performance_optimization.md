@@ -188,7 +188,7 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 + 在8k的序列长度情况下，由于计算的时间缩短，cp功能分割之后的send receive的时间反而会长于计算时间，造成性能的下降，所以建议配置 seq-length / context-parallel-size > 8k 以获取最佳效果。具体公式参考：S/(Talpha) >= 1/(Wbeta)，其中，S=seq-length / context-parallel-size， T表示芯片的理论算力，alpha表示计算效率，W表示理论通信带宽，beta表示带宽利用率。
 + 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
 
-### Ascend Double Ring Attention长序列并行
+<!-- ### Ascend Double Ring Attention长序列并行
 
 #### 算法思路
 
@@ -219,7 +219,7 @@ bash tests_extend/system_tests/feature_tests/ring_attention.sh
 #### 注意事项
 
 + 需要确保`--context-parallel-size`能被`--cp-window-size`整除。
-+ 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。
++ 内层窗口`--cp-window-size`增大时，通信与计算并发程度更高，但是计算、通信并发时可能由于片上内存带宽抢占，整体效率下降，需要结合实际场景进行调试，例如LLaMA2裁剪模型32k序列长度，cp为16且无其他并行切分时，实测内层窗口大小为2时性能最优。 -->
 
 ### Ascend 混合长序列并行
 
