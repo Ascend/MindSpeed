@@ -10,7 +10,7 @@ During training, the fused_ema_adamw optimizer maintains an `ema_params` state f
 
     ema_params = ema_decay * ema_params + (1 - ema_decay) * model_params
 
-```model_params``` represents the model parameters, and `ema_decay` is a hyperparameter. The `--ema-decay` can be specified in the training script using `--ema-decay <value>`. If not specified in the script, the default `ema_decay` is `0.9999`.<br>
+`model_params` represents the model parameters, and `ema_decay` is a hyperparameter. The `--ema-decay` can be specified in the training script using `--ema-decay <value>`. If not specified in the script, the default `ema_decay` is `0.9999`.<br>
 
 ## Application Scenario
 
@@ -24,7 +24,7 @@ Primarily used in multimodal training scenarios where the EMA model needs to be 
 ## Effects
 
 1. Since the fused_ema_adamw optimizer needs to maintain an additional `ema_params` state during training, memory overhead will increase.<br>
-2. When saving weights, the optimizer's `ema_params` state will be stored in the `distrib_optim.pt` file.<br>
+2. When saving weights, the `ema_params` state will be stored in the `distrib_optim.pt` file.<br>
 3. When saving weights, the EMA model weight data will be stored in the `ema_model` field within the `model_optim_rng.pt` file.<br>
 
 ## Notes

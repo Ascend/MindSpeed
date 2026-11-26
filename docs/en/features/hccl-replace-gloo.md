@@ -4,9 +4,9 @@
 
 In large-scale clusters, Gloo communication faces scalability limitations and stability issues. On one hand, Gloo communication group creation failures are prone to occur; on the other hand, compared with HCCL communication, Gloo communication is slower.
 
-For the issue of Gloo communication group creation failure with the error `Gloo connectFullMesh failed with ...`, the root cause is that N cards connect to the primary node for connection establishment. When the cluster scale is large, the primary node's processing capacity is insufficient, which may cause connection establishment failure. This can be mitigated by adjusting parameters related to network connection establishment (verified to be effective in an 8k-card cloud scenario):
+For the issue of Gloo communication group creation failure with the error `Gloo connectFullMesh failed with ...`, the root cause is that N cards connect to the primary Master for connection establishment. When the cluster scale is large, the Master's processing capacity is insufficient, which may cause connection establishment failure. This can be mitigated by adjusting parameters related to network connection establishment (verified to be effective in an 8k-card cloud scenario):
 
-```text
+```bash
 net.ipv4.tcp_max_syn_backlog = 65536
 net.core.netdev_max_backlog = 65536
 ```
@@ -15,9 +15,11 @@ Additionally, MindSpeed has designed a Gloo communication optimization solution 
 
 ## Solution
 
-- Replace the Gloo communication group with the HCCL communication group, achieving substitution on top of the existing functionality.
+### Approach
 
-- Use a slicing method to reduce the amount of data per communication, avoiding memory consumption caused by excessive communication volume.
+[1] Replace the Gloo communication group with the HCCL communication group, achieving substitution on top of the existing functionality.
+
+[2] Use a slicing method to reduce the amount of data per communication, avoiding memory consumption caused by excessive communication volume.
 
 ## Application Scenario
 
@@ -25,13 +27,13 @@ When Gloo communication frequently encounters connection establishment failures,
 
 ## Usage
 
-1. Add `--disable-gloo-group` to the training script to enable this feature.
+[1] Add `--disable-gloo-group` to the training script to enable this feature.
 
-2. Define `--hccl-slice-size N` (optional) in the script to set the communication volume size when the DP group saves and loads distributed optimizer states. The valid range of this parameter is `(0, bucket_size/dp]`, where `bucket_size` is the size of each bucket in the distributed optimizer. It is recommended to increase this parameter as much as possible, provided that memory allows, to improve communication efficiency.
+[2] Define `--hccl-slice-size N` (optional) in the script to set the communication volume size when the DP group saves and loads distributed optimizer states. The valid range of this parameter is (0, bucket_size/dp], where bucket_size is the size of each bucket in the distributed optimizer. It is recommended to increase this parameter as much as possible, provided that memory allows, to improve communication efficiency.
 
 ## Effects
 
-**Communication Efficiency Analysis**
+### Communication Efficiency Analysis
 
 Theoretically, the communication efficiency of distributed optimizer state saving and loading improves as `hccl-slice-size` increases within a certain range.
 <!-- , Reference data:
@@ -39,6 +41,6 @@ Theoretically, the communication efficiency of distributed optimizer state savin
 - When the slice size is $30 * 1024 * 1024$, the model saving and loading efficiency is comparable to the original;
 - When the slice size is $100 * 1024 * 1024$, the model saving and loading efficiency improves to some extent. -->
 
-**Device Memory Increase Analysis**
+### Device Memory Increase Analysis
 
 After enabling this feature, the increase in device memory is `hccl-slice-size * (2 * dp + 1) * 4B`.

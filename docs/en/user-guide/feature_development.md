@@ -8,7 +8,7 @@ MindSpeed Core adopts a **plugin-based** feature management architecture, with t
 
 | Component | Purpose |
 | ------ | ------ |
-| `MindSpeedFeature` | Feature base class that defines lifecycle hooks |
+| `MindSpeedFeature` | Inherits from the MegatronAdaptor feature base class and defines lifecycle hooks |
 | `MindSpeedPatchesManager` | Centrally manages patch registration and activation |
 
 Developers only need to inherit from `MindSpeedFeature` and override the relevant methods to add a new feature, without modifying the core framework.
@@ -70,6 +70,10 @@ Taking `AsyncLogAllreduceFeature` as an example:
     >- Perform the import inside the `register_patches` function rather than at the top of the file. This avoids circular dependencies: if `mindspeed.core.data_parallel.async_log_allreduce` were imported at the top of the file, and that module in turn indirectly imports `features_manager`, initialization would fail. This code is executed only when `is_need_apply(args)` returns `True`.
     >- Registering the patch replaces `megatron.training.training.train_step` with the custom implementation.
 
+4. Add to the unified feature list
+
+    Add the feature instance to the corresponding `add_*_features` function in `mindspeed/features_manager/__init__.py`, which is aggregated by `create_features_list()`. `set_default_features_list()` appends it to MA's unified list via `FeaturesManager.add_feature(...)`.
+
 ## Development Practice
 
 ### Suggestions
@@ -78,7 +82,9 @@ Taking `AsyncLogAllreduceFeature` as an example:
 - Default enablement control: Non-native adapted features must not be enabled by default, to avoid affecting the stability of basic functionality.
 - Complete argument validation: Make full use of `pre_validate_args`, `validate_args`, and `post_validate_args` to ensure argument validity.
 - Compatibility check: Use `incompatible_check` and `dependency_check` to ensure the correctness of feature combinations.
-- Patch idempotency: Ensure that patch registration does not conflict with each other, and use the `force_patch` parameter when necessary.
+- Patch idempotency: Ensure that patch registration does not conflict with each other, and use the `force_patch` parameter when necessary. `MindSpeedFeaturesManager.remove_patches` only removes MindSpeed's own patch layer.
+- Conventions for completely replacing `train_step`: The direct replacement pattern overwrites the entire wrapper chain already installed by MegatronAdaptor. If the replacement target is `megatron.training.training.train_step`, you must explicitly call MegatronAdaptor's stable interface `profile_step()` once before each training step returns normally (`from megatron_adaptor.patches.megatron.profile import profile_step`); otherwise, the NPU Profiling collection window will no longer advance. This call returns with zero overhead when profiling is not enabled and can be invoked unconditionally. Reference implementations: `mindspeed.core.pipeline_parallel.dualpipev.dualpipev_chunks.train_step`, `mindspeed.core.data_parallel.async_log_allreduce.train_step`.
+- Argument retrieval: Use `mindspeed.args_utils.get_full_args` to retrieve the full arguments.
 
 ### Checklist for Creating a New Feature
 
@@ -107,7 +113,7 @@ Feature creation checklist
 
 - Scenarios for using `pre_validate_args/post_validate_args`
 
-    Use them when you need to bypass parameter validation in third-party libraries. For example, Megatron's validation is too strict, but you need to relax the restrictions in specific scenarios.
+    `pre_validate_args` is used to normalize arguments and make aliases compatible before native validation; `post_validate_args` is used for checks that depend on the final argument values. For example, CP converts `context_parallel_algo` to `cp_comm_type` in the pre-stage, and MoE overlap checks the noop layer position in the post-stage.
 
 - How to choose between the decorator pattern and the replacement pattern
 

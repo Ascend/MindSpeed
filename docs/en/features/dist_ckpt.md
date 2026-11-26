@@ -3,7 +3,6 @@
 ## Background and Challenges
 
 In the traditional weight saving and loading process, specifically in scenarios where the `--ckpt-format torch` parameter is specified in the training script, each card holds a complete copy of the optimizer state. During the saving phase, each card saves the full optimizer state to disk, resulting in data redundancy.
-
 To reduce the data redundancy of optimizer states, although enabling the distributed optimizer allows each card to hold only the sharded optimizer state, thereby reducing runtime memory overhead and the disk space occupied by saved weight files, this strategy introduces All-Gather operations during the saving phase and Scatter operations during the loading phase, thus increasing communication overhead.
 
 ## Solution
@@ -19,11 +18,11 @@ Supports TP, PP, CP, EP, and VPP configuration scenarios as well as scenarios wh
 - Specify `--ckpt-format torch_dist` and `--save <weight save path>` in the script to enable the distributed weight saving feature. The model will be saved as distributed weights during the saving phase.
 - `--auto-detect-ckpt-format` is an optional parameter used to automatically detect the weight format for loading. When this parameter is used in a training script that specifies `--ckpt-format torch_dist` and `--load <weight load path>`, the loading phase will automatically detect whether the weights are in `--ckpt-format torch_dist` format or `--ckpt-format torch` format and load them accordingly.
 
-> [!NOTE]
->
-> When loading weights generated in the `--ckpt-format torch_dist` format, specify the same `--ckpt-format` parameter, i.e., use `--ckpt-format torch_dist`.
-> `--ckpt-format torch_dist` has not yet been adapted for scenarios where MindSpeed features are enabled.
-> In CP scenarios, `--ckpt-format torch_dist` currently only supports `--context-parallel-algo` set to `megatron_cp_algo`.
+## Notes
+
+1. When loading weights generated in the `--ckpt-format torch_dist` format, specify the same `--ckpt-format` parameter, i.e., use `--ckpt-format torch_dist`.
+2. `--ckpt-format torch_dist` has not yet been adapted for scenarios where MindSpeed features are enabled.
+3. In CP scenarios, `--ckpt-format torch_dist` currently only supports `--context-parallel-algo` set to `megatron_cp_algo`.
 
 ## Effects
 

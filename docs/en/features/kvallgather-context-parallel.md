@@ -14,19 +14,30 @@ For more details on the KVAllGather long-sequence parallelism scheme, see the or
 
 ## Application Scenario
 
-The KVAllGather long-sequence parallelism scheme is highly versatile, flexibly supporting various attention masks with minimal constraints in practical apps.
+**Backend limitation:** When CP>1, `--transformer-impl transformer_engine` must be set.
+
+KVAllGather computes the attention corresponding to the local query by gathering the complete keys and values. For the supported mask scope, see the notes below.
 
 In scenarios such as GQA (Grouped-Query Attention) and MQA (Multi-Query Attention), the time required for all-gather communication of keys and values is far less than the overall computation time, making the benefits of this scheme even more significant.
 
-This approach is fully compatible with FlashAttention, which is enabled by default for accelerated computation.
+This approach is fully compatible with Flash Attention, which is enabled by default for accelerated computation.
 
 ## Usage
 
+| Training Type | Supported Mask Types |
+| --- | --- |
+| Standard training | causal |
+| EOD Reset | causal, and the [EOD Reset configuration constraints](eod-reset.md) must be satisfied |
+
+`--cp-comm-type allgather` is equivalent to `all_gather`.
+
+Use `--cp-comm-type` to select the communication mode.
+
 | Important Parameter | Parameter Description |
-| ---------------------------------------------------- | --------------------------------------------------------- |
-| `--context-parallel-size [int]` | Sets the number of parallel processes for CP. The default is `1` (parallelism disabled). To enable parallelism, set this value to greater than `1` according to user requirements. |
-| `--context-parallel-algo kvallgather_cp_algo` | Long-sequence parallel algorithm option. Set to `kvallgather_cp_algo` to enable KVAllGather long-sequence parallelism. |
-| `--seq-length [int]` | The length of the input sequence. |
+|----------------------------------------------------|---------------------------------------------------------|
+| --context-parallel-size [int]                      | Sets the number of processes for CP. The default is 1; configure according to user requirements. |
+| --cp-comm-type <b>all_gather</b> | Long-sequence parallel algorithm option. Set to `all_gather` to enable KVAllGather long-sequence parallelism. |
+| --seq-length [int]                                 | The length of the input sequence. |
 
 ## Effects
 
@@ -35,6 +46,6 @@ By partitioning the input sequence across multiple compute devices, this approac
 ## Notes
 
 1. When enabling KVAllGather long sequence parallelism, you must also set `--transformer-impl transformer_engine`; otherwise, the feature is not supported.
-2. Currently, only `--attention-mask-type` set to `causal` is supported.
+2. Both standard training and EOD Reset only support `--attention-mask-type causal`.
 3. For fixed-length padding training scenarios, a load-balanced sequence partitioning method is used, and `--seq-length` must be divisible by `2 * context-parallel-size`.
-4. For EOD Reset training scenarios, a conventional sequence partitioning method is used, and `--seq-length` must be divisible by context-parallel-size.
+4. For EOD Reset, `--variable-seq-lengths --micro-batch-size 1` must be set, and all layers uniformly use `all_gather`; the Ring-based per-document online padding is not used. The sequence length still needs to satisfy the native CP partitioning requirements.

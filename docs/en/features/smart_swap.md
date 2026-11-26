@@ -44,14 +44,14 @@ self.num_attn_layers_per_stage = 1  # Specifies the granularity of SwapStage par
 ## Notes
 
 1. SmartSwap is adapted for static sequence scenarios; it is not yet adapted for dynamic scenarios, such as MOE-type scenarios.
-2. SmartSwap will occupy host memory. For example, on a single node with 8 cards, if each card swaps out `30 GB` to the host, the single node requires at least `8 * 30=240 GB` of host memory.
+2. SmartSwap will occupy host memory. For example, on a single node with 8 cards, if each card swaps out `30 GB` to the host, the single node requires at least `8*30=240 GB` of host memory.
 3. For custom-compiled cpp operators, a method for manually adding collection hooks is provided. Users need to manually modify the custom operator's cpp code and compilation code, and modify the `LD_LIBRARY_PATH` environment variable in the model training script. Examples are as follows.
 
 - cpp code for custom operator
 
 ```cpp
 // Example: mindspeed/ops/csrc/cann/gmm.cpp
-#include "NPUSwapManager.h"  // NOTE: Add header fileeader file
+#include "NPUSwapManager.h"  // NOTE: Add header file
 // ...
 std::vector<at::Tensor> npu_gmm(...)
 {

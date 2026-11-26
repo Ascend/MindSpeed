@@ -6,13 +6,35 @@ This guide walks you through installation and then helps you run Megatron-LM eff
 
 1. Refer to the [MindSpeed Quick Start](https://www.hiascend.com/en/developer/software/mindspeed/download) to prepare the environment. For more details, see [MindSpeed Installation Guide](install_guide.md).
 
-2. Import the MindSpeed adapter into Megatron-LM.
+2. Install MegatronAdaptor (MA) and TransformerEngineNPU (TENPU). MA provides basic NPU adaptation, and TENPU provides the NPU implementation of the Transformer Engine interface. MA and TENPU are mandatory components for basic training, while MindSpeed is an optional acceleration component. This guide demonstrates enabling MindSpeed acceleration; therefore, install MA and TENPU in the same Python environment first, and then install MindSpeed. If the corresponding steps in the installation guide have already been completed, there is no need to install them again.
 
-    In the `Megatron-LM` directory, modify the `pretrain_gpt.py` file and add `import mindspeed.megatron_adaptor` below `import torch`, as shown below:
+    ```shell
+    git clone --branch core_r0.18.0 https://gitcode.com/Ascend/MegatronAdaptor.git
+    python -m pip install -e MegatronAdaptor
+    git clone --branch main https://gitcode.com/Ascend/TransformerEngineNPU.git
+    python -m pip install -e TransformerEngineNPU --no-build-isolation
+    # Optional acceleration: install the current version of MindSpeed in the sibling directory of the source repository
+    python -m pip install -e MindSpeed
+
+    # Default-parameter training requires MindSpeed-Ops to provide the weight gradient fusion operator
+    git clone https://gitcode.com/Ascend/MindSpeed-Ops.git
+    python -m pip install -e MindSpeed-Ops --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple --no-build-isolation --no-deps
+    python -c "from mindspeed_ops.api.atb.npu_matmul_add import npu_matmul_add_fp32, npu_matmul_add_fp16; print('MindSpeed-Ops MatmulAdd API loaded successfully')"
+    ```
+
+   > [!NOTE]
+   >
+   > TENPU and the native TransformerEngine share the `transformer_engine` module name, so they cannot be installed in the same environment at the same time. If the native TransformerEngine is already installed, run `pip uninstall transformer_engine` first, and then install TENPU.
+   >
+   > Megatron-LM enables `gradient_accumulation_fusion` by default, so the training scenario in this guide requires MindSpeed-Ops. MindSpeed-Ops can be skipped for pure inference, or when `--no-gradient-accumulation-fusion` is added during training to disable weight gradient fusion. For detailed scenarios and dependency description, see [Installation Guide](install_guide.md#method-2-installation-from-source).
+
+3. Import the MA adapter into Megatron-LM.
+
+    In the "Megatron-LM" directory, modify the **pretrain_gpt.py** file, import the MegatronAdaptor adapter below "import torch", and place it before the Megatron module imports:
 
     ```Python
     import torch
-    import mindspeed.megatron_adaptor # Add this line
+    import megatron_adaptor  # NPU basic adaptation and enhanced features
     from functools import partial
     from contextlib import nullcontext
     import inspect
@@ -20,7 +42,7 @@ This guide walks you through installation and then helps you run Megatron-LM eff
 
 > [!NOTE]
 >
-> MindSpeed Core supports<term>Ascend 950 products</term>, <term>Atlas A3 training products</term>, and <term>Atlas A2 training products</term>, and requires a single NPU with on-chip memory of 64GB or higher.
+> MindSpeed Core supports <term>Ascend 950PR&950DT products</term>, <term>Atlas A3 training products</term>, and <term>Atlas A2 training products</term>, and requires a single NPU with on-chip memory of 64 GB or higher.
 >
 > n the current example script, `NPUS_PER_NODE=8` indicates that 8 NPUs are required. If the actual configuration is lower than this, OOM issues may occur.
 
@@ -68,11 +90,11 @@ Refer to the [official Megatron-LM documentation](https://github.com/NVIDIA/Mega
 
 4. Generate the pretraining dataset.
 
-    If you use the `preprocess_data.py` script to process data on an Ascend device, modify the `tools/preprocess_data.py` script in the `Megatron-LM` directory and add `import mindspeed.megatron_adaptor` below `import torch`.
+    If you use the preprocess_data.py script to process data on an Ascend device, modify the "tools/preprocess_data.py" script in the "Megatron-LM" directory and add a line "import megatron_adaptor" below "import torch".
 
     ```python
     import torch
-    import mindspeed.megatron_adaptor
+    import megatron_adaptor
     import numpy as np
     ```
 

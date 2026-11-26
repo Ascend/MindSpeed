@@ -10,15 +10,16 @@ To address the above issues, we have introduced a fusion optimization solution f
 
 ## Application Scenario
 
+**Backend restriction:** CP>1 must set `--transformer-impl transformer_engine`.
+
 Applicable to model architectures that use Rotary Embedding as the position encoding scheme.
 
 ## Usage
 
 * Ensure the following parameters are set in the model configuration:
-`--position-embedding-type rope`
+`--position-embedding-type  rope`
 
-* At the same time, enabling the RoPE fusion operator requires setting the following parameter:
-`--use-fused-rotary-pos-emb`
+* RoPE fusion is enabled by default; use `--no-rope-fusion` to disable it. Non-RoPE position encoding disables the fusion. EOD Reset disables the fusion.
 
 ## Effects
 

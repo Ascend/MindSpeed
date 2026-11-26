@@ -10,11 +10,11 @@ By splitting computation and communication tasks into finer-grained subtasks to 
 
 ### Approach
 
-#### Python script side implementation
+#### Python Script Implementation
 
 Further split the tensor (into 2/4/8 parts), and use Python scripts to achieve parallelism between computation and communication for each sub-tensor, thereby increasing the utilization of computation and communication streams.
 
-#### Fused operator implementation
+#### Fused Operator Implementation
 
 Based on the MTE remote memory access capability, a fused large kernel approach is used to split computation and communication tasks into finer-grained sub-tasks within the operator implementation, achieving mutual pipeline overlap.
 
@@ -59,13 +59,13 @@ ATB installation method:
 --coc-fused-kernel # Note: Currently only supports TP=8.
 ```
 
-The environment variable for the fused operator has a higher priority, meaning that when `--coc-parallel-num` and `--coc-fused-kerne` are enabled simultaneously, `--coc-parallel-num` does not take effect.
+The environment variable for the fused operator has a higher priority, meaning that when `--coc-parallel-num` > 1 and `--coc-fused-kernel` is enabled, the former does not take effect.
 
 ## CFG Customization Method
 
 You can customize the `coc_cfgs` dictionary in `mindspeed/core/tensor_parallel/lcal_coc/user_config.py` to customize part of the CoC configuration.
 
-Only applicable to the CoC enabled through Python scripts"
+Only applicable to the CoC enabled through Python scripts.
 'matmul_soc_friendly': Whether to perform transpose/padding operations on the input matmul tensors so that they enter the Matmul operator with an NPU-friendly shape, thereby achieving a certain performance gain. Defaults to True;
 'customized_coc': Customizes the number of COC splits for matmul of a specified shape. Defaults to `{}`. If you need to set the number of CoC splits for a matmul of a specified shape to 1 (disable COC) or a value different from `coc-parallel-num`, you can follow this example:
 'customized_coc': {"[16384, 5120, 1920]": 8, "[16384, 1920, 5120]": 1}
@@ -86,4 +86,4 @@ Currently incompatible with the `--use-ascend-mc2` feature.
 
 MoE models are not yet supported.
 
-This feature is supported by Atlas A2/A3 training products, while Ascend 950 products do not support enabling fused operators.
+This feature is fully supported by Atlas A2 training products/Atlas A3 training products, while Ascend 950PR&950DT products do not support enabling fused operators.

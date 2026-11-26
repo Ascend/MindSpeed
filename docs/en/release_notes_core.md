@@ -1,5 +1,7 @@
 # Release Notes
 
+## Key Features
+
 ## Version Package Description
 
 ### Product Version Information
@@ -12,11 +14,11 @@
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Version</p></th>
-      <td class="cellrowborder" valign="top" width="73.75%"><p>26.1.0</p></td>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>26.2.0</p></td>
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Version Type</p></th>
-      <td class="cellrowborder" valign="top" width="73.75%"><p>Official version本</p></td>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>Official Release</p></td>
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Component</p></th>
@@ -24,7 +26,7 @@
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Release Date</p></th>
-      <td class="cellrowborder" valign="top" width="73.75%"><p>Jul, 2026</p></td>
+      <td class="cellrowborder" valign="top" width="73.75%"><p>Sep, 2026</p></td>
     </tr>
     <tr>
       <th class="firstcol" valign="top" width="26.25%"><p>Maintenance Period</p></th>
@@ -35,20 +37,24 @@
 
 > [!NOTE]
 >
-> For MindSpeed version maintenance, see the [Branch Maintenance Policy](https://gitcode.com/Ascend/MindSpeed/tree/26.0.0_core_r0.12.1#%E5%88%86%E6%94%AF%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5).
+> For MindSpeed version maintenance, see the [Branch Maintenance Policy](https://gitcode.com/Ascend/MindSpeed/tree/core_r0.18.0#%E5%88%86%E6%94%AF%E7%BB%B4%E6%8A%A4%E7%AD%96%E7%95%A5).
 
 ### Related Product Version Mapping
 
 **Table 1** MindSpeed Core version compatibility table
 
-|MindSpeed Core Code Branch Name|CANN Version|TorchNPU Version|Python Version|PyTorch Version|
-|--|--|--|--|--|
-|26.1.0_core_r0.12.1|9.1.0|26.1.0|Python3.10|2.7.1|
-|26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|
+|MindSpeed Core Code Branch Name|CANN Version|TorchNPU Version|Python Version|PyTorch Version|MegatronAdaptor Version|TransformerEngineNPU Version|Triton-Ascend Version|
+|--|--|--|--|--|--|--|--|
+|core_r0.18.0 (Under Development)|Under Development|Under Development|Python3.12|2.10.0|Under Development|Under Development|3.2.2|
+|26.2.0_core_r0.18.0|9.2.0|26.2.0|Python3.12|2.10.0|26.2.0_core_r0.18.0|26.2.0_release_v2.17|3.2.2|
+|26.1.0_core_r0.12.1|9.1.0|26.1.0|Python3.10|2.7.1|/|/|/|
+|26.0.0_core_r0.12.1|9.0.0|26.0.0|Python3.10|2.7.1|/|/|/|
 
 > [!NOTE]
 >
-> You can choose a MindSpeed code branch as needed to download and install the source code.
+> - You can choose a MindSpeed code branch as needed to download and install the source code.
+>
+> - The Triton-Ascend version is strongly bound to the CANN version. Triton-Ascend must be used in one-to-one correspondence with the CANN version. For details, see [Triton-Ascend Compatibility](<https://link.gitcode.com/?target=https%3A%2F%2Ftriton-ascend.readthedocs.io%2Fen%2Flatest%2Frelease_note.html%23id13&from=https%3A%2F%2Fgitcode.com%2FAscend%2FMindSpeed-LLM%2Fblob%2Fmaster%2Fdocs%2Fen%2Frelease_notes_llm.md&lang=zh&theme=white>).
 
 ## Version Compatibility Information
 
@@ -56,10 +62,11 @@
 >
 > In the table, "/" indicates not matched, and "Y" indicates matched.
 
-**Table 2**  MindSpeed Core and TorchNPU version compatibility
+**Table 2** MindSpeed Core and TorchNPU version compatibility
 
 <table style="table-layout: fixed; width: 750px ; text-align:center">
   <colgroup>
+    <col style="width: 150px">
     <col style="width: 150px">
     <col style="width: 150px">
     <col style="width: 150px">
@@ -69,13 +76,14 @@
   <thead>
     <tr>
       <th rowspan="2">MindSpeed Core</th>
-      <th colspan="4">TorchNPU</th>
+      <th colspan="5">TorchNPU</th>
     </tr>
     <tr>
       <th>7.2.0</th>
       <th>7.3.0</th>
       <th>26.0.0</th>
-      <th>26.1.0</th>
+      <th>26.1.X</th>
+      <th>26.2.X</th>
     </tr>
   </thead>
   <tbody>
@@ -84,10 +92,20 @@
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
-      <td>/</td>
+      <td>Y</td>
+      <td>Y</td>
     </tr>
     <tr>
       <td>26.1.0_core_r0.12.1</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+        <tr>
+      <td>26.2.0_core_r0.18.0</td>
+      <td>Y</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
@@ -96,10 +114,11 @@
   </tbody>
 </table>
 
-**Table 3**  MindSpeed Core and CANN version compatibility
+**Table 3** MindSpeed Core and CANN version compatibility
 
 <table style="table-layout: fixed; width: 750px ; text-align:center">
   <colgroup>
+    <col style="width: 150px">
     <col style="width: 150px">
     <col style="width: 150px">
     <col style="width: 150px">
@@ -109,13 +128,14 @@
   <thead>
     <tr>
       <th rowspan="2">MindSpeed Core</th>
-      <th colspan="4">CANN</th>
+      <th colspan="5">CANN</th>
     </tr>
     <tr>
       <th>8.3.RCX</th>
       <th>8.5.X</th>
       <th>9.0.X</th>
       <th>9.1.X</th>
+      <th>9.2.X</th>
     </tr>
   </thead>
   <tbody>
@@ -124,15 +144,26 @@
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
-      <td>/</td>
+      <td>Y</td>
+      <td>Y</td>
     </tr>
-    <tr>
+        <tr>
       <td>26.1.0_core_r0.12.1</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
       <td>Y</td>
+      <td>Y</td>
     </tr>
+    <tr>
+      <td>26.2.0_core_r0.18.0</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+      <td>Y</td>
+    </tr>
+    
   </tbody>
 </table>
 
@@ -144,16 +175,23 @@ None
 
 ### New Features
 
-- Added support for FP8/MXFP8/HiFloat8 low-precision training formats, as well as w8a16 quantization.
-- Added MXFP8-32x32 quantization and FSDP support, releasing bf16 weights after quantization to optimize memory usage.
-- Added SwapMuon and mcore muon features, with support for checkpoint saving and loading.
-- Added DeepSeek V4 model adaptation and custom Pipeline Parallel (PP) layout support.
-- Added Hamilton attention implementation for TE operator layers.
+- Adapted to the Megatron-LM core_r0.18.0 version.
+- Decoupled MindSpeed, MegatronAdaptor, and TransformerEngineNPU.
+- Added the `get_batch` feature.
 
 ### Deleted Features
 
-- Removed temporary operator adaptations for SFA/SFAG/SLI versions; related functionalities are now supported by formal operators.
-- Removed the mindspeed/lite module; Triton operators have been migrated to the `mindspeed/ops/triton` directory.
+- Removed the Ascend Double Ring Attention long-sequence parallelism feature.
+- Removed the Ascend hybrid long-sequence parallelism feature.
+- Removed the Ascend recomputation pipeline independent scheduling feature.
+- Removed the Ascend high-dimensional tensor parallelism feature.
+- Removed the Ascend Megatron MoE TP extension to EP feature.
+- Removed the expert parallelism dynamic load balancing (data-parameter mutual search) feature.
+- Removed the Ascend PP dynamic shape support feature.
+- Removed the Ascend PP multi-parameter passing support feature.
+- Removed the Ascend PP multi-parameter passing and dynamic shape support feature.
+- Removed the Ascend unaligned linear layer feature.
+- Removed the Ascend unaligned Ulysses long-sequence parallelism feature.
 
 ### Interface Changes
 
@@ -161,10 +199,7 @@ None
 
 ### Resolved Issues
 
- - Fixed the issue in the TE branch where the initialization order of `LayerNormLinear` weights was inconsistent with `NVTE`, and the issue where `LayerNorm` bias was not initialized to zero.
- - Fixed anomalies in the GMM operator and the NPU `sparse_attn_sharedkv` operator, as well as batch consistency issues in l2norm and NaN errors in `recompute_w_u_fwd`.
- - Fixed abnormal memory usage in the `fboverlap` scenario, and time degradation issues in the Triton operator `chunk_bwd_dqkwg`.
- - Fixed HCCL buffer errors in the VeRL scenario.
+- Fixed the issue of performance degradation caused by repeated config parsing during the `get_batch` phase.
 
 ### Known Issues
 
@@ -190,8 +225,8 @@ None
 
 |Document Name|Description|Update Notes|
 |--|--|--|
-|“[MindSpeed Quick Start](../en/user-guide/quickstart.md)”|Introduces how to use MindSpeed to run Megatron-LM efficiently on Ascend devices.|-|
-|“[MindSpeed Installation Guide](../en/user-guide/install_guide.md)”|Explains how to install MindSpeed on NPUs with the PyTorch framework. It covers hardware and operating system compatibility, installation of driver firmware and basic CANN software, and the complete installation process in two frameworks, helping users quickly build a distributed training environment for large models.|-|
+|[MindSpeed Quick Start](../en/user-guide/quickstart.md)|Introduces how to use MindSpeed to run Megatron-LM efficiently on Ascend devices.|-|
+|[MindSpeed Installation Guide](../en/user-guide/install_guide.md)|Explains how to install MindSpeed on NPUs with the PyTorch framework. It covers hardware and operating system compatibility, installation of driver firmware and basic CANN software, and the complete installation process in two frameworks, helping users quickly build a distributed training environment for large models.|-|
 
 ## Virus Scan and Vulnerability Fix List
 
@@ -199,10 +234,16 @@ None
 
 |Antivirus Software Name|Antivirus Software Version|Virus Definition Version|Scan Time|Scan Result|
 |---|---|---|---|---|
-|QiAnXin|8.0.5.5260|2026-04-01 08:00:00.0|2026-07-06|No viruses or malware.|
-|Kaspersky|12.0.0.6672|2026-04-02 10:05:00|2026-07-06|No viruses or malware.|
-|Bitdefender|7.5.1.200224|7.100588|2026-07-06|No viruses or malware.|
+|QiAnXin|8.0.5.5260|2026-09-27 08:00:00.0|2026-09-28|No viruses or malware.|
+|Kaspersky|12.0.0.6672|2026-09-28 10:09:00|2026-09-28|No viruses or malware.|
+|Bitdefender|7.5.1.200224|7.101487|2026-09-28|No viruses or malware.|
 
 ### Vulnerability Fix List
 
 None
+
+## Revision History
+
+|Document Version|Release Date|Revision Description|
+|--|--|--|
+|01|2026-10-15|First official release|

@@ -12,9 +12,9 @@ The inputs of operations such as LayerNorm and Dropout are partitioned along the
 
 For ease of understanding, take the following figure as an example: assume the input $X$ has a size of $ s \times b \times h $, and it is partitioned along the sequence dimension as $X=[X_1^s,X_2^s]$. After the LayerNorm operation, the result is $Y=[Y_1^s,Y_2^s]$, which is then followed by tensor model parallelism.
 
-<p align="left"> <img src="../figures/sequence-parallel.png" height="200px" width="530px" style="display:block;" alt="SP diagram"> </p>
+![image.png](../figures/sequence-parallel.png)
 
-For more details, see the paper [Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/pdf/2205.05198).
+[original link](https://arxiv.org/pdf/2205.05198)
 
 ## Application Scenario
 
@@ -27,10 +27,8 @@ SP is applicable to the following scenarios:
 
 SP depends on tensor parallelism (TP). Therefore, to enable SP, the following parameter configurations must be added to the training script:
 
-```bash
---tensor-model-parallel-size N  # Set the tensor model parallel size, where N is the number of NPUs in a single parallel group
---sequence-parallel  # Enable SP
-```
+`--tensor-model-parallel-size  N        # Set the tensor model parallel size, where N is the number of NPUs in a single parallel group`
+`--sequence-parallel      # Enable SP`
 
 ## Effects
 

@@ -1,7 +1,5 @@
 # Megatron Custom Pipeline Layout
 
-<!-- md-trans-meta sourceCommit=94e8ac1c0d003c914fcb5b2fd734093aaee76a51 translatedAt=2026-08-17T08:08:13.728Z pushedAt=2026-08-17T08:17:07.887Z -->
-
 ## Background and Challenges
 
 Megatron's Pipeline Parallelism (PP) and Virtual Pipeline Parallelism (VPP) split a model evenly by the number of decoder layers by default. For conventional dense models, this approach usually meets training requirements; however, in models that include embedding, loss, MTP, or decoder layers with different computational costs, even splitting may cause imbalanced computational loads across different pipeline stages, thereby increasing pipeline bubbles and reducing overall throughput.
