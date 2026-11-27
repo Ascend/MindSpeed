@@ -42,7 +42,7 @@ DP 大于 1，模型权重、梯度和优化器状态占用较多显存，希望
     --transformer-impl transformer_engine
     ```
 
-4. 安装包含 DTensor FusedAdam 修复的 TransformerEngineNPU 版本，例如包含提交 [5c85c0d](https://gitcode.com/GuoHaifeng1999/TransformerEngineNPU/commit/5c85c0df3e9c1887a4aa5a000f96b2f01d9fb031) 的版本，并确认训练环境实际导入该安装包。旧版 TENPU 会拒绝 FSDP 提供的 DTensor 参数；仅调整检查点格式不能解决优化器类型错误。
+4. 安装包含 DTensor FusedAdam 修复的 TransformerEngineNPU 版本，例如包含提交 [5c85c0d](https://gitcode.com/Ascend/TransformerEngineNPU/commit/5c85c0d) 的版本，并确认训练环境实际导入该安装包。旧版 TENPU 会拒绝 FSDP 提供的 DTensor 参数；仅调整检查点格式不能解决优化器类型错误。
 
 ## 支持范围与验证状态
 

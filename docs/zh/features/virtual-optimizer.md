@@ -2,11 +2,11 @@
 
 ## 背景与挑战
 
-在大集群训练中，PP的增大会对前些个stage造成较大的显存压力；同时我们观察到，在增大梯度累积的情况下，优化器部分的一二阶动量显存swap的开销可忽略不计，因此可通过将优化器部分的显存swap到cpu上来节省整网显存，而当前分布式优化器逻辑复杂，并且与各种通信并行（如overlap-grad-reduce/overlap-param-gather等）相互耦合，因此实现一套Swap优化器显存的系统较为复杂。
+在大集群训练中，PP的增大会对前几个stage造成较大的显存压力；同时我们观察到，在增大梯度累积的情况下，优化器部分的一二阶动量显存swap的开销可忽略不计，因此可通过将优化器部分的显存swap到CPU上来节省整网显存，而当前分布式优化器逻辑复杂，并且与各种通信并行（如overlap-grad-reduce/overlap-param-gather等）相互耦合，因此实现一套Swap优化器显存的系统较为复杂。
 
 ## 解决方案
 
-为避免引入复杂的Swap系统工程，和多流带来的额外显存与性能开销，借助昇腾驱动的虚拟内存原生能力，可以实现申请一个实际内存在Host侧，但内存地址可被映射在device上的张量，并且该张量可参与绝大多数NPU算子计算（除涉及随路计算的算子），基于此我们可以通过修改一行代码来实现优化器动量的Swap功能：
+为避免引入复杂的Swap系统工程，和多流带来的额外显存与性能开销，借助昇腾驱动的虚拟内存原生能力，可以实现申请一个实际内存在Host侧，但内存地址可被映射在Device上的张量，并且该张量可参与绝大多数NPU算子计算（除涉及随路计算的算子），基于此我们可以通过修改一行代码来实现优化器动量的Swap功能：
 
 ```python
 
@@ -27,14 +27,14 @@ state['exp_avg_sq'] = torch_npu.empty_with_swapped_memory(p.size(), device=p.dev
 
 如下为图示对比说明：
 
-![Alt text](../figures/virtual-optimizer.png)
+![与Swap对比图](../figures/virtual-optimizer.png)
 
 **优势分析**：
 
 - 虚拟内存能够节省两次UB与HBM的搬运时长，直接从硬件执行访问。
 - 基于虚拟内存的搬运可以利用算子本身的流水机制（MTE2/MTE3/Vector），与计算产生指令级的并行掩盖，避免引入额外的流同步性能与内存的开销（如Swap引入的多流）。
 
-**劣势说明**：申请的Host虚拟内存无法实现随路计算（没有硬件随路计算单元） 
+**劣势说明**：申请的Host虚拟内存无法实现随路计算（没有硬件随路计算单元）。
 
 ## 使用方法
 
@@ -42,9 +42,9 @@ state['exp_avg_sq'] = torch_npu.empty_with_swapped_memory(p.size(), device=p.dev
 
 1. 希望Swap掉所有的一二阶动量，则可以采用`--virtual-optimizer all`指定。
 2. 希望每一个PP Stage Swap同样大小的显存（如我希望每个Stage swap掉2GB的显存），则可以采用`--virtual-optimizer 2.0`指定。
-3. 希望每一个PP Stage Swap不同的显存（假设有四个PP Stage，我分别希望Swap掉 6 5 4 3GB的显存），则可以采用`--virtual-optimizer 6 5 4 3`指定。
+3. 希望每一个PP Stage Swap不同的显存（假设有四个PP Stage，我分别希望Swap掉6GB 5GB 4GB 3GB的显存），则可以采用`--virtual-optimizer 6 5 4 3`指定。
 
-推荐配置
+推荐配置：
 
 ```bash
 export CPU_AFFINITY_CONF=1,lazy_bind:0
@@ -109,4 +109,4 @@ exp_avg_cpu = exp_avg_swap.cpu()
 print(f"exp_avg_cpu: {exp_avg_cpu}")
 ```
 
-- 该特性的环境依赖最新Driver(25.0.RC1) / CANN(8.1.RC1) / PTA（2025年Q2商发）
+- 该特性的环境依赖最新Driver(25.0.RC1) / CANN(8.1.RC1) / PTA（2025年Q2商发）。

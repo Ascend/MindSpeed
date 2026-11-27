@@ -13,17 +13,17 @@
 在前向与反向计算结束后，将进行独立的通信阶段，包括梯度的reduce-scatter、权重计算以及权重的all-gather，如下图所示。获取更新后的权重后，系统将进入下一轮的前向计算阶段。
 <p align="center"> <img src="../figures/async_ddp_param_gather_a.png" height="350px" width="880px"></p>
 
-### b. 同时启用分布式优化器与梯度通信重叠,即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce`
+### b. 同时启用分布式优化器与梯度通信重叠，即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce`
 
-在打开`--use-distributed-optimizer`的同时打开`--overlap-grad-reduce`，运行流程如下图所示。梯度的reduce-scatter过程与反向计算过程并行，从而避免了额外的reduce-scatter时间，显著提高了计算与通信的并行效率，如下图所示。
+在打开`--use-distributed-optimizer`的同时打开`--overlap-grad-reduce`，运行流程如下图所示。梯度的reduce-scatter过程与反向计算过程并行，从而避免了额外的reduce-scatter时间，显著提高了计算与通信的并行效率。
 <p align="center"> <img src="../figures/async_ddp_param_gather_b.png" height="350px" width="880px"></p>
 
 ### c. 启用分布式优化器、梯度通信重叠与参数聚合重叠，即打开 `--use-distributed-optimizer` 和 `--overlap-grad-reduce` 和 `--overlap-param-gather`
 
-在打开`--use-distributed-optimizer`和`--overlap-grad-reduce`的基础上进一步打开`--overlap-param-gather`，运行流程如下图所示，对权重的all-gather过程与下一轮的前向计算并行，从而节省了单独的all-gather过程。
+在打开`--use-distributed-optimizer`和`--overlap-grad-reduce`的基础上进一步打开`--overlap-param-gather`，运行流程如下图所示，将权重的all-gather过程与下一轮的前向计算并行，从而节省了单独的all-gather过程。
 <p align="center"> <img src="../figures/async_ddp_param_gather_c.png" height="350px" width="880px"></p>
 
-以上流程对比发现，打开--overlap-param-gather后，通信与计算完全并行，极大提高了计算-通信并行效率，进而提升了模型训练效率。
+以上流程对比发现，打开`--overlap-param-gather`后，通信与计算完全并行，极大提高了计算-通信并行效率，进而提升了模型训练效率。
 
 ## 使用场景
 

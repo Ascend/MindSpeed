@@ -3,9 +3,9 @@
 ## 背景与挑战
 
 Transformer Engine (TE) 是一个专门用于加速基于 Transformer 架构的模型进行训练和推理的库。当前的多个第三方框架依赖该加速库提供的API进行推理及训练，MindSpeed需要对这些需求做出对等支持。<!-- codespell:ignore -->
-TE支持在昇腾NPU硬件平台使能8位浮点数(FP8)运算，以使用更低的内存提供更佳的性能表现。TE提供了一些Transformer结构的典型模块，以及低精度状态管理器等组件，可以无缝替换基于Megatron-LM构建的大模型，以实现低精度训练。
-TransformerEngineNPU 提供的 TE 模块可以替换 NVIDIA 提供的 TE 模块，从而更容易构建Transformer层的模块。TE从模块内部维护低精度训练所需要的缩放因子(scale factors)及其他低精度训练的状态值，从而帮助用户更容易地从混合精度训练迁移到低精度训练。
-此外，TransformerEngineNPU 提供的 TE 模块还包含了通算融合(Communication Over Computation)的实现,将原本应通信计算串行执行的任务，拆分成更细粒度的子任务，从而将计算和通信相互掩盖以提升效率提高模型吞吐。
+TE支持在昇腾NPU硬件平台使能8位浮点数(FP8)运算，以使用更低的内存占用提供更佳的性能表现。TE提供了一些Transformer结构的典型模块，以及低精度状态管理器等组件，可以无缝替换基于Megatron-LM构建的大模型，以实现低精度训练。
+TransformerEngineNPU 提供的 TE 模块可以替换 NVIDIA 提供的 TE 模块，从而更容易构建Transformer层的模块。TE在模块内部维护低精度训练所需要的缩放因子(scaling factors)及其他低精度训练的状态值，从而帮助用户更容易地从混合精度训练迁移到低精度训练。
+此外，TransformerEngineNPU 提供的 TE 模块还包含了通算融合(Communication Over Computation)的实现，将原本应通信与计算串行执行的任务，拆分成更细粒度的子任务，从而将计算和通信相互掩盖以提升效率提高模型吞吐。
 
 ## 解决方法
 
@@ -18,15 +18,15 @@ TransformerEngineNPU 提供昇腾 NPU 上的 TE 接口，MindSpeed 提供 HiF8 /
 
 ![FP8 Training Diagram](../figures/fp8.png)
 低精度训练流程中主要是将前向传播 (Fprop)、激活反向传播 (Dgrad) 和权重反向传播 (Wgrad)中的GEMM，量化为FP8的精度执行运算。
-整网训练流程仍然是以BF16/FP16的AMP混合精度训练流程，但在特定的计算算子以FP8的精度进行计算，主要是Linear层中的Matmul计算，包括Fprop、Dgrad和Wgrad
-在高精度量化为低精度tensor的过程中，存在着不同的scaling策略:
+整网训练流程仍然是以BF16/FP16的AMP混合精度训练流程为主，但在特定的计算算子以FP8的精度进行计算，主要是Linear层中的Matmul计算，包括Fprop、Dgrad和Wgrad。
+在高精度量化为低精度tensor的过程中，存在着不同的scaling策略：
 
 - Delayed Scaling:根据历史amax值计算scaling factor，然后使用scaling factor对tensor进行量化。
 - Tensorwise Scaling:在线策略，实时计算amax并应用scaling factor对tensor进行量化。
 - Blockwise Scaling:对tensor进行分块，然后分别计算amax并应用scaling factor对tensor进行量化。
 - MX Scaling: 通过块级共享scale与低位宽元素组合，将浮点向量转化为MX块，实现动态量化。
 
-支持的低精度的数据格式有:
+支持的低精度的数据格式有：
 
 - E4M3: 1个符号位，4个指数位，3个尾数位，表示范围为-448到+448。
 - E5M2: 1个符号位，5个指数位，2个尾数位，表示范围为-57344到+57344。
@@ -54,13 +54,13 @@ TransformerEngineNPU 提供昇腾 NPU 上的 TE 接口，MindSpeed 提供 HiF8 /
 **注意**
 
 - `--use-ascend-mc2` 替换模型中的原生线性层，不覆盖 TENPU TE Linear，详见 [MC2](mc2.md)。Grouped GEMM 的配置见 [MoE GMM](megatron_moe/megatron-moe-gmm.md)。
-- 低精度 GMM 当前仅使用 tensorwise、mxfp8、delayed recipe（`--fp8-format hif8 --fp8-recipe delayed` 同样走 FP8 GMM）；其他 recipe（含 blockwise）回退 BF16 GMM，如不需要启用，可使能参数`--no-use-gmm-fp8`
+- 低精度 GMM 当前仅使用 tensorwise、mxfp8、delayed recipe（`--fp8-format hif8 --fp8-recipe delayed` 同样走 FP8 GMM）；其他 recipe（含 blockwise）回退 BF16 GMM，如不需要启用，可使能参数`--no-use-gmm-fp8`。
 - FP8 不支持 `--transformer-impl local`。
 - HiF8 数据格式通过 `--fp8-format hif8` 选择：使用 `--fp8-recipe delayed`（按 delayed 调度，单个外层量化上下文）；`tensorwise` 为逐张量 current scaling。HiF8 默认启用 step recovery，使用 `--no-hif8-step-recovery` 关闭，详见 [HiF8 DTS](hif8_dts.md)。
 - MXFP4 使用 `--fp4-format e2m1 --fp4-recipe mxfp4`。
 - `--fp8-reuse-quantized-weight` 仅在启用 FP8 时有效。
 - FP8 通算融合仅支持 MXFP8 recipe 配合 MC2。
-- 使用transformer_engine时需同时开启`--use-flash-attn`
+- 使用transformer_engine时需同时开启`--use-flash-attn`。
 
 ## 参数组合限制
 

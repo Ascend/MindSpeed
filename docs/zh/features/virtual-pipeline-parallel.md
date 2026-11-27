@@ -10,20 +10,22 @@
 
 虚拟流水线并行（Virtual Pipeline Parallelism，VPP）的核心在于，在不增加设备数量的前提下，将模型进一步细分为更多阶段，以增加通信量为代价，换取更低的空泡比率。在设备数量不变的情况下，分出更多的流水线阶段，以更多的通信量，换取空泡比率降低。
 
-### 图1 虚拟流水线并行示意图
+图1 虚拟流水线并行示意图
 
-![alt text](../figures/virtual-pipeline.PNG)
+![虚拟流水线并行阶段划分示意图](../figures/virtual-pipeline.PNG)
 
 [原文链接](https://dl.acm.org/doi/10.1145/3458817.3476209)
 
 例如，假设模型总层数为16，张量并行大小为1，流水线并行大小为4，虚拟流水线并行大小为2，则模型将被划分为4 * 2 = 8个阶段，每个阶段包含16 / 8 = 2个层。如下所示：
 
+```text
     Device 0: [1, 2] [9, 10]
     Device 1: [3, 4] [11, 12]
     Device 2: [5, 6] [13, 14]
     Device 3: [7, 8] [15, 16]
+```
 
-前向的顺序为 Device 0 -> Device 1 -> Device 2 -> Device 3 -> Device 0 -> Device 1 -> Device 2 -> Device 3
+前向的顺序为 Device 0 -> Device 1 -> Device 2 -> Device 3 -> Device 0 -> Device 1 -> Device 2 -> Device 3。
 
 ## 使用场景
 
@@ -38,7 +40,7 @@
 
 ### 注意
 
-若 `N * PP == num_layers`，应移除 `--num-layers-per-virtual-pipeline-stage`；VPP size 为 1 时退化为普通 PP，并关闭 `overlap-p2p-comm`。
+若`N * PP == num_layers`，应移除`--num-layers-per-virtual-pipeline-stage`；VPP大小为1时退化为普通PP，并关闭`--overlap-p2p-communication`。
 
 1. Megatron虚拟流水线并行（VPP）对权重的分割模式具有直接影响。在保存或加载权重文件时，务必保持VPP配置参数的一致性，以确保模型权重的准确加载和系统的稳定运行。
 

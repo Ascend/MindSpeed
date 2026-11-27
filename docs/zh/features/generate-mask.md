@@ -20,7 +20,7 @@ Tips: 以上操作默认开启，生成的AttnMask全部为下三角形状，可
 
 [2] 非PP首尾节点的AttnMask为None，无法使能FA加速。
 
-[3] AttnMask生成、拷贝及广播操作，在每个micro_step都会跟随get_batch重复。
+[3] AttnMask生成、拷贝及广播操作，在每个micro_step都会跟随`get_batch`重复。
 
 [4] 长序列下，生成的AttnMask占用显存过大。
 
@@ -34,7 +34,7 @@ Tips: 以上操作默认开启，生成的AttnMask全部为下三角形状，可
 
 ## 使用场景
 
-**后端限制：** 本文 mask 缓存接口仅用于 `--transformer-impl local`。
+**后端限制：** 本文AttnMask缓存接口仅用于 `--transformer-impl local`。
 
 | 配置 | 支持范围 |
 | --- | --- |
@@ -43,7 +43,7 @@ Tips: 以上操作默认开启，生成的AttnMask全部为下三角形状，可
 | `--use-flash-attn --sparse-mode 0` | 默认模式，根据传入的 mask 计算。 |
 | `--use-flash-attn --sparse-mode 2` | 左上对齐的因果压缩 mask。 |
 
-CP>1 需使用 `--transformer-impl transformer_engine`，与 EOD Reset 组合时仅支持 `p2p/all_gather + causal`，具体约束见 [EOD Reset](eod-reset.md)。`attention-mask-type` 与 `sparse-mode` 是不同参数，TENPU 内部使用的算子模式不等同于启动参数的可选范围。
+CP>1需使用 `--transformer-impl transformer_engine`，与 EOD Reset 组合时仅支持 `p2p/all_gather + causal`，具体约束见 [EOD Reset](eod-reset.md)。`attention-mask-type` 与 `sparse-mode` 是不同参数，TENPU 内部使用的算子模式不等同于启动参数的可选范围。
 
 本地 DotProductAttention 路径在 causal 且传入 mask 为 None 时生成并缓存 mask；FA 默认生成 [2048,2048] 的压缩 mask，`multi_head_latent_attention` 配置使用完整序列长度。非 FA 使用完整 mask。
 
@@ -57,7 +57,7 @@ CP>1 需使用 `--transformer-impl transformer_engine`，与 EOD Reset 组合时
 
 [4] 提供 `mindspeed/core/transformer/flash_attention/generate_mask/generate_mask.py` 中的 `set_attention_mask`、`get_attention_mask`、`generate_attention_mask` 三个额外接口，实现正常流程外的设置、获取和生成功能。
 
-[5] 本地 DotProductAttention 通过 `mindspeed/core/transformer/flash_attention/generate_mask/adaptor.py` 中的 `dot_product_attention_forward_wrapper` 在首次需要时生成 mask；CP 注意力由 TENPU 处理。
+[5] 本地DotProductAttention 通过 `mindspeed/core/transformer/flash_attention/generate_mask/adaptor.py` 中的 `dot_product_attention_forward_wrapper` 在首次需要时生成 mask；CP 注意力由 TENPU 处理。
 
 ## 使用效果
 
@@ -65,4 +65,4 @@ CP>1 需使用 `--transformer-impl transformer_engine`，与 EOD Reset 组合时
 
 ## 注意事项
 
-自动生成的 FA mask 为因果 mask；设置 `general` 不会自动生成任意自定义 mask。`set_attention_mask` 仅用于设置本地缓存，不改变 CP/EOD 或 `--sparse-mode` 的支持限制。
+自动生成的FA mask 为因果 mask；设置 `general` 不会自动生成任意自定义 mask。`set_attention_mask` 仅用于设置本地缓存，不改变 CP/EOD 或 `--sparse-mode` 的支持限制。

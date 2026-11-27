@@ -1,8 +1,8 @@
 # 特性总览
 
-本手册汇总了MindSpeed Core相关特性，具体分类如下所示。
+本手册汇总了MindSpeed Core相关特性，具体分类如下所示：
 
-**表 1**  特性列表
+**表 1** 特性列表
 
 <table>
   <thead>
@@ -66,7 +66,7 @@
       <td><a href="../features/kvallgather-context-parallel.md">KVAllGather长序列并行</a></td>
     </tr>
     <tr>
-      <td><a href="../features/pipeline-model-parallel-layout.md">Megatron 自定义流水线布局</a></td>
+      <td><a href="../features/pipeline-model-parallel-layout.md">Megatron自定义流水线布局</a></td>
     </tr>
     <tr>
       <td rowspan="10">内存优化特性</td>
@@ -85,7 +85,7 @@
       <td><a href="../features/norm-recompute.md">Ascend Norm重计算</a></td>
     </tr>
     <tr>
-      <td><a href="../features/hccl-group-buffer-set.md">Ascend Hccl Buffer自适应</a></td>
+      <td><a href="../features/hccl-group-buffer-set.md">Ascend HCCL Buffer自适应</a></td>
     </tr>
     <tr>
       <td><a href="../features/swap-optimizer.md">Ascend Swap Optimizer</a></td>
@@ -113,7 +113,7 @@
       <td><a href="../features/flash-attention.md">Ascend Flash Attention</a></td>
     </tr>
     <tr>
-      <td><a href="../features/moe-token-permute-and-unpermute.md">Ascend Moe Token Permute and Unpermute 融合算子</a></td>
+      <td><a href="../features/moe-token-permute-and-unpermute.md">Ascend MoE Token Permute and Unpermute 融合算子</a></td>
     </tr>
     <tr>
       <td><a href="../features/npu_matmul_add.md">Ascend npu_matmul_add_fp32 梯度累加融合算子</a></td>

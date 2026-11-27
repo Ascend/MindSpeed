@@ -8,7 +8,7 @@
 
 * 内存限制：随着序列长度的增加，系统所需的内存资源也会成倍增长，导致内存不足。
 
-+ 计算效率：长序列的处理往往需要大量的计算资源，而传统的并行方法可能无法充分利用这些资源，导致计算效率低下。
+* 计算效率：长序列的处理往往需要大量的计算资源，而传统的并行方法可能无法充分利用这些资源，导致计算效率低下。
 
 * 通信开销：在分布式系统中，长序列的处理可能涉及到多个节点之间的通信，而传统的并行方法可能产生较大的通信开销，影响整体性能。
 
@@ -16,12 +16,12 @@ Ulysses长序列并行是一种针对上述挑战设计的创新方案，它能�
 
 ## 解决方案
 
-支持 Ulysses长序列并行方案，以此解决序列维度扩展问题。
+支持Ulysses长序列并行方案，以此解决序列维度扩展问题。
 
 ### 解决思路
 
 首先，Ulysses将各个样本在序列维度上分割给参与的计算设备。然后，在attention计算之前，对已分割的查询（Q）、键（K）和值（V）执行all-to-all通信操作，以便每个计算设备接收完整的序列，但仅用于attention-heads的非重叠子集。这使得参与的计算设备可以并行计算不同的注意力头。最后，Ulysses还可以使用另一个all-to-all在注意力头上收集结果，同时重新在序列维度上进行分区。
-具体细节参考文献[DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/pdf/2309.14509),执行流程如下图所示:
+具体细节参考文献[DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/pdf/2309.14509)，执行流程如下图所示：
 
 #### 图1 Ulysses切分原理
 
@@ -29,7 +29,7 @@ Ulysses长序列并行是一种针对上述挑战设计的创新方案，它能�
 
 ## 使用场景
 
-**后端限制：** CP>1 必须设置 `--transformer-impl transformer_engine`。
+**后端限制：** CP>1必须设置 `--transformer-impl transformer_engine`。
 
 num-attention-heads要能够被tensor-model-parallel-size * context-parallel-size整除。
 
@@ -48,7 +48,7 @@ num-attention-heads要能够被tensor-model-parallel-size * context-parallel-siz
 | 普通训练 | causal、general |
 | EOD Reset | 不支持 |
 
-CP>1 时设置 `--transformer-impl transformer_engine`；Ulysses 不支持 EOD Reset。
+CP>1时设置 `--transformer-impl transformer_engine`；Ulysses 不支持 EOD Reset。
 
 使用 `--cp-comm-type` 选择通信方式。
 
@@ -67,8 +67,8 @@ CP>1 时设置 `--transformer-impl transformer_engine`；Ulysses 不支持 EOD R
     <tr>
       <td>--cp-comm-type <b>a2a</b></td>
       <td>
-        设置为 a2a 开启Ulysses长序列并行。<br>
-        cp-comm-type 的默认值为 p2p；a2a+p2p 对应混合长序列并行。
+        设置为a2a开启Ulysses长序列并行。<br>
+        cp-comm-type的默认值为p2p；a2a+p2p 对应混合长序列并行。
       </td>
     </tr>
   </tbody>
@@ -81,4 +81,4 @@ CP>1 时设置 `--transformer-impl transformer_engine`；Ulysses 不支持 EOD R
 ## 鸣谢
 
 1.GitHub项目地址：
-<https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses>
+[DeepSpeed Ulysses 官方博客](https://github.com/microsoft/DeepSpeed/tree/master/blogs/deepspeed-ulysses)

@@ -1,6 +1,6 @@
-# Transformer 层输入卸载
+# Transformer层输入卸载
 
-通过卸载 Transformer 层输入，减少训练时保留激活占用的设备内存。
+通过卸载Transformer 层输入，减少训练时保留激活占用的设备内存。
 
 ## 使用方法
 
