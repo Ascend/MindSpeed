@@ -168,12 +168,16 @@ def test_moe_permute_and_gradient(index_dtype, topk, num_out_tokens):
 
 
 @pytest.mark.parametrize("with_probs", [False, True])
-@pytest.mark.parametrize("drop_tokens", [False, True])
 @pytest.mark.parametrize("trial", range(3))
-def test_moe_unpermute_and_gradients(with_probs, drop_tokens, trial):
+def test_moe_unpermute_and_gradients(with_probs, trial):
+    # Token-drop coverage (num_out_tokens < num_tokens * topk, i.e. a short
+    # permuted_tokens) is intentionally omitted: Megatron does not use this
+    # operator on the token-drop path, and the Ascend 950 lowering of
+    # aclnnMoeTokenUnpermuteGrad still rejects a short expanded_x. Restore it
+    # together with the CANN fix.
     indices = torch.tensor([[0, 4], [4, 3], [4, 2], [1, 1]]) if with_probs else torch.tensor([0, 4, 2, 1])
     tokens = torch.arange(12, dtype=torch.bfloat16).reshape(4, 3)
-    permuted, order = _moe_reference(tokens, indices, 3 if drop_tokens else None)
+    permuted, order = _moe_reference(tokens, indices, None)
     permuted = permuted.detach().requires_grad_()
     probs = torch.full((4, 2), 0.5, dtype=torch.bfloat16, requires_grad=True) if with_probs else None
     topk = 2 if with_probs else 1
